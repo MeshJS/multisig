@@ -29,8 +29,10 @@ import { PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
+import { useRouter } from "next/router";
 
 export default function PageNewWallet() {
+  const router = useRouter();
   const [signers, setSigners] = useState<string[]>([]);
   const [numSigners, setNumSigners] = useState<number>(0);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(0);
@@ -40,7 +42,7 @@ export default function PageNewWallet() {
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
     onSuccess: async () => {
-      console.log("Wallet created");
+      router.push("/wallets");
     },
     onError: (e) => {
       console.error(e);
@@ -99,7 +101,7 @@ export default function PageNewWallet() {
 
   return (
     <RootLayout>
-      <PageHeader pageTitle="New Wallet"></PageHeader>
+      <PageHeader pageTitle="New Wallet" backUrl="/wallets"></PageHeader>
 
       <div className="grid grid-cols-2 gap-4">
         <div>

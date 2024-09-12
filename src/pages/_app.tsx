@@ -9,6 +9,7 @@ import "@/styles/globals.css";
 import "@meshsdk/react/styles.css";
 import { MeshProvider } from "@meshsdk/react";
 import LayoutRoot from "@/components/layout/root";
+import { Toaster } from "@/components/ui/toaster";
 
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,
@@ -21,6 +22,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
           <LayoutRoot>
             <Component {...pageProps} />
           </LayoutRoot>
+          <Toaster />
         </div>
       </SessionProvider>
     </MeshProvider>

@@ -10,8 +10,12 @@ import {
 import Row from "./row";
 import Link from "next/link";
 import PageHeader from "@/components/common/page-header";
+import useUserWallets from "@/hooks/useUserWallets";
+import { Wallet } from "@/types/wallet";
 
 export default function PageWallets() {
+  const { wallets, isLoading } = useUserWallets();
+
   return (
     <RootLayout>
       <>
@@ -25,23 +29,18 @@ export default function PageWallets() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden md:table-cell">Price</TableHead>
-              <TableHead className="hidden md:table-cell">
-                Total Sales
-              </TableHead>
-              <TableHead className="hidden md:table-cell">Created at</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>dRepID</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <Row />
-            <Row />
-            <Row />
-            <Row />
-            <Row />
+            {wallets &&
+              wallets.map((wallet) => (
+                <Row key={wallet.id} wallet={wallet as Wallet} />
+              ))}
           </TableBody>
         </Table>
       </>
