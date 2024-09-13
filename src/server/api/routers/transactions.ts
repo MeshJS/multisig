@@ -57,6 +57,10 @@ export const transactionRouter = createTRPCRouter({
       return await ctx.db.transaction.findMany({
         where: {
           walletId: input.walletId,
+          state: 1,
+        },
+        orderBy: {
+          createdAt: "desc",
         },
       });
     }),
@@ -69,41 +73,9 @@ export const transactionRouter = createTRPCRouter({
           walletId: input.walletId,
           state: 0,
         },
+        orderBy: {
+          createdAt: "desc",
+        },
       });
     }),
-
-  // writeTransaction: publicProcedure
-  //   .input(
-  //     z.object({
-  //       transactionId: z.string(),
-  //       walletId: z.string().optional(),
-  //       txJson: z.string().optional(),
-  //       signedAddresses: z.array(z.string()),
-  //       txCbor: z.string(),
-  //       state: z.number(),
-  //       description: z.string().optional(),
-  //       txHash: z.string().optional(),
-  //     }),
-  //   )
-  //   .mutation(async ({ ctx, input }) => {
-  //     return ctx.db.transaction.upsert({
-  //       create: {
-  //         walletId: input.walletId || "",
-  //         txJson: input.txJson || "",
-  //         signedAddresses: input.signedAddresses,
-  //         txCbor: input.txCbor,
-  //         state: input.state,
-  //         description: input.description,
-  //       },
-  //       where: {
-  //         id: input.transactionId,
-  //       },
-  //       update: {
-  //         signedAddresses: input.signedAddresses,
-  //         txCbor: input.txCbor,
-  //         state: input.state,
-  //         txHash: input.txHash,
-  //       },
-  //     });
-  //   }),
 });

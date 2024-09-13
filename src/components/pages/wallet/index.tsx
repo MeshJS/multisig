@@ -58,15 +58,17 @@ export default function PageWallet({ walletId }: { walletId: string }) {
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="info">Info</TabsTrigger>
               <TabsTrigger value="transactions">
-                Transactions
-                {transactions && transactions.length > 0 && (
-                  <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
-                    {transactions.length}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  Transactions
+                  {transactions && transactions.length > 0 && (
+                    <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+                      {transactions.length}
+                    </Badge>
+                  )}
+                </div>
               </TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="governance">Governance</TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
             <TabsContent value="info">
               <TabInfo appWallet={appWallet} />
@@ -74,11 +76,11 @@ export default function PageWallet({ walletId }: { walletId: string }) {
             <TabsContent value="transactions">
               <TabTransactions appWallet={appWallet} />
             </TabsContent>
-            <TabsContent value="details">
-              <TabDetails appWallet={appWallet} />
-            </TabsContent>
             <TabsContent value="governance">
               <p>Coming soon...</p>
+            </TabsContent>
+            <TabsContent value="details">
+              <TabDetails appWallet={appWallet} />
             </TabsContent>
           </Tabs>
         </>

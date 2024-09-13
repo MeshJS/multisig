@@ -18,6 +18,8 @@
 
 - need to reserve UTXOs
 - manage utxo?
+- add more outputs to new transactions
+- message sign to verify wallet
 
 product:
 - store + spend treasury funds

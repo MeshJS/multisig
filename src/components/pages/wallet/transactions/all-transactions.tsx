@@ -1,12 +1,5 @@
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ArrowUpRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
@@ -14,6 +7,7 @@ import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { Transaction } from "@prisma/client";
 import { getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import Link from "next/link";
 
 // how to pull from blockchain, because this is from database, and cannot show receiving
 
@@ -52,20 +46,25 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
 
 function TransactionRow({ transaction }: { transaction: Transaction }) {
   const txJson = JSON.parse(transaction.txJson);
-
   return (
-    <TableRow>
+    <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
         <div className="font-medium">{transaction.description}</div>
-        <div className="text-sm text-muted-foreground md:inline">
-          {transaction.createdAt.toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "numeric",
-            minute: "numeric",
-          })}
+        <div className="flex gap-2 text-sm text-muted-foreground md:inline">
+          <LinkCardanoscan
+            url={`transaction/${transaction.txHash}`}
+            className="flex gap-1"
+          >
+            {transaction.createdAt.toLocaleDateString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "numeric",
+              minute: "numeric",
+            })}
+            <ArrowUpRight className="h-3 w-3" />
+          </LinkCardanoscan>
         </div>
 
         <Table>
@@ -92,13 +91,3 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
     </TableRow>
   );
 }
-
-<Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead>Address</TableHead>
-      <TableHead className="text-right">Amount</TableHead>
-    </TableRow>
-  </TableHeader>
-  <TableBody></TableBody>
-</Table>;
