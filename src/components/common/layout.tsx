@@ -3,7 +3,7 @@ import { Menu, Plus, Wallet2 } from "lucide-react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import React, { useEffect } from "react";
+import React, { use, useEffect } from "react";
 import ConnectWallet from "./connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
@@ -14,6 +14,7 @@ import { Badge } from "../ui/badge";
 import useUserWallets from "@/hooks/useUserWallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Wallet } from "@prisma/client";
+import { PageHomepage } from "../pages/homepage";
 
 export default function RootLayout({
   children,
@@ -27,9 +28,7 @@ export default function RootLayout({
   const { wallets } = useUserWallets();
 
   const { mutate: createUser } = api.user.createUser.useMutation({
-    onSuccess: async () => {
-      console.log("User created");
-    },
+    // onSuccess: async () => {},
     onError: (e) => {
       console.error(e);
     },
@@ -159,7 +158,7 @@ export default function RootLayout({
           {!connected ? <ConnectWallet /> : <UserDropDown />}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
-          {children}
+          {userAddress === undefined ? <PageHomepage /> : children}
         </main>
       </div>
     </div>

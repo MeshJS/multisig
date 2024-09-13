@@ -45,10 +45,12 @@ export function NewTransaction({ walletId }: { walletId: string }) {
           duration: 5000,
         });
         void ctx.transaction.getPendingTransactions.invalidate();
+        setRecipientAddress("");
+        setAmount("");
+        setDescription("");
       },
       onError: (e) => {
         console.error(e);
-        setOpen(false);
         setLoading(false);
       },
     });

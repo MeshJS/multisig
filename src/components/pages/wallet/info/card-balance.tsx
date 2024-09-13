@@ -57,7 +57,7 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         <div className="h-4 w-4 text-muted-foreground">₳</div>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">₳{numberWithCommas(balance)}</div>
+        <div className="text-2xl font-bold">₳ {numberWithCommas(balance)}</div>
       </CardContent>
     </Card>
   );

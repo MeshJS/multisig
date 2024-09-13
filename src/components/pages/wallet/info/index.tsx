@@ -7,7 +7,7 @@ import CardSigners from "./card-signers";
 export default function TabInfo({ appWallet }: { appWallet: Wallet }) {
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
         <CardBalance appWallet={appWallet} />
         <CardPendingTx appWallet={appWallet} />
         <div className="col-span-2"></div>

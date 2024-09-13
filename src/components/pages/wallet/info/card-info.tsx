@@ -34,6 +34,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
                       duration: 5000,
                     });
                   }}
+                  className="justify-start truncate"
                 >
                   <p className="text-sm text-muted-foreground">
                     {appWallet.address}
@@ -55,6 +56,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
                       duration: 5000,
                     });
                   }}
+                  className="justify-start truncate"
                 >
                   <p className="text-sm text-muted-foreground">
                     {appWallet.dRepId}

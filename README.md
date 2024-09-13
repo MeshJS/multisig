@@ -16,7 +16,10 @@
 
 - can stake to pool
 
+- need to reserve UTXOs
+- manage utxo?
 
 product:
 - store + spend treasury funds
 - vote as team
+

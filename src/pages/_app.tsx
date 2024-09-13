@@ -11,6 +11,7 @@ import { MeshProvider } from "@meshsdk/react";
 import LayoutRoot from "@/components/layout/root";
 import { Toaster } from "@/components/ui/toaster";
 import RootLayout from "@/components/common/layout";
+import Metatags from "@/components/common/metatags";
 
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,
@@ -26,6 +27,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
             </RootLayout>
           </LayoutRoot>
           <Toaster />
+          <Metatags />
         </div>
       </SessionProvider>
     </MeshProvider>
