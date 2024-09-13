@@ -13,7 +13,7 @@ export default function Metatags({
 }) {
   if (description === undefined) {
     description =
-      "Secure your treasury and participant in Cardano governance as a team with multi-signature wallet";
+      "Secure your treasury and participate in Cardano governance as a team with multi-signature";
   }
   if (keywords === undefined) {
     keywords =
@@ -23,7 +23,7 @@ export default function Metatags({
     title = "Multisig platform on Cardano";
   }
 
-  title = title + " - MeshJS";
+  title = title + " - Multisig platform on Cardano";
 
   return (
     <Head>

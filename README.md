@@ -21,6 +21,7 @@
 - add more outputs to new transactions
 - message sign to verify wallet
 - discord integration, to ping people to sign
+- can reject signing to delete transaction
 
 product:
 - store + spend treasury funds

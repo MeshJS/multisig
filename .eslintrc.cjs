@@ -49,6 +49,10 @@ const config = {
     "@typescript-eslint/no-unsafe-argument": "warn",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-unsafe-call": "warn",
+    "no-var": "warn",
+    "@typescript-eslint/no-unsafe-return": "warn",
+    "@typescript-eslint/prefer-includes": "warn",
+    "@typescript-eslint/ban-ts-comment": "warn",
   },
 };
 module.exports = config;

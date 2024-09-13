@@ -3,7 +3,7 @@ import { Menu, Plus, Wallet2 } from "lucide-react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import React, { use, useEffect } from "react";
+import React, { useEffect } from "react";
 import ConnectWallet from "./connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
@@ -82,7 +82,7 @@ export default function RootLayout({
           <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <Wallet2 className="h-6 w-6" />
-              <span className="">Multi-Sig Wallet</span>
+              <span className="">Multi-Sig Platform</span>
             </Link>
             {/* <Button variant="outline" size="icon" className="ml-auto h-8 w-8">
               <Bell className="h-4 w-4" />
