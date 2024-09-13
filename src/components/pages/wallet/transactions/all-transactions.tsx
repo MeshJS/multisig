@@ -7,7 +7,6 @@ import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { Transaction } from "@prisma/client";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
-import Link from "next/link";
 
 // how to pull from blockchain, because this is from database, and cannot show receiving
 
@@ -18,7 +17,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
     <Card className="col-span-2 self-start xl:col-span-2">
       <CardHeader className="flex flex-row items-center">
         <div className="grid gap-2">
-          <CardTitle>Transactions</CardTitle>
+          <CardTitle className="text-xl font-medium">Transactions</CardTitle>
         </div>
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
@@ -67,7 +66,7 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
             {txJson.outputs.map((output: any) => (
               <TableRow key={output.address} className="border-none">
                 <TableCell>
-                  <div className="font-medium">
+                  <div className="text-sm text-muted-foreground">
                     {getFirstAndLast(output.address)}
                   </div>
                 </TableCell>

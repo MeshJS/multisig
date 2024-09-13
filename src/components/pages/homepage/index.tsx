@@ -404,9 +404,9 @@ export function PageHomepage() {
   }, []);
 
   return (
-    <div className="h-screen w-full lg:grid lg:grid-cols-2">
+    <div className="h-screen w-full lg:grid lg:grid-cols-3">
       <div className="flex items-center justify-center py-12">
-        <div className="mx-auto grid w-[600px] gap-6">
+        <div className="mx-auto grid max-w-[500px] gap-6">
           <div className="grid gap-2 text-center">
             <h1 className="text-3xl font-bold">Multisig platform on Cardano</h1>
             <p className="text-balance text-muted-foreground">
@@ -416,16 +416,21 @@ export function PageHomepage() {
           </div>
           <div className="flex items-center justify-center">
             {userAddress ? (
+              <div className="flex gap-2">
               <Button size="sm" asChild>
                 <Link href="/wallets/new-wallet">New Wallet</Link>
               </Button>
+              <Button size="sm" asChild>
+                <Link href="/wallets">Your Wallets</Link>
+              </Button>
+              </div>
             ) : (
               <ConnectWallet />
             )}
           </div>
         </div>
       </div>
-      <div className="hidden lg:block">
+      <div className="hidden lg:block col-span-2">
         {/* @ts-ignore */}
         {live && <World data={sampleArcs} globeConfig={globeConfig} />}
       </div>

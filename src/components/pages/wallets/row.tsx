@@ -75,7 +75,7 @@ export default function Row({ wallet }: { wallet: Wallet }) {
         </div>
       </TableCell>
       <TableCell>
-        <DropdownMenu>
+        {/* <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button aria-haspopup="true" size="icon" variant="ghost">
               <MoreHorizontal className="h-4 w-4" />
@@ -87,7 +87,7 @@ export default function Row({ wallet }: { wallet: Wallet }) {
             <DropdownMenuItem>Edit</DropdownMenuItem>
             <DropdownMenuItem>Delete</DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu> */}
       </TableCell>
     </TableRow>
   );

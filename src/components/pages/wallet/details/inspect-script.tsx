@@ -7,7 +7,7 @@ export default function InspectScript({ appWallet }: { appWallet: Wallet }) {
     <Card className="col-span-4 self-start xl:col-span-2">
       <CardHeader className="flex flex-row items-center">
         <div className="grid gap-2">
-          <CardTitle>Native Script</CardTitle>
+        <CardTitle className="text-xl font-medium">Native Script</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
