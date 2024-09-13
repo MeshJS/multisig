@@ -23,7 +23,7 @@ export default function Metatags({
     title = "Multisig platform on Cardano";
   }
 
-  title = title + " - MeshJS";
+  title = title + " - Multisig platform on Cardano";
 
   return (
     <Head>
