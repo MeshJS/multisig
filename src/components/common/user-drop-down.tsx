@@ -9,9 +9,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function UserDropDown() {
-  const { disconnect } = useWallet();
+  const { wallet, disconnect } = useWallet();
+  const { toast } = useToast();
 
   return (
     <DropdownMenu>
@@ -24,8 +26,21 @@ export default function UserDropDown() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>Settings</DropdownMenuItem>
-        <DropdownMenuItem>Support</DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={async () => {
+            navigator.clipboard.writeText(
+              (await wallet.getUsedAddresses())[0]!,
+            );
+            toast({
+              title: "Copied",
+              description: "Address copied to clipboard",
+              duration: 5000,
+            });
+          }}
+        >
+          Copy my address
+        </DropdownMenuItem>
+        {/* <DropdownMenuItem>Support</DropdownMenuItem> */}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => disconnect()}>Logout</DropdownMenuItem>
       </DropdownMenuContent>
