@@ -5,7 +5,7 @@ import { Wallet } from "@/types/wallet";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 
-export default function CardInfo({ wallet }: { wallet: Wallet }) {
+export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const { toast } = useToast();
 
   return (
@@ -16,7 +16,9 @@ export default function CardInfo({ wallet }: { wallet: Wallet }) {
       </CardHeader>
       <CardContent>
         <div className="mt-1 flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">{wallet.description}</p>
+          <p className="text-sm text-muted-foreground">
+            {appWallet.description}
+          </p>
 
           <div className="mt-1 flex flex-col gap-2">
             <div className="flex items-center gap-4">
@@ -25,7 +27,7 @@ export default function CardInfo({ wallet }: { wallet: Wallet }) {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    navigator.clipboard.writeText(wallet.address);
+                    navigator.clipboard.writeText(appWallet.address);
                     toast({
                       title: "Copied",
                       description: "Address copied to clipboard",
@@ -34,7 +36,7 @@ export default function CardInfo({ wallet }: { wallet: Wallet }) {
                   }}
                 >
                   <p className="text-sm text-muted-foreground">
-                    {wallet.address}
+                    {appWallet.address}
                   </p>
                 </Button>
               </div>
@@ -46,7 +48,7 @@ export default function CardInfo({ wallet }: { wallet: Wallet }) {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    navigator.clipboard.writeText(wallet.dRepId);
+                    navigator.clipboard.writeText(appWallet.dRepId);
                     toast({
                       title: "Copied",
                       description: "DRepID copied to clipboard",
@@ -55,7 +57,7 @@ export default function CardInfo({ wallet }: { wallet: Wallet }) {
                   }}
                 >
                   <p className="text-sm text-muted-foreground">
-                    {wallet.dRepId}
+                    {appWallet.dRepId}
                   </p>
                 </Button>
               </div>

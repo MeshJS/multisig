@@ -33,6 +33,9 @@ export const env = createEnv({
    */
   client: {
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
+    NEXT_PUBLIC_CARDANO_NETWORK: z
+      .enum(["mainnet", "preprod"])
+      .default("preprod"),
   },
 
   /**
@@ -48,6 +51,7 @@ export const env = createEnv({
     // DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
+    NEXT_PUBLIC_CARDANO_NETWORK: process.env.NEXT_PUBLIC_CARDANO_NETWORK,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

@@ -17,13 +17,27 @@ model User {
 }
 
 model Wallet {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String?
+  signersAddresses    String[]
+  signersDescriptions String[]
+  numRequiredSigners  Int
+  verified            String[]
+  scriptCbor          String
+}
+
+model Transaction {
   id              String   @id @default(cuid())
-  name            String
+  walletId        String
+  txJson          String
+  txCbor          String
+  signedAddresses String[]
   description     String?
-  signers         String[]
-  numberOfSigners Int
-  signerState     String[]
-  scriptCbor      String
+  state           Int
+  txHash          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // model Post {

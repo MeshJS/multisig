@@ -1,80 +1,95 @@
-import RootLayout from "@/components/common/layout";
 import PageHeader from "@/components/common/page-header";
-import useWallet from "@/hooks/useWallet";
-import { Info, Send } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import CardBalance from "./card-balance";
+import useAppWallet from "@/hooks/useAppWallet";
 import { useEffect, useState } from "react";
-import { getProvider } from "@/components/common/blockfrost";
-import { UTxO } from "@meshsdk/core";
-import Transactions from "./transactions";
-import InspectScript from "./inspect-script";
+import { getProvider } from "@/components/common/cardano-objects";
+import { NewTransaction } from "./new-transaction";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import TabTransactions from "./transactions";
+import TabDetails from "./details";
+import TabInfo from "./info";
 import { Button } from "@/components/ui/button";
-import CardInfo from "./card-info";
+import { RefreshCw } from "lucide-react";
+import TabPendingTransactions from "./pending-transaction";
+import { useWalletsStore } from "@/lib/zustand/wallets";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
+import { Badge } from "@/components/ui/badge";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
-  const { wallet, isLoading } = useWallet({ walletId });
-  const [utxos, setUtxos] = useState<UTxO[]>([]);
+  const { appWallet, isLoading } = useAppWallet({ walletId });
+  const [loading, setLoading] = useState<boolean>(false);
+  const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
+  const setWalletsUtxos = useWalletsStore((state) => state.setWalletsUtxos);
+  const { transactions } = usePendingTransactions({ walletId });
+
+  async function fetchUtxos() {
+    if (appWallet) {
+      setWalletsUtxos(walletId, []);
+      console.log("Fetching utxos for wallet", appWallet);
+      const blockchainProvider = getProvider();
+      const utxos = await blockchainProvider.fetchAddressUTxOs(
+        appWallet.address,
+      );
+      console.log(33, "utxos", utxos);
+      setWalletsUtxos(walletId, utxos);
+    }
+  }
+
+  async function refreshWallet() {
+    setLoading(true);
+    await fetchUtxos();
+    setLoading(false);
+  }
 
   useEffect(() => {
-    async function fetchUtxos() {
-      // if (wallet) { // todo
-      const userAddress =
-        "addr_test1qp2k7wnshzngpqw0xmy33hvexw4aeg60yr79x3yeeqt3s2uvldqg2n2p8y4kyjm8sqfyg0tpq9042atz0fr8c3grjmysdp6yv3";
-
-      const blockchainProvider = getProvider();
-      const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
-      setUtxos(utxos);
-
-      console.log("utxos", utxos);
-      // }
+    if (appWallet && walletsUtxos[walletId] === undefined) {
+      refreshWallet();
     }
-    fetchUtxos();
-  }, []);
+  }, [appWallet]);
+
+  console.log("loading", loading);
 
   return (
-    <RootLayout>
-      {wallet && (
+    <>
+      {appWallet && (
         <>
-          <PageHeader pageTitle={wallet.name}>
-            <Button size="sm" asChild>
-              New Transaction
+          <PageHeader pageTitle={appWallet.name}>
+            <NewTransaction walletId={walletId} />
+            <Button size="sm" onClick={() => refreshWallet()}>
+              <RefreshCw className={`h-4 w-4 ${loading && "animate-spin"}`} />
             </Button>
           </PageHeader>
 
-          <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-            <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-              <CardBalance utxos={utxos} />
-              <Card className="self-start">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Pending Transactions
-                  </CardTitle>
-                  <Send className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">2</div>
-                </CardContent>
-              </Card>
-              <CardInfo wallet={wallet} />
-            </div>
-            <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-              <Transactions utxos={utxos} address={wallet.address} />
-              {/* <Card>
-                <CardHeader>
-                  <CardTitle>Recent</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-8"></CardContent>
-              </Card> */}
-            </div>
-
-            <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-              <InspectScript nativeScript={wallet.nativeScript} />
-            </div>
-          </main>
+          <Tabs defaultValue="info">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="info">Info</TabsTrigger>
+              <TabsTrigger value="pending-transactions">
+                <div className="flex items-center justify-center gap-2">
+                  Pending Transactions
+                  {transactions && transactions.length > 0 && (
+                    <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+                      {transactions.length}
+                    </Badge>
+                  )}
+                </div>
+              </TabsTrigger>
+              <TabsTrigger value="transactions">Transactions</TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
+            </TabsList>
+            <TabsContent value="info">
+              <TabInfo appWallet={appWallet} />
+            </TabsContent>
+            <TabsContent value="pending-transactions">
+              <TabPendingTransactions walletId={walletId} />
+            </TabsContent>
+            <TabsContent value="transactions">
+              <TabTransactions appWallet={appWallet} />
+            </TabsContent>
+            <TabsContent value="details">
+              <TabDetails appWallet={appWallet} />
+            </TabsContent>
+          </Tabs>
         </>
       )}
-    </RootLayout>
+    </>
   );
 }

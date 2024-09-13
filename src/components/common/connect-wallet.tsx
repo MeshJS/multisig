@@ -21,12 +21,13 @@ export default function ConnectWallet() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="icon" className="rounded-full">
-          <Wallet className="h-5 w-5" />
+        <Button variant="secondary" className="rounded-full">
+          <Wallet className="mr-2 h-5 w-5" />
+          Connect
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Connect Wallet</DropdownMenuLabel>
+        <DropdownMenuLabel>Select Wallet</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {wallets.map((wallet, i) => {
           return (

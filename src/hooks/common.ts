@@ -11,8 +11,8 @@ import {
 export function buildWallet(wallet: DbWallet) {
   const nativeScript: NativeScript = {
     type: "atLeast",
-    required: wallet.numberOfSigners,
-    scripts: wallet.signers.map((addr) => ({
+    required: wallet.numRequiredSigners,
+    scripts: wallet.signersAddresses.map((addr) => ({
       type: "sig",
       keyHash: resolvePaymentKeyHash(addr),
     })),

@@ -10,6 +10,7 @@ import "@meshsdk/react/styles.css";
 import { MeshProvider } from "@meshsdk/react";
 import LayoutRoot from "@/components/layout/root";
 import { Toaster } from "@/components/ui/toaster";
+import RootLayout from "@/components/common/layout";
 
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,
@@ -20,7 +21,9 @@ const MyApp: AppType<{ session: Session | null }> = ({
       <SessionProvider session={session}>
         <div className={GeistSans.className}>
           <LayoutRoot>
-            <Component {...pageProps} />
+            <RootLayout>
+              <Component {...pageProps} />
+            </RootLayout>
           </LayoutRoot>
           <Toaster />
         </div>

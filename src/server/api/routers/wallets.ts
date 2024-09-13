@@ -8,7 +8,7 @@ export const walletRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return ctx.db.wallet.findMany({
         where: {
-          signers: {
+          signersAddresses: {
             has: input.address,
           },
         },
@@ -21,7 +21,7 @@ export const walletRouter = createTRPCRouter({
       return ctx.db.wallet.findUnique({
         where: {
           id: input.walletId,
-          signers: {
+          signersAddresses: {
             has: input.address,
           },
         },
@@ -33,8 +33,9 @@ export const walletRouter = createTRPCRouter({
       z.object({
         name: z.string(),
         description: z.string(),
-        signers: z.array(z.string()),
-        numberOfSigners: z.number(),
+        signersAddresses: z.array(z.string()),
+        signersDescriptions: z.array(z.string()),
+        numRequiredSigners: z.number(),
         scriptCbor: z.string(),
       }),
     )
@@ -43,8 +44,9 @@ export const walletRouter = createTRPCRouter({
         data: {
           name: input.name,
           description: input.description,
-          signers: input.signers,
-          numberOfSigners: input.numberOfSigners,
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+          numRequiredSigners: input.numRequiredSigners,
           scriptCbor: input.scriptCbor,
         },
       });

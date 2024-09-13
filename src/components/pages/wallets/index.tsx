@@ -1,4 +1,3 @@
-import RootLayout from "@/components/common/layout";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,7 +16,7 @@ export default function PageWallets() {
   const { wallets, isLoading } = useUserWallets();
 
   return (
-    <RootLayout>
+    <>
       <>
         <PageHeader pageTitle="Wallets">
           <Button size="sm" asChild>
@@ -44,6 +43,6 @@ export default function PageWallets() {
           </TableBody>
         </Table>
       </>
-    </RootLayout>
+    </>
   );
 }

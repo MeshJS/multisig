@@ -17,7 +17,8 @@ export default function useUserWallets() {
     _wallets = wallets.map((wallet) => {
       return buildWallet(wallet);
     });
+    return { wallets: _wallets, isLoading };
   }
 
-  return { wallets: _wallets, isLoading };
+  return { wallets: undefined, isLoading };
 }
