@@ -13,6 +13,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/utils/api";
+import TabGovernance from "./governance";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
   const { appWallet, isLoading } = useAppWallet({ walletId });
@@ -81,7 +82,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
               <TabTransactions appWallet={appWallet} />
             </TabsContent>
             <TabsContent value="governance">
-              <p>Coming soon...</p>
+              <TabGovernance appWallet={appWallet} />
             </TabsContent>
             <TabsContent value="details">
               <TabDetails appWallet={appWallet} />

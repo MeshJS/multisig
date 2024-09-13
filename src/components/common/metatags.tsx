@@ -13,7 +13,7 @@ export default function Metatags({
 }) {
   if (description === undefined) {
     description =
-      "Secure your treasury and participant in Cardano governance as a team with multi-signature wallet";
+      "Secure your treasury and participate in Cardano governance as a team with multi-signature";
   }
   if (keywords === undefined) {
     keywords =

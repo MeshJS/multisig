@@ -13,7 +13,7 @@ import { useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
-import { getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
 import { Separator } from "@/components/ui/separator";
 import { useUserStore } from "@/lib/zustand/user";
 import {
@@ -109,14 +109,7 @@ export default function TransactionCard({
                     </Button> */}
           </CardTitle>
           <CardDescription>
-            {transaction.createdAt.toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              hour: "numeric",
-              minute: "numeric",
-            })}
+            {dateToFormatted(transaction.createdAt)}
           </CardDescription>
         </div>
         <div className="ml-auto flex items-center gap-1">
@@ -137,9 +130,26 @@ export default function TransactionCard({
               <DropdownMenuItem
                 onClick={() => {
                   navigator.clipboard.writeText(transaction.txJson);
+                  toast({
+                    title: "Copied",
+                    description: "JSON copied to clipboard",
+                    duration: 5000,
+                  });
                 }}
               >
                 Copy Tx JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  navigator.clipboard.writeText(transaction.txCbor);
+                  toast({
+                    title: "Copied",
+                    description: "CBOR copied to clipboard",
+                    duration: 5000,
+                  });
+                }}
+              >
+                Copy Tx CBOR
               </DropdownMenuItem>
               {/* <DropdownMenuItem>Export</DropdownMenuItem>
                       <DropdownMenuSeparator />

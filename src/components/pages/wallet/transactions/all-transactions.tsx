@@ -6,7 +6,7 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { Transaction } from "@prisma/client";
-import { getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
 import Link from "next/link";
 
 // how to pull from blockchain, because this is from database, and cannot show receiving
@@ -49,22 +49,17 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
   return (
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
-        <div className="font-medium">{transaction.description}</div>
-        <div className="flex gap-2 text-sm text-muted-foreground md:inline">
-          <LinkCardanoscan
-            url={`transaction/${transaction.txHash}`}
-            className="flex gap-1"
-          >
-            {transaction.createdAt.toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              hour: "numeric",
-              minute: "numeric",
-            })}
-            <ArrowUpRight className="h-3 w-3" />
-          </LinkCardanoscan>
+        <div className="flex justify-between">
+          <div className="font-medium">{transaction.description}</div>
+          <div className="flex gap-2 text-sm text-muted-foreground md:inline">
+            <LinkCardanoscan
+              url={`transaction/${transaction.txHash}`}
+              className="flex gap-1"
+            >
+              {dateToFormatted(transaction.createdAt)}
+              <ArrowUpRight className="h-3 w-3" />
+            </LinkCardanoscan>
+          </div>
         </div>
 
         <Table>
