@@ -24,8 +24,8 @@ export default function UserDropDown() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>My Account</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        {/* <DropdownMenuLabel>My Account</DropdownMenuLabel> */}
+        {/* <DropdownMenuSeparator /> */}
         <DropdownMenuItem
           onClick={async () => {
             navigator.clipboard.writeText(

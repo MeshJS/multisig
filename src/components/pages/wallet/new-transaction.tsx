@@ -14,20 +14,12 @@ import { Label } from "@/components/ui/label";
 import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
-import { Loader, PlusCircle, Send } from "lucide-react";
+import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -35,24 +27,22 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group"
+} from "@/components/ui/table";
 
 export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet({ walletId });
-  const [recipientAddress, setRecipientAddress] = useState<string>("");
-  const [amount, setAmount] = useState<string>("");
+  // const [recipientAddress, setRecipientAddress] = useState<string>("");
+  // const [amount, setAmount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
+  const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
+  const [amounts, setAmounts] = useState<string[]>([""]);
 
   const { mutate: createTransaction } =
     api.transaction.createTransaction.useMutation({
@@ -65,8 +55,8 @@ export function NewTransaction({ walletId }: { walletId: string }) {
           duration: 5000,
         });
         void ctx.transaction.getPendingTransactions.invalidate();
-        setRecipientAddress("");
-        setAmount("");
+        setRecipientAddresses([]);
+        setAmounts([]);
         setDescription("");
       },
       onError: (e) => {
@@ -83,49 +73,77 @@ export function NewTransaction({ walletId }: { walletId: string }) {
     setLoading(true);
     setError(undefined);
 
-    const _amount = (parseFloat(amount) * 1000000).toString();
+    try {
+      let totalAmount = 0;
+      const outputs = [];
+      for (let i = 0; i < recipientAddresses.length; i++) {
+        const thisAmount = parseFloat(amounts[i] as string) * 1000000;
+        totalAmount += thisAmount;
+        outputs.push({
+          address: recipientAddresses[i],
+          amount: thisAmount.toString(),
+        });
+      }
 
-    const blockchainProvider = getProvider();
-    const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
-
-    const assetMap = new Map<Unit, Quantity>();
-    assetMap.set("lovelace", _amount);
-
-    const selectedUtxos = keepRelevant(assetMap, utxos);
-
-    if (selectedUtxos.length === 0) {
-      setError("Insufficient funds");
-      return;
-    }
-
-    const txBuilder = getTxBuilder();
-
-    for (const utxo of selectedUtxos) {
-      txBuilder.txIn(
-        utxo.input.txHash,
-        utxo.input.outputIndex,
-        utxo.output.amount,
-        utxo.output.address,
+      const blockchainProvider = getProvider();
+      const utxos = await blockchainProvider.fetchAddressUTxOs(
+        appWallet.address,
       );
+
+      const assetMap = new Map<Unit, Quantity>();
+      assetMap.set("lovelace", totalAmount.toString());
+
+      const selectedUtxos = keepRelevant(assetMap, utxos);
+
+      if (selectedUtxos.length === 0) {
+        setError("Insufficient funds");
+        return;
+      }
+
+      const txBuilder = getTxBuilder();
+
+      for (const utxo of selectedUtxos) {
+        txBuilder.txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        );
+      }
+
+      txBuilder.txInScript(appWallet.scriptCbor);
+
+      for (let i = 0; i < outputs.length; i++) {
+        txBuilder.txOut(outputs[i]!.address!, [
+          {
+            unit: "lovelace",
+            quantity: outputs[i]!.amount,
+          },
+        ]);
+      }
+
+      txBuilder.changeAddress(appWallet.address).selectUtxosFrom(selectedUtxos);
+
+      const unsignedTx = await txBuilder.complete();
+      const signedTx = await wallet.signTx(unsignedTx, true);
+
+      createTransaction({
+        walletId: appWallet.id,
+        txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
+        txCbor: signedTx,
+        signedAddresses: [userAddress],
+        state: 0,
+        description: description,
+      });
+    } catch (e) {
+      setLoading(false);
+      setError("Invalid transaction");
     }
+  }
 
-    txBuilder
-      .txInScript(appWallet.scriptCbor)
-      .txOut(recipientAddress, [{ unit: "lovelace", quantity: _amount }])
-      .changeAddress(appWallet.address)
-      .selectUtxosFrom(selectedUtxos);
-
-    const unsignedTx = await txBuilder.complete();
-    const signedTx = await wallet.signTx(unsignedTx, true);
-
-    createTransaction({
-      walletId: appWallet.id,
-      txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-      txCbor: signedTx,
-      signedAddresses: [userAddress],
-      state: 0,
-      description: description,
-    });
+  function addNewRecipient() {
+    setRecipientAddresses([...recipientAddresses, ""]);
+    setAmounts([...amounts, ""]);
   }
 
   return (
@@ -139,183 +157,50 @@ export function NewTransaction({ walletId }: { walletId: string }) {
           <DialogDescription>Send ADA to another address</DialogDescription>
         </DialogHeader>
 
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Address</TableHead>
+              <TableHead className="w-[120px]">Amount in ADA</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recipientAddresses.map((_, index) => (
+              <RecipientRow
+                key={index}
+                index={index}
+                recipientAddresses={recipientAddresses}
+                setRecipientAddresses={setRecipientAddresses}
+                amounts={amounts}
+                setAmounts={setAmounts}
+              />
+            ))}
+          </TableBody>
+        </Table>
 
-        {/* <Card x-chunk="dashboard-07-chunk-1">
-                  <CardHeader>
-                    <CardTitle>Stock</CardTitle>
-                    <CardDescription>
-                      Lipsum dolor sit amet, consectetur adipiscing elit
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[100px]">SKU</TableHead>
-                          <TableHead>Stock</TableHead>
-                          <TableHead>Price</TableHead>
-                          <TableHead className="w-[100px]">Size</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="font-semibold">
-                            GGPC-001
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="stock-1" className="sr-only">
-                              Stock
-                            </Label>
-                            <Input
-                              id="stock-1"
-                              type="number"
-                              defaultValue="100"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="price-1" className="sr-only">
-                              Price
-                            </Label>
-                            <Input
-                              id="price-1"
-                              type="number"
-                              defaultValue="99.99"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <ToggleGroup
-                              type="single"
-                              defaultValue="s"
-                              variant="outline"
-                            >
-                              <ToggleGroupItem value="s">S</ToggleGroupItem>
-                              <ToggleGroupItem value="m">M</ToggleGroupItem>
-                              <ToggleGroupItem value="l">L</ToggleGroupItem>
-                            </ToggleGroup>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-semibold">
-                            GGPC-002
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="stock-2" className="sr-only">
-                              Stock
-                            </Label>
-                            <Input
-                              id="stock-2"
-                              type="number"
-                              defaultValue="143"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="price-2" className="sr-only">
-                              Price
-                            </Label>
-                            <Input
-                              id="price-2"
-                              type="number"
-                              defaultValue="99.99"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <ToggleGroup
-                              type="single"
-                              defaultValue="m"
-                              variant="outline"
-                            >
-                              <ToggleGroupItem value="s">S</ToggleGroupItem>
-                              <ToggleGroupItem value="m">M</ToggleGroupItem>
-                              <ToggleGroupItem value="l">L</ToggleGroupItem>
-                            </ToggleGroup>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-semibold">
-                            GGPC-003
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="stock-3" className="sr-only">
-                              Stock
-                            </Label>
-                            <Input
-                              id="stock-3"
-                              type="number"
-                              defaultValue="32"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Label htmlFor="price-3" className="sr-only">
-                              Stock
-                            </Label>
-                            <Input
-                              id="price-3"
-                              type="number"
-                              defaultValue="99.99"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <ToggleGroup
-                              type="single"
-                              defaultValue="s"
-                              variant="outline"
-                            >
-                              <ToggleGroupItem value="s">S</ToggleGroupItem>
-                              <ToggleGroupItem value="m">M</ToggleGroupItem>
-                              <ToggleGroupItem value="l">L</ToggleGroupItem>
-                            </ToggleGroup>
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                  <CardFooter className="justify-center border-t p-4">
-                    <Button size="sm" variant="ghost" className="gap-1">
-                      <PlusCircle className="h-3.5 w-3.5" />
-                      Add Variant
-                    </Button>
-                  </CardFooter>
-                </Card> */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="gap-1"
+          onClick={() => addNewRecipient()}
+        >
+          <PlusCircle className="h-3.5 w-3.5" />
+          Add Recipient
+        </Button>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="address" className="text-right">
-              Address
-            </Label>
-            <Input
-              id="address"
-              className="col-span-3"
-              placeholder="addr1..."
-              value={recipientAddress}
-              onChange={(e) => setRecipientAddress(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="amount" className="text-right">
-              Amount ADA
-            </Label>
-            <Input
-              id="amount"
-              type="number"
-              className="col-span-3"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="amount in ADA"
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="desc" className="text-right">
-              Description
-            </Label>
-            <Textarea
-              id="desc"
-              className="col-span-3 min-h-[9.5rem]"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description for this transaction"
-            />
-          </div>
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="desc" className="text-right">
+            Description
+          </Label>
+          <Textarea
+            id="desc"
+            className="col-span-3 min-h-[9.5rem]"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description for this transaction"
+          />
         </div>
+
         <DialogFooter>
           <div className="flex h-full items-center justify-center gap-4">
             {error && <div className="text-sm text-red-500">{error}</div>}
@@ -331,5 +216,65 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RecipientRow({
+  index,
+  recipientAddresses,
+  setRecipientAddresses,
+  amounts,
+  setAmounts,
+}: {
+  index: number;
+  recipientAddresses: string[];
+  setRecipientAddresses: (value: string[]) => void;
+  amounts: string[];
+  setAmounts: (value: string[]) => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell>
+        <Input
+          type="string"
+          placeholder="addr1..."
+          value={recipientAddresses[index]}
+          onChange={(e) => {
+            const newAddresses = [...recipientAddresses];
+            newAddresses[index] = e.target.value;
+            setRecipientAddresses(newAddresses);
+          }}
+        />
+      </TableCell>
+      <TableCell>
+        <Input
+          type="number"
+          value={amounts[index]}
+          onChange={(e) => {
+            const newAmounts = [...amounts];
+            newAmounts[index] = e.target.value;
+            setAmounts(newAmounts);
+          }}
+          placeholder=""
+        />
+      </TableCell>
+      <TableCell>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => {
+            const newAddresses = [...recipientAddresses];
+            newAddresses.splice(index, 1);
+            setRecipientAddresses(newAddresses);
+            const newAmounts = [...amounts];
+            newAmounts.splice(index, 1);
+            setAmounts(newAmounts);
+          }}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </TableCell>
+      <TableCell></TableCell>
+    </TableRow>
   );
 }

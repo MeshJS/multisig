@@ -1,4 +1,4 @@
-export function getFirstAndLast(value: string, firstN: number = 5, lastN: number = 8) {
+export function getFirstAndLast(value: string, firstN: number = 5, lastN: number = 12) {
   return `${value.slice(0, firstN)}...${value.slice(-lastN)}`;
 }
 

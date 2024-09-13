@@ -70,7 +70,7 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
         <Table>
           <TableBody>
             {txJson.outputs.map((output: any) => (
-              <TableRow key={output.address}>
+              <TableRow key={output.address} className="border-none">
                 <TableCell>
                   <div className="font-medium">
                     {getFirstAndLast(output.address)}
