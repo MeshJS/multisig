@@ -12,6 +12,7 @@ import { RefreshCw } from "lucide-react";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/utils/api";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
   const { appWallet, isLoading } = useAppWallet({ walletId });
@@ -19,6 +20,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const setWalletsUtxos = useWalletsStore((state) => state.setWalletsUtxos);
   const { transactions } = usePendingTransactions({ walletId });
+  const ctx = api.useUtils();
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -34,6 +36,8 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   async function refreshWallet() {
     setLoading(true);
     await fetchUtxos();
+    void ctx.transaction.getPendingTransactions.invalidate();
+    void ctx.transaction.getAllTransactions.invalidate();
     setLoading(false);
   }
 

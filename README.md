@@ -20,6 +20,7 @@
 - manage utxo?
 - add more outputs to new transactions
 - message sign to verify wallet
+- discord integration, to ping people to sign
 
 product:
 - store + spend treasury funds

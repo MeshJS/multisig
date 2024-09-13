@@ -62,31 +62,34 @@ export default function TransactionCard({
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
 
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const signedTx = await wallet.signTx(transaction.txCbor, true);
+      const signedTx = await wallet.signTx(transaction.txCbor, true);
 
-    const signedAddresses = transaction.signedAddresses;
-    signedAddresses.push(userAddress);
+      const signedAddresses = transaction.signedAddresses;
+      signedAddresses.push(userAddress);
 
-    let state = transaction.state;
-    let txHash = "";
+      let state = transaction.state;
+      let txHash = "";
 
-    // check if this transaction is complete
-    if (appWallet.numRequiredSigners == signedAddresses.length) {
-      console.log("Transaction is complete");
-      state = 1;
-      txHash = await wallet.submitTx(signedTx);
-      console.log("txHash", txHash);
+      // check if this transaction is complete
+      if (appWallet.numRequiredSigners == signedAddresses.length) {
+        state = 1;
+        txHash = await wallet.submitTx(signedTx);
+      }
+
+      updateTransaction({
+        transactionId: transaction.id,
+        txCbor: signedTx,
+        signedAddresses: signedAddresses,
+        state: state,
+        txHash: txHash,
+      });
+    } catch (e) {
+      setLoading(false);
+      console.error(e);
     }
-
-    updateTransaction({
-      transactionId: transaction.id,
-      txCbor: signedTx,
-      signedAddresses: signedAddresses,
-      state: state,
-      txHash: txHash,
-    });
   }
 
   if (!appWallet) return <></>;
