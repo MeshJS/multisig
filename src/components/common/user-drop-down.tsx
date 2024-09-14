@@ -1,19 +1,21 @@
-import { CircleUser, Wallet } from "lucide-react";
+import { CircleUser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
+  // DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/router";
 
 export default function UserDropDown() {
   const { wallet, disconnect } = useWallet();
   const { toast } = useToast();
+  const router = useRouter();
 
   return (
     <DropdownMenu>
@@ -40,9 +42,16 @@ export default function UserDropDown() {
         >
           Copy my address
         </DropdownMenuItem>
-        {/* <DropdownMenuItem>Support</DropdownMenuItem> */}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => disconnect()}>Logout</DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            disconnect();
+            router.push("/");
+            router.reload();
+          }}
+        >
+          Logout
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

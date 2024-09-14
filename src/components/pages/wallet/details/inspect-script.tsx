@@ -1,13 +1,29 @@
+import CardUI from "@/components/common/card-content";
 import Code from "@/components/common/code";
+import RowLabelInfo from "@/components/common/row-label-info";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Wallet } from "@/types/wallet";
+import { ScrollText } from "lucide-react";
 
 export default function InspectScript({ appWallet }: { appWallet: Wallet }) {
+  return (
+    <CardUI title="Native Script" icon={ScrollText} cardClassName="col-span-2">
+      <RowLabelInfo
+        label="Native Script"
+        value={<Code>{JSON.stringify(appWallet.nativeScript, null, 2)}</Code>}
+      />
+      <RowLabelInfo
+        label="Script CBOR"
+        value={<Code>{appWallet.scriptCbor}</Code>}
+      />
+    </CardUI>
+  );
+  
   return (
     <Card className="col-span-4 self-start xl:col-span-2">
       <CardHeader className="flex flex-row items-center">
         <div className="grid gap-2">
-        <CardTitle className="text-xl font-medium">Native Script</CardTitle>
+          <CardTitle className="text-xl font-medium">Native Script</CardTitle>
         </div>
       </CardHeader>
       <CardContent>

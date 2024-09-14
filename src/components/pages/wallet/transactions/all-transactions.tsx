@@ -7,6 +7,7 @@ import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { Transaction } from "@prisma/client";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import CardUI from "@/components/common/card-content";
 
 // how to pull from blockchain, because this is from database, and cannot show receiving
 
@@ -14,11 +15,10 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions } = useAllTransactions({ walletId: appWallet.id });
 
   return (
-    <Card className="col-span-2 self-start xl:col-span-2">
-      <CardHeader className="flex flex-row items-center">
-        <div className="grid gap-2">
-          <CardTitle className="text-xl font-medium">Transactions</CardTitle>
-        </div>
+    <CardUI
+      title="Transactions"
+      description={appWallet.description}
+      headerDom={
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
           className="ml-auto gap-1"
@@ -28,19 +28,48 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
             <ArrowUpRight className="h-4 w-4" />
           </Button>
         </LinkCardanoscan>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableBody>
-            {transactions &&
-              transactions.map((tx) => (
-                <TransactionRow key={tx.id} transaction={tx} />
-              ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+      }
+      cardClassName="col-span-2"
+    >
+      <Table>
+        <TableBody>
+          {transactions &&
+            transactions.map((tx) => (
+              <TransactionRow key={tx.id} transaction={tx} />
+            ))}
+        </TableBody>
+      </Table>
+    </CardUI>
   );
+
+  // return (
+  //   <Card className="col-span-2 self-start xl:col-span-2">
+  //     <CardHeader className="flex flex-row items-center">
+  //       <div className="grid gap-2">
+  //         <CardTitle className="text-xl font-medium">Transactions</CardTitle>
+  //       </div>
+  //       <LinkCardanoscan
+  //         url={`address/${appWallet.address}`}
+  //         className="ml-auto gap-1"
+  //       >
+  //         <Button size="sm">
+  //           View All
+  //           <ArrowUpRight className="h-4 w-4" />
+  //         </Button>
+  //       </LinkCardanoscan>
+  //     </CardHeader>
+  //     <CardContent>
+  //       <Table>
+  //         <TableBody>
+  //           {transactions &&
+  //             transactions.map((tx) => (
+  //               <TransactionRow key={tx.id} transaction={tx} />
+  //             ))}
+  //         </TableBody>
+  //       </Table>
+  //     </CardContent>
+  //   </Card>
+  // );
 }
 
 function TransactionRow({ transaction }: { transaction: Transaction }) {

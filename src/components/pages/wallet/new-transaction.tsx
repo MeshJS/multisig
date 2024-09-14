@@ -10,7 +10,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
@@ -33,8 +32,6 @@ export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet({ walletId });
-  // const [recipientAddress, setRecipientAddress] = useState<string>("");
-  // const [amount, setAmount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -154,7 +151,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>New Transaction</DialogTitle>
-          <DialogDescription>Send ADA to another address</DialogDescription>
+          <DialogDescription>Send ADA to multiple recipients</DialogDescription>
         </DialogHeader>
 
         <Table>
@@ -162,6 +159,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
             <TableRow>
               <TableHead>Address</TableHead>
               <TableHead className="w-[120px]">Amount in ADA</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -175,20 +173,44 @@ export function NewTransaction({ walletId }: { walletId: string }) {
                 setAmounts={setAmounts}
               />
             ))}
+            <TableRow>
+              <TableCell colSpan={3}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={() => addNewRecipient()}
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  Add Recipient
+                </Button>
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          className="gap-1"
-          onClick={() => addNewRecipient()}
-        >
-          <PlusCircle className="h-3.5 w-3.5" />
-          Add Recipient
-        </Button>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Description</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell colSpan={3}>
+                <Textarea
+                  id="desc"
+                  className="col-span-3 min-h-[9.5rem]"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional description for this transaction"
+                />
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
 
-        <div className="grid grid-cols-4 items-center gap-4">
+        {/* <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor="desc" className="text-right">
             Description
           </Label>
@@ -199,7 +221,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional description for this transaction"
           />
-        </div>
+        </div> */}
 
         <DialogFooter>
           <div className="flex h-full items-center justify-center gap-4">
@@ -210,7 +232,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
               ) : (
                 <Send className="mr-2 h-4 w-4" />
               )}
-              Send
+              Create and Sign Transaction
             </Button>
           </div>
         </DialogFooter>
@@ -274,7 +296,6 @@ function RecipientRow({
           <X className="h-4 w-4" />
         </Button>
       </TableCell>
-      <TableCell></TableCell>
     </TableRow>
   );
 }

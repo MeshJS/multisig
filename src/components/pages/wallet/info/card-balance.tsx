@@ -1,4 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import CardUI from "@/components/common/card-content";
+import RowLabelInfo from "@/components/common/row-label-info";
 import { numberWithCommas } from "@/lib/strings";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Wallet } from "@/types/wallet";
@@ -51,14 +52,11 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   }, [utxos]);
 
   return (
-    <Card className="self-start">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">Balance</CardTitle>
-        <div className="h-4 w-4 text-muted-foreground">₳</div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">₳ {numberWithCommas(balance)}</div>
-      </CardContent>
-    </Card>
+    <CardUI title="Balance" icon={`₳`}>
+      <RowLabelInfo
+        value={`₳ ${numberWithCommas(balance)}`}
+        className="text-2xl font-bold"
+      />
+    </CardUI>
   );
 }

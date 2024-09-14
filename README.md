@@ -22,6 +22,7 @@
 - message sign to verify wallet
 - discord integration, to ping people to sign
 - can reject signing to delete transaction
+- add readme support to desc
 
 product:
 - store + spend treasury funds
