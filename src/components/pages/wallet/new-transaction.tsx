@@ -27,12 +27,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 
 export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet({ walletId });
+  const [addDescription, setAddDescription] = useState<boolean>(false);
   const [description, setDescription] = useState<string>("");
+  const [addMetadata, setAddMetadata] = useState<boolean>(false);
+  const [metadata, setMetadata] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState(false);
@@ -72,14 +81,17 @@ export function NewTransaction({ walletId }: { walletId: string }) {
 
     try {
       let totalAmount = 0;
-      const outputs = [];
+      const outputs: { address: string; amount: string }[] = [];
       for (let i = 0; i < recipientAddresses.length; i++) {
-        const thisAmount = parseFloat(amounts[i] as string) * 1000000;
-        totalAmount += thisAmount;
-        outputs.push({
-          address: recipientAddresses[i],
-          amount: thisAmount.toString(),
-        });
+        const address = recipientAddresses[i];
+        if (address && address.startsWith("addr") && address.length > 0) {
+          const thisAmount = parseFloat(amounts[i] as string) * 1000000;
+          totalAmount += thisAmount;
+          outputs.push({
+            address: recipientAddresses[i]!,
+            amount: thisAmount.toString(),
+          });
+        }
       }
 
       const blockchainProvider = getProvider();
@@ -111,12 +123,18 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       txBuilder.txInScript(appWallet.scriptCbor);
 
       for (let i = 0; i < outputs.length; i++) {
-        txBuilder.txOut(outputs[i]!.address!, [
+        txBuilder.txOut(outputs[i]!.address, [
           {
             unit: "lovelace",
             quantity: outputs[i]!.amount,
           },
         ]);
+      }
+
+      if (addMetadata && metadata.length > 0) {
+        txBuilder.metadataValue("674", {
+          msg: metadata.split("\n"),
+        });
       }
 
       txBuilder.changeAddress(appWallet.address).selectUtxosFrom(selectedUtxos);
@@ -130,11 +148,12 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         txCbor: signedTx,
         signedAddresses: [userAddress],
         state: 0,
-        description: description,
+        description: addDescription ? description : undefined,
       });
     } catch (e) {
       setLoading(false);
       setError("Invalid transaction");
+      console.error(e);
     }
   }
 
@@ -192,36 +211,105 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Description</TableHead>
+              <TableHead
+                onClick={() => setAddDescription(!addDescription)}
+                className="flex items-center gap-2"
+              >
+                {!addDescription && `Add `}Description (optional){" "}
+                <HoverCard>
+                  <HoverCardTrigger>
+                    <QuestionMarkCircledIcon className="h-4 w-4" />
+                  </HoverCardTrigger>
+                  <HoverCardContent>
+                    Description is useful to provide more information to other
+                    signers.
+                  </HoverCardContent>
+                </HoverCard>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          {addDescription && (
+            <TableBody>
+              <TableRow>
+                <TableCell>
+                  <Textarea
+                    className="min-h-16"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Optional description for other signers"
+                  />
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          )}
+        </Table>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead
+                onClick={() => setAddMetadata(!addMetadata)}
+                className="flex items-center gap-2"
+              >
+                {!addMetadata && `Add `}On-chain Metadata (optional){" "}
+                <HoverCard>
+                  <HoverCardTrigger>
+                    <QuestionMarkCircledIcon className="h-4 w-4" />
+                  </HoverCardTrigger>
+                  <HoverCardContent>
+                    Metadata attaches additional information to a transaction
+                    viewable on the blockchain.
+                  </HoverCardContent>
+                </HoverCard>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          {addMetadata && (
+            <TableBody>
+              <TableRow>
+                <TableCell>
+                  <Textarea
+                    className="min-h-16"
+                    value={metadata}
+                    onChange={(e) => setMetadata(e.target.value)}
+                    placeholder="Optional description for other signers"
+                  />
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          )}
+        </Table>
+
+        {/* <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="flex items-center gap-2">
+                On-chain Metadata (optional){" "}
+                <HoverCard>
+                  <HoverCardTrigger>
+                    <QuestionMarkCircledIcon className="h-4 w-4" />
+                  </HoverCardTrigger>
+                  <HoverCardContent>
+                    Metadata attaches additional information to a transaction
+                    viewable on the blockchain.
+                  </HoverCardContent>
+                </HoverCard>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow>
-              <TableCell colSpan={3}>
+              <TableCell>
                 <Textarea
-                  id="desc"
-                  className="col-span-3 min-h-[9.5rem]"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Optional description for this transaction"
+                  className="min-h-16"
+                  value={metadata}
+                  onChange={(e) => setMetadata(e.target.value)}
+                  placeholder="Attach on-chain metadata to this transaction"
                 />
               </TableCell>
             </TableRow>
           </TableBody>
-        </Table>
-
-        {/* <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="desc" className="text-right">
-            Description
-          </Label>
-          <Textarea
-            id="desc"
-            className="col-span-3 min-h-[9.5rem]"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Optional description for this transaction"
-          />
-        </div> */}
+        </Table> */}
 
         <DialogFooter>
           <div className="flex h-full items-center justify-center gap-4">

@@ -15,6 +15,7 @@ import useUserWallets from "@/hooks/useUserWallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Wallet } from "@prisma/client";
 import { PageHomepage } from "../pages/homepage";
+import { useRouter } from "next/router";
 
 export default function RootLayout({
   children,
@@ -26,6 +27,7 @@ export default function RootLayout({
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const { user, isLoading } = useUser(userAddress);
   const { wallets } = useUserWallets();
+  const router = useRouter();
 
   const { mutate: createUser } = api.user.createUser.useMutation({
     // onSuccess: async () => {},
@@ -74,6 +76,8 @@ export default function RootLayout({
   }, [user, isLoading]);
 
   const isLoggedIn = userAddress !== undefined;
+
+  const isHomepage = router.pathname == "/";
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">

@@ -47,7 +47,9 @@ export default function UserDropDown() {
           onClick={() => {
             disconnect();
             router.push("/");
-            router.reload();
+            setTimeout(() => {
+              router.reload();
+            }, 1000);
           }}
         >
           Logout

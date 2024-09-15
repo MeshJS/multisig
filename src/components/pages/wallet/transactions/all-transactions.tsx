@@ -1,18 +1,31 @@
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ArrowUpRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { Transaction } from "@prisma/client";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
 import CardUI from "@/components/common/card-content";
+import { getProvider } from "@/components/common/cardano-objects";
+import { useEffect } from "react";
 
 // how to pull from blockchain, because this is from database, and cannot show receiving
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions } = useAllTransactions({ walletId: appWallet.id });
+
+  async function getTransactionsOnChain() {
+    const blockchainProvider = getProvider();
+    const transactions = await blockchainProvider.get(
+      `/addresses/${appWallet.address}/transactions`,
+    );
+    console.log(transactions);
+  }
+
+  useEffect(() => {
+    if (appWallet) getTransactionsOnChain();
+  }, [appWallet]);
 
   return (
     <CardUI
