@@ -9,6 +9,8 @@ import CardUI from "@/components/common/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -26,7 +28,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   return (
     <CardUI
       title="Transactions"
-      description={`Last 10 transactions`}
+      description={`Latest 10 transactions`}
       headerDom={
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
@@ -95,21 +97,23 @@ function TransactionRow({
               );
               if (isSpend && output.address != appWallet.address) {
                 return (
-                  <TableRow key={output.address} className="border-none">
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">
-                        {getFirstAndLast(output.address)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right text-red-400">
-                      -
-                      {lovelaceToAda(
-                        output.amount.find(
-                          (unit: any) => unit.unit === "lovelace",
-                        ).quantity,
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow key={output.address} className="border-none">
+                      <TableCell>
+                        <div className="text-sm text-muted-foreground">
+                          {getFirstAndLast(output.address)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right text-red-400">
+                        -
+                        {lovelaceToAda(
+                          output.amount.find(
+                            (unit: any) => unit.unit === "lovelace",
+                          ).quantity,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  </>
                 );
               } else if (!isSpend && output.address == appWallet.address) {
                 return (
@@ -129,6 +133,28 @@ function TransactionRow({
             })}
           </TableBody>
         </Table>
+
+        {dbTransaction && (
+          <>
+            <div className="font-semibold">Signers</div>
+            <Table>
+              <TableBody>
+                <TableRow className="border-none">
+                  <TableCell className="flex gap-2">
+                    {dbTransaction.signedAddresses.map((address) => (
+                      <Badge variant="outline">
+                        {appWallet.signersDescriptions.find(
+                          (signer, index) =>
+                            appWallet.signersAddresses[index] === address,
+                        ) || getFirstAndLast(address)}
+                      </Badge>
+                    ))}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </>
+        )}
       </TableCell>
     </TableRow>
   );
