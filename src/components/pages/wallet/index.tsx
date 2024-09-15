@@ -14,12 +14,16 @@ import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/utils/api";
 import TabGovernance from "./governance";
+import { OnChainTransaction, TxInfo } from "@/types/transaction";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
   const { appWallet, isLoading } = useAppWallet({ walletId });
   const [loading, setLoading] = useState<boolean>(false);
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const setWalletsUtxos = useWalletsStore((state) => state.setWalletsUtxos);
+  const setWalletTransactions = useWalletsStore(
+    (state) => state.setWalletTransactions,
+  );
   const { transactions } = usePendingTransactions({ walletId });
   const ctx = api.useUtils();
 
@@ -34,9 +38,32 @@ export default function PageWallet({ walletId }: { walletId: string }) {
     }
   }
 
+  async function getTransactionsOnChain() {
+    if (appWallet) {
+      const _transactions: OnChainTransaction[] = [];
+      const blockchainProvider = getProvider();
+      let transactions: TxInfo[] = await blockchainProvider.get(
+        `/addresses/${appWallet.address}/transactions`,
+      );
+      transactions = transactions.reverse().splice(0, 10);
+      for (let tx of transactions) {
+        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
+        _transactions.push({
+          hash: tx.tx_hash,
+          tx: tx,
+          inputs: txData.inputs,
+          outputs: txData.outputs,
+        });
+      }
+
+      setWalletTransactions(walletId, _transactions);
+    }
+  }
+
   async function refreshWallet() {
     setLoading(true);
     await fetchUtxos();
+    await getTransactionsOnChain();
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
     setLoading(false);

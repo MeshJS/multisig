@@ -4,33 +4,29 @@ import { ArrowUpRight } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
-import { Transaction } from "@prisma/client";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
 import CardUI from "@/components/common/card-content";
-import { getProvider } from "@/components/common/cardano-objects";
-import { useEffect } from "react";
-
-// how to pull from blockchain, because this is from database, and cannot show receiving
+import { OnChainTransaction } from "@/types/transaction";
+import { useWalletsStore } from "@/lib/zustand/wallets";
+import { Transaction } from "@prisma/client";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
-  const { transactions } = useAllTransactions({ walletId: appWallet.id });
+  const { transactions: dbTransactions } = useAllTransactions({
+    walletId: appWallet.id,
+  });
 
-  async function getTransactionsOnChain() {
-    const blockchainProvider = getProvider();
-    const transactions = await blockchainProvider.get(
-      `/addresses/${appWallet.address}/transactions`,
-    );
-    console.log(transactions);
-  }
+  const _walletTransactions = useWalletsStore(
+    (state) => state.walletTransactions,
+  );
 
-  useEffect(() => {
-    if (appWallet) getTransactionsOnChain();
-  }, [appWallet]);
+  const walletTransactions = _walletTransactions[appWallet.id];
+
+  if (walletTransactions === undefined) return <></>;
 
   return (
     <CardUI
       title="Transactions"
-      description={appWallet.description}
+      description={`Last 10 transactions`}
       headerDom={
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
@@ -46,58 +42,46 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
     >
       <Table>
         <TableBody>
-          {transactions &&
-            transactions.map((tx) => (
-              <TransactionRow key={tx.id} transaction={tx} />
+          {walletTransactions &&
+            walletTransactions.map((tx) => (
+              <TransactionRow
+                key={tx.hash}
+                transaction={tx}
+                appWallet={appWallet}
+                dbTransaction={
+                  dbTransactions &&
+                  dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
+                }
+              />
             ))}
         </TableBody>
       </Table>
     </CardUI>
   );
-
-  // return (
-  //   <Card className="col-span-2 self-start xl:col-span-2">
-  //     <CardHeader className="flex flex-row items-center">
-  //       <div className="grid gap-2">
-  //         <CardTitle className="text-xl font-medium">Transactions</CardTitle>
-  //       </div>
-  //       <LinkCardanoscan
-  //         url={`address/${appWallet.address}`}
-  //         className="ml-auto gap-1"
-  //       >
-  //         <Button size="sm">
-  //           View All
-  //           <ArrowUpRight className="h-4 w-4" />
-  //         </Button>
-  //       </LinkCardanoscan>
-  //     </CardHeader>
-  //     <CardContent>
-  //       <Table>
-  //         <TableBody>
-  //           {transactions &&
-  //             transactions.map((tx) => (
-  //               <TransactionRow key={tx.id} transaction={tx} />
-  //             ))}
-  //         </TableBody>
-  //       </Table>
-  //     </CardContent>
-  //   </Card>
-  // );
 }
 
-function TransactionRow({ transaction }: { transaction: Transaction }) {
-  const txJson = JSON.parse(transaction.txJson);
+function TransactionRow({
+  transaction,
+  appWallet,
+  dbTransaction,
+}: {
+  transaction: OnChainTransaction;
+  appWallet: Wallet;
+  dbTransaction?: Transaction;
+}) {
   return (
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
         <div className="flex justify-between">
-          <div className="font-medium">{transaction.description}</div>
+          <div className="font-medium">
+            {dbTransaction && dbTransaction.description}
+          </div>
           <div className="flex gap-2 text-sm text-muted-foreground md:inline">
             <LinkCardanoscan
-              url={`transaction/${transaction.txHash}`}
-              className="flex gap-1"
+              url={`transaction/${transaction.hash}`}
+              className="flex w-44 gap-1"
             >
-              {dateToFormatted(transaction.createdAt)}
+              {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
               <ArrowUpRight className="h-3 w-3" />
             </LinkCardanoscan>
           </div>
@@ -105,22 +89,44 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
 
         <Table>
           <TableBody>
-            {txJson.outputs.map((output: any) => (
-              <TableRow key={output.address} className="border-none">
-                <TableCell>
-                  <div className="text-sm text-muted-foreground">
-                    {getFirstAndLast(output.address)}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right text-red-400">
-                  -
-                  {lovelaceToAda(
-                    output.amount.find((unit: any) => unit.unit === "lovelace")
-                      .quantity,
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+            {transaction.outputs.map((output: any) => {
+              const isSpend = transaction.inputs.some(
+                (input: any) => input.address === appWallet.address,
+              );
+              if (isSpend && output.address != appWallet.address) {
+                return (
+                  <TableRow key={output.address} className="border-none">
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">
+                        {getFirstAndLast(output.address)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right text-red-400">
+                      -
+                      {lovelaceToAda(
+                        output.amount.find(
+                          (unit: any) => unit.unit === "lovelace",
+                        ).quantity,
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              } else if (!isSpend && output.address == appWallet.address) {
+                return (
+                  <TableRow key={output.address} className="border-none">
+                    <TableCell></TableCell>
+                    <TableCell className="text-right text-green-400">
+                      +
+                      {lovelaceToAda(
+                        output.amount.find(
+                          (unit: any) => unit.unit === "lovelace",
+                        ).quantity,
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              }
+            })}
           </TableBody>
         </Table>
       </TableCell>
