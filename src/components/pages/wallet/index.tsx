@@ -46,7 +46,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
         `/addresses/${appWallet.address}/transactions`,
       );
       transactions = transactions.reverse().splice(0, 10);
-      for (let tx of transactions) {
+      for (const tx of transactions) {
         const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
         _transactions.push({
           hash: tx.tx_hash,

@@ -142,7 +142,7 @@ function TransactionRow({
                 <TableRow className="border-none">
                   <TableCell className="flex gap-2">
                     {dbTransaction.signedAddresses.map((address) => (
-                      <Badge variant="outline">
+                      <Badge variant="outline" key={address}>
                         {appWallet.signersDescriptions.find(
                           (signer, index) =>
                             appWallet.signersAddresses[index] === address,
