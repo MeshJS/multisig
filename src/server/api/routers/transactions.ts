@@ -12,6 +12,7 @@ export const transactionRouter = createTRPCRouter({
         txCbor: z.string(),
         state: z.number(),
         description: z.string().optional(),
+        txHash: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -23,6 +24,7 @@ export const transactionRouter = createTRPCRouter({
           txCbor: input.txCbor,
           state: input.state,
           description: input.description,
+          txHash: input.txHash,
         },
       });
     }),

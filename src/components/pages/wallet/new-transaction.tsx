@@ -142,13 +142,24 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       const unsignedTx = await txBuilder.complete();
       const signedTx = await wallet.signTx(unsignedTx, true);
 
+      const signedAddresses = [];
+      signedAddresses.push(userAddress);
+
+      let txHash = undefined;
+      let state = 0;
+      if (appWallet.numRequiredSigners == signedAddresses.length) {
+        state = 1;
+        txHash = await wallet.submitTx(signedTx);
+      }
+
       createTransaction({
         walletId: appWallet.id,
         txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
         txCbor: signedTx,
         signedAddresses: [userAddress],
-        state: 0,
+        state: state,
         description: addDescription ? description : undefined,
+        txHash: txHash,
       });
     } catch (e) {
       setLoading(false);
