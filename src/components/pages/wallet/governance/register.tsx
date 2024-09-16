@@ -19,11 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
-import usePendingTransactions from "@/hooks/usePendingTransactions";
 
 export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
-  const { transactions } = usePendingTransactions({ walletId: appWallet.id });
-
   const { toast } = useToast();
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -149,12 +146,11 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
       }),
     });
     const res = await rawResponse.json();
-    console.log(res);
 
     const anchorUrl = res.url;
     const anchorObj = JSON.parse(getFile(anchorUrl));
     const anchorHash = hashDrepAnchor(anchorObj);
-    console.log("anchorHash", anchorHash);
+
     return { anchorUrl, anchorHash };
   }
 
@@ -223,16 +219,6 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
     });
   }
 
-  let hasRegistered = false;
-  if (transactions) {
-    hasRegistered = transactions.some((tx) => {
-      if (tx.description === "DRep registration") {
-        return true;
-      }
-    });
-  }
-  console.log(hasRegistered);
-
   return (
     <CardUI title="Register for DRep" icon={Plus} cardClassName="col-span-2">
       <div className="flex flex-col gap-4">
@@ -252,86 +238,82 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
           about DRep.
         </p>
 
-        {!hasRegistered && (
-          <>
-            <fieldset className="grid gap-6">
-              <div className="grid gap-3">
-                <Label>
-                  DRep Name - This is the name that will be shown on your DRep
-                  profile
-                </Label>
-                <Input
-                  placeholder="e.g. MeshJS"
-                  value={givenName}
-                  onChange={(e) => setgivenName(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-3">
-                <Label>
-                  Objectives - What you believe and what you want to achieve as
-                  a DRep.
-                </Label>
-                <Textarea
-                  value={objectives}
-                  onChange={(e) => setobjectives(e.target.value)}
-                />
-              </div>
+        <fieldset className="grid gap-6">
+          <div className="grid gap-3">
+            <Label>
+              DRep Name - This is the name that will be shown on your DRep
+              profile
+            </Label>
+            <Input
+              placeholder="e.g. MeshJS"
+              value={givenName}
+              onChange={(e) => setgivenName(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-3">
+            <Label>
+              Objectives - What you believe and what you want to achieve as a
+              DRep.
+            </Label>
+            <Textarea
+              value={objectives}
+              onChange={(e) => setobjectives(e.target.value)}
+            />
+          </div>
 
-              <div className="grid gap-3">
-                <Label>
-                  Motivations - Why do you want to be a DRep, what personal and
-                  professional experiences do you want to share.
-                </Label>
-                <Textarea
-                  value={motivations}
-                  onChange={(e) => setmotivations(e.target.value)}
-                />
-              </div>
+          <div className="grid gap-3">
+            <Label>
+              Motivations - Why do you want to be a DRep, what personal and
+              professional experiences do you want to share.
+            </Label>
+            <Textarea
+              value={motivations}
+              onChange={(e) => setmotivations(e.target.value)}
+            />
+          </div>
 
-              <div className="grid gap-3">
-                <Label>
-                  Qualifications - List any qualifications that are relevant to
-                  your role as a DRep
-                </Label>
-                <Textarea
-                  value={qualifications}
-                  onChange={(e) => setqualifications(e.target.value)}
-                />
-              </div>
+          <div className="grid gap-3">
+            <Label>
+              Qualifications - List any qualifications that are relevant to your
+              role as a DRep
+            </Label>
+            <Textarea
+              value={qualifications}
+              onChange={(e) => setqualifications(e.target.value)}
+            />
+          </div>
 
-              <div className="grid gap-3">
-                <Label>
-                  Link - A link to social media or any other web URL that gives
-                  a fuller picture of who you are, what you stand for, and why.
-                </Label>
-                <Input
-                  value={links}
-                  onChange={(e) => setlinks(e.target.value)}
-                  placeholder="https://path/to/info"
-                />
-              </div>
+          <div className="grid gap-3">
+            <Label>
+              Link - A link to social media or any other web URL that gives a
+              fuller picture of who you are, what you stand for, and why.
+            </Label>
+            <Input
+              value={links}
+              onChange={(e) => setlinks(e.target.value)}
+              placeholder="https://path/to/info"
+            />
+          </div>
 
-              <div className="grid gap-3">
-                <Label>
-                  Identity - A link to prove you are who you say you are.
-                  Ideally, you will provide a link to a place that shows your
-                  DRep ID clearly.
-                </Label>
-                <Input
-                  placeholder="https://path/to/identity"
-                  value={identity}
-                  onChange={(e) => setidentity(e.target.value)}
-                />
-              </div>
-            </fieldset>
+          <div className="grid gap-3">
+            <Label>
+              Identity - A link to prove you are who you say you are. Ideally,
+              you will provide a link to a place that shows your DRep ID
+              clearly.
+            </Label>
+            <Input
+              placeholder="https://path/to/identity"
+              value={identity}
+              onChange={(e) => setidentity(e.target.value)}
+            />
+          </div>
+        </fieldset>
 
-            <div>
-              <Button onClick={() => registerDrep()} disabled={loading}>
-                {loading ? "Loading..." : "Register DRep"}
-              </Button>
-            </div>
-          </>
-        )}
+        <div>
+          <Button onClick={() => registerDrep()} disabled={loading}>
+            {loading ? "Loading..." : "Register DRep"}
+          </Button>
+        </div>
       </div>
     </CardUI>
   );

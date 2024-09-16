@@ -2,8 +2,11 @@ import { Info } from "lucide-react";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
+  const drepRegistered = useWalletsStore((state) => state.drepRegistered);
+
   return (
     <CardUI title="Info" icon={Info} cardClassName="col-span-2">
       <RowLabelInfo
@@ -11,7 +14,10 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
         value={appWallet.dRepId}
         copyString={appWallet.dRepId}
       />
-      <RowLabelInfo label="Status" value={`Not registered`} />
+      <RowLabelInfo
+        label="Status"
+        value={drepRegistered ? "Registered" : `Not registered`}
+      />
     </CardUI>
   );
 }

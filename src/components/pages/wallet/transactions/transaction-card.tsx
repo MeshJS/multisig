@@ -1,11 +1,12 @@
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { Check, CheckIcon, Loader, MoreVertical } from "lucide-react";
+import { Check, CheckIcon, Loader, MoreVertical, X } from "lucide-react";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
 import { useToast } from "@/hooks/use-toast";
+import { checkSignature, generateNonce } from "@meshsdk/core";
 
 export default function TransactionCard({
   walletId,
@@ -82,6 +84,7 @@ export default function TransactionCard({
         transactionId: transaction.id,
         txCbor: signedTx,
         signedAddresses: signedAddresses,
+        rejectedAddresses: transaction.rejectedAddresses,
         state: state,
         txHash: txHash,
       });
@@ -89,6 +92,34 @@ export default function TransactionCard({
       setLoading(false);
       console.error(e);
     }
+  }
+
+  async function rejectTx() {
+    if (!userAddress) throw new Error("User address not found");
+
+    try {
+      setLoading(true);
+      const userRewardAddress = (await wallet.getRewardAddresses())[0];
+      const nonce = generateNonce("Reject this transaction: ");
+      const signature = await wallet.signData(nonce, userRewardAddress);
+      const result = checkSignature(nonce, signature);
+
+      const rejectedAddresses = transaction.rejectedAddresses;
+      rejectedAddresses.push(userAddress);
+
+      if (result) {
+        updateTransaction({
+          transactionId: transaction.id,
+          txCbor: transaction.txCbor,
+          signedAddresses: transaction.signedAddresses,
+          rejectedAddresses: rejectedAddresses,
+          state: transaction.state,
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
   }
 
   if (!appWallet) return <></>;
@@ -205,18 +236,10 @@ export default function TransactionCard({
                   <span>
                     {transaction.signedAddresses.includes(signerAddress) ? (
                       <Check className="h-4 w-4 text-green-400" />
-                    ) : signerAddress == userAddress ? (
-                      <Button
-                        size="sm"
-                        onClick={() => signTx()}
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <Loader className="h-4 w-4 animate-spin" />
-                        ) : (
-                          "Sign"
-                        )}
-                      </Button>
+                    ) : transaction.rejectedAddresses.includes(
+                        signerAddress,
+                      ) ? (
+                      <X className="h-4 w-4 text-red-400" />
                     ) : (
                       <QuestionMarkIcon className="h-4 w-4" />
                     )}
@@ -226,46 +249,29 @@ export default function TransactionCard({
             })}
           </ul>
         </div>
-        {/* <Separator className="my-4" />
-        <div className="grid grid-cols-2 gap-4">
-          <div className="grid gap-3">
-            <div className="font-semibold">Shipping Information</div>
-            <address className="grid gap-0.5 not-italic text-muted-foreground">
-              <span>Liam Johnson</span>
-              <span>1234 Main St.</span>
-              <span>Anytown, CA 12345</span>
-            </address>
-          </div>
-          <div className="grid auto-rows-max gap-3">
-            <div className="font-semibold">Billing Information</div>
-            <div className="text-muted-foreground">
-              Same as shipping address
-            </div>
-          </div>
-        </div>
-        <Separator className="my-4" />
-        <div className="grid gap-3">
-          <div className="font-semibold">Customer Information</div>
-          <dl className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Customer</dt>
-              <dd>Liam Johnson</dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Email</dt>
-              <dd>
-                <a href="mailto:">liam@acme.com</a>
-              </dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Phone</dt>
-              <dd>
-                <a href="tel:">+1 234 567 890</a>
-              </dd>
-            </div>
-          </dl>
-        </div> */}
       </CardContent>
+
+      {userAddress &&
+        !transaction.signedAddresses.includes(userAddress) &&
+        !transaction.rejectedAddresses.includes(userAddress) && (
+          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+            <Button
+              variant="destructive"
+              onClick={() => rejectTx()}
+              disabled={loading}
+            >
+              {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
+            </Button>
+            <Button onClick={() => signTx()} disabled={loading}>
+              {loading ? (
+                <Loader className="h-4 w-4 animate-spin" />
+              ) : (
+                "Approve & Sign"
+              )}
+            </Button>
+          </CardFooter>
+        )}
+
       {/* <CardFooter className="flex flex-row items-center border-t bg-muted/50 px-6 py-3">
                 <div className="text-xs text-muted-foreground">
                   Updated <time dateTime="2023-11-23">November 23, 2023</time>
@@ -291,65 +297,65 @@ export default function TransactionCard({
   );
 }
 
-function Row({
-  walletId,
-  transaction,
-}: {
-  walletId: string;
-  transaction: Transaction;
-}) {
-  const { appWallet } = useAppWallet({ walletId });
+// function Row({
+//   walletId,
+//   transaction,
+// }: {
+//   walletId: string;
+//   transaction: Transaction;
+// }) {
+//   const { appWallet } = useAppWallet({ walletId });
 
-  if (!appWallet) return <></>;
+//   if (!appWallet) return <></>;
 
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="mt-1 flex flex-col gap-2">
-          <div className="flex items-center gap-4">
-            <div className="grid gap-1">
-              <p className="text-sm font-medium leading-none">Signers</p>
-              <div>
-                {appWallet.signersAddresses.map((signerAddress, index) => {
-                  return (
-                    <div key={signerAddress} className="flex gap-2">
-                      {transaction.signedAddresses.includes(signerAddress) ? (
-                        <CheckIcon className="h-4 w-4 text-green-400" />
-                      ) : (
-                        <QuestionMarkIcon className="h-4 w-4" />
-                      )}
-                      <p className="text-sm text-muted-foreground">
-                        {appWallet.signersDescriptions[index] &&
-                        appWallet.signersDescriptions[index].length > 0
-                          ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
-                          : signerAddress}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+//   return (
+//     <TableRow>
+//       <TableCell>
+//         <div className="mt-1 flex flex-col gap-2">
+//           <div className="flex items-center gap-4">
+//             <div className="grid gap-1">
+//               <p className="text-sm font-medium leading-none">Signers</p>
+//               <div>
+//                 {appWallet.signersAddresses.map((signerAddress, index) => {
+//                   return (
+//                     <div key={signerAddress} className="flex gap-2">
+//                       {transaction.signedAddresses.includes(signerAddress) ? (
+//                         <CheckIcon className="h-4 w-4 text-green-400" />
+//                       ) : (
+//                         <QuestionMarkIcon className="h-4 w-4" />
+//                       )}
+//                       <p className="text-sm text-muted-foreground">
+//                         {appWallet.signersDescriptions[index] &&
+//                         appWallet.signersDescriptions[index].length > 0
+//                           ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
+//                           : signerAddress}
+//                       </p>
+//                     </div>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="grid gap-1">
-              <p className="text-sm font-medium leading-none">Ouputs</p>
-              <p className="text-sm text-muted-foreground">
-                {JSON.parse(transaction.txJson).outputs.map((output: any) => {
-                  return (
-                    <div key={output.address} className="flex gap-2">
-                      <p className="text-sm text-muted-foreground">
-                        {output.address}
-                      </p>
-                    </div>
-                  );
-                })}
-              </p>
-            </div>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="text-right text-red-400">-₳ 250</TableCell>
-    </TableRow>
-  );
-}
+//           <div className="flex items-center gap-4">
+//             <div className="grid gap-1">
+//               <p className="text-sm font-medium leading-none">Ouputs</p>
+//               <p className="text-sm text-muted-foreground">
+//                 {JSON.parse(transaction.txJson).outputs.map((output: any) => {
+//                   return (
+//                     <div key={output.address} className="flex gap-2">
+//                       <p className="text-sm text-muted-foreground">
+//                         {output.address}
+//                       </p>
+//                     </div>
+//                   );
+//                 })}
+//               </p>
+//             </div>
+//           </div>
+//         </div>
+//       </TableCell>
+//       <TableCell className="text-right text-red-400">-₳ 250</TableCell>
+//     </TableRow>
+//   );
+// }

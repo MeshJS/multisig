@@ -34,6 +34,7 @@ export const transactionRouter = createTRPCRouter({
       z.object({
         transactionId: z.string(),
         signedAddresses: z.array(z.string()),
+        rejectedAddresses: z.array(z.string()),
         txCbor: z.string(),
         state: z.number(),
         txHash: z.string().optional(),
@@ -46,6 +47,7 @@ export const transactionRouter = createTRPCRouter({
         },
         data: {
           signedAddresses: input.signedAddresses,
+          rejectedAddresses: input.rejectedAddresses,
           txCbor: input.txCbor,
           state: input.state,
           txHash: input.txHash,

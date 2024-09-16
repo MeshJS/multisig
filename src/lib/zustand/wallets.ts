@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { UTxO } from "@meshsdk/core";
 import { OnChainTransaction } from "@/types/transaction";
+import { BlockfrostDrepInfo } from "@/types/wallet";
 
 interface WalletsState {
   walletsUtxos: { [walletId: string]: UTxO[] };
@@ -10,6 +11,9 @@ interface WalletsState {
     walletId: string,
     transactions: OnChainTransaction[],
   ) => void;
+  drepInfo: BlockfrostDrepInfo | undefined;
+  setDrepInfo: (drepInfo: BlockfrostDrepInfo) => void;
+  drepRegistered: boolean;
 }
 
 export const useWalletsStore = create<WalletsState>()((set, get) => ({
@@ -24,4 +28,7 @@ export const useWalletsStore = create<WalletsState>()((set, get) => ({
         [walletId]: transactions,
       },
     }),
+  drepInfo: undefined,
+  setDrepInfo: (drepInfo) => set({ drepInfo }),
+  drepRegistered: get()?.drepInfo?.active ?? false,
 }));

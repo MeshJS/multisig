@@ -9,7 +9,6 @@ import CardUI from "@/components/common/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
