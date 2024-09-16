@@ -17,7 +17,7 @@ import TabGovernance from "./governance";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
-  const { appWallet, isLoading } = useAppWallet({ walletId });
+  const { appWallet } = useAppWallet({ walletId });
   const [loading, setLoading] = useState<boolean>(false);
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const setWalletsUtxos = useWalletsStore((state) => state.setWalletsUtxos);

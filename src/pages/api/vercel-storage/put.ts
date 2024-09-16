@@ -9,14 +9,10 @@ export default async function handler(
     const pathname = req.body.pathname;
     const value = req.body.value;
 
-    console.log("pathname", pathname);
-    console.log("value", value);
-
     const response = await put(pathname, value, {
       access: "public",
       token: process.env.NEXT_PUBLIC_VERCEL_TOKEN,
     });
-    console.log(response);
 
     res.status(200).json({ url: response.url });
   } catch (error) {
