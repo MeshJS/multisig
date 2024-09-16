@@ -417,12 +417,12 @@ export function PageHomepage() {
           <div className="flex items-center justify-center">
             {userAddress ? (
               <div className="flex gap-2">
-              <Button size="sm" asChild>
-                <Link href="/wallets/new-wallet">New Wallet</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link href="/wallets">Your Wallets</Link>
-              </Button>
+                <Button size="sm" asChild>
+                  <Link href="/wallets/new-wallet">New Wallet</Link>
+                </Button>
+                <Button size="sm" asChild>
+                  <Link href="/wallets">Your Wallets</Link>
+                </Button>
               </div>
             ) : (
               <ConnectWallet />
@@ -430,7 +430,7 @@ export function PageHomepage() {
           </div>
         </div>
       </div>
-      <div className="hidden lg:block col-span-2">
+      <div className="col-span-2 hidden lg:block">
         {/* @ts-ignore */}
         {live && <World data={sampleArcs} globeConfig={globeConfig} />}
       </div>

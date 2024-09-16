@@ -73,7 +73,6 @@ export default function TransactionCard({
       let state = transaction.state;
       let txHash = "";
 
-      // check if this transaction is complete
       if (appWallet.numRequiredSigners == signedAddresses.length) {
         state = 1;
         txHash = await wallet.submitTx(signedTx);
@@ -160,29 +159,34 @@ export default function TransactionCard({
       </CardHeader>
       <CardContent className="p-6 text-sm">
         <div className="grid gap-3">
-          <div className="font-semibold">Sending</div>
-          <ul className="grid gap-3">
-            {txJson.outputs.map((output: any) => {
-              return (
-                <li
-                  key={output.address}
-                  className="flex items-center justify-between"
-                >
-                  <span className="text-muted-foreground">
-                    {getFirstAndLast(output.address)}
-                  </span>
-                  <span>
-                    {lovelaceToAda(
-                      output.amount.find(
-                        (unit: any) => unit.unit === "lovelace",
-                      ).quantity,
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <Separator className="my-2" />
+          {txJson.outputs.length > 0 && (
+            <>
+              <div className="font-semibold">Sending</div>
+              <ul className="grid gap-3">
+                {txJson.outputs.map((output: any) => {
+                  return (
+                    <li
+                      key={output.address}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-muted-foreground">
+                        {getFirstAndLast(output.address)}
+                      </span>
+                      <span>
+                        {lovelaceToAda(
+                          output.amount.find(
+                            (unit: any) => unit.unit === "lovelace",
+                          ).quantity,
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Separator className="my-2" />
+            </>
+          )}
+
           <div className="font-semibold">Signers</div>
           <ul className="grid gap-3">
             {appWallet.signersAddresses.map((signerAddress, index) => {
