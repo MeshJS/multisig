@@ -33,6 +33,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
@@ -49,6 +50,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
   const ctx = api.useUtils();
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
   const [amounts, setAmounts] = useState<string[]>([""]);
+  const network = useSiteStore((state) => state.network);
 
   const { mutate: createTransaction } =
     api.transaction.createTransaction.useMutation({
@@ -94,7 +96,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         }
       }
 
-      const blockchainProvider = getProvider();
+      const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(
         appWallet.address,
       );
@@ -109,7 +111,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         return;
       }
 
-      const txBuilder = getTxBuilder();
+      const txBuilder = getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
         txBuilder.txIn(

@@ -1,4 +1,4 @@
-import { env } from "@/env";
+import { useSiteStore } from "@/lib/zustand/site";
 import Link from "next/link";
 
 export default function LinkCardanoscan({
@@ -10,10 +10,11 @@ export default function LinkCardanoscan({
   url: string;
   className?: string;
 }) {
+  const network = useSiteStore((state) => state.network);
   return (
     <Link
       className={className}
-      href={`https://${env.NEXT_PUBLIC_CARDANO_NETWORK == "preprod" ? "preprod." : ""}cardanoscan.io/${url}`}
+      href={`https://${network == 0 ? "preprod." : ""}cardanoscan.io/${url}`}
       target="_blank"
     >
       {children}

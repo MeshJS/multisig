@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/utils/api";
 import TabGovernance from "./governance";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function PageWallet({ walletId }: { walletId: string }) {
   const { appWallet } = useAppWallet({ walletId });
@@ -26,11 +27,12 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   );
   const { transactions } = usePendingTransactions({ walletId });
   const ctx = api.useUtils();
+  const network = useSiteStore((state) => state.network);
 
   async function fetchUtxos() {
     if (appWallet) {
       setWalletsUtxos(walletId, []);
-      const blockchainProvider = getProvider();
+      const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(
         appWallet.address,
       );
@@ -41,7 +43,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   async function getTransactionsOnChain() {
     if (appWallet) {
       const _transactions: OnChainTransaction[] = [];
-      const blockchainProvider = getProvider();
+      const blockchainProvider = getProvider(network);
       let transactions: TxInfo[] = await blockchainProvider.get(
         `/addresses/${appWallet.address}/transactions`,
       );

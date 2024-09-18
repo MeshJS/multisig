@@ -23,6 +23,7 @@ import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
+import useUser from "@/hooks/useUser";
 
 export default function PageNewWallet() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function PageNewWallet() {
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const userAddress = useUserStore((state) => state.userAddress);
+  const { user } = useUser();
   const { toast } = useToast();
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
@@ -109,7 +111,7 @@ export default function PageNewWallet() {
   return (
     <>
       <PageHeader pageTitle="New Wallet"></PageHeader>
-      {userAddress && (
+      {user && (
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Card>

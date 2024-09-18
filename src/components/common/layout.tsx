@@ -25,9 +25,8 @@ export default function RootLayout({
   const { connected, wallet } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
-  const { user, isLoading } = useUser(userAddress);
+  const { user, isLoading } = useUser();
   const { wallets } = useUserWallets();
-  const router = useRouter();
 
   const { mutate: createUser } = api.user.createUser.useMutation({
     // onSuccess: async () => {},
@@ -75,9 +74,7 @@ export default function RootLayout({
     load();
   }, [user, isLoading]);
 
-  const isLoggedIn = userAddress !== undefined;
-
-  const isHomepage = router.pathname == "/";
+  const isLoggedIn = user !== undefined && user !== null;
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">

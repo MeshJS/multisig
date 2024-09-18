@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import useUser from "@/hooks/useUser";
 
 const World = dynamic(() => import("../../ui/globe").then((m) => m.World), {
   ssr: false,
@@ -396,7 +397,7 @@ const sampleArcs = [
 ];
 
 export function PageHomepage() {
-  const userAddress = useUserStore((state) => state.userAddress);
+  const { user } = useUser();
   const [live, setLive] = useState(false);
 
   useEffect(() => {
@@ -415,7 +416,7 @@ export function PageHomepage() {
             </p>
           </div>
           <div className="flex items-center justify-center">
-            {userAddress ? (
+            {user ? (
               <div className="flex gap-2">
                 <Button size="sm" asChild>
                   <Link href="/wallets/new-wallet">New Wallet</Link>

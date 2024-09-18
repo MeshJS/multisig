@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
   const { toast } = useToast();
@@ -26,6 +27,7 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
   const userAddress = useUserStore((state) => state.userAddress);
   const [loading, setLoading] = useState<boolean>(false);
   const ctx = api.useUtils();
+  const network = useSiteStore((state) => state.network);
 
   const [givenName, setgivenName] = useState<string>("");
   const [motivations, setmotivations] = useState<string>("");
@@ -161,7 +163,7 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
     setLoading(true);
     const registrationFee = "500000000";
 
-    const blockchainProvider = getProvider();
+    const blockchainProvider = getProvider(network);
 
     const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
     const assetMap = new Map<Unit, Quantity>();
@@ -173,7 +175,7 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
 
     // tx
 
-    const txBuilder = getTxBuilder();
+    const txBuilder = getTxBuilder(network);
 
     for (const utxo of selectedUtxos) {
       txBuilder.txIn(

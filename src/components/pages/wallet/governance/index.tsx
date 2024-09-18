@@ -4,15 +4,17 @@ import CardRegister from "./register";
 import { useEffect } from "react";
 import { getProvider } from "@/components/common/cardano-objects";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
   const drepRegistered = useWalletsStore((state) => state.drepRegistered);
+  const network = useSiteStore((state) => state.network);
 
   useEffect(() => {
     async function load() {
       if (appWallet) {
-        const blockchainProvider = getProvider();
+        const blockchainProvider = getProvider(network);
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
           `/governance/dreps/${appWallet.dRepId}`,
         );

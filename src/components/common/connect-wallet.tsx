@@ -9,14 +9,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet, useWalletList } from "@meshsdk/react";
+import { useSiteStore } from "@/lib/zustand/site";
+import { useEffect } from "react";
 
 export default function ConnectWallet() {
+  const setNetwork = useSiteStore((state) => state.setNetwork);
+
   const wallets = useWalletList();
-  const { connect } = useWallet();
+  const { connect, connected, wallet } = useWallet();
 
   async function connectWallet(walletId: string) {
     await connect(walletId);
   }
+
+  useEffect(() => {
+    async function handleNetworkChange() {
+      if (connected) {
+        setNetwork(await wallet.getNetworkId());
+      }
+    }
+    handleNetworkChange();
+  }, [connected]);
 
   return (
     <DropdownMenu>
