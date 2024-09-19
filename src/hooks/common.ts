@@ -20,7 +20,7 @@ export function buildWallet(wallet: DbWallet, network: number) {
   };
   const { address } = serializeNativeScript(
     nativeScript,
-    stakeCredentialHash,
+    undefined, // stakeCredentialHash,//todo
     network,
   );
   const dRepId = resolveScriptHashDRepId(resolveNativeScriptHash(nativeScript));

@@ -19,6 +19,7 @@ export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
           `/governance/dreps/${appWallet.dRepId}`,
         );
+        console.log(222, " drepInfo", drepInfo);
         setDrepInfo(drepInfo);
       }
     }
