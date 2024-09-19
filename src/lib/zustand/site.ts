@@ -4,6 +4,8 @@ import { persist } from "zustand/middleware";
 interface SiteState {
   network: number;
   setNetwork: (network: number) => void;
+  randomState: number;
+  setRandomState: () => void;
 }
 
 export const useSiteStore = create<SiteState>()(
@@ -11,6 +13,8 @@ export const useSiteStore = create<SiteState>()(
     (set) => ({
       network: 0,
       setNetwork: (network: number) => set({ network }),
+      randomState: 0,
+      setRandomState: () => set({ randomState: Math.random() }),
     }),
     { name: "msig-site" },
   ),

@@ -1,8 +1,10 @@
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
 import { buildWallet } from "./common";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function useUserWallets() {
+  const network = useSiteStore((state) => state.network);
   const userAddress = useUserStore((state) => state.userAddress);
   const { data: wallets, isLoading } = api.wallet.getUserWallets.useQuery(
     { address: userAddress! },
@@ -15,7 +17,7 @@ export default function useUserWallets() {
 
   if (wallets) {
     _wallets = wallets.map((wallet) => {
-      return buildWallet(wallet);
+      return buildWallet(wallet, network);
     });
     return { wallets: _wallets, isLoading };
   }

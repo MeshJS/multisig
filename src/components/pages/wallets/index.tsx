@@ -19,7 +19,16 @@ export default function PageWallets() {
           </Button>
         </PageHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {wallets && wallets.length === 0 && (
+            <div className="col-span-3 text-center text-muted-foreground">
+              No wallets,{" "}
+              <Link href="/wallets/new-wallet">
+                <b className="cursor-pointer text-white">create one</b>
+              </Link>
+              ?
+            </div>
+          )}
           {wallets &&
             wallets.map((wallet) => (
               <CardWallet key={wallet.id} wallet={wallet as Wallet} />

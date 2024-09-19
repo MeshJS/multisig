@@ -10,6 +10,7 @@ export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
   const drepRegistered = useWalletsStore((state) => state.drepRegistered);
   const network = useSiteStore((state) => state.network);
+  const randomState = useSiteStore((state) => state.randomState);
 
   useEffect(() => {
     async function load() {
@@ -22,7 +23,7 @@ export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
       }
     }
     load();
-  }, []);
+  }, [randomState]);
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">

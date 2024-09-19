@@ -61,7 +61,7 @@ export default function RootLayout({
           throw new Error("User address is undefined");
 
         const nonce = generateNonce(
-          "I agree to the terms and conditions of Mesh Wallet. ",
+          "I agree to the terms and conditions of Multi-sig Platform. ",
         );
         const signature = await wallet.signData(nonce, userStakeAddress);
         const result = checkSignature(nonce, signature);

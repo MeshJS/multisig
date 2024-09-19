@@ -28,6 +28,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   const { transactions } = usePendingTransactions({ walletId });
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
+  const setRandomState = useSiteStore((state) => state.setRandomState);
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -68,6 +69,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
     await getTransactionsOnChain();
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    setRandomState();
     setLoading(false);
   }
 
