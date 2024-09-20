@@ -16,7 +16,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
         </>
       }
       icon={Key}
-      cardClassName="col-span-2"
+      // cardClassName="col-span-2"
     >
       {appWallet.signersAddresses.map((signer, index) => (
         <RowLabelInfo

@@ -412,7 +412,7 @@ export function PageHomepage() {
             <h1 className="text-3xl font-bold">Multisig platform on Cardano</h1>
             <p className="text-balance text-muted-foreground">
               Secure your treasury and participant in Cardano governance as a
-              team with multi-signature wallet
+              team with multi-signature
             </p>
           </div>
           <div className="flex items-center justify-center">

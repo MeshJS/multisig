@@ -23,6 +23,10 @@
 - discord integration, to ping people to sign
 - can reject signing to delete transaction
 - add readme support to desc
+- send all assets
+- handle UI where amount is edge cases
+- support catayst reporting
+- convert to datetime
 
 product:
 - store + spend treasury funds

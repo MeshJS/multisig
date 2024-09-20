@@ -255,19 +255,19 @@ export default function TransactionCard({
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
-            <Button
-              variant="destructive"
-              onClick={() => rejectTx()}
-              disabled={loading}
-            >
-              {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
-            </Button>
             <Button onClick={() => signTx()} disabled={loading}>
               {loading ? (
                 <Loader className="h-4 w-4 animate-spin" />
               ) : (
                 "Approve & Sign"
               )}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => rejectTx()}
+              disabled={loading}
+            >
+              {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
             </Button>
           </CardFooter>
         )}

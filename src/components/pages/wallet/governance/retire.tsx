@@ -40,7 +40,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
 
     const blockchainProvider = getProvider(network);
     const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
-    
+
     const assetMap = new Map<Unit, Quantity>();
     assetMap.set("lovelace", "5000000");
     const selectedUtxos = keepRelevant(assetMap, utxos);
@@ -83,7 +83,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
       txCbor: signedTx,
       signedAddresses: [userAddress],
       state: state,
-      description: "DRep registration",
+      description: "DRep retirement",
       txHash: txHash,
     });
   }

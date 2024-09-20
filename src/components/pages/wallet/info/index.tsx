@@ -10,10 +10,10 @@ export default function TabInfo({ appWallet }: { appWallet: Wallet }) {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <CardBalance appWallet={appWallet} />
         <CardPendingTx appWallet={appWallet} />
-        <div className="col-span-2"></div>
+        <CardSigners appWallet={appWallet} />
         <CardInfo appWallet={appWallet} />
         <div className="col-span-2"></div>
-        <CardSigners appWallet={appWallet} />
+        <div className="col-span-2"></div>
       </div>
     </main>
   );
