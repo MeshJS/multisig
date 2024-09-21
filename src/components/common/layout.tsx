@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Menu, Plus, Wallet2 } from "lucide-react";
 import { api } from "@/utils/api";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import React, { useEffect } from "react";
 import ConnectWallet from "./connect-wallet";

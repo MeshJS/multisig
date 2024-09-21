@@ -1,4 +1,4 @@
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import { Wallet } from "@/types/wallet";
 import { useState } from "react";
 import { api } from "@/utils/api";

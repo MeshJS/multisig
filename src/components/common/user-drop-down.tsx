@@ -1,5 +1,5 @@
 import { CircleUser } from "lucide-react";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,

@@ -1,7 +1,7 @@
 import { Loader, Send } from "lucide-react";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useWallet } from "@meshsdk/react";
 import { Label } from "@/components/ui/label";
@@ -95,6 +95,8 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
 
     setLoading(false);
   }
+
+  if(!appWallet) return null;
 
   return (
     <CardUI title="Send all assets" icon={Send}>

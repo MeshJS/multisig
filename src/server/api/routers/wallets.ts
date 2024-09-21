@@ -53,4 +53,22 @@ export const walletRouter = createTRPCRouter({
         },
       });
     }),
+
+  updateWalletVerifiedList: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        verified: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          verified: input.verified,
+        },
+      });
+    }),
 });

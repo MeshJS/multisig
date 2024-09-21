@@ -1,4 +1,5 @@
 import { api } from "@/utils/api";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import Button from "@/components/common/button";
 import { Check, Loader, MoreVertical, X } from "lucide-react";
 import {
@@ -148,7 +149,7 @@ export default function TransactionCard({
 
   if (!appWallet) return <></>;
   return (
-    <Card className="overflow-hidden" x-chunk="dashboard-05-chunk-4">
+    <Card className="self-start overflow-hidden">
       <CardHeader className="flex flex-row items-start bg-muted/50">
         <div className="grid gap-0.5">
           <CardTitle className="group flex items-center gap-2 text-lg">
@@ -175,10 +176,10 @@ export default function TransactionCard({
                   </Button> */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="outline" className="h-8 w-8">
+              <ShadcnButton size="icon" variant="outline" className="h-8 w-8">
                 <MoreVertical className="h-3.5 w-3.5" />
                 <span className="sr-only">More</span>
-              </Button>
+              </ShadcnButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
@@ -338,91 +339,6 @@ export default function TransactionCard({
           </CardFooter>
         </>
       )}
-
-      {/* <CardFooter className="flex flex-row items-center border-t bg-muted/50 px-6 py-3">
-                <div className="text-xs text-muted-foreground">
-                  Updated <time dateTime="2023-11-23">November 23, 2023</time>
-                </div>
-                <Pagination className="ml-auto mr-0 w-auto">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <Button size="icon" variant="outline" className="h-6 w-6">
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                        <span className="sr-only">Previous Order</span>
-                      </Button>
-                    </PaginationItem>
-                    <PaginationItem>
-                      <Button size="icon" variant="outline" className="h-6 w-6">
-                        <ChevronRight className="h-3.5 w-3.5" />
-                        <span className="sr-only">Next Order</span>
-                      </Button>
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </CardFooter> */}
     </Card>
   );
 }
-
-// function Row({
-//   walletId,
-//   transaction,
-// }: {
-//   walletId: string;
-//   transaction: Transaction;
-// }) {
-//   const { appWallet } = useAppWallet({ walletId });
-
-//   if (!appWallet) return <></>;
-
-//   return (
-//     <TableRow>
-//       <TableCell>
-//         <div className="mt-1 flex flex-col gap-2">
-//           <div className="flex items-center gap-4">
-//             <div className="grid gap-1">
-//               <p className="text-sm font-medium leading-none">Signers</p>
-//               <div>
-//                 {appWallet.signersAddresses.map((signerAddress, index) => {
-//                   return (
-//                     <div key={signerAddress} className="flex gap-2">
-//                       {transaction.signedAddresses.includes(signerAddress) ? (
-//                         <CheckIcon className="h-4 w-4 text-green-400" />
-//                       ) : (
-//                         <QuestionMarkIcon className="h-4 w-4" />
-//                       )}
-//                       <p className="text-sm text-muted-foreground">
-//                         {appWallet.signersDescriptions[index] &&
-//                         appWallet.signersDescriptions[index].length > 0
-//                           ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
-//                           : signerAddress}
-//                       </p>
-//                     </div>
-//                   );
-//                 })}
-//               </div>
-//             </div>
-//           </div>
-
-//           <div className="flex items-center gap-4">
-//             <div className="grid gap-1">
-//               <p className="text-sm font-medium leading-none">Ouputs</p>
-//               <p className="text-sm text-muted-foreground">
-//                 {JSON.parse(transaction.txJson).outputs.map((output: any) => {
-//                   return (
-//                     <div key={output.address} className="flex gap-2">
-//                       <p className="text-sm text-muted-foreground">
-//                         {output.address}
-//                       </p>
-//                     </div>
-//                   );
-//                 })}
-//               </p>
-//             </div>
-//           </div>
-//         </div>
-//       </TableCell>
-//       <TableCell className="text-right text-red-400">-₳ 250</TableCell>
-//     </TableRow>
-//   );
-// }

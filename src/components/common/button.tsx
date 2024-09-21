@@ -37,7 +37,7 @@ export default function Button({
   return (
     <ShadcnButton
       variant={variant}
-      onClick={hold === undefined ? onClick : () => {}}
+      onClick={hold === undefined ? onClick : undefined}
       disabled={disabled}
       size={size}
       className={className}
@@ -48,9 +48,11 @@ export default function Button({
               e.preventDefault();
               setHolding(true);
               setCurTime(Date.now());
-              let holdTimer = setTimeout(() => {
+              const holdTimer = setTimeout(() => {
                 setHolding(false);
-                onClick && onClick();
+                if (onClick) {
+                  onClick();
+                }
               }, hold);
               (e.target as HTMLElement).onmouseup = () => {
                 setHolding(false);

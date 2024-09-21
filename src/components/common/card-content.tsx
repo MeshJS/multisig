@@ -17,7 +17,7 @@ export default function CardUI({
   headerDom?: ReactNode;
 }) {
   return (
-    <Card className={`${cardClassName}`}> {/* self-start */}
+    <Card className={`self-start ${cardClassName}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-xl font-medium">{title}</CardTitle>
         {headerDom && headerDom}

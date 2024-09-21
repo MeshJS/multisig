@@ -1,4 +1,4 @@
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import PageHeader from "@/components/common/page-header";
 import useUserWallets from "@/hooks/useUserWallets";

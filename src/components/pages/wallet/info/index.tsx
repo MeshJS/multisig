@@ -3,6 +3,7 @@ import CardBalance from "./card-balance";
 import CardInfo from "./card-info";
 import CardPendingTx from "./card-pending-tx";
 import CardSigners from "./card-signers";
+import InspectScript from "./inspect-script";
 
 export default function TabInfo({ appWallet }: { appWallet: Wallet }) {
   return (
@@ -12,8 +13,7 @@ export default function TabInfo({ appWallet }: { appWallet: Wallet }) {
         <CardPendingTx appWallet={appWallet} />
         <CardSigners appWallet={appWallet} />
         <CardInfo appWallet={appWallet} />
-        <div className="col-span-2"></div>
-        <div className="col-span-2"></div>
+        <InspectScript appWallet={appWallet} />
       </div>
     </main>
   );

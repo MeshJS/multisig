@@ -2,7 +2,6 @@ import { Wallet } from "@/types/wallet";
 import AllTransactions from "./all-transactions";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import TransactionCard from "./transaction-card";
-import CardSendAll from "./send-all";
 
 export default function TabTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions } = usePendingTransactions({ walletId: appWallet.id });
@@ -29,10 +28,7 @@ export default function TabTransactions({ appWallet }: { appWallet: Wallet }) {
       )}
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
         <AllTransactions appWallet={appWallet} />
-
-        <div></div>
-
-        <CardSendAll appWallet={appWallet} />
+        {/* <CardSendAll appWallet={appWallet} /> */}
       </div>
     </main>
   );

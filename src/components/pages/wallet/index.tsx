@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TabTransactions from "./transactions";
 import TabDetails from "./details";
 import TabInfo from "./info";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -90,9 +90,8 @@ export default function PageWallet({ walletId }: { walletId: string }) {
             </Button>
           </PageHeader>
 
-          <Tabs defaultValue="info">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="info">Info</TabsTrigger>
+          <Tabs defaultValue="transactions">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="transactions">
                 <div className="flex items-center gap-2">
                   Transactions
@@ -104,19 +103,17 @@ export default function PageWallet({ walletId }: { walletId: string }) {
                 </div>
               </TabsTrigger>
               <TabsTrigger value="governance">Governance</TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="info">Info</TabsTrigger>
             </TabsList>
-            <TabsContent value="info">
-              <TabInfo appWallet={appWallet} />
-            </TabsContent>
+
             <TabsContent value="transactions">
               <TabTransactions appWallet={appWallet} />
             </TabsContent>
             <TabsContent value="governance">
               <TabGovernance appWallet={appWallet} />
             </TabsContent>
-            <TabsContent value="details">
-              <TabDetails appWallet={appWallet} />
+            <TabsContent value="info">
+              <TabInfo appWallet={appWallet} />
             </TabsContent>
           </Tabs>
         </>

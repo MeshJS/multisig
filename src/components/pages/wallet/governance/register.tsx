@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import { Wallet } from "@/types/wallet";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import CardUI from "@/components/common/card-content";
 import {
   getFile,

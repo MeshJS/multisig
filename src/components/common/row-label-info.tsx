@@ -3,21 +3,22 @@ import { Button } from "../ui/button";
 import React from "react";
 
 export default function RowLabelInfo({
+  children,
   label,
   value,
   className,
   copyString,
 }: {
+  children?: React.ReactNode;
   label?: string;
   value: string | React.ReactNode;
   className?: string;
   copyString?: string;
 }) {
   const { toast } = useToast();
-
   return (
     <div className="flex items-center gap-4">
-      <div className="flex items-center justify-center gap-2 max-w-full">
+      <div className="flex max-w-full items-center justify-center gap-2">
         {label && <p className="text-sm font-medium leading-none">{label}</p>}
         {copyString ? (
           <Button
@@ -30,13 +31,14 @@ export default function RowLabelInfo({
                 duration: 5000,
               });
             }}
-            className="m-0 h-auto justify-start truncate p-0 max-w-full"
+            className="m-0 h-auto max-w-full justify-start truncate p-0"
           >
             <Value value={value} className={className} />
           </Button>
         ) : (
           <Value value={value} className={className} />
         )}
+        {children && children}
       </div>
     </div>
   );
@@ -50,7 +52,9 @@ function Value({
   className?: string;
 }) {
   return (
-    <p className={`${className ? className : "text-sm text-muted-foreground truncate overflow-hidden whitespace-nowrap max-w-full"}`}>
+    <p
+      className={`${className ? className : "max-w-full overflow-hidden truncate whitespace-nowrap text-sm text-muted-foreground"}`}
+    >
       {value}
     </p>
   );

@@ -1,5 +1,5 @@
 import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/hover-card";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useSiteStore } from "@/lib/zustand/site";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
@@ -43,6 +44,8 @@ export function NewTransaction({ walletId }: { walletId: string }) {
   const [description, setDescription] = useState<string>("");
   const [addMetadata, setAddMetadata] = useState<boolean>(false);
   const [metadata, setMetadata] = useState<string>("");
+  const [showAddAllAssets, setShowAddAllAssets] = useState<boolean>(false);
+  const [sendAllAssets, setSendAllAssets] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState(false);
@@ -51,6 +54,15 @@ export function NewTransaction({ walletId }: { walletId: string }) {
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
   const [amounts, setAmounts] = useState<string[]>([""]);
   const network = useSiteStore((state) => state.network);
+
+  useEffect(() => {
+    setAddDescription(false);
+    setDescription("");
+    setAddMetadata(false);
+    setMetadata("");
+    setShowAddAllAssets(false);
+    setSendAllAssets(false);
+  }, [open]);
 
   const { mutate: createTransaction } =
     api.transaction.createTransaction.useMutation({
@@ -101,10 +113,13 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         appWallet.address,
       );
 
-      const assetMap = new Map<Unit, Quantity>();
-      assetMap.set("lovelace", totalAmount.toString());
+      let selectedUtxos = utxos;
 
-      const selectedUtxos = keepRelevant(assetMap, utxos);
+      if (!sendAllAssets) {
+        const assetMap = new Map<Unit, Quantity>();
+        assetMap.set("lovelace", totalAmount.toString());
+        selectedUtxos = keepRelevant(assetMap, utxos);
+      }
 
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
@@ -123,13 +138,15 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         txBuilder.txInScript(appWallet.scriptCbor);
       }
 
-      for (let i = 0; i < outputs.length; i++) {
-        txBuilder.txOut(outputs[i]!.address, [
-          {
-            unit: "lovelace",
-            quantity: outputs[i]!.amount,
-          },
-        ]);
+      if (!sendAllAssets) {
+        for (let i = 0; i < outputs.length; i++) {
+          txBuilder.txOut(outputs[i]!.address, [
+            {
+              unit: "lovelace",
+              quantity: outputs[i]!.amount,
+            },
+          ]);
+        }
       }
 
       if (addMetadata && metadata.length > 0) {
@@ -138,7 +155,11 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         });
       }
 
-      txBuilder.changeAddress(appWallet.address);
+      if (sendAllAssets) {
+        txBuilder.changeAddress(outputs[0]!.address);
+      } else {
+        txBuilder.changeAddress(appWallet.address);
+      }
 
       const unsignedTx = await txBuilder.complete();
       const signedTx = await wallet.signTx(unsignedTx, true);
@@ -202,6 +223,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
                 setRecipientAddresses={setRecipientAddresses}
                 amounts={amounts}
                 setAmounts={setAmounts}
+                disableAdaAmountInput={sendAllAssets}
               />
             ))}
             <TableRow>
@@ -211,6 +233,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
                   variant="ghost"
                   className="gap-1"
                   onClick={() => addNewRecipient()}
+                  disabled={sendAllAssets}
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
                   Add Recipient
@@ -225,7 +248,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
             <TableRow>
               <TableHead
                 onClick={() => setAddDescription(!addDescription)}
-                className="flex items-center gap-2"
+                className="flex cursor-pointer items-center gap-2"
               >
                 {!addDescription && `Add `}Description (optional){" "}
                 <HoverCard>
@@ -261,7 +284,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
             <TableRow>
               <TableHead
                 onClick={() => setAddMetadata(!addMetadata)}
-                className="flex items-center gap-2"
+                className="flex cursor-pointer items-center gap-2"
               >
                 {!addMetadata && `Add `}On-chain Metadata (optional){" "}
                 <HoverCard>
@@ -292,36 +315,56 @@ export function NewTransaction({ walletId }: { walletId: string }) {
           )}
         </Table>
 
-        {/* <Table>
+        <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="flex items-center gap-2">
-                On-chain Metadata (optional){" "}
+              <TableHead
+                onClick={() => setShowAddAllAssets(!showAddAllAssets)}
+                className="flex cursor-pointer items-center gap-2"
+              >
+                Transaction options
                 <HoverCard>
                   <HoverCardTrigger>
                     <QuestionMarkCircledIcon className="h-4 w-4" />
                   </HoverCardTrigger>
                   <HoverCardContent>
-                    Metadata attaches additional information to a transaction
-                    viewable on the blockchain.
+                    Additional options for the transaction.
                   </HoverCardContent>
                 </HoverCard>
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <TableRow>
-              <TableCell>
-                <Textarea
-                  className="min-h-16"
-                  value={metadata}
-                  onChange={(e) => setMetadata(e.target.value)}
-                  placeholder="Attach on-chain metadata to this transaction"
-                />
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table> */}
+          {showAddAllAssets && (
+            <TableBody>
+              <TableRow>
+                <TableCell>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="sendAllAssetCheck"
+                      checked={sendAllAssets}
+                      onCheckedChange={() => setSendAllAssets(!sendAllAssets)}
+                    />
+                    <label
+                      htmlFor="sendAllAssetCheck"
+                      className="flex items-center gap-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Send all assets
+                      <HoverCard>
+                        <HoverCardTrigger>
+                          <QuestionMarkCircledIcon className="h-4 w-4" />
+                        </HoverCardTrigger>
+                        <HoverCardContent>
+                          Enable this will send all assets to the first
+                          recipient's address.
+                        </HoverCardContent>
+                      </HoverCard>
+                    </label>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          )}
+        </Table>
 
         <DialogFooter>
           <div className="flex h-full items-center justify-center gap-4">
@@ -347,12 +390,14 @@ function RecipientRow({
   setRecipientAddresses,
   amounts,
   setAmounts,
+  disableAdaAmountInput,
 }: {
   index: number;
   recipientAddresses: string[];
   setRecipientAddresses: (value: string[]) => void;
   amounts: string[];
   setAmounts: (value: string[]) => void;
+  disableAdaAmountInput: boolean;
 }) {
   return (
     <TableRow>
@@ -378,6 +423,7 @@ function RecipientRow({
             setAmounts(newAmounts);
           }}
           placeholder=""
+          disabled={disableAdaAmountInput}
         />
       </TableCell>
       <TableCell>

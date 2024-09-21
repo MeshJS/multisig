@@ -1,4 +1,4 @@
-import Button from "@/components/common/button";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -88,28 +88,30 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
       }
       cardClassName="col-span-2"
     >
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>Authors</TableHead>
-            <TableHead>Abstract</TableHead>
-            <TableHead>Governance Action</TableHead>
-            <TableHead>
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {proposals.map((proposal) => (
-            <ProposalRow
-              key={proposal.tx_hash}
-              proposal={proposal}
-              appWallet={appWallet}
-            />
-          ))}
-        </TableBody>
-      </Table>
+      {proposals.length > 0 && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Title</TableHead>
+              <TableHead>Authors</TableHead>
+              <TableHead>Abstract</TableHead>
+              <TableHead>Governance Action</TableHead>
+              <TableHead>
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {proposals.map((proposal) => (
+              <ProposalRow
+                key={proposal.tx_hash}
+                proposal={proposal}
+                appWallet={appWallet}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </CardUI>
   );
 }
@@ -159,21 +161,23 @@ function Details({ proposal }: { proposal: ProposalMetadata }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{proposal.json_metadata.body.title}</DialogTitle>
-          <DialogDescription className="mt-4 flex flex-col gap-2">
-            <h1 className="text-lg font-semibold leading-none tracking-tight">
-              Abstract
-            </h1>
-            <p>{proposal.json_metadata.body.abstract}</p>
+          <DialogDescription>
+            <div className="mt-4 flex flex-col gap-2">
+              <h1 className="text-md font-semibold leading-none tracking-tight">
+                Abstract
+              </h1>
+              <p>{proposal.json_metadata.body.abstract}</p>
 
-            <h1 className="text-lg font-semibold leading-none tracking-tight">
-              Motivation
-            </h1>
-            <p>{proposal.json_metadata.body.motivation}</p>
+              <h1 className="text-md font-semibold leading-none tracking-tight">
+                Motivation
+              </h1>
+              <p>{proposal.json_metadata.body.motivation}</p>
 
-            <h1 className="text-lg font-semibold leading-none tracking-tight">
-              Rationale
-            </h1>
-            <p>{proposal.json_metadata.body.rationale}</p>
+              <h1 className="text-md font-semibold leading-none tracking-tight">
+                Rationale
+              </h1>
+              <p>{proposal.json_metadata.body.rationale}</p>
+            </div>
           </DialogDescription>
         </DialogHeader>
       </DialogContent>
