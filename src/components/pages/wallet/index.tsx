@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TabTransactions from "./transactions";
 import TabDetails from "./details";
 import TabInfo from "./info";
-import { Button } from "@/components/ui/button";
+import Button from "@/components/common/button";
 import { RefreshCw } from "lucide-react";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import usePendingTransactions from "@/hooks/usePendingTransactions";

@@ -55,6 +55,16 @@ export const transactionRouter = createTRPCRouter({
       });
     }),
 
+  deleteTransaction: publicProcedure
+    .input(z.object({ transactionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.transaction.delete({
+        where: {
+          id: input.transactionId,
+        },
+      });
+    }),
+
   getAllTransactions: publicProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {

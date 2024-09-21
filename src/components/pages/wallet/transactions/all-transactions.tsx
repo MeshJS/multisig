@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import Button from "@/components/common/button";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ArrowUpRight } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";

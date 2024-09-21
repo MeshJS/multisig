@@ -1,7 +1,6 @@
 import { api } from "@/utils/api";
-import { Button } from "@/components/ui/button";
-import { TableCell, TableRow } from "@/components/ui/table";
-import { Check, CheckIcon, Loader, MoreVertical, X } from "lucide-react";
+import Button from "@/components/common/button";
+import { Check, Loader, MoreVertical, X } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -42,14 +41,29 @@ export default function TransactionCard({
   const { toast } = useToast();
   const ctx = api.useUtils();
 
-  console.log("txJson", txJson);
-
   const { mutate: updateTransaction } =
     api.transaction.updateTransaction.useMutation({
       onSuccess: async () => {
         toast({
           title: "Transaction Updated",
           description: "Your transaction has been updated",
+          duration: 5000,
+        });
+        setLoading(false);
+        void ctx.transaction.getPendingTransactions.invalidate();
+      },
+      onError: (e) => {
+        console.error(e);
+        setLoading(false);
+      },
+    });
+
+  const { mutate: deleteTransaction } =
+    api.transaction.deleteTransaction.useMutation({
+      onSuccess: async () => {
+        toast({
+          title: "Transaction Deleted",
+          description: "Your transaction has been deleted",
           duration: 5000,
         });
         setLoading(false);
@@ -122,6 +136,14 @@ export default function TransactionCard({
       console.error(e);
     }
     setLoading(false);
+  }
+
+  async function deleteTx() {
+    console.log("deleteTx");
+    setLoading(true);
+    deleteTransaction({
+      transactionId: transaction.id,
+    });
   }
 
   if (!appWallet) return <></>;
@@ -300,6 +322,22 @@ export default function TransactionCard({
             </Button>
           </CardFooter>
         )}
+
+      {transaction.rejectedAddresses.length >= appWallet.numRequiredSigners && (
+        <>
+          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+            <Button
+              variant="destructive"
+              onClick={() => deleteTx()}
+              disabled={loading}
+              loading={loading}
+              hold={3000}
+            >
+              Delete Transaction
+            </Button>
+          </CardFooter>
+        </>
+      )}
 
       {/* <CardFooter className="flex flex-row items-center border-t bg-muted/50 px-6 py-3">
                 <div className="text-xs text-muted-foreground">

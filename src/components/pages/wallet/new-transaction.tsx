@@ -1,5 +1,5 @@
 import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
-import { Button } from "@/components/ui/button";
+import Button from "@/components/common/button";
 import {
   Dialog,
   DialogContent,

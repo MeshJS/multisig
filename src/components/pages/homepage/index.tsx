@@ -1,6 +1,6 @@
 import ConnectWallet from "@/components/common/connect-wallet";
 import { useUserStore } from "@/lib/zustand/user";
-import { Button } from "@/components/ui/button";
+import Button from "@/components/common/button";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
