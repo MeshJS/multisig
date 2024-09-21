@@ -24,6 +24,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
+import { stakeCredentialHash } from "@/data/cardano";
 
 export default function PageNewWallet() {
   const router = useRouter();
@@ -96,6 +97,7 @@ export default function PageNewWallet() {
       signersDescriptions: signersDescriptions,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
+      stakeCredentialHash: stakeCredentialHash,
     });
   }
 

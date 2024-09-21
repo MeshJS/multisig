@@ -7,7 +7,6 @@ import {
   resolveScriptHashDRepId,
   serializeNativeScript,
 } from "@meshsdk/core";
-import { stakeCredentialHash } from "@/data/cardano";
 
 export function buildWallet(wallet: DbWallet, network: number) {
   const nativeScript: NativeScript = {
@@ -18,9 +17,10 @@ export function buildWallet(wallet: DbWallet, network: number) {
       keyHash: resolvePaymentKeyHash(addr),
     })),
   };
+
   const { address } = serializeNativeScript(
     nativeScript,
-    undefined, // stakeCredentialHash,//todo
+    wallet.stakeCredentialHash as undefined | string,
     network,
   );
   const dRepId = resolveScriptHashDRepId(resolveNativeScriptHash(nativeScript));

@@ -139,7 +139,6 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       }
 
       txBuilder.changeAddress(appWallet.address);
-      txBuilder.selectUtxosFrom(selectedUtxos);
 
       const unsignedTx = await txBuilder.complete();
       const signedTx = await wallet.signTx(unsignedTx, true);

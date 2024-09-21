@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { getProvider } from "@/components/common/cardano-objects";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useSiteStore } from "@/lib/zustand/site";
+import AllProposals from "./proposals";
 
 export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
@@ -30,6 +31,7 @@ export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <CardInfo appWallet={appWallet} />
+        <AllProposals appWallet={appWallet} />
         {!drepRegistered && <CardRegister appWallet={appWallet} />}
       </div>
     </main>

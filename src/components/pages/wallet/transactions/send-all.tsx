@@ -1,7 +1,6 @@
 import { Loader, Send } from "lucide-react";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
-import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useWallet } from "@meshsdk/react";
@@ -12,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
 import { useSiteStore } from "@/lib/zustand/site";
-import { Asset } from "@meshsdk/core";
 
 export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
   const { wallet, connected } = useWallet();

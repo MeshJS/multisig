@@ -25,6 +25,7 @@ model Wallet {
   numRequiredSigners  Int
   verified            String[]
   scriptCbor          String
+  stakeCredentialHash String?
 }
 
 model Transaction {
