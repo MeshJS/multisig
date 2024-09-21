@@ -120,9 +120,8 @@ export function NewTransaction({ walletId }: { walletId: string }) {
           utxo.output.amount,
           utxo.output.address,
         );
+        txBuilder.txInScript(appWallet.scriptCbor);
       }
-
-      txBuilder.txInScript(appWallet.scriptCbor);
 
       for (let i = 0; i < outputs.length; i++) {
         txBuilder.txOut(outputs[i]!.address, [
@@ -139,7 +138,8 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         });
       }
 
-      txBuilder.changeAddress(appWallet.address).selectUtxosFrom(selectedUtxos);
+      txBuilder.changeAddress(appWallet.address);
+      txBuilder.selectUtxosFrom(selectedUtxos);
 
       const unsignedTx = await txBuilder.complete();
       const signedTx = await wallet.signTx(unsignedTx, true);

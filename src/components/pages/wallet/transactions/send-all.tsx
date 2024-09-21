@@ -54,24 +54,6 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
         appWallet.address,
       );
 
-      const assets: { [key: string]: number } = utxos
-        .map((utxo) => {
-          return utxo.output.amount;
-        })
-        .reduce(
-          (acc, assets) => {
-            for (const asset of assets) {
-              if (!(asset.unit in acc)) {
-                acc[asset.unit] = 0;
-              }
-              acc[asset.unit]! += Number(asset.quantity);
-            }
-            return acc;
-          },
-          {} as { [key: string]: number },
-        );
-      console.log(assets);
-
       const txBuilder = getTxBuilder(network);
 
       for (const utxo of utxos) {
@@ -81,24 +63,34 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
           utxo.output.amount,
           utxo.output.address,
         );
+        txBuilder.txInScript(appWallet.scriptCbor);
       }
 
-      txBuilder.txOut(
-        recipientAddress,
-        Object.keys(assets).map((key) => {
-          return {
-            unit: key,
-            quantity: assets[key]!.toString(),
-          };
-        }),
-      );
-
-      txBuilder.changeAddress(appWallet.address);
-      txBuilder.selectUtxosFrom(utxos);
+      txBuilder.changeAddress(recipientAddress);
 
       const unsignedTx = await txBuilder.complete();
-      console.log("unsignedTx", unsignedTx);
-      
+
+      const signedTx = await wallet.signTx(unsignedTx, true);
+
+      const signedAddresses = [];
+      signedAddresses.push(userAddress);
+
+      let txHash = undefined;
+      let state = 0;
+      if (appWallet.numRequiredSigners == signedAddresses.length) {
+        state = 1;
+        txHash = await wallet.submitTx(signedTx);
+      }
+
+      createTransaction({
+        walletId: appWallet.id,
+        txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
+        txCbor: signedTx,
+        signedAddresses: [userAddress],
+        state: state,
+        description: `Send all assets`,
+        txHash: txHash,
+      });
     } catch (e) {
       console.error(e);
     }

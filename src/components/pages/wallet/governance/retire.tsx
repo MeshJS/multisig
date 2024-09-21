@@ -48,7 +48,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
 
     const txBuilder = getTxBuilder(network);
 
-    for (let utxo of selectedUtxos) {
+    for (const utxo of selectedUtxos) {
       txBuilder.txIn(
         utxo.input.txHash,
         utxo.input.outputIndex,

@@ -42,6 +42,8 @@ export default function TransactionCard({
   const { toast } = useToast();
   const ctx = api.useUtils();
 
+  console.log("txJson", txJson);
+
   const { mutate: updateTransaction } =
     api.transaction.updateTransaction.useMutation({
       onSuccess: async () => {
@@ -206,6 +208,33 @@ export default function TransactionCard({
                       <span>
                         {lovelaceToAda(
                           output.amount.find(
+                            (unit: any) => unit.unit === "lovelace",
+                          ).quantity,
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Separator className="my-2" />
+            </>
+          )}
+          {txJson.changeAddress != appWallet.address && (
+            <>
+              <div className="font-semibold">Sending</div>
+              <ul className="grid gap-3">
+                {txJson.inputs.map((input: any) => {
+                  return (
+                    <li
+                      key={input.txIn.txHash}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-muted-foreground">
+                        {getFirstAndLast(txJson.changeAddress)}
+                      </span>
+                      <span>
+                        {lovelaceToAda(
+                          input.txIn.amount.find(
                             (unit: any) => unit.unit === "lovelace",
                           ).quantity,
                         )}
