@@ -74,7 +74,7 @@ function TransactionRow({
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
         <div className="flex justify-between">
-          <div className="font-medium overflow-auto break-all">
+          <div className="overflow-auto break-all font-medium">
             {dbTransaction && dbTransaction.description}
           </div>
           <div className="flex gap-2 text-sm text-muted-foreground md:inline">
