@@ -28,6 +28,7 @@ export default function PageGovernance() {
       }
     }
     load();
+    console.log(333, "randomState", randomState);
   }, [randomState]);
 
   if (appWallet === undefined) return <></>;

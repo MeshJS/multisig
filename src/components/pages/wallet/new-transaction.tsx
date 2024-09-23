@@ -130,13 +130,14 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       const txBuilder = getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
-        txBuilder.txIn(
-          utxo.input.txHash,
-          utxo.input.outputIndex,
-          utxo.output.amount,
-          utxo.output.address,
-        );
-        txBuilder.txInScript(appWallet.scriptCbor);
+        txBuilder
+          .txIn(
+            utxo.input.txHash,
+            utxo.input.outputIndex,
+            utxo.output.amount,
+            utxo.output.address,
+          )
+          .txInScript(appWallet.scriptCbor);
       }
 
       if (!sendAllAssets) {

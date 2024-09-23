@@ -179,16 +179,17 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
     const txBuilder = getTxBuilder(network);
 
     for (const utxo of selectedUtxos) {
-      txBuilder.txIn(
-        utxo.input.txHash,
-        utxo.input.outputIndex,
-        utxo.output.amount,
-        utxo.output.address,
-      );
+      txBuilder
+        .txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        )
+        .txInScript(appWallet.scriptCbor);
     }
 
     txBuilder
-      .txInScript(appWallet.scriptCbor)
       .drepRegistrationCertificate(appWallet.dRepId, {
         anchorUrl: anchorUrl,
         anchorDataHash: anchorHash,
@@ -250,7 +251,10 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
             <Input
               placeholder="e.g. MeshJS"
               value={givenName}
-              onChange={(e) => setgivenName(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                setgivenName(value);
+              }}
             />
           </div>
           <div className="grid gap-3">
