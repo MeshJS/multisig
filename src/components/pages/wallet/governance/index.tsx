@@ -28,7 +28,6 @@ export default function PageGovernance() {
       }
     }
     load();
-    console.log(333, "randomState", randomState);
   }, [randomState]);
 
   if (appWallet === undefined) return <></>;
@@ -37,7 +36,6 @@ export default function PageGovernance() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <CardInfo appWallet={appWallet} />
         <AllProposals appWallet={appWallet} />
-        {!drepRegistered && <CardRegister appWallet={appWallet} />}
       </div>
     </main>
   );

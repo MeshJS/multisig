@@ -20,7 +20,7 @@ export default function RowLabelInfo({
     <div className="flex items-center gap-4">
       <div className="flex max-w-full items-center justify-center gap-2">
         {label && (
-          <div className="text-sm font-medium leading-none">{label}</div>
+          <div className="text-sm font-medium leading-none text-nowrap">{label}</div>
         )}
         {copyString ? (
           <Button

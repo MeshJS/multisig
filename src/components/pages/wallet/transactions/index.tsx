@@ -1,9 +1,7 @@
-import { Wallet } from "@/types/wallet";
 import AllTransactions from "./all-transactions";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import TransactionCard from "./transaction-card";
 import CardBalance from "./card-balance";
-import CardPendingTx from "./card-pending-tx";
 import SectionTitle from "@/components/common/section-title";
 import useAppWallet from "@/hooks/useAppWallet";
 

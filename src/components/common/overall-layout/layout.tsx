@@ -89,7 +89,7 @@ export default function RootLayout({
   const isHomePath = router.asPath == "/";
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
-  const walletPageName = walletPageRoute && walletPageRoute.split("/")[0];
+  const walletPageNames = walletPageRoute && walletPageRoute.split("/");
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -189,16 +189,21 @@ export default function RootLayout({
                       </Link>
                     </BreadcrumbLink>
                   </BreadcrumbItem>
-                  {walletPageName && (
-                    <>
-                      <BreadcrumbSeparator />
-                      <BreadcrumbItem>
-                        <BreadcrumbPage>
-                          {walletPageName.toUpperCase()}
-                        </BreadcrumbPage>
-                      </BreadcrumbItem>
-                    </>
-                  )}
+                  {walletPageNames &&
+                    walletPageNames.map((walletPageName, index) => (
+                      <>
+                        <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                          <BreadcrumbLink asChild>
+                            <Link
+                              href={`/wallets/${appWallet.id}/${walletPageNames.slice(0, index + 1).join("/")}`}
+                            >
+                              {walletPageName.toUpperCase()}
+                            </Link>
+                          </BreadcrumbLink>
+                        </BreadcrumbItem>
+                      </>
+                    ))}
                 </BreadcrumbList>
               </Breadcrumb>
             )}

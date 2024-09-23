@@ -1,5 +1,4 @@
 import { Plus } from "lucide-react";
-import { Wallet } from "@/types/wallet";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/common/card-content";
 import {
@@ -21,8 +20,11 @@ import Link from "next/link";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import useAppWallet from "@/hooks/useAppWallet";
 
-export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
+export default function CardRegister() {
+  const { appWallet } = useAppWallet();
+
   const { toast } = useToast();
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -130,7 +132,7 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
             givenName: givenName,
             motivations: motivations,
             objectives: objectives,
-            paymentAddress: appWallet.address,
+            paymentAddress: appWallet?.address,
             qualifications: qualifications,
             references: [
               {
@@ -160,6 +162,7 @@ export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
   async function registerDrep() {
     if (!connected) throw new Error("Not connected to wallet");
     if (!userAddress) throw new Error("No user address");
+    if (!appWallet) throw new Error("No wallet");
 
     setLoading(true);
     const registrationFee = "500000000";

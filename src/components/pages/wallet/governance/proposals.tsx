@@ -30,24 +30,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import RowLabelInfo from "@/components/common/row-label-info";
 
 export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
   const network = useSiteStore((state) => state.network);
   const [proposals, setProposals] = useState<ProposalMetadata[]>([]);
 
-  console.log(8888, proposals);
-
   useEffect(() => {
     async function load() {
-      console.log(1, "network", network);
       const blockchainProvider = getProvider(network);
       const proposals: {
         tx_hash: string;
         cert_index: string;
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
-      console.log(2, "proposals", proposals);
 
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
@@ -55,18 +50,15 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
           const proposalData = await blockchainProvider.get(
             `/governance/proposals/${proposal.tx_hash}/${proposal.cert_index}/metadata`,
           );
-          console.log(3, "proposalData", proposalData);
+
           _proposals.push({
             ...proposalData,
             governance_type: proposal.governance_type,
           });
-        } catch (e) {
-          console.log(e);
-        }
+        } catch (e) {}
       }
-      console.log(4, "_proposals", _proposals);
+
       setProposals(_proposals);
-      console.log(555, "_proposals", _proposals);
     }
     load();
   }, []);
@@ -75,18 +67,18 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
     <CardUI
       title="Proposals"
       description={`All proposals submitted by the community`}
-      headerDom={
-        <LinkCardanoscan
-          url={`address/${appWallet.address}`}
-          className="ml-auto gap-1"
-        >
-          <Button size="sm">
-            View All
-            <ArrowUpRight className="h-4 w-4" />
-          </Button>
-        </LinkCardanoscan>
-      }
-      cardClassName="col-span-2"
+      // headerDom={
+      //   <LinkCardanoscan
+      //     url={`address/${appWallet.address}`}
+      //     className="ml-auto gap-1"
+      //   >
+      //     <Button size="sm">
+      //       View All
+      //       <ArrowUpRight className="h-4 w-4" />
+      //     </Button>
+      //   </LinkCardanoscan>
+      // }
+      cardClassName="col-span-3"
     >
       {proposals.length > 0 && (
         <Table>
