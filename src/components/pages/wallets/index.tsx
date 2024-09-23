@@ -6,6 +6,7 @@ import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { getFirstAndLast } from "@/lib/strings";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
 
 export default function PageWallets() {
   const { wallets } = useUserWallets();
@@ -40,6 +41,10 @@ export default function PageWallets() {
 }
 
 function CardWallet({ wallet }: { wallet: Wallet }) {
+  const { transactions: pendingTransactions } = usePendingTransactions({
+    walletId: wallet.id,
+  });
+
   return (
     <Link href={`/wallets/${wallet.id}`}>
       <CardUI
@@ -57,6 +62,12 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
           value={getFirstAndLast(wallet.dRepId)}
           copyString={wallet.dRepId}
         />
+        {pendingTransactions && pendingTransactions.length > 0 && (
+          <RowLabelInfo
+            label="Pending Transactions"
+            value={pendingTransactions.length}
+          />
+        )}
       </CardUI>
     </Link>
   );

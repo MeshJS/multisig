@@ -4,6 +4,7 @@ import { numberWithCommas } from "@/lib/strings";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Wallet } from "@/types/wallet";
 import { useEffect, useState } from "react";
+import { NewTransaction } from "../new-transaction";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
@@ -57,6 +58,9 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         value={`₳ ${numberWithCommas(balance)}`}
         className="text-2xl font-bold"
       />
+      <div>
+        <NewTransaction walletId={appWallet.id} />
+      </div>
     </CardUI>
   );
 }

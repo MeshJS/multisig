@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowUpRight } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
@@ -39,9 +39,16 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
           </Button>
         </LinkCardanoscan>
       }
-      cardClassName="col-span-2"
+      cardClassName="col-span-3"
     >
       <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead></TableHead>
+            <TableHead>Amount</TableHead>
+            <TableHead>Signers</TableHead>
+          </TableRow>
+        </TableHeader>
         <TableBody>
           {walletTransactions &&
             walletTransactions.map((tx) => (
@@ -73,6 +80,84 @@ function TransactionRow({
   return (
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
+        <div className="flex gap-2 text-sm text-muted-foreground md:inline">
+          <LinkCardanoscan
+            url={`transaction/${transaction.hash}`}
+            className="flex w-44 gap-1"
+          >
+            {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
+            <ArrowUpRight className="h-3 w-3" />
+          </LinkCardanoscan>
+        </div>
+        {dbTransaction && (
+          <div className="overflow-auto break-all font-medium">
+            {dbTransaction.description}
+          </div>
+        )}
+      </TableCell>
+      <TableCell>
+        {transaction.outputs.map((output: any, i) => {
+          const isSpend = transaction.inputs.some(
+            (input: any) => input.address === appWallet.address,
+          );
+          if (isSpend && output.address != appWallet.address) {
+            return (
+              <div key={i} className="flex gap-2">
+                <div className="text-red-400">
+                  -
+                  {lovelaceToAda(
+                    output.amount.find((unit: any) => unit.unit === "lovelace")
+                      .quantity,
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {getFirstAndLast(output.address)}
+                </div>
+              </div>
+            );
+          } else if (!isSpend && output.address == appWallet.address) {
+            return (
+              <div key={i} className="flex gap-2">
+                <div className="text-sm text-muted-foreground"></div>
+                <div className="text-green-400">
+                  +
+                  {lovelaceToAda(
+                    output.amount.find((unit: any) => unit.unit === "lovelace")
+                      .quantity,
+                  )}
+                </div>
+              </div>
+            );
+          }
+        })}
+      </TableCell>
+      <TableCell>
+        {dbTransaction &&
+          dbTransaction.signedAddresses.map((address) => (
+            <Badge variant="outline" key={address}>
+              {appWallet.signersDescriptions.find(
+                (signer, index) =>
+                  appWallet.signersAddresses[index] === address,
+              ) || getFirstAndLast(address)}
+            </Badge>
+          ))}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function TransactionRowOld({
+  transaction,
+  appWallet,
+  dbTransaction,
+}: {
+  transaction: OnChainTransaction;
+  appWallet: Wallet;
+  dbTransaction?: Transaction;
+}) {
+  return (
+    <TableRow style={{ backgroundColor: "none" }}>
+      <TableCell>
         <div className="flex justify-between">
           <div className="overflow-auto break-all font-medium">
             {dbTransaction && dbTransaction.description}
@@ -90,13 +175,13 @@ function TransactionRow({
 
         <Table>
           <TableBody>
-            {transaction.outputs.map((output: any) => {
+            {transaction.outputs.map((output: any, i) => {
               const isSpend = transaction.inputs.some(
                 (input: any) => input.address === appWallet.address,
               );
               if (isSpend && output.address != appWallet.address) {
                 return (
-                  <>
+                  <div key={i}>
                     <TableRow key={output.address} className="border-none">
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
@@ -112,7 +197,7 @@ function TransactionRow({
                         )}
                       </TableCell>
                     </TableRow>
-                  </>
+                  </div>
                 );
               } else if (!isSpend && output.address == appWallet.address) {
                 return (

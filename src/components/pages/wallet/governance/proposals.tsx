@@ -12,7 +12,7 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import { useEffect, useState } from "react";
-import { getProvider } from "@/components/common/cardano-objects";
+import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";
 import {

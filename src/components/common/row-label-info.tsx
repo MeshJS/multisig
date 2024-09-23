@@ -19,7 +19,9 @@ export default function RowLabelInfo({
   return (
     <div className="flex items-center gap-4">
       <div className="flex max-w-full items-center justify-center gap-2">
-        {label && <p className="text-sm font-medium leading-none">{label}</p>}
+        {label && (
+          <div className="text-sm font-medium leading-none">{label}</div>
+        )}
         {copyString ? (
           <Button
             variant="ghost"
@@ -52,10 +54,10 @@ function Value({
   className?: string;
 }) {
   return (
-    <p
+    <div
       className={`${className ? className : "max-w-full overflow-hidden truncate whitespace-nowrap text-sm text-muted-foreground"}`}
     >
       {value}
-    </p>
+    </div>
   );
 }

@@ -1,5 +1,4 @@
-import ConnectWallet from "@/components/common/connect-wallet";
-import { useUserStore } from "@/lib/zustand/user";
+import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from "react";

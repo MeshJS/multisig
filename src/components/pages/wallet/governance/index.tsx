@@ -2,12 +2,15 @@ import { BlockfrostDrepInfo, Wallet } from "@/types/wallet";
 import CardInfo from "./card-info";
 import CardRegister from "./register";
 import { useEffect } from "react";
-import { getProvider } from "@/components/common/cardano-objects";
+import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useSiteStore } from "@/lib/zustand/site";
 import AllProposals from "./proposals";
+import useAppWallet from "@/hooks/useAppWallet";
 
-export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
+export default function PageGovernance() {
+  const { appWallet } = useAppWallet();
+
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
   const drepRegistered = useWalletsStore((state) => state.drepRegistered);
   const network = useSiteStore((state) => state.network);
@@ -27,6 +30,7 @@ export default function TabGovernance({ appWallet }: { appWallet: Wallet }) {
     load();
   }, [randomState]);
 
+  if (appWallet === undefined) return <></>;
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

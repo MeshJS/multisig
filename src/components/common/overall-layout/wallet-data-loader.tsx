@@ -1,19 +1,14 @@
-import PageHeader from "@/components/common/page-header";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useEffect, useState } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import { NewTransaction } from "./new-transaction";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import usePendingTransactions from "@/hooks/usePendingTransactions";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 
-export default function PageWallet({ walletId }: { walletId: string }) {
+export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
   const [loading, setLoading] = useState<boolean>(false);
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
@@ -21,19 +16,18 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   const setWalletTransactions = useWalletsStore(
     (state) => state.setWalletTransactions,
   );
-  const { transactions } = usePendingTransactions();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
 
   async function fetchUtxos() {
     if (appWallet) {
-      setWalletsUtxos(walletId, []);
+      setWalletsUtxos(appWallet?.id, []);
       const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(
         appWallet.address,
       );
-      setWalletsUtxos(walletId, utxos);
+      setWalletsUtxos(appWallet?.id, utxos);
     }
   }
 
@@ -55,7 +49,7 @@ export default function PageWallet({ walletId }: { walletId: string }) {
         });
       }
 
-      setWalletTransactions(walletId, _transactions);
+      setWalletTransactions(appWallet?.id, _transactions);
     }
   }
 
@@ -70,39 +64,20 @@ export default function PageWallet({ walletId }: { walletId: string }) {
   }
 
   useEffect(() => {
-    if (appWallet && walletsUtxos[walletId] === undefined) {
+    if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
       refreshWallet();
     }
   }, [appWallet]);
 
   return (
-    <>
-      {appWallet && (
-        <>
-          <PageHeader pageTitle={appWallet.name}>
-            <NewTransaction walletId={walletId} />
-            <Button size="sm" onClick={() => refreshWallet()}>
-              <RefreshCw className={`h-4 w-4 ${loading && "animate-spin"}`} />
-            </Button>
-          </PageHeader>
-
-          <Tabs defaultValue="transactions">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="transactions">
-                <div className="flex items-center gap-2">
-                  Transactions
-                  {transactions && transactions.length > 0 && (
-                    <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
-                      {transactions.length}
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-              <TabsTrigger value="governance">Governance</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </>
-      )}
-    </>
+    <Button
+      variant="secondary"
+      size="icon"
+      className="rounded-full"
+      onClick={() => refreshWallet()}
+      disabled={loading}
+    >
+      <RefreshCw className={`h-4 w-4 ${loading && "animate-spin"}`} />
+    </Button>
   );
 }

@@ -1,4 +1,5 @@
-import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
+import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

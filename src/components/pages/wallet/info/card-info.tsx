@@ -6,7 +6,7 @@ import RowLabelInfo from "@/components/common/row-label-info";
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   return (
     <CardUI
-      title="Info"
+      title="About This Wallet"
       description={appWallet.description}
       icon={Info}
       cardClassName="col-span-2"

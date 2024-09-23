@@ -9,7 +9,6 @@ import {
   Quantity,
   Unit,
 } from "@meshsdk/core";
-import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
@@ -20,6 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useSiteStore } from "@/lib/zustand/site";
+import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 
 export default function CardRegister({ appWallet }: { appWallet: Wallet }) {
   const { toast } = useToast();

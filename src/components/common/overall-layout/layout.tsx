@@ -1,21 +1,31 @@
 import Link from "next/link";
-import { Menu, Plus, Wallet2 } from "lucide-react";
+import { Menu } from "lucide-react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import React, { useEffect } from "react";
-import ConnectWallet from "./connect-wallet";
+import ConnectWallet from "../cardano-objects/connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { checkSignature, generateNonce } from "@meshsdk/core";
-import { Badge } from "../ui/badge";
-import useUserWallets from "@/hooks/useUserWallets";
-import usePendingTransactions from "@/hooks/usePendingTransactions";
-import { Wallet } from "@prisma/client";
-import { PageHomepage } from "../pages/homepage";
 import { useRouter } from "next/router";
+import MenuWallets from "./menus/wallets";
+import MenuWallet from "./menus/wallet";
+import useAppWallet from "@/hooks/useAppWallet";
+import WalletDropDown from "./wallet-drop-down";
+import { PageHomepage } from "@/components/pages/homepage";
+import WalletDataLoader from "./wallet-data-loader";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import Logo from "./logo";
 
 export default function RootLayout({
   children,
@@ -26,7 +36,8 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const { user, isLoading } = useUser();
-  const { wallets } = useUserWallets();
+  const router = useRouter();
+  const { appWallet } = useAppWallet();
 
   const { mutate: createUser } = api.user.createUser.useMutation({
     // onSuccess: async () => {},
@@ -75,6 +86,10 @@ export default function RootLayout({
   }, [user, isLoading]);
 
   const isLoggedIn = user !== undefined && user !== null;
+  const isHomePath = router.asPath == "/";
+  const isWalletPath = router.pathname.includes("/wallets/[wallet]");
+  const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
+  const walletPageName = walletPageRoute && walletPageRoute.split("/")[0];
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -82,7 +97,7 @@ export default function RootLayout({
         <div className="flex h-full max-h-screen flex-col gap-2">
           <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
             <Link href="/" className="flex items-center gap-2 font-semibold">
-              <Wallet2 className="h-6 w-6" />
+              <Logo />
               <span className="">Multi-Sig Platform</span>
             </Link>
             {/* <Button variant="outline" size="icon" className="ml-auto h-8 w-8">
@@ -91,7 +106,13 @@ export default function RootLayout({
             </Button> */}
           </div>
           <div className="flex-1">
-            <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
+            {isLoggedIn && (
+              <>
+                {isHomePath && <MenuWallets />}
+                {isWalletPath && <MenuWallet />}
+              </>
+            )}
+            {/* <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
               {wallets &&
                 wallets.map((wallet) => (
                   <WalletNavLink key={wallet.id} wallet={wallet} />
@@ -105,7 +126,7 @@ export default function RootLayout({
                   New Wallet
                 </Link>
               )}
-            </nav>
+            </nav> */}
           </div>
           <div className="mt-auto p-4"></div>
         </div>
@@ -155,32 +176,47 @@ export default function RootLayout({
               <div className="mt-auto"></div>
             </SheetContent>
           </Sheet>
-          <div className="w-full flex-1"></div>
-          {!connected ? <ConnectWallet /> : <UserDropDown />}
+          <div className="w-full flex-1">
+            {isWalletPath && appWallet && (
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href={`/wallets/${appWallet.id}`} asChild>
+                      <Link href={`/wallets/${appWallet.id}`}>
+                        <h1 className="flex-1 shrink-0 whitespace-nowrap text-2xl font-semibold tracking-tight sm:grow-0">
+                          {appWallet.name}
+                        </h1>
+                      </Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  {walletPageName && (
+                    <>
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>
+                          {walletPageName.toUpperCase()}
+                        </BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </>
+                  )}
+                </BreadcrumbList>
+              </Breadcrumb>
+            )}
+          </div>
+          {!connected ? (
+            <ConnectWallet />
+          ) : (
+            <>
+              <WalletDataLoader />
+              <WalletDropDown />
+              <UserDropDown />
+            </>
+          )}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
           {userAddress === undefined ? <PageHomepage /> : children}
         </main>
       </div>
     </div>
-  );
-}
-
-function WalletNavLink({ wallet }: { wallet: Wallet }) {
-  const { transactions } = usePendingTransactions({ walletId: wallet.id });
-
-  return (
-    <Link
-      href={`/wallets/${wallet.id}`}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
-    >
-      <Wallet2 className="h-4 w-4" />
-      {wallet.name}
-      {transactions && transactions.length > 0 && (
-        <Badge className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-          {transactions.length}
-        </Badge>
-      )}
-    </Link>
   );
 }

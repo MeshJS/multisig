@@ -1,15 +1,20 @@
 import { api } from "@/utils/api";
+import { useRouter } from "next/router";
 
 export default function usePendingTransactions({
   walletId,
 }: {
-  walletId: string;
-}) {
+  walletId?: string | undefined;
+} = {}) {
+  const router = useRouter();
+  const _walletId = walletId
+    ? walletId
+    : (router.query.wallet as string | undefined);
   const { data: transactions, isLoading } =
     api.transaction.getPendingTransactions.useQuery(
-      { walletId: walletId },
+      { walletId: _walletId! },
       {
-        enabled: walletId !== undefined,
+        enabled: _walletId !== undefined,
       },
     );
 

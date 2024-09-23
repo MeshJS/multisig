@@ -35,7 +35,7 @@ export default function TransactionCard({
   transaction: Transaction;
 }) {
   const { wallet, connected } = useWallet();
-  const { appWallet } = useAppWallet({ walletId });
+  const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const txJson = JSON.parse(transaction.txJson);
   const [loading, setLoading] = useState<boolean>(false);
@@ -140,7 +140,6 @@ export default function TransactionCard({
   }
 
   async function deleteTx() {
-    console.log("deleteTx");
     setLoading(true);
     deleteTransaction({
       transactionId: transaction.id,

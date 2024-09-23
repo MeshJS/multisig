@@ -10,8 +10,8 @@ import "@meshsdk/react/styles.css";
 import { MeshProvider } from "@meshsdk/react";
 import LayoutRoot from "@/components/layout/root";
 import { Toaster } from "@/components/ui/toaster";
-import RootLayout from "@/components/common/layout";
 import Metatags from "@/components/common/metatags";
+import RootLayout from "@/components/common/overall-layout/layout";
 
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,

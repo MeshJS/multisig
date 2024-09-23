@@ -1,4 +1,3 @@
-import { getProvider, getTxBuilder } from "@/components/common/cardano-objects";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,11 +34,13 @@ import {
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useSiteStore } from "@/lib/zustand/site";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 
 export function NewTransaction({ walletId }: { walletId: string }) {
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
-  const { appWallet } = useAppWallet({ walletId });
+  const { appWallet } = useAppWallet();
   const [addDescription, setAddDescription] = useState<boolean>(false);
   const [description, setDescription] = useState<string>("");
   const [addMetadata, setAddMetadata] = useState<boolean>(false);
