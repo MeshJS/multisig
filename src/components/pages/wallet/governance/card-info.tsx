@@ -8,7 +8,7 @@ import Button from "@/components/common/button";
 import Link from "next/link";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
-  const drepRegistered = useWalletsStore((state) => state.drepRegistered);
+  const drepInfo = useWalletsStore((state) => state.drepInfo);
 
   return (
     <CardUI title="Info" icon={Info}>
@@ -19,11 +19,10 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
       />
       <RowLabelInfo
         label="Status"
-        // value={drepRegistered ? "Registered" : `Not registered`}
-        value={`Unknown, blockfrost bug`}
+        value={drepInfo?.active ? "Registered" : `Not registered`}
       />
       <div className="flex gap-2">
-        <Button>
+        <Button disabled={drepInfo?.active}>
           <Link href={`/wallets/${appWallet.id}/governance/register`}>
             Register DRep
           </Link>

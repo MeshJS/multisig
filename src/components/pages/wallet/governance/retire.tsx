@@ -9,6 +9,7 @@ import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 
 export default function Retire({ appWallet }: { appWallet: Wallet }) {
   const [loading, setLoading] = useState<boolean>(false);
@@ -17,6 +18,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
   const network = useSiteStore((state) => state.network);
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
+  const drepInfo = useWalletsStore((state) => state.drepInfo);
 
   const { mutate: createTransaction } =
     api.transaction.createTransaction.useMutation({
@@ -91,7 +93,10 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
 
   return (
     <div>
-      <Button onClick={() => retireDrep()} disabled={loading}>
+      <Button
+        onClick={() => retireDrep()}
+        disabled={loading || !drepInfo?.active}
+      >
         {loading ? "Loading..." : "Retire DRep"}
       </Button>
     </div>
