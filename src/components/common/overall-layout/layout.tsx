@@ -72,15 +72,15 @@ export default function RootLayout({
         if (userStakeAddress === undefined || userAddress === undefined)
           throw new Error("User address is undefined");
 
-        const nonce = generateNonce(
-          "I agree to the terms and conditions of Multi-sig Platform. ",
-        );
-        const signature = await wallet.signData(nonce, userStakeAddress);
-        const result = checkSignature(nonce, signature);
+        // const nonce = generateNonce(
+        //   "I agree to the terms and conditions of Multi-sig Platform. ",
+        // );
+        // const signature = await wallet.signData(nonce, userStakeAddress);
+        // const result = checkSignature(nonce, signature);
 
-        if (result) {
+        // if (result) {
           createUser({ address: userAddress, stakeAddress: userStakeAddress });
-        }
+        // }
       }
     }
     load();
