@@ -22,10 +22,11 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import Logo from "./logo";
+
+const publicRoutes = ["/", "/drep/[id]"];
 
 export default function RootLayout({
   children,
@@ -90,6 +91,8 @@ export default function RootLayout({
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
   const walletPageNames = walletPageRoute && walletPageRoute.split("/");
+
+  const pageIsPublic = publicRoutes.includes(router.pathname);
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -219,7 +222,13 @@ export default function RootLayout({
           )}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
-          {userAddress === undefined ? <PageHomepage /> : children}
+          {pageIsPublic ? (
+            children
+          ) : userAddress === undefined ? (
+            <PageHomepage />
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

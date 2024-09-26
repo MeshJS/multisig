@@ -89,11 +89,22 @@ export default function TransactionCard({
       const signedAddresses = transaction.signedAddresses;
       signedAddresses.push(userAddress);
 
-      let state = transaction.state;
       let txHash = "";
+      let submitTx = false;
 
-      if (appWallet.numRequiredSigners == signedAddresses.length) {
-        state = 1;
+      if (
+        appWallet.type == "atLeast" &&
+        appWallet.numRequiredSigners == signedAddresses.length
+      ) {
+        submitTx = true;
+      } else if (
+        appWallet.type == "all" &&
+        appWallet.signersAddresses.length == signedAddresses.length
+      ) {
+        submitTx = true;
+      }
+
+      if (submitTx) {
         txHash = await wallet.submitTx(signedTx);
       }
 
@@ -102,7 +113,7 @@ export default function TransactionCard({
         txCbor: signedTx,
         signedAddresses: signedAddresses,
         rejectedAddresses: transaction.rejectedAddresses,
-        state: state,
+        state: submitTx ? 1 : 0,
         txHash: txHash,
       });
     } catch (e) {
@@ -323,21 +334,27 @@ export default function TransactionCard({
           </CardFooter>
         )}
 
-      {transaction.rejectedAddresses.length >= appWallet.numRequiredSigners && (
-        <>
-          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
-            <Button
-              variant="destructive"
-              onClick={() => deleteTx()}
-              disabled={loading}
-              loading={loading}
-              hold={3000}
-            >
-              Delete Transaction
-            </Button>
-          </CardFooter>
-        </>
-      )}
+      {(appWallet.type == "atLeast" &&
+        transaction.rejectedAddresses.length >=
+          appWallet.numRequiredSigners!) ||
+        (appWallet.type == "all" &&
+          transaction.rejectedAddresses.length ==
+            appWallet.signersAddresses.length) ||
+        (appWallet.type == "any" && (
+          <>
+            <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+              <Button
+                variant="destructive"
+                onClick={() => deleteTx()}
+                disabled={loading}
+                loading={loading}
+                hold={3000}
+              >
+                Delete Transaction
+              </Button>
+            </CardFooter>
+          </>
+        ))}
     </Card>
   );
 }

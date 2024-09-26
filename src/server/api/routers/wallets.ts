@@ -38,6 +38,7 @@ export const walletRouter = createTRPCRouter({
         numRequiredSigners: z.number(),
         scriptCbor: z.string(),
         stakeCredentialHash: z.string().optional(),
+        type: z.enum(["atLeast", "all", "any"]),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -50,6 +51,7 @@ export const walletRouter = createTRPCRouter({
           numRequiredSigners: input.numRequiredSigners,
           scriptCbor: input.scriptCbor,
           stakeCredentialHash: input.stakeCredentialHash,
+          type: input.type,
         },
       });
     }),

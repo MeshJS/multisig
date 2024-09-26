@@ -1,5 +1,12 @@
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ArrowUpRight } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
@@ -118,7 +125,6 @@ function TransactionRow({
           } else if (!isSpend && output.address == appWallet.address) {
             return (
               <div key={i} className="flex gap-2">
-                <div className="text-sm text-muted-foreground"></div>
                 <div className="text-green-400">
                   +
                   {lovelaceToAda(
@@ -130,6 +136,20 @@ function TransactionRow({
             );
           }
         })}
+        {dbTransaction && dbTransaction.description && (
+          <>
+            {dbTransaction.description == "DRep registration" && (
+              <div className="flex gap-2">
+                <div className="text-red-400">-{lovelaceToAda(500000000)}</div>
+              </div>
+            )}
+            {dbTransaction.description == "DRep retirement" && (
+              <div className="flex gap-2">
+                <div className="text-green-400">{lovelaceToAda(500000000)}</div>
+              </div>
+            )}
+          </>
+        )}
       </TableCell>
       <TableCell>
         {dbTransaction &&

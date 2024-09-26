@@ -44,12 +44,15 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
 
+      console.log(1, 'proposals', proposals);
+
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
         try {
           const proposalData = await blockchainProvider.get(
             `/governance/proposals/${proposal.tx_hash}/${proposal.cert_index}/metadata`,
           );
+          console.log(2, 'proposalData', proposalData);
 
           _proposals.push({
             ...proposalData,
@@ -87,9 +90,8 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
               <TableHead>Title</TableHead>
               <TableHead>Authors</TableHead>
               <TableHead>Abstract</TableHead>
-              <TableHead>Governance Action</TableHead>
+              <TableHead>Action</TableHead>
               <TableHead>
-                <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -126,9 +128,9 @@ function ProposalRow({
           .join(", ")}
       </TableCell>
       <TableCell>{proposal.json_metadata.body.abstract}</TableCell>
-      <TableCell>{proposal.governance_type}</TableCell>
+      <TableCell>{proposal.governance_type.split('_').join(" ").toUpperCase()}</TableCell>
       <TableCell>
-        <DropdownMenu>
+        {/* <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button aria-haspopup="true" size="icon" variant="ghost">
               <MoreHorizontal className="h-4 w-4" />
@@ -140,7 +142,7 @@ function ProposalRow({
             <DropdownMenuItem>Edit</DropdownMenuItem>
             <DropdownMenuItem>Delete</DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu> */}
       </TableCell>
     </TableRow>
   );

@@ -9,21 +9,27 @@ import {
 } from "@meshsdk/core";
 
 export function buildWallet(wallet: DbWallet, network: number) {
-  const nativeScript: NativeScript = {
-    type: "atLeast",
-    required: wallet.numRequiredSigners,
+  const nativeScript = {
+    type: wallet.type ? wallet.type : "atLeast",
     scripts: wallet.signersAddresses.map((addr) => ({
       type: "sig",
       keyHash: resolvePaymentKeyHash(addr),
     })),
   };
 
+  if (nativeScript.type == "atLeast") {
+    //@ts-ignore
+    nativeScript.required = wallet.numRequiredSigners!;
+  }
+
   const { address } = serializeNativeScript(
-    nativeScript,
+    nativeScript as NativeScript,
     wallet.stakeCredentialHash as undefined | string,
     network,
   );
-  const dRepId = resolveScriptHashDRepId(resolveNativeScriptHash(nativeScript));
+  const dRepId = resolveScriptHashDRepId(
+    resolveNativeScriptHash(nativeScript as NativeScript),
+  );
 
   return {
     ...wallet,

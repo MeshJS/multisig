@@ -170,9 +170,23 @@ export function NewTransaction({ walletId }: { walletId: string }) {
       signedAddresses.push(userAddress);
 
       let txHash = undefined;
-      let state = 0;
-      if (appWallet.numRequiredSigners == signedAddresses.length) {
-        state = 1;
+      let submitTx = false;
+
+      if (appWallet.type == "any") {
+        submitTx = true;
+      } else if (
+        appWallet.type == "atLeast" &&
+        appWallet.numRequiredSigners == signedAddresses.length
+      ) {
+        submitTx = true;
+      } else if (
+        appWallet.type == "all" &&
+        appWallet.signersAddresses.length == signedAddresses.length
+      ) {
+        submitTx = true;
+      }
+
+      if (submitTx) {
         txHash = await wallet.submitTx(signedTx);
       }
 
@@ -181,7 +195,7 @@ export function NewTransaction({ walletId }: { walletId: string }) {
         txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
         txCbor: signedTx,
         signedAddresses: [userAddress],
-        state: state,
+        state: submitTx ? 1 : 0,
         description: addDescription ? description : undefined,
         txHash: txHash,
       });

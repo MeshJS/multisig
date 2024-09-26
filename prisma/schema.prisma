@@ -22,10 +22,11 @@ model Wallet {
   description         String?
   signersAddresses    String[]
   signersDescriptions String[]
-  numRequiredSigners  Int
+  numRequiredSigners  Int?
   verified            String[]
   scriptCbor          String
   stakeCredentialHash String?
+  type                String?
 }
 
 model Transaction {
