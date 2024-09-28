@@ -7,9 +7,11 @@ import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { getFirstAndLast } from "@/lib/strings";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
+import { useState } from "react";
 
 export default function PageWallets() {
   const { wallets } = useUserWallets();
+  const [showArchived, setShowArchived] = useState(false);
 
   return (
     <>
@@ -18,6 +20,14 @@ export default function PageWallets() {
           <Button size="sm" asChild>
             <Link href="/wallets/new-wallet">New Wallet</Link>
           </Button>
+          {wallets && wallets.some((wallet) => wallet.isArchived) && (
+            <Button
+              variant={showArchived ? "default" : "secondary"}
+              onClick={() => setShowArchived(!showArchived)}
+            >
+              {showArchived ? "Hide Archived" : "Show Archived"}
+            </Button>
+          )}
         </PageHeader>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -31,9 +41,18 @@ export default function PageWallets() {
             </div>
           )}
           {wallets &&
-            wallets.map((wallet) => (
-              <CardWallet key={wallet.id} wallet={wallet as Wallet} />
-            ))}
+            wallets
+              .filter((wallet) => showArchived || !wallet.isArchived)
+              .sort((a, b) =>
+                a.isArchived === b.isArchived
+                  ? a.name.localeCompare(b.name)
+                  : a.isArchived
+                    ? 1
+                    : -1,
+              )
+              .map((wallet) => (
+                <CardWallet key={wallet.id} wallet={wallet as Wallet} />
+              ))}
         </div>
       </>
     </>
@@ -48,7 +67,7 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
   return (
     <Link href={`/wallets/${wallet.id}`}>
       <CardUI
-        title={wallet.name}
+        title={`${wallet.name} ${wallet.isArchived && "(Archived)"}`}
         description={wallet.description}
         cardClassName=""
       >

@@ -80,6 +80,7 @@ export const walletRouter = createTRPCRouter({
         walletId: z.string(),
         name: z.string(),
         description: z.string(),
+        isArchived: z.boolean(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -90,6 +91,7 @@ export const walletRouter = createTRPCRouter({
         data: {
           name: input.name,
           description: input.description,
+          isArchived: input.isArchived,
         },
       });
     }),

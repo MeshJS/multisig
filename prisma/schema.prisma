@@ -27,6 +27,7 @@ model Wallet {
   scriptCbor          String
   stakeCredentialHash String?
   type                String?
+  isArchived          Boolean  @default(false)
 }
 
 model Transaction {

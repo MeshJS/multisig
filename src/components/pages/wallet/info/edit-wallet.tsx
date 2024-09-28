@@ -9,12 +9,21 @@ import { useState } from "react";
 import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function EditWallet({ appWallet }: { appWallet: Wallet }) {
   const [name, setName] = useState<string>(appWallet.name);
   const [description, setDescription] = useState<string>(
     appWallet.description ?? "",
   );
+  const [isArchived, setIsArchived] = useState<boolean>(appWallet.isArchived);
   const [loading, setLoading] = useState<boolean>(false);
   const ctx = api.useUtils();
   const { toast } = useToast();
@@ -45,6 +54,7 @@ export function EditWallet({ appWallet }: { appWallet: Wallet }) {
       walletId: appWallet.id,
       name,
       description,
+      isArchived,
     });
   }
 
@@ -57,9 +67,7 @@ export function EditWallet({ appWallet }: { appWallet: Wallet }) {
     >
       <fieldset className="grid gap-6">
         <div className="grid gap-3">
-          <Label htmlFor="name">
-            DRep Name - This is the name that will be shown on your DRep profile
-          </Label>
+          <Label htmlFor="name">Name</Label>
           <Input
             id="name"
             type="text"
@@ -78,6 +86,30 @@ export function EditWallet({ appWallet }: { appWallet: Wallet }) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+        <div className="grid gap-3">
+          <Label htmlFor="type">
+            Mark wallet as archived (will not be displayed in the wallet list)
+          </Label>
+          <Select
+            value={isArchived ? "true" : "false"}
+            onValueChange={(value) =>
+              setIsArchived(value === "true" ? true : false)
+            }
+            defaultValue={"false"}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="false">
+                  Show this wallet in the wallet list
+                </SelectItem>
+                <SelectItem value="true">Archive this wallet</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Button

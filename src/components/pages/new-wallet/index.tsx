@@ -339,10 +339,9 @@ export default function PageNewWallet() {
                       setNativeScriptType(value as "all" | "any" | "atLeast")
                     }
                     defaultValue={"atLeast"}
-                    // style={{ width: "100%" }}
                   >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select a fruit" />
+                    <SelectTrigger>
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
