@@ -27,6 +27,10 @@
 - handle UI where amount is edge cases
 - support catayst reporting
 - convert to datetime
+- edit wallet info
+- migrate wallet by adjusting signers
+- move funds to new wallet
+- new db schema for multisig for changes
 
 product:
 - store + spend treasury funds

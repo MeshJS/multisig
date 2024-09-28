@@ -1,7 +1,9 @@
 import CardInfo from "./card-info";
 import CardSigners from "./card-signers";
+import { EditWallet } from "./edit-wallet";
 import InspectScript from "./inspect-script";
 import useAppWallet from "@/hooks/useAppWallet";
+import { MigrateWallet } from "./migrate-wallet";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -14,6 +16,8 @@ export default function WalletInfo() {
           <CardInfo appWallet={appWallet} />
           <CardSigners appWallet={appWallet} />
           <InspectScript appWallet={appWallet} />
+          <EditWallet appWallet={appWallet} />
+          <MigrateWallet appWallet={appWallet} />
         </div>
       </main>
     </>
