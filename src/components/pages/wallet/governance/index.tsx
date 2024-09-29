@@ -10,9 +10,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 
 export default function PageGovernance() {
   const { appWallet } = useAppWallet();
-
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
-  const drepRegistered = useWalletsStore((state) => state.drepRegistered);
   const network = useSiteStore((state) => state.network);
   const randomState = useSiteStore((state) => state.randomState);
 
@@ -23,7 +21,6 @@ export default function PageGovernance() {
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
           `/governance/dreps/${appWallet.dRepId}`,
         );
-        console.log(222, " drepInfo", drepInfo);
         setDrepInfo(drepInfo);
       }
     }

@@ -8,19 +8,23 @@ export default function RowLabelInfo({
   value,
   className,
   copyString,
+  allowOverflow = false,
 }: {
   children?: React.ReactNode;
   label?: string;
   value: string | React.ReactNode;
   className?: string;
   copyString?: string;
+  allowOverflow?: boolean;
 }) {
   const { toast } = useToast();
   return (
     <div className="flex items-center gap-4">
       <div className="flex max-w-full items-center justify-center gap-2">
         {label && (
-          <div className="text-sm font-medium leading-none text-nowrap">{label}</div>
+          <div className="text-nowrap text-sm font-medium leading-none min-w-20">
+            {label}
+          </div>
         )}
         {copyString ? (
           <Button
@@ -35,10 +39,18 @@ export default function RowLabelInfo({
             }}
             className="m-0 h-auto max-w-full justify-start truncate p-0"
           >
-            <Value value={value} className={className} />
+            <Value
+              value={value}
+              className={className}
+              allowOverflow={allowOverflow}
+            />
           </Button>
         ) : (
-          <Value value={value} className={className} />
+          <Value
+            value={value}
+            className={className}
+            allowOverflow={allowOverflow}
+          />
         )}
         {children && children}
       </div>
@@ -49,13 +61,15 @@ export default function RowLabelInfo({
 function Value({
   value,
   className,
+  allowOverflow = false,
 }: {
   value: string | React.ReactNode;
   className?: string;
+  allowOverflow?: boolean;
 }) {
   return (
     <div
-      className={`${className ? className : "max-w-full overflow-hidden truncate whitespace-nowrap text-sm text-muted-foreground"}`}
+      className={`${className ? className : `max-w-full ${allowOverflow ?? "overflow-hidden truncate whitespace-nowrap"} text-sm text-muted-foreground`}`}
     >
       {value}
     </div>

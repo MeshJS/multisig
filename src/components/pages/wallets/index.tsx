@@ -67,7 +67,7 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
   return (
     <Link href={`/wallets/${wallet.id}`}>
       <CardUI
-        title={`${wallet.name} ${wallet.isArchived && "(Archived)"}`}
+        title={`${wallet.name}${wallet.isArchived ? " (Archived)" :""}`}
         description={wallet.description}
         cardClassName=""
       >

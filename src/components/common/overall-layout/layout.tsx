@@ -79,7 +79,7 @@ export default function RootLayout({
         // const result = checkSignature(nonce, signature);
 
         // if (result) {
-          createUser({ address: userAddress, stakeAddress: userStakeAddress });
+        createUser({ address: userAddress, stakeAddress: userStakeAddress });
         // }
       }
     }
@@ -91,7 +91,6 @@ export default function RootLayout({
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
   const walletPageNames = walletPageRoute && walletPageRoute.split("/");
-
   const pageIsPublic = publicRoutes.includes(router.pathname);
 
   return (

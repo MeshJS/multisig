@@ -30,6 +30,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import Link from "next/link";
 
 export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
   const network = useSiteStore((state) => state.network);
@@ -44,7 +45,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
 
-      console.log(1, 'proposals', proposals);
+      console.log(1, "proposals", proposals);
 
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
@@ -52,7 +53,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
           const proposalData = await blockchainProvider.get(
             `/governance/proposals/${proposal.tx_hash}/${proposal.cert_index}/metadata`,
           );
-          console.log(2, 'proposalData', proposalData);
+          console.log(2, "proposalData", proposalData);
 
           _proposals.push({
             ...proposalData,
@@ -91,8 +92,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
               <TableHead>Authors</TableHead>
               <TableHead>Abstract</TableHead>
               <TableHead>Action</TableHead>
-              <TableHead>
-              </TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -120,7 +120,11 @@ function ProposalRow({
   return (
     <TableRow>
       <TableCell className="font-medium">
-        <Details proposal={proposal} />
+        <Link
+          href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
+        >
+          {proposal.json_metadata.body.title}
+        </Link>
       </TableCell>
       <TableCell>
         {proposal.json_metadata.authors
@@ -128,7 +132,9 @@ function ProposalRow({
           .join(", ")}
       </TableCell>
       <TableCell>{proposal.json_metadata.body.abstract}</TableCell>
-      <TableCell>{proposal.governance_type.split('_').join(" ").toUpperCase()}</TableCell>
+      <TableCell>
+        {proposal.governance_type.split("_").join(" ").toUpperCase()}
+      </TableCell>
       <TableCell>
         {/* <DropdownMenu>
           <DropdownMenuTrigger asChild>
