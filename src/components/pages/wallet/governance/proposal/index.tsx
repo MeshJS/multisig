@@ -1,7 +1,6 @@
 import CardUI from "@/components/common/card-content";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import RowLabelInfo from "@/components/common/row-label-info";
-import SectionTitle from "@/components/common/section-title";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";
 import { useEffect, useState } from "react";
@@ -11,14 +10,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import {
-  Label,
-  PolarRadiusAxis,
-  RadialBar,
-  RadialBarChart,
-  Pie,
-  PieChart,
-} from "recharts";
+import { Label, Pie, PieChart } from "recharts";
 
 const chartConfig = {
   yes: {
@@ -40,9 +32,7 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
   >(undefined);
-  const [proposalVotes, setProposalVotes] = useState<any>(
-    undefined,
-  );
+  const [proposalVotes, setProposalVotes] = useState<any>(undefined);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -105,6 +95,15 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
     return results.concat(proposalVotes);
   }
 
+  const totalVotes =
+    (proposalVotes &&
+      proposalVotes.reduce(
+        (acc: any, vote: { votes: any }) => acc + vote.votes,
+        0,
+      )) ||
+    0;
+
+  console.log(totalVotes);
   if (!proposalMetadata) return <></>;
 
   return (
@@ -140,7 +139,7 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
         />
       </CardUI>
 
-      {proposalVotes && (
+      {proposalVotes && totalVotes > 0 && (
         <CardUI title="Votes" cardClassName="w-96">
           <ChartContainer
             config={chartConfig}
@@ -173,11 +172,7 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
                             y={viewBox.cy}
                             className="fill-foreground text-3xl font-bold"
                           >
-                            {proposalVotes.reduce(
-                              (acc: any, vote: { votes: any }) =>
-                                acc + vote.votes,
-                              0,
-                            ) || 0}
+                            {totalVotes}
                           </tspan>
                           <tspan
                             x={viewBox.cx}
