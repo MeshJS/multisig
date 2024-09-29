@@ -2,7 +2,6 @@ import PageHeader from "@/components/common/page-header";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useEffect, useState } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import { NewTransaction } from "./new-transaction";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
@@ -80,7 +79,6 @@ export default function PageWallet({ walletId }: { walletId: string }) {
       {appWallet && (
         <>
           <PageHeader pageTitle={appWallet.name}>
-            <NewTransaction walletId={walletId} />
             <Button size="sm" onClick={() => refreshWallet()}>
               <RefreshCw className={`h-4 w-4 ${loading && "animate-spin"}`} />
             </Button>
