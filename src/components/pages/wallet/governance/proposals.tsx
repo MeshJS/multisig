@@ -133,6 +133,13 @@ function ProposalRow({
         {proposal.governance_type.split("_").join(" ").toUpperCase()}
       </TableCell>
       <TableCell>
+        <Button>
+          <Link
+            href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
+          >
+            Info
+          </Link>
+        </Button>
         {/* <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button aria-haspopup="true" size="icon" variant="ghost">

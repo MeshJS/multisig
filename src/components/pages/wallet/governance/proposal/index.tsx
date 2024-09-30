@@ -4,35 +4,14 @@ import RowLabelInfo from "@/components/common/row-label-info";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";
 import { useEffect, useState } from "react";
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { Label, Pie, PieChart } from "recharts";
-
-const chartConfig = {
-  yes: {
-    label: "Yes",
-    color: "green",
-  },
-  abstain: {
-    label: "Abstain",
-    color: "gray",
-  },
-  no: {
-    label: "No",
-    color: "red",
-  },
-} satisfies ChartConfig;
+import Link from "next/link";
+import Button from "@/components/common/button";
 
 export default function WalletGovernanceProposal({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
   >(undefined);
-  const [proposalVotes, setProposalVotes] = useState<any>(undefined);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -44,66 +23,11 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
 
       if (proposalData) {
         setProposalMetadata(proposalData);
-
-        const _proposalVotes = await getVote([], 1);
-
-        const _proposalVotes2 = _proposalVotes.reduce(
-          (acc, vote) => {
-            if (vote.vote == "yes") {
-              acc.yes += 1;
-            } else if (vote.vote == "abstain") {
-              acc.abstain += 1;
-            } else if (vote.vote == "no") {
-              acc.no += 1;
-            }
-            return acc;
-          },
-          { yes: 0, abstain: 0, no: 0 },
-        );
-
-        const proposalVotes = [];
-        for (const options of ["yes", "abstain", "no"] as const) {
-          proposalVotes.push({
-            option: options,
-            votes: _proposalVotes2[options] ? _proposalVotes2[options] : 0,
-            fill: chartConfig[options].color,
-          });
-        }
-
-        setProposalVotes(proposalVotes);
       }
     }
     get();
   }, []);
 
-  async function getVote(
-    results: any[],
-    page: number,
-  ): Promise<{ vote: string }[]> {
-    const [txHash, certIndex] = id.split(":");
-    const blockchainProvider = getProvider(network);
-    const proposalVotes = await blockchainProvider.get(
-      `/governance/proposals/${txHash}/${certIndex}/votes?page=${page}`,
-    );
-
-    if (proposalVotes.length == 100) {
-      return results.concat(
-        await getVote(results.concat(proposalVotes), page + 1),
-      );
-    }
-
-    return results.concat(proposalVotes);
-  }
-
-  const totalVotes =
-    (proposalVotes &&
-      proposalVotes.reduce(
-        (acc: any, vote: { votes: any }) => acc + vote.votes,
-        0,
-      )) ||
-    0;
-
-  console.log(totalVotes);
   if (!proposalMetadata) return <></>;
 
   return (
@@ -111,6 +35,28 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
       <CardUI
         title={proposalMetadata.json_metadata.body.title}
         cardClassName="w-full"
+        headerDom={
+          network == 1 && (
+            <div className="flex gap-4">
+              <Button>
+                <Link
+                  href={`https://gov.tools/governance_actions/${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
+                  target="_blank"
+                >
+                  GOV TOOL
+                </Link>
+              </Button>
+              <Button>
+                <Link
+                  href={`https://adastat.net/governances/${proposalMetadata.tx_hash}0${proposalMetadata.cert_index}`}
+                  target="_blank"
+                >
+                  ADASTAT
+                </Link>
+              </Button>
+            </div>
+          )
+        }
       >
         <RowLabelInfo
           label="Authors"
@@ -138,121 +84,6 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
           allowOverflow={true}
         />
       </CardUI>
-
-      {proposalVotes && totalVotes > 0 && (
-        <CardUI title="Votes" cardClassName="w-96">
-          <ChartContainer
-            config={chartConfig}
-            className="mx-auto aspect-square w-full max-w-[250px]"
-          >
-            <PieChart>
-              <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent hideLabel />}
-              />
-              <Pie
-                data={proposalVotes}
-                dataKey="votes"
-                nameKey="option"
-                innerRadius={60}
-                strokeWidth={5}
-              >
-                <Label
-                  content={({ viewBox }) => {
-                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                      return (
-                        <text
-                          x={viewBox.cx}
-                          y={viewBox.cy}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                        >
-                          <tspan
-                            x={viewBox.cx}
-                            y={viewBox.cy}
-                            className="fill-foreground text-3xl font-bold"
-                          >
-                            {totalVotes}
-                          </tspan>
-                          <tspan
-                            x={viewBox.cx}
-                            y={(viewBox.cy || 0) + 24}
-                            className="fill-muted-foreground"
-                          >
-                            Votes
-                          </tspan>
-                        </text>
-                      );
-                    }
-                  }}
-                />
-              </Pie>
-            </PieChart>
-            {/* <RadialBarChart
-              data={[proposalVotes]}
-              endAngle={180}
-              innerRadius={80}
-              outerRadius={130}
-            >
-              <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent hideLabel />}
-              />
-              <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-                <Label
-                  content={({ viewBox }) => {
-                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                      return (
-                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle">
-                          <tspan
-                            x={viewBox.cx}
-                            y={(viewBox.cy || 0) - 16}
-                            className="fill-foreground text-2xl font-bold"
-                          >
-                            {(
-                              proposalVotes.yes +
-                              proposalVotes.abstain +
-                              proposalVotes.no
-                            ).toLocaleString()}
-                          </tspan>
-                          <tspan
-                            x={viewBox.cx}
-                            y={(viewBox.cy || 0) + 4}
-                            className="fill-muted-foreground"
-                          >
-                            Total Votes
-                          </tspan>
-                        </text>
-                      );
-                    }
-                  }}
-                />
-              </PolarRadiusAxis>
-              <RadialBar
-                dataKey="yes"
-                stackId="a"
-                cornerRadius={5}
-                fill="var(--color-yes)"
-                className="stroke-transparent stroke-2"
-              />
-              <RadialBar
-                dataKey="abstain"
-                fill="var(--color-abstain)"
-                stackId="a"
-                cornerRadius={5}
-                className="stroke-transparent stroke-2"
-              />
-              <RadialBar
-                dataKey="no"
-                fill="var(--color-no)"
-                stackId="a"
-                cornerRadius={5}
-                className="stroke-transparent stroke-2"
-              />
-            </RadialBarChart> */}
-          </ChartContainer>
-        </CardUI>
-      )}
     </main>
   );
 }
