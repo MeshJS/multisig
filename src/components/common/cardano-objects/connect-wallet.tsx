@@ -11,9 +11,11 @@ import {
 import { useWallet, useWalletList } from "@meshsdk/react";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useEffect } from "react";
+import useUser from "@/hooks/useUser";
 
 export default function ConnectWallet() {
   const setNetwork = useSiteStore((state) => state.setNetwork);
+  const { user } = useUser();
 
   const wallets = useWalletList();
   const { connect, connected, wallet } = useWallet();
@@ -36,7 +38,8 @@ export default function ConnectWallet() {
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" className="rounded-full">
           <Wallet className="mr-2 h-5 w-5" />
-          Connect
+          {!user && connected && "Connecting..."}
+          {!user && !connected && "Connect"}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

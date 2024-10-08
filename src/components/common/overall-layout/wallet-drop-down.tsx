@@ -32,16 +32,25 @@ export default function WalletDropDown() {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {wallets &&
-          wallets.map((wallet, i) => (
-            <DropdownMenuItem
-              key={i}
-              onClick={async () => {
-                router.push(`/wallets/${wallet.id}`);
-              }}
-            >
-              {wallet.name}
-            </DropdownMenuItem>
-          ))}
+          wallets
+            .filter((wallet) => !wallet.isArchived)
+            .sort((a, b) =>
+              a.isArchived === b.isArchived
+                ? a.name.localeCompare(b.name)
+                : a.isArchived
+                  ? 1
+                  : -1,
+            )
+            .map((wallet, i) => (
+              <DropdownMenuItem
+                key={i}
+                onClick={async () => {
+                  router.push(`/wallets/${wallet.id}`);
+                }}
+              >
+                {wallet.name}
+              </DropdownMenuItem>
+            ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
