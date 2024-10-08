@@ -113,4 +113,90 @@ export const walletRouter = createTRPCRouter({
         },
       });
     }),
+
+  getWalletInvite: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.walletInvite.findUnique({
+        where: {
+          id: input.walletId,
+        },
+      });
+    }),
+
+  createWalletInvite: publicProcedure
+    .input(
+      z.object({
+        name: z.string(),
+        description: z.string(),
+        signersAddresses: z.array(z.string()),
+        signersDescriptions: z.array(z.string()),
+        ownerAddress: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.walletInvite.create({
+        data: {
+          name: input.name,
+          description: input.description,
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+          ownerAddress: input.ownerAddress,
+        },
+      });
+    }),
+
+  updateWalletInvite: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        name: z.string(),
+        description: z.string(),
+        signersAddresses: z.array(z.string()),
+        signersDescriptions: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.walletInvite.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          name: input.name,
+          description: input.description,
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+        },
+      });
+    }),
+
+  updateWalletInviteSigners: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        signersAddresses: z.array(z.string()),
+        signersDescriptions: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.walletInvite.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+        },
+      });
+    }),
+
+  deleteWalletInvite: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.walletInvite.delete({
+        where: {
+          id: input.walletId,
+        },
+      });
+    }),
 });

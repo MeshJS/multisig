@@ -37,7 +37,7 @@ import {
 export default function PageNewWallet() {
   const router = useRouter();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
-  const [signersDescriptions, setSignerDescription] = useState<string[]>([]);
+  const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [numSigners, setNumSigners] = useState<number>(0);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(0);
   const [name, setName] = useState<string>("");
@@ -50,9 +50,23 @@ export default function PageNewWallet() {
     "all" | "any" | "atLeast"
   >("atLeast");
   const [stakeKey, setStakeKey] = useState<string>(stakeCredentialHash);
+  const pathIsWalletInvite = router.pathname == "/wallets/new-wallet/[id]";
+  const walletInviteId = pathIsWalletInvite
+    ? (router.query.id as string)
+    : undefined;
+
+  const { mutate: deleteWalletInvite } =
+    api.wallet.deleteWalletInvite.useMutation({
+      onError: (e) => {
+        console.error(e);
+      },
+    });
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
     onSuccess: async () => {
+      if (pathIsWalletInvite) {
+        deleteWalletInvite({ walletId: walletInviteId! });
+      }
       setLoading(false);
       router.push("/wallets");
       toast({
@@ -67,15 +81,69 @@ export default function PageNewWallet() {
     },
   });
 
+  const { mutate: createWalletInvite } =
+    api.wallet.createWalletInvite.useMutation({
+      onSuccess: async (data) => {
+        setLoading(false);
+        router.push(`/wallets/new-wallet/${data.id}`);
+        navigator.clipboard.writeText(
+          `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
+        );
+        toast({
+          title: "Wallet Saved and invite link copied",
+          description:
+            "Your wallet has been saved and invite link copied in clipboard",
+          duration: 5000,
+        });
+      },
+      onError: (e) => {
+        setLoading(false);
+        console.error(e);
+      },
+    });
+
+  const { mutate: updateWalletInvite } =
+    api.wallet.updateWalletInvite.useMutation({
+      onSuccess: async () => {
+        setLoading(false);
+        toast({
+          title: "Wallet Info Updated",
+          description: "Your wallet has been saved",
+          duration: 5000,
+        });
+      },
+      onError: (e) => {
+        setLoading(false);
+        console.error(e);
+      },
+    });
+
+  const { data: walletInvite } = api.wallet.getWalletInvite.useQuery(
+    { walletId: walletInviteId! },
+    {
+      enabled: pathIsWalletInvite && walletInviteId !== undefined,
+    },
+  );
+
   useEffect(() => {
     if (userAddress === undefined) return;
     setSignerAddresses([userAddress, ""]);
+    setSignerDescriptions(["", ""]);
     setNumSigners(2);
   }, [userAddress]);
 
+  useEffect(() => {
+    if (pathIsWalletInvite && walletInvite) {
+      setName(walletInvite.name);
+      setDescription(walletInvite.description ?? "");
+      setSignerAddresses(walletInvite.signersAddresses);
+      setSignerDescriptions(walletInvite.signersDescriptions);
+    }
+  }, [pathIsWalletInvite, walletInvite]);
+
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
-    setSignerDescription([...signersDescriptions, ""]);
+    setSignerDescriptions([...signersDescriptions, ""]);
     setNumSigners(signersAddresses.length + 1);
   }
 
@@ -130,9 +198,37 @@ export default function PageNewWallet() {
     }
   }
 
+  async function handleInviteSigners() {
+    if (router.pathname == "/wallets/new-wallet") {
+      setLoading(true);
+      createWalletInvite({
+        name: name,
+        description: description,
+        signersAddresses: signersAddresses,
+        signersDescriptions: signersDescriptions,
+        ownerAddress: userAddress!,
+      });
+    }
+  }
+
+  async function handleSaveWallet() {
+    if (pathIsWalletInvite) {
+      setLoading(true);
+      updateWalletInvite({
+        walletId: walletInviteId!,
+        name: name,
+        description: description,
+        signersAddresses: signersAddresses,
+        signersDescriptions: signersDescriptions,
+      });
+    }
+  }
+
   return (
     <>
-      <PageHeader pageTitle="New Wallet"></PageHeader>
+      <PageHeader
+        pageTitle={`New Wallet${pathIsWalletInvite && walletInvite ? `: ${walletInvite.name}` : ""}`}
+      ></PageHeader>
       {user && (
         <div className="grid grid-cols-2 gap-4">
           <Card>
@@ -176,11 +272,46 @@ export default function PageNewWallet() {
             <CardHeader>
               <CardTitle>Signers</CardTitle>
               <CardDescription>
-                Add required signers to approve transactions
+                Add the addresses of the signers who will be required to approve
+                transactions in this wallet. The first address is your address
+                and will be automatically added. You can add more signers by
+                clicking the "Add Signers" button. You can also remove a signer
+                by clicking the "Remove" button next to the signer's address.
+                The number of required signers is the number of signers required
+                to approve a transaction to make it valid. Alternatively, you
+                can save this wallet and create a link to invite signers with
+                the "Invite Signers" button.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-6">
+                <div>
+                  {pathIsWalletInvite ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          `https://multisig.meshjs.dev/wallets/invite/${walletInviteId}`,
+                        );
+                        toast({
+                          title: "Copied invite link",
+                          description: "Invite link copied to clipboard",
+                          duration: 5000,
+                        });
+                      }}
+                      className="m-0 h-auto max-w-full justify-start truncate p-0"
+                    >
+                      Invite signers:
+                      https://multisig.meshjs.dev/wallets/invite/
+                      {walletInviteId}
+                    </Button>
+                  ) : (
+                    <Button onClick={() => handleInviteSigners()}>
+                      Invite Signers
+                    </Button>
+                  )}
+                </div>
+
                 <div className="grid gap-3">
                   <Table>
                     <TableBody>
@@ -219,11 +350,25 @@ export default function PageNewWallet() {
                                   onChange={(e) => {
                                     const newSigners = [...signersDescriptions];
                                     newSigners[index] = e.target.value;
-                                    setSignerDescription(newSigners);
+                                    setSignerDescriptions(newSigners);
                                   }}
                                   placeholder="optional name or description of this signer"
                                 />
                               </div>
+
+                              {signersAddresses.filter(
+                                (signer) => signer === signersAddresses[index],
+                              ).length > 1 && (
+                                <p className="text-red-500">
+                                  This address is duplicated with another signer
+                                </p>
+                              )}
+                              {!checkValidAddress(signersAddresses[index]!) &&
+                                signersAddresses[index] != "" && (
+                                  <p className="text-red-500">
+                                    This address is is invalid
+                                  </p>
+                                )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -241,7 +386,7 @@ export default function PageNewWallet() {
                                     ...signersDescriptions,
                                   ];
                                   newSignersDesc.splice(index, 1);
-                                  setSignerDescription(newSignersDesc);
+                                  setSignerDescriptions(newSignersDesc);
 
                                   setNumSigners(signersAddresses.length - 1);
                                 }}
@@ -367,7 +512,7 @@ export default function PageNewWallet() {
 
           <div></div>
 
-          <div className="mb-48">
+          <div className="flex gap-4">
             <Button
               onClick={createNativeScript}
               disabled={
@@ -379,6 +524,9 @@ export default function PageNewWallet() {
               }
             >
               {loading ? "Creating Wallet..." : "Create Wallet"}
+            </Button>
+            <Button onClick={handleSaveWallet} disabled={loading}>
+              {loading ? "Saving Wallet..." : "Save Wallet"}
             </Button>
           </div>
         </div>
