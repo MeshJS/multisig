@@ -6,6 +6,8 @@ import dynamic from "next/dynamic";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/router";
 import { api } from "@/utils/api";
+import CardUI from "@/components/common/card-content";
+import RowLabelInfo from "@/components/common/row-label-info";
 
 const World = dynamic(() => import("../../ui/globe").then((m) => m.World), {
   ssr: false,
@@ -427,15 +429,14 @@ export function PageHomepage() {
               team with multi-signature
             </p>
             {newWallet && (
-              <>
-                <p>
-                  You have been invited to join a multisig wallet as a signer
-                </p>
-                <p>
-                  <b>{newWallet.name}</b>
-                </p>
-                <p>Connect your wallet to accept the invitation</p>
-              </>
+              <CardUI
+                title={`Invited as signer`}
+                description={`You have been invited to join this wallet as a signer, connect your wallet to accept the invitation`}
+                cardClassName="text-left mt-4"
+              >
+                <RowLabelInfo label="Name" value={newWallet.name} />
+                <RowLabelInfo label="About" value={newWallet.description} />
+              </CardUI>
             )}
           </div>
           <div className="flex items-center justify-center">
