@@ -53,7 +53,10 @@ export default function RootLayout({
   useEffect(() => {
     async function load() {
       if (connected) {
-        const userAddress = (await wallet.getUsedAddresses())[0];
+        let userAddress = (await wallet.getUsedAddresses())[0];
+        if (userAddress === undefined) {
+          userAddress = (await wallet.getUnusedAddresses())[0];
+        }
         setUserAddress(userAddress);
       }
     }
@@ -67,7 +70,10 @@ export default function RootLayout({
     async function load() {
       if (isLoading === false && user === null) {
         const userStakeAddress = (await wallet.getRewardAddresses())[0];
-        const userAddress = (await wallet.getUsedAddresses())[0];
+        let userAddress = (await wallet.getUsedAddresses())[0];
+        if (userAddress === undefined) {
+          userAddress = (await wallet.getUnusedAddresses())[0];
+        }
 
         if (userStakeAddress === undefined || userAddress === undefined)
           throw new Error("User address is undefined");

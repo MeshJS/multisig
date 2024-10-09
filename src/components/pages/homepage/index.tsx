@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import useUser from "@/hooks/useUser";
+import { useRouter } from "next/router";
+import { api } from "@/utils/api";
 
 const World = dynamic(() => import("../../ui/globe").then((m) => m.World), {
   ssr: false,
@@ -403,6 +405,17 @@ export function PageHomepage() {
     setLive(true);
   }, []);
 
+  const router = useRouter();
+  const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
+  const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
+
+  const { data: newWallet } = api.wallet.getNewWallet.useQuery(
+    { walletId: newWalletId! },
+    {
+      enabled: pathIsNewWallet && newWalletId !== undefined,
+    },
+  );
+
   return (
     <div className="h-screen w-full lg:grid lg:grid-cols-3">
       <div className="flex items-center justify-center py-12">
@@ -413,6 +426,17 @@ export function PageHomepage() {
               Secure your treasury and participant in Cardano governance as a
               team with multi-signature
             </p>
+            {newWallet && (
+              <>
+                <p>
+                  You have been invited to join a multisig wallet as a signer
+                </p>
+                <p>
+                  <b>{newWallet.name}</b>
+                </p>
+                <p>Connect your wallet to accept the invitation</p>
+              </>
+            )}
           </div>
           <div className="flex items-center justify-center">
             {user ? (

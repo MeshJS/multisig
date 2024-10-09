@@ -9,52 +9,31 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  NativeScript,
-  resolvePaymentKeyHash,
-  serializeNativeScript,
-} from "@meshsdk/core";
-import { PlusCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
-import useUser from "@/hooks/useUser";
-import { stakeCredentialHash } from "@/data/cardano";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
-export default function PageWalletInvite() {
+export default function PageNewWalletInvite() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(false);
   const [signersDescription, setSignerDescription] = useState<string>("");
   const userAddress = useUserStore((state) => state.userAddress);
   const { toast } = useToast();
 
-  const pathIsWalletInvite = router.pathname == "/wallets/invite/[id]";
-  const walletInviteId = pathIsWalletInvite
-    ? (router.query.id as string)
-    : undefined;
+  const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
+  const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
-  const { data: walletInvite } = api.wallet.getWalletInvite.useQuery(
-    { walletId: walletInviteId! },
+  const { data: newWallet } = api.wallet.getNewWallet.useQuery(
+    { walletId: newWalletId! },
     {
-      enabled: pathIsWalletInvite && walletInviteId !== undefined,
+      enabled: pathIsNewWallet && newWalletId !== undefined,
     },
   );
 
-  const { mutate: updateWalletInviteSigners } =
-    api.wallet.updateWalletInviteSigners.useMutation({
+  const { mutate: updateNewWalletSigners } =
+    api.wallet.updateNewWalletSigners.useMutation({
       onSuccess: async () => {
         setLoading(false);
         toast({
@@ -71,17 +50,17 @@ export default function PageWalletInvite() {
     });
 
   async function addSigner() {
-    if (walletInvite === undefined || walletInvite === null)
+    if (newWallet === undefined || newWallet === null)
       throw new Error("Wallet invite is undefined");
     if (userAddress === undefined) throw new Error("User address is undefined");
 
     setLoading(true);
 
-    updateWalletInviteSigners({
-      walletId: walletInviteId!,
-      signersAddresses: [...walletInvite.signersAddresses, userAddress],
+    updateNewWalletSigners({
+      walletId: newWalletId!,
+      signersAddresses: [...newWallet.signersAddresses, userAddress],
       signersDescriptions: [
-        ...walletInvite.signersDescriptions,
+        ...newWallet.signersDescriptions,
         signersDescription,
       ],
     });
@@ -89,15 +68,17 @@ export default function PageWalletInvite() {
 
   return (
     <>
-      <PageHeader pageTitle="Invited as Signer Wallet"></PageHeader>
-      {walletInvite && (
+      <PageHeader
+        pageTitle={`Invited as Signer${newWallet ? ` for: ${newWallet.name}` : ""}`}
+      ></PageHeader>
+      {newWallet && (
         <div className="grid grid-cols-2 gap-4">
           <Card>
             <CardHeader>
               <CardTitle>You are invited as Signer</CardTitle>
               <CardDescription>
                 You are invited to be a signer of this wallet. Please confirm
-                your address and add a description.
+                your address and add your name for this wallet.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -127,41 +108,13 @@ export default function PageWalletInvite() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Wallet Info</CardTitle>
-              <CardDescription>
-                Some information to help you remember what is this wallet use
-                for
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div className="grid gap-3">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    className="w-full"
-                    value={walletInvite.name}
-                    disabled
-                  />
-                </div>
-                <div className="grid gap-3">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    className="min-h-32"
-                    value={walletInvite.description ?? ""}
-                    disabled
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div></div>
 
           <div className="flex gap-4">
-            <Button onClick={addSigner} disabled={loading}>
+            <Button
+              onClick={addSigner}
+              disabled={loading || !signersDescription}
+            >
               {loading ? "Adding..." : "Add me as signer"}
             </Button>
           </div>

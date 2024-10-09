@@ -44,7 +44,7 @@ model Transaction {
   updatedAt         DateTime @updatedAt
 }
 
-model WalletInvite {
+model NewWallet {
   id                  String   @id @default(cuid())
   name                String
   description         String?

@@ -38,7 +38,6 @@ export default function PageNewWallet() {
   const router = useRouter();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
-  const [numSigners, setNumSigners] = useState<number>(0);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(0);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -55,12 +54,13 @@ export default function PageNewWallet() {
     ? (router.query.id as string)
     : undefined;
 
-  const { mutate: deleteWalletInvite } =
-    api.wallet.deleteWalletInvite.useMutation({
+  const { mutate: deleteWalletInvite } = api.wallet.deleteNewWallet.useMutation(
+    {
       onError: (e) => {
         console.error(e);
       },
-    });
+    },
+  );
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
     onSuccess: async () => {
@@ -81,44 +81,43 @@ export default function PageNewWallet() {
     },
   });
 
-  const { mutate: createWalletInvite } =
-    api.wallet.createWalletInvite.useMutation({
-      onSuccess: async (data) => {
-        setLoading(false);
-        router.push(`/wallets/new-wallet/${data.id}`);
-        navigator.clipboard.writeText(
-          `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
-        );
-        toast({
-          title: "Wallet Saved and invite link copied",
-          description:
-            "Your wallet has been saved and invite link copied in clipboard",
-          duration: 5000,
-        });
-      },
-      onError: (e) => {
-        setLoading(false);
-        console.error(e);
-      },
-    });
+  const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
+    onSuccess: async (data) => {
+      setLoading(false);
+      router.push(`/wallets/new-wallet/${data.id}`);
+      navigator.clipboard.writeText(
+        `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
+      );
+      toast({
+        title: "Wallet Saved and invite link copied",
+        description:
+          "Your wallet has been saved and invite link copied in clipboard",
+        duration: 5000,
+      });
+    },
+    onError: (e) => {
+      setLoading(false);
+      console.error(e);
+    },
+  });
 
-  const { mutate: updateWalletInvite } =
-    api.wallet.updateWalletInvite.useMutation({
-      onSuccess: async () => {
-        setLoading(false);
-        toast({
-          title: "Wallet Info Updated",
-          description: "Your wallet has been saved",
-          duration: 5000,
-        });
-      },
-      onError: (e) => {
-        setLoading(false);
-        console.error(e);
-      },
-    });
+  const { mutate: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
+    onSuccess: async () => {
+      setLoading(false);
+      toast({
+        title: "Wallet Info Updated",
+        description: "Your wallet has been saved",
+        duration: 5000,
+      });
+      router.push("/wallets");
+    },
+    onError: (e) => {
+      setLoading(false);
+      console.error(e);
+    },
+  });
 
-  const { data: walletInvite } = api.wallet.getWalletInvite.useQuery(
+  const { data: walletInvite } = api.wallet.getNewWallet.useQuery(
     { walletId: walletInviteId! },
     {
       enabled: pathIsWalletInvite && walletInviteId !== undefined,
@@ -129,7 +128,6 @@ export default function PageNewWallet() {
     if (userAddress === undefined) return;
     setSignerAddresses([userAddress, ""]);
     setSignerDescriptions(["", ""]);
-    setNumSigners(2);
   }, [userAddress]);
 
   useEffect(() => {
@@ -144,7 +142,6 @@ export default function PageNewWallet() {
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
-    setNumSigners(signersAddresses.length + 1);
   }
 
   function createNativeScript() {
@@ -198,10 +195,10 @@ export default function PageNewWallet() {
     }
   }
 
-  async function handleInviteSigners() {
+  async function handleCreateNewWallet() {
     if (router.pathname == "/wallets/new-wallet") {
       setLoading(true);
-      createWalletInvite({
+      createNewWallet({
         name: name,
         description: description,
         signersAddresses: signersAddresses,
@@ -214,7 +211,7 @@ export default function PageNewWallet() {
   async function handleSaveWallet() {
     if (pathIsWalletInvite) {
       setLoading(true);
-      updateWalletInvite({
+      updateNewWallet({
         walletId: walletInviteId!,
         name: name,
         description: description,
@@ -306,7 +303,10 @@ export default function PageNewWallet() {
                       {walletInviteId}
                     </Button>
                   ) : (
-                    <Button onClick={() => handleInviteSigners()}>
+                    <Button
+                      onClick={() => handleCreateNewWallet()}
+                      disabled={loading}
+                    >
                       Invite Signers
                     </Button>
                   )}
@@ -387,8 +387,6 @@ export default function PageNewWallet() {
                                   ];
                                   newSignersDesc.splice(index, 1);
                                   setSignerDescriptions(newSignersDesc);
-
-                                  setNumSigners(signersAddresses.length - 1);
                                 }}
                                 disabled={index === 0}
                               >
@@ -422,22 +420,28 @@ export default function PageNewWallet() {
                   {nativeScriptType == "atLeast" ? (
                     <ToggleGroup
                       type="single"
-                      defaultValue="s"
                       variant="outline"
                       disabled={nativeScriptType != "atLeast"}
                     >
-                      {numSigners > 0 &&
-                        Array.from({ length: numSigners }, (_, i) => i + 1).map(
-                          (num) => (
-                            <ToggleGroupItem
-                              key={num}
-                              value={num.toString()}
-                              onClick={() => setNumRequiredSigners(num)}
-                            >
-                              {num}
-                            </ToggleGroupItem>
-                          ),
-                        )}
+                      {signersAddresses.length > 0 &&
+                        Array.from(
+                          { length: signersAddresses.length },
+                          (_, i) => i + 1,
+                        ).map((num) => (
+                          <ToggleGroupItem
+                            key={num}
+                            value={num.toString()}
+                            onClick={() => {
+                              if (numRequiredSigners == num) {
+                                setNumRequiredSigners(0);
+                              } else {
+                                setNumRequiredSigners(num);
+                              }
+                            }}
+                          >
+                            {num}
+                          </ToggleGroupItem>
+                        ))}
                     </ToggleGroup>
                   ) : (
                     <p>
@@ -525,9 +529,18 @@ export default function PageNewWallet() {
             >
               {loading ? "Creating Wallet..." : "Create Wallet"}
             </Button>
-            <Button onClick={handleSaveWallet} disabled={loading}>
-              {loading ? "Saving Wallet..." : "Save Wallet"}
-            </Button>
+            {pathIsWalletInvite ? (
+              <Button onClick={() => handleSaveWallet()} disabled={loading}>
+                {loading ? "Saving Wallet..." : "Save Wallet for Later"}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleCreateNewWallet()}
+                disabled={loading}
+              >
+                Save Wallet and Invite Signers
+              </Button>
+            )}
           </div>
         </div>
       )}

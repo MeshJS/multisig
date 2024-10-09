@@ -8,10 +8,29 @@ import RowLabelInfo from "@/components/common/row-label-info";
 import { getFirstAndLast } from "@/lib/strings";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { useState } from "react";
+import SectionTitle from "@/components/common/section-title";
+import { api } from "@/utils/api";
+import { useUserStore } from "@/lib/zustand/user";
 
 export default function PageWallets() {
   const { wallets } = useUserWallets();
   const [showArchived, setShowArchived] = useState(false);
+  const userAddress = useUserStore((state) => state.userAddress);
+
+  const { data: newPendingWallets } = api.wallet.getUserNewWallets.useQuery(
+    { address: userAddress! },
+    {
+      enabled: userAddress !== undefined,
+    },
+  );
+
+  const { data: getUserNewWalletsNotOwner } =
+    api.wallet.getUserNewWalletsNotOwner.useQuery(
+      { address: userAddress! },
+      {
+        enabled: userAddress !== undefined,
+      },
+    );
 
   return (
     <>
@@ -54,6 +73,38 @@ export default function PageWallets() {
                 <CardWallet key={wallet.id} wallet={wallet as Wallet} />
               ))}
         </div>
+
+        {newPendingWallets && newPendingWallets.length > 0 && (
+          <>
+            <SectionTitle>New Wallets to be created</SectionTitle>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {newPendingWallets
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((wallet) => (
+                  <CardWalletInvite
+                    key={wallet.id}
+                    wallet={wallet}
+                    viewOnly={false}
+                  />
+                ))}
+            </div>
+          </>
+        )}
+
+        {getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
+          <>
+            <SectionTitle>
+              Wallets you are invited and pending creation
+            </SectionTitle>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {getUserNewWalletsNotOwner
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((wallet) => (
+                  <CardWalletInvite key={wallet.id} wallet={wallet} />
+                ))}
+            </div>
+          </>
+        )}
       </>
     </>
   );
@@ -67,7 +118,7 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
   return (
     <Link href={`/wallets/${wallet.id}`}>
       <CardUI
-        title={`${wallet.name}${wallet.isArchived ? " (Archived)" :""}`}
+        title={`${wallet.name}${wallet.isArchived ? " (Archived)" : ""}`}
         description={wallet.description}
         cardClassName=""
       >
@@ -87,6 +138,34 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
             value={pendingTransactions.length}
           />
         )}
+      </CardUI>
+    </Link>
+  );
+}
+
+function CardWalletInvite({
+  wallet,
+  viewOnly = true,
+}: {
+  wallet: {
+    id: string;
+    name: string;
+    description: string | null;
+    signersAddresses: string[];
+  };
+  viewOnly?: boolean;
+}) {
+  return (
+    <Link href={viewOnly ? "" : `/wallets/new-wallet/${wallet.id}`}>
+      <CardUI
+        title={`${wallet.name}`}
+        description={wallet.description}
+        cardClassName=""
+      >
+        <RowLabelInfo
+          label="Number of signers"
+          value={wallet.signersAddresses.length}
+        />
       </CardUI>
     </Link>
   );

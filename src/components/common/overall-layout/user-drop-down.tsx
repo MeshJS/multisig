@@ -30,9 +30,11 @@ export default function UserDropDown() {
         {/* <DropdownMenuSeparator /> */}
         <DropdownMenuItem
           onClick={async () => {
-            navigator.clipboard.writeText(
-              (await wallet.getUsedAddresses())[0]!,
-            );
+            let userAddress = (await wallet.getUsedAddresses())[0];
+            if (userAddress === undefined) {
+              userAddress = (await wallet.getUnusedAddresses())[0];
+            }
+            navigator.clipboard.writeText(userAddress!);
             toast({
               title: "Copied",
               description: "Address copied to clipboard",

@@ -114,17 +114,42 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  getWalletInvite: publicProcedure
+  getUserNewWallets: publicProcedure
+    .input(z.object({ address: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.newWallet.findMany({
+        where: {
+          ownerAddress: input.address,
+        },
+      });
+    }),
+
+  getUserNewWalletsNotOwner: publicProcedure
+    .input(z.object({ address: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.newWallet.findMany({
+        where: {
+          signersAddresses: {
+            has: input.address,
+          },
+          ownerAddress: {
+            not: input.address,
+          },
+        },
+      });
+    }),
+
+  getNewWallet: publicProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.walletInvite.findUnique({
+      return ctx.db.newWallet.findUnique({
         where: {
           id: input.walletId,
         },
       });
     }),
 
-  createWalletInvite: publicProcedure
+  createNewWallet: publicProcedure
     .input(
       z.object({
         name: z.string(),
@@ -135,7 +160,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.walletInvite.create({
+      return ctx.db.newWallet.create({
         data: {
           name: input.name,
           description: input.description,
@@ -146,7 +171,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateWalletInvite: publicProcedure
+  updateNewWallet: publicProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -157,7 +182,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.walletInvite.update({
+      return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
         },
@@ -170,7 +195,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateWalletInviteSigners: publicProcedure
+  updateNewWalletSigners: publicProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -179,7 +204,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.walletInvite.update({
+      return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
         },
@@ -190,10 +215,10 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  deleteWalletInvite: publicProcedure
+  deleteNewWallet: publicProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.walletInvite.delete({
+      return ctx.db.newWallet.delete({
         where: {
           id: input.walletId,
         },
