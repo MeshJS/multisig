@@ -205,7 +205,7 @@ export default function PageNewTransaction() {
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>New Transaction</SectionTitle>
 
-      <CardUI title="Recipients" icon={`₳`} cardClassName="w-full">
+      <CardUI title="Recipients" cardClassName="w-full">
         <Table>
           <TableHeader>
             <TableRow>
@@ -246,8 +246,7 @@ export default function PageNewTransaction() {
 
       <CardUI
         title="Description"
-        description="Description is useful to provide more information to other signers."
-        icon={`₳`}
+        description="To provide more information to other signers."
         cardClassName="w-full"
       >
         <Table>
@@ -257,9 +256,17 @@ export default function PageNewTransaction() {
                 <Textarea
                   className="min-h-16"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="For @user contributed PR #123"
+                  onChange={(e) => {
+                    if (e.target.value.length <= 128)
+                      setDescription(e.target.value);
+                  }}
+                  placeholder="@user contributed PR #123"
                 />
+                {description.length >= 128 && (
+                  <p className="text-red-500">
+                    Description should be less than 128 characters
+                  </p>
+                )}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -267,9 +274,8 @@ export default function PageNewTransaction() {
       </CardUI>
 
       <CardUI
-        title="Metadata"
+        title="On-chain Metadata"
         description="Metadata attaches additional information to a transaction viewable on the blockchain."
-        icon={`₳`}
         cardClassName="w-full"
       >
         <Table>
@@ -279,9 +285,17 @@ export default function PageNewTransaction() {
                 <Textarea
                   className="min-h-16"
                   value={metadata}
-                  onChange={(e) => setMetadata(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 64)
+                      setMetadata(e.target.value);
+                  }}
                   placeholder={`PR #123`}
                 />
+                {metadata.length >= 64 && (
+                  <p className="text-red-500">
+                    Metadata should be less than 64 characters
+                  </p>
+                )}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -291,7 +305,6 @@ export default function PageNewTransaction() {
       <CardUI
         title="Transaction options"
         description="Additional options for the transaction."
-        icon={`₳`}
         cardClassName="w-full"
       >
         <Table>

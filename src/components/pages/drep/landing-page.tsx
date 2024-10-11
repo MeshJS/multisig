@@ -16,6 +16,11 @@ export default function DrepLandingPage({ drepid }: { drepid: string }) {
   useEffect(() => {
     async function load() {
       const blockchainProvider = getProvider(network);
+      const drepInfotmp: BlockfrostDrepInfo = await blockchainProvider.get(
+        `/governance/dreps/${drepid}`,
+      );
+      console.log(111, " drepInfotmp", drepInfotmp);
+
       const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepid}/metadata`,
       );

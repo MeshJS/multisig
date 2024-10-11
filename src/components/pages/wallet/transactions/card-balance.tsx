@@ -6,7 +6,6 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Wallet } from "@/types/wallet";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-// import { NewTransaction } from "../new-transaction";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
@@ -61,7 +60,6 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         className="text-2xl font-bold"
       />
       <div>
-        {/* <NewTransaction walletId={appWallet.id} /> */}
         <Link href={`/wallets/${appWallet.id}/transactions/new`}>
           <Button size="sm">New Transaction</Button>
         </Link>

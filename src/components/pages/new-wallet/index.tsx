@@ -246,8 +246,15 @@ export default function PageNewWallet() {
                     className="w-full"
                     placeholder="Fund12 Project X"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 64) setName(e.target.value);
+                    }}
                   />
+                  {name.length >= 64 && (
+                    <p className="text-red-500">
+                      Name should be less than 64 characters
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-3">
                   <Label htmlFor="description">Description</Label>
@@ -256,8 +263,16 @@ export default function PageNewWallet() {
                     className="min-h-32"
                     placeholder="For managing Fund12 Project X catalyst fund / dRep for team X / Company X main spending wallet"
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 256)
+                        setDescription(e.target.value);
+                    }}
                   />
+                  {description.length >= 256 && (
+                    <p className="text-red-500">
+                      Description should be less than 256 characters
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
