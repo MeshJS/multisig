@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Badge } from "@/components/ui/badge";
+import { ChatBubbleIcon } from "@radix-ui/react-icons";
 
 export default function MenuWallet() {
   const router = useRouter();
@@ -38,6 +39,15 @@ export default function MenuWallet() {
       >
         <Scale className="h-4 w-4" />
         Governance
+      </MenuLink>
+      <MenuLink
+        href={`${baseUrl}chat`}
+        className={
+          router.pathname == "/wallets/[wallet]/chat" ? "text-white" : ""
+        }
+      >
+        <ChatBubbleIcon className="h-4 w-4" />
+        Chat
       </MenuLink>
       <MenuLink
         href={`${baseUrl}info`}

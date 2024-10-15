@@ -3,13 +3,13 @@ import { Menu } from "lucide-react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import React, { useEffect } from "react";
+import React, { Fragment, useEffect } from "react";
 import ConnectWallet from "../cardano-objects/connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
-import { checkSignature, generateNonce } from "@meshsdk/core";
+// import { checkSignature, generateNonce } from "@meshsdk/core";
 import { useRouter } from "next/router";
 import MenuWallets from "./menus/wallets";
 import MenuWallet from "./menus/wallet";
@@ -25,6 +25,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import Logo from "./logo";
+import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 
 const publicRoutes = ["/", "/drep/[id]"];
 
@@ -39,6 +40,7 @@ export default function RootLayout({
   const { user, isLoading } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
+  const { generateNsec } = useNostrChat();
 
   const { mutate: createUser } = api.user.createUser.useMutation({
     // onSuccess: async () => {},
@@ -84,8 +86,14 @@ export default function RootLayout({
         // const signature = await wallet.signData(nonce, userStakeAddress);
         // const result = checkSignature(nonce, signature);
 
+        const nostrKey = generateNsec();
+
         // if (result) {
-        createUser({ address: userAddress, stakeAddress: userStakeAddress });
+        createUser({
+          address: userAddress,
+          stakeAddress: userStakeAddress,
+          nostrKey: JSON.stringify(nostrKey),
+        });
         // }
       }
     }
@@ -199,7 +207,7 @@ export default function RootLayout({
                   </BreadcrumbItem>
                   {walletPageNames &&
                     walletPageNames.map((walletPageName, index) => (
-                      <>
+                      <Fragment key={index}>
                         <BreadcrumbSeparator />
                         <BreadcrumbItem>
                           <BreadcrumbLink asChild>
@@ -210,7 +218,7 @@ export default function RootLayout({
                             </Link>
                           </BreadcrumbLink>
                         </BreadcrumbItem>
-                      </>
+                      </Fragment>
                     ))}
                 </BreadcrumbList>
               </Breadcrumb>

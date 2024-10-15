@@ -18,6 +18,7 @@ export const userRouter = createTRPCRouter({
       z.object({
         address: z.string(),
         stakeAddress: z.string(),
+        nostrKey: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -25,6 +26,23 @@ export const userRouter = createTRPCRouter({
         data: {
           address: input.address,
           stakeAddress: input.stakeAddress,
+          nostrKey: input.nostrKey,
+        },
+      });
+    }),
+
+  getNostrKeysByAddresses: publicProcedure
+    .input(z.object({ addresses: z.array(z.string()) }))
+    .query(async ({ ctx, input }) => {
+      return await ctx.db.user.findMany({
+        where: {
+          address: {
+            in: input.addresses,
+          },
+        },
+        select: {
+          address: true,
+          nostrKey: true,
         },
       });
     }),

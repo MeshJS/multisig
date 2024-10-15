@@ -5,7 +5,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
