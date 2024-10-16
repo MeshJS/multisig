@@ -29,7 +29,8 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
 
   const walletTransactions = _walletTransactions[appWallet.id];
 
-  if (walletTransactions === undefined) return <></>;
+  if (walletTransactions === undefined)
+    return <div className="text-center">No transactions yet</div>;
 
   return (
     <CardUI

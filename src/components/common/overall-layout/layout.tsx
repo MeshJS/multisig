@@ -26,8 +26,8 @@ import {
 } from "@/components/ui/breadcrumb";
 import Logo from "./logo";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
-
-const publicRoutes = ["/", "/drep/[id]"];
+import { publicRoutes } from "@/data/public-routes";
+import MenuHomepage from "./menus/homepage-links";
 
 export default function RootLayout({
   children,
@@ -122,11 +122,13 @@ export default function RootLayout({
             </Button> */}
           </div>
           <div className="flex-1">
-            {isLoggedIn && (
+            {isLoggedIn ? (
               <>
                 {isHomePath && <MenuWallets />}
                 {isWalletPath && <MenuWallet />}
               </>
+            ) : (
+              <MenuHomepage />
             )}
             {/* <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
               {wallets &&

@@ -26,10 +26,10 @@ export function PageHomepage() {
       <div className="flex items-center justify-center py-12">
         <div className="mx-auto grid max-w-[500px] gap-6">
           <div className="grid gap-2 text-center">
-            <h1 className="text-3xl font-bold">Multisig Platform on Cardano</h1>
+            <h1 className="text-3xl font-bold">Multisig Platform</h1>
             <p className="text-balance text-muted-foreground">
-              Secure your treasury and participant in Cardano governance as a
-              team with multi-signature
+              Secure your treasury and participant in governance, as a team with
+              multi-signature
             </p>
             {newWallet && (
               <CardUI

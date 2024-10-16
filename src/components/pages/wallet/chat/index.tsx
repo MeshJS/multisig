@@ -98,7 +98,8 @@ export default function WalletChat() {
         >
           <AnimatePresence>
             {messages &&
-              messages
+              messages.length > 0 &&
+              [...new Set(messages)]
                 .sort((a, b) => a.timestamp - b.timestamp)
                 .map((msg) => (
                   <motion.div
