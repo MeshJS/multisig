@@ -11,6 +11,7 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    BLOB_READ_WRITE_TOKEN: z.string(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -51,6 +52,7 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET,
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

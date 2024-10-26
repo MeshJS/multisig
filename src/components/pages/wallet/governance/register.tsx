@@ -55,6 +55,7 @@ export default function CardRegister() {
         setlinks("");
         setidentity("");
         void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
       },
       onError: (e) => {
         console.error(e);

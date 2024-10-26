@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { put } from "@vercel/blob";
+import { env } from "@/env";
 
 export default async function handler(
   req: NextApiRequest,
@@ -11,7 +12,7 @@ export default async function handler(
 
     const response = await put(pathname, value, {
       access: "public",
-      token: process.env.NEXT_PUBLIC_VERCEL_TOKEN,
+      token: env.BLOB_READ_WRITE_TOKEN,
     });
 
     res.status(200).json({ url: response.url });

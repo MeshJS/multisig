@@ -27,7 +27,7 @@ model Wallet {
   verified            String[]
   scriptCbor          String
   stakeCredentialHash String?
-  type                String?
+  type                String
   isArchived          Boolean  @default(false)
 }
 

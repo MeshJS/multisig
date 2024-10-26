@@ -30,6 +30,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
           duration: 5000,
         });
         void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
       },
       onError: (e) => {
         console.error(e);

@@ -68,6 +68,7 @@ export default function PageNewTransaction() {
           duration: 5000,
         });
         void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
         reset();
       },
       onError: (e) => {

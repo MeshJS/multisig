@@ -52,6 +52,7 @@ export default function TransactionCard({
         });
         setLoading(false);
         void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
       },
       onError: (e) => {
         console.error(e);
@@ -69,6 +70,7 @@ export default function TransactionCard({
         });
         setLoading(false);
         void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
       },
       onError: (e) => {
         console.error(e);
