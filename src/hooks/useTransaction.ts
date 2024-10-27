@@ -17,7 +17,6 @@ export default function useTransaction() {
 
   const { mutateAsync: createTransaction } =
     api.transaction.createTransaction.useMutation({
-      onSuccess: async () => {},
       onError: (e) => {
         console.error("createTransaction", e);
       },
