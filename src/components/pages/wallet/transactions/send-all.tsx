@@ -6,39 +6,43 @@ import { useState } from "react";
 import { useWallet } from "@meshsdk/react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { api } from "@/utils/api";
-import { useToast } from "@/hooks/use-toast";
+// import { api } from "@/utils/api";
+// import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import useTransaction from "@/hooks/useTransaction";
 
 export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
   const { wallet, connected } = useWallet();
-  const [loading, setLoading] = useState<boolean>(false);
+  // const [loading, setLoading] = useState<boolean>(false);
   const [recipientAddress, setRecipientAddress] = useState<string>("");
-  const ctx = api.useUtils();
-  const { toast } = useToast();
+  // const ctx = api.useUtils();
+  // const { toast } = useToast();
   const userAddress = useUserStore((state) => state.userAddress);
   const network = useSiteStore((state) => state.network);
+  const { newTransaction } = useTransaction();
+  const loading = useSiteStore((state) => state.loading);
+  const setLoading = useSiteStore((state) => state.setLoading);
 
-  const { mutate: createTransaction } =
-    api.transaction.createTransaction.useMutation({
-      onSuccess: async () => {
-        setLoading(false);
-        toast({
-          title: "Transaction Created",
-          description: "Your transaction has been created",
-          duration: 5000,
-        });
-        void ctx.transaction.getPendingTransactions.invalidate();
-        setRecipientAddress("");
-      },
-      onError: (e) => {
-        console.error(e);
-        setLoading(false);
-      },
-    });
+  // const { mutate: createTransaction } =
+  //   api.transaction.createTransaction.useMutation({
+  //     onSuccess: async () => {
+  //       setLoading(false);
+  //       toast({
+  //         title: "Transaction Created",
+  //         description: "Your transaction has been created",
+  //         duration: 5000,
+  //       });
+  //       void ctx.transaction.getPendingTransactions.invalidate();
+  //       setRecipientAddress("");
+  //     },
+  //     onError: (e) => {
+  //       console.error(e);
+  //       setLoading(false);
+  //     },
+  //   });
 
   async function sendAll() {
     if (!connected) throw new Error("Wallet not connected");
@@ -67,29 +71,35 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
 
       txBuilder.changeAddress(recipientAddress);
 
-      const unsignedTx = await txBuilder.complete();
+      // const unsignedTx = await txBuilder.complete();
 
-      const signedTx = await wallet.signTx(unsignedTx, true);
+      // const signedTx = await wallet.signTx(unsignedTx, true);
 
-      const signedAddresses = [];
-      signedAddresses.push(userAddress);
+      // const signedAddresses = [];
+      // signedAddresses.push(userAddress);
 
-      let txHash = undefined;
-      let state = 0;
-      if (appWallet.numRequiredSigners == signedAddresses.length) {
-        state = 1;
-        txHash = await wallet.submitTx(signedTx);
-      }
+      // let txHash = undefined;
+      // let state = 0;
+      // if (appWallet.numRequiredSigners == signedAddresses.length) {
+      //   state = 1;
+      //   txHash = await wallet.submitTx(signedTx);
+      // }
 
-      createTransaction({
-        walletId: appWallet.id,
-        txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-        txCbor: signedTx,
-        signedAddresses: [userAddress],
-        state: state,
-        description: `Send all assets`,
-        txHash: txHash,
+      // createTransaction({
+      //   walletId: appWallet.id,
+      //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
+      //   txCbor: signedTx,
+      //   signedAddresses: [userAddress],
+      //   state: state,
+      //   description: `Send all assets`,
+      //   txHash: txHash,
+      // });
+
+      await newTransaction({
+        txBuilder,
+        description: "Send all assets",
       });
+      setRecipientAddress("");
     } catch (e) {
       console.error(e);
     }

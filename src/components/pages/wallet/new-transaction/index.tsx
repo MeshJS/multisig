@@ -6,10 +6,10 @@ import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "@/utils/api";
+// import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
+// import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -29,23 +29,26 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import CardUI from "@/components/common/card-content";
+import useTransaction from "@/hooks/useTransaction";
 
-// todo make this a new page instead of dialog
 export default function PageNewTransaction() {
-  const { wallet, connected } = useWallet();
+  const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
   const [addDescription, setAddDescription] = useState<boolean>(false);
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
   const [sendAllAssets, setSendAllAssets] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
+  // const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
-  const { toast } = useToast();
-  const ctx = api.useUtils();
+  // const { toast } = useToast();
+  // const ctx = api.useUtils();
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
   const [amounts, setAmounts] = useState<string[]>([""]);
   const network = useSiteStore((state) => state.network);
+  const { newTransaction } = useTransaction();
+  const loading = useSiteStore((state) => state.loading);
+  const setLoading = useSiteStore((state) => state.setLoading);
 
   useEffect(() => {
     reset();
@@ -59,23 +62,23 @@ export default function PageNewTransaction() {
     setLoading(false);
   }
 
-  const { mutate: createTransaction } =
-    api.transaction.createTransaction.useMutation({
-      onSuccess: async () => {
-        toast({
-          title: "Transaction Created",
-          description: "Your transaction has been created",
-          duration: 5000,
-        });
-        void ctx.transaction.getPendingTransactions.invalidate();
-        void ctx.transaction.getAllTransactions.invalidate();
-        reset();
-      },
-      onError: (e) => {
-        console.error(e);
-        setLoading(false);
-      },
-    });
+  // const { mutate: createTransaction } =
+  //   api.transaction.createTransaction.useMutation({
+  //     onSuccess: async () => {
+  //       toast({
+  //         title: "Transaction Created",
+  //         description: "Your transaction has been created",
+  //         duration: 5000,
+  //       });
+  //       void ctx.transaction.getPendingTransactions.invalidate();
+  //       void ctx.transaction.getAllTransactions.invalidate();
+  //       reset();
+  //     },
+  //     onError: (e) => {
+  //       console.error(e);
+  //       setLoading(false);
+  //     },
+  //   });
 
   async function createNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
@@ -154,42 +157,48 @@ export default function PageNewTransaction() {
         txBuilder.changeAddress(appWallet.address);
       }
 
-      const unsignedTx = await txBuilder.complete();
-      const signedTx = await wallet.signTx(unsignedTx, true);
+      // const unsignedTx = await txBuilder.complete();
+      // const signedTx = await wallet.signTx(unsignedTx, true);
 
-      const signedAddresses = [];
-      signedAddresses.push(userAddress);
+      // const signedAddresses = [];
+      // signedAddresses.push(userAddress);
 
-      let txHash = undefined;
-      let submitTx = false;
+      // let txHash = undefined;
+      // let submitTx = false;
 
-      if (appWallet.type == "any") {
-        submitTx = true;
-      } else if (
-        appWallet.type == "atLeast" &&
-        appWallet.numRequiredSigners == signedAddresses.length
-      ) {
-        submitTx = true;
-      } else if (
-        appWallet.type == "all" &&
-        appWallet.signersAddresses.length == signedAddresses.length
-      ) {
-        submitTx = true;
-      }
+      // if (appWallet.type == "any") {
+      //   submitTx = true;
+      // } else if (
+      //   appWallet.type == "atLeast" &&
+      //   appWallet.numRequiredSigners == signedAddresses.length
+      // ) {
+      //   submitTx = true;
+      // } else if (
+      //   appWallet.type == "all" &&
+      //   appWallet.signersAddresses.length == signedAddresses.length
+      // ) {
+      //   submitTx = true;
+      // }
 
-      if (submitTx) {
-        txHash = await wallet.submitTx(signedTx);
-      }
+      // if (submitTx) {
+      //   txHash = await wallet.submitTx(signedTx);
+      // }
 
-      createTransaction({
-        walletId: appWallet.id,
-        txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-        txCbor: signedTx,
-        signedAddresses: [userAddress],
-        state: submitTx ? 1 : 0,
+      // createTransaction({
+      //   walletId: appWallet.id,
+      //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
+      //   txCbor: signedTx,
+      //   signedAddresses: [userAddress],
+      //   state: submitTx ? 1 : 0,
+      //   description: addDescription ? description : undefined,
+      //   txHash: txHash,
+      // });
+
+      await newTransaction({
+        txBuilder,
         description: addDescription ? description : undefined,
-        txHash: txHash,
       });
+      reset();
     } catch (e) {
       setLoading(false);
       setError("Error creating transaction");
@@ -204,7 +213,7 @@ export default function PageNewTransaction() {
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <SectionTitle>New Transaction</SectionTitle>
+      <SectionTitle>New Transaction1</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
         <Table>

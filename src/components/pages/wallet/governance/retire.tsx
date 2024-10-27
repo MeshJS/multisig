@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Wallet } from "@/types/wallet";
-import { useState } from "react";
-import { api } from "@/utils/api";
-import { useToast } from "@/hooks/use-toast";
+// import { useState } from "react";
+// import { api } from "@/utils/api";
+// import { useToast } from "@/hooks/use-toast";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
@@ -10,37 +10,43 @@ import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import useTransaction from "@/hooks/useTransaction";
 
 export default function Retire({ appWallet }: { appWallet: Wallet }) {
-  const [loading, setLoading] = useState<boolean>(false);
-  const { toast } = useToast();
-  const ctx = api.useUtils();
+  // const [loading, setLoading] = useState<boolean>(false);
+  // const { toast } = useToast();
+  // const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
-  const { wallet, connected } = useWallet();
+  const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const drepInfo = useWalletsStore((state) => state.drepInfo);
+  const { newTransaction } = useTransaction();
+  const loading = useSiteStore((state) => state.loading);
+  const setLoading = useSiteStore((state) => state.setLoading);
 
-  const { mutate: createTransaction } =
-    api.transaction.createTransaction.useMutation({
-      onSuccess: async () => {
-        setLoading(false);
-        toast({
-          title: "Transaction Created",
-          description: "DRep registration transaction has been created",
-          duration: 5000,
-        });
-        void ctx.transaction.getPendingTransactions.invalidate();
-        void ctx.transaction.getAllTransactions.invalidate();
-      },
-      onError: (e) => {
-        console.error(e);
-        setLoading(false);
-      },
-    });
+  // const { mutate: createTransaction } =
+  //   api.transaction.createTransaction.useMutation({
+  //     onSuccess: async () => {
+  //       setLoading(false);
+  //       toast({
+  //         title: "Transaction Created",
+  //         description: "DRep registration transaction has been created",
+  //         duration: 5000,
+  //       });
+  //       void ctx.transaction.getPendingTransactions.invalidate();
+  //       void ctx.transaction.getAllTransactions.invalidate();
+  //     },
+  //     onError: (e) => {
+  //       console.error(e);
+  //       setLoading(false);
+  //     },
+  //   });
 
   async function retireDrep() {
     if (!connected) throw new Error("Not connected to wallet");
     if (!userAddress) throw new Error("No user address");
+
+    setLoading(true);
 
     const blockchainProvider = getProvider(network);
     const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
@@ -67,28 +73,34 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
       .drepDeregistrationCertificate(appWallet.dRepId, "500000000")
       .certificateScript(appWallet.scriptCbor);
 
-    const unsignedTx = await txBuilder.complete();
+    // const unsignedTx = await txBuilder.complete();
 
-    const signedTx = await wallet.signTx(unsignedTx, true);
+    // const signedTx = await wallet.signTx(unsignedTx, true);
 
-    const signedAddresses = [];
-    signedAddresses.push(userAddress);
+    // const signedAddresses = [];
+    // signedAddresses.push(userAddress);
 
-    let txHash = undefined;
-    let state = 0;
-    if (appWallet.numRequiredSigners == signedAddresses.length) {
-      state = 1;
-      txHash = await wallet.submitTx(signedTx);
-    }
+    // let txHash = undefined;
+    // let state = 0;
+    // if (appWallet.numRequiredSigners == signedAddresses.length) {
+    //   state = 1;
+    //   txHash = await wallet.submitTx(signedTx);
+    // }
 
-    createTransaction({
-      walletId: appWallet.id,
-      txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-      txCbor: signedTx,
-      signedAddresses: [userAddress],
-      state: state,
+    // createTransaction({
+    //   walletId: appWallet.id,
+    //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
+    //   txCbor: signedTx,
+    //   signedAddresses: [userAddress],
+    //   state: state,
+    //   description: "DRep retirement",
+    //   txHash: txHash,
+    // });
+
+    await newTransaction({
+      txBuilder,
       description: "DRep retirement",
-      txHash: txHash,
+      toastMessage: "DRep registration transaction has been created",
     });
   }
 

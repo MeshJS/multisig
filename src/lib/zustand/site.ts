@@ -6,6 +6,8 @@ interface SiteState {
   setNetwork: (network: number) => void;
   randomState: number;
   setRandomState: () => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
 export const useSiteStore = create<SiteState>()(
@@ -15,6 +17,8 @@ export const useSiteStore = create<SiteState>()(
       setNetwork: (network: number) => set({ network }),
       randomState: 0,
       setRandomState: () => set({ randomState: Math.random() }),
+      loading: false,
+      setLoading: (loading: boolean) => set({ loading }),
     }),
     { name: "msig-site" },
   ),
