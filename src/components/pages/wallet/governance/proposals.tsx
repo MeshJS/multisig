@@ -7,21 +7,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal } from "lucide-react";
-import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import { useEffect, useState } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +35,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
         cert_index: string;
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
+      console.log("proposals", proposals);
 
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
@@ -51,6 +43,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
           const proposalData = await blockchainProvider.get(
             `/governance/proposals/${proposal.tx_hash}/${proposal.cert_index}/metadata`,
           );
+          console.log("proposalData", proposalData);
 
           _proposals.push({
             ...proposalData,

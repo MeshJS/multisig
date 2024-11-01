@@ -6,12 +6,22 @@ import { ProposalMetadata } from "@/types/governance";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Button from "@/components/common/button";
+import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { useWalletsStore } from "@/lib/zustand/wallets";
+import useAppWallet from "@/hooks/useAppWallet";
+import useTransaction from "@/hooks/useTransaction";
+import { Check, Loader } from "lucide-react";
 
 export default function WalletGovernanceProposal({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
   >(undefined);
+  const drepInfo = useWalletsStore((state) => state.drepInfo);
+  const { appWallet } = useAppWallet();
+  const { newTransaction } = useTransaction();
+  const loading = useSiteStore((state) => state.loading);
+  const setLoading = useSiteStore((state) => state.setLoading);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -27,6 +37,48 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
     }
     get();
   }, []);
+
+  async function vote(voteKind: "Yes" | "No" | "Abstain") {
+    if (drepInfo === undefined) throw new Error("DRep not found");
+    if (appWallet === undefined) throw new Error("Wallet not found");
+    if (proposalMetadata === undefined) throw new Error("Proposal not found");
+
+    setLoading(true);
+
+    const [txHash, certIndex] = id.split(":");
+    if (txHash === undefined || certIndex === undefined)
+      throw new Error("Invalid proposal id");
+
+    const dRepId = drepInfo.drep_id;
+
+    const txBuilder = getTxBuilder(network);
+    const blockchainProvider = getProvider(network);
+    const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
+
+    txBuilder
+      .vote(
+        {
+          type: "DRep",
+          drepId: dRepId,
+        },
+        {
+          txHash: txHash,
+          txIndex: parseInt(certIndex),
+        },
+        {
+          voteKind: voteKind,
+        },
+      )
+      .selectUtxosFrom(utxos)
+      .changeAddress(appWallet.address);
+
+    await newTransaction({
+      txBuilder,
+      description: `Vote: ${voteKind} - ${proposalMetadata.json_metadata.body.title}`,
+    });
+
+    setLoading(false);
+  }
 
   if (!proposalMetadata) return <></>;
 
@@ -83,6 +135,42 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
           value={proposalMetadata.json_metadata.body.rationale}
           allowOverflow={true}
         />
+
+        <div className="flex gap-4">
+          <Button
+            onClick={() => vote("Yes")}
+            disabled={
+              loading ||
+              drepInfo === undefined ||
+              appWallet === undefined ||
+              proposalMetadata === undefined
+            }
+          >
+            {loading && <Loader className="mr-2 h-4 w-4" />} Vote Yes
+          </Button>
+          <Button
+            onClick={() => vote("No")}
+            disabled={
+              loading ||
+              drepInfo === undefined ||
+              appWallet === undefined ||
+              proposalMetadata === undefined
+            }
+          >
+            {loading && <Loader className="mr-2 h-4 w-4" />} Vote No
+          </Button>
+          <Button
+            onClick={() => vote("Abstain")}
+            disabled={
+              loading ||
+              drepInfo === undefined ||
+              appWallet === undefined ||
+              proposalMetadata === undefined
+            }
+          >
+            {loading && <Loader className="mr-2 h-4 w-4" />} Vote Abstain
+          </Button>
+        </div>
       </CardUI>
     </main>
   );
