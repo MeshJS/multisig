@@ -11,6 +11,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import useTransaction from "@/hooks/useTransaction";
 import { Check, Loader } from "lucide-react";
+import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 
 export default function WalletGovernanceProposal({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
@@ -49,11 +50,26 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
     if (txHash === undefined || certIndex === undefined)
       throw new Error("Invalid proposal id");
 
-    const dRepId = drepInfo.drep_id;
+    const dRepId = appWallet.dRepId;
 
     const txBuilder = getTxBuilder(network);
     const blockchainProvider = getProvider(network);
     const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
+
+    const assetMap = new Map<Unit, Quantity>();
+    assetMap.set("lovelace", "5000000");
+    const selectedUtxos = keepRelevant(assetMap, utxos);
+
+    for (const utxo of selectedUtxos) {
+      txBuilder
+        .txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        )
+        .txInScript(appWallet.scriptCbor);
+    }
 
     txBuilder
       .vote(

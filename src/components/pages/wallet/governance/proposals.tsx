@@ -35,7 +35,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
         cert_index: string;
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
-      console.log("proposals", proposals);
+      // console.log("proposals", proposals);
 
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
@@ -43,7 +43,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
           const proposalData = await blockchainProvider.get(
             `/governance/proposals/${proposal.tx_hash}/${proposal.cert_index}/metadata`,
           );
-          console.log("proposalData", proposalData);
+          // console.log("proposalData", proposalData);
 
           _proposals.push({
             ...proposalData,
