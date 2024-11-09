@@ -25,6 +25,7 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
   const [proposalId, setProposalId] = useState<string>("");
   const [voteKind, setVoteKind] = useState<string>("Abstain");
   const [description, setDescription] = useState<string>("");
+  const [metadata, setMetadata] = useState<string>("");
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const network = useSiteStore((state) => state.network);
@@ -58,6 +59,12 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
           utxo.output.address,
         )
         .txInScript(appWallet.scriptCbor);
+    }
+
+    if (metadata.length > 0) {
+      txBuilder.metadataValue("674", {
+        msg: metadata.split("\n"),
+      });
     }
 
     txBuilder
@@ -108,6 +115,16 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
             placeholder="what you are voting for"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        <div className="grid gap-3">
+          <Label htmlFor="metadata">On-chain Metadata (optional)</Label>
+          <Textarea
+            id="metadata"
+            className="w-full"
+            placeholder="Rational or link to content"
+            value={metadata}
+            onChange={(e) => setMetadata(e.target.value)}
           />
         </div>
         <div className="grid gap-3">
