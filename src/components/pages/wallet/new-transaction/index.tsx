@@ -145,12 +145,6 @@ export default function PageNewTransaction() {
         }
       }
 
-      if (metadata.length > 0) {
-        txBuilder.metadataValue("674", {
-          msg: metadata.split("\n"),
-        });
-      }
-
       if (sendAllAssets) {
         txBuilder.changeAddress(outputs[0]!.address);
       } else {
@@ -197,6 +191,8 @@ export default function PageNewTransaction() {
       await newTransaction({
         txBuilder,
         description: addDescription ? description : undefined,
+        metadataValue:
+          metadata.length > 0 ? { label: "674", value: metadata } : undefined,
       });
       reset();
     } catch (e) {

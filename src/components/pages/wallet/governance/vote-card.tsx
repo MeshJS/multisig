@@ -61,12 +61,6 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
         .txInScript(appWallet.scriptCbor);
     }
 
-    if (metadata.length > 0) {
-      txBuilder.metadataValue("674", {
-        msg: metadata.split("\n"),
-      });
-    }
-
     txBuilder
       .vote(
         {
@@ -88,6 +82,8 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
     await newTransaction({
       txBuilder,
       description: `Vote: ${voteKind} - ${description}`,
+      metadataValue:
+        metadata.length > 0 ? { label: "674", value: metadata } : undefined,
     });
 
     setLoading(false);

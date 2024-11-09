@@ -27,9 +27,24 @@ export default function useTransaction() {
       txBuilder: MeshTxBuilder;
       description?: string;
       toastMessage?: string;
+      metadataValue?: {
+        label: string;
+        value: string;
+      };
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
+
+      if (data.metadataValue) {
+        let value: string | string[] = data.metadataValue.value;
+
+        if (value.length > 63) {
+          value = value.match(/.{1,63}/g)!;
+        }
+        data.txBuilder.metadataValue(data.metadataValue.label, {
+          msg: value,
+        });
+      }
 
       const unsignedTx = await data.txBuilder.complete();
 
