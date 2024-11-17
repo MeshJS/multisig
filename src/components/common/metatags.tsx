@@ -20,10 +20,10 @@ export default function Metatags({
       "cardano, blockchain, multisig, wallet, governance, smart contract, meshjs";
   }
   if (title === undefined) {
-    title = "Multisig platform on Cardano";
+    title = "Cardano Multisig Platform";
   }
 
-  title = title + " - Multisig platform on Cardano";
+  title = title + " - Cardano Multisig Platform";
 
   return (
     <Head>
@@ -40,18 +40,26 @@ export default function Metatags({
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:creator" content="@meshsdk" />
-      {image && (
+      {/* {image && (
         <meta name="twitter:image" content={`https://meshjs.dev${image}`} />
-      )}
+      )} */}
+      <meta
+        property="twitter:image"
+        content={`https://meshjs.dev/api/og?title=Cardano Multisig Platform`}
+      />
       {image && <meta name="twitter:image:alt" content={title} />}
 
       <meta property="og:title" content={title} />
       <meta property="og:type" content="article" />
       <meta property="og:site_name" content="Mesh Playground" />
       <meta property="og:description" content={description} />
-      {image && (
+      {/* {image && (
         <meta property="og:image" content={`https://meshjs.dev${image}`} />
-      )}
+      )} */}
+      <meta
+        property="og:image"
+        content={`https://meshjs.dev/api/og?title=Cardano Multisig Platform`}
+      />
 
       <link
         rel="apple-touch-icon"
