@@ -8,5 +8,10 @@ export function getTxBuilder(network: number) {
     evaluator: blockchainProvider,
     verbose: true,
   });
+  if (network === 1) {
+    txBuilder.setNetwork("mainnet");
+  } else {
+    txBuilder.setNetwork("preprod");
+  }
   return txBuilder;
 }
