@@ -28,6 +28,7 @@ import Logo from "./logo";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
 import MenuHomepage from "./menus/homepage-links";
+import DialogReport from "./dialog-report";
 
 export default function RootLayout({
   children,
@@ -231,6 +232,7 @@ export default function RootLayout({
           ) : (
             <>
               <WalletDataLoader />
+              <DialogReport />
               <WalletDropDown />
               <UserDropDown />
             </>

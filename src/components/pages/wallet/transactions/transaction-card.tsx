@@ -21,11 +21,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
 import { useToast } from "@/hooks/use-toast";
 import { checkSignature, generateNonce } from "@meshsdk/core";
+import { ToastAction } from "@/components/ui/toast";
 
 export default function TransactionCard({
   walletId,
@@ -119,8 +121,29 @@ export default function TransactionCard({
         txHash: txHash,
       });
     } catch (e) {
-      setLoading(false);
       console.error(e);
+      setLoading(false);
+      toast({
+        title: "Error",
+        description: `${JSON.stringify(e)}`,
+        duration: 10000,
+        action: (
+          <ToastAction
+            altText="Try again"
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(e));
+              toast({
+                title: "Error Copied",
+                description: `Error has been copied to your clipboard.`,
+                duration: 5000,
+              });
+            }}
+          >
+            Copy Error
+          </ToastAction>
+        ),
+        variant: "destructive",
+      });
     }
   }
 
@@ -147,7 +170,14 @@ export default function TransactionCard({
         });
       }
     } catch (e) {
+      console.log(111);
       console.error(e);
+      toast({
+        title: "Transaction Updated",
+        description: "Your transaction has been updated",
+        duration: 5000,
+      });
+      navigator.clipboard.writeText(JSON.stringify(e));
     }
     setLoading(false);
   }
@@ -218,9 +248,14 @@ export default function TransactionCard({
               >
                 Copy Tx CBOR
               </DropdownMenuItem>
-              {/* <DropdownMenuItem>Export</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Trash</DropdownMenuItem> */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  deleteTx();
+                }}
+              >
+                Delete Transaction
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
