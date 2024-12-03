@@ -142,6 +142,12 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
             </SelectContent>
           </Select>
         </div>
+
+        {!drepInfo?.active && (
+          <p className="text-sm text-muted-foreground">
+            * Please register DRep before creating a vote transaction
+          </p>
+        )}
         <div className="flex gap-4">
           <Button onClick={() => vote()} disabled={loading}>
             {loading ? "Creating transaction..." : "Create Vote Transaction"}

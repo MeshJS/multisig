@@ -60,9 +60,25 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         className="text-2xl font-bold"
       />
       <div>
+        {balance <= 0 && (
+          <p className="mb-2 text-sm text-muted-foreground">
+            Please deposit fund to this script address before continuing
+          </p>
+        )}
         <Link href={`/wallets/${appWallet.id}/transactions/new`}>
           <Button size="sm">New Transaction</Button>
         </Link>
+
+        {/* Suggesting to disable the button if the balance is less than 0, or no previous transactions */}
+        {/* <Button
+          onClick={() => {
+            window.location.href = `/wallets/${appWallet.id}/transactions/new`;
+          }}
+          disabled={balance <= 0}
+          size="sm"
+        >
+          New Transaction
+        </Button> */}
       </div>
     </CardUI>
   );
