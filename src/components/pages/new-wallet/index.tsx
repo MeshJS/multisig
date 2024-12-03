@@ -283,16 +283,12 @@ export default function PageNewWallet() {
           <Card>
             <CardHeader>
               <CardTitle>Signers</CardTitle>
-              <CardDescription>
-                Add the addresses of the signers who will be required to approve
-                transactions in this wallet. The first address is your address
-                and will be automatically added. You can add more signers by
-                clicking the "Add Signers" button. You can also remove a signer
-                by clicking the "Remove" button next to the signer's address.
-                The number of required signers is the number of signers required
-                to approve a transaction to make it valid. Alternatively, you
-                can save this wallet and create a link to invite signers with
-                the "Invite Signers" button.
+              <CardDescription className="whitespace-pre-line">
+                {`Add the addresses of the signers who will be required to approve transactions in this wallet. The first address is your address which is automatically added. 
+                The number of required signers is the number of signers required to approve a transaction to make it valid. You can:
+                • add more signers by clicking the "Add Signers" button. 
+                • remove a signer by clicking the "Remove" button next to the signer's address.
+                • save this wallet and create a link to invite signers with the "Invite Signers" button.`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -432,6 +428,7 @@ export default function PageNewWallet() {
                   <Label htmlFor="description">
                     Number of required signers
                   </Label>
+
                   {nativeScriptType == "atLeast" ? (
                     <ToggleGroup
                       type="single"

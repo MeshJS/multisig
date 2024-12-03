@@ -1,4 +1,4 @@
-import { Info, List, Scale } from "lucide-react";
+import { Info, List, Scale, Wallet } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -13,6 +13,14 @@ export default function MenuWallet() {
 
   return (
     <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
+      <MenuLink
+        href={`${baseUrl}`}
+        className={router.pathname == "/wallets/[wallet]" ? "text-white" : ""}
+      >
+        <Wallet className="h-4 w-4" />
+        <div className="flex items-center gap-2">Summary</div>
+      </MenuLink>
+
       <MenuLink
         href={`${baseUrl}transactions`}
         className={
