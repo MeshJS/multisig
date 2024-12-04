@@ -38,7 +38,7 @@ export default function PageNewWallet() {
   const router = useRouter();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
-  const [numRequiredSigners, setNumRequiredSigners] = useState<number>(0);
+  const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -425,42 +425,46 @@ export default function PageNewWallet() {
                   </Table>
                 </div>
                 <div className="grid gap-3">
-                  <Label htmlFor="description">
-                    Number of required signers
-                  </Label>
+                  <Label htmlFor="description">Required signers</Label>
 
                   {nativeScriptType == "atLeast" ? (
-                    <ToggleGroup
-                      type="single"
-                      variant="outline"
-                      disabled={nativeScriptType != "atLeast"}
-                    >
-                      {signersAddresses.length > 0 &&
-                        Array.from(
-                          { length: signersAddresses.length },
-                          (_, i) => i + 1,
-                        ).map((num) => (
-                          <ToggleGroupItem
-                            key={num}
-                            value={num.toString()}
-                            onClick={() => {
-                              if (numRequiredSigners == num) {
-                                setNumRequiredSigners(0);
-                              } else {
-                                setNumRequiredSigners(num);
-                              }
-                            }}
-                          >
-                            {num}
-                          </ToggleGroupItem>
-                        ))}
-                    </ToggleGroup>
+                    <>
+                      <p>
+                        {`At least ${numRequiredSigners} of signers are required to approve transactions in this wallet.`}
+                      </p>
+                      <ToggleGroup
+                        type="single"
+                        variant="outline"
+                        value={numRequiredSigners.toString()}
+                        disabled={nativeScriptType != "atLeast"}
+                      >
+                        {signersAddresses.length > 0 &&
+                          Array.from(
+                            { length: signersAddresses.length },
+                            (_, i) => i + 1,
+                          ).map((num) => (
+                            <ToggleGroupItem
+                              key={num}
+                              value={num.toString()}
+                              onClick={() => {
+                                if (numRequiredSigners == num) {
+                                  setNumRequiredSigners(0);
+                                } else {
+                                  setNumRequiredSigners(num);
+                                }
+                              }}
+                            >
+                              {num}
+                            </ToggleGroupItem>
+                          ))}
+                      </ToggleGroup>
+                    </>
                   ) : (
                     <p>
                       <b>
                         {nativeScriptType == "all"
-                          ? "All signers are"
-                          : "Any one signer is"}
+                          ? "All signers are "
+                          : "Any one signer is "}
                       </b>
                       required to approve transactions in this wallet.
                     </p>
