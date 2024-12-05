@@ -29,6 +29,7 @@ import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
 import MenuHomepage from "./menus/homepage-links";
 import Loading from "./loading";
+import { PopupAlert } from "../popup-alert";
 
 export default function RootLayout({
   children,
@@ -240,6 +241,10 @@ export default function RootLayout({
           )}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
+          <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
+            <PopupAlert />
+          </div>
+
           {pageIsPublic ? (
             children
           ) : userAddress === undefined ? (

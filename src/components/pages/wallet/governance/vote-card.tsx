@@ -29,10 +29,17 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const network = useSiteStore((state) => state.network);
+  const setAlert = useSiteStore((state) => state.setAlert);
   const { newTransaction } = useTransaction();
 
   async function vote() {
-    if (drepInfo === undefined) throw new Error("DRep not found");
+    // (Leon, Dec 6 2024): Handling error by creating an alert, instead of throwing an error
+    // if (drepInfo === undefined) throw new Error("DRep not found");
+
+    if (drepInfo === undefined) {
+      setAlert("DRep not found");
+      return;
+    }
 
     setLoading(true);
 

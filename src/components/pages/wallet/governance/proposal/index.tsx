@@ -23,6 +23,7 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
   const { newTransaction } = useTransaction();
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
+  const setAlert = useSiteStore((state) => state.setAlert);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -40,9 +41,25 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
   }, []);
 
   async function vote(voteKind: "Yes" | "No" | "Abstain") {
-    if (drepInfo === undefined) throw new Error("DRep not found");
-    if (appWallet === undefined) throw new Error("Wallet not found");
-    if (proposalMetadata === undefined) throw new Error("Proposal not found");
+    // (Leon, Dec 6 2024): Handling error by creating an alert, instead of throwing an error
+    // if (drepInfo === undefined) throw new Error("DRep not found");
+    // if (appWallet === undefined) throw new Error("Wallet not found");
+    // if (proposalMetadata === undefined) throw new Error("Proposal not found");
+
+    if (drepInfo === undefined) {
+      setAlert("DRep not found");
+      return;
+    }
+
+    if (appWallet === undefined) {
+      setAlert("Wallet not found");
+      return;
+    }
+
+    if (proposalMetadata === undefined) {
+      setAlert("Proposal not found");
+      return;
+    }
 
     setLoading(true);
 
