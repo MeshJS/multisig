@@ -21,8 +21,14 @@ export default function PageGovernance() {
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
           `/governance/dreps/${appWallet.dRepId}`,
         );
-        console.log(drepInfo);
+        console.log("drepInfo", drepInfo);
         setDrepInfo(drepInfo);
+
+        // get metadata
+        const drepInfoMetadata = await blockchainProvider.get(
+          `/governance/dreps/${appWallet.dRepId}/metadata`,
+        );
+        console.log("drepInfoMetadata", drepInfoMetadata);
       }
     }
     load();

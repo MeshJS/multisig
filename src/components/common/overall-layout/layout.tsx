@@ -30,6 +30,7 @@ import { publicRoutes } from "@/data/public-routes";
 import MenuHomepage from "./menus/homepage-links";
 import Loading from "./loading";
 import { PopupAlert } from "../popup-alert";
+import DialogReport from "./dialog-report";
 
 export default function RootLayout({
   children,
@@ -235,6 +236,7 @@ export default function RootLayout({
           ) : (
             <>
               <WalletDataLoader />
+              <DialogReport />
               <WalletDropDown />
               <UserDropDown />
             </>
