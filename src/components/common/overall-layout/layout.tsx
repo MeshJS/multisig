@@ -28,6 +28,8 @@ import Logo from "./logo";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
 import MenuHomepage from "./menus/homepage-links";
+import Loading from "./loading";
+import { PopupAlert } from "../popup-alert";
 import DialogReport from "./dialog-report";
 
 export default function RootLayout({
@@ -110,6 +112,8 @@ export default function RootLayout({
 
   return (
     <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+      {isLoading && <Loading />}
+
       <div className="hidden border-r bg-muted/40 md:block">
         <div className="flex h-full max-h-screen flex-col gap-2">
           <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
@@ -239,6 +243,10 @@ export default function RootLayout({
           )}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
+          <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
+            <PopupAlert />
+          </div>
+
           {pageIsPublic ? (
             children
           ) : userAddress === undefined ? (

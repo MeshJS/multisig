@@ -7,6 +7,8 @@ interface SiteState {
   setRandomState: () => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
+  alert: string;
+  setAlert: (alert: string) => void;
 }
 
 export const useSiteStore = create<SiteState>((set) => ({
@@ -16,4 +18,6 @@ export const useSiteStore = create<SiteState>((set) => ({
   setRandomState: () => set({ randomState: Math.random() }),
   loading: false,
   setLoading: (loading: boolean) => set({ loading }),
+  alert: "",
+  setAlert: (alert: string) => set({ alert }),
 }));

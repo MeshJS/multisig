@@ -38,7 +38,7 @@ export default function PageNewWallet() {
   const router = useRouter();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
-  const [numRequiredSigners, setNumRequiredSigners] = useState<number>(0);
+  const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -283,16 +283,12 @@ export default function PageNewWallet() {
           <Card>
             <CardHeader>
               <CardTitle>Signers</CardTitle>
-              <CardDescription>
-                Add the addresses of the signers who will be required to approve
-                transactions in this wallet. The first address is your address
-                and will be automatically added. You can add more signers by
-                clicking the "Add Signers" button. You can also remove a signer
-                by clicking the "Remove" button next to the signer's address.
-                The number of required signers is the number of signers required
-                to approve a transaction to make it valid. Alternatively, you
-                can save this wallet and create a link to invite signers with
-                the "Invite Signers" button.
+              <CardDescription className="whitespace-pre-line">
+                {`Add the addresses of the signers who will be required to approve transactions in this wallet. The first address is your address which is automatically added. 
+                The number of required signers is the number of signers required to approve a transaction to make it valid. You can:
+                • add more signers by clicking the "Add Signers" button. 
+                • remove a signer by clicking the "Remove" button next to the signer's address.
+                • save this wallet and create a link to invite signers with the "Invite Signers" button.`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -429,41 +425,46 @@ export default function PageNewWallet() {
                   </Table>
                 </div>
                 <div className="grid gap-3">
-                  <Label htmlFor="description">
-                    Number of required signers
-                  </Label>
+                  <Label htmlFor="description">Required signers</Label>
+
                   {nativeScriptType == "atLeast" ? (
-                    <ToggleGroup
-                      type="single"
-                      variant="outline"
-                      disabled={nativeScriptType != "atLeast"}
-                    >
-                      {signersAddresses.length > 0 &&
-                        Array.from(
-                          { length: signersAddresses.length },
-                          (_, i) => i + 1,
-                        ).map((num) => (
-                          <ToggleGroupItem
-                            key={num}
-                            value={num.toString()}
-                            onClick={() => {
-                              if (numRequiredSigners == num) {
-                                setNumRequiredSigners(0);
-                              } else {
-                                setNumRequiredSigners(num);
-                              }
-                            }}
-                          >
-                            {num}
-                          </ToggleGroupItem>
-                        ))}
-                    </ToggleGroup>
+                    <>
+                      <p>
+                        {`At least ${numRequiredSigners} of signers are required to approve transactions in this wallet.`}
+                      </p>
+                      <ToggleGroup
+                        type="single"
+                        variant="outline"
+                        value={numRequiredSigners.toString()}
+                        disabled={nativeScriptType != "atLeast"}
+                      >
+                        {signersAddresses.length > 0 &&
+                          Array.from(
+                            { length: signersAddresses.length },
+                            (_, i) => i + 1,
+                          ).map((num) => (
+                            <ToggleGroupItem
+                              key={num}
+                              value={num.toString()}
+                              onClick={() => {
+                                if (numRequiredSigners == num) {
+                                  setNumRequiredSigners(0);
+                                } else {
+                                  setNumRequiredSigners(num);
+                                }
+                              }}
+                            >
+                              {num}
+                            </ToggleGroupItem>
+                          ))}
+                      </ToggleGroup>
+                    </>
                   ) : (
                     <p>
                       <b>
                         {nativeScriptType == "all"
-                          ? "All signers are"
-                          : "Any one signer is"}
+                          ? "All signers are "
+                          : "Any one signer is "}
                       </b>
                       required to approve transactions in this wallet.
                     </p>
