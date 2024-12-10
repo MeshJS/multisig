@@ -80,6 +80,38 @@ export default function TransactionCard({
       },
     });
 
+  function handleError(e: any) {
+    let hasKnownError = false;
+
+    if (e.code == 2 && e.info == "user declined sign tx") {
+      hasKnownError = true;
+    }
+
+    if (!hasKnownError) {
+      toast({
+        title: "Error",
+        description: `${JSON.stringify(e)}`,
+        duration: 10000,
+        action: (
+          <ToastAction
+            altText="Try again"
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(e));
+              toast({
+                title: "Error Copied",
+                description: `Error has been copied to your clipboard.`,
+                duration: 5000,
+              });
+            }}
+          >
+            Copy Error
+          </ToastAction>
+        ),
+        variant: "destructive",
+      });
+    }
+  }
+
   async function signTx() {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
@@ -123,27 +155,7 @@ export default function TransactionCard({
     } catch (e) {
       console.error(e);
       setLoading(false);
-      toast({
-        title: "Error",
-        description: `${JSON.stringify(e)}`,
-        duration: 10000,
-        action: (
-          <ToastAction
-            altText="Try again"
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(e));
-              toast({
-                title: "Error Copied",
-                description: `Error has been copied to your clipboard.`,
-                duration: 5000,
-              });
-            }}
-          >
-            Copy Error
-          </ToastAction>
-        ),
-        variant: "destructive",
-      });
+      handleError(e);
     }
   }
 
@@ -249,9 +261,16 @@ export default function TransactionCard({
                 Copy Tx CBOR
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {/* <DropdownMenuItem
+                onClick={() => {
+                  rebuildTx(); // todo add confirmation
+                }}
+              >
+                Rebuild Transaction
+              </DropdownMenuItem> */}
               <DropdownMenuItem
                 onClick={() => {
-                  deleteTx();
+                  deleteTx(); // todo add confirmation
                 }}
               >
                 Delete Transaction

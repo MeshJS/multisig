@@ -209,7 +209,7 @@ export default function PageNewTransaction() {
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <SectionTitle>New Transaction1</SectionTitle>
+      <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
         <Table>

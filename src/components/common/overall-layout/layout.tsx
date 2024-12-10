@@ -243,9 +243,9 @@ export default function RootLayout({
           )}
         </header>
         <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
-          <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
+          {/* <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
             <PopupAlert />
-          </div>
+          </div> */}
 
           {pageIsPublic ? (
             children
