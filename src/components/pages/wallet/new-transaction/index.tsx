@@ -30,6 +30,8 @@ import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
+import { ToastAction } from "@/components/ui/toast";
+import { useToast } from "@/hooks/use-toast";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -49,6 +51,7 @@ export default function PageNewTransaction() {
   const { newTransaction } = useTransaction();
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
+  const { toast } = useToast();
 
   useEffect(() => {
     reset();
@@ -197,8 +200,28 @@ export default function PageNewTransaction() {
       reset();
     } catch (e) {
       setLoading(false);
-      setError("Error creating transaction");
-      console.error(e);
+
+      toast({
+        title: "Error",
+        description: `${JSON.stringify(e)}`,
+        duration: 10000,
+        action: (
+          <ToastAction
+            altText="Try again"
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(e));
+              toast({
+                title: "Error Copied",
+                description: `Error has been copied to your clipboard.`,
+                duration: 5000,
+              });
+            }}
+          >
+            Copy Error
+          </ToastAction>
+        ),
+        variant: "destructive",
+      });
     }
   }
 

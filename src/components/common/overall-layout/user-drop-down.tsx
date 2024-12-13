@@ -11,11 +11,13 @@ import {
 import { useWallet } from "@meshsdk/react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
+import { useUserStore } from "@/lib/zustand/user";
 
 export default function UserDropDown() {
   const { wallet, disconnect } = useWallet();
   const { toast } = useToast();
   const router = useRouter();
+  const setPastWallet = useUserStore((state) => state.setPastWallet);
 
   return (
     <DropdownMenu>
@@ -48,6 +50,7 @@ export default function UserDropDown() {
         <DropdownMenuItem
           onClick={() => {
             disconnect();
+            setPastWallet(undefined);
             router.push("/");
             setTimeout(() => {
               router.reload();

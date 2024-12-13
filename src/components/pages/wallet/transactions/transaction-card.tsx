@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
