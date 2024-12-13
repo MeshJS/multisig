@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
@@ -28,6 +28,7 @@ import { useWallet } from "@meshsdk/react";
 import { useToast } from "@/hooks/use-toast";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { ToastAction } from "@/components/ui/toast";
+import { csl } from "@meshsdk/core-csl";
 
 export default function TransactionCard({
   walletId,
@@ -122,6 +123,22 @@ export default function TransactionCard({
 
       const signedTx = await wallet.signTx(transaction.txCbor, true);
 
+      // sanity check
+      const tx = csl.Transaction.from_hex(signedTx);
+      const vkeys = tx.witness_set().vkeys();
+      const len = vkeys?.len() || 0;
+
+      if (len != transaction.signedAddresses.length + 1) {
+        setLoading(false);
+        toast({
+          title: "Error",
+          description: `Error signing transaction. Please try again.`,
+          duration: 5000,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const signedAddresses = transaction.signedAddresses;
       signedAddresses.push(userAddress);
 
@@ -200,6 +217,34 @@ export default function TransactionCard({
       transactionId: transaction.id,
     });
   }
+
+  // for checking only
+  // useEffect(() => {
+  //   function getBech32(publicKey: string) {
+  //     const address = csl.EnterpriseAddress.new(
+  //       csl.NetworkId.mainnet().kind(), // change network here
+  //       csl.Credential.from_keyhash(
+  //         csl.PublicKey.from_bech32(publicKey).hash(),
+  //       ),
+  //     )
+  //       .to_address()
+  //       .to_bech32();
+  //     return address;
+  //   }
+
+  //   const txcbor =
+  //     "84a300d90102818258209407c9436202687c4a89404c02e0ff2d04d2f67d7baa78933f02732db232a52d010182825839115b5e8a6a0841092c8e7b35eee23065659eb3f3677a0d60f6e8e9f24a9d4dcd7e454d2434164f4efb8edeb358d86a1dad9ec6224cfcbce3e61a00a7d8c082583911d90ec48b994d1a164be3f92b3e36453aa835331c275f170f7196899f9d4dcd7e454d2434164f4efb8edeb358d86a1dad9ec6224cfcbce3e61b00000016ff0142fd021a00030b85a20082825820f11443b4cf980f156472196a7f5f62cd66148c01e9c27dfd66a4688c24e44ffd58400df2837cf1368740ecbfcc8547f3e142281f3298a857b5b849e0079267f7cd2c87f3bd651a9768b2d6a407009e2669a7a879efe07ef3f8d1ee0d17bee41c0e0f825820ccce8b734cd72c3216a24c8458bb227135a84c10e0cacceaebcf4159d2d3b8915840c4de6edef2cfda3cb407a4d5ace27c67e18760374d424e9cbb74198b490c45aa1c96def7c0f47c33d9ce29bc8006e93e93f181f2e15caf73903390d9e921b20c01d9010281830304868200581cda5c4cbb27c2481c188e5ee601ad7b92e6b10301522545bcb256bb848200581cc4f540c890e6bccfa8d1efde2f3f67a489df09a2a1de8efbe45694d58200581c5859238a6c56239a86c48012e0e3d12b68ba09efa2f9abf2f0038f0b8200581cbc12c8d159e2f49d665b1c551f982e9b38d415f5d3941d1f76d903508200581c626da6df5c85bd2aa85d199d57af350cd583d2913ed98b168374a5d58200581c77dff27e22e60be84a10fb2b5fac36955a7bc1be3c611a6e4581e569f5f6";
+  //   const tx = csl.Transaction.from_hex(txcbor);
+  //   const vkeys = tx.witness_set().vkeys();
+  //   const len = vkeys?.len() || 0;
+  //   for (let i = 0; i < len; i++) {
+  //     const pubkey = vkeys?.get(i).vkey().public_key().to_bech32();
+  //     if (pubkey) {
+  //       const address = getBech32(pubkey);
+  //       console.log("address", address);
+  //     }
+  //   }
+  // }, []);
 
   if (!appWallet) return <></>;
   return (
