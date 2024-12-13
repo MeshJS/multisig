@@ -7,6 +7,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import AllProposals from "./proposals";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "./vote-card";
+import { getDRepIds } from "@meshsdk/core-csl";
 
 export default function PageGovernance() {
   const { appWallet } = useAppWallet();
@@ -18,15 +19,18 @@ export default function PageGovernance() {
     async function load() {
       if (appWallet) {
         const blockchainProvider = getProvider(network);
+        console.log("appWallet.dRepId", appWallet.dRepId);
+        const drepids = getDRepIds(appWallet.dRepId);
+        console.log("drepids", drepids);
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
-          `/governance/dreps/${appWallet.dRepId}`,
+          `/governance/dreps/${drepids.cip105}`,
         );
         console.log("drepInfo", drepInfo);
         setDrepInfo(drepInfo);
 
         // get metadata
         const drepInfoMetadata = await blockchainProvider.get(
-          `/governance/dreps/${appWallet.dRepId}/metadata`,
+          `/governance/dreps/${drepids.cip105}/metadata`,
         );
         console.log("drepInfoMetadata", drepInfoMetadata);
       }

@@ -78,7 +78,7 @@ export default function useTransaction() {
         walletId: appWallet.id,
         txJson: JSON.stringify(data.txBuilder.meshTxBuilderBody),
         txCbor: signedTx,
-        signedAddresses: [userAddress],
+        signedAddresses: signedAddresses,
         state: submitTx ? 1 : 0,
         description: data.description,
         txHash: txHash,

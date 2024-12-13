@@ -271,7 +271,7 @@ export default function CardRegister() {
               profile
             </Label>
             <Input
-              placeholder="e.g. MeshJS"
+              placeholder="name must be without spaces"
               value={givenName}
               onChange={(e) => {
                 const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
@@ -339,7 +339,16 @@ export default function CardRegister() {
         </fieldset>
 
         <div>
-          <Button onClick={() => registerDrep()} disabled={loading}>
+          <Button
+            onClick={() => registerDrep()}
+            disabled={
+              loading ||
+              givenName.length === 0 ||
+              motivations.length === 0 ||
+              objectives.length === 0 ||
+              qualifications.length === 0
+            }
+          >
             {loading ? "Loading..." : "Register DRep"}
           </Button>
         </div>

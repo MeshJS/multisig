@@ -156,7 +156,10 @@ export default function VoteCard({ appWallet }: { appWallet: Wallet }) {
           </p>
         )}
         <div className="flex gap-4">
-          <Button onClick={() => vote()} disabled={loading}>
+          <Button
+            onClick={() => vote()}
+            disabled={loading || proposalId.length !== 66}
+          >
             {loading ? "Creating transaction..." : "Create Vote Transaction"}
           </Button>
         </div>

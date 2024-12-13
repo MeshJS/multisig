@@ -7,6 +7,7 @@ import {
   resolveScriptHashDRepId,
   serializeNativeScript,
 } from "@meshsdk/core";
+import { getDRepIds } from "@meshsdk/core-csl";
 
 export function buildWallet(wallet: DbWallet, network: number) {
   const nativeScript = {
@@ -27,14 +28,17 @@ export function buildWallet(wallet: DbWallet, network: number) {
     wallet.stakeCredentialHash as undefined | string,
     network,
   );
-  const dRepId = resolveScriptHashDRepId(
+  const dRepIdCip105 = resolveScriptHashDRepId(
     resolveNativeScriptHash(nativeScript as NativeScript),
   );
+
+  const drepids = getDRepIds(dRepIdCip105);
+  const dRepIdCip129 = drepids.cip129;
 
   return {
     ...wallet,
     nativeScript,
     address,
-    dRepId,
+    dRepId: dRepIdCip129,
   } as Wallet;
 }
