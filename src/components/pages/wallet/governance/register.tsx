@@ -274,8 +274,9 @@ export default function CardRegister() {
               placeholder="name must be without spaces"
               value={givenName}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
-                setgivenName(value);
+                // const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                // setgivenName(value);
+                setgivenName(e.target.value);
               }}
             />
           </div>
