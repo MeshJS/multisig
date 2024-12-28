@@ -22,6 +22,7 @@ import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import useAppWallet from "@/hooks/useAppWallet";
 import useTransaction from "@/hooks/useTransaction";
+import { getDRepIds } from "@meshsdk/core-csl";
 
 export default function CardRegister() {
   const { appWallet } = useAppWallet();
@@ -204,38 +205,16 @@ export default function CardRegister() {
         .txInScript(appWallet.scriptCbor);
     }
 
+    const drepids = getDRepIds(appWallet.dRepId);
+
     txBuilder
-      .drepRegistrationCertificate(appWallet.dRepId, {
+      .drepRegistrationCertificate(drepids.cip105, {
         anchorUrl: anchorUrl,
         anchorDataHash: anchorHash,
       })
       .certificateScript(appWallet.scriptCbor)
       .changeAddress(appWallet.address)
       .selectUtxosFrom(selectedUtxos);
-
-    // const unsignedTx = await txBuilder.complete();
-
-    // const signedTx = await wallet.signTx(unsignedTx, true);
-
-    // const signedAddresses = [];
-    // signedAddresses.push(userAddress);
-
-    // let txHash = undefined;
-    // let state = 0;
-    // if (appWallet.numRequiredSigners == signedAddresses.length) {
-    //   state = 1;
-    //   txHash = await wallet.submitTx(signedTx);
-    // }
-
-    // createTransaction({
-    //   walletId: appWallet.id,
-    //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-    //   txCbor: signedTx,
-    //   signedAddresses: [userAddress],
-    //   state: state,
-    //   description: "DRep registration",
-    //   txHash: txHash,
-    // });
 
     await newTransaction({
       txBuilder,
