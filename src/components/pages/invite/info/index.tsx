@@ -15,14 +15,14 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
 
-export default function PageNewWalletInvite() {
+export default function PageNewWalletInviteInfo() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(false);
   const [signersDescription, setSignerDescription] = useState<string>("");
   const userAddress = useUserStore((state) => state.userAddress);
   const { toast } = useToast();
 
-  const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
+  const pathIsNewWallet = router.pathname == "/wallets/invite/info/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
@@ -33,7 +33,7 @@ export default function PageNewWalletInvite() {
   );
 
   const { mutate: updateNewWalletSigners } =
-    api.wallet.updateNewWalletSigners.useMutation({
+    api.wallet.updateNewWalletSignersDescriptions.useMutation({
       onSuccess: async () => {
         setLoading(false);
         toast({
@@ -49,20 +49,22 @@ export default function PageNewWalletInvite() {
       },
     });
 
-  async function addSigner() {
+  async function changeSignerName() {
     if (newWallet === undefined || newWallet === null)
       throw new Error("Wallet invite is undefined");
     if (userAddress === undefined) throw new Error("User address is undefined");
 
-    setLoading(true);
+    const userIndex = newWallet.signersAddresses.findIndex((item) => item === userAddress)
+    if (userIndex === undefined) throw new Error("User index is undefined");
 
+    setLoading(true);
+    
+    var newsignersDescription = newWallet.signersDescriptions;
+    newsignersDescription[userIndex] = signersDescription;
+    
     updateNewWalletSigners({
       walletId: newWalletId!,
-      signersAddresses: [...newWallet.signersAddresses, userAddress],
-      signersDescriptions: [
-        ...newWallet.signersDescriptions,
-        signersDescription,
-      ],
+      signersDescriptions: newsignersDescription,
     });
   }
 
@@ -78,7 +80,7 @@ export default function PageNewWalletInvite() {
               <CardTitle>You are invited as Signer</CardTitle>
               <CardDescription>
                 You are invited to be a signer of this multi-siganture wallet. Please confirm
-                your address and add your name for this wallet.
+                your address and change your name in this wallet.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -99,7 +101,7 @@ export default function PageNewWalletInvite() {
                     id="description"
                     type="text"
                     className="w-full"
-                    placeholder="your name or a description about this signer"
+                    placeholder={newWallet.signersDescriptions[newWallet.signersAddresses.findIndex((item) => item === userAddress)]}
                     value={signersDescription}
                     onChange={(e) => setSignerDescription(e.target.value)}
                   />
@@ -112,10 +114,10 @@ export default function PageNewWalletInvite() {
 
           <div className="flex gap-4">
             <Button
-              onClick={addSigner}
+              onClick={changeSignerName}
               disabled={loading || !signersDescription}
             >
-              {loading ? "Adding..." : "Add me as signer"}
+              {loading ? "Changeing..." : "Change my Name"}
             </Button>
           </div>
         </div>

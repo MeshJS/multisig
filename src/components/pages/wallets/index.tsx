@@ -100,7 +100,10 @@ export default function PageWallets() {
               {getUserNewWalletsNotOwner
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((wallet) => (
-                  <CardWalletInvite key={wallet.id} wallet={wallet} />
+                  <CardWalletInvite 
+                    key={wallet.id} 
+                    wallet={wallet}
+                  />
                 ))}
             </div>
           </>
@@ -155,8 +158,9 @@ function CardWalletInvite({
   };
   viewOnly?: boolean;
 }) {
+  console.log(wallet)
   return (
-    <Link href={viewOnly ? "" : `/wallets/new-wallet/${wallet.id}`}>
+    <Link href={viewOnly ? `/wallets/invite/info/${wallet.id}` : `/wallets/new-wallet/${wallet.id}`}>
       <CardUI
         title={`${wallet.name}`}
         description={wallet.description}
