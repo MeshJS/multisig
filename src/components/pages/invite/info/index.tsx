@@ -32,7 +32,7 @@ export default function PageNewWalletInviteInfo() {
     },
   );
 
-  const { mutate: updateNewWalletSigners } =
+  const { mutate: updateNewWalletSignersDescriptions } =
     api.wallet.updateNewWalletSignersDescriptions.useMutation({
       onSuccess: async () => {
         setLoading(false);
@@ -62,11 +62,45 @@ export default function PageNewWalletInviteInfo() {
     var newsignersDescription = newWallet.signersDescriptions;
     newsignersDescription[userIndex] = signersDescription;
     
-    updateNewWalletSigners({
+    updateNewWalletSignersDescriptions({
       walletId: newWalletId!,
       signersDescriptions: newsignersDescription,
     });
   }
+
+    const { mutate: updateNewWalletSigners } =
+      api.wallet.updateNewWalletSigners.useMutation({
+        onSuccess: async () => {
+          setLoading(false);
+          toast({
+            title: "Your Info Updated",
+            description: "Your info has been updated",
+            duration: 5000,
+          });
+          router.push("/wallets");
+        },
+        onError: (e) => {
+          setLoading(false);
+          console.error(e);
+        },
+      });
+  
+    async function removeSigner() {
+      if (newWallet === undefined || newWallet === null)
+        throw new Error("Wallet invite is undefined");
+      if (userAddress === undefined) throw new Error("User address is undefined");
+  
+      const userIndex = newWallet.signersAddresses.findIndex((item) => item === userAddress)
+      if (userIndex === undefined) throw new Error("User index is undefined");
+  
+      setLoading(true);
+  
+      updateNewWalletSigners({
+        walletId: newWalletId!,
+        signersAddresses: newWallet.signersAddresses.splice(userIndex+1,1),
+        signersDescriptions: newWallet.signersDescriptions.splice(userIndex+1,1),
+      });
+    }
 
   return (
     <>
@@ -115,12 +149,23 @@ export default function PageNewWalletInviteInfo() {
           <div className="flex gap-4">
             <Button
               onClick={changeSignerName}
-              disabled={loading || !signersDescription}
+              disabled={loading}
             >
               {loading ? "Changeing..." : "Change my Name"}
             </Button>
+
+            <Button
+              onClick={removeSigner}
+              disabled={loading}
+            >
+              {loading ? "Changeing..." : "Remove from pending Wallet"}
+            </Button>
           </div>
+
+
+
         </div>
+        
       )}
     </>
   );
