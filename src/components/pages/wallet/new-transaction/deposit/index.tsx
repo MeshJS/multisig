@@ -49,6 +49,7 @@ export default function PageNewTransaction() {
   }, [userAddress]);
 
   async function fetchUTxOsAndBalance() {
+    if(!userAddress)return
     try {
       const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
