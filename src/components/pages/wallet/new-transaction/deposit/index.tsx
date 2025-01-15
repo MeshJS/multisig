@@ -20,27 +20,25 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import CardUI from "@/components/common/card-content";
-import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/router";
 
 export default function PageNewTransaction() {
-  const { connected } = useWallet();
+  const { connected, wallet } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
-  const [addDescription, setAddDescription] = useState<boolean>(false);
-  const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
   const [sendAllAssets, setSendAllAssets] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [UTxoCount, setUTxoCount] = useState<number>(3);
-  const [amounts, setAmounts] = useState<string[]>(["1", "1", "1"]);
+  const [amounts, setAmounts] = useState<string[]>(["100", "100", "100"]);
   const network = useSiteStore((state) => state.network);
-  const { newTransaction } = useTransaction();
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number>(0);
+  const router = useRouter();
 
   useEffect(() => {
     if (userAddress) {
@@ -49,17 +47,19 @@ export default function PageNewTransaction() {
   }, [userAddress]);
 
   async function fetchUTxOsAndBalance() {
-    if(!userAddress)return
+    if (!userAddress) return;
     try {
       const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
-      
+
       // Calculate the total balance
       const balance = utxos.reduce((sum, utxo) => {
         const lovelaceAmount = utxo.output.amount.find(
-          (amt) => amt.unit === "lovelace"
+          (amt) => amt.unit === "lovelace",
         );
-        return sum + (lovelaceAmount ? parseInt(lovelaceAmount.quantity, 10) : 0);
+        return (
+          sum + (lovelaceAmount ? parseInt(lovelaceAmount.quantity, 10) : 0)
+        );
       }, 0);
 
       // Convert from lovelace to ADA
@@ -74,8 +74,6 @@ export default function PageNewTransaction() {
   }, []);
 
   function reset() {
-    setAddDescription(false);
-    setDescription("");
     setMetadata("");
     setSendAllAssets(false);
     setLoading(false);
@@ -109,53 +107,47 @@ export default function PageNewTransaction() {
 
       let selectedUtxos = utxos;
 
-      if (!sendAllAssets) {
-        const assetMap = new Map<Unit, Quantity>();
-        assetMap.set("lovelace", totalAmount.toString());
-        selectedUtxos = keepRelevant(assetMap, utxos);
-      }
+      const assetMap = new Map<Unit, Quantity>();
+      assetMap.set("lovelace", totalAmount.toString());
+      selectedUtxos = keepRelevant(assetMap, utxos);
 
       if (selectedUtxos.length === 0) {
-        setError("Insufficient funds");
+        setError("Insufficient funds, no UTxOs were found in the depositors wallet");
         return;
       }
 
       const txBuilder = getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
+        txBuilder.txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        );
       }
 
-      if (!sendAllAssets) {
-        for (let i = 0; i < outputs.length; i++) {
-          txBuilder.txOut(outputs[i]!.address, [
-            {
-              unit: "lovelace",
-              quantity: outputs[i]!.amount,
-            },
-          ]);
-        }
+      for (let i = 0; i < outputs.length; i++) {
+        txBuilder.txOut(outputs[i]!.address, [
+          {
+            unit: "lovelace",
+            quantity: outputs[i]!.amount,
+          },
+        ]);
       }
 
-      if (sendAllAssets) {
-        txBuilder.changeAddress(userAddress);
-      } else {
-        txBuilder.changeAddress(userAddress);
-      }
+      const unsignedTx = await txBuilder.changeAddress(userAddress).complete();
+      const signedTx = await wallet.signTx(unsignedTx);
+      const txHash = await wallet.submitTx(signedTx);
 
-      await newTransaction({
-        txBuilder,
-        description: addDescription ? description : undefined,
-        metadataValue:
-          metadata.length > 0 ? { label: "674", value: metadata } : undefined,
+      toast({
+        title: "Transaction Created",
+        description: txHash ?? "Your transaction has been created",
+        duration: 10000,
       });
+
       reset();
+      router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
 
@@ -185,20 +177,23 @@ export default function PageNewTransaction() {
 
   function addNewUTxO() {
     setUTxoCount(UTxoCount + 1);
-    setAmounts([...amounts, "1"]);
+    setAmounts([...amounts, "100"]);
   }
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>Deposit</SectionTitle>
 
-      <CardUI 
+      <CardUI
         title="Wallet Details"
         description="User wallet balance for Address:"
-        cardClassName="w-full">
-      <p>{userAddress?.slice(0,15)} ... {userAddress?.slice(userAddress.length-8,userAddress.length)} : {userBalance} ₳
-      </p>
-
+        cardClassName="w-full"
+      >
+        <p>
+          {userAddress?.slice(0, 15)} ...{" "}
+          {userAddress?.slice(userAddress.length - 8, userAddress.length)} :{" "}
+          {userBalance} ₳
+        </p>
       </CardUI>
 
       <CardUI
@@ -239,7 +234,8 @@ export default function PageNewTransaction() {
                 </Button>
               </TableCell>
               <TableCell colSpan={2}>
-              Total Deposit: {amounts.reduce((sum, amount) => sum + parseFloat(amount), 0)} ₳
+                Total Deposit:{" "}
+                {amounts.reduce((sum, amount) => sum + parseFloat(amount), 0)} ₳
               </TableCell>
             </TableRow>
           </TableBody>
@@ -304,9 +300,7 @@ function UTxORow({
   return (
     <TableRow>
       <TableCell>
-        <div className="text-sm text-muted-foreground">
-          {index + 1}
-        </div>
+        <div className="text-sm text-muted-foreground">{index + 1}</div>
       </TableCell>
       <TableCell>
         <Input
