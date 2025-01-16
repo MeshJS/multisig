@@ -65,9 +65,14 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
             Please deposit fund to this script address before continuing
           </p>
         )}
-        <Link href={`/wallets/${appWallet.id}/transactions/new`}>
-          <Button size="sm">New Transaction</Button>
-        </Link>
+        <div className="flex space-x-2">
+          <Link href={`/wallets/${appWallet.id}/transactions/deposit`}>
+            <Button size="sm">Deposit</Button>
+          </Link>
+          <Link href={`/wallets/${appWallet.id}/transactions/new`}>
+            <Button size="sm">New Transaction</Button>
+          </Link>
+        </div>
 
         {/* Suggesting to disable the button if the balance is less than 0, or no previous transactions */}
         {/* <Button
