@@ -20,7 +20,7 @@
     "@auth/prisma-adapter": "^1.6.0",
     "@hookform/resolvers": "^3.9.0",
     "@jinglescode/nostr-chat-plugin": "^0.0.11",
-    "@meshsdk/core": "^1.8.5",
+    "@meshsdk/core": "^1.8.12",
     "@meshsdk/react": "^1.8.5",
     "@octokit/core": "^6.1.2",
     "@prisma/client": "^5.14.0",
