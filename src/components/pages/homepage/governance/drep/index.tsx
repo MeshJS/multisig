@@ -4,42 +4,57 @@ import CardUI from "@/components/common/card-content";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
+import BaseData from "./id/baseData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Link from "next/link";
+import { useWallet } from "@meshsdk/react";
+import DelegateButton from "./id/delegateButton";
 
 export default function DrepOverviewPage() {
-  const network = 0; // Ensure the correct network value is set
   const [drepList, setDrepList] = useState<BlockfrostDrepInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const { wallet, connected } = useWallet();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState<number>(1);
-  const blockchainProvider = getProvider(network);
+  const [network, setNetwork] = useState<number>(1); // Default to 1 (mainnet)
 
+  // Fetch the paginated list of DReps
   useEffect(() => {
     async function loadDrepList() {
+      const blockchainProvider = getProvider(network);
       setLoading(true);
       try {
-        const initialList = await blockchainProvider.get(`/governance/dreps/`);
-        if (Array.isArray(initialList)) {
-          const enrichedList = await Promise.all(
-            initialList.map(async (drep: { drep_id: string; hex: string }) => {
-              try {
-                const details = await blockchainProvider.get(
-                  `/governance/dreps/${drep.drep_id}`
-                );
-                return details;
-              } catch (error) {
-                console.error(
-                  `Failed to fetch details for DREP ID: ${drep.drep_id}`,
-                  error
-                );
-                return { ...drep, error: true }; // Mark this item as failed
-              }
-            })
+        const response = await blockchainProvider.get(
+          `/governance/dreps/?count=${pageSize}&page=${currentPage}&order=asc`,
+        );
+        if (response) {
+          // Initialize the list with basic DRep information
+          const initialList = response.map((drep:BlockfrostDrepInfo) => ({
+            drep_id: drep.drep_id,
+            hex: null,
+            amount: null,
+            active: null,
+            active_epoch: null,
+            has_script: null,
+          }));
+
+          setDrepList(initialList);
+
+          // Fetch details for each DRep
+          response.forEach((drep: BlockfrostDrepInfo) =>
+            fetchDrepDetails(drep.drep_id),
           );
-          setDrepList(enrichedList);
-          setTotalPages(Math.ceil(enrichedList.length / pageSize));
+
+          setTotalPages(Math.ceil(response.total_count / pageSize)); // Calculate total pages
         } else {
-          console.error("Unexpected API response format:", initialList);
+          console.error("Unexpected API response format:", response);
         }
       } catch (error) {
         console.error("Error loading DREP list:", error);
@@ -48,88 +63,104 @@ export default function DrepOverviewPage() {
       }
     }
 
-    loadDrepList(); // Call the loader once
-  }, [pageSize]);
+    loadDrepList();
+  }, [currentPage, pageSize, wallet]);
 
-  const startIndex = (currentPage - 1) * pageSize;
-  const displayedDreps = drepList.slice(startIndex, startIndex + pageSize);
+  // Fetch details for a specific DRep
+  const fetchDrepDetails = async (drepId: string) => {
+    const blockchainProvider = getProvider(network);
+    try {
+      const details:BlockfrostDrepInfo = await blockchainProvider.get(
+        `/governance/dreps/${drepId}`,
+      );
+      //console.log(drepList.map((m: BlockfrostDrepInfo) => (m.drep_id === drepId)? details : m ));
+      setDrepList((prevList) =>
+        prevList.map((drep) => (drep.drep_id === drepId ? details : drep)),
+      );
+    } catch (error) {
+      console.error(`Failed to fetch details for DREP ID ${drepId}:`, error);
+    }
+  };
 
   return (
     <main className="flex flex-col gap-8 p-4 md:p-8">
       <SectionTitle>DREP Overview</SectionTitle>
-      <p className="text-muted-foreground">
-        Discover Delegated Representatives (DReps) in the Cardano ecosystem.
-        Each DRep empowers stakeholders by representing their votes in
-        governance proposals. Browse the list to find active representatives
-        and their contributions.
-      </p>
+      {/* Pagination and Page Size Dropdown */}
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <span>
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
 
-      {loading && <p>Loading DREP information...</p>}
+        <Select
+          onValueChange={(value) => {
+            setPageSize(Number(value));
+            setCurrentPage(1); // Reset to first page when page size changes
+          }}
+          defaultValue="10"
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="Page Size" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="10">10</SelectItem>
+            <SelectItem value="20">20</SelectItem>
+            <SelectItem value="30">30</SelectItem>
+            <SelectItem value="40">40</SelectItem>
+            <SelectItem value="50">50</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-      {!loading && displayedDreps.length > 0 && (
-        <div className="space-y-4">
-          {displayedDreps.map((drep) => (
-            <CardUI key={drep.drep_id} title={`DRep: ${drep.drep_id}`}>
-              <ul className="list-none space-y-2 text-sm">
-                <li>
-                  <strong>Hex:</strong> {drep.hex}
-                </li>
-                {drep ? (
-                  <>
-                    <li>
-                      <strong>Amount:</strong> {drep.amount}
-                    </li>
-                    <li>
-                      <strong>Active:</strong> {drep.active ? "Yes" : "No"}
-                    </li>
-                    <li>
-                      <strong>Active Epoch:</strong> {drep.active_epoch}
-                    </li>
-                    <li>
-                      <strong>Has Script:</strong>{" "}
-                      {drep.has_script ? "Yes" : "No"}
-                    </li>
-                  </>
+      {/* Responsive Grid Layout */}
+      {loading ? (
+        <p>Loading DREP information...</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {drepList.map((d: BlockfrostDrepInfo) => (
+            <div>
+        
+            <Link
+              key={d.drep_id}
+              href={`/governance/drep/${d.drep_id}`}
+              passHref
+            >
+              <div>
+                {d.hex ? (
+                  <BaseData drepInfo={d} />
                 ) : (
-                  <li style={{ color: "red" }}>
-                    Failed to load additional details.
-                  </li>
+                  <CardUI title={`DRep: ${d.drep_id}`}>
+                    <p>Loading details...</p>
+                  </CardUI>
                 )}
-              </ul>
-              <div className="mt-4">
-                <Button
-                  onClick={() =>
-                    window.location.href = `/governance/drep/${drep.drep_id}`
-                  }
-                >
-                  More Info
-                </Button>
               </div>
-            </CardUI>
+              
+            </Link>
+            <DelegateButton drepid={d.drep_id} />
+            </div>
+              
           ))}
         </div>
       )}
 
-      {!loading && displayedDreps.length === 0 && (
+      {!loading && drepList.length === 0 && (
         <p>No DREP information available.</p>
       )}
-
-      <div className="flex justify-between mt-6">
-        <Button
-          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-          disabled={currentPage === 1}
-        >
-          Previous
-        </Button>
-        <Button
-          onClick={() =>
-            setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-          }
-          disabled={currentPage === totalPages}
-        >
-          Next
-        </Button>
-      </div>
     </main>
   );
 }

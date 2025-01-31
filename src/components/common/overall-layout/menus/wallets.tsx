@@ -30,7 +30,7 @@ export default function MenuWallets() {
             : "/governance"
         }
         className={
-          router.pathname == "/wallets/[wallet]/governance" || router.pathname =="/governance" ? "text-white" : ""
+          router.pathname.includes('governance') ? "text-white" : ""
         }
       >
         <Scale className="h-4 w-4" />
