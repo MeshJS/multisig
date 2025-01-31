@@ -102,10 +102,15 @@ function TransactionRow({
         <div className="flex gap-2 text-sm text-muted-foreground md:inline">
           <LinkCardanoscan
             url={`transaction/${transaction.hash}`}
-            className="flex w-44 gap-1"
+            className="flex flex-col w-44 gap-1"
           >
-            {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
-            <ArrowUpRight className="h-3 w-3" />
+            <span className="flex gap-1">
+              <span>{transaction.hash.substring(0, 6)}...{transaction.hash.slice(-6)}</span>
+              <ArrowUpRight className="h-3 w-3" />
+            </span>
+            <span className="text-xs">
+              {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
+            </span>
           </LinkCardanoscan>
         </div>
         {dbTransaction && (
@@ -207,13 +212,6 @@ function RowAction({
           }
         }
       }
-
-      const amount: { unit: string; quantity: string }[] = Object.entries(
-        _amount,
-      ).map(([unit, quantity]) => ({
-        unit,
-        quantity: quantity.toString(),
-      }));
 
       for (const output of transaction.outputs) {
         if (output.address === appWallet.address) {

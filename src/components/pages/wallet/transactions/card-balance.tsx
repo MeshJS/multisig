@@ -67,7 +67,7 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         )}
         <div className="flex space-x-2">
           <Link href={`/wallets/${appWallet.id}/transactions/deposit`}>
-            <Button size="sm">Deposit</Button>
+            <Button size="sm">Deposit Funds</Button>
           </Link>
           <Link href={`/wallets/${appWallet.id}/transactions/new`}>
             <Button size="sm">New Transaction</Button>
