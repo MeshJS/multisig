@@ -2,25 +2,20 @@ import { ArrowLeft, Info, List, Scale, Wallet } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
+import useUserWallets from "@/hooks/useUserWallets";
 import { Badge } from "@/components/ui/badge";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 
 export default function MenuWallet() {
   const router = useRouter();
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
-
+  const { wallets } = useUserWallets();
   const { transactions } = usePendingTransactions();
-
+  if(!wallets)return;
   return (
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
       <div className="grid items-start">
-        <MenuLink
-          href={`${baseUrl}`}
-          className={router.pathname == "/wallets/[wallet]" ? "text-white" : ""}
-        >
-          <Wallet className="h-4 w-4" />
-          <div className="flex items-center gap-2">Summary</div>
-        </MenuLink>
+        <p>{wallets.filter((wallet) => wallet.id === router.query.wallet).map((wallet) => wallet.name)}</p>
 
         <MenuLink
           href={`${baseUrl}transactions`}
@@ -39,17 +34,6 @@ export default function MenuWallet() {
               </Badge>
             )}
           </div>
-        </MenuLink>
-        <MenuLink
-          href={`${baseUrl}governance`}
-          className={
-            router.pathname == "/wallets/[wallet]/governance"
-              ? "text-white"
-              : ""
-          }
-        >
-          <Scale className="h-4 w-4" />
-          Governance
         </MenuLink>
         <MenuLink
           href={`${baseUrl}chat`}

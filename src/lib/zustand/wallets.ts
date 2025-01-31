@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { UTxO } from "@meshsdk/core";
 import { OnChainTransaction } from "@/types/transaction";
-import { BlockfrostDrepInfo } from "@/types/wallet";
+import { BlockfrostDrepInfo } from "@/types/governance";
 
 interface WalletsState {
   walletsUtxos: { [walletId: string]: UTxO[] };

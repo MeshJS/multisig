@@ -7,7 +7,3 @@ export type Wallet = DbWallet & {
   dRepId: string;
 };
 
-export type BlockfrostDrepInfo = {
-  drep_id: string;
-  active: boolean;
-};

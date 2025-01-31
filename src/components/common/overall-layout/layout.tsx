@@ -27,7 +27,6 @@ import {
 import Logo from "./logo";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
-import MenuHomepage from "./menus/homepage-links";
 import Loading from "./loading";
 import { PopupAlert } from "../popup-alert";
 import DialogReport from "./dialog-report";
@@ -103,8 +102,8 @@ export default function RootLayout({
     load();
   }, [user, isLoading]);
 
-  const isLoggedIn = user !== undefined && user !== null;
-  const isHomePath = router.asPath == "/";
+  //const isLoggedIn = user !== undefined && user !== null;
+  //const isHomePath = router.asPath == "/"||"/features";
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
   const walletPageNames = walletPageRoute && walletPageRoute.split("/");
@@ -127,14 +126,12 @@ export default function RootLayout({
             </Button> */}
           </div>
           <div className="flex-1">
-            {isLoggedIn ? (
+            {
               <>
-                {isHomePath && <MenuWallets />}
+                <MenuWallets />
                 {isWalletPath && <MenuWallet />}
               </>
-            ) : (
-              <MenuHomepage />
-            )}
+            }
             {/* <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
               {wallets &&
                 wallets.map((wallet) => (

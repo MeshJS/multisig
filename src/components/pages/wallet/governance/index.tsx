@@ -1,4 +1,4 @@
-import { BlockfrostDrepInfo } from "@/types/wallet";
+import { BlockfrostDrepInfo } from "@/types/governance";
 import CardInfo from "./card-info";
 import { useEffect } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";

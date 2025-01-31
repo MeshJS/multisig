@@ -1,1 +1,1 @@
-export const publicRoutes = ["/", "/drep/[id]", '/features'];
+export const publicRoutes = ["/", "/governance", "/governance/drep", "/governance/drep/[id]", '/features'];
