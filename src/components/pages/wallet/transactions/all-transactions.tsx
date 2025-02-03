@@ -197,7 +197,11 @@ function RowAction({
   const { newTransaction } = useTransaction();
 
   async function returnToSender() {
-    if (transaction.inputs.length === 1) {
+    const allTxInputsFromSameAddress = transaction.inputs.every(
+      (input) => input.address === transaction.inputs[0]!.address,
+    );
+    
+    if (allTxInputsFromSameAddress) {
       const txBuilder = getTxBuilder(network);
 
       const _amount: { [unit: string]: number } = {};
