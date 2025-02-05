@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import BaseData from "./baseData";
 import Metadata from "./metadata";
 import { BlockfrostDrepInfo, DrepMetadata } from "@/types/governance";
@@ -26,9 +25,12 @@ export default function DrepLandingPage() {
     async function fetchDrepData() {
       setLoading(true);
       try {
+        if(!wallet) {
+
+        }
         const networkId = await wallet.getNetworkId();
         setNetwork(networkId);
-        const provider = getProvider(networkId);
+        const provider = getProvider(network);
         const [infoResult, metadataResult] = await Promise.allSettled([
           provider.get(`/governance/dreps/${drepid}`),
           provider.get(`/governance/dreps/${drepid}/metadata`),

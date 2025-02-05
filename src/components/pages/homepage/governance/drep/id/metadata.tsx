@@ -1,8 +1,8 @@
 import React from "react";
 import CardUI from "@/components/common/card-content";
-import { DrepMetadata } from "@/types/governance";
+import { BlockfrostDrepMetadata } from "@/types/governance";
 
-export default function Metadata({ drepMetadata }: { drepMetadata: DrepMetadata | null }) {
+export default function Metadata({ drepMetadata }: { drepMetadata: BlockfrostDrepMetadata | null }) {
   if (!drepMetadata) {
     return <p>No metadata available for this DRep.</p>;
   }

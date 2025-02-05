@@ -1,58 +1,54 @@
 import React, { useEffect, useState } from "react";
 import SectionTitle from "@/components/common/section-title";
-import CardUI from "@/components/common/card-content";
+import Pagination from "@/components/common/overall-layout/pagination";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import { BlockfrostDrepInfo } from "@/types/governance";
-import { Button } from "@/components/ui/button";
-import BaseData from "./id/baseData";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
 import { useWallet } from "@meshsdk/react";
 import DelegateButton from "./id/delegateButton";
+import RowLabelInfo from "@/components/common/row-label-info";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export default function DrepOverviewPage() {
-  const [drepList, setDrepList] = useState<BlockfrostDrepInfo[]>([]);
+  const [drepList, setDrepList] = useState<
+    Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata }>
+  >([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { wallet, connected } = useWallet();
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [network, setNetwork] = useState<number>(1); // Default to 1 (mainnet)
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
+  const [isLastPage, setIsLastPage] = useState<boolean>(false);
+  const [network, setNetwork] = useState<number>(1); // Default to mainnet
 
-  // Fetch the paginated list of DReps
   useEffect(() => {
     async function loadDrepList() {
       const blockchainProvider = getProvider(network);
       setLoading(true);
       try {
         const response = await blockchainProvider.get(
-          `/governance/dreps/?count=${pageSize}&page=${currentPage}&order=asc`,
+          `/governance/dreps/?count=${pageSize}&page=${currentPage}&order=${order}`,
         );
+
         if (response) {
-          // Initialize the list with basic DRep information
-          const initialList = response.map((drep:BlockfrostDrepInfo) => ({
-            drep_id: drep.drep_id,
-            hex: null,
-            amount: null,
-            active: null,
-            active_epoch: null,
-            has_script: null,
+          const initialList = response.map((drep: BlockfrostDrepInfo) => ({
+            details: {
+              drep_id: drep.drep_id,
+              hex: null,
+              amount: null,
+              active: null,
+              active_epoch: null,
+              has_script: null,
+            },
+            metadata: {},
           }));
 
           setDrepList(initialList);
-
-          // Fetch details for each DRep
           response.forEach((drep: BlockfrostDrepInfo) =>
             fetchDrepDetails(drep.drep_id),
           );
 
-          setTotalPages(Math.ceil(response.total_count / pageSize)); // Calculate total pages
+          setIsLastPage(response.length < pageSize);
         } else {
           console.error("Unexpected API response format:", response);
         }
@@ -64,103 +60,163 @@ export default function DrepOverviewPage() {
     }
 
     loadDrepList();
-  }, [currentPage, pageSize, wallet]);
+  }, [currentPage, pageSize, order, wallet]);
 
-  // Fetch details for a specific DRep
+  // Fetch DRep details
   const fetchDrepDetails = async (drepId: string) => {
     const blockchainProvider = getProvider(network);
     try {
-      const details:BlockfrostDrepInfo = await blockchainProvider.get(
+      const details: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepId}`,
       );
-      //console.log(drepList.map((m: BlockfrostDrepInfo) => (m.drep_id === drepId)? details : m ));
+      const metadata: BlockfrostDrepMetadata = await blockchainProvider.get(
+        `/governance/dreps/${drepId}/metadata/`,
+      );
+
       setDrepList((prevList) =>
-        prevList.map((drep) => (drep.drep_id === drepId ? details : drep)),
+        prevList.map((drep) =>
+          drep.details.drep_id === drepId ? { details, metadata } : drep,
+        ),
       );
     } catch (error) {
-      console.error(`Failed to fetch details for DREP ID ${drepId}:`, error);
+      console.error(`Failed to fetch details for DREP ${drepId}:`, error);
     }
   };
 
   return (
-    <main className="flex flex-col gap-8 p-4 md:p-8">
-      <SectionTitle>DREP Overview</SectionTitle>
-      {/* Pagination and Page Size Dropdown */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-          >
-            Previous
-          </Button>
-          <span>
-            Page {currentPage} of {totalPages}
-          </span>
-          <Button
-            onClick={() =>
-              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-            }
-            disabled={currentPage === totalPages}
-          >
-            Next
-          </Button>
-        </div>
+    <TooltipProvider>
+      <main className="flex flex-col gap-8 p-4 md:p-8 text-gray-300">
+        <SectionTitle>DREP Overview</SectionTitle>
 
-        <Select
-          onValueChange={(value) => {
-            setPageSize(Number(value));
-            setCurrentPage(1); // Reset to first page when page size changes
-          }}
-          defaultValue="10"
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Page Size" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="10">10</SelectItem>
-            <SelectItem value="20">20</SelectItem>
-            <SelectItem value="30">30</SelectItem>
-            <SelectItem value="40">40</SelectItem>
-            <SelectItem value="50">50</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        {/* Pagination Component */}
+        <Pagination
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          order={order}
+          setOrder={setOrder}
+          onLastPage={isLastPage}
+        />
 
-      {/* Responsive Grid Layout */}
-      {loading ? (
-        <p>Loading DREP information...</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {drepList.map((d: BlockfrostDrepInfo) => (
-            <div>
-        
-            <Link
-              key={d.drep_id}
-              href={`/governance/drep/${d.drep_id}`}
-              passHref
-            >
-              <div>
-                {d.hex ? (
-                  <BaseData drepInfo={d} />
+        {/* DRep List */}
+        <div className="flex flex-col gap-4">
+          {loading ? (
+            <p>Loading DREP information...</p>
+          ) : (
+            drepList.map(({ details, metadata }) => {
+              const drepId = details.drep_id;
+              const givenName =
+                typeof metadata?.json_metadata?.body?.givenName === "object"
+                  ? metadata.json_metadata.body.givenName["@value"] ||
+                    "Unknown Name"
+                  : metadata?.json_metadata?.body?.givenName || "Unknown Name";
+              const isActive = details?.active ?? false;
+              const imageUrl =
+                metadata?.json_metadata?.body?.image?.contentUrl || null;
+              const adaAmount = details?.amount
+                ? (parseInt(details.amount, 10) / 1_000_000).toFixed(2) + " ₳"
+                : "";
+              const isScript = details?.has_script ? "Yes" : "No";
+
+              return (
+                <div
+                key={drepId}
+                className="flex items-center gap-4 rounded-lg border-y border-gray-700 p-4 shadow-sm"
+              >
+                {/* Profile Image or Placeholder */}
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={givenName}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
                 ) : (
-                  <CardUI title={`DRep: ${d.drep_id}`}>
-                    <p>Loading details...</p>
-                  </CardUI>
+                  <svg
+                    className="h-12 w-12 text-gray-500"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="12" cy="7" r="4"></circle>
+                    <path d="M5 21c0-4 3-7 7-7s7 3 7 7"></path>
+                  </svg>
                 )}
+              
+                {/* DRep Info */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {/* Status Indicator with Tooltip */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={`h-3 w-3 rounded-full ${
+                            isActive ? "bg-green-500" : "bg-red-500"
+                          }`}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {isActive
+                          ? "This DRep is currently active in governance."
+                          : "This DRep is inactive."}
+                      </TooltipContent>
+                    </Tooltip>
+              
+                    {/* DRep Name */}
+                    <Link href={`/governance/drep/${drepId}`} passHref>
+                      <div className="cursor-pointer text-lg font-semibold hover:underline text-gray-200">
+                        {givenName}
+                      </div>
+                    </Link>
+              
+                    {/* Script Indicator (only if `has_script` is true) */}
+                    {isScript === "Yes" && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <svg
+                            className="h-5 w-5 text-blue-400"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path d="M9 18v-6l-2 2m6 4v-6l2 2m4 4V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2z"></path>
+                          </svg>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          This DRep uses a script-based voting mechanism.
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+              
+                  {/* DRep ID directly under name */}
+                  <RowLabelInfo
+                    label="DRep ID:"
+                    value={drepId}
+                    copyString={drepId}
+                    className="text-sm text-gray-400"
+                  />
+                </div>
+              
+                {/* ADA Amount (Larger, Aligned Right) */}
+                <p className="text-lg font-semibold text-gray-300">{adaAmount}</p>
+              
+                {/* Delegate Button */}
+                {details.amount && <DelegateButton drepid={drepId} />}
               </div>
-              
-            </Link>
-            <DelegateButton drepid={d.drep_id} />
-            </div>
-              
-          ))}
-        </div>
-      )}
+              );
+            })
+          )}
 
-      {!loading && drepList.length === 0 && (
-        <p>No DREP information available.</p>
-      )}
-    </main>
+          {!loading && drepList.length === 0 && (
+            <p className="text-gray-500">No DREP information available.</p>
+          )}
+        </div>
+      </main>
+    </TooltipProvider>
   );
 }

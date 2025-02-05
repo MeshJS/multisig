@@ -27,7 +27,7 @@ export type BlockfrostDrepInfo = {
   has_script: boolean;
 };
 
-export type DrepMetadata = {
+export type BlockfrostDrepMetadata = {
   drep_id: string; // DRep identifier
   hex: string; // Hexadecimal representation of the DRep
   url: string; // URL linking to the DRep's metadata file
