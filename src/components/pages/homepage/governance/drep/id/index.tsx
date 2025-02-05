@@ -1,112 +1,180 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import SectionTitle from "@/components/common/section-title";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import BaseData from "./baseData";
+import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Metadata from "./metadata";
-import { BlockfrostDrepInfo, DrepMetadata } from "@/types/governance";
-import CardUI from "@/components/common/card-content";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Loader } from "lucide-react";
+import ActiveIndicator from "../activeIndicator";
+import ScriptIndicator from "../scriptIndicator";
 import { useWallet } from "@meshsdk/react";
-import useAppWallet from "@/hooks/useAppWallet";
-import DelegateButton from "./delegateButton"; // Import DelegateButton
+import RowLabelInfo from "@/components/common/row-label-info";
+import { extractJsonLdValue } from "@/components/common/cardano-objects/jsonLdParser";
+import { Button } from "@/components/ui/button";
+import DelegateButton from "./delegateButton";
 
-export default function DrepLandingPage() {
-  const { query, push } = useRouter();
-  const { id: drepid } = query;
+export default function DrepDetailPage() {
+  const router = useRouter();
+  const { id } = router.query;
   const { wallet, connected } = useWallet();
-  const { appWallet } = useAppWallet();
   const [drepInfo, setDrepInfo] = useState<BlockfrostDrepInfo | null>(null);
-  const [drepMetadata, setDrepMetadata] = useState<DrepMetadata | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [network, setNetwork] = useState<number>(1); // Default to 1 (mainnet)
+  const [drepMetadata, setDrepMetadata] =
+    useState<BlockfrostDrepMetadata | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [network, setNetwork] = useState<number>(3); // Default to mainnet
 
-  useEffect(() => {
-    if (!drepid || Array.isArray(drepid)) return;
-
-    async function fetchDrepData() {
-      setLoading(true);
-      try {
-        if(!wallet) {
-
+    useEffect(() => {
+      async function fetchNetwork() {
+        if (connected && wallet) {
+          try {
+            const net = await wallet.getNetworkId();
+            console.log("Network ID:", net);
+            setNetwork(net);
+          } catch (error) {
+          setNetwork(1);
+            console.error("Error fetching network ID:", error);
+          }
         }
-        const networkId = await wallet.getNetworkId();
-        setNetwork(networkId);
-        const provider = getProvider(network);
-        const [infoResult, metadataResult] = await Promise.allSettled([
-          provider.get(`/governance/dreps/${drepid}`),
-          provider.get(`/governance/dreps/${drepid}/metadata`),
-        ]);
-
-        if (infoResult.status === "fulfilled") {
-          setDrepInfo(infoResult.value as BlockfrostDrepInfo);
-        } else {
-          console.error("Failed to fetch DRep info:", infoResult.reason);
-        }
-
-        if (metadataResult.status === "fulfilled") {
-          setDrepMetadata(metadataResult.value as DrepMetadata);
-        } else {
-          console.error(
-            "Failed to fetch DRep metadata:",
-            metadataResult.reason,
-          );
-        }
-      } catch (error) {
-        console.error("Error fetching DRep data:", error);
-      } finally {
-        setLoading(false);
       }
+    
+      fetchNetwork();
+    }, [connected, wallet]);
+    
+  useEffect(() => {
+    if (network === 3) return; // Prevent fetching if network is not set
+    if (id) fetchDrepData(id as string);
+  }, [id, wallet, network]);
+
+  async function fetchDrepData(drepId: string) {
+    setLoading(true);
+    try {
+      const blockchainProvider = getProvider(network);
+      const details = await blockchainProvider.get(
+        `/governance/dreps/${drepId}`,
+      );
+
+      let metadata: BlockfrostDrepMetadata | null = null;
+      try {
+        metadata = await blockchainProvider.get(
+          `/governance/dreps/${drepId}/metadata/`,
+        );
+      } catch {
+        console.warn(`No metadata found for DRep ${drepId}`);
+      }
+
+      setDrepInfo(details || null);
+      setDrepMetadata(metadata || null);
+    } catch (error) {
+      console.error(`Failed to fetch DRep ${drepId} details:`, error);
+    } finally {
+      setLoading(false);
     }
-    fetchDrepData();
-  }, [drepid, wallet]);
+  }
 
   if (loading) {
-    return <p>Loading...</p>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader className="h-8 w-8 animate-spin text-gray-500" />
+      </div>
+    );
   }
 
-  if (!drepid || Array.isArray(drepid)) {
-    return <p>Invalid DRep ID</p>;
+  if (!drepInfo) {
+    return (
+      <p className="text-center text-gray-500">DRep data is unavailable.</p>
+    );
   }
+
+  // Extract Data with JSON-LD Parsing
+  const { drep_id, amount, active, has_script } = drepInfo;
+  const givenName = extractJsonLdValue(
+    drepMetadata?.json_metadata?.body?.givenName,
+    "Unknown Name",
+  );
+  const imageUrl = drepMetadata?.json_metadata?.body?.image?.contentUrl || null;
+  const adaAmount = amount
+    ? (parseInt(amount, 10) / 1_000_000).toFixed(2) + " ₳"
+    : "N/A";
+  const paymentAddress = extractJsonLdValue(
+    drepMetadata?.json_metadata?.body?.paymentAddress,
+    "N/A",
+  );
 
   return (
-    <main className="flex flex-col gap-6 p-6 md:gap-8 md:p-12">
-      {/* Header Section */}
-      <div className="mb-6 flex items-center justify-between">
-        <DelegateButton drepid={drepid as string} /> {/* Replace local function */}
-        <h1 className="text-2xl font-bold text-gray-800">DRep Details</h1>
-        <button
-          onClick={() => push("/governance/drep")}
-          className="rounded border bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300"
-        >
-          Back to DRep List
-        </button>
-      </div>
+    <TooltipProvider>
+      <main className="flex flex-col gap-4 p-4 text-gray-300 md:p-8">
+        
+        {/*  Top Action Buttons */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <Button variant="ghost" onClick={() => router.push("/governance/drep")}>
+            ← Back to DRep List
+          </Button>
+          <DelegateButton drepid={drep_id} />
+        </div>
 
-      {/* Explainer Card */}
-      <CardUI
-        title="How Voting Delegation Works"
-        description="Delegating your voting power to a DRep (Delegated Representative)
-          allows them to vote on your behalf in governance decisions. This
-          ensures your voice is represented without requiring direct voting
-          participation."
-      >
-        {!connected && (
-          <p className="mt-2 text-sm text-red-500">
-            Please connect your wallet to enable delegation.
-          </p>
-        )}
-      </CardUI>
+        <SectionTitle>DRep Details</SectionTitle>
 
-      {/* DRep Data Sections */}
-      {drepInfo ? (
-        <BaseData drepInfo={drepInfo} />
-      ) : (
-        <p>No DRep info available</p>
-      )}
-      {drepMetadata ? (
+        {/* Layout: Profile Image + Details in a Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-4 items-start">
+          {/* Profile Image */}
+          <div className="flex-shrink-0">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={givenName}
+                className="h-24 w-24 sm:h-32 sm:w-32 rounded-full object-cover"
+              />
+            ) : (
+              <svg
+                className="h-24 w-24 sm:h-32 sm:w-32 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle cx="12" cy="7" r="4"></circle>
+                <path d="M5 21c0-4 3-7 7-7s7 3 7 7"></path>
+              </svg>
+            )}
+          </div>
+
+          {/* Info Section */}
+          <div className="flex flex-col space-y-2 min-w-0">
+            {/* Name, Status, and Indicators */}
+            <div className="flex flex-wrap items-center space-x-2">
+              <ActiveIndicator isActive={active} />
+              <span className="text-lg font-semibold text-gray-200">{givenName}</span>
+              {has_script && <ScriptIndicator hasScript={has_script} />}
+            </div>
+
+            {/* DRep ID */}
+            <RowLabelInfo
+              label="DRep ID:"
+              value={drep_id}
+              copyString={drep_id}
+              className="truncate sm:whitespace-nowrap break-all text-sm text-gray-400"
+            />
+
+            {/* Payment Address */}
+            <RowLabelInfo
+              label="Address:"
+              value={paymentAddress}
+              copyString={paymentAddress}
+              className="truncate sm:whitespace-nowrap break-all text-sm text-gray-400"
+            />
+          </div>
+
+          {/* ADA Amount */}
+          <div className="flex-shrink-0 sm:text-right text-center w-full sm:w-auto">
+            <p className="text-lg font-semibold text-gray-300">{adaAmount}</p>
+          </div>
+        </div>
+
+        {/* Metadata Section */}
         <Metadata drepMetadata={drepMetadata} />
-      ) : (
-        <p>No metadata available</p>
-      )}
-    </main>
+      </main>
+    </TooltipProvider>
   );
 }

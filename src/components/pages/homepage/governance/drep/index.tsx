@@ -7,7 +7,9 @@ import Link from "next/link";
 import { useWallet } from "@meshsdk/react";
 import DelegateButton from "./id/delegateButton";
 import RowLabelInfo from "@/components/common/row-label-info";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import ActiveIndicator from "./activeIndicator";
+import ScriptIndicator from "./scriptIndicator";
 
 export default function DrepOverviewPage() {
   const [drepList, setDrepList] = useState<
@@ -19,35 +21,48 @@ export default function DrepOverviewPage() {
   const [pageSize, setPageSize] = useState<number>(25);
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [isLastPage, setIsLastPage] = useState<boolean>(false);
-  const [network, setNetwork] = useState<number>(1); // Default to mainnet
+  const [network, setNetwork] = useState<number>(3); // Default to mainnet
 
   useEffect(() => {
+    async function fetchNetwork() {
+      if (connected && wallet) {
+        try {
+          const net = await wallet.getNetworkId();
+          console.log("Network ID:", net);
+          setNetwork(net);
+        } catch (error) {
+        setNetwork(1);
+          console.error("Error fetching network ID:", error);
+        }
+      }
+    }
+  
+    fetchNetwork();
+  }, [connected, wallet]);
+  
+  useEffect(() => {
     async function loadDrepList() {
-      const blockchainProvider = getProvider(network);
+      if (network === 3) return; // Prevent fetching if network is not set
+  
       setLoading(true);
+      const blockchainProvider = getProvider(network);
+  
       try {
         const response = await blockchainProvider.get(
           `/governance/dreps/?count=${pageSize}&page=${currentPage}&order=${order}`,
         );
-
+  
         if (response) {
           const initialList = response.map((drep: BlockfrostDrepInfo) => ({
-            details: {
-              drep_id: drep.drep_id,
-              hex: null,
-              amount: null,
-              active: null,
-              active_epoch: null,
-              has_script: null,
-            },
+            details: { ...drep },
             metadata: {},
           }));
-
+  
           setDrepList(initialList);
           response.forEach((drep: BlockfrostDrepInfo) =>
             fetchDrepDetails(drep.drep_id),
           );
-
+  
           setIsLastPage(response.length < pageSize);
         } else {
           console.error("Unexpected API response format:", response);
@@ -58,9 +73,11 @@ export default function DrepOverviewPage() {
         setLoading(false);
       }
     }
-
-    loadDrepList();
-  }, [currentPage, pageSize, order, wallet]);
+  
+    if (network !== null) {
+      loadDrepList();
+    }
+  }, [currentPage, pageSize, order, network]); // Dependency now waits for network
 
   // Fetch DRep details
   const fetchDrepDetails = async (drepId: string) => {
@@ -85,7 +102,7 @@ export default function DrepOverviewPage() {
 
   return (
     <TooltipProvider>
-      <main className="flex flex-col gap-8 p-4 md:p-8 text-gray-300">
+      <main className="flex flex-col gap-8 p-4 text-gray-300 md:p-8">
         <SectionTitle>DREP Overview</SectionTitle>
 
         {/* Pagination Component */}
@@ -117,97 +134,64 @@ export default function DrepOverviewPage() {
               const adaAmount = details?.amount
                 ? (parseInt(details.amount, 10) / 1_000_000).toFixed(2) + " ₳"
                 : "";
-              const isScript = details?.has_script ? "Yes" : "No";
+              const isScript = details?.has_script;
 
               return (
                 <div
-                key={drepId}
-                className="flex items-center gap-4 rounded-lg border-y border-gray-700 p-4 shadow-sm"
-              >
-                {/* Profile Image or Placeholder */}
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt={givenName}
-                    className="h-12 w-12 rounded-full object-cover"
-                  />
-                ) : (
-                  <svg
-                    className="h-12 w-12 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <circle cx="12" cy="7" r="4"></circle>
-                    <path d="M5 21c0-4 3-7 7-7s7 3 7 7"></path>
-                  </svg>
-                )}
-              
-                {/* DRep Info */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    {/* Status Indicator with Tooltip */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className={`h-3 w-3 rounded-full ${
-                            isActive ? "bg-green-500" : "bg-red-500"
-                          }`}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isActive
-                          ? "This DRep is currently active in governance."
-                          : "This DRep is inactive."}
-                      </TooltipContent>
-                    </Tooltip>
-              
-                    {/* DRep Name */}
-                    <Link href={`/governance/drep/${drepId}`} passHref>
-                      <div className="cursor-pointer text-lg font-semibold hover:underline text-gray-200">
-                        {givenName}
-                      </div>
-                    </Link>
-              
-                    {/* Script Indicator (only if `has_script` is true) */}
-                    {isScript === "Yes" && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <svg
-                            className="h-5 w-5 text-blue-400"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path d="M9 18v-6l-2 2m6 4v-6l2 2m4 4V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2z"></path>
-                          </svg>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          This DRep uses a script-based voting mechanism.
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                  key={drepId}
+                  className="flex items-center gap-4 rounded-lg border-y border-gray-700 p-4 shadow-sm"
+                >
+                  {/* Profile Image or Placeholder */}
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={givenName}
+                      className="h-12 w-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <svg
+                      className="h-12 w-12 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <circle cx="12" cy="7" r="4"></circle>
+                      <path d="M5 21c0-4 3-7 7-7s7 3 7 7"></path>
+                    </svg>
+                  )}
+
+                  {/* DRep Info */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <ActiveIndicator isActive={isActive} />
+                      {/* DRep Name */}
+                      <Link href={`/governance/drep/${drepId}`} passHref>
+                        <div className="cursor-pointer text-lg font-semibold text-gray-200 hover:underline">
+                          {givenName}
+                        </div>
+                      </Link>
+                      {isScript && <ScriptIndicator hasScript={isScript} />}
+                    </div>
+
+                    {/* DRep ID directly under name */}
+                    <RowLabelInfo
+                      label="DRep ID:"
+                      value={drepId}
+                      copyString={drepId}
+                      className="text-sm text-gray-400"
+                    />
                   </div>
-              
-                  {/* DRep ID directly under name */}
-                  <RowLabelInfo
-                    label="DRep ID:"
-                    value={drepId}
-                    copyString={drepId}
-                    className="text-sm text-gray-400"
-                  />
+
+                  {/* ADA Amount (Larger, Aligned Right) */}
+                  <p className="text-lg font-semibold text-gray-300">
+                    {adaAmount}
+                  </p>
+
+                  {/* Delegate Button */}
+                  {details.amount && <DelegateButton drepid={drepId} />}
                 </div>
-              
-                {/* ADA Amount (Larger, Aligned Right) */}
-                <p className="text-lg font-semibold text-gray-300">{adaAmount}</p>
-              
-                {/* Delegate Button */}
-                {details.amount && <DelegateButton drepid={drepId} />}
-              </div>
               );
             })
           )}
