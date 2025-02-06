@@ -28,7 +28,6 @@ export default function DrepOverviewPage() {
       if (connected && wallet) {
         try {
           const net = await wallet.getNetworkId();
-          console.log("Network ID:", net);
           setNetwork(net);
         } catch (error) {
         setNetwork(1);

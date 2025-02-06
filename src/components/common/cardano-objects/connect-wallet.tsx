@@ -38,7 +38,6 @@ export default function ConnectWallet() {
           await connect(pastWallet);
         } catch (e) {
           setPastWallet(undefined);
-          console.log(e);
         }
       }
     }

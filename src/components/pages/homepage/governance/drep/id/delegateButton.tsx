@@ -32,13 +32,13 @@ export default function DelegateButton({ drepid }: { drepid: string }) {
 
     setDelegating(true);
     try {
-      console.log("Fetching UTXOs...");
+      // console.log("Fetching UTXOs...");
       const utxos = await wallet.getUtxos();
       if (!utxos.length) {
         throw new Error("No available UTXOs found.");
       }
 
-      console.log("Fetching reward and change addresses...");
+      // console.log("Fetching reward and change addresses...");
       const rewardAddresses = await wallet.getRewardAddresses();
       const rewardAddress = appWallet?.address || rewardAddresses[0];
       const changeAddress =
@@ -48,7 +48,7 @@ export default function DelegateButton({ drepid }: { drepid: string }) {
         throw new Error("Missing reward or change address.");
       }
 
-      console.log("Building delegation transaction...");
+      // console.log("Building delegation transaction...");
       const txBuilder = getTxBuilder(await wallet.getNetworkId());
       txBuilder
         .voteDelegationCertificate({ dRepId: drepid }, rewardAddress)
@@ -56,13 +56,13 @@ export default function DelegateButton({ drepid }: { drepid: string }) {
         .selectUtxosFrom(utxos);
 
       const unsignedTx = await txBuilder.complete();
-      console.log("Unsigned TX:", unsignedTx);
+      // console.log("Unsigned TX:", unsignedTx);
 
       const signedTx = await wallet.signTx(unsignedTx);
-      console.log("Signed TX:", signedTx);
+      // console.log("Signed TX:", signedTx);
 
       const txHash = await wallet.submitTx(signedTx);
-      console.log("Transaction Submitted:", txHash);
+      // console.log("Transaction Submitted:", txHash);
 
       toast({
         title: "Delegation Successful",
