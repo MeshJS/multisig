@@ -17,6 +17,10 @@ export default function useTransaction() {
 
   const { mutateAsync: createTransaction } =
     api.transaction.createTransaction.useMutation({
+      onSuccess: async () => {
+        void ctx.transaction.getPendingTransactions.invalidate();
+        void ctx.transaction.getAllTransactions.invalidate();
+      },
       onError: (e) => {
         console.error("createTransaction", e);
       },
@@ -84,8 +88,6 @@ export default function useTransaction() {
         txHash: txHash,
       });
 
-      void ctx.transaction.getPendingTransactions.invalidate();
-      void ctx.transaction.getAllTransactions.invalidate();
       setLoading(false);
 
       toast({

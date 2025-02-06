@@ -32,6 +32,7 @@ import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/router";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -52,6 +53,7 @@ export default function PageNewTransaction() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     reset();
@@ -64,24 +66,6 @@ export default function PageNewTransaction() {
     setSendAllAssets(false);
     setLoading(false);
   }
-
-  // const { mutate: createTransaction } =
-  //   api.transaction.createTransaction.useMutation({
-  //     onSuccess: async () => {
-  //       toast({
-  //         title: "Transaction Created",
-  //         description: "Your transaction has been created",
-  //         duration: 5000,
-  //       });
-  //       void ctx.transaction.getPendingTransactions.invalidate();
-  //       void ctx.transaction.getAllTransactions.invalidate();
-  //       reset();
-  //     },
-  //     onError: (e) => {
-  //       console.error(e);
-  //       setLoading(false);
-  //     },
-  //   });
 
   async function createNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
@@ -154,43 +138,6 @@ export default function PageNewTransaction() {
         txBuilder.changeAddress(appWallet.address);
       }
 
-      // const unsignedTx = await txBuilder.complete();
-      // const signedTx = await wallet.signTx(unsignedTx, true);
-
-      // const signedAddresses = [];
-      // signedAddresses.push(userAddress);
-
-      // let txHash = undefined;
-      // let submitTx = false;
-
-      // if (appWallet.type == "any") {
-      //   submitTx = true;
-      // } else if (
-      //   appWallet.type == "atLeast" &&
-      //   appWallet.numRequiredSigners == signedAddresses.length
-      // ) {
-      //   submitTx = true;
-      // } else if (
-      //   appWallet.type == "all" &&
-      //   appWallet.signersAddresses.length == signedAddresses.length
-      // ) {
-      //   submitTx = true;
-      // }
-
-      // if (submitTx) {
-      //   txHash = await wallet.submitTx(signedTx);
-      // }
-
-      // createTransaction({
-      //   walletId: appWallet.id,
-      //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-      //   txCbor: signedTx,
-      //   signedAddresses: [userAddress],
-      //   state: submitTx ? 1 : 0,
-      //   description: addDescription ? description : undefined,
-      //   txHash: txHash,
-      // });
-
       await newTransaction({
         txBuilder,
         description: addDescription ? description : undefined,
@@ -198,6 +145,8 @@ export default function PageNewTransaction() {
           metadata.length > 0 ? { label: "674", value: metadata } : undefined,
       });
       reset();
+
+      router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
 

@@ -1,1 +1,1 @@
-export const NUMBER_OF_TRANSACTIONS = 20; 
+export const NUMBER_OF_TRANSACTIONS = 20;
