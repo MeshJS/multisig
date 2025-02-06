@@ -24,7 +24,6 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
-import { stakeCredentialHash } from "@/data/cardano";
 import {
   Select,
   SelectContent,
@@ -48,7 +47,7 @@ export default function PageNewWallet() {
   const [nativeScriptType, setNativeScriptType] = useState<
     "all" | "any" | "atLeast"
   >("atLeast");
-  const [stakeKey, setStakeKey] = useState<string>(stakeCredentialHash);
+  const [stakeKey, setStakeKey] = useState<string>("");
   const pathIsWalletInvite = router.pathname == "/wallets/new-wallet/[id]";
   const walletInviteId = pathIsWalletInvite
     ? (router.query.id as string)
@@ -124,10 +123,11 @@ export default function PageNewWallet() {
     },
   );
 
+  // to add the user address as the first signer
   useEffect(() => {
     if (userAddress === undefined) return;
-    setSignerAddresses([userAddress, ""]);
-    setSignerDescriptions(["", ""]);
+    setSignerAddresses([userAddress]);
+    setSignerDescriptions([""]);
   }, [userAddress]);
 
   useEffect(() => {
@@ -181,7 +181,7 @@ export default function PageNewWallet() {
       signersDescriptions: signersDescriptions,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
-      stakeCredentialHash: stakeKey,
+      stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });
   }
@@ -429,8 +429,9 @@ export default function PageNewWallet() {
 
                   {nativeScriptType == "atLeast" ? (
                     <>
-                      <p>
-                        {`At least ${numRequiredSigners} of signers are required to approve transactions in this wallet.`}
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Select the number of signers required to approve a
+                        transaction to make it valid in this wallet.
                       </p>
                       <ToggleGroup
                         type="single"
@@ -458,6 +459,10 @@ export default function PageNewWallet() {
                             </ToggleGroupItem>
                           ))}
                       </ToggleGroup>
+                      <p>
+                        You have selected:{" "}
+                        {`You have ${signersAddresses.filter((addr) => addr.length > 0).length} signer(s) and at least ${numRequiredSigners} of signer(s) are required to approve transactions in this wallet.`}
+                      </p>
                     </>
                   ) : (
                     <p>

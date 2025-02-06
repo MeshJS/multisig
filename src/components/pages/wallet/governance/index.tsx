@@ -1,4 +1,4 @@
-import { BlockfrostDrepInfo } from "@/types/wallet";
+import { BlockfrostDrepInfo } from "@/types/governance";
 import CardInfo from "./card-info";
 import { useEffect } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
@@ -19,20 +19,20 @@ export default function PageGovernance() {
     async function load() {
       if (appWallet) {
         const blockchainProvider = getProvider(network);
-        console.log("appWallet.dRepId", appWallet.dRepId);
+        // console.log("appWallet.dRepId", appWallet.dRepId);
         const drepids = getDRepIds(appWallet.dRepId);
-        console.log("drepids", drepids);
+        // console.log("drepids", drepids);
         const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
           `/governance/dreps/${drepids.cip105}`,
         );
-        console.log("drepInfo", drepInfo);
+        // console.log("drepInfo", drepInfo);
         setDrepInfo(drepInfo);
 
         // get metadata
         const drepInfoMetadata = await blockchainProvider.get(
           `/governance/dreps/${drepids.cip105}/metadata`,
         );
-        console.log("drepInfoMetadata", drepInfoMetadata);
+        // console.log("drepInfoMetadata", drepInfoMetadata);
       }
     }
     load();
