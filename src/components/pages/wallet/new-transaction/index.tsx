@@ -2,9 +2,14 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
-import { Loader, PlusCircle, Send, X } from "lucide-react";
+import {
+  Loader,
+  PlusCircle,
+  Send,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -24,6 +29,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
+import { OnChainTransaction } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
@@ -32,6 +38,7 @@ import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import UTxOSelector from "./utxoSelector";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -46,6 +53,10 @@ export default function PageNewTransaction() {
   // const { toast } = useToast();
   // const ctx = api.useUtils();
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
+  const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+  const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState(false);
+  const [txs, setTxs] = useState<OnChainTransaction[]>([]);
   const [amounts, setAmounts] = useState<string[]>([""]);
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
@@ -57,6 +68,10 @@ export default function PageNewTransaction() {
     reset();
   }, []);
 
+  useEffect(() => {
+    console.log("manualUtxos updated:", manualUtxos);
+  }, [manualUtxos]);
+
   function reset() {
     setAddDescription(false);
     setDescription("");
@@ -64,24 +79,6 @@ export default function PageNewTransaction() {
     setSendAllAssets(false);
     setLoading(false);
   }
-
-  // const { mutate: createTransaction } =
-  //   api.transaction.createTransaction.useMutation({
-  //     onSuccess: async () => {
-  //       toast({
-  //         title: "Transaction Created",
-  //         description: "Your transaction has been created",
-  //         duration: 5000,
-  //       });
-  //       void ctx.transaction.getPendingTransactions.invalidate();
-  //       void ctx.transaction.getAllTransactions.invalidate();
-  //       reset();
-  //     },
-  //     onError: (e) => {
-  //       console.error(e);
-  //       setLoading(false);
-  //     },
-  //   });
 
   async function createNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
@@ -106,10 +103,8 @@ export default function PageNewTransaction() {
         }
       }
 
-      const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(
-        appWallet.address,
-      );
+      console.log(manualUtxos)
+      const utxos = manualUtxos;
 
       let selectedUtxos = utxos;
 
@@ -153,43 +148,6 @@ export default function PageNewTransaction() {
       } else {
         txBuilder.changeAddress(appWallet.address);
       }
-
-      // const unsignedTx = await txBuilder.complete();
-      // const signedTx = await wallet.signTx(unsignedTx, true);
-
-      // const signedAddresses = [];
-      // signedAddresses.push(userAddress);
-
-      // let txHash = undefined;
-      // let submitTx = false;
-
-      // if (appWallet.type == "any") {
-      //   submitTx = true;
-      // } else if (
-      //   appWallet.type == "atLeast" &&
-      //   appWallet.numRequiredSigners == signedAddresses.length
-      // ) {
-      //   submitTx = true;
-      // } else if (
-      //   appWallet.type == "all" &&
-      //   appWallet.signersAddresses.length == signedAddresses.length
-      // ) {
-      //   submitTx = true;
-      // }
-
-      // if (submitTx) {
-      //   txHash = await wallet.submitTx(signedTx);
-      // }
-
-      // createTransaction({
-      //   walletId: appWallet.id,
-      //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-      //   txCbor: signedTx,
-      //   signedAddresses: [userAddress],
-      //   state: submitTx ? 1 : 0,
-      //   description: addDescription ? description : undefined,
-      //   txHash: txHash,
-      // });
 
       await newTransaction({
         txBuilder,
@@ -271,6 +229,19 @@ export default function PageNewTransaction() {
             </TableRow>
           </TableBody>
         </Table>
+      </CardUI>
+
+      <CardUI title="UTxOs" cardClassName="w-full noBorder">
+        {appWallet && (
+          <UTxOSelector
+            appWallet={appWallet}
+            network={network}
+            onSelectionChange={(utxos, manual) => {
+              setManualUtxos(utxos);
+              setManualSelected(manual);
+            }}
+          />
+        )}
       </CardUI>
 
       <CardUI
