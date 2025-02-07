@@ -110,7 +110,7 @@ export default function RootLayout({
   const pageIsPublic = publicRoutes.includes(router.pathname);
 
   return (
-    <div className="grid h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+    <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       {isLoading && <Loading />}
 
       <div className="hidden border-r bg-muted/40 md:block">
@@ -152,7 +152,7 @@ export default function RootLayout({
         </div>
       </div>
       <div className="flex h-[calc(100vh)] flex-col">
-        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+      <header className="relative z-10 flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6 pointer-events-auto">
           <Sheet>
             <SheetTrigger asChild>
               <Button
@@ -239,7 +239,7 @@ export default function RootLayout({
             </>
           )}
         </header>
-        <main className="flex h-full flex-1 flex-col gap-4 overflow-y-auto p-4 lg:gap-6 lg:p-6">
+        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4 md:gap-8 md:p-8">
           {/* <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
             <PopupAlert />
           </div> */}

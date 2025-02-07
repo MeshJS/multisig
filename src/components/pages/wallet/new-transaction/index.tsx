@@ -29,10 +29,8 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
-import { OnChainTransaction } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
@@ -54,9 +52,7 @@ export default function PageNewTransaction() {
   // const ctx = api.useUtils();
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
-  const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
   const [manualSelected, setManualSelected] = useState(false);
-  const [txs, setTxs] = useState<OnChainTransaction[]>([]);
   const [amounts, setAmounts] = useState<string[]>([""]);
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
@@ -68,10 +64,6 @@ export default function PageNewTransaction() {
   useEffect(() => {
     reset();
   }, []);
-
-  useEffect(() => {
-    console.log("manualUtxos updated:", manualUtxos);
-  }, [manualUtxos]);
 
   function reset() {
     setAddDescription(false);
@@ -103,12 +95,8 @@ export default function PageNewTransaction() {
           });
         }
       }
-
-      console.log(manualUtxos)
       const utxos = manualUtxos;
-
       let selectedUtxos = utxos;
-
       if (!sendAllAssets) {
         const assetMap = new Map<Unit, Quantity>();
         assetMap.set("lovelace", totalAmount.toString());
@@ -192,7 +180,7 @@ export default function PageNewTransaction() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 pointer-events-auto">
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">

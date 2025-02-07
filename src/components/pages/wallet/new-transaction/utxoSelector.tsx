@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Wallet } from "@/types/wallet";
 import {
   Table,
@@ -25,68 +25,85 @@ export default function UTxOSelector({
   network,
   onSelectionChange,
 }: UTxOSelectorProps) {
-  const [loaded, setLoaded] = useState<Boolean>(false);
+  const [loaded, setLoaded] = useState<boolean>(false);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [utxos, setUtxos] = useState<UTxO[]>([]);
   const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
   const [blockedUtxos, setBlockedUtxos] = useState<
     { hash: string; index: number }[]
   >([]);
-  const [manualSelected, setManualSelected] = useState(false);
+  const [manualSelected, setManualSelected] = useState<boolean>(false);
   const { transactions } = usePendingTransactions({
     walletId: appWallet.id,
   });
 
-  // Fetch UTxOs when wallet or network changes
-  useEffect(() => {
-    if(!loaded)fetchUtxos();
-  }, [appWallet, network]);
-
-  async function fetchUtxos() {
+  const fetchUtxos = useCallback(async () => {
     if (!appWallet) return;
     const address = appWallet.address;
     const blockchainProvider = getProvider(network);
+
     try {
       const fetchedUtxos: UTxO[] =
         await blockchainProvider.fetchAddressUTxOs(address);
       setUtxos(fetchedUtxos);
       checkPending(fetchedUtxos);
-      setLoaded(true)
+      setLoaded(true);
+      setIsInitialLoad(false); // Mark as loaded
     } catch (error) {
       console.error(`Failed to fetch UTxOs for Address ${address}:`, error);
     }
-  }
-  async function checkPending(cUtxos: UTxO[]) {
-    if (!transactions || !utxos) return;
+  }, [appWallet, network]);
+
+  useEffect(() => {
+    if (!loaded) {
+      fetchUtxos().catch((err) => console.error("Error fetching UTxOs:", err));
+    }
+  }, [fetchUtxos, loaded]);
+
+  const checkPending = (cUtxos: UTxO[]) => {
+    if (!transactions || !cUtxos) return;
+
     const blockedUtxos: { hash: string; index: number }[] =
       transactions.flatMap((m) => {
         const txJson = JSON.parse(m.txJson);
         return txJson.inputs.map(
-          (n: { txIn: { txHash: string; txIndex: number } }) => {
-            const hash = n.txIn.txHash ?? undefined;
-            const index = n.txIn.txIndex ?? undefined;
-            return { hash: hash, index: index };
-          },
+          (n: { txIn: { txHash: string; txIndex: number } }) => ({
+            hash: n.txIn.txHash ?? undefined,
+            index: n.txIn.txIndex ?? undefined,
+          }),
         );
       });
-    console.log(cUtxos);
+
     const freeUtxos = cUtxos.filter(
-        (utxo) =>
-          !blockedUtxos.some(
-            (bU) => bU.hash === utxo.input.txHash && bU.index === utxo.input.outputIndex
-          )
-      );
-    console.log(freeUtxos);
+      (utxo) =>
+        !blockedUtxos.some(
+          (bU) =>
+            bU.hash === utxo.input.txHash && bU.index === utxo.input.outputIndex
+        )
+    );
     setSelectedUtxos(freeUtxos);
     setBlockedUtxos(blockedUtxos);
-  }
+  };
+
+  // Track last emitted state to avoid redundant updates
+  const lastEmitted = useRef<{ utxos: UTxO[]; manual: boolean }>({
+    utxos: [],
+    manual: false,
+  });
 
   useEffect(() => {
-    console.log("Emitting Selected UTxOs:", selectedUtxos);
-    console.log("Manual Selected:", manualSelected);
-    if (selectedUtxos.length > 0 || manualSelected) {
-      onSelectionChange([...selectedUtxos], manualSelected);
+    if (!isInitialLoad) {
+      const isSameAsLast =
+        JSON.stringify(lastEmitted.current.utxos) ===
+          JSON.stringify(selectedUtxos) &&
+        lastEmitted.current.manual === manualSelected;
+
+      if (!isSameAsLast) {
+        onSelectionChange([...selectedUtxos], manualSelected);
+        lastEmitted.current = { utxos: [...selectedUtxos], manual: manualSelected };
+      }
     }
-  }, [selectedUtxos, manualSelected]);
+  }, [selectedUtxos, manualSelected, onSelectionChange, isInitialLoad]);
 
   const handleSelectUtxo = (utxo: UTxO, isChecked: boolean) => {
     setSelectedUtxos((prev) =>
