@@ -199,7 +199,6 @@ export default function TransactionCard({
         });
       }
     } catch (e) {
-      console.log(111);
       console.error(e);
       toast({
         title: "Transaction Updated",

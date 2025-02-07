@@ -7,6 +7,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
+import { NUMBER_OF_TRANSACTIONS } from "@/config/wallet";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -38,7 +39,7 @@ export default function WalletDataLoader() {
       let transactions: TxInfo[] = await blockchainProvider.get(
         `/addresses/${appWallet.address}/transactions`,
       );
-      transactions = transactions.reverse().splice(0, 10);
+      transactions = transactions.reverse().splice(0, NUMBER_OF_TRANSACTIONS);
       for (const tx of transactions) {
         const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
         _transactions.push({

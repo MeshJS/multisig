@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
@@ -17,6 +17,16 @@ import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
+import { NUMBER_OF_TRANSACTIONS } from "@/config/wallet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useSiteStore } from "@/lib/zustand/site";
+import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import useTransaction from "@/hooks/useTransaction";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -35,7 +45,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   return (
     <CardUI
       title="Transactions"
-      description={`Latest 10 transactions`}
+      description={`Latest ${NUMBER_OF_TRANSACTIONS} transactions`}
       headerDom={
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
@@ -55,6 +65,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
             <TableHead></TableHead>
             <TableHead>Amount</TableHead>
             <TableHead>Signers</TableHead>
+            <TableHead></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -91,10 +102,15 @@ function TransactionRow({
         <div className="flex gap-2 text-sm text-muted-foreground md:inline">
           <LinkCardanoscan
             url={`transaction/${transaction.hash}`}
-            className="flex w-44 gap-1"
+            className="flex flex-col w-44 gap-1"
           >
-            {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
-            <ArrowUpRight className="h-3 w-3" />
+            <span className="flex gap-1">
+              <span>{transaction.hash.substring(0, 6)}...{transaction.hash.slice(-6)}</span>
+              <ArrowUpRight className="h-3 w-3" />
+            </span>
+            <span className="text-xs">
+              {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
+            </span>
           </LinkCardanoscan>
         </div>
         {dbTransaction && (
@@ -163,104 +179,180 @@ function TransactionRow({
             </Badge>
           ))}
       </TableCell>
-    </TableRow>
-  );
-}
-
-function TransactionRowOld({
-  transaction,
-  appWallet,
-  dbTransaction,
-}: {
-  transaction: OnChainTransaction;
-  appWallet: Wallet;
-  dbTransaction?: Transaction;
-}) {
-  return (
-    <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
-        <div className="flex justify-between">
-          <div className="overflow-auto break-all font-medium">
-            {dbTransaction && dbTransaction.description}
-          </div>
-          <div className="flex gap-2 text-sm text-muted-foreground md:inline">
-            <LinkCardanoscan
-              url={`transaction/${transaction.hash}`}
-              className="flex w-44 gap-1"
-            >
-              {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
-              <ArrowUpRight className="h-3 w-3" />
-            </LinkCardanoscan>
-          </div>
-        </div>
-
-        <Table>
-          <TableBody>
-            {transaction.outputs.map((output: any, i) => {
-              const isSpend = transaction.inputs.some(
-                (input: any) => input.address === appWallet.address,
-              );
-              if (isSpend && output.address != appWallet.address) {
-                return (
-                  <div key={i}>
-                    <TableRow key={output.address} className="border-none">
-                      <TableCell>
-                        <div className="text-sm text-muted-foreground">
-                          {getFirstAndLast(output.address)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right text-red-400">
-                        -
-                        {lovelaceToAda(
-                          output.amount.find(
-                            (unit: any) => unit.unit === "lovelace",
-                          ).quantity,
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  </div>
-                );
-              } else if (!isSpend && output.address == appWallet.address) {
-                return (
-                  <TableRow key={output.address} className="border-none">
-                    <TableCell></TableCell>
-                    <TableCell className="text-right text-green-400">
-                      +
-                      {lovelaceToAda(
-                        output.amount.find(
-                          (unit: any) => unit.unit === "lovelace",
-                        ).quantity,
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              }
-            })}
-          </TableBody>
-        </Table>
-
-        {dbTransaction && (
-          <>
-            <div className="font-semibold">Signers</div>
-            <Table>
-              <TableBody>
-                <TableRow className="border-none">
-                  <TableCell className="flex gap-2">
-                    {dbTransaction.signedAddresses.map((address) => (
-                      <Badge variant="outline" key={address}>
-                        {appWallet.signersDescriptions.find(
-                          (signer, index) =>
-                            appWallet.signersAddresses[index] === address,
-                        ) || getFirstAndLast(address)}
-                      </Badge>
-                    ))}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </>
-        )}
+        <RowAction transaction={transaction} appWallet={appWallet} />
       </TableCell>
     </TableRow>
   );
 }
+
+function RowAction({
+  transaction,
+  appWallet,
+}: {
+  transaction: OnChainTransaction;
+  appWallet: Wallet;
+}) {
+  const network = useSiteStore((state) => state.network);
+  const { newTransaction } = useTransaction();
+
+  async function returnToSender() {
+    const allTxInputsFromSameAddress = transaction.inputs.every(
+      (input) => input.address === transaction.inputs[0]!.address,
+    );
+    
+    if (allTxInputsFromSameAddress) {
+      const txBuilder = getTxBuilder(network);
+
+      const _amount: { [unit: string]: number } = {};
+
+      for (const output of transaction.outputs) {
+        if (output.address === appWallet.address) {
+          for (const unit of output.amount) {
+            if (!_amount[unit.unit]) {
+              _amount[unit.unit] = 0;
+            }
+            _amount[unit.unit]! += parseInt(unit.quantity);
+          }
+        }
+      }
+
+      for (const output of transaction.outputs) {
+        if (output.address === appWallet.address) {
+          txBuilder
+            .txIn(
+              transaction.tx.tx_hash,
+              output.output_index,
+              output.amount,
+              appWallet.address,
+            )
+            .txInScript(appWallet.scriptCbor);
+        }
+      }
+
+      txBuilder.changeAddress(transaction.inputs[0]!.address);
+
+      await newTransaction({
+        txBuilder,
+        description: `Return to sender`,
+      });
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="flex h-8 w-8 p-0 data-[state=open]:bg-muted"
+        >
+          <MoreHorizontal />
+          <span className="sr-only">Open menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[160px]">
+        <DropdownMenuItem onClick={() => returnToSender()}>
+          Return to sender
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// function TransactionRowOld({
+//   transaction,
+//   appWallet,
+//   dbTransaction,
+// }: {
+//   transaction: OnChainTransaction;
+//   appWallet: Wallet;
+//   dbTransaction?: Transaction;
+// }) {
+//   return (
+//     <TableRow style={{ backgroundColor: "none" }}>
+//       <TableCell>
+//         <div className="flex justify-between">
+//           <div className="overflow-auto break-all font-medium">
+//             {dbTransaction && dbTransaction.description}
+//           </div>
+//           <div className="flex gap-2 text-sm text-muted-foreground md:inline">
+//             <LinkCardanoscan
+//               url={`transaction/${transaction.hash}`}
+//               className="flex w-44 gap-1"
+//             >
+//               {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
+//               <ArrowUpRight className="h-3 w-3" />
+//             </LinkCardanoscan>
+//           </div>
+//         </div>
+
+//         <Table>
+//           <TableBody>
+//             {transaction.outputs.map((output: any, i) => {
+//               const isSpend = transaction.inputs.some(
+//                 (input: any) => input.address === appWallet.address,
+//               );
+//               if (isSpend && output.address != appWallet.address) {
+//                 return (
+//                   <div key={i}>
+//                     <TableRow key={output.address} className="border-none">
+//                       <TableCell>
+//                         <div className="text-sm text-muted-foreground">
+//                           {getFirstAndLast(output.address)}
+//                         </div>
+//                       </TableCell>
+//                       <TableCell className="text-right text-red-400">
+//                         -
+//                         {lovelaceToAda(
+//                           output.amount.find(
+//                             (unit: any) => unit.unit === "lovelace",
+//                           ).quantity,
+//                         )}
+//                       </TableCell>
+//                     </TableRow>
+//                   </div>
+//                 );
+//               } else if (!isSpend && output.address == appWallet.address) {
+//                 return (
+//                   <TableRow key={output.address} className="border-none">
+//                     <TableCell></TableCell>
+//                     <TableCell className="text-right text-green-400">
+//                       +
+//                       {lovelaceToAda(
+//                         output.amount.find(
+//                           (unit: any) => unit.unit === "lovelace",
+//                         ).quantity,
+//                       )}
+//                     </TableCell>
+//                   </TableRow>
+//                 );
+//               }
+//             })}
+//           </TableBody>
+//         </Table>
+
+//         {dbTransaction && (
+//           <>
+//             <div className="font-semibold">Signers</div>
+//             <Table>
+//               <TableBody>
+//                 <TableRow className="border-none">
+//                   <TableCell className="flex gap-2">
+//                     {dbTransaction.signedAddresses.map((address) => (
+//                       <Badge variant="outline" key={address}>
+//                         {appWallet.signersDescriptions.find(
+//                           (signer, index) =>
+//                             appWallet.signersAddresses[index] === address,
+//                         ) || getFirstAndLast(address)}
+//                       </Badge>
+//                     ))}
+//                   </TableCell>
+//                 </TableRow>
+//               </TableBody>
+//             </Table>
+//           </>
+//         )}
+//       </TableCell>
+//     </TableRow>
+//   );
+// }

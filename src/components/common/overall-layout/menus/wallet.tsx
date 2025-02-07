@@ -55,10 +55,10 @@ export default function MenuWallet() {
         </MenuLink>
       </div>
 
-      <MenuLink href={`/`} className={"self-end"}>
+      {/* <MenuLink href={`/`} className={"self-end"}>
         <ArrowLeft className="h-4 w-4" />
         <div className="flex items-center gap-2">Back</div>
-      </MenuLink>
+      </MenuLink> */}
     </nav>
   );
 }

@@ -1,5 +1,7 @@
 export type UTXO = {
+  address: string;
   amount: { unit: string; quantity: string }[];
+  output_index: number;
 };
 
 export type TxInfo = {

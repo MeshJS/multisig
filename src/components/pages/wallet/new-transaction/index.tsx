@@ -39,7 +39,7 @@ import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
-
+import { useRouter } from "next/router";
 export default function PageNewTransaction() {
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -63,6 +63,7 @@ export default function PageNewTransaction() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     reset();
@@ -156,6 +157,8 @@ export default function PageNewTransaction() {
           metadata.length > 0 ? { label: "674", value: metadata } : undefined,
       });
       reset();
+
+      router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
 

@@ -29,9 +29,7 @@ export default function MenuWallets() {
             ? `${baseUrl}governance`
             : "/governance"
         }
-        className={
-          router.pathname.includes('governance') ? "text-white" : ""
-        }
+        className={router.pathname.includes("governance") ? "text-white" : ""}
       >
         <Scale className="h-4 w-4" />
         Governance
@@ -46,10 +44,11 @@ export default function MenuWallets() {
 
       <br />
 
-      {isLoggedIn && (<p>Multi-Sig Wallets:</p>)}
+      {isLoggedIn && <p>Multi-Sig Wallets:</p>}
 
       {wallets &&
         wallets
+          .filter((wallet) => !wallet.isArchived)
           .sort((a, b) =>
             a.isArchived === b.isArchived
               ? a.name.localeCompare(b.name)
