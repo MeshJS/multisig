@@ -2,9 +2,14 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
-import { Loader, PlusCircle, Send, X } from "lucide-react";
+import {
+  Loader,
+  PlusCircle,
+  Send,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -26,14 +31,13 @@ import {
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useSiteStore } from "@/lib/zustand/site";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
-
 export default function PageNewTransaction() {
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -47,6 +51,8 @@ export default function PageNewTransaction() {
   // const { toast } = useToast();
   // const ctx = api.useUtils();
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([""]);
+  const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState(false);
   const [amounts, setAmounts] = useState<string[]>([""]);
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
@@ -89,14 +95,8 @@ export default function PageNewTransaction() {
           });
         }
       }
-
-      const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(
-        appWallet.address,
-      );
-
+      const utxos = manualUtxos;
       let selectedUtxos = utxos;
-
       if (!sendAllAssets) {
         const assetMap = new Map<Unit, Quantity>();
         assetMap.set("lovelace", totalAmount.toString());
@@ -180,7 +180,7 @@ export default function PageNewTransaction() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 pointer-events-auto">
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
@@ -220,6 +220,19 @@ export default function PageNewTransaction() {
             </TableRow>
           </TableBody>
         </Table>
+      </CardUI>
+
+      <CardUI title="UTxOs" cardClassName="w-full noBorder">
+        {appWallet && (
+          <UTxOSelector
+            appWallet={appWallet}
+            network={network}
+            onSelectionChange={(utxos, manual) => {
+              setManualUtxos(utxos);
+              setManualSelected(manual);
+            }}
+          />
+        )}
       </CardUI>
 
       <CardUI
