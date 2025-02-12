@@ -1,78 +1,80 @@
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/common/card-content";
-import {
-  getFile,
-  hashDrepAnchor,
-  keepRelevant,
-  Quantity,
-  Unit,
-} from "@meshsdk/core";
+import { getFile, hashDrepAnchor, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
-// import { api } from "@/utils/api";
 import { useState } from "react";
-// import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useSiteStore } from "@/lib/zustand/site";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import useAppWallet from "@/hooks/useAppWallet";
 import useTransaction from "@/hooks/useTransaction";
 import { getDRepIds } from "@meshsdk/core-csl";
+import UTxOSelector from "../../new-transaction/utxoSelector";
+import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
 
 export default function CardRegister() {
   const { appWallet } = useAppWallet();
-  // const { toast } = useToast();
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
-  // const [loading, setLoading] = useState<boolean>(false);
-  // const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const [givenName, setgivenName] = useState<string>("");
+  const [bio, setbio] = useState<string>("");
   const [motivations, setmotivations] = useState<string>("");
   const [objectives, setobjectives] = useState<string>("");
   const [qualifications, setqualifications] = useState<string>("");
-  const [links, setlinks] = useState<string>("");
   const [identity, setidentity] = useState<string>("");
   const { newTransaction } = useTransaction();
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
+  const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState(false);
+  const [email, setEmail] = useState<string>("");
+  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string>("");
 
-  // const { mutate: createTransaction } =
-  //   api.transaction.createTransaction.useMutation({
-  //     onSuccess: async () => {
-  //       setLoading(false);
-  //       toast({
-  //         title: "Transaction Created",
-  //         description: "DRep registration transaction has been created",
-  //         duration: 5000,
-  //       });
-  //       setgivenName("");
-  //       setmotivations("");
-  //       setobjectives("");
-  //       setqualifications("");
-  //       setlinks("");
-  //       setidentity("");
-  //       void ctx.transaction.getPendingTransactions.invalidate();
-  //       void ctx.transaction.getAllTransactions.invalidate();
-  //     },
-  //     onError: (e) => {
-  //       console.error(e);
-  //       setLoading(false);
-  //     },
-  //   });
+  const [links, setLinks] = useState<string[]>([""]);
+  const [identities, setIdentities] = useState<string[]>([""]);
+
+  const addLink = () => setLinks([...links, ""]);
+  const removeLink = (index: number) => {
+    setLinks(links.filter((_, i) => i !== index));
+  };
+
+  const updateLink = (index: number, value: string) => {
+    const newLinks = [...links];
+    newLinks[index] = value;
+    setLinks(newLinks);
+  };
+
+  const addIdentity = () => setIdentities([...identities, ""]);
+  const removeIdentity = (index: number) => {
+    setIdentities(identities.filter((_, i) => i !== index));
+  };
+
+  const updateIdentity = (index: number, value: string) => {
+    const newIdentities = [...identities];
+    newIdentities[index] = value;
+    setIdentities(newIdentities);
+  };
 
   function resetForm() {
     setgivenName("");
+    setbio("");
     setmotivations("");
     setobjectives("");
     setqualifications("");
-    setlinks("");
     setidentity("");
+    setImage(null);
+    setImageUrl("");
+  }
+
+  function handleImageUpload(url: string) {
+    setImageUrl(url); // Only store the final Vercel URL
   }
 
   async function createAnchor() {
@@ -88,6 +90,8 @@ export default function CardRegister() {
           "@context": {
             CIP100:
               "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
+            CIP108:
+              "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0108/README.md#",
             CIP119:
               "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0119/README.md#",
             hashAlgorithm: "CIP100:hashAlgorithm",
@@ -113,6 +117,8 @@ export default function CardRegister() {
                     },
                   },
                 },
+                bio: "CIP119:bio",
+                email: "CIP119:email",
                 paymentAddress: "CIP119:paymentAddress",
                 givenName: "CIP119:givenName",
                 image: "CIP119:image",
@@ -142,29 +148,40 @@ export default function CardRegister() {
           hashAlgorithm: "blake2b-256",
           body: {
             doNotList: false,
+            bio: bio,
+            email: email,
             givenName: givenName,
+            image: {
+              "@type": "ImageObject",
+              contentUrl: imageUrl,
+              sha256: "",
+            },
             motivations: motivations,
             objectives: objectives,
             paymentAddress: appWallet?.address,
             qualifications: qualifications,
             references: [
-              {
-                "@type": "Link",
-                label: "Link",
-                uri: links,
-              },
-              {
-                "@type": "Identity",
-                label: "Identity",
-                uri: identity,
-              },
+              ...links
+                .filter((link) => link.trim() !== "")
+                .map((link) => ({
+                  "@type": "Link",
+                  label: "Link",
+                  uri: link,
+                })),
+              ...identities
+                .filter((identity) => identity.trim() !== "")
+                .map((identity) => ({
+                  "@type": "Identity",
+                  label: "Identity",
+                  uri: identity,
+                })),
             ],
           },
         }),
       }),
     });
-    const res = await rawResponse.json();
 
+    const res = await rawResponse.json();
     const anchorUrl = res.url;
     const anchorObj = JSON.parse(getFile(anchorUrl));
     const anchorHash = hashDrepAnchor(anchorObj);
@@ -172,20 +189,14 @@ export default function CardRegister() {
     return { anchorUrl, anchorHash };
   }
 
-  async function registerDrep() {
+  async function updateDrep() {
     if (!connected) throw new Error("Not connected to wallet");
     if (!userAddress) throw new Error("No user address");
     if (!appWallet) throw new Error("No wallet");
 
     setLoading(true);
-    const registrationFee = "500000000";
 
-    const blockchainProvider = getProvider(network);
-
-    const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
-    const assetMap = new Map<Unit, Quantity>();
-    assetMap.set("lovelace", registrationFee);
-    const selectedUtxos = keepRelevant(assetMap, utxos);
+    const selectedUtxos = manualUtxos;
     if (selectedUtxos.length === 0) throw new Error("No relevant UTxOs found");
 
     const { anchorUrl, anchorHash } = await createAnchor();
@@ -208,7 +219,7 @@ export default function CardRegister() {
     const drepids = getDRepIds(appWallet.dRepId);
 
     txBuilder
-      .drepRegistrationCertificate(drepids.cip105, {
+      .drepUpdateCertificate(drepids.cip105, {
         anchorUrl: anchorUrl,
         anchorDataHash: anchorHash,
       })
@@ -218,14 +229,18 @@ export default function CardRegister() {
 
     await newTransaction({
       txBuilder,
-      description: "DRep registration",
-      toastMessage: "DRep registration transaction has been created",
+      description: "DRep update",
+      toastMessage: "DRep update transaction has been created",
     });
     resetForm();
   }
 
   return (
-    <CardUI title="Register for DRep" icon={Plus} cardClassName="col-span-2">
+    <CardUI
+      title="Update DRep information"
+      icon={Plus}
+      cardClassName="col-span-2"
+    >
       <div className="flex flex-col gap-4">
         <p>
           A DRep is expected to actively participate in governance and act as a
@@ -260,6 +275,26 @@ export default function CardRegister() {
             />
           </div>
           <div className="grid gap-3">
+            <Label>Bio - A brief explaination who you are.</Label>
+            <Textarea value={bio} onChange={(e) => setbio(e.target.value)} />
+          </div>
+
+          <div className="grid gap-3">
+            <Label>Email - Your contact email</Label>
+            <Input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="grid gap-3">
+            <Label>Upload Image</Label>
+            <ImgDragAndDrop onImageUpload={handleImageUpload} />
+          </div>
+
+          <div className="grid gap-3">
             <Label>
               Objectives - What you believe and what you want to achieve as a
               DRep.
@@ -293,34 +328,66 @@ export default function CardRegister() {
           </div>
 
           <div className="grid gap-3">
-            <Label>
-              Link - A link to social media or any other web URL that gives a
-              fuller picture of who you are, what you stand for, and why.
-            </Label>
-            <Input
-              value={links}
-              onChange={(e) => setlinks(e.target.value)}
-              placeholder="https://path/to/info"
-            />
+            <Label>Links - Add relevant links to your profile</Label>
+            {links.map((link, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  value={link}
+                  onChange={(e) => updateLink(index, e.target.value)}
+                  placeholder="https://path/to/info"
+                />
+                <Button
+                  onClick={() => removeLink(index)}
+                  size="icon"
+                  variant="destructive"
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button onClick={addLink} variant="secondary">
+              + Add Link
+            </Button>
           </div>
 
           <div className="grid gap-3">
-            <Label>
-              Identity - A link to prove you are who you say you are. Ideally,
-              you will provide a link to a place that shows your DRep ID
-              clearly.
-            </Label>
-            <Input
-              placeholder="https://path/to/identity"
-              value={identity}
-              onChange={(e) => setidentity(e.target.value)}
-            />
+            <Label>Identity - Add identity verification links</Label>
+            {identities.map((identity, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  value={identity}
+                  onChange={(e) => updateIdentity(index, e.target.value)}
+                  placeholder="https://path/to/identity"
+                />
+                <Button
+                  onClick={() => removeIdentity(index)}
+                  size="icon"
+                  variant="destructive"
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button onClick={addIdentity} variant="secondary">
+              + Add Identity
+            </Button>
           </div>
         </fieldset>
 
+        {appWallet && (
+          <UTxOSelector
+            appWallet={appWallet}
+            network={network}
+            onSelectionChange={(utxos, manual) => {
+              setManualUtxos(utxos);
+              setManualSelected(manual);
+            }}
+          />
+        )}
+
         <div>
           <Button
-            onClick={() => registerDrep()}
+            onClick={() => updateDrep()}
             disabled={
               loading ||
               givenName.length === 0 ||
@@ -329,7 +396,7 @@ export default function CardRegister() {
               qualifications.length === 0
             }
           >
-            {loading ? "Loading..." : "Register DRep"}
+            {loading ? "Loading..." : "Update DRep"}
           </Button>
         </div>
       </div>
