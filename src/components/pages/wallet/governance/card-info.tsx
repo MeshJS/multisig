@@ -64,6 +64,9 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
           </Link>
         </Button>
         <Retire appWallet={appWallet} />
+        <Link href={`/wallets/${appWallet.id}/governance/drep`}>
+          <Button>Find a DRep</Button>
+        </Link>
       </div>
     </CardUI>
   );
