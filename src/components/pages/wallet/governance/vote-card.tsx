@@ -5,8 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { useSiteStore } from "@/lib/zustand/site";
-import useTransaction from "@/hooks/useTransaction";
 import VoteButton from "./proposal/voteButtton";
 
 interface VoteCardProps {
@@ -19,8 +17,6 @@ export default function VoteCard({ appWallet, proposalId }: VoteCardProps) {
   const [localProposalId, setLocalProposalId] = useState<string>(proposalId || "");
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
-  const setAlert = useSiteStore((state) => state.setAlert);
-  const { newTransaction } = useTransaction();
 
   return (
     <CardUI title="Vote for proposal" description="" cardClassName="col-span-2">

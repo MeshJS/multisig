@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { put } from "@vercel/blob";
 import fs from "fs";
 import { env } from "@/env";
+import formidable from "formidable";
 
 export const config = {
   api: {
@@ -15,9 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const formidable = (await import("formidable")).default;
     const form = formidable({ multiples: false });
-
     const parseForm = () =>
       new Promise<{ fields: any; files: any }>((resolve, reject) => {
         form.parse(req, (err, fields, files) => {
@@ -26,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       });
 
-    const { files } = await parseForm();
+    const { fields, files } = await parseForm();
 
     if (!files.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -35,8 +34,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const file = Array.isArray(files.file) ? files.file[0] : files.file;
     const fileStream = fs.createReadStream(file.filepath);
 
-    // Upload to Vercel Blob Storage
-    const response = await put(`drep/${file.originalFilename}`, fileStream, {
+    // Retrieve shortHash and fixed filename from the form fields
+    const shortHash = fields.shortHash;
+    if (!shortHash) {
+      return res.status(400).json({ error: "shortHash is required" });
+    }
+    const filename = fields.filename;
+    if (!filename) {
+      return res.status(400).json({ error: "filename is required" });
+    }
+
+    // Build the storage path as: img/[shortHash]/filename
+    const storagePath = `img/${shortHash}/${filename}`;
+
+    const response = await put(storagePath, fileStream, {
       access: "public",
       token: env.BLOB_READ_WRITE_TOKEN,
       contentType: file.mimetype || "application/octet-stream",

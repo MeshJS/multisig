@@ -2,7 +2,7 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
+import { keepRelevant, Quantity, resolveScriptHash, serializeRewardAddress, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import {
   Loader,
@@ -121,6 +121,23 @@ export default function PageNewTransaction() {
           .txInScript(appWallet.scriptCbor);
       }
 
+      // const rewardAddress = serializeRewardAddress(
+      //   resolveScriptHash(appWallet.scriptCbor),
+      //   true,
+      //   0,
+      // );
+      // console.log(rewardAddress);
+      // const poolIdHash =
+      //   "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
+      // console.log(txBuilder)
+      // txBuilder.registerStakeCertificate(rewardAddress)
+      // //txBuilder.certificateRedeemerValue()
+      // console.log(txBuilder)
+      // //txBuilder.certificateScript(appWallet.scriptCbor)
+      // console.log(txBuilder)
+      // //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
+      // console.log(txBuilder)
+
       if (!sendAllAssets) {
         for (let i = 0; i < outputs.length; i++) {
           txBuilder.txOut(outputs[i]!.address, [
@@ -149,7 +166,7 @@ export default function PageNewTransaction() {
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
-
+      console.error(e)
       toast({
         title: "Error",
         description: `${JSON.stringify(e)}`,
