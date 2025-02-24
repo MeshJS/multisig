@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import UTxOSelector from "../../new-transaction/utxoSelector";
 import { Input } from "@/components/ui/input";
@@ -5,6 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
 import Link from "next/link";
+import type { UTxO } from "@meshsdk/core";
+import { Wallet } from "@/types/wallet";
+
 
 interface DRepFormProps {
   givenName: string;
@@ -19,18 +23,18 @@ interface DRepFormProps {
   setQualifications: (value: string) => void;
   email: string;
   setEmail: (value: string) => void;
-  imageUrl: string;
+  _imageUrl: string; // renamed as unused
   setImageUrl: (value: string) => void;
-  imageSha256: string;
+  _imageSha256: string; // renamed as unused
   setImageSha256: (value: string) => void;
   links: string[];
   setLinks: (value: string[]) => void;
   identities: string[];
   setIdentities: (value: string[]) => void;
-  appWallet: any;
+  appWallet: Wallet;
   network: number;
-  manualUtxos: any[];
-  setManualUtxos: (utxos: any[]) => void;
+  manualUtxos: UTxO[]; 
+  setManualUtxos: (utxos: UTxO[]) => void;
   setManualSelected: (value: boolean) => void;
   loading: boolean;
   onSubmit: () => void;
@@ -50,9 +54,9 @@ export default function DRepForm({
   setQualifications,
   email,
   setEmail,
-  imageUrl,
+  _imageUrl,
   setImageUrl,
-  imageSha256,
+  _imageSha256,
   setImageSha256,
   links,
   setLinks,
@@ -67,25 +71,31 @@ export default function DRepForm({
   onSubmit,
   mode,
 }: DRepFormProps) {
-  const addLink = () => setLinks([...links, ""]);
+  // Local state for links and identities for immediate updates
+  const [localLinks, setLocalLinks] = useState<string[]>(links);
+  const [localIdentities, setLocalIdentities] = useState<string[]>(identities);
+
+  const addLink = () => setLocalLinks([...localLinks, ""]);
   const removeLink = (index: number) =>
-    setLinks(links.filter((_, i) => i !== index));
+    setLocalLinks(localLinks.filter((_, i) => i !== index));
   const updateLink = (index: number, value: string) => {
-    const newLinks = [...links];
+    const newLinks = [...localLinks];
     newLinks[index] = value;
+    setLocalLinks(newLinks);
     setLinks(newLinks);
   };
 
-  const addIdentity = () => setIdentities([...identities, ""]);
+  const addIdentity = () => setLocalIdentities([...localIdentities, ""]);
   const removeIdentity = (index: number) =>
-    setIdentities(identities.filter((_, i) => i !== index));
+    setLocalIdentities(localIdentities.filter((_, i) => i !== index));
   const updateIdentity = (index: number, value: string) => {
-    const newIdentities = [...identities];
+    const newIdentities = [...localIdentities];
     newIdentities[index] = value;
+    setLocalIdentities(newIdentities);
     setIdentities(newIdentities);
   };
 
-  // Update your image upload handler to capture both URL and digest
+  // Image upload handler
   function handleImageUpload(url: string, digest: string) {
     setImageUrl(url);
     setImageSha256(digest);
@@ -101,7 +111,7 @@ export default function DRepForm({
           href="https://docs.gov.tools/about/what-is-cardano-govtool/govtool-functions/dreps"
           passHref
         >
-            Learn more
+          Learn more
         </Link>
         .
       </p>
@@ -162,7 +172,7 @@ export default function DRepForm({
 
         <div className="grid gap-3">
           <Label>Links</Label>
-          {links.map((link, index) => (
+          {localLinks.map((link, index) => (
             <div key={index} className="flex gap-2">
               <Input
                 value={link}
@@ -185,7 +195,7 @@ export default function DRepForm({
 
         <div className="grid gap-3">
           <Label>Identities</Label>
-          {identities.map((identity, index) => (
+          {localIdentities.map((identity, index) => (
             <div key={index} className="flex gap-2">
               <Input
                 value={identity}
@@ -211,7 +221,7 @@ export default function DRepForm({
         <UTxOSelector
           appWallet={appWallet}
           network={network}
-          onSelectionChange={(utxos, manual) => {
+          onSelectionChange={(utxos: UTxO[], manual: boolean) => {
             setManualUtxos(utxos);
             setManualSelected(manual);
           }}
@@ -232,8 +242,8 @@ export default function DRepForm({
           {loading
             ? "Loading..."
             : mode === "register"
-              ? "Register DRep"
-              : "Update DRep"}
+            ? "Register DRep"
+            : "Update DRep"}
         </Button>
       </div>
     </div>

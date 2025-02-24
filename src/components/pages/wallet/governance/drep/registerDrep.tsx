@@ -11,12 +11,8 @@ import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
 import { getFile, hashDrepAnchor } from "@meshsdk/core";
-
-interface AppWallet {
-  dRepId: string;
-  scriptCbor: string;
-  address: string;
-}
+import type { UTxO } from "@meshsdk/core";
+import router from "next/router";
 
 interface PutResponse {
   url: string;
@@ -31,7 +27,6 @@ export default function RegisterDRep() {
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
 
-  // Use a properly typed UTxO array instead of any[]
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
     givenName: "",
@@ -46,12 +41,18 @@ export default function RegisterDRep() {
     identities: [""],
   });
 
-  async function createAnchor(): Promise<{ anchorUrl: string; anchorHash: string }> {
+  async function createAnchor(): Promise<{
+    anchorUrl: string;
+    anchorHash: string;
+  }> {
     if (!appWallet) {
       throw new Error("Wallet not connected");
     }
-    // Generate JSON‑LD metadata from the form state. We assume getDRepMetadata returns an object.
-    const drepMetadata: object = await getDRepMetadata(formState, appWallet);
+    // Cast metadata to a known record type
+    const drepMetadata = (await getDRepMetadata(
+      formState,
+      appWallet,
+    )) as Record<string, unknown>;
     console.log(drepMetadata);
     const rawResponse = await fetch("/api/vercel-storage/put", {
       method: "POST",
@@ -66,6 +67,7 @@ export default function RegisterDRep() {
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
+    // Await file retrieval
     const fileContent = getFile(anchorUrl);
     const anchorObj = JSON.parse(fileContent);
     const anchorHash = hashDrepAnchor(anchorObj);
@@ -79,92 +81,97 @@ export default function RegisterDRep() {
     setLoading(true);
     const txBuilder = getTxBuilder(network);
     const drepIds = getDRepIds(appWallet.dRepId);
+    try {
+      const { anchorUrl, anchorHash } = await createAnchor();
 
-    // Create anchor by uploading JSON‑LD metadata
-    const { anchorUrl, anchorHash } = await createAnchor();
+      const selectedUtxos: UTxO[] = manualUtxos;
 
-    // Cast manualUtxos to UTxO[] (already typed) and use const since it is not reassigned
-    const selectedUtxos: UTxO[] = manualUtxos;
+      if (selectedUtxos.length === 0) {
+        setLoading(false);
+        return;
+      }
 
-    if (selectedUtxos.length === 0) {
-      // Optionally set an error message here if funds are insufficient.
-      setLoading(false);
-      return;
-    }
+      for (const utxo of selectedUtxos) {
+        txBuilder
+          .txIn(
+            utxo.input.txHash,
+            utxo.input.outputIndex,
+            utxo.output.amount,
+            utxo.output.address,
+          )
+          .txInScript(appWallet.scriptCbor);
+      }
 
-    // Loop over each UTxO to add transaction inputs and corresponding scripts.
-    for (const utxo of selectedUtxos) {
       txBuilder
-        .txIn(
-          utxo.input.txHash,
-          utxo.input.outputIndex,
-          utxo.output.amount,
-          utxo.output.address
-        )
-        .txInScript(appWallet.scriptCbor);
+        .drepRegistrationCertificate(drepIds.cip105, {
+          anchorUrl: anchorUrl,
+          anchorDataHash: anchorHash,
+        })
+        .certificateScript(appWallet.scriptCbor)
+        .changeAddress(appWallet.address)
+        .selectUtxosFrom(manualUtxos);
+
+      await newTransaction({
+        txBuilder,
+        description: "DRep registration",
+        toastMessage: "DRep registration transaction has been created",
+      });
+    } catch (e) {
+      console.error(e);
     }
-
-    txBuilder
-      .drepRegistrationCertificate(drepIds.cip105, {
-        anchorUrl: anchorUrl,
-        anchorDataHash: anchorHash,
-      })
-      .certificateScript(appWallet.scriptCbor)
-      .changeAddress(appWallet.address)
-      .selectUtxosFrom(manualUtxos);
-
-    await newTransaction({
-      txBuilder,
-      description: "DRep registration",
-      toastMessage: "DRep registration transaction has been created",
-    });
-
+    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
   return (
     <CardUI title="Register DRep" icon={Plus}>
-      <DRepForm
-        setImageSha256={(value: string) =>
-          setFormState((prev) => ({ ...prev, imageSha256: value }))
-        }
-        {...formState}
-        setGivenName={(value: string) =>
-          setFormState((prev) => ({ ...prev, givenName: value }))
-        }
-        setBio={(value: string) => setFormState((prev) => ({ ...prev, bio: value }))}
-        setMotivations={(value: string) =>
-          setFormState((prev) => ({ ...prev, motivations: value }))
-        }
-        setObjectives={(value: string) =>
-          setFormState((prev) => ({ ...prev, objectives: value }))
-        }
-        setQualifications={(value: string) =>
-          setFormState((prev) => ({ ...prev, qualifications: value }))
-        }
-        setEmail={(value: string) =>
-          setFormState((prev) => ({ ...prev, email: value }))
-        }
-        setImageUrl={(value: string) =>
-          setFormState((prev) => ({ ...prev, imageUrl: value }))
-        }
-        setLinks={(value: string[]) =>
-          setFormState((prev) => ({ ...prev, links: value }))
-        }
-        setIdentities={(value: string[]) =>
-          setFormState((prev) => ({ ...prev, identities: value }))
-        }
-        appWallet={appWallet}
-        network={network}
-        manualUtxos={manualUtxos}
-        setManualUtxos={setManualUtxos}
-        setManualSelected={() => {
-          // This function is intentionally left empty.
-        }}
-        loading={loading}
-        onSubmit={registerDrep}
-        mode="register"
-      />
+      {appWallet && (
+        <DRepForm
+          _imageUrl={""}
+          _imageSha256={""}
+          setImageSha256={(value: string) =>
+            setFormState((prev) => ({ ...prev, imageSha256: value }))
+          }
+          {...formState}
+          setGivenName={(value: string) =>
+            setFormState((prev) => ({ ...prev, givenName: value }))
+          }
+          setBio={(value: string) =>
+            setFormState((prev) => ({ ...prev, bio: value }))
+          }
+          setMotivations={(value: string) =>
+            setFormState((prev) => ({ ...prev, motivations: value }))
+          }
+          setObjectives={(value: string) =>
+            setFormState((prev) => ({ ...prev, objectives: value }))
+          }
+          setQualifications={(value: string) =>
+            setFormState((prev) => ({ ...prev, qualifications: value }))
+          }
+          setEmail={(value: string) =>
+            setFormState((prev) => ({ ...prev, email: value }))
+          }
+          setImageUrl={(value: string) =>
+            setFormState((prev) => ({ ...prev, imageUrl: value }))
+          }
+          setLinks={(value: string[]) =>
+            setFormState((prev) => ({ ...prev, links: value }))
+          }
+          setIdentities={(value: string[]) =>
+            setFormState((prev) => ({ ...prev, identities: value }))
+          }
+          appWallet={appWallet}
+          network={network}
+          manualUtxos={manualUtxos}
+          setManualUtxos={setManualUtxos}
+          setManualSelected={() => {
+            // This function is intentionally left empty.
+          }}
+          loading={loading}
+          onSubmit={registerDrep}
+          mode="register"
+        />
+      )}
     </CardUI>
   );
 }

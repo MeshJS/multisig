@@ -1,6 +1,8 @@
 import jsonld from "jsonld";
 import type { JsonLdDocument, ContextDefinition } from "jsonld";
 
+// Explicitly declare that this function returns a Promise containing a JSON‑LD document.
+// (You can adjust the return type if you have a more precise interface.)
 export async function getDRepMetadata(
   formState: {
     givenName: string;
@@ -14,7 +16,7 @@ export async function getDRepMetadata(
     identities: string[];
   },
   appWallet: { address: string }
-) {
+): Promise<Record<string, unknown>> {
   // Build the raw JSON‑LD object
   const metadata = {
     "@context": {
@@ -124,7 +126,7 @@ export async function getDRepMetadata(
     ],
   };
 
-  // Instead of casting to any, cast via unknown to proper JSON‑LD types.
+  // Instead of casting to any, we cast to the proper types.
   const compacted = await jsonld.compact(
     metadata as unknown as JsonLdDocument,
     metadata["@context"] as unknown as ContextDefinition
