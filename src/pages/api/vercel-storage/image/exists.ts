@@ -23,15 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (response.blobs && response.blobs.length > 0) {
       const blob = response.blobs[0];
       if (blob && blob.downloadUrl) {
-        // Use a type assertion to guarantee that downloadUrl is a string.
-        const urlString: string = blob.downloadUrl as string;
-        let cleanUrl: string;
+        const urlString: string = blob.downloadUrl;
+        let cleanUrl: string = urlString; // initialize with a fallback value
         try {
           const urlObj = new URL(urlString);
           urlObj.search = "";
           cleanUrl = urlObj.toString();
-        } catch {
-          cleanUrl = urlString.split('?')[0];
+        } catch (e) {
+          console.error(e);
         }
         return res.status(200).json({ exists: true, url: cleanUrl });
       }

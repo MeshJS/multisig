@@ -10,7 +10,10 @@ import { getDRepIds } from "@meshsdk/core-csl";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
+import { getFile, hashDrepAnchor } from "@meshsdk/core";
 
+
+  
 export default function UpdateDRep() {
   const { appWallet } = useAppWallet();
   const { connected } = useWallet();
@@ -35,29 +38,58 @@ export default function UpdateDRep() {
     identities: [""],
   });
 
+  async function createAnchor() {
+    if (!appWallet) {
+      throw new Error("Wallet not connected");
+    }
+    // Generate JSON‑LD metadata from the form state
+    const drepMetadata = getDRepMetadata(formState, appWallet);
+    console.log(drepMetadata);
+    const rawResponse = await fetch("/api/vercel-storage/put", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        pathname: `drep/${formState.givenName}.jsonld`,
+        value: JSON.stringify(drepMetadata),
+      }),
+    });
+    const res = await rawResponse.json();
+    const anchorUrl = res.url;
+    const anchorObj = JSON.parse(getFile(anchorUrl));
+    const anchorHash = hashDrepAnchor(anchorObj);
+    return { anchorUrl, anchorHash };
+  }
+
   async function updateDrep() {
     if (!connected || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
-
+  
     setLoading(true);
     const txBuilder = getTxBuilder(network);
     const drepIds = getDRepIds(appWallet.dRepId);
-
-    // Generate JSON‑LD metadata from form state (which now includes imageSha256)
-    const drepMetadata = getDRepMetadata(formState, appWallet);
-
+  
+    // Create anchor as in register (this function generates metadata,
+    // uploads it, and returns anchorUrl and anchorHash)
+    const { anchorUrl, anchorHash } = await createAnchor();
+  
     txBuilder
-      .drepUpdateCertificate(drepIds.cip105, { body: drepMetadata.body })
+      .drepUpdateCertificate(drepIds.cip105, {
+        anchorUrl, 
+        anchorDataHash: anchorHash,
+      })
       .certificateScript(appWallet.scriptCbor)
       .changeAddress(appWallet.address)
       .selectUtxosFrom(manualUtxos);
-
+  
     await newTransaction({
       txBuilder,
       description: "DRep update",
       toastMessage: "DRep update transaction has been created",
     });
-
+  
     setLoading(false);
   }
 
@@ -104,4 +136,8 @@ export default function UpdateDRep() {
       />
     </CardUI>
   );
+}
+
+function createAnchor(): { anchorUrl: any; anchorHash: any; } | PromiseLike<{ anchorUrl: any; anchorHash: any; }> {
+    throw new Error("Function not implemented.");
 }
