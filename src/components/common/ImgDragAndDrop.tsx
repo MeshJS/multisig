@@ -1,20 +1,33 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import Image from "next/image"; // Using next/image for optimized images
+
+// Define expected types for API responses
+interface ImageExistsResponse {
+  exists: boolean;
+  url?: string;
+}
+
+interface UploadResponse {
+  url: string;
+}
+
+interface ErrorResponse {
+  error: string;
+}
 
 interface ImgDragAndDropProps {
   onImageUpload: (url: string, digest: string) => void;
 }
 
 export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [filePath, setFilePath] = useState<string>("");
   const [digest, setDigest] = useState<string>("");
-
-  // Ref to store the last URL that was processed
   const lastComputedUrlRef = useRef<string>("");
 
   async function computeSha256(file: File): Promise<string> {
@@ -30,7 +43,8 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
         method: "GET",
       });
       if (response.ok) {
-        const data = await response.json();
+        // Type the parsed JSON response
+        const data = (await response.json()) as ImageExistsResponse;
         if (data.exists && data.url) {
           return data.url;
         }
@@ -41,11 +55,10 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
     return null;
   }
 
-  const onDrop = async (acceptedFiles: File[]) => {
+  async function handleDropAsync(acceptedFiles: File[]): Promise<void> {
     if (!acceptedFiles.length) return;
     const file = acceptedFiles[0];
     if (!file) return;
-
     setUploading(true);
     setError(null);
 
@@ -74,20 +87,25 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = (await response.json()) as ErrorResponse;
         throw new Error(errorData.error || "Upload failed");
       }
 
-      const { url } = await response.json();
-      setImageUrl(url);
-      setFilePath(url);
-      onImageUpload(url, fileDigest);
+      const uploadRes = (await response.json()) as UploadResponse;
+      setImageUrl(uploadRes.url);
+      setFilePath(uploadRes.url);
+      onImageUpload(uploadRes.url, fileDigest);
     } catch (err) {
       console.error("Image upload error:", err);
       setError("Failed to upload image.");
     } finally {
       setUploading(false);
     }
+  }
+
+  // Wrap the async drop handler in a synchronous function
+  const onDrop = (acceptedFiles: File[]): void => {
+    void handleDropAsync(acceptedFiles);
   };
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -96,10 +114,10 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
     multiple: false,
   });
 
-  // When a user manually enters an image URL, compute its digest only if it is new.
+  // Compute image digest for manually entered URLs
   useEffect(() => {
     if (filePath && filePath.startsWith("http") && filePath !== lastComputedUrlRef.current) {
-      (async () => {
+      void (async () => {
         try {
           const response = await fetch(filePath);
           if (!response.ok) throw new Error("Image fetch failed");
@@ -122,10 +140,12 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
       <div className="flex items-center gap-4">
         {imageUrl && (
           <div className="relative h-32 w-32">
-            <img
+            <Image
               src={imageUrl}
               alt="Uploaded Preview"
-              className="h-full w-full rounded-md object-cover"
+              width={128}
+              height={128}
+              className="rounded-md object-cover"
             />
             <button
               onClick={() => {
@@ -152,7 +172,6 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
           </p>
         </div>
       </div>
-
       <Input
         type="url"
         className="w-full rounded-md border border-gray-300 p-2"
@@ -168,7 +187,6 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
           setImageUrl(url);
         }}
       />
-
       {error && <p className="mt-2 text-red-500">{error}</p>}
       {digest && <p className="mt-2 text-gray-500">SHA-256: {digest}</p>}
     </div>
