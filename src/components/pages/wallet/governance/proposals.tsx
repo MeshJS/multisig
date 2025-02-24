@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import Link from "next/link";
+import VoteButton from "./proposal/voteButtton";
 
 export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
   const network = useSiteStore((state) => state.network);
@@ -126,26 +127,7 @@ function ProposalRow({
         {proposal.governance_type.split("_").join(" ").toUpperCase()}
       </TableCell>
       <TableCell>
-        <Button>
-          <Link
-            href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
-          >
-            Info
-          </Link>
-        </Button>
-        {/* <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button aria-haspopup="true" size="icon" variant="ghost">
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem>Edit</DropdownMenuItem>
-            <DropdownMenuItem>Delete</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu> */}
+        <VoteButton appWallet={appWallet} proposalId={proposal.hash+"#"+proposal.cert_index} />
       </TableCell>
     </TableRow>
   );

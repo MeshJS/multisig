@@ -12,6 +12,14 @@ const config = {
     defaultLocale: "en",
   },
   transpilePackages: ["geist"],
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.blob.vercel-storage.com",
+      },
+    ],
+  },
   webpack: function (config, options) {
     config.experiments = {
       asyncWebAssembly: true,

@@ -2,7 +2,7 @@ import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import Retire from "./retire";
+import Retire from "./drep/retire";
 import Button from "@/components/common/button";
 import Link from "next/link";
 import {
@@ -58,7 +58,15 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
             Register DRep
           </Link>
         </Button>
+        <Button disabled={!drepInfo?.active}>
+          <Link href={`/wallets/${appWallet.id}/governance/update`}>
+            Update DRep
+          </Link>
+        </Button>
         <Retire appWallet={appWallet} />
+        <Link href={`/wallets/${appWallet.id}/governance/drep`}>
+          <Button>Find a DRep</Button>
+        </Link>
       </div>
     </CardUI>
   );
