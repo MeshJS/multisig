@@ -1,5 +1,5 @@
-import WalletInfo from "@/components/pages/wallet/info";
+import PageTransactions from "@/components/pages/wallet/transactions";
 
 export default function Page() {
-  return <WalletInfo />;
+  return <PageTransactions />;
 }
