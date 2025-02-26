@@ -1,16 +1,14 @@
+import React, { useEffect } from "react";
 import Link from "next/link";
-import { Menu } from "lucide-react";
+import { Menu, Plus, Wallet2 } from "lucide-react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import React, { Fragment, useEffect } from "react";
 import ConnectWallet from "../cardano-objects/connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
-// import { checkSignature, generateNonce } from "@meshsdk/core";
-import { useRouter } from "next/router";
 import MenuWallets from "./menus/wallets";
 import MenuWallet from "./menus/wallet";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -28,8 +26,13 @@ import Logo from "./logo";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
 import Loading from "./loading";
-import { PopupAlert } from "../popup-alert";
 import DialogReport from "./dialog-report";
+import MenuLink from "./menus/menu-link";
+import { Badge } from "@/components/ui/badge";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
+import useUserWallets from "@/hooks/useUserWallets";
+import { useRouter } from "next/router";
+import { Wallet } from "@prisma/client";
 
 export default function RootLayout({
   children,
@@ -37,222 +40,223 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const { connected, wallet } = useWallet();
-  const userAddress = useUserStore((state) => state.userAddress);
-  const setUserAddress = useUserStore((state) => state.setUserAddress);
   const { user, isLoading } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { generateNsec } = useNostrChat();
+  const { wallets } = useUserWallets();
+
+  const userAddress = useUserStore((state) => state.userAddress);
+  const setUserAddress = useUserStore((state) => state.setUserAddress);
 
   const { mutate: createUser } = api.user.createUser.useMutation({
-    // onSuccess: async () => {},
-    onError: (e) => {
-      console.error(e);
-    },
+    onError: (e) => console.error(e),
   });
 
-  /**
-   * Fetch the user address when the wallet is connected, and set to the store
-   */
+  // Single effect for address + user creation
   useEffect(() => {
-    async function load() {
-      if (connected) {
-        let userAddress = (await wallet.getUsedAddresses())[0];
-        if (userAddress === undefined) {
-          userAddress = (await wallet.getUnusedAddresses())[0];
+    (async () => {
+      if (!connected || !wallet) return;
+
+      // 1) Set user address in store
+      let address = (await wallet.getUsedAddresses())[0];
+      if (!address) address = (await wallet.getUnusedAddresses())[0];
+      if (address) setUserAddress(address);
+
+      // 2) If user doesn't exist, create it
+      if (!isLoading && user === null) {
+        const stakeAddress = (await wallet.getRewardAddresses())[0];
+        if (!stakeAddress || !address) {
+          console.error("No stake address or payment address found");
+          return;
         }
-        setUserAddress(userAddress);
-      }
-    }
-    load();
-  }, [connected]);
-
-  /**
-   * Create a user when the user is not created
-   */
-  useEffect(() => {
-    async function load() {
-      if (isLoading === false && user === null) {
-        const userStakeAddress = (await wallet.getRewardAddresses())[0];
-        let userAddress = (await wallet.getUsedAddresses())[0];
-        if (userAddress === undefined) {
-          userAddress = (await wallet.getUnusedAddresses())[0];
-        }
-
-        if (userStakeAddress === undefined || userAddress === undefined)
-          throw new Error("User address is undefined");
-
-        // const nonce = generateNonce(
-        //   "I agree to the terms and conditions of Multi-sig Platform. ",
-        // );
-        // const signature = await wallet.signData(nonce, userStakeAddress);
-        // const result = checkSignature(nonce, signature);
-
         const nostrKey = generateNsec();
-
-        // if (result) {
         createUser({
-          address: userAddress,
-          stakeAddress: userStakeAddress,
+          address,
+          stakeAddress,
           nostrKey: JSON.stringify(nostrKey),
         });
-        // }
       }
-    }
-    load();
-  }, [user, isLoading]);
+    })();
+  }, [
+    connected,
+    wallet,
+    user,
+    isLoading,
+    createUser,
+    generateNsec,
+    setUserAddress,
+  ]);
 
-  //const isLoggedIn = user !== undefined && user !== null;
-  //const isHomePath = router.asPath == "/"||"/features";
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
-  const walletPageNames = walletPageRoute && walletPageRoute.split("/");
+  const walletPageNames = walletPageRoute ? walletPageRoute.split("/") : [];
   const pageIsPublic = publicRoutes.includes(router.pathname);
+  const isLoggedIn = !!user;
 
   return (
     <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       {isLoading && <Loading />}
 
-      <div className="hidden border-r bg-muted/40 md:block">
+      {/* Sidebar for larger screens */}
+      <aside className="hidden border-r bg-muted/40 md:block">
         <div className="flex h-full max-h-screen flex-col gap-2">
-          <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+          <header className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <Logo />
-              <span className="">Multi-Sig Platform</span>
+              <span>Multi-Sig Platform</span>
             </Link>
-            {/* <Button variant="outline" size="icon" className="ml-auto h-8 w-8">
-              <Bell className="h-4 w-4" />
-              <span className="sr-only">Toggle notifications</span>
-            </Button> */}
-          </div>
-          <div className="flex-1">
-            {
-              <>
-                <MenuWallets />
-                {isWalletPath && <MenuWallet />}
-              </>
-            }
-            {/* <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-              {wallets &&
-                wallets.map((wallet) => (
-                  <WalletNavLink key={wallet.id} wallet={wallet} />
-                ))}
-              {isLoggedIn && (
-                <Link
-                  href={`/wallets/new-wallet`}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                  New Wallet
-                </Link>
-              )}
-            </nav> */}
-          </div>
-          <div className="mt-auto p-4"></div>
+          </header>
+          <nav className="flex-1">
+            <MenuWallets />
+            {isWalletPath && <MenuWallet />}
+          </nav>
+          <div className="mt-auto p-4" />
         </div>
-      </div>
-      <div className="flex h-[calc(100vh)] flex-col">
-      <header className="relative z-10 flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6 pointer-events-auto">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col">
-              <nav className="grid gap-2 text-lg font-medium">
-                {/* <Link
-                  href="#"
-                  className="flex items-center gap-2 text-lg font-semibold"
-                >
-                  <Wallet2 className="h-6 w-6" />
-                </Link>
-                {NAV_LINKS.map((link) => (
-                  <Link
-                    key={link.path}
-                    href={`${link.path}`}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-muted-foreground hover:text-primary"
-                  >
-                    {React.createElement(link.icon, { className: "h-5 w-5" })}
-                    {link.label}
-                  </Link>
-                ))}
-                <Link
-                  href="/transactions"
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
-                >
-                  <List className="h-4 w-4" />
-                  Transactions
-                  <Badge className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                    6
-                  </Badge>
-                </Link> */}
-              </nav>
-              <div className="mt-auto"></div>
-            </SheetContent>
-          </Sheet>
-          <div className="w-full flex-1">
-            {isWalletPath && appWallet && (
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink href={`/wallets/${appWallet.id}`} asChild>
-                      <Link href={`/wallets/${appWallet.id}`}>
-                        <h1 className="flex-1 shrink-0 whitespace-nowrap text-2xl font-semibold tracking-tight sm:grow-0">
-                          {appWallet.name}
-                        </h1>
-                      </Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  {walletPageNames &&
-                    walletPageNames.map((walletPageName, index) => (
-                      <Fragment key={index}>
-                        <BreadcrumbSeparator />
-                        <BreadcrumbItem>
-                          <BreadcrumbLink asChild>
-                            <Link
-                              href={`/wallets/${appWallet.id}/${walletPageNames.slice(0, index + 1).join("/")}`}
-                            >
-                              {walletPageName.toUpperCase()}
-                            </Link>
-                          </BreadcrumbLink>
-                        </BreadcrumbItem>
-                      </Fragment>
-                    ))}
-                </BreadcrumbList>
-              </Breadcrumb>
-            )}
-          </div>
-          {!connected ? (
-            <ConnectWallet />
-          ) : (
-            <>
-              <WalletDataLoader />
-              <DialogReport />
-              <WalletDropDown />
-              <UserDropDown />
-            </>
-          )}
-        </header>
-        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4 md:gap-8 md:p-8">
-          {/* <div className="z-[100] flex min-h-[72px] w-full justify-end px-4 py-4">
-            <PopupAlert />
-          </div> */}
+      </aside>
 
-          {pageIsPublic ? (
-            children
-          ) : userAddress === undefined ? (
-            <PageHomepage />
-          ) : (
-            children
-          )}
+      {/* Main content area */}
+      <div className="flex h-screen flex-col">
+        <header className="pointer-events-auto relative z-10 border-b bg-muted/40 px-4 lg:px-6">
+          <div className="flex h-14 items-center gap-4 lg:h-[60px]">
+            {/* Mobile menu */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0 md:hidden"
+                >
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle navigation menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="flex flex-col">
+                <nav className="grid gap-2 text-lg font-medium">
+                  {/* Mobile navigation can go here */}
+                </nav>
+              </SheetContent>
+            </Sheet>
+
+            {/* Wallet selection + breadcrumb row */}
+            {isLoggedIn && (
+              <div className="border-t border-border">
+                <div className="mx-auto w-full max-w-screen-xl px-4 py-2">
+                  <nav className="flex items-center justify-between">
+                    {/* Left: New Wallet button */}
+                    <div className="flex-shrink-0">
+                      <MenuLink
+                        href="/wallets/new-wallet"
+                        className="flex items-center gap-1 border-b-2 border-transparent px-4 py-2 hover:text-primary"
+                      >
+                        <Plus className="h-4 w-4" />
+                        New Wallet
+                      </MenuLink>
+                    </div>
+
+                    {/* Center: Wallet selection (limited width with horizontal scrolling) */}
+                    <div
+                      className="mx-4 w-full max-w-[500px] overflow-x-auto whitespace-nowrap rounded-lg border-x-2 border-primary text-primary"
+                      style={{
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                      }}
+                      onWheel={(e) => {
+                        if (e.deltaY === 0) return;
+                        e.currentTarget.scrollLeft += e.deltaY;
+                      }}
+                    >
+                      <div className="flex items-center space-x-4 [&::-webkit-scrollbar]:hidden">
+                        {wallets &&
+                          wallets
+                            .filter((w) => !w.isArchived)
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((w) => (
+                              <WalletNavLink key={w.id} wallet={w} />
+                            ))}
+                      </div>
+                    </div>
+
+                    {/* Right: Breadcrumb */}
+                    <div className="flex-shrink-0">
+                      {isWalletPath && appWallet ? (
+                        <Breadcrumb>
+                          <BreadcrumbList>
+                            {walletPageNames.map((name, index) => (
+                              <React.Fragment key={index}>
+                                <BreadcrumbSeparator />
+                                <BreadcrumbItem>
+                                  <BreadcrumbLink asChild>
+                                    <Link
+                                      href={`/wallets/${appWallet.id}/${walletPageNames
+                                        .slice(0, index + 1)
+                                        .join("/")}`}
+                                    >
+                                      {name.toUpperCase()}
+                                    </Link>
+                                  </BreadcrumbLink>
+                                </BreadcrumbItem>
+                              </React.Fragment>
+                            ))}
+                          </BreadcrumbList>
+                        </Breadcrumb>
+                      ) : (
+                        <div className="w-40" /> /* Placeholder to keep right side spacing */
+                      )}
+                    </div>
+                  </nav>
+                </div>
+              </div>
+            )}
+
+            {/* Right: Control buttons */}
+            <div className="ml-auto flex items-center space-x-2">
+              {!connected ? (
+                <ConnectWallet />
+              ) : (
+                <>
+                  <WalletDataLoader />
+                  <DialogReport />
+                  <WalletDropDown />
+                  <UserDropDown />
+                </>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-8">
+          {pageIsPublic || userAddress ? children : <PageHomepage />}
         </main>
       </div>
     </div>
+  );
+}
+
+/** Single wallet nav tab. */
+function WalletNavLink({ wallet }: { wallet: Wallet }) {
+  const { pathname, query } = useRouter();
+  const { transactions } = usePendingTransactions({ walletId: wallet.id });
+  const isActive =
+    pathname.startsWith("/wallets/[wallet]") && query.wallet === wallet.id;
+
+  return (
+    <MenuLink
+      href={`/wallets/${wallet.id}`}
+      className={`border-b-2 px-4 py-2 ${
+        isActive
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground"
+      } hover:text-primary`}
+    >
+      <Wallet2 className="mr-1 h-4 w-4" />
+      {wallet.name}
+      {wallet.isArchived && " (Archived)"}
+      {transactions && transactions.length > 0 && (
+        <Badge className="ml-2 flex h-6 w-6 items-center justify-center rounded-full">
+          {transactions.length}
+        </Badge>
+      )}
+    </MenuLink>
   );
 }
