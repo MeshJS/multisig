@@ -80,7 +80,7 @@ export default function VoteButton({
           )
           .txInScript(appWallet.scriptCbor);
       }
-
+      console.log(certIndex)
       txBuilder
         .vote(
           {

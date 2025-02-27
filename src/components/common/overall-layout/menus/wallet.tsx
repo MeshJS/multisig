@@ -1,4 +1,4 @@
-import { ArrowLeft, Info, List, Scale, Wallet } from "lucide-react";
+import { Info, List } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -15,7 +15,6 @@ export default function MenuWallet() {
   return (
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
       <div className="grid items-start">
-        <p>{wallets.filter((wallet) => wallet.id === router.query.wallet).map((wallet) => wallet.name)}</p>
 
         <MenuLink
           href={`${baseUrl}transactions`}
