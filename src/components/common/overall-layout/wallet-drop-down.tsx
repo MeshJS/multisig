@@ -10,7 +10,7 @@ import {
 import { useRouter } from "next/router";
 import useUserWallets from "@/hooks/useUserWallets";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import WalletNavLink from "./wallet-nav-link";
 
 export default function WalletDropDown() {
@@ -18,6 +18,18 @@ export default function WalletDropDown() {
   const { wallets } = useUserWallets();
   const { appWallet } = useAppWallet();
   const [open, setOpen] = useState(false);
+
+  // Close the dropdown when a route change starts
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setOpen(false);
+    };
+
+    router.events.on("routeChangeStart", handleRouteChange);
+    return () => {
+      router.events.off("routeChangeStart", handleRouteChange);
+    };
+  }, [router.events]);
 
   return (
     <div className="flex items-center rounded-md border border-secondary border-border">
@@ -34,13 +46,11 @@ export default function WalletDropDown() {
             variant="ghost"
             className="flex items-center rounded-none border-r border-border"
           >
-             {open ? (
+            {open ? (
               <ChevronUp className="h-5 w-5" />
             ) : (
               <ChevronDown className="h-5 w-5" />
             )}
-            
-           
             <span className="flex items-center ml-2">
               {appWallet?.name || "Select Wallet"}
             </span>
@@ -48,7 +58,10 @@ export default function WalletDropDown() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="mt-2 p-2">
-          <DropdownMenuItem onClick={() => router.push("/")}>
+          <DropdownMenuItem
+            onSelect={() => setOpen(false)}
+            onClick={() => router.push("/")}
+          >
             All Wallets
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -63,7 +76,6 @@ export default function WalletDropDown() {
               ))}
         </DropdownMenuContent>
       </DropdownMenu>
-      
     </div>
   );
 }

@@ -1,9 +1,6 @@
 import React, { useEffect } from "react";
 import Link from "next/link";
-import { Menu, Plus, Wallet2 } from "lucide-react";
 import { api } from "@/utils/api";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import ConnectWallet from "../cardano-objects/connect-wallet";
 import { useWallet } from "@meshsdk/react";
 import UserDropDown from "./user-drop-down";
@@ -27,12 +24,7 @@ import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { publicRoutes } from "@/data/public-routes";
 import Loading from "./loading";
 import DialogReport from "./dialog-report";
-import MenuLink from "./menus/menu-link";
-import { Badge } from "@/components/ui/badge";
-import usePendingTransactions from "@/hooks/usePendingTransactions";
-import useUserWallets from "@/hooks/useUserWallets";
 import { useRouter } from "next/router";
-import { Wallet } from "@prisma/client";
 
 export default function RootLayout({
   children,
@@ -44,7 +36,6 @@ export default function RootLayout({
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { generateNsec } = useNostrChat();
-  const { wallets } = useUserWallets();
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
@@ -93,6 +84,8 @@ export default function RootLayout({
   const walletPageNames = walletPageRoute ? walletPageRoute.split("/") : [];
   const pageIsPublic = publicRoutes.includes(router.pathname);
   const isLoggedIn = !!user;
+
+  
 
   return (
     <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
