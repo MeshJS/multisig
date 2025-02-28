@@ -1,4 +1,4 @@
-import { Wallet } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Wallet2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,49 +9,73 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/router";
 import useUserWallets from "@/hooks/useUserWallets";
+import useAppWallet from "@/hooks/useAppWallet";
+import { useState, useEffect } from "react";
+import WalletNavLink from "./wallet-nav-link";
 
 export default function WalletDropDown() {
   const router = useRouter();
   const { wallets } = useUserWallets();
+  const { appWallet } = useAppWallet();
+  const [open, setOpen] = useState(false);
+
+  // Close the dropdown when a route change starts
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setOpen(false);
+    };
+
+    router.events.on("routeChangeStart", handleRouteChange);
+    return () => {
+      router.events.off("routeChangeStart", handleRouteChange);
+    };
+  }, [router.events]);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="icon" className="rounded-full">
-          <Wallet className="h-5 w-5" />
-          <span className="sr-only">Toggle wallet menu</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={async () => {
-            router.push(`/`);
-          }}
-        >
-          All Wallets
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {wallets &&
-          wallets
-            .filter((wallet) => !wallet.isArchived)
-            .sort((a, b) =>
-              a.isArchived === b.isArchived
-                ? a.name.localeCompare(b.name)
-                : a.isArchived
-                  ? 1
-                  : -1,
-            )
-            .map((wallet, i) => (
-              <DropdownMenuItem
-                key={i}
-                onClick={async () => {
-                  router.push(`/wallets/${wallet.id}`);
-                }}
-              >
-                {wallet.name}
-              </DropdownMenuItem>
-            ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex items-center rounded-md border border-secondary border-border">
+      <button
+        type="button"
+        className="flex items-center px-2 text-muted-foreground hover:text-foreground"
+        onClick={() => router.push("/wallets/new-wallet")}
+      >
+        <Plus className="h-5 w-5" />
+      </button>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="flex items-center rounded-none border-r border-border"
+          >
+            {open ? (
+              <ChevronUp className="h-5 w-5" />
+            ) : (
+              <ChevronDown className="h-5 w-5" />
+            )}
+            <span className="flex items-center ml-2">
+              {appWallet?.name || "Select Wallet"}
+            </span>
+            <Wallet2 className="mx-2 h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="mt-2 p-2">
+          <DropdownMenuItem
+            onSelect={() => setOpen(false)}
+            onClick={() => router.push("/")}
+          >
+            All Wallets
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {wallets &&
+            wallets
+              .filter((wallet) => !wallet.isArchived)
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((wallet) => (
+                <DropdownMenuItem asChild key={wallet.id}>
+                  <WalletNavLink wallet={wallet} />
+                </DropdownMenuItem>
+              ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
