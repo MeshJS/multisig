@@ -119,63 +119,13 @@ export default function RootLayout({
       <div className="flex h-screen flex-col">
         <header className="pointer-events-auto relative z-10 border-b bg-muted/40 px-4 lg:px-6">
           <div className="flex h-14 items-center gap-4 lg:h-[60px]">
-            {/* Mobile menu */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0 md:hidden"
-                >
-                  <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle navigation menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="flex flex-col">
-                <nav className="grid gap-2 text-lg font-medium">
-                  {/* Mobile navigation can go here */}
-                </nav>
-              </SheetContent>
-            </Sheet>
-
+            
             {/* Wallet selection + breadcrumb row */}
             {isLoggedIn && (
               <div className="border-t border-border">
-                <div className="mx-auto w-full max-w-screen-xl px-4 py-2">
-                  <nav className="flex items-center justify-between">
-                    {/* Left: New Wallet button */}
-                    <div className="flex-shrink-0">
-                      <MenuLink
-                        href="/wallets/new-wallet"
-                        className="flex items-center gap-1 border-b-2 border-transparent px-4 py-2 hover:text-primary"
-                      >
-                        <Plus className="h-4 w-4" />
-                        New Wallet
-                      </MenuLink>
-                    </div>
-
-                    {/* Center: Wallet selection (limited width with horizontal scrolling) */}
-                    <div
-                      className="mx-4 w-full max-w-[500px] overflow-x-auto whitespace-nowrap rounded-lg border-x-2 border-primary text-primary"
-                      style={{
-                        scrollbarWidth: "none",
-                        msOverflowStyle: "none",
-                      }}
-                      onWheel={(e) => {
-                        if (e.deltaY === 0) return;
-                        e.currentTarget.scrollLeft += e.deltaY;
-                      }}
-                    >
-                      <div className="flex items-center space-x-4 [&::-webkit-scrollbar]:hidden">
-                        {wallets &&
-                          wallets
-                            .filter((w) => !w.isArchived)
-                            .sort((a, b) => a.name.localeCompare(b.name))
-                            .map((w) => (
-                              <WalletNavLink key={w.id} wallet={w} />
-                            ))}
-                      </div>
-                    </div>
+                <div className="mx-1 w-full py-2">
+                  <nav className="flex items-center">
+                    <WalletDropDown />
 
                     {/* Right: Breadcrumb */}
                     <div className="flex-shrink-0">
@@ -217,7 +167,6 @@ export default function RootLayout({
                 <>
                   <WalletDataLoader />
                   <DialogReport />
-                  <WalletDropDown />
                   <UserDropDown />
                 </>
               )}
@@ -230,33 +179,5 @@ export default function RootLayout({
         </main>
       </div>
     </div>
-  );
-}
-
-/** Single wallet nav tab. */
-function WalletNavLink({ wallet }: { wallet: Wallet }) {
-  const { pathname, query } = useRouter();
-  const { transactions } = usePendingTransactions({ walletId: wallet.id });
-  const isActive =
-    pathname.startsWith("/wallets/[wallet]") && query.wallet === wallet.id;
-
-  return (
-    <MenuLink
-      href={`/wallets/${wallet.id}`}
-      className={`border-b-2 px-4 py-2 ${
-        isActive
-          ? "border-primary text-primary"
-          : "border-transparent text-muted-foreground"
-      } hover:text-primary`}
-    >
-      <Wallet2 className="mr-1 h-4 w-4" />
-      {wallet.name}
-      {wallet.isArchived && " (Archived)"}
-      {transactions && transactions.length > 0 && (
-        <Badge className="ml-2 flex h-6 w-6 items-center justify-center rounded-full">
-          {transactions.length}
-        </Badge>
-      )}
-    </MenuLink>
   );
 }
