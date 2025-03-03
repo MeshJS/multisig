@@ -34,20 +34,31 @@ export default function WalletDataLoader() {
 
   async function getTransactionsOnChain() {
     if (appWallet) {
+      const maxPage = 100;
       const _transactions: OnChainTransaction[] = [];
       const blockchainProvider = getProvider(network);
-      let transactions: TxInfo[] = await blockchainProvider.get(
-        `/addresses/${appWallet.address}/transactions`,
-      );
-      transactions = transactions.reverse().splice(0, NUMBER_OF_TRANSACTIONS);
-      for (const tx of transactions) {
-        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
-        _transactions.push({
-          hash: tx.tx_hash,
-          tx: tx,
-          inputs: txData.inputs,
-          outputs: txData.outputs,
-        });
+
+      for (let i = 1; i <= maxPage; i++) {
+        let transactions: TxInfo[] = await blockchainProvider.get(
+          `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
+        );
+
+        if (transactions.length === 0) {
+          break;
+        }
+
+        transactions = transactions.splice(0, NUMBER_OF_TRANSACTIONS);
+        for (const tx of transactions) {
+          const txData = await blockchainProvider.get(
+            `/txs/${tx.tx_hash}/utxos`,
+          );
+          _transactions.push({
+            hash: tx.tx_hash,
+            tx: tx,
+            inputs: txData.inputs,
+            outputs: txData.outputs,
+          });
+        }
       }
 
       setWalletTransactions(appWallet?.id, _transactions);
