@@ -52,9 +52,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => setShowEdit(!showEdit)}
-            >
+            <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
               {showEdit ? "Close Edit" : "Edit Signer Descriptions"}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -63,10 +61,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
       cardClassName="col-span-2"
     >
       {showEdit ? (
-        <EditSigners
-          appWallet={appWallet}
-          setShowEdit={setShowEdit}
-        />
+        <EditSigners appWallet={appWallet} setShowEdit={setShowEdit} />
       ) : (
         <ShowSigners appWallet={appWallet} />
       )}
@@ -225,6 +220,19 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
     }
   }
 
+  function handleConnectDiscord() {
+    // Discord OAuth2 URL with required scopes
+    const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
+    const redirectUri = encodeURIComponent(
+      `${window.location.origin}/api/auth/discord/callback`,
+    );
+    const scope = encodeURIComponent("identify");
+
+    const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+
+    window.location.href = url;
+  }
+
   return (
     <>
       {appWallet.signersAddresses.map((address, index) => (
@@ -272,6 +280,13 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
               </>
             )}
           </>
+          {userAddress && address == userAddress ? (
+            <Button size="sm" onClick={() => handleConnectDiscord()}>
+              Connect Discord
+            </Button>
+          ) : (
+            <></>
+          )}
         </RowLabelInfo>
       ))}
     </>
