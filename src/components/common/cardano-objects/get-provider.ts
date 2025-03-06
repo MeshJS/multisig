@@ -7,8 +7,4 @@ export function getProvider(network: number) {
       ? env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
       : env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET,
   );
-  // return new KoiosProvider(
-  //   network == 0 ? 'preprod' : 'api',
-  //   env.NEXT_PUBLIC_KOIOS_TOKEN,
-  // );
 }

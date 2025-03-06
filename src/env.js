@@ -36,7 +36,6 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string(),
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
-    NEXT_PUBLIC_KOIOS_TOKEN: z.string(),
   },
 
   /**
@@ -55,7 +54,6 @@ export const env = createEnv({
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
-    NEXT_PUBLIC_KOIOS_TOKEN: process.env.NEXT_PUBLIC_KOIOS_TOKEN,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   },
   /**
