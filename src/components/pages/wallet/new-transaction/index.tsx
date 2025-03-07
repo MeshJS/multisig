@@ -176,7 +176,10 @@ export default function PageNewTransaction() {
       reset();
 
       // send discord message
-      await sendDiscordMessage(discordIds, "test");
+      await sendDiscordMessage(
+        discordIds,
+        `**NEW MULTISIG TRANSACTION:** A new Multisig transaction has been created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
+      );
 
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
