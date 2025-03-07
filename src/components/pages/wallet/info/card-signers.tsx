@@ -256,7 +256,6 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
 
     return appWallet.signersAddresses.map((address, index) => {
       const discordId = discordIds?.[address];
-      console.log("discordId", discordId);
       return (
         <RowLabelInfo
           label={

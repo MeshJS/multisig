@@ -2,14 +2,16 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, resolveScriptHash, serializeRewardAddress, Unit, UTxO } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
 import {
-  Loader,
-  PlusCircle,
-  Send,
-  X,
-} from "lucide-react";
+  keepRelevant,
+  Quantity,
+  resolveScriptHash,
+  serializeRewardAddress,
+  Unit,
+  UTxO,
+} from "@meshsdk/core";
+import { useWallet } from "@meshsdk/react";
+import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -38,6 +40,8 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
+import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
+import { api } from "@/utils/api";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -61,6 +65,13 @@ export default function PageNewTransaction() {
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
   const router = useRouter();
+
+  const { data: discordData } = api.user.getDiscordIds.useQuery({
+    addresses: appWallet?.signersAddresses ?? [],
+  });
+
+  // Extract Discord IDs
+  const discordIds = Object.values(discordData ?? {}).filter(Boolean);
 
   useEffect(() => {
     reset();
@@ -164,10 +175,13 @@ export default function PageNewTransaction() {
       });
       reset();
 
+      // send discord message
+      await sendDiscordMessage(discordIds, "test");
+
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
-      console.error(e)
+      console.error(e);
       toast({
         title: "Error",
         description: `${JSON.stringify(e)}`,
@@ -198,7 +212,7 @@ export default function PageNewTransaction() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 pointer-events-auto">
+    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
