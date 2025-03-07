@@ -14,7 +14,7 @@ import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
-import KeyGenerator from "./cip146Wallet";
+import KeyGenerator from "./cip146/146Wallet";
 
 export default function PageNewWalletInvite() {
   const router = useRouter();
