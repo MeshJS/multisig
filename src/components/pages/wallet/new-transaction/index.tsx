@@ -3,10 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
 import {
+  BlockfrostProvider,
   keepRelevant,
   Quantity,
-  resolveScriptHash,
-  serializeRewardAddress,
   Unit,
   UTxO,
 } from "@meshsdk/core";
@@ -40,6 +39,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { toast, useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
+import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -383,56 +383,9 @@ function RecipientRow({
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [adaHandle, setAdaHandle] = useState<string>("");
 
-  const resolveHandle = async (value: string) => {
-    try {
-      const handleName = value.substring(1);
-      if (handleName.length === 0) {
-        setAdaHandle("");
-        return;
-      }
-
-      const assetName = Buffer.from(handleName).toString("hex");
-      const policyId =
-        "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a";
-
-      const res = await fetch(
-        `https://cardano-mainnet.blockfrost.io/api/v0/assets/${policyId}${assetName}/addresses`,
-        {
-          headers: {
-            project_id:
-              process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET ?? "",
-            "Content-Type": "application/json",
-          },
-        },
-      );
-      const data = await res.json();
-      const [{ address }] = data;
-
-      if (address) {
-        const newAddresses = [...recipientAddresses];
-        newAddresses[index] = address;
-        setRecipientAddresses(newAddresses);
-        setAdaHandle(value);
-        toast({
-          title: `ADA Handle Resolved: ${value}`,
-        });
-      } else {
-        setAdaHandle("");
-        toast({
-          title: "ADA Handle Not Found",
-          description: `No address found for handle: ${value}`,
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      setAdaHandle("");
-      toast({
-        title: "Error Resolving ADA Handle",
-        description: `Failed to lookup ADA handle: ${value}`,
-        variant: "destructive",
-      });
-    }
-  };
+  const provider = new BlockfrostProvider(
+    process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET ?? "",
+  );
 
   const handleAddressChange = async (value: string) => {
     const newAddresses = [...recipientAddresses];
@@ -445,7 +398,13 @@ function RecipientRow({
 
     if (value.startsWith("$")) {
       const newTimeoutId = setTimeout(() => {
-        resolveHandle(value);
+        void resolveAdaHandle(
+          setAdaHandle,
+          setRecipientAddresses,
+          recipientAddresses,
+          index,
+          value,
+        );
       }, 1000);
       setTimeoutId(newTimeoutId);
     } else {
