@@ -1,14 +1,21 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
+import { db } from "@/server/db";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
-  const { code } = req.query;
+  const { code, state } = req.query;
 
   if (!code) {
     return res.status(400).json({ error: "No code provided" });
   }
+
+  if (!state) {
+    return res.status(400).json({ error: "No state provided" });
+  }
+
+  const userAddress = decodeURIComponent(state as string);
 
   try {
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
@@ -41,9 +48,14 @@ export default async function handler(
     });
 
     const user = await userResponse.json();
+    if (user) {
+      // Store Discord ID in database
+      await db.user.update({
+        where: { address: userAddress },
+        data: { discordId: user.id },
+      });
+    }
 
-    console.log("VERIFIED DISCORD USER", user);
-    // TODO: Store the Discord user ID database here once migration is made
     // Then redirect
     res.redirect("/");
   } catch (error) {
