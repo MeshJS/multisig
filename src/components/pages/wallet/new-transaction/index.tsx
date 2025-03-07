@@ -2,13 +2,7 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import {
-  BlockfrostProvider,
-  keepRelevant,
-  Quantity,
-  Unit,
-  UTxO,
-} from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -383,10 +377,6 @@ function RecipientRow({
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [adaHandle, setAdaHandle] = useState<string>("");
 
-  const provider = new BlockfrostProvider(
-    process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET ?? "",
-  );
-
   const handleAddressChange = async (value: string) => {
     const newAddresses = [...recipientAddresses];
     newAddresses[index] = value;
@@ -421,7 +411,7 @@ function RecipientRow({
             placeholder="addr1... or $handle"
             value={recipientAddresses[index]}
             onChange={(e) => {
-              handleAddressChange(e.target.value);
+              void handleAddressChange(e.target.value);
             }}
           />
           {adaHandle && <TableCell>{adaHandle}</TableCell>}
