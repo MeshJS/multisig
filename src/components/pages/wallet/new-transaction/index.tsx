@@ -2,14 +2,9 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, resolveScriptHash, serializeRewardAddress, Unit, UTxO } from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
-import {
-  Loader,
-  PlusCircle,
-  Send,
-  X,
-} from "lucide-react";
+import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -35,9 +30,10 @@ import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder
 import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
-import { useToast } from "@/hooks/use-toast";
+import { toast, useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
+import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -167,7 +163,7 @@ export default function PageNewTransaction() {
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
-      console.error(e)
+      console.error(e);
       toast({
         title: "Error",
         description: `${JSON.stringify(e)}`,
@@ -198,7 +194,7 @@ export default function PageNewTransaction() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 pointer-events-auto">
+    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
@@ -378,48 +374,87 @@ function RecipientRow({
   setAmounts: (value: string[]) => void;
   disableAdaAmountInput: boolean;
 }) {
+  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [adaHandle, setAdaHandle] = useState<string>("");
+
+  const handleAddressChange = async (value: string) => {
+    const newAddresses = [...recipientAddresses];
+    newAddresses[index] = value;
+    setRecipientAddresses(newAddresses);
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (value.startsWith("$")) {
+      const newTimeoutId = setTimeout(() => {
+        void resolveAdaHandle(
+          setAdaHandle,
+          setRecipientAddresses,
+          recipientAddresses,
+          index,
+          value,
+        );
+      }, 1000);
+      setTimeoutId(newTimeoutId);
+    } else {
+      setAdaHandle("");
+    }
+  };
+
   return (
     <TableRow>
       <TableCell>
-        <Input
-          type="string"
-          placeholder="addr1..."
-          value={recipientAddresses[index]}
-          onChange={(e) => {
-            const newAddresses = [...recipientAddresses];
-            newAddresses[index] = e.target.value;
-            setRecipientAddresses(newAddresses);
-          }}
-        />
+        <div className="flex flex-col gap-1">
+          <Input
+            type="string"
+            placeholder="addr1... or $handle"
+            value={recipientAddresses[index]}
+            onChange={(e) => {
+              void handleAddressChange(e.target.value);
+            }}
+          />
+          {adaHandle && <TableCell>{adaHandle}</TableCell>}
+        </div>
       </TableCell>
       <TableCell>
-        <Input
-          type="number"
-          value={amounts[index]}
-          onChange={(e) => {
-            const newAmounts = [...amounts];
-            newAmounts[index] = e.target.value;
-            setAmounts(newAmounts);
-          }}
-          placeholder=""
-          disabled={disableAdaAmountInput}
-        />
-      </TableCell>
-      <TableCell>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => {
-            const newAddresses = [...recipientAddresses];
-            newAddresses.splice(index, 1);
-            setRecipientAddresses(newAddresses);
-            const newAmounts = [...amounts];
-            newAmounts.splice(index, 1);
-            setAmounts(newAmounts);
-          }}
+        <div
+          className="flex flex-col"
+          style={{ minHeight: adaHandle ? "76px" : "auto" }}
         >
-          <X className="h-4 w-4" />
-        </Button>
+          <Input
+            type="number"
+            value={amounts[index]}
+            onChange={(e) => {
+              const newAmounts = [...amounts];
+              newAmounts[index] = e.target.value;
+              setAmounts(newAmounts);
+            }}
+            placeholder=""
+            disabled={disableAdaAmountInput}
+          />
+        </div>
+      </TableCell>
+      <TableCell>
+        <div
+          className="flex flex-col"
+          style={{ minHeight: adaHandle ? "76px" : "auto" }}
+        >
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => {
+              const newAddresses = [...recipientAddresses];
+              newAddresses.splice(index, 1);
+              setRecipientAddresses(newAddresses);
+              const newAmounts = [...amounts];
+              newAmounts.splice(index, 1);
+              setAmounts(newAmounts);
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
