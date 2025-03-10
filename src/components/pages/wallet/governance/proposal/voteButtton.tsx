@@ -101,7 +101,7 @@ export default function VoteButton({
 
       await newTransaction({
         txBuilder,
-        description: description || undefined,
+        description: `Vote: ${voteKind} - ${description}`,
         metadataValue: metadata ? { label: "674", value: metadata } : undefined,
       });
 
@@ -149,32 +149,30 @@ export default function VoteButton({
   }
 
   return (
-    <div className="relative w-full max-w-sm">
-      {/* Unified Button + Selector Design */}
-      <div className="flex items-center border rounded-lg overflow-hidden shadow-sm">
-        {/* Vote Button (Left Side) */}
-        <Button
-          onClick={vote}
-          disabled={loading || proposalId.length !== 66}
-          className="h-full px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-none"
-        >
-          {loading ? "Voting..." : "Vote"}
-        </Button>
+<div className="flex flex-col items-center justify-center w-full max-w-sm space-y-2">
+  <Select
+    value={voteKind}
+    onValueChange={(value) => setVoteKind(value as "Yes" | "No" | "Abstain")}
+  >
+    <SelectTrigger className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+      <SelectValue placeholder="Select Vote Kind" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectGroup>
+        <SelectItem value="Yes">Yes</SelectItem>
+        <SelectItem value="No">No</SelectItem>
+        <SelectItem value="Abstain">Abstain</SelectItem>
+      </SelectGroup>
+    </SelectContent>
+  </Select>
 
-        {/* Vote Kind Dropdown (Right Side) */}
-        <Select value={voteKind} onValueChange={(value) => setVoteKind(value as "Yes" | "No" | "Abstain")}>
-          <SelectTrigger className="w-full px-4 py-2 border-l focus:ring-0">
-            <SelectValue placeholder="Select Vote Kind" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="Yes">Yes</SelectItem>
-              <SelectItem value="No">No</SelectItem>
-              <SelectItem value="Abstain">Abstain</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
+  <Button
+    onClick={vote}
+    disabled={loading || proposalId.length !== 66}
+    className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow"
+  >
+    {loading ? "Voting..." : "Vote"}
+  </Button>
+</div>
   );
 }
