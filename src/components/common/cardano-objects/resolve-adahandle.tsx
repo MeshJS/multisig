@@ -1,9 +1,8 @@
 import { toast } from "@/hooks/use-toast";
-import { BlockfrostProvider } from "@meshsdk/core";
+import { getProvider } from "./get-provider";
 
-const provider = new BlockfrostProvider(
-  process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET ?? "",
-);
+//AdaHandle look up provider only supports mainnnet
+const provider = getProvider(1)
 
 export const resolveAdaHandle = async (
   setAdaHandle: (value: string) => void,
