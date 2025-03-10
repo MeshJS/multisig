@@ -1,9 +1,8 @@
 import { toast } from "@/hooks/use-toast";
-import { BlockfrostProvider } from "@meshsdk/core";
+import { getProvider } from "./get-provider";
 
-const provider = new BlockfrostProvider(
-  process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET ?? "",
-);
+//Provider just has mainnet support
+const provider = getProvider(1);
 
 export const resolveAdaHandle = async (
   setAdaHandle: (value: string) => void,
@@ -20,7 +19,6 @@ export const resolveAdaHandle = async (
     }
 
     const address = await provider.fetchHandleAddress(handleName);
-
     if (address) {
       const newAddresses = [...recipientAddresses];
       newAddresses[index] = address;
@@ -38,6 +36,7 @@ export const resolveAdaHandle = async (
       });
     }
   } catch (error) {
+    console.error(error)
     setAdaHandle("");
     toast({
       title: "Error Resolving ADA Handle",
