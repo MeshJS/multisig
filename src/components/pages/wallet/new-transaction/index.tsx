@@ -1,15 +1,9 @@
 import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, resolveScriptHash, serializeRewardAddress, Unit, UTxO } from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
-import {
-  Loader,
-  PlusCircle,
-  Send,
-  X,
-} from "lucide-react";
+import { Loader, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -19,8 +13,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -35,7 +27,8 @@ import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder
 import CardUI from "@/components/common/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
-import { useToast } from "@/hooks/use-toast";
+import { toast, useToast } from "@/hooks/use-toast";
+import RecipientSelector from "./recipientSelector";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
 
@@ -122,23 +115,6 @@ export default function PageNewTransaction() {
           .txInScript(appWallet.scriptCbor);
       }
 
-      // const rewardAddress = serializeRewardAddress(
-      //   resolveScriptHash(appWallet.scriptCbor),
-      //   true,
-      //   0,
-      // );
-      // console.log(rewardAddress);
-      // const poolIdHash =
-      //   "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
-      // console.log(txBuilder)
-      // txBuilder.registerStakeCertificate(rewardAddress)
-      // //txBuilder.certificateRedeemerValue()
-      // console.log(txBuilder)
-      // //txBuilder.certificateScript(appWallet.scriptCbor)
-      // console.log(txBuilder)
-      // //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
-      // console.log(txBuilder)
-
       if (!sendAllAssets) {
         for (let i = 0; i < outputs.length; i++) {
           txBuilder.txOut(outputs[i]!.address, [
@@ -167,7 +143,7 @@ export default function PageNewTransaction() {
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       setLoading(false);
-      console.error(e)
+      console.error(e);
       toast({
         title: "Error",
         description: `${JSON.stringify(e)}`,
@@ -198,46 +174,17 @@ export default function PageNewTransaction() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 pointer-events-auto">
+    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Address</TableHead>
-              <TableHead className="w-[120px]">Amount in ADA</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {recipientAddresses.map((_, index) => (
-              <RecipientRow
-                key={index}
-                index={index}
-                recipientAddresses={recipientAddresses}
-                setRecipientAddresses={setRecipientAddresses}
-                amounts={amounts}
-                setAmounts={setAmounts}
-                disableAdaAmountInput={sendAllAssets}
-              />
-            ))}
-            <TableRow>
-              <TableCell colSpan={3}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1"
-                  onClick={() => addNewRecipient()}
-                  disabled={sendAllAssets}
-                >
-                  <PlusCircle className="h-3.5 w-3.5" />
-                  Add Recipient
-                </Button>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <RecipientSelector
+          recipientAddresses={recipientAddresses}
+          setRecipientAddresses={setRecipientAddresses}
+          amounts={amounts}
+          setAmounts={setAmounts}
+          disableAdaAmountInput={sendAllAssets}
+        />
       </CardUI>
 
       <CardUI title="UTxOs" cardClassName="w-full noBorder">
@@ -360,67 +307,5 @@ export default function PageNewTransaction() {
         {error && <div className="text-sm text-red-500">{error}</div>}
       </div>
     </main>
-  );
-}
-
-function RecipientRow({
-  index,
-  recipientAddresses,
-  setRecipientAddresses,
-  amounts,
-  setAmounts,
-  disableAdaAmountInput,
-}: {
-  index: number;
-  recipientAddresses: string[];
-  setRecipientAddresses: (value: string[]) => void;
-  amounts: string[];
-  setAmounts: (value: string[]) => void;
-  disableAdaAmountInput: boolean;
-}) {
-  return (
-    <TableRow>
-      <TableCell>
-        <Input
-          type="string"
-          placeholder="addr1..."
-          value={recipientAddresses[index]}
-          onChange={(e) => {
-            const newAddresses = [...recipientAddresses];
-            newAddresses[index] = e.target.value;
-            setRecipientAddresses(newAddresses);
-          }}
-        />
-      </TableCell>
-      <TableCell>
-        <Input
-          type="number"
-          value={amounts[index]}
-          onChange={(e) => {
-            const newAmounts = [...amounts];
-            newAmounts[index] = e.target.value;
-            setAmounts(newAmounts);
-          }}
-          placeholder=""
-          disabled={disableAdaAmountInput}
-        />
-      </TableCell>
-      <TableCell>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => {
-            const newAddresses = [...recipientAddresses];
-            newAddresses.splice(index, 1);
-            setRecipientAddresses(newAddresses);
-            const newAmounts = [...amounts];
-            newAmounts.splice(index, 1);
-            setAmounts(newAmounts);
-          }}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </TableCell>
-    </TableRow>
   );
 }
