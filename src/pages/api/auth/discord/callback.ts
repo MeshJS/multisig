@@ -67,41 +67,8 @@ export default async function handler(
       );
 
       if (guildMemberCheck.status === 404) {
-        // User is not in guild, create invite
-        const inviteResponse = await fetch(
-          `https://discord.com/api/v10/guilds/${guildId}/channels`,
-          {
-            headers: {
-              Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-            },
-          },
-        );
-
-        const channels = await inviteResponse.json();
-        const systemChannel = channels.find((c: any) => c.type === 0); // Find first text channel
-
-        if (systemChannel) {
-          const invite = await fetch(
-            `https://discord.com/api/v10/channels/${systemChannel.id}/invites`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                max_age: 86400, // 24 hours
-                max_uses: 1, // One-time use
-              }),
-            },
-          );
-
-          const inviteData = await invite.json();
-          if (inviteData.code) {
-            // Redirect to invite link instead of home
-            return res.redirect(`https://discord.gg/${inviteData.code}`);
-          }
-        }
+        // Redirect to invite link
+        return res.redirect("https://discord.gg/DkNPvvGTqK");
       }
     }
 
