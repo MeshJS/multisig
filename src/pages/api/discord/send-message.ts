@@ -28,7 +28,7 @@ export default async function handler(
       const dmChannel = await response.json();
 
       if (dmChannel.id) {
-        await fetch(
+        const messageResponse = await fetch(
           `https://discord.com/api/v10/channels/${dmChannel.id}/messages`,
           {
             method: "POST",
@@ -39,6 +39,11 @@ export default async function handler(
             body: JSON.stringify({ content: message }),
           },
         );
+        if (!messageResponse.ok) {
+          return res
+            .status(messageResponse.status)
+            .json({ error: "Failed to send message" });
+        }
       }
     }
 
