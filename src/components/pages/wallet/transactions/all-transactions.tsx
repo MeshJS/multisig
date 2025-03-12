@@ -17,7 +17,6 @@ import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
-import { NUMBER_OF_TRANSACTIONS } from "@/config/wallet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +44,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   return (
     <CardUI
       title="Transactions"
-      description={`Latest ${NUMBER_OF_TRANSACTIONS} transactions`}
+      description={``}
       headerDom={
         <LinkCardanoscan
           url={`address/${appWallet.address}`}
@@ -102,10 +101,13 @@ function TransactionRow({
         <div className="flex gap-2 text-sm text-muted-foreground md:inline">
           <LinkCardanoscan
             url={`transaction/${transaction.hash}`}
-            className="flex flex-col w-44 gap-1"
+            className="flex w-44 flex-col gap-1"
           >
             <span className="flex gap-1">
-              <span>{transaction.hash.substring(0, 6)}...{transaction.hash.slice(-6)}</span>
+              <span>
+                {transaction.hash.substring(0, 6)}...
+                {transaction.hash.slice(-6)}
+              </span>
               <ArrowUpRight className="h-3 w-3" />
             </span>
             <span className="text-xs">
@@ -200,7 +202,7 @@ function RowAction({
     const allTxInputsFromSameAddress = transaction.inputs.every(
       (input) => input.address === transaction.inputs[0]!.address,
     );
-    
+
     if (allTxInputsFromSameAddress) {
       const txBuilder = getTxBuilder(network);
 
