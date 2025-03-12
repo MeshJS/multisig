@@ -85,8 +85,6 @@ export default function RootLayout({
   const pageIsPublic = publicRoutes.includes(router.pathname);
   const isLoggedIn = !!user;
 
-  
-
   return (
     <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       {isLoading && <Loading />}
@@ -112,7 +110,6 @@ export default function RootLayout({
       <div className="flex h-screen flex-col">
         <header className="pointer-events-auto relative z-10 border-b bg-muted/40 px-4 lg:px-6">
           <div className="flex h-14 items-center gap-4 lg:h-[60px]">
-            
             {/* Wallet selection + breadcrumb row */}
             {isLoggedIn && (
               <div className="border-t border-border">

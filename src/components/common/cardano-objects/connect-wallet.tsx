@@ -13,11 +13,17 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useEffect } from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
+import { getProvider } from "./get-provider";
+import { Asset } from "@meshsdk/core";
 
 export default function ConnectWallet() {
   const setNetwork = useSiteStore((state) => state.setNetwork);
   const pastWallet = useUserStore((state) => state.pastWallet);
   const setPastWallet = useUserStore((state) => state.setPastWallet);
+  const setUserAssets = useUserStore((state) => state.setUserAssets);
+  const setUserAssetMetadata = useUserStore(
+    (state) => state.setUserAssetMetadata,
+  );
   const { user } = useUser();
 
   const wallets = useWalletList();
@@ -45,13 +51,41 @@ export default function ConnectWallet() {
   }, [pastWallet, connected]);
 
   useEffect(() => {
+    async function lookupWalletAssets() {
+      if (!wallet) return;
+      try {
+        const assets = await wallet.getAssets();
+        const provider = getProvider(1);
+        if (assets) {
+          setUserAssets(assets);
+          for (const asset of assets) {
+            const assetInfo = await provider.get(`/assets/${asset.unit}`);
+            setUserAssetMetadata(
+              asset.policyId,
+              assetInfo?.metadata?.name ||
+                assetInfo?.onchain_metadata?.name ||
+                asset.unit,
+              assetInfo?.metadata?.decimals || 0,
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Error looking up wallet assets:", error);
+      }
+    }
     async function handleNetworkChange() {
       if (connected) {
         setNetwork(await wallet.getNetworkId());
       }
     }
+    async function getWalletAssets() {
+      if (wallet && connected) {
+        await lookupWalletAssets();
+      }
+    }
     handleNetworkChange();
-  }, [connected]);
+    getWalletAssets();
+  }, [connected, wallet, setNetwork]);
 
   return (
     <DropdownMenu>

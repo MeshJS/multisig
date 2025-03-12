@@ -2,6 +2,7 @@ import Button from "@/components/common/button";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { numberWithCommas } from "@/lib/strings";
+import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Wallet } from "@/types/wallet";
 import Link from "next/link";
@@ -9,8 +10,13 @@ import { useEffect, useState } from "react";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
+  const userAssets = useUserStore((state) => state.userAssets);
+  const userAssetMetadata = useUserStore((state) => state.userAssetMetadata);
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
+
+  console.log("userAssets", userAssets);
+  console.log("userAssetMetadata", userAssetMetadata);
 
   useEffect(() => {
     async function getBalance() {
