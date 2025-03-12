@@ -10,7 +10,10 @@ export const config = {
   },
 };
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse,
+) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -21,7 +24,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       new Promise((resolve, reject) => {
         form.parse(req, (err, fields, files) => {
           if (err) {
-            return reject(new Error(err instanceof Error ? err.message : "Form parsing error"));
+            return reject(
+              new Error(
+                err instanceof Error ? err.message : "Form parsing error",
+              ),
+            );
           }
           resolve({ fields, files });
         });
@@ -37,13 +44,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileStream = fs.createReadStream(file.filepath);
 
     // Validate and retrieve form fields
-    const rawShortHash = fields.shortHash;
+    const rawShortHash = Array.isArray(fields.shortHash)
+      ? fields.shortHash[0]
+      : fields.shortHash;
+      
     if (!rawShortHash || typeof rawShortHash !== "string") {
       return res.status(400).json({ error: "shortHash is required" });
     }
     const shortHash = rawShortHash;
 
-    const rawFilename = fields.filename;
+    const rawFilename = Array.isArray(fields.filename)
+      ? fields.filename[0]
+      : fields.filename;
     if (!rawFilename || typeof rawFilename !== "string") {
       return res.status(400).json({ error: "filename is required" });
     }
@@ -53,7 +65,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const storagePath = `img/${shortHash}/${filename}`;
 
     const contentType =
-      typeof file.mimetype === "string" ? file.mimetype : "application/octet-stream";
+      typeof file.mimetype === "string"
+        ? file.mimetype
+        : "application/octet-stream";
 
     const response = await put(storagePath, fileStream, {
       access: "public",
@@ -64,6 +78,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ url: response.url });
   } catch (err) {
     console.error("File upload error:", err);
-    return res.status(500).json({ error: "Internal Server Error", details: err });
+    return res
+      .status(500)
+      .json({ error: "Internal Server Error", details: err });
   }
 }

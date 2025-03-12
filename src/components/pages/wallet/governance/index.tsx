@@ -7,7 +7,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import AllProposals from "./proposals";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "./vote-card";
-import { getDRepIds } from "@meshsdk/core-csl";
+import { getDRepIds } from "@meshsdk/core-cst";
 
 export default function PageGovernance() {
   const { appWallet } = useAppWallet();

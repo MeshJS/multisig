@@ -127,7 +127,7 @@ function ProposalRow({
         {proposal.governance_type.split("_").join(" ").toUpperCase()}
       </TableCell>
       <TableCell>
-        <VoteButton appWallet={appWallet} proposalId={proposal.hash+"#"+proposal.cert_index} />
+        <VoteButton appWallet={appWallet} proposalId={proposal.tx_hash+"#"+proposal.cert_index} />
       </TableCell>
     </TableRow>
   );

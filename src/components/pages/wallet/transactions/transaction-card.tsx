@@ -230,7 +230,7 @@ export default function TransactionCard({
       const userRewardAddress = (await wallet.getRewardAddresses())[0];
       const nonce = generateNonce("Reject this transaction: ");
       const signature = await wallet.signData(nonce, userRewardAddress);
-      const result = checkSignature(nonce, signature);
+      const result = await checkSignature(nonce, signature);
 
       const rejectedAddresses = transaction.rejectedAddresses;
       rejectedAddresses.push(userAddress);
