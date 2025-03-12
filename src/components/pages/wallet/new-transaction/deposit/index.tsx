@@ -2,10 +2,17 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { deserializePoolId, keepRelevant, Quantity, resolveScriptHash, serializeRewardAddress, Unit } from "@meshsdk/core";
+import {
+  deserializePoolId,
+  keepRelevant,
+  Quantity,
+  resolveScriptHash,
+  serializeRewardAddress,
+  Unit,
+} from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -23,6 +30,7 @@ import CardUI from "@/components/common/card-content";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
+import { cn } from "@/lib/utils";
 
 export default function PageNewTransaction() {
   const { connected, wallet } = useWallet();
@@ -33,6 +41,7 @@ export default function PageNewTransaction() {
   const [error, setError] = useState<string | undefined>(undefined);
   const [UTxoCount, setUTxoCount] = useState<number>(3);
   const [amounts, setAmounts] = useState<string[]>(["100", "100", "100"]);
+  const [assets, setAssets] = useState<string[]>(["ADA", "ADA", "ADA"]);
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
@@ -112,7 +121,9 @@ export default function PageNewTransaction() {
       selectedUtxos = keepRelevant(assetMap, utxos);
 
       if (selectedUtxos.length === 0) {
-        setError("Insufficient funds, no UTxOs were found in the depositors wallet");
+        setError(
+          "Insufficient funds, no UTxOs were found in the depositors wallet",
+        );
         return;
       }
 
@@ -206,7 +217,8 @@ export default function PageNewTransaction() {
           <TableHeader>
             <TableRow>
               <TableHead>UTxO</TableHead>
-              <TableHead className="w-[120px]">Amount in ADA</TableHead>
+              <TableHead className="w-[120px]">Amount</TableHead>
+              <TableHead className="w-[120px]">Asset</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -217,6 +229,8 @@ export default function PageNewTransaction() {
                 index={index}
                 amounts={amounts}
                 setAmounts={setAmounts}
+                assets={assets}
+                setAssets={setAssets}
                 disableAdaAmountInput={sendAllAssets}
               />
             ))}
@@ -290,13 +304,38 @@ function UTxORow({
   index,
   amounts,
   setAmounts,
+  assets,
+  setAssets,
   disableAdaAmountInput,
 }: {
   index: number;
   amounts: string[];
   setAmounts: (value: string[]) => void;
+  assets: string[];
+  setAssets: (value: string[]) => void;
   disableAdaAmountInput: boolean;
 }) {
+  const assetOptions = useMemo(() => {
+    return (
+      <select
+        value={assets[index]}
+        onChange={(e) => {
+          const newAssets = [...assets];
+          newAssets[index] = e.target.value;
+          setAssets(newAssets);
+        }}
+        disabled={disableAdaAmountInput}
+        className={cn(
+          "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
+        )}
+      >
+        <option value="lovelace">ADA</option>
+        <option value="BTC">BTC</option>
+        <option value="ETH">ETH</option>
+      </select>
+    );
+  }, [assets, setAssets, index, disableAdaAmountInput]);
+
   return (
     <TableRow>
       <TableCell>
@@ -315,6 +354,7 @@ function UTxORow({
           disabled={disableAdaAmountInput}
         />
       </TableCell>
+      <TableCell>{assetOptions}</TableCell>
       <TableCell>
         <Button
           size="icon"
