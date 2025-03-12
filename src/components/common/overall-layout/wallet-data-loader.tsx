@@ -45,7 +45,7 @@ export default function WalletDataLoader() {
       const blockchainProvider = getProvider(network);
 
       for (let i = 1; i <= maxPage; i++) {
-        let transactions: TxInfo[] = await blockchainProvider.get(
+        const transactions: TxInfo[] = await blockchainProvider.get(
           `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
         );
 
