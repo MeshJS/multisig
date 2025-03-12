@@ -1,1 +1,2 @@
-export const NUMBER_OF_TRANSACTIONS = 20;
+// export const NUMBER_OF_TRANSACTIONS = 20;
+export const LAST_UPDATED_THRESHOLD = 1000 * 60 * 15;

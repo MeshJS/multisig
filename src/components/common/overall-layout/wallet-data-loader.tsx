@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
-import { NUMBER_OF_TRANSACTIONS } from "@/config/wallet";
+import { LAST_UPDATED_THRESHOLD } from "@/config/wallet";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -17,6 +17,12 @@ export default function WalletDataLoader() {
   const setWalletTransactions = useWalletsStore(
     (state) => state.setWalletTransactions,
   );
+  const walletLastUpdated = useWalletsStore((state) => state.walletLastUpdated);
+  const setWalletLastUpdated = useWalletsStore(
+    (state) => state.setWalletLastUpdated,
+  );
+  const fetchingTransactions = useRef(false);
+
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
@@ -34,7 +40,7 @@ export default function WalletDataLoader() {
 
   async function getTransactionsOnChain() {
     if (appWallet) {
-      const maxPage = 100;
+      const maxPage = 4;
       const _transactions: OnChainTransaction[] = [];
       const blockchainProvider = getProvider(network);
 
@@ -47,7 +53,6 @@ export default function WalletDataLoader() {
           break;
         }
 
-        transactions = transactions.splice(0, NUMBER_OF_TRANSACTIONS);
         for (const tx of transactions) {
           const txData = await blockchainProvider.get(
             `/txs/${tx.tx_hash}/utxos`,
@@ -62,10 +67,14 @@ export default function WalletDataLoader() {
       }
 
       setWalletTransactions(appWallet?.id, _transactions);
+      setWalletLastUpdated(appWallet?.id, Date.now());
     }
   }
 
   async function refreshWallet() {
+    if (fetchingTransactions.current) return;
+
+    fetchingTransactions.current = true;
     setLoading(true);
     await fetchUtxos();
     await getTransactionsOnChain();
@@ -73,10 +82,18 @@ export default function WalletDataLoader() {
     void ctx.transaction.getAllTransactions.invalidate();
     setRandomState();
     setLoading(false);
+    fetchingTransactions.current = false;
   }
 
   useEffect(() => {
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
+      refreshWallet();
+    } else if (
+      appWallet &&
+      walletLastUpdated[appWallet?.id] &&
+      Date.now() - (walletLastUpdated[appWallet?.id] ?? 0) >
+        LAST_UPDATED_THRESHOLD
+    ) {
       refreshWallet();
     }
   }, [appWallet]);

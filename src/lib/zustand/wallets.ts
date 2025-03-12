@@ -44,6 +44,8 @@ interface State {
     walletId: string,
     transactions: OnChainTransaction[],
   ) => void;
+  walletLastUpdated: { [walletId: string]: number };
+  setWalletLastUpdated: (walletId: string, timestamp: number) => void;
   drepInfo: BlockfrostDrepInfo | undefined;
   setDrepInfo: (drepInfo: BlockfrostDrepInfo) => void;
   drepRegistered: boolean;
@@ -61,6 +63,14 @@ export const useWalletsStore = create<State>()(
           walletTransactions: {
             ...get().walletTransactions,
             [walletId]: transactions,
+          },
+        }),
+      walletLastUpdated: {},
+      setWalletLastUpdated: (walletId, timestamp) =>
+        set({
+          walletLastUpdated: {
+            ...get().walletLastUpdated,
+            [walletId]: timestamp,
           },
         }),
       drepInfo: undefined,
