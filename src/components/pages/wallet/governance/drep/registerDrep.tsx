@@ -6,7 +6,7 @@ import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
-import { getDRepIds } from "@meshsdk/core-csl";
+import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";

@@ -1,13 +1,13 @@
 import { MeshTxBuilder } from "@meshsdk/core";
 import { getProvider } from "./get-provider";
-import { CSLSerializer } from "@meshsdk/core-csl";
+// import { CSLSerializer } from "@meshsdk/core-csl";
 
 export function getTxBuilder(network: number) {
   const blockchainProvider = getProvider(network);
   const txBuilder = new MeshTxBuilder({
     fetcher: blockchainProvider,
     evaluator: blockchainProvider,
-    serializer: new CSLSerializer(),
+    // serializer: new CSLSerializer(),
     verbose: true,
   });
   if (network === 1) {
