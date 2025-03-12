@@ -212,7 +212,7 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
     const userRewardAddress = (await wallet.getRewardAddresses())[0];
     const nonce = generateNonce("Verify this wallet: ");
     const signature = await wallet.signData(nonce, userRewardAddress);
-    const result = checkSignature(nonce, signature);
+    const result = await checkSignature(nonce, signature);
 
     if (result) {
       const _verified = appWallet.verified;
