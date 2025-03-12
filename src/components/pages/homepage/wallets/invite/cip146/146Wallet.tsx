@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ImportComponent from "./146Import";
-import ExportMultisig from "./146ExportMultisig";
+import ExportMultisig from "./146Export";
 import GenAcct from "./146GenAcct";
 
 const hexToUint8Array = (hex: string): Uint8Array => {

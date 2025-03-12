@@ -28,18 +28,18 @@ const ExportMultisig: React.FC<ExportMultisigProps> = ({
     if (exportType === "private") {
       // Use extended secret keys.
       acctKey = derived.accountKey;
-      paymentKey = derived.derivedKeys[0].xsk;
-      stakeKey = derived.derivedKeys[2].xsk;
-      drepKey = derived.derivedKeys[3].xsk;
+      paymentKey = derived.derivedKeys[0]!.xsk;
+      stakeKey = derived.derivedKeys[2]!.xsk;
+      drepKey = derived.derivedKeys[3]!.xsk;
     } else {
       // Use extended verification keys.
       const acctPublic = Bip32PrivateKey.from_hex(derived.accountKey)
         .to_public()
         .to_hex();
       acctKey = acctPublic;
-      paymentKey = derived.derivedKeys[0].xvk;
-      stakeKey = derived.derivedKeys[2].xvk;
-      drepKey = derived.derivedKeys[3].xvk;
+      paymentKey = derived.derivedKeys[0]!.xvk;
+      stakeKey = derived.derivedKeys[2]!.xvk;
+      drepKey = derived.derivedKeys[3]!.xvk;
     }
     // Use the first 20 characters of acctKey as the wallet/account id.
     const walletId = acctKey.slice(0, 20);
