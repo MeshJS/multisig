@@ -31,6 +31,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
 import { cn } from "@/lib/utils";
+import { set } from "idb-keyval";
 
 export default function PageNewTransaction() {
   const { connected, wallet } = useWallet();
@@ -86,6 +87,8 @@ export default function PageNewTransaction() {
         decimals: number;
       }
     > = {};
+
+    console.log("reconfiguring assets with amounts", assets, amounts);
 
     // reduce assets and amounts to Asset: Amount object
     for (let i = 0; i < assets.length; i++) {
@@ -239,6 +242,7 @@ export default function PageNewTransaction() {
   function addNewUTxO() {
     setUTxoCount(UTxoCount + 1);
     setAmounts([...amounts, "100"]);
+    setAssets([...assets, "ADA"]);
   }
 
   return (
@@ -436,9 +440,15 @@ function UTxORow({
           size="icon"
           variant="ghost"
           onClick={() => {
+            // remove amount
             const newAmounts = [...amounts];
             newAmounts.splice(index, 1);
             setAmounts(newAmounts);
+
+            // remove asset
+            const newAssets = [...assets];
+            newAssets.splice(index, 1);
+            setAssets(newAssets);
           }}
         >
           <X className="h-4 w-4" />
