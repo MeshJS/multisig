@@ -54,20 +54,26 @@ export default function ConnectWallet() {
     async function lookupWalletAssets() {
       if (!wallet) return;
       try {
-        const assets = await wallet.getAssets();
+        const assets = await wallet.getBalance();
         const provider = getProvider(1);
+        const userAssets: Asset[] = [];
         if (assets) {
-          setUserAssets(assets);
           for (const asset of assets) {
+            userAssets.push({
+              unit: asset.unit,
+              quantity: asset.quantity,
+            });
+            if (asset.unit === "lovelace") continue;
             const assetInfo = await provider.get(`/assets/${asset.unit}`);
             setUserAssetMetadata(
-              asset.policyId,
+              asset.unit,
               assetInfo?.metadata?.name ||
                 assetInfo?.onchain_metadata?.name ||
                 asset.unit,
               assetInfo?.metadata?.decimals || 0,
             );
           }
+          setUserAssets(userAssets);
         }
       } catch (error) {
         console.error("Error looking up wallet assets:", error);

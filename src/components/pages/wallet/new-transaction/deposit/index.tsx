@@ -5,10 +5,10 @@ import useAppWallet from "@/hooks/useAppWallet";
 import {
   deserializePoolId,
   keepRelevant,
-  Quantity,
+  type Quantity,
   resolveScriptHash,
   serializeRewardAddress,
-  Unit,
+  type Unit,
 } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
@@ -46,47 +46,97 @@ export default function PageNewTransaction() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
-  const [userBalance, setUserBalance] = useState<number>(0);
   const router = useRouter();
-
-  useEffect(() => {
-    if (userAddress) {
-      fetchUTxOsAndBalance();
-    }
-  }, [userAddress]);
-
-  async function fetchUTxOsAndBalance() {
-    if (!userAddress) return;
-    try {
-      const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
-
-      // Calculate the total balance
-      const balance = utxos.reduce((sum, utxo) => {
-        const lovelaceAmount = utxo.output.amount.find(
-          (amt) => amt.unit === "lovelace",
-        );
-        return (
-          sum + (lovelaceAmount ? parseInt(lovelaceAmount.quantity, 10) : 0)
-        );
-      }, 0);
-
-      // Convert from lovelace to ADA
-      setUserBalance(balance / 1_000_000);
-    } catch (error) {
-      console.error("Error fetching UTXOs or calculating balance:", error);
-    }
-  }
+  const userAssets = useUserStore((state) => state.userAssets);
+  const userAssetMetadata = useUserStore((state) => state.userAssetMetadata);
 
   useEffect(() => {
     reset();
   }, []);
+
+  const userBalance = useMemo(() => {
+    const lovelace =
+      userAssets.find((asset) => asset.unit === "lovelace")?.quantity || 0;
+    return Number(lovelace) / Math.pow(10, 6);
+  }, [userAssets]);
 
   function reset() {
     setMetadata("");
     setSendAllAssets(false);
     setLoading(false);
   }
+
+  const userWalletAssets = useMemo(() => {
+    return userAssets.map((asset) => {
+      return {
+        policyId: asset.unit,
+        assetName: userAssetMetadata[asset.unit]?.assetName,
+        decimals: userAssetMetadata[asset.unit]?.decimals ?? 0,
+        amount: asset.quantity,
+      };
+    });
+  }, [userAssets, userAssetMetadata]);
+
+  const assetsWithAmounts = useMemo(() => {
+    const assetsAmounts: Record<
+      string,
+      {
+        amount: number;
+        assetName: string;
+        decimals: number;
+      }
+    > = {};
+
+    // reduce assets and amounts to Asset: Amount object
+    for (let i = 0; i < assets.length; i++) {
+      const name = assets[i] ?? "";
+      if (name === "ADA") {
+        if (assetsAmounts.lovelace) {
+          assetsAmounts.lovelace.amount += Number(amounts[i]) ?? 0;
+        } else {
+          assetsAmounts.lovelace = {
+            amount: Number(amounts[i]) ?? 0,
+            assetName: "ADA",
+            decimals: 6,
+          };
+        }
+      } else {
+        if (assetsAmounts[name]) {
+          assetsAmounts[name].amount += Number(amounts[i]) ?? 0;
+        } else {
+          const assetName = userWalletAssets.find(
+            (asset) => asset.policyId === name,
+          )?.assetName;
+          assetsAmounts[name] = {
+            amount: Number(amounts[i]) ?? 0,
+            assetName: assetName ?? name,
+            decimals: userAssetMetadata[name]?.decimals ?? 0,
+          };
+        }
+      }
+    }
+    return assetsAmounts;
+  }, [amounts, assets, userWalletAssets, userAssetMetadata]);
+
+  const assetAmountList = useMemo(() => {
+    return (
+      <>
+        {Object.entries(assetsWithAmounts).map(([name, asset]) => {
+          return (
+            <div key={name} className="flex items-center gap-2">
+              <div className="text-sm text-muted-foreground">
+                {asset.amount.toLocaleString(undefined, {
+                  maximumFractionDigits: asset.decimals ? asset.decimals : 6,
+                })}{" "}
+                {asset.assetName}
+              </div>
+            </div>
+          );
+        })}
+      </>
+    );
+  }, [assetsWithAmounts]);
+
   async function createNewDeposit() {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
@@ -102,7 +152,7 @@ export default function PageNewTransaction() {
         //fix
 
         if (address && address.startsWith("addr") && address.length > 0) {
-          const thisAmount = parseFloat(amounts[i] as string) * 1000000;
+          const thisAmount = parseFloat(amounts[i]!) * 1000000;
           totalAmount += thisAmount;
           outputs.push({
             address: address,
@@ -248,8 +298,7 @@ export default function PageNewTransaction() {
                 </Button>
               </TableCell>
               <TableCell colSpan={2}>
-                Total Deposit:{" "}
-                {amounts.reduce((sum, amount) => sum + parseFloat(amount), 0)} ₳
+                Total Deposit: {assetAmountList}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -315,26 +364,38 @@ function UTxORow({
   setAssets: (value: string[]) => void;
   disableAdaAmountInput: boolean;
 }) {
+  const userAssets = useUserStore((state) => state.userAssets);
+  const userAssetMetadata = useUserStore((state) => state.userAssetMetadata);
+
+  const userWalletAssets = useMemo(() => {
+    return userAssets.map((asset) => {
+      return {
+        policyId: asset.unit,
+        assetName: userAssetMetadata[asset.unit]?.assetName,
+        decimals: userAssetMetadata[asset.unit]?.decimals ?? 0,
+        amount: asset.quantity,
+      };
+    });
+  }, [userAssets, userAssetMetadata]);
+
   const assetOptions = useMemo(() => {
     return (
-      <select
-        value={assets[index]}
-        onChange={(e) => {
-          const newAssets = [...assets];
-          newAssets[index] = e.target.value;
-          setAssets(newAssets);
-        }}
-        disabled={disableAdaAmountInput}
-        className={cn(
-          "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
-        )}
-      >
-        <option value="lovelace">ADA</option>
-        <option value="BTC">BTC</option>
-        <option value="ETH">ETH</option>
-      </select>
+      <>
+        {userWalletAssets.map((userWalletAsset) => {
+          return (
+            <option
+              key={userWalletAsset.policyId}
+              value={userWalletAsset.policyId}
+            >
+              {userWalletAsset.policyId === "lovelace"
+                ? "ADA"
+                : userWalletAsset.assetName}
+            </option>
+          );
+        })}
+      </>
     );
-  }, [assets, setAssets, index, disableAdaAmountInput]);
+  }, [userWalletAssets]);
 
   return (
     <TableRow>
@@ -354,7 +415,22 @@ function UTxORow({
           disabled={disableAdaAmountInput}
         />
       </TableCell>
-      <TableCell>{assetOptions}</TableCell>
+      <TableCell className="w-[240px]">
+        <select
+          value={assets[index]}
+          onChange={(e) => {
+            const newAssets = [...assets];
+            newAssets[index] = e.target.value;
+            setAssets(newAssets);
+          }}
+          disabled={disableAdaAmountInput}
+          className={cn(
+            "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
+          )}
+        >
+          {assetOptions}
+        </select>
+      </TableCell>
       <TableCell>
         <Button
           size="icon"
