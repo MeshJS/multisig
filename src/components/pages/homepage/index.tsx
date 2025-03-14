@@ -7,6 +7,7 @@ import { api } from "@/utils/api";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Globe from "./globe";
+import KeyGenerator from "./wallets/invite/cip146/146Wallet";
 
 export function PageHomepage() {
   const { user } = useUser();
@@ -22,8 +23,11 @@ export function PageHomepage() {
   );
 
   return (
-    <div className="h-screen w-full lg:grid lg:grid-cols-3">
-      <div className="flex items-center justify-center py-12">
+  <div className="relative min-h-screen w-full lg:grid lg:grid-cols-3">
+      <div className="absolute inset-0 -z-10 flex justify-center items-center">
+    <Globe />
+  </div>
+      <div className="flex items-center justify-center py-12 relative z-10">
         <div className="mx-auto grid max-w-[500px] gap-6">
           <div className="grid gap-2 text-center">
             <h1 className="text-3xl font-bold">Multisig Platform</h1>
@@ -37,9 +41,12 @@ export function PageHomepage() {
                 description={`You have been invited to join this wallet as a signer, connect your wallet to accept the invitation`}
                 cardClassName="text-left mt-4"
               >
-                <RowLabelInfo label="Name" value={newWallet.name} />
-                <RowLabelInfo label="About" value={newWallet.description} />
+                <RowLabelInfo label="Wallet Name" value={newWallet.name} />
+                {newWallet.description && (<RowLabelInfo label="About" value={newWallet.description} />)}
               </CardUI>
+            )}
+            {newWallet && (
+              <KeyGenerator/>
             )}
           </div>
           <div className="flex items-center justify-center">
@@ -57,9 +64,6 @@ export function PageHomepage() {
             )}
           </div>
         </div>
-      </div>
-      <div className="col-span-2">
-        <Globe />
       </div>
     </div>
   );

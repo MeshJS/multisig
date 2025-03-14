@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/utils/api";
 import ConnectWallet from "../cardano-objects/connect-wallet";
@@ -25,6 +25,7 @@ import { publicRoutes } from "@/data/public-routes";
 import Loading from "./loading";
 import DialogReport from "./dialog-report";
 import { useRouter } from "next/router";
+import { Menu as MenuIcon } from "lucide-react";
 
 export default function RootLayout({
   children,
@@ -36,6 +37,7 @@ export default function RootLayout({
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { generateNsec } = useNostrChat();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
@@ -90,6 +92,16 @@ export default function RootLayout({
   return (
     <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       {isLoading && <Loading />}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-30 flex">
+          <div className="w-64 bg-muted p-4">
+            <button className="mb-4" onClick={() => setMobileMenuOpen(false)}>Close</button>
+            <MenuWallets />
+            {router.pathname.includes("/wallets/[wallet]") && <MenuWallet />}
+          </div>
+          <div className="flex-1 bg-black opacity-50" onClick={() => setMobileMenuOpen(false)}></div>
+        </div>
+      )}
 
       {/* Sidebar for larger screens */}
       <aside className="hidden border-r bg-muted/40 md:block">
@@ -112,6 +124,9 @@ export default function RootLayout({
       <div className="flex h-screen flex-col">
         <header className="pointer-events-auto relative z-10 border-b bg-muted/40 px-4 lg:px-6">
           <div className="flex h-14 items-center gap-4 lg:h-[60px]">
+            <button className="md:hidden" onClick={() => setMobileMenuOpen(true)}>
+              <MenuIcon className="h-6 w-6" />
+            </button>
             
             {/* Wallet selection + breadcrumb row */}
             {isLoggedIn && (

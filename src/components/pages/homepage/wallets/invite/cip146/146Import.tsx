@@ -3,7 +3,7 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bip32PublicKey, Address } from "@emurgo/cardano-serialization-lib-browser";
+//import { Bip32PublicKey, Address } from "@emurgo/cardano-serialization-lib-browser";
 import { bech32 } from "bech32"; // used only for debugging the payload
 
 interface ImportProps {
@@ -11,60 +11,60 @@ interface ImportProps {
 }
 
 const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  //const fileInputRef = useRef<HTMLInputElement>(null);
   const [directInput, setDirectInput] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fileReader = new FileReader();
-    fileReader.onload = (event) => {
-      try {
-        const importedData = JSON.parse(event.target?.result as string);
-        // Check for our simple export format: directly exported account key.
-        if (importedData.acct_shared_xsk) {
-          onImport(importedData.acct_shared_xsk);
-          return;
-        }
-        // Check for our multisig export format.
-        if (
-          importedData.wallet &&
-          importedData.wallet.multiSig &&
-          Array.isArray(importedData.wallet.multiSig) &&
-          importedData.wallet.multiSig.length > 0
-        ) {
-          const ms = importedData.wallet.multiSig[0];
-          if (ms.priv) {
-            onImport(ms.priv);
-            return;
-          } else if (ms.pub) {
-            onImport(ms.pub);
-            return;
-          }
-        }
-          setErrorMessage("Invalid file. Account key not found.");
-      } catch (error) {
-        console.error(error);
-        setErrorMessage("Failed to import account key.");
-      }
-    };
-    fileReader.readAsText(file);
-  };
+  // const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (!file) return;
+  //   const fileReader = new FileReader();
+  //   fileReader.onload = (event) => {
+  //     try {
+  //       const importedData = JSON.parse(event.target?.result as string);
+  //       // Check for our simple export format: directly exported account key.
+  //       if (importedData.acct_shared_xsk) {
+  //         onImport(importedData.acct_shared_xsk);
+  //         return;
+  //       }
+  //       // Check for our multisig export format.
+  //       if (
+  //         importedData.wallet &&
+  //         importedData.wallet.multiSig &&
+  //         Array.isArray(importedData.wallet.multiSig) &&
+  //         importedData.wallet.multiSig.length > 0
+  //       ) {
+  //         const ms = importedData.wallet.multiSig[0];
+  //         if (ms.priv) {
+  //           onImport(ms.priv);
+  //           return;
+  //         } else if (ms.pub) {
+  //           onImport(ms.pub);
+  //           return;
+  //         }
+  //       }
+  //         setErrorMessage("Invalid file. Account key not found.");
+  //     } catch (error) {
+  //       console.error(error);
+  //       setErrorMessage("Failed to import account key.");
+  //     }
+  //   };
+  //   fileReader.readAsText(file);
+  // };
 
-  const handleFileImport = () => {
-    fileInputRef.current?.click();
-  };
+  // const handleFileImport = () => {
+  //   fileInputRef.current?.click();
+  // };
 
-  const handleDirectImport = () => {
-    if (!directInput.trim()) {
-      setErrorMessage("Please enter an account key.");
-      return;
-    }
-    setErrorMessage("");
-    // Simply pass the direct input to the callback.
-    onImport(directInput.trim());
-  };
+  // const handleDirectImport = () => {
+  //   if (!directInput.trim()) {
+  //     setErrorMessage("Please enter an account key.");
+  //     return;
+  //   }
+  //   setErrorMessage("");
+  //   // Simply pass the direct input to the callback.
+  //   onImport(directInput.trim());
+  // };
 
   const importFromBech32 = () => {
     if (!directInput.trim()) {
@@ -87,7 +87,7 @@ const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
       const pubKeyHex = bytesToHex(dataBytes);
 
       // Validate the decoded key by parsing it with from_hex
-      const bip32Pub = Bip32PublicKey.from_hex(pubKeyHex);
+      //const bip32Pub = Bip32PublicKey.from_hex(pubKeyHex);
  
       onImport(pubKeyHex);
       setErrorMessage("");
@@ -99,7 +99,7 @@ const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
 
   return (
     <div>
-      <div className="flex gap-2">
+      {/* <div className="flex gap-2">
         <Button onClick={handleFileImport} variant="outline">
           Import Account Key (File)
         </Button>
@@ -110,23 +110,20 @@ const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
-      </div>
+      </div> */}
       <div className="flex flex-col gap-1 mt-2">
-        <Label htmlFor="directKey">Or paste account key (Hex or Bech32):</Label>
+        <Label htmlFor="directKey">Paste account key (Bech32):</Label>
         <Input
           id="directKey"
           type="text"
-          placeholder="Enter account key hex or Bech32 address"
+          placeholder="Enter acct_shared_xvk"
           value={directInput}
           onChange={(e) => setDirectInput(e.target.value)}
         />
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}
         <div className="flex gap-2">
-          <Button onClick={handleDirectImport} variant="outline">
-            Import Account Key (Hex)
-          </Button>
           <Button onClick={importFromBech32} variant="outline">
-            Import from Bech32 Address
+            Import
           </Button>
         </div>
       </div>
