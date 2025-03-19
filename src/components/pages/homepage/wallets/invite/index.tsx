@@ -14,7 +14,7 @@ import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
-import KeyGenerator from "./cip146/146Wallet";
+import WalletComponent from "./cip146/146Wallet";
 
 export default function PageNewWalletInvite() {
   const router = useRouter();
@@ -71,14 +71,14 @@ export default function PageNewWalletInvite() {
     <>
       <PageHeader
         pageTitle={`Invited as Signer${newWallet ? ` for: ${newWallet.name}` : ""}`}
-      ></PageHeader>
+      />
       {newWallet && (
         <div className="grid grid-cols-2 gap-4">
           <Card>
             <CardHeader>
               <CardTitle>You are invited as Signer</CardTitle>
               <CardDescription>
-                You are invited to be a signer of this multi-siganture wallet. Please confirm
+                You are invited to be a signer of this multi-signature wallet. Please confirm
                 your address and add your name for this wallet.
               </CardDescription>
             </CardHeader>
@@ -109,8 +109,12 @@ export default function PageNewWalletInvite() {
             </CardContent>
           </Card>
 
-
-          <KeyGenerator />
+          <WalletComponent
+            onSelectChildKeys={(childKeys) => {
+              console.log("Index received selected child keys:", childKeys);
+              // Handle the emitted child key group as needed.
+            }}
+          />
 
           <div></div>
 

@@ -1,160 +1,183 @@
-import React, { useState, useCallback } from "react";
-import { Bip32PrivateKey } from "@emurgo/cardano-serialization-lib-browser";
-import * as bip39 from "bip39";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ClipboardCopy } from "lucide-react";
-import ImportComponent from "./146Import";
-import GenAcct, { DerivedAccountKeys } from "./146GenAcct";
+import MultiSigSelector from "./146MultiSigSelector";
+import { WalletConstructor, MetadataItem, getPubKeyHash } from "./146sdk";
 
-const hexToUint8Array = (hex: string): Uint8Array => {
-  if (hex.length % 2 !== 0) throw new Error("Invalid hex string");
-  const arr = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    arr[i / 2] = parseInt(hex.substr(i, 2), 16);
-  }
-  return arr;
-};
+interface WalletComponentProps {
+  onSelectChildKeys: (childKeys: any[]) => void;
+}
 
-const KeyGenerator = () => {
-  const [rootKeyHex, setRootKeyHex] = useState("");
-  const [accountIndex, setAccountIndex] = useState(0);
-  const [mnemonic, setMnemonic] = useState("");
-  const [accountKeyHex, setAccountKeyHex] = useState("");
-  const [generatedMnemonic, setGeneratedMnemonic] = useState("");
-  const [showCopied, setShowCopied] = useState(false);
-  const [derivedKeys, setDerivedKeys] = useState<DerivedAccountKeys | null>(null);
-  const handleKeysDerived = useCallback((keys: DerivedAccountKeys) => {
-    setDerivedKeys(keys);
-  }, []);
+const WalletComponent: React.FC<WalletComponentProps> = ({
+  onSelectChildKeys,
+}) => {
+  const [wallet, setWallet] = useState<WalletConstructor | null>(null);
+  const [mnemonicInput, setMnemonicInput] = useState<string>("");
+  const [acctXvkInput, setAcctXvkInput] = useState<string>("");
+  const [lookupResults, setLookupResults] = useState<{
+    [publicKey: string]: MetadataItem[];
+  }>({});
+  const [lookupNetworkInfo, setLookupNetworkInfo] = useState<string>("");
+  // Dummy state to force re-render
+  const [reRenderCounter, setReRenderCounter] = useState<number>(0);
 
-  const generateWallet = () => {
-    // Generate a 24-word mnemonic (256 bits of entropy)
-    const newMnemonic = bip39.generateMnemonic(256);
-    setGeneratedMnemonic(newMnemonic);
-
-    // Convert mnemonic to entropy hex and then to Uint8Array
-    const entropyHex = bip39.mnemonicToEntropy(newMnemonic);
-    const entropy = hexToUint8Array(entropyHex);
-
-    // Derive the root key from the entropy
-    const rootKey = Bip32PrivateKey.from_bip39_entropy(entropy, new Uint8Array());
-    setRootKeyHex(rootKey.to_hex());
-  };
-
-  const importFromMnemonic = () => {
-    if (!mnemonic.trim()) {
-      alert("Please enter a mnemonic phrase.");
-      return;
-    }
+  const importOrGenerateWallet = () => {
     try {
-      const entropyHex = bip39.mnemonicToEntropy(mnemonic.trim());
-      const entropy = hexToUint8Array(entropyHex);
-      const rootKey = Bip32PrivateKey.from_bip39_entropy(entropy, new Uint8Array());
-      setRootKeyHex(rootKey.to_hex());
+      let walletInstance: WalletConstructor;
+      if (acctXvkInput.trim()) {
+        walletInstance = new WalletConstructor(acctXvkInput.trim());
+      } else if (mnemonicInput.trim()) {
+        walletInstance = new WalletConstructor(mnemonicInput.trim());
+      } else {
+        walletInstance = new WalletConstructor();
+      }
+      // Derive an initial multisig group.
+      walletInstance.deriveNextMultisig();
+      setWallet(walletInstance);
+      setReRenderCounter((c) => c + 1);
     } catch (error) {
-      console.error(error);
-      alert("Failed to import from mnemonic. Please ensure the mnemonic is valid.");
+      console.error("Failed to import or generate wallet:", error);
     }
   };
 
-  const handleCopyMnemonic = () => {
-    navigator.clipboard.writeText(generatedMnemonic);
-    setShowCopied(true);
-    // Hide the “Copied!” message after 2 seconds
-    setTimeout(() => setShowCopied(false), 2000);
+  // Button handler: derive the next multisig group and force re-render.
+  const deriveNextMultisigHandler = () => {
+    if (!wallet) return;
+    try {
+      const newKeys = wallet.deriveNextMultisig();
+      setReRenderCounter((c) => c + 1);
+    } catch (error) {
+      console.error("Error deriving next multisig keys:", error);
+    }
   };
+
+  // Perform multisig lookup after wallet is set or updated.
+  useEffect(() => {
+    if (wallet) {
+      wallet
+        .lookupMultisigKeys()
+        .then((metadataItems: MetadataItem[]) => {
+          const updatedResults: { [publicKey: string]: MetadataItem[] } = {};
+          wallet.keyObjects.forEach((keyObj) => {
+            if (keyObj.publicKey) {
+              const dp = keyObj.derivationPath;
+              if (
+                dp.purpose === 1854 &&
+                typeof dp.role === "number" &&
+                typeof dp.index === "number"
+              ) {
+                const pubHash = getPubKeyHash(keyObj.publicKey).toLowerCase();
+                const itemsForKey = metadataItems.filter((item) => {
+                  const participants = item.json_metadata?.participants || {};
+                  return Object.keys(participants).some(
+                    (hash) => hash.toLowerCase() === pubHash,
+                  );
+                });
+                updatedResults[keyObj.publicKey] = itemsForKey;
+              }
+            }
+          });
+          setLookupResults(updatedResults);
+          const networksFound = new Set(
+            metadataItems.map((item) => (item.network ? "Mainnet" : "Testnet")),
+          );
+          if (networksFound.size === 0) {
+            setLookupNetworkInfo("No metadata found on any network.");
+          } else {
+            setLookupNetworkInfo(
+              "Lookup found metadata on: " +
+                Array.from(networksFound).join(", "),
+            );
+          }
+        })
+        .catch((err) => {
+          console.error("Lookup error:", err);
+        });
+    }
+  }, [wallet, reRenderCounter]);
 
   return (
-  <Card className="max-w-lg mx-auto">
-      <CardHeader>
-        <CardTitle>CIP-0146 Wallet</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
-          {/* Root Key Generation and Mnemonic Section */}
-          <div className="flex flex-col gap-2">
-            <Button onClick={generateWallet} variant="outline">
-              Generate New Wallet
-            </Button>
-
-            <div className="flex flex-col gap-1">
-              {/* Generated Mnemonic (24 words) */}
-              {generatedMnemonic && (
-                <>
-                  <Label>Generated Mnemonic (24 words):</Label>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    {/* Make mnemonic wrap nicely on mobile */}
-                    <span className="text-sm break-all flex-1">
-                      {generatedMnemonic}
-                    </span>
-                    <Button
-                      onClick={handleCopyMnemonic}
-                      variant="outline"
-                      size="icon"      // smaller icon button
-                      className="w-8 h-8"
-                    >
-                      <ClipboardCopy className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  {showCopied && (
-                    <span className="text-xs text-green-600">Copied!</span>
-                  )}
-                </>
-              )}
-
-              {/* Existing Mnemonic Input */}
-              <Label htmlFor="mnemonic">Mnemonic Phrase:</Label>
-              <Input
-                id="mnemonic"
-                type="text"
-                placeholder="Enter mnemonic phrase"
-                value={mnemonic}
-                onChange={(e) => setMnemonic(e.target.value)}
-              />
-              <Button onClick={importFromMnemonic} variant="outline" size="sm">
-                Import from Mnemonic
+    <div className="min-h-screen p-4 md:p-8">
+      <Card className="mx-auto max-w-xl rounded-lg border border-slate-200 shadow">
+        <CardHeader className="rounded-t-lg border-b border-slate-200 px-4 py-3">
+          <CardTitle className="text-lg font-semibold">
+            Wallet (146-SDK‑Based)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          {wallet ? (
+            <div className="space-y-6">
+              <div className="rounded-md border border-slate-200 p-4">
+                <Label className="mb-1 text-sm font-semibold">Mnemonic</Label>
+                <p className="break-all text-sm">{wallet.mnemonic || "N/A"}</p>
+              </div>
+              <div className="flex flex-col gap-4">
+                {/* MultiSigSelector: emits selected child keys upward */}
+                <MultiSigSelector
+                  wallet={wallet}
+                  onSelectChildKeys={(childKeys) => {
+                    onSelectChildKeys(childKeys);
+                  }}
+                />
+                {/* Button to derive the next multisig group */}
+                <Button
+                  onClick={deriveNextMultisigHandler}
+                  variant="outline"
+                  className="w-full px-4 py-2 text-sm font-medium"
+                >
+                  Derive Next Multisig
+                </Button>
+              </div>
+              <div className="pt-4">
+                <Label className="text-sm font-semibold">
+                  Lookup Network Info:
+                </Label>
+                <p className="text-sm text-slate-700">{lookupNetworkInfo}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="mnemonic" className="text-sm font-semibold">
+                  Mnemonic (optional)
+                </Label>
+                <Input
+                  id="mnemonic"
+                  type="text"
+                  className="text-sm"
+                  placeholder="Enter mnemonic phrase"
+                  value={mnemonicInput}
+                  onChange={(e) => setMnemonicInput(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="acctXvk" className="text-sm font-semibold">
+                  acct_shared_xvk (optional)
+                </Label>
+                <Input
+                  id="acctXvk"
+                  type="text"
+                  className="text-sm"
+                  placeholder="Enter acct_shared_xvk"
+                  value={acctXvkInput}
+                  onChange={(e) => setAcctXvkInput(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={importOrGenerateWallet}
+                variant="outline"
+                className="w-full px-4 py-2 text-sm font-medium"
+              >
+                Import / New Wallet
               </Button>
             </div>
-          </div>
-
-          {/* Account Index Input */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="accountIndex">Account Index:</Label>
-            <Input
-              id="accountIndex"
-              type="number"
-              min="0"
-              value={accountIndex}
-              onChange={(e) => setAccountIndex(Number(e.target.value))}
-              className="w-20"
-            />
-          </div>
-
-          {/* Import for Account Key */}
-          <div className="flex gap-2">
-            <ImportComponent
-              onImport={(importedAccountKeyHex) => {
-                // Update account key state instead of root key.
-                setAccountKeyHex(importedAccountKeyHex);
-              }}
-            />
-          </div>
-
-           {/* Display Derived Account and Role Keys using GenAcct */}
-           {rootKeyHex && !accountKeyHex && (
-            <GenAcct rootKeyHex={rootKeyHex} index={accountIndex} roleIds={[0, 2, 3]} onKeysDerived={handleKeysDerived} />
           )}
-          {accountKeyHex && (
-            <GenAcct accountKeyHex={accountKeyHex} roleIds={[0, 2, 3]} onKeysDerived={handleKeysDerived} />
-          )}
-        
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
-export default KeyGenerator;
+export default WalletComponent;
