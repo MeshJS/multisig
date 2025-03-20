@@ -39,7 +39,7 @@ export default function PageNewTransaction() {
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
-  const [addDescription, setAddDescription] = useState<boolean>(false);
+  const [addDescription, setAddDescription] = useState<boolean>(true);
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
   const [sendAllAssets, setSendAllAssets] = useState<boolean>(false);
@@ -63,7 +63,7 @@ export default function PageNewTransaction() {
   }, []);
 
   function reset() {
-    setAddDescription(false);
+    setAddDescription(true);
     setDescription("");
     setMetadata("");
     setSendAllAssets(false);
