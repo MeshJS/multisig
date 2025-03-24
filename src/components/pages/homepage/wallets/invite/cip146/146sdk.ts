@@ -1,6 +1,10 @@
 import {
   Bip32PrivateKey,
   Bip32PublicKey,
+  EnterpriseAddress,
+  Address,
+  Credential,
+  BaseAddress,
 } from "@emurgo/cardano-serialization-lib-browser";
 import * as bip39 from "bip39";
 import { bech32 } from "bech32";
@@ -605,17 +609,41 @@ export function createKeyObjectFromBech32(
 
 /**
  * Returns the public key hash for a given extended verification key string.
- * @param xvk - The extended verification key as a hexadecimal string.
+ * @param key - The extended verification key as a hexadecimal string.
  * @returns The public key hash as a hexadecimal string.
  */
-export function getPubKeyHash(xvk: string): string {
+export function getPubKeyHash(key: string): string {
   try {
-    const bip32Pub = Bip32PublicKey.from_hex(xvk);
+    const bip32Pub = Bip32PublicKey.from_hex(key);
     return bip32Pub.to_raw_key().hash().to_hex();
   } catch (error) {
     console.error("Error generating pub key hash", error);
     return "";
   }
+}
+
+/**
+ * Generates a bech32 Cardano address from the given KeyObject's public key.
+ * @param key - The KeyObject containing the public key.
+ * @param network - A boolean flag where false corresponds to Testnet (0) and true corresponds to Mainnet (1).
+ * @returns The bech32-encoded Cardano address, or "N/A" if the public key is missing.
+ */
+
+export function pubKeyToAddr(
+  paymentKey: KeyObject,
+  stakeKey: KeyObject, // new parameter for stake key
+  network: boolean
+): string {
+  if (!paymentKey.publicKey || !stakeKey.publicKey) return "N/A";
+  const networkId = network ? 1 : 0;
+  const bip32Payment = Bip32PublicKey.from_hex(paymentKey.publicKey);
+  const paymentHash = bip32Payment.to_raw_key().hash();
+  const bip32Stake = Bip32PublicKey.from_hex(stakeKey.publicKey);
+  const stakeHash = bip32Stake.to_raw_key().hash();
+  const paymentCred = Credential.from_keyhash(paymentHash);
+  const stakeCred = Credential.from_keyhash(stakeHash);
+  const baseAddr = BaseAddress.new(networkId, paymentCred, stakeCred);
+  return baseAddr.to_address().to_bech32();
 }
 
 /**

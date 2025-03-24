@@ -22,97 +22,65 @@ const ChildKeyGroupSelector: React.FC<{
   const groupKeys = Object.keys(groups)
     .map(Number)
     .sort((a, b) => a - b);
-  const [selectedGroup, setSelectedGroup] = useState<string>("all");
+  //const [selectedGroup, setSelectedGroup] = useState<string>("all");
+  const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
 
   return (
     <div className="ml-4">
-      {selectedGroup === "all"
-        ? groupKeys.map((groupKey) => (
-            <div key={groupKey} className="mb-2 rounded border p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-sm font-semibold">
-                  Multisig Index: {groupKey}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSelectChildKeys(groups[groupKey]!)}
-                  className="px-3 py-1 text-sm font-medium"
-                >
-                  Select Group
-                </Button>
-              </div>
-              <Table>
-                <TableBody>
-                  {groups[groupKey]!.map((childKey, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="whitespace-nowrap text-sm">
-                        {derivationPathToString(childKey.derivationPath)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span
-                          className={`inline-block h-2 w-2 rounded-full ${
-                            childKey.used ? "bg-red-500" : "bg-green-500"
-                          }`}
-                        />
-                      </TableCell>
-                      <TableCell className="break-all text-sm">
-                        {childKey.publicKey
-                          ? getPubKeyHash(childKey.publicKey)
-                          : "N/A"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+      {groupKeys.map((groupKey) => {
+        const isSelected = selectedGroup === groupKey;
+        return (
+          <div
+            key={groupKey}
+            className={`mb-2 rounded border p-2 ${
+              isSelected ? "border-2 border-blue-500" : ""
+            }`}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-sm font-semibold">
+                Multisig Index: {groupKey}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedGroup(groupKey);
+                  onSelectChildKeys(groups[groupKey]!);
+                }}
+                disabled={groups[groupKey]!.some(childKey => childKey.used)}
+                className="px-3 py-1 text-sm font-medium"
+              >
+                Select Group
+              </Button>
             </div>
-          ))
-        : (() => {
-            const group = groups[Number(selectedGroup)];
-            return (
-              <div className="mb-2 rounded border p-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-sm font-semibold">
-                    Multisig Index: {selectedGroup}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onSelectChildKeys(group!)}
-                    className="px-3 py-1 text-sm font-medium"
-                  >
-                    Select Multisig
-                  </Button>
-                </div>
-                <Table>
-                  <TableBody>
-                    {group!.map((childKey, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="whitespace-nowrap text-sm">
-                          {derivationPathToString(childKey.derivationPath)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span
-                            className={`inline-block h-2 w-2 rounded-full ${
-                              childKey.used ? "bg-red-500" : "bg-green-500"
-                            }`}
-                          />
-                        </TableCell>
-                        <TableCell className="break-all text-sm">
-                          {childKey.publicKey
-                            ? getPubKeyHash(childKey.publicKey)
-                            : "N/A"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            );
-          })()}
+            <Table>
+              <TableBody>
+                {groups[groupKey]!.map((childKey, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {derivationPathToString(childKey.derivationPath)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          childKey.used ? "bg-red-500" : "bg-green-500"
+                        }`}
+                      />
+                    </TableCell>
+                    <TableCell className="break-all text-sm">
+                      {childKey.publicKey
+                        ? getPubKeyHash(childKey.publicKey)
+                        : "N/A"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        );
+      })}
     </div>
-  );
-};
+  );}
 
 const MultiSigSelector: React.FC<MultiSigSelectorProps> = ({
   wallet,
@@ -184,7 +152,10 @@ const MultiSigSelector: React.FC<MultiSigSelectorProps> = ({
                   <TableCell colSpan={3}>
                     <ChildKeyGroupSelector
                       groups={grouped}
-                      onSelectChildKeys={onSelectChildKeys}
+                      onSelectChildKeys={(childKeys) => {
+                        // Emit an array containing the parent account key and the selected child keys
+                        onSelectChildKeys([accountKey, ...childKeys]);
+                      }}
                     />
                   </TableCell>
                 </TableRow>

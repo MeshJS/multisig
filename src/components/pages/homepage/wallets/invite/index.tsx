@@ -9,21 +9,27 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
 import WalletComponent from "./cip146/146Wallet";
+import { getPubKeyHash, KeyObject, pubKeyToAddr } from "./cip146/146sdk";
+import useUser from "@/hooks/useUser";
 
 export default function PageNewWalletInvite() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(false);
   const [signersDescription, setSignerDescription] = useState<string>("");
+  const [signersName, setSignerName] = useState<string>("");
+  const [selectedKeys, setSelectedKeys] = useState<KeyObject[]>([]);
+  const [parentAddress, setParentAddress] = useState<string>("");
   const userAddress = useUserStore((state) => state.userAddress);
+  const { user } = useUser();
   const { toast } = useToast();
 
-  const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
+  const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
@@ -51,15 +57,15 @@ export default function PageNewWalletInvite() {
     });
 
   async function addSigner() {
-    if (newWallet === undefined || newWallet === null)
-      throw new Error("Wallet invite is undefined");
-    if (userAddress === undefined) throw new Error("User address is undefined");
-
+    if (!newWallet) throw new Error("Wallet invite is undefined");
+    // Use the user's address if available, otherwise the computed parent address
+    const addressToStore = user ? userAddress : parentAddress;
+    if (!addressToStore) throw new Error("Address is undefined");
+ 
     setLoading(true);
-
     updateNewWalletSigners({
       walletId: newWalletId!,
-      signersAddresses: [...newWallet.signersAddresses, userAddress],
+      signersAddresses: [...newWallet.signersAddresses, addressToStore],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,
@@ -67,67 +73,83 @@ export default function PageNewWalletInvite() {
     });
   }
 
+  useEffect(() => {
+    let combined = `name:${signersName};\n`;
+    selectedKeys.forEach((key) => {
+      const pubKeyHash = key.publicKey ? getPubKeyHash(key.publicKey) : "N/A";
+      const keyIndex =
+        key.derivationPath.index !== undefined ? key.derivationPath.index : "";
+      combined += `key${keyIndex}:${pubKeyHash};\n`;
+    });
+    setSignerDescription(combined);
+  }, [signersName, selectedKeys]);
+
+  useEffect(() => {
+    if (!user && selectedKeys.length > 0) {
+      // Assume the first key is the parent key
+      const parentAddr = pubKeyToAddr(selectedKeys[1]!,selectedKeys[2]!, false); // false for Testnet, adjust as needed
+      setParentAddress(parentAddr);
+    }
+  }, [user, selectedKeys]);
+
   return (
-    <>
+    <div className="container mx-auto px-4 py-4">
       <PageHeader
         pageTitle={`Invited as Signer${newWallet ? ` for: ${newWallet.name}` : ""}`}
       />
       {newWallet && (
-        <div className="grid grid-cols-2 gap-4">
-          <Card>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-8">
+          {/* Left side: Invitation details */}
+          <Card className="w-full md:w-1/2">
             <CardHeader>
               <CardTitle>You are invited as Signer</CardTitle>
               <CardDescription>
-                You are invited to be a signer of this multi-signature wallet. Please confirm
-                your address and add your name for this wallet.
+                You are invited to be a signer of this multi-signature wallet.
+                Please confirm your address and add your name.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-6">
-                <div className="grid gap-3">
+              <div className="space-y-6">
+                <div className="space-y-2">
                   <Label htmlFor="address">Your address</Label>
                   <Input
                     id="address"
                     type="text"
-                    className="w-full"
-                    value={userAddress}
+                    value={user ? userAddress : parentAddress}
                     disabled
                   />
                 </div>
-                <div className="grid gap-3">
+                <div className="space-y-2">
                   <Label htmlFor="description">Your Name</Label>
                   <Input
                     id="description"
                     type="text"
-                    className="w-full"
-                    placeholder="your name or a description about this signer"
-                    value={signersDescription}
-                    onChange={(e) => setSignerDescription(e.target.value)}
+                    placeholder="e.g., Alice, Bob, etc."
+                    value={signersName}
+                    onChange={(e) => setSignerName(e.target.value)}
                   />
                 </div>
               </div>
+              <p>{signersDescription}</p>
+              <div className="space-y-2">
+                <Button
+                  onClick={addSigner}
+                  disabled={loading || !signersDescription}
+                  className="w-full md:w-auto"
+                >
+                  {loading ? "Adding..." : "Add me as signer"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
-
           <WalletComponent
             onSelectChildKeys={(childKeys) => {
               console.log("Index received selected child keys:", childKeys);
-              // Handle the emitted child key group as needed.
+              setSelectedKeys(childKeys);
             }}
           />
-
-          <div></div>
-
-          <div className="flex gap-4">
-            <Button
-              onClick={addSigner}
-              disabled={loading || !signersDescription}
-            >
-              {loading ? "Adding..." : "Add me as signer"}
-            </Button>
-          </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

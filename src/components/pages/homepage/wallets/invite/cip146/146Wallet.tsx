@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import MultiSigSelector from "./146MultiSigSelector";
-import { WalletConstructor, MetadataItem, getPubKeyHash } from "./146sdk";
+import { WalletConstructor, MetadataItem, getPubKeyHash, parseDerivationPath, pubKeyToAddr } from "./146sdk";
 
 interface WalletComponentProps {
   onSelectChildKeys: (childKeys: any[]) => void;
 }
 
 const WalletComponent: React.FC<WalletComponentProps> = ({
-  onSelectChildKeys,
+  onSelectChildKeys = () => {},
 }) => {
   const [wallet, setWallet] = useState<WalletConstructor | null>(null);
   const [mnemonicInput, setMnemonicInput] = useState<string>("");
@@ -99,7 +99,7 @@ const WalletComponent: React.FC<WalletComponentProps> = ({
   }, [wallet, reRenderCounter]);
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
+    <div className="min-h-screen ">
       <Card className="mx-auto max-w-xl rounded-lg border border-slate-200 shadow">
         <CardHeader className="rounded-t-lg border-b border-slate-200 px-4 py-3">
           <CardTitle className="text-lg font-semibold">
@@ -115,12 +115,7 @@ const WalletComponent: React.FC<WalletComponentProps> = ({
               </div>
               <div className="flex flex-col gap-4">
                 {/* MultiSigSelector: emits selected child keys upward */}
-                <MultiSigSelector
-                  wallet={wallet}
-                  onSelectChildKeys={(childKeys) => {
-                    onSelectChildKeys(childKeys);
-                  }}
-                />
+                <MultiSigSelector wallet={wallet} onSelectChildKeys={onSelectChildKeys} />
                 {/* Button to derive the next multisig group */}
                 <Button
                   onClick={deriveNextMultisigHandler}
