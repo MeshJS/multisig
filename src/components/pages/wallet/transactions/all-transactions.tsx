@@ -26,6 +26,7 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
+import { useEffect, useState } from "react";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -95,6 +96,38 @@ function TransactionRow({
   appWallet: Wallet;
   dbTransaction?: Transaction;
 }) {
+  const [transactionOutputs, setTransactionOutputs] = useState<
+    {
+      unit: string;
+      quantity: number;
+      decimals: number;
+      assetName: string;
+    }[]
+  >([]);
+
+  useEffect(() => {
+    const outputs: {
+      unit: string;
+      quantity: number;
+      decimals: number;
+      assetName: string;
+    }[] = [];
+    transaction.outputs.map((output) => {
+      Object.values(output.amount).map((outputValue) => {
+        outputs.push({
+          unit: outputValue.unit,
+          quantity: Number(outputValue.quantity),
+          // decimals: userAssetMetadata[outputValue.unit]?.decimals ?? 0,
+          // assetName:
+          //   userAssetMetadata[outputValue.unit]?.assetName ?? outputValue.unit,
+          decimals: 0,
+          assetName: outputValue.unit,
+        });
+      });
+    });
+    setTransactionOutputs(outputs);
+  }, [transaction]);
+  console.log("transaction row", transactionOutputs);
   return (
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>

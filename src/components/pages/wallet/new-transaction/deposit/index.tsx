@@ -70,7 +70,7 @@ export default function PageNewTransaction() {
   const userWalletAssets = useMemo(() => {
     return userAssets.map((asset) => {
       return {
-        policyId: asset.unit,
+        unit: asset.unit,
         assetName: userAssetMetadata[asset.unit]?.assetName,
         decimals: userAssetMetadata[asset.unit]?.decimals ?? 0,
         amount: asset.quantity,
@@ -85,15 +85,14 @@ export default function PageNewTransaction() {
         amount: number;
         assetName: string;
         decimals: number;
+        unit: string;
       }
     > = {};
 
-    console.log("reconfiguring assets with amounts", assets, amounts);
-
     // reduce assets and amounts to Asset: Amount object
     for (let i = 0; i < assets.length; i++) {
-      const name = assets[i] ?? "";
-      if (name === "ADA") {
+      const unit = assets[i] ?? "";
+      if (unit === "ADA") {
         if (assetsAmounts.lovelace) {
           assetsAmounts.lovelace.amount += Number(amounts[i]) ?? 0;
         } else {
@@ -101,19 +100,19 @@ export default function PageNewTransaction() {
             amount: Number(amounts[i]) ?? 0,
             assetName: "ADA",
             decimals: 6,
+            unit: "lovelace",
           };
         }
       } else {
-        if (assetsAmounts[name]) {
-          assetsAmounts[name].amount += Number(amounts[i]) ?? 0;
+        if (assetsAmounts[unit]) {
+          assetsAmounts[unit].amount += Number(amounts[i]) ?? 0;
         } else {
-          const assetName = userWalletAssets.find(
-            (asset) => asset.policyId === name,
-          )?.assetName;
-          assetsAmounts[name] = {
+          const asset = userWalletAssets.find((asset) => asset.unit === unit);
+          assetsAmounts[unit] = {
             amount: Number(amounts[i]) ?? 0,
-            assetName: assetName ?? name,
-            decimals: userAssetMetadata[name]?.decimals ?? 0,
+            assetName: asset?.assetName ?? unit,
+            decimals: userAssetMetadata[unit]?.decimals ?? 0,
+            unit: asset?.unit ?? "",
           };
         }
       }
@@ -157,21 +156,24 @@ export default function PageNewTransaction() {
 
       for (let i = 0; i < UTxoCount; i++) {
         if (address && address.startsWith("addr") && address.length > 0) {
-          const unit = (assets[i] === 'ADA')? "lovelace": assets[i]!;
-          const multiplier = (unit === 'lovelace' ? 1000000 : 1);
+          const unit = assets[i] === "ADA" ? "lovelace" : assets[i]!;
+          const multiplier = unit === "lovelace" ? 1000000 : 1;
           const thisAmount = parseFloat(amounts[i]!) * multiplier;
           outputs.push({
             address: address,
-            unit:  unit,
+            unit: unit,
             amount: thisAmount.toString(),
           });
-          assetMap.set(unit, Number(assetMap.get(unit) || 0) + thisAmount);
+          assetMap.set(
+            unit,
+            (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
+          );
         }
       }
-      console.log(assetMap)
+      console.log(assetMap);
 
       selectedUtxos = keepRelevant(assetMap, utxos);
-      console.log(selectedUtxos)
+      console.log(selectedUtxos);
 
       if (selectedUtxos.length === 0) {
         setError(
@@ -189,17 +191,28 @@ export default function PageNewTransaction() {
           utxo.output.amount,
           utxo.output.address,
         );
+
+        console.log("tx In: ", {
+          txHash: utxo.input.txHash,
+          outputIndex: utxo.input.outputIndex,
+          amount: utxo.output.amount,
+          address: utxo.output.address,
+        });
       }
       console.log(txBuilder);
-      for (let i = 0; i < outputs.length; i++) {
-        txBuilder.txOut(outputs[i]!.address, [
+      for (const output of outputs) {
+        txBuilder.txOut(output.address, [
           {
-            unit: outputs[i]!.unit,
-            quantity: outputs[i]!.amount,
+            unit: output.unit,
+            quantity: output.amount,
           },
         ]);
+        console.log("tx Out: ", `${output.address}`, {
+          quantity: output.amount,
+          unit: output.unit,
+        });
       }
-console.log(txBuilder);
+      console.log(txBuilder);
       const unsignedTx = await txBuilder.changeAddress(userAddress).complete();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);

@@ -28,6 +28,7 @@ export default function ConnectWallet() {
 
   const wallets = useWalletList();
   const { connect, connected, wallet, name } = useWallet();
+  const network = useSiteStore((state) => state.network);
 
   async function connectWallet(walletId: string) {
     setPastWallet(walletId);
