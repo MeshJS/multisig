@@ -55,7 +55,7 @@ export default function ConnectWallet() {
       if (!wallet) return;
       try {
         const assets = await wallet.getBalance();
-        const provider = getProvider(1);
+        const provider = getProvider(await wallet.getNetworkId());
         const userAssets: Asset[] = [];
         if (assets) {
           for (const asset of assets) {

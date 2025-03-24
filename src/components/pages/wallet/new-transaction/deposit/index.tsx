@@ -149,29 +149,29 @@ export default function PageNewTransaction() {
     setError(undefined);
 
     try {
-      let totalAmount = 0;
-      const outputs: { address: string; amount: string }[] = [];
-      for (let i = 0; i < UTxoCount; i++) {
-        //fix
-
-        if (address && address.startsWith("addr") && address.length > 0) {
-          const thisAmount = parseFloat(amounts[i]!) * 1000000;
-          totalAmount += thisAmount;
-          outputs.push({
-            address: address,
-            amount: thisAmount.toString(),
-          });
-        }
-      }
-
+      const outputs: { address: string; unit: string; amount: string }[] = [];
       const blockchainProvider = getProvider(network);
       const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
-
       let selectedUtxos = utxos;
-
       const assetMap = new Map<Unit, Quantity>();
-      assetMap.set("lovelace", totalAmount.toString());
+
+      for (let i = 0; i < UTxoCount; i++) {
+        if (address && address.startsWith("addr") && address.length > 0) {
+          const unit = (assets[i] === 'ADA')? "lovelace": assets[i]!;
+          const multiplier = (unit === 'lovelace' ? 1000000 : 1);
+          const thisAmount = parseFloat(amounts[i]!) * multiplier;
+          outputs.push({
+            address: address,
+            unit:  unit,
+            amount: thisAmount.toString(),
+          });
+          assetMap.set(unit, Number(assetMap.get(unit) || 0) + thisAmount);
+        }
+      }
+      console.log(assetMap)
+
       selectedUtxos = keepRelevant(assetMap, utxos);
+      console.log(selectedUtxos)
 
       if (selectedUtxos.length === 0) {
         setError(
@@ -190,16 +190,16 @@ export default function PageNewTransaction() {
           utxo.output.address,
         );
       }
-
+      console.log(txBuilder);
       for (let i = 0; i < outputs.length; i++) {
         txBuilder.txOut(outputs[i]!.address, [
           {
-            unit: "lovelace",
+            unit: outputs[i]!.unit,
             quantity: outputs[i]!.amount,
           },
         ]);
       }
-
+console.log(txBuilder);
       const unsignedTx = await txBuilder.changeAddress(userAddress).complete();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);
