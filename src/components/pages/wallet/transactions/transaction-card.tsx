@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { ToastAction } from "@/components/ui/toast";
 import { csl } from "@meshsdk/core-csl";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 
 export default function TransactionCard({
   walletId,
@@ -44,6 +45,10 @@ export default function TransactionCard({
   const [loading, setLoading] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
+
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
 
   const { mutate: updateTransaction } =
     api.transaction.updateTransaction.useMutation({
@@ -245,6 +250,52 @@ export default function TransactionCard({
   //   }
   // }, []);
 
+  const outputList = useMemo((): JSX.Element => {
+    return (
+      <>
+        {txJson.outputs.map((output: any, i: number) => {
+          return (
+            <div key={i} className="flex gap-2">
+              <div className="font-weight-400">
+                {output.amount.map((unit: any, j: number) => {
+                  const assetMetadata = walletAssetMetadata[unit.unit];
+                  const decimals =
+                    unit.unit === "lovelace"
+                      ? 6
+                      : (assetMetadata?.decimals ?? 0);
+                  const assetName =
+                    unit.unit === "lovelace"
+                      ? "₳"
+                      : assetMetadata?.ticker
+                        ? `$${assetMetadata?.ticker}`
+                        : unit.unit;
+                  return (
+                    <>
+                      <span key={unit.unit}>
+                        {j > 0 && " + "}
+                        {unit.quantity / Math.pow(10, decimals)} {assetName}
+                      </span>
+                    </>
+                  );
+                })}
+              </div>
+              <span
+                className="overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+                style={{ maxWidth: "100%", display: "inline-block" }}
+              >
+                {" "}
+                to{" "}
+                {output.address.length > 20
+                  ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
+                  : output.address}
+              </span>
+            </div>
+          );
+        })}
+      </>
+    );
+  }, [txJson, appWallet, walletAssetMetadata]);
+
   if (!appWallet) return <></>;
   return (
     <Card className="self-start overflow-hidden">
@@ -328,27 +379,7 @@ export default function TransactionCard({
           {txJson.outputs.length > 0 && (
             <>
               <div className="font-semibold">Sending</div>
-              <ul className="grid gap-3">
-                {txJson.outputs.map((output: any) => {
-                  return (
-                    <li
-                      key={output.address}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="text-muted-foreground">
-                        {getFirstAndLast(output.address)}
-                      </span>
-                      <span>
-                        {lovelaceToAda(
-                          output.amount.find(
-                            (unit: any) => unit.unit === "lovelace",
-                          ).quantity,
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <ul className="grid gap-3">{outputList}</ul>
               <Separator className="my-2" />
             </>
           )}

@@ -140,7 +140,6 @@ function TransactionRow({
             (input: any) => input.address === appWallet.address,
           );
           if (isSpend && output.address != appWallet.address) {
-            console.log("spending", output);
             return (
               <div key={i} className="flex gap-2">
                 <div className="text-red-400">
