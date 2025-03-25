@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { UTxO } from "@meshsdk/core";
+import { Asset, UTxO } from "@meshsdk/core";
 import { OnChainTransaction } from "@/types/transaction";
 import { BlockfrostDrepInfo } from "@/types/governance";
 
@@ -46,6 +46,19 @@ interface State {
   ) => void;
   walletLastUpdated: { [walletId: string]: number };
   setWalletLastUpdated: (walletId: string, timestamp: number) => void;
+  walletAssets: Asset[];
+  setWalletAssets: (assets: Asset[]) => void;
+  walletAssetMetadata: {
+    [policyId: string]: {
+      assetName: string;
+      decimals: number;
+    };
+  };
+  setWalletAssetMetadata: (
+    policyId: string,
+    assetName: string,
+    decimals: number,
+  ) => void;
   drepInfo: BlockfrostDrepInfo | undefined;
   setDrepInfo: (drepInfo: BlockfrostDrepInfo) => void;
   drepRegistered: boolean;
@@ -73,6 +86,16 @@ export const useWalletsStore = create<State>()(
             [walletId]: timestamp,
           },
         }),
+      walletAssets: [],
+      setWalletAssets: (assets) => set({ walletAssets: assets }),
+      walletAssetMetadata: {},
+      setWalletAssetMetadata: (policyId, assetName, decimals) =>
+        set((state) => ({
+          walletAssetMetadata: {
+            ...state.walletAssetMetadata,
+            [policyId]: { assetName, decimals },
+          },
+        })),
       drepInfo: undefined,
       setDrepInfo: (drepInfo) => set({ drepInfo }),
       drepRegistered: get()?.drepInfo?.active ?? false,

@@ -105,6 +105,14 @@ function TransactionRow({
     }[]
   >([]);
 
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
+  const walletAssets = useWalletsStore((state) => state.walletAssets);
+
+  console.log("app wallet metadata", walletAssetMetadata);
+  console.log("app wallet assets", walletAssets);
+
   useEffect(() => {
     const outputs: {
       unit: string;
