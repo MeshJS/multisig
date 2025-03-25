@@ -13,6 +13,7 @@ import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Toggle } from "@/components/ui/toggle";
 import { UTxO } from "@meshsdk/core";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 
 interface UTxOSelectorProps {
   appWallet: Wallet;
@@ -36,6 +37,9 @@ export default function UTxOSelector({
   const { transactions } = usePendingTransactions({
     walletId: appWallet.id,
   });
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
 
   const fetchUtxos = useCallback(async () => {
     if (!appWallet) return;
@@ -78,8 +82,9 @@ export default function UTxOSelector({
       (utxo) =>
         !blockedUtxos.some(
           (bU) =>
-            bU.hash === utxo.input.txHash && bU.index === utxo.input.outputIndex
-        )
+            bU.hash === utxo.input.txHash &&
+            bU.index === utxo.input.outputIndex,
+        ),
     );
     setSelectedUtxos(freeUtxos);
     setBlockedUtxos(blockedUtxos);
@@ -100,7 +105,10 @@ export default function UTxOSelector({
 
       if (!isSameAsLast) {
         onSelectionChange([...selectedUtxos], manualSelected);
-        lastEmitted.current = { utxos: [...selectedUtxos], manual: manualSelected };
+        lastEmitted.current = {
+          utxos: [...selectedUtxos],
+          manual: manualSelected,
+        };
       }
     }
   }, [selectedUtxos, manualSelected, onSelectionChange, isInitialLoad]);
@@ -133,7 +141,7 @@ export default function UTxOSelector({
           <TableHeader>
             <TableRow>
               <TableHead>Tx Index - Hash</TableHead>
-              <TableHead>Amount (ADA)</TableHead>
+              <TableHead>Outputs</TableHead>
               <TableHead>Select</TableHead>
             </TableRow>
           </TableHeader>
@@ -145,15 +153,34 @@ export default function UTxOSelector({
                   {utxo.input.txHash.slice(-10)}
                 </TableCell>
                 <TableCell>
-                  {(
-                    utxo.output.amount.reduce(
-                      (total, asset) =>
-                        asset.unit === "lovelace"
-                          ? total + Number(asset.quantity)
-                          : total,
-                      0,
-                    ) / 1_000_000
-                  ).toFixed(6)}
+                  <div className="flex gap-2">
+                    <div className="font-weight-400">
+                      {Object.values(utxo.output.amount).map(
+                        (unit: any, j: number) => {
+                          const assetMetadata = walletAssetMetadata[unit.unit];
+                          const decimals =
+                            unit.unit === "lovelace"
+                              ? 6
+                              : (assetMetadata?.decimals ?? 0);
+                          const assetName =
+                            unit.unit === "lovelace"
+                              ? "₳"
+                              : assetMetadata?.ticker
+                                ? `$${assetMetadata?.ticker}`
+                                : unit.unit;
+                          return (
+                            <>
+                              <span key={unit.unit}>
+                                {j > 0 && ", "}
+                                {unit.quantity / Math.pow(10, decimals)}{" "}
+                                {assetName}
+                              </span>
+                            </>
+                          );
+                        },
+                      )}
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell>
                   {blockedUtxos.some(
