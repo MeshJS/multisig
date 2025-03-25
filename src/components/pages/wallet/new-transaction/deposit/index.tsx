@@ -2,14 +2,7 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import {
-  deserializePoolId,
-  keepRelevant,
-  type Quantity,
-  resolveScriptHash,
-  serializeRewardAddress,
-  type Unit,
-} from "@meshsdk/core";
+import { keepRelevant, type Quantity, type Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -31,7 +24,6 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
 import { cn } from "@/lib/utils";
-import { set } from "idb-keyval";
 
 export default function PageNewTransaction() {
   const { connected, wallet } = useWallet();
@@ -170,10 +162,8 @@ export default function PageNewTransaction() {
           );
         }
       }
-      console.log(assetMap);
 
       selectedUtxos = keepRelevant(assetMap, utxos);
-      console.log(selectedUtxos);
 
       if (selectedUtxos.length === 0) {
         setError(
@@ -191,15 +181,7 @@ export default function PageNewTransaction() {
           utxo.output.amount,
           utxo.output.address,
         );
-
-        console.log("tx In: ", {
-          txHash: utxo.input.txHash,
-          outputIndex: utxo.input.outputIndex,
-          amount: utxo.output.amount,
-          address: utxo.output.address,
-        });
       }
-      console.log(txBuilder);
       for (const output of outputs) {
         txBuilder.txOut(output.address, [
           {
@@ -207,12 +189,7 @@ export default function PageNewTransaction() {
             quantity: output.amount,
           },
         ]);
-        console.log("tx Out: ", `${output.address}`, {
-          quantity: output.amount,
-          unit: output.unit,
-        });
       }
-      console.log(txBuilder);
       const unsignedTx = await txBuilder.changeAddress(userAddress).complete();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);

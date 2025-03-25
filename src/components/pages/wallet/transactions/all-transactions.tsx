@@ -26,7 +26,7 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -110,9 +110,6 @@ function TransactionRow({
   );
   const walletAssets = useWalletsStore((state) => state.walletAssets);
 
-  console.log("app wallet metadata", walletAssetMetadata);
-  console.log("app wallet assets", walletAssets);
-
   useEffect(() => {
     const outputs: {
       unit: string;
@@ -125,17 +122,82 @@ function TransactionRow({
         outputs.push({
           unit: outputValue.unit,
           quantity: Number(outputValue.quantity),
-          // decimals: userAssetMetadata[outputValue.unit]?.decimals ?? 0,
-          // assetName:
-          //   userAssetMetadata[outputValue.unit]?.assetName ?? outputValue.unit,
-          decimals: 0,
-          assetName: outputValue.unit,
+          decimals: walletAssetMetadata[outputValue.unit]?.decimals ?? 0,
+          assetName:
+            walletAssetMetadata[outputValue.unit]?.assetName ??
+            outputValue.unit,
         });
       });
     });
     setTransactionOutputs(outputs);
-  }, [transaction]);
-  console.log("transaction row", transactionOutputs);
+  }, [transaction, walletAssetMetadata]);
+
+  const outputList = useMemo((): JSX.Element => {
+    return (
+      <>
+        {transaction.outputs.map((output: any, i) => {
+          const isSpend = transaction.inputs.some(
+            (input: any) => input.address === appWallet.address,
+          );
+          if (isSpend && output.address != appWallet.address) {
+            return (
+              <div key={i} className="flex gap-2">
+                <div className="text-red-400">
+                  -
+                  {output.amount.map((unit: any, j: number) => {
+                    const assetMetadata = walletAssetMetadata[unit.unit];
+                    const decimals =
+                      unit.unit === "lovelace"
+                        ? 6
+                        : (assetMetadata?.decimals ?? 0);
+                    const assetName =
+                      unit.unit === "lovelace"
+                        ? "₳"
+                        : (assetMetadata?.assetName ?? unit.unit);
+                    return (
+                      <span key={unit.unit}>
+                        {j > 0 && ", "}
+                        {unit.quantity / Math.pow(10, decimals)} {assetName}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {getFirstAndLast(output.address)}
+                </div>
+              </div>
+            );
+          } else if (!isSpend && output.address == appWallet.address) {
+            return (
+              <div key={i} className="flex gap-2">
+                <div className="text-green-400">
+                  +
+                  {output.amount.map((unit: any, j: number) => {
+                    const assetMetadata = walletAssetMetadata[unit.unit];
+                    const decimals =
+                      unit.unit === "lovelace"
+                        ? 6
+                        : (assetMetadata?.decimals ?? 0);
+                    const assetName =
+                      unit.unit === "lovelace"
+                        ? "₳"
+                        : (assetMetadata?.assetName ?? unit.unit);
+                    return (
+                      <span key={unit.unit}>
+                        {j > 0 && ", "}
+                        {unit.quantity / Math.pow(10, decimals)} {assetName}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+        })}
+      </>
+    );
+  }, [transaction, appWallet, walletAssetMetadata]);
+
   return (
     <TableRow style={{ backgroundColor: "none" }}>
       <TableCell>
@@ -163,39 +225,7 @@ function TransactionRow({
         )}
       </TableCell>
       <TableCell>
-        {transaction.outputs.map((output: any, i) => {
-          const isSpend = transaction.inputs.some(
-            (input: any) => input.address === appWallet.address,
-          );
-          if (isSpend && output.address != appWallet.address) {
-            return (
-              <div key={i} className="flex gap-2">
-                <div className="text-red-400">
-                  -
-                  {lovelaceToAda(
-                    output.amount.find((unit: any) => unit.unit === "lovelace")
-                      .quantity,
-                  )}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {getFirstAndLast(output.address)}
-                </div>
-              </div>
-            );
-          } else if (!isSpend && output.address == appWallet.address) {
-            return (
-              <div key={i} className="flex gap-2">
-                <div className="text-green-400">
-                  +
-                  {lovelaceToAda(
-                    output.amount.find((unit: any) => unit.unit === "lovelace")
-                      .quantity,
-                  )}
-                </div>
-              </div>
-            );
-          }
-        })}
+        {outputList}
         {dbTransaction && dbTransaction.description && (
           <>
             {dbTransaction.description == "DRep registration" && (
