@@ -5,7 +5,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 // import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +34,8 @@ import { toast, useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
 import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
+import { useWalletsStore } from "@/lib/zustand/wallets";
+import { cn } from "@/lib/utils";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -57,6 +59,10 @@ export default function PageNewTransaction() {
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
   const router = useRouter();
+  const [assets, setAssets] = useState<string[]>(["ADA"]);
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
 
   useEffect(() => {
     reset();
@@ -79,26 +85,40 @@ export default function PageNewTransaction() {
     setError(undefined);
 
     try {
-      let totalAmount = 0;
-      const outputs: { address: string; amount: string }[] = [];
+      // let totalAmount = 0;
+      const outputs: { address: string; unit: string; amount: string }[] = [];
+      const assetMap = new Map<Unit, Quantity>();
       for (let i = 0; i < recipientAddresses.length; i++) {
         const address = recipientAddresses[i];
         if (address && address.startsWith("addr") && address.length > 0) {
-          const thisAmount = parseFloat(amounts[i] as string) * 1000000;
-          totalAmount += thisAmount;
+          const unit = assets[i] === "ADA" ? "lovelace" : assets[i]!;
+          const assetMetadata = walletAssetMetadata[unit];
+          const multiplier =
+            unit === "lovelace"
+              ? 1000000
+              : Math.pow(10, assetMetadata?.decimals ?? 0);
+          const thisAmount = parseFloat(amounts[i]!) * multiplier;
+          // totalAmount += thisAmount;
           outputs.push({
             address: recipientAddresses[i]!,
+            unit: unit,
             amount: thisAmount.toString(),
           });
+          assetMap.set(
+            unit,
+            (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
+          );
         }
       }
       const utxos = manualUtxos;
       let selectedUtxos = utxos;
       if (!sendAllAssets) {
-        const assetMap = new Map<Unit, Quantity>();
-        assetMap.set("lovelace", totalAmount.toString());
+        // const assetMap = new Map<Unit, Quantity>();
+        // assetMap.set("lovelace", totalAmount.toString());
         selectedUtxos = keepRelevant(assetMap, utxos);
       }
+
+      console.log("assetMap", assetMap, utxos, selectedUtxos);
 
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
@@ -108,6 +128,8 @@ export default function PageNewTransaction() {
       const txBuilder = getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
+        console.log("tx builder in", utxo.output.amount);
+
         txBuilder
           .txIn(
             utxo.input.txHash,
@@ -139,7 +161,7 @@ export default function PageNewTransaction() {
         for (let i = 0; i < outputs.length; i++) {
           txBuilder.txOut(outputs[i]!.address, [
             {
-              unit: "lovelace",
+              unit: outputs[i]!.unit,
               quantity: outputs[i]!.amount,
             },
           ]);
@@ -202,7 +224,8 @@ export default function PageNewTransaction() {
           <TableHeader>
             <TableRow>
               <TableHead>Address</TableHead>
-              <TableHead className="w-[120px]">Amount in ADA</TableHead>
+              <TableHead className="w-[120px]">Amount</TableHead>
+              <TableHead className="w-[120px]">Asset</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -215,6 +238,8 @@ export default function PageNewTransaction() {
                 setRecipientAddresses={setRecipientAddresses}
                 amounts={amounts}
                 setAmounts={setAmounts}
+                assets={assets}
+                setAssets={setAssets}
                 disableAdaAmountInput={sendAllAssets}
               />
             ))}
@@ -365,6 +390,8 @@ function RecipientRow({
   setRecipientAddresses,
   amounts,
   setAmounts,
+  assets,
+  setAssets,
   disableAdaAmountInput,
 }: {
   index: number;
@@ -372,10 +399,17 @@ function RecipientRow({
   setRecipientAddresses: (value: string[]) => void;
   amounts: string[];
   setAmounts: (value: string[]) => void;
+  assets: string[];
+  setAssets: (value: string[]) => void;
   disableAdaAmountInput: boolean;
 }) {
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [adaHandle, setAdaHandle] = useState<string>("");
+
+  const walletAssets = useWalletsStore((state) => state.walletAssets);
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
 
   const handleAddressChange = async (value: string) => {
     const newAddresses = [...recipientAddresses];
@@ -401,6 +435,36 @@ function RecipientRow({
       setAdaHandle("");
     }
   };
+
+  const appWalletAssets = useMemo(() => {
+    return walletAssets.map((asset) => {
+      return {
+        policyId: asset.unit,
+        assetName: walletAssetMetadata[asset.unit]?.assetName,
+        decimals: walletAssetMetadata[asset.unit]?.decimals ?? 0,
+        amount: asset.quantity,
+      };
+    });
+  }, [walletAssets, walletAssetMetadata]);
+
+  const assetOptions = useMemo(() => {
+    return (
+      <>
+        {appWalletAssets.map((appWalletAssets) => {
+          return (
+            <option
+              key={appWalletAssets.policyId}
+              value={appWalletAssets.policyId}
+            >
+              {appWalletAssets.policyId === "lovelace"
+                ? "ADA"
+                : appWalletAssets.assetName}
+            </option>
+          );
+        })}
+      </>
+    );
+  }, [appWalletAssets]);
 
   return (
     <TableRow>
@@ -434,6 +498,22 @@ function RecipientRow({
             disabled={disableAdaAmountInput}
           />
         </div>
+      </TableCell>
+      <TableCell className="w-[240px]">
+        <select
+          value={assets[index]}
+          onChange={(e) => {
+            const newAssets = [...assets];
+            newAssets[index] = e.target.value;
+            setAssets(newAssets);
+          }}
+          disabled={disableAdaAmountInput}
+          className={cn(
+            "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
+          )}
+        >
+          {assetOptions}
+        </select>
       </TableCell>
       <TableCell>
         <div

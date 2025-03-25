@@ -149,7 +149,11 @@ export default function PageNewTransaction() {
       for (let i = 0; i < UTxoCount; i++) {
         if (address && address.startsWith("addr") && address.length > 0) {
           const unit = assets[i] === "ADA" ? "lovelace" : assets[i]!;
-          const multiplier = unit === "lovelace" ? 1000000 : 1;
+          const assetMetadata = userAssetMetadata[unit];
+          const multiplier =
+            unit === "lovelace"
+              ? 1000000
+              : Math.pow(10, assetMetadata?.decimals ?? 0);
           const thisAmount = parseFloat(amounts[i]!) * multiplier;
           outputs.push({
             address: address,
