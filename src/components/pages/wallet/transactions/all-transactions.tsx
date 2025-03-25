@@ -140,6 +140,7 @@ function TransactionRow({
             (input: any) => input.address === appWallet.address,
           );
           if (isSpend && output.address != appWallet.address) {
+            console.log("spending", output);
             return (
               <div key={i} className="flex gap-2">
                 <div className="text-red-400">
@@ -153,7 +154,9 @@ function TransactionRow({
                     const assetName =
                       unit.unit === "lovelace"
                         ? "₳"
-                        : (assetMetadata?.assetName ?? unit.unit);
+                        : assetMetadata?.ticker
+                          ? `$${assetMetadata?.ticker}`
+                          : unit.unit;
                     return (
                       <span key={unit.unit}>
                         {j > 0 && ", "}
@@ -181,7 +184,9 @@ function TransactionRow({
                     const assetName =
                       unit.unit === "lovelace"
                         ? "₳"
-                        : (assetMetadata?.assetName ?? unit.unit);
+                        : assetMetadata?.ticker
+                          ? `$${assetMetadata?.ticker}`
+                          : unit.unit;
                     return (
                       <span key={unit.unit}>
                         {j > 0 && ", "}
