@@ -83,7 +83,6 @@ export default function WalletDataLoader() {
         `/addresses/${appWallet?.address}/`,
       );
       const walletAssets: Asset[] = [];
-      console.log("blockfrost assets", assets);
       if (assets.amount) {
         for (const asset of assets.amount) {
           walletAssets.push({
@@ -100,6 +99,10 @@ export default function WalletDataLoader() {
               assetInfo?.onchain_metadata?.name ||
               asset.unit,
             assetInfo?.metadata?.decimals || 0,
+            assetInfo?.metadata?.logo || "",
+            assetInfo?.metadata?.ticker ||
+              assetInfo?.onchain_metadata?.ticker ||
+              "",
           );
         }
         console.log("wallet assets", walletAssets, assets);

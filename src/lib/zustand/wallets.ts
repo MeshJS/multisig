@@ -52,12 +52,16 @@ interface State {
     [policyId: string]: {
       assetName: string;
       decimals: number;
+      image: string;
+      ticker: string;
     };
   };
   setWalletAssetMetadata: (
     policyId: string,
     assetName: string,
     decimals: number,
+    image: string,
+    ticker: string,
   ) => void;
   drepInfo: BlockfrostDrepInfo | undefined;
   setDrepInfo: (drepInfo: BlockfrostDrepInfo) => void;
@@ -89,11 +93,11 @@ export const useWalletsStore = create<State>()(
       walletAssets: [],
       setWalletAssets: (assets) => set({ walletAssets: assets }),
       walletAssetMetadata: {},
-      setWalletAssetMetadata: (policyId, assetName, decimals) =>
+      setWalletAssetMetadata: (policyId, assetName, decimals, image, ticker) =>
         set((state) => ({
           walletAssetMetadata: {
             ...state.walletAssetMetadata,
-            [policyId]: { assetName, decimals },
+            [policyId]: { assetName, decimals, image, ticker },
           },
         })),
       drepInfo: undefined,
