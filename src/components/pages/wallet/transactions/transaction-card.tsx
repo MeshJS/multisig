@@ -294,7 +294,7 @@ export default function TransactionCard({
         })}
       </>
     );
-  }, [txJson, appWallet, walletAssetMetadata]);
+  }, [txJson, walletAssetMetadata]);
 
   if (!appWallet) return <></>;
   return (
