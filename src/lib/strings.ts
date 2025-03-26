@@ -11,7 +11,7 @@ export function numberWithCommas(x: number) {
 }
 
 export function lovelaceToAda(lovelace: number | string) {
-  return `₳ ${(Math.floor((parseInt(String(lovelace)) / 1000000)*100))/100}`;
+  return `₳ ${Math.floor((parseInt(String(lovelace)) / 1000000) * 100) / 100}`;
 }
 
 export function dateToFormatted(date: Date) {

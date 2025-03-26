@@ -8,6 +8,7 @@ import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { LAST_UPDATED_THRESHOLD } from "@/config/wallet";
+import { Asset } from "@meshsdk/core";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -20,6 +21,10 @@ export default function WalletDataLoader() {
   const walletLastUpdated = useWalletsStore((state) => state.walletLastUpdated);
   const setWalletLastUpdated = useWalletsStore(
     (state) => state.setWalletLastUpdated,
+  );
+  const setWalletAssets = useWalletsStore((state) => state.setWalletAssets);
+  const setWalletAssetMetadata = useWalletsStore(
+    (state) => state.setWalletAssetMetadata,
   );
   const fetchingTransactions = useRef(false);
 
@@ -71,6 +76,43 @@ export default function WalletDataLoader() {
     }
   }
 
+  async function getWalletAssets() {
+    try {
+      const blockchainProvider = getProvider(network);
+      const assets = await blockchainProvider.get(
+        `/addresses/${appWallet?.address}/`,
+      );
+      const walletAssets: Asset[] = [];
+      if (assets.amount) {
+        for (const asset of assets.amount) {
+          walletAssets.push({
+            unit: asset.unit,
+            quantity: asset.quantity,
+          });
+          if (asset.unit === "lovelace") continue;
+          const assetInfo = await blockchainProvider.get(
+            `/assets/${asset.unit}`,
+          );
+          setWalletAssetMetadata(
+            asset.unit,
+            assetInfo?.metadata?.name ||
+              assetInfo?.onchain_metadata?.name ||
+              asset.unit,
+            assetInfo?.metadata?.decimals || 0,
+            assetInfo?.metadata?.logo || "",
+            assetInfo?.metadata?.ticker ||
+              assetInfo?.onchain_metadata?.ticker ||
+              "",
+          );
+        }
+        console.log("wallet assets", walletAssets, assets);
+        setWalletAssets(walletAssets);
+      }
+    } catch (error) {
+      console.error("Error looking up wallet assets:", error);
+    }
+  }
+
   async function refreshWallet() {
     if (fetchingTransactions.current) return;
 
@@ -78,6 +120,7 @@ export default function WalletDataLoader() {
     setLoading(true);
     await fetchUtxos();
     await getTransactionsOnChain();
+    await getWalletAssets();
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
     setRandomState();

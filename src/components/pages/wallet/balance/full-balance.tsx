@@ -1,15 +1,16 @@
 import Button from "@/components/common/button";
 import CardUI from "@/components/common/card-content";
-import RowLabelInfo from "@/components/common/row-label-info";
-import { numberWithCommas } from "@/lib/strings";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
+export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
+  const walletAssetMetadata = useWalletsStore(
+    (state) => state.walletAssetMetadata,
+  );
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
 
@@ -54,22 +55,52 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
     getBalance();
   }, [utxos]);
 
-  const nonAdaAssets = walletAssets?.filter(
-    (asset) => asset.unit !== "lovelace",
-  );
+  const nonAdaList = useMemo(() => {
+    const nonAdaAssets = walletAssets?.filter(
+      (asset) => asset.unit !== "lovelace",
+    );
+    return nonAdaAssets?.map((asset) => {
+      const metadata = walletAssetMetadata[asset.unit];
+      const name = metadata?.assetName ?? asset.unit;
+      const quantity =
+        Number(asset.quantity) / Math.pow(10, metadata?.decimals ?? 0);
+      const ticker = metadata?.ticker;
+      return (
+        <div
+          key={asset.unit}
+          className="flex w-full flex-row items-center justify-between"
+        >
+          <div className="flex flex-row gap-3">
+            <h3 className="text-lg font-bold">{name}</h3>
+          </div>
+          <div className="flex flex-row gap-1">
+            <p className="font-bold">{quantity}</p>
+            <p className="text-gray-400">${ticker}</p>
+          </div>
+        </div>
+      );
+    });
+  }, [walletAssets, walletAssetMetadata]);
+
+  const adaAmount = useMemo(() => {
+    return (
+      <div className="flex w-full flex-row items-center justify-between">
+        <div className="flex flex-row gap-3">
+          <h3 className="text-lg font-bold">ADA</h3>
+        </div>
+        <div className="flex flex-row gap-1">
+          <p className="font-bold">{balance}</p>
+          <p className="text-gray-400">₳</p>
+        </div>
+      </div>
+    );
+  }, [balance]);
 
   return (
-    <CardUI title="Balance" icon={`₳`}>
-      <RowLabelInfo
-        value={`₳ ${numberWithCommas(balance)}`}
-        className="text-2xl font-bold"
-      />
-      <div>
-        {nonAdaAssets?.length > 0 && (
-          <p className="mb-2 text-sm text-muted-foreground">
-            + {nonAdaAssets.length} asset{nonAdaAssets.length > 1 ? "s" : ""}
-          </p>
-        )}
+    <CardUI title="Balance" cardClassName="col">
+      <div className="flex flex-col gap-4">
+        {adaAmount}
+        {nonAdaList}
         {balance <= 0 && (
           <p className="mb-2 text-sm text-muted-foreground">
             Please deposit fund to this script address before continuing
@@ -89,17 +120,6 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
             </Button>
           </Link>
         </div>
-
-        {/* Suggesting to disable the button if the balance is less than 0, or no previous transactions */}
-        {/* <Button
-          onClick={() => {
-            window.location.href = `/wallets/${appWallet.id}/transactions/new`;
-          }}
-          disabled={balance <= 0}
-          size="sm"
-        >
-          New Transaction
-        </Button> */}
       </div>
     </CardUI>
   );
