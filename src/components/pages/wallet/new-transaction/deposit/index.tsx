@@ -148,13 +148,20 @@ export default function PageNewTransaction() {
 
       for (let i = 0; i < UTxoCount; i++) {
         if (address && address.startsWith("addr") && address.length > 0) {
-          const unit = assets[i] === "ADA" ? "lovelace" : assets[i]!;
+          const rawUnit = assets[i];
+          // Default to 'lovelace' if rawUnit is undefined or if it's 'ADA'
+          const unit = rawUnit
+            ? rawUnit === "ADA"
+              ? "lovelace"
+              : rawUnit
+            : "lovelace";
           const assetMetadata = userAssetMetadata[unit];
           const multiplier =
             unit === "lovelace"
               ? 1000000
               : Math.pow(10, assetMetadata?.decimals ?? 0);
-          const thisAmount = parseFloat(amounts[i]!) * multiplier;
+          const parsedAmount = parseFloat(amounts[i]!) || 0;
+          const thisAmount = parsedAmount * multiplier;
           outputs.push({
             address: address,
             unit: unit,
@@ -166,7 +173,6 @@ export default function PageNewTransaction() {
           );
         }
       }
-
       selectedUtxos = keepRelevant(assetMap, utxos);
 
       if (selectedUtxos.length === 0) {

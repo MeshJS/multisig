@@ -88,19 +88,26 @@ export default function PageNewTransaction() {
       // let totalAmount = 0;
       const outputs: { address: string; unit: string; amount: string }[] = [];
       const assetMap = new Map<Unit, Quantity>();
+
       for (let i = 0; i < recipientAddresses.length; i++) {
         const address = recipientAddresses[i];
         if (address && address.startsWith("addr") && address.length > 0) {
-          const unit = assets[i] === "ADA" ? "lovelace" : assets[i]!;
+          const rawUnit = assets[i];
+          // Default to 'lovelace' if rawUnit is undefined or if it's 'ADA'
+          const unit = rawUnit
+            ? rawUnit === "ADA"
+              ? "lovelace"
+              : rawUnit
+            : "lovelace";
           const assetMetadata = walletAssetMetadata[unit];
           const multiplier =
             unit === "lovelace"
               ? 1000000
               : Math.pow(10, assetMetadata?.decimals ?? 0);
-          const thisAmount = parseFloat(amounts[i]!) * multiplier;
-          // totalAmount += thisAmount;
+          const parsedAmount = parseFloat(amounts[i]!) || 0;
+          const thisAmount = parsedAmount * multiplier;
           outputs.push({
-            address: recipientAddresses[i]!,
+            address: address,
             unit: unit,
             amount: thisAmount.toString(),
           });
@@ -118,7 +125,6 @@ export default function PageNewTransaction() {
         selectedUtxos = keepRelevant(assetMap, utxos);
       }
 
-      console.log("assetMap", assetMap, utxos, selectedUtxos);
 
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
@@ -128,8 +134,6 @@ export default function PageNewTransaction() {
       const txBuilder = getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
-        console.log("tx builder in", utxo.output.amount);
-
         txBuilder
           .txIn(
             utxo.input.txHash,
@@ -188,7 +192,7 @@ export default function PageNewTransaction() {
       console.error(e);
       toast({
         title: "Error",
-        description: `${JSON.stringify(e)}`,
+        description: `${e}`,
         duration: 10000,
         action: (
           <ToastAction

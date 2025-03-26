@@ -14,6 +14,7 @@ import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Toggle } from "@/components/ui/toggle";
 import { UTxO } from "@meshsdk/core";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import { Button } from "@/components/ui/button";
 
 interface UTxOSelectorProps {
   appWallet: Wallet;
@@ -125,6 +126,22 @@ export default function UTxOSelector({
     );
   };
 
+  const handleToggleSelectAll = () => {
+    if (selectedUtxos.length > 0) {
+      setSelectedUtxos([]);
+    } else {
+      const freeUtxos = utxos.filter(
+        (utxo) =>
+          !blockedUtxos.some(
+            (bU) =>
+              bU.hash === utxo.input.txHash &&
+              bU.index === utxo.input.outputIndex,
+          ),
+      );
+      setSelectedUtxos(freeUtxos);
+    }
+  };
+
   return (
     <div>
       <Toggle
@@ -142,12 +159,26 @@ export default function UTxOSelector({
             <TableRow>
               <TableHead>Tx Index - Hash</TableHead>
               <TableHead>Outputs</TableHead>
-              <TableHead>Select</TableHead>
+              <TableHead style={{ width: '110px', textAlign: 'center' }}>
+                <Button
+                  onClick={handleToggleSelectAll}
+                  className="select-all-btn"
+                  style={{
+                    width: '110px',
+                    minWidth: '110px',
+                    maxWidth: '110px',
+                    display: 'block',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {selectedUtxos.length > 0 ? "Deselect All" : "Select All"}
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {utxos.map((utxo, index) => (
-              <TableRow key={index}>
+              <TableRow key={index} style={{ height: "50px" }}>
                 <TableCell className="truncate">
                   {utxo.input.outputIndex}-{utxo.input.txHash.slice(0, 10)}...
                   {utxo.input.txHash.slice(-10)}
@@ -169,20 +200,18 @@ export default function UTxOSelector({
                                 ? `$${assetMetadata?.ticker}`
                                 : unit.unit;
                           return (
-                            <>
-                              <span key={unit.unit}>
-                                {j > 0 && ", "}
-                                {unit.quantity / Math.pow(10, decimals)}{" "}
-                                {assetName}
-                              </span>
-                            </>
+                            <span key={unit.unit}>
+                              {j > 0 && ", "}
+                              {unit.quantity / Math.pow(10, decimals)}{" "}
+                              {assetName}
+                            </span>
                           );
                         },
                       )}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell style={{ width: '100px', textAlign: 'center' }}>
                   {blockedUtxos.some(
                     (bU) =>
                       bU.hash === utxo.input.txHash &&

@@ -270,12 +270,10 @@ export default function TransactionCard({
                         ? `$${assetMetadata?.ticker}`
                         : unit.unit;
                   return (
-                    <>
-                      <span key={unit.unit}>
-                        {j > 0 && " + "}
-                        {unit.quantity / Math.pow(10, decimals)} {assetName}
-                      </span>
-                    </>
+                    <span key={`${unit.unit}-${j}`}>
+                      {j > 0 && " + "}
+                      {unit.quantity / Math.pow(10, decimals)} {assetName}
+                    </span>
                   );
                 })}
               </div>
