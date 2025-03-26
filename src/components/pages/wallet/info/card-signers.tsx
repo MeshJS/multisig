@@ -307,7 +307,7 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
           ) : (
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger className="text-muted-foreground">
+                <TooltipTrigger className="text-gray-500">
                   <DiscordIcon />
                 </TooltipTrigger>
                 <TooltipContent>
