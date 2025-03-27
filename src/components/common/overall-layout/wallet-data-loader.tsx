@@ -27,6 +27,7 @@ export default function WalletDataLoader() {
     (state) => state.setWalletAssetMetadata,
   );
   const fetchingTransactions = useRef(false);
+  const prevWalletIdRef = useRef<string | null>(null);
 
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -44,35 +45,46 @@ export default function WalletDataLoader() {
   }
 
   async function getTransactionsOnChain() {
-    if (appWallet) {
-      const maxPage = 4;
-      const _transactions: OnChainTransaction[] = [];
-      const blockchainProvider = getProvider(network);
+    try {
+      if (appWallet) {
+        const maxPage = 4;
+        const _transactions: OnChainTransaction[] = [];
+        const blockchainProvider = getProvider(network);
 
-      for (let i = 1; i <= maxPage; i++) {
-        const transactions: TxInfo[] = await blockchainProvider.get(
-          `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
-        );
-
-        if (transactions.length === 0) {
-          break;
-        }
-
-        for (const tx of transactions) {
-          const txData = await blockchainProvider.get(
-            `/txs/${tx.tx_hash}/utxos`,
+        for (let i = 1; i <= maxPage; i++) {
+          const transactions: TxInfo[] = await blockchainProvider.get(
+            `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
           );
-          _transactions.push({
-            hash: tx.tx_hash,
-            tx: tx,
-            inputs: txData.inputs,
-            outputs: txData.outputs,
-          });
-        }
-      }
 
-      setWalletTransactions(appWallet?.id, _transactions);
-      setWalletLastUpdated(appWallet?.id, Date.now());
+          if (transactions.length === 0) {
+            break;
+          }
+
+          for (const tx of transactions) {
+            const txData = await blockchainProvider.get(
+              `/txs/${tx.tx_hash}/utxos`,
+            );
+            _transactions.push({
+              hash: tx.tx_hash,
+              tx: tx,
+              inputs: txData.inputs,
+              outputs: txData.outputs,
+            });
+          }
+        }
+
+        if (_transactions.length > 0) {
+          setWalletTransactions(appWallet?.id, _transactions);
+        } else {
+          setWalletTransactions(appWallet?.id, []);
+        }
+        setWalletLastUpdated(appWallet?.id, Date.now());
+      }
+    } catch (error) {
+      if (appWallet) {
+        setWalletTransactions(appWallet?.id, []);
+        setWalletLastUpdated(appWallet?.id, Date.now());
+      }
     }
   }
 
@@ -93,7 +105,6 @@ export default function WalletDataLoader() {
           const assetInfo = await blockchainProvider.get(
             `/assets/${asset.unit}`,
           );
-          console.log("asset metadata", assetInfo);
           setWalletAssetMetadata(
             asset.unit,
             assetInfo?.metadata?.name ||
@@ -113,9 +124,12 @@ export default function WalletDataLoader() {
           );
         }
         setWalletAssets(walletAssets);
+      } else {
+        setWalletAssets([]);
       }
     } catch (error) {
-      console.error("Error looking up wallet assets:", error);
+      setWalletAssets([]);
+      setWalletAssetMetadata("", "", 0, "", "", "");
     }
   }
 
@@ -135,15 +149,9 @@ export default function WalletDataLoader() {
   }
 
   useEffect(() => {
-    if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
+    if (appWallet && prevWalletIdRef.current !== appWallet.id) {
       refreshWallet();
-    } else if (
-      appWallet &&
-      walletLastUpdated[appWallet?.id] &&
-      Date.now() - (walletLastUpdated[appWallet?.id] ?? 0) >
-        LAST_UPDATED_THRESHOLD
-    ) {
-      refreshWallet();
+      prevWalletIdRef.current = appWallet.id;
     }
   }, [appWallet]);
 
