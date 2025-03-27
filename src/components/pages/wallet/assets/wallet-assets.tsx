@@ -1,7 +1,9 @@
 import Button from "@/components/common/button";
 import CardUI from "@/components/common/card-content";
+import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -65,13 +67,22 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
       const quantity =
         Number(asset.quantity) / Math.pow(10, metadata?.decimals ?? 0);
       const ticker = metadata?.ticker;
+      const policyId = metadata?.policyId;
       return (
         <div
           key={asset.unit}
           className="flex w-full flex-row items-center justify-between"
         >
-          <div className="flex flex-row gap-3">
-            <h3 className="text-lg font-bold">{name}</h3>
+          <div>
+            <LinkCardanoscan
+              url={`tokenPolicy/${policyId}`}
+              className="ml-auto gap-1"
+            >
+              <div className="flex flex-row items-center gap-1">
+                <h3 className="text-lg font-bold">{name}</h3>
+                <ArrowUpRight className="h-4 w-4" />
+              </div>
+            </LinkCardanoscan>
           </div>
           <div className="flex flex-row gap-1">
             <p className="font-bold">{quantity}</p>

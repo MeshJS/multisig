@@ -97,14 +97,16 @@ export default function WalletDataLoader() {
             asset.unit,
             assetInfo?.metadata?.name ||
               assetInfo?.onchain_metadata?.name ||
+              assetInfo?.policyId ||
               asset.unit,
             assetInfo?.metadata?.decimals || 0,
             assetInfo?.metadata?.logo || "",
             assetInfo?.metadata?.ticker ||
-              assetInfo?.assetName?.ticker ||
+              assetInfo?.metadata?.name ||
               assetInfo?.onchain_metadata?.name ||
-              asset.unit ||
-              "",
+              assetInfo?.policyId ||
+              asset.unit,
+            assetInfo?.policy_id || "",
           );
         }
         setWalletAssets(walletAssets);
