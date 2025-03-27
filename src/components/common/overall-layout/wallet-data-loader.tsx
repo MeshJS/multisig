@@ -93,6 +93,7 @@ export default function WalletDataLoader() {
           const assetInfo = await blockchainProvider.get(
             `/assets/${asset.unit}`,
           );
+          console.log("asset metadata", assetInfo);
           setWalletAssetMetadata(
             asset.unit,
             assetInfo?.metadata?.name ||
@@ -100,7 +101,9 @@ export default function WalletDataLoader() {
               assetInfo?.policyId ||
               asset.unit,
             assetInfo?.metadata?.decimals || 0,
-            assetInfo?.metadata?.logo || "",
+            assetInfo?.metadata?.logo ||
+              assetInfo?.onchain_metadata?.image ||
+              "",
             assetInfo?.metadata?.ticker ||
               assetInfo?.metadata?.name ||
               assetInfo?.onchain_metadata?.name ||
