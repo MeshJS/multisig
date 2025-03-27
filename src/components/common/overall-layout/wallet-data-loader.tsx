@@ -101,11 +101,12 @@ export default function WalletDataLoader() {
             assetInfo?.metadata?.decimals || 0,
             assetInfo?.metadata?.logo || "",
             assetInfo?.metadata?.ticker ||
-              assetInfo?.onchain_metadata?.ticker ||
+              assetInfo?.assetName?.ticker ||
+              assetInfo?.onchain_metadata?.name ||
+              asset.unit ||
               "",
           );
         }
-        console.log("wallet assets", walletAssets, assets);
         setWalletAssets(walletAssets);
       }
     } catch (error) {
