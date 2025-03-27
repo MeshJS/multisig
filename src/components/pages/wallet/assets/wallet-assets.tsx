@@ -5,7 +5,7 @@ import type { Wallet } from "@/types/wallet";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
+export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const walletAssetMetadata = useWalletsStore(
@@ -97,7 +97,7 @@ export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
   }, [balance]);
 
   return (
-    <CardUI title="Balance" cardClassName="col">
+    <CardUI title="Assets" cardClassName="col">
       <div className="flex flex-col gap-4">
         {adaAmount}
         {nonAdaList}
