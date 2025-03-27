@@ -1,5 +1,5 @@
 import useAppWallet from "@/hooks/useAppWallet";
-import FullBalance from "./full-balance";
+import WalletAssets from "./wallet-assets";
 
 export default function PageTransactions() {
   const { appWallet } = useAppWallet();
@@ -9,7 +9,7 @@ export default function PageTransactions() {
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <FullBalance appWallet={appWallet} />
+        <WalletAssets appWallet={appWallet} />
       </div>
     </main>
   );
