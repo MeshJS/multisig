@@ -29,6 +29,7 @@ model Wallet {
   stakeCredentialHash String?
   type                String
   isArchived          Boolean  @default(false)
+  clarityOrgId        String?
 }
 
 model Transaction {
