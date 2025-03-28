@@ -3,6 +3,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -27,6 +28,7 @@ import VoteButton from "./proposal/voteButtton";
 export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
   const network = useSiteStore((state) => state.network);
   const [proposals, setProposals] = useState<ProposalMetadata[]>([]);
+  const [limit, setLimit] = useState(5);
 
   useEffect(() => {
     async function load() {
@@ -36,7 +38,6 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
         cert_index: string;
         governance_type: string;
       }[] = await blockchainProvider.get(`/governance/proposals`);
-      // console.log("proposals", proposals);
 
       const _proposals: ProposalMetadata[] = [];
       for (const proposal of proposals) {
@@ -58,6 +59,10 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
     load();
   }, []);
 
+  const handleViewMore = () => {
+    setLimit(limit + 5);
+  };
+
   return (
     <CardUI
       title="Proposals"
@@ -75,28 +80,41 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
       // }
       cardClassName="col-span-3"
     >
-      {proposals.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Authors</TableHead>
-              <TableHead>Abstract</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {proposals.map((proposal) => (
-              <ProposalRow
-                key={proposal.tx_hash}
-                proposal={proposal}
-                appWallet={appWallet}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <div className="flex flex-col gap-2">
+        {proposals.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Authors</TableHead>
+                <TableHead>Abstract</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {proposals
+                .slice(0)
+                .reverse()
+                .slice(0, limit)
+                .map((proposal) => (
+                  <ProposalRow
+                    key={proposal.tx_hash}
+                    proposal={proposal}
+                    appWallet={appWallet}
+                  />
+                ))}
+            </TableBody>
+          </Table>
+        )}
+        {proposals.length > limit && (
+          <div>
+            <Button variant="outline" onClick={handleViewMore}>
+              + View More
+            </Button>
+          </div>
+        )}
+      </div>
     </CardUI>
   );
 }
@@ -127,7 +145,10 @@ function ProposalRow({
         {proposal.governance_type.split("_").join(" ").toUpperCase()}
       </TableCell>
       <TableCell>
-        <VoteButton appWallet={appWallet} proposalId={proposal.tx_hash+"#"+proposal.cert_index} />
+        <VoteButton
+          appWallet={appWallet}
+          proposalId={proposal.tx_hash + "#" + proposal.cert_index}
+        />
       </TableCell>
     </TableRow>
   );
