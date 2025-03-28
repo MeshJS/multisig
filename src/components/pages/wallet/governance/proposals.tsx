@@ -108,10 +108,13 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
           </Table>
         )}
         {proposals.length > limit && (
-          <div>
+          <div className="flex flex-row items-center gap-2">
             <Button variant="outline" onClick={handleViewMore}>
               + View More
             </Button>
+            <p className="text-xs text-gray-500">
+              Showing {limit} of {proposals.length}
+            </p>
           </div>
         )}
       </div>
