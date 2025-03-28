@@ -10,20 +10,50 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, PlusIcon, TrashIcon } from "lucide-react";
 import Link from "next/link";
 import useAppWallet from "@/hooks/useAppWallet";
 import { api } from "@/utils/api";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+
+interface Option {
+  name: string;
+  description: string;
+}
 
 export default function CreateClarityActionPage() {
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [options, setOptions] = useState<Option[]>([
+    { name: "Yes", description: "" },
+    { name: "No", description: "" },
+  ]);
+  const [numWinners, setNumWinners] = useState(1);
+  const [votingOpensDate, setVotingOpensDate] = useState<number>(Date.now());
+  const [votingDeadline, setVotingDeadline] = useState<number>(
+    Date.now() + 7 * 24 * 60 * 60 * 1000,
+  ); // Default: 1 week from now
+
+  // Advanced settings
+  const [minWinningVotingPower, setMinWinningVotingPower] = useState(0);
+  const [winningPercentageThreshold, setWinningPercentageThreshold] =
+    useState(50);
+  const [allowMultipleVotes, setAllowMultipleVotes] = useState(false);
+  const [showVoteCount, setShowVoteCount] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Use the API hook outside of useEffect
   const { data: walletData, isLoading } = api.wallet.getWallet.useQuery(
     {
       walletId: appWallet?.id ?? "",
@@ -36,17 +66,56 @@ export default function CreateClarityActionPage() {
 
   const clarityOrgId = walletData?.clarityOrgId ?? null;
 
+  const handleAddOption = () => {
+    setOptions([...options, { name: "", description: "" }]);
+  };
+
+  const handleRemoveOption = (index: number) => {
+    if (options.length > 1) {
+      const newOptions = [...options];
+      newOptions.splice(index, 1);
+      setOptions(newOptions);
+    }
+  };
+
+  const handleOptionChange = (
+    index: number,
+    field: keyof Option,
+    value: string,
+  ) => {
+    const newOptions = [...options];
+    if (!newOptions[index]) return;
+    newOptions[index][field] = value;
+    setOptions(newOptions);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description || !clarityOrgId) return;
 
+    // Validate options
+    if (options.some((option) => !option.name.trim())) {
+      setError("All options must have a name");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Here you would implement the actual submission logic
-      // This could involve calling an API endpoint to create a new governance action
+      // TODO: HOOK UP CLARITY SDK HERE
+
       console.log("Creating new governance action:", {
         title,
         description,
+        options,
+        numWinners,
+        votingOpensDate,
+        votingDeadline,
+        advancedSettings: {
+          minWinningVotingPower,
+          winningPercentageThreshold,
+          allowMultipleVotes,
+          showVoteCount,
+        },
         clarityOrgId,
         walletId: appWallet?.id,
       });
@@ -109,32 +178,235 @@ export default function CreateClarityActionPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="title" className="text-sm font-medium">
-                Title
-              </label>
-              <Input
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter action title"
-                required
-              />
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="title" className="text-sm font-medium">
+                  Name
+                </label>
+                <Input
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Enter action name"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="description" className="text-sm font-medium">
+                  Description
+                </label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Enter action description"
+                  rows={5}
+                  required
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="description" className="text-sm font-medium">
-                Description
-              </label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter action description"
-                rows={5}
-                required
-              />
+            {/* Options */}
+            <div className="space-y-4">
+              <h3 className="text-md font-medium">Options</h3>
+              {options.map((option, index) => (
+                <div key={index} className="space-y-3 rounded-md border p-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">Option {index + 1}</h4>
+                    {options.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveOption(index)}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`option-name-${index}`}
+                      className="text-sm font-medium"
+                    >
+                      Name
+                    </label>
+                    <Input
+                      id={`option-name-${index}`}
+                      value={option.name}
+                      onChange={(e) =>
+                        handleOptionChange(index, "name", e.target.value)
+                      }
+                      placeholder="Option name"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`option-description-${index}`}
+                      className="text-sm font-medium"
+                    >
+                      Description
+                    </label>
+                    <Textarea
+                      id={`option-description-${index}`}
+                      value={option.description}
+                      onChange={(e) =>
+                        handleOptionChange(index, "description", e.target.value)
+                      }
+                      placeholder="Option description"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddOption}
+                className="w-full"
+              >
+                <PlusIcon className="mr-2 h-4 w-4" /> Add Option
+              </Button>
             </div>
+
+            {/* Voting Configuration */}
+            <div className="space-y-4">
+              <h3 className="text-md font-medium">Voting Configuration</h3>
+              <div className="space-y-2">
+                <label htmlFor="numWinners" className="text-sm font-medium">
+                  Number of Winners
+                </label>
+                <Input
+                  id="numWinners"
+                  type="number"
+                  min={1}
+                  max={options.length}
+                  value={numWinners}
+                  onChange={(e) => setNumWinners(parseInt(e.target.value))}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="votingOpensDate"
+                    className="text-sm font-medium"
+                  >
+                    Voting Opens Date
+                  </label>
+                  <Input
+                    id="votingOpensDate"
+                    type="datetime-local"
+                    value={new Date(votingOpensDate).toISOString().slice(0, 16)}
+                    onChange={(e) =>
+                      setVotingOpensDate(new Date(e.target.value).getTime())
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="votingDeadline"
+                    className="text-sm font-medium"
+                  >
+                    Voting Deadline
+                  </label>
+                  <Input
+                    id="votingDeadline"
+                    type="datetime-local"
+                    value={new Date(votingDeadline).toISOString().slice(0, 16)}
+                    onChange={(e) =>
+                      setVotingDeadline(new Date(e.target.value).getTime())
+                    }
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Advanced Settings */}
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="advanced-settings">
+                <AccordionTrigger>Advanced Settings</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="minWinningVotingPower"
+                        className="text-sm font-medium"
+                      >
+                        Minimum Winning Voting Power
+                      </label>
+                      <Input
+                        id="minWinningVotingPower"
+                        type="number"
+                        min={0}
+                        value={minWinningVotingPower}
+                        onChange={(e) =>
+                          setMinWinningVotingPower(parseInt(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="winningPercentageThreshold"
+                        className="text-sm font-medium"
+                      >
+                        Winning Percentage Threshold
+                      </label>
+                      <Input
+                        id="winningPercentageThreshold"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={winningPercentageThreshold}
+                        onChange={(e) =>
+                          setWinningPercentageThreshold(
+                            parseInt(e.target.value),
+                          )
+                        }
+                      />
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="allowMultipleVotes"
+                          checked={allowMultipleVotes}
+                          onCheckedChange={(checked) =>
+                            setAllowMultipleVotes(!!checked)
+                          }
+                        />
+                        <Label htmlFor="allowMultipleVotes">
+                          Allow voting on multiple submissions
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="showVoteCount"
+                          checked={showVoteCount}
+                          onCheckedChange={(checked) =>
+                            setShowVoteCount(!!checked)
+                          }
+                        />
+                        <Label htmlFor="showVoteCount">
+                          Show vote count during voting
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            {error && (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+                {error}
+              </div>
+            )}
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? "Creating..." : "Create Governance Action"}
