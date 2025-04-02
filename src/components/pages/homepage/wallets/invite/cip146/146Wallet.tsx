@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import MultiSigSelector from "./146MultiSigSelector";
-import { WalletConstructor, MetadataItem, getPubKeyHash, parseDerivationPath, pubKeyToAddr } from "./146sdk";
+import { WalletConstructor, MetadataItem, getPubKeyHash, parseDerivationPath, pubKeyToAddr } from "../../../../../../lib/helper/cip146/146sdk";
 
 interface WalletComponentProps {
   onSelectChildKeys: (childKeys: any[]) => void;
@@ -99,7 +99,7 @@ const WalletComponent: React.FC<WalletComponentProps> = ({
   }, [wallet, reRenderCounter]);
 
   return (
-    <div className="min-h-screen ">
+    <div className="">
       <Card className="mx-auto max-w-xl rounded-lg border border-slate-200 shadow">
         <CardHeader className="rounded-t-lg border-b border-slate-200 px-4 py-3">
           <CardTitle className="text-lg font-semibold">

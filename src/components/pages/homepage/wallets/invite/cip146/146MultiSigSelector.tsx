@@ -8,7 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { derivationPathToString, getPubKeyHash, KeyObject } from "./146sdk";
+import { derivationPathToString, getPubKeyHash, KeyObject } from "../../../../../../lib/helper/cip146/146sdk";
 
 interface MultiSigSelectorProps {
   wallet: { keyObjects: KeyObject[] };

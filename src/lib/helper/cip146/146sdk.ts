@@ -1,8 +1,6 @@
 import {
   Bip32PrivateKey,
   Bip32PublicKey,
-  EnterpriseAddress,
-  Address,
   Credential,
   BaseAddress,
 } from "@emurgo/cardano-serialization-lib-browser";

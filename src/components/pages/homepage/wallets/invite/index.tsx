@@ -15,7 +15,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
 import WalletComponent from "./cip146/146Wallet";
-import { getPubKeyHash, KeyObject, pubKeyToAddr } from "./cip146/146sdk";
+import { getPubKeyHash, KeyObject, pubKeyToAddr } from "../../../../../lib/helper/cip146/146sdk";
 import useUser from "@/hooks/useUser";
 
 export default function PageNewWalletInvite() {
@@ -61,7 +61,7 @@ export default function PageNewWalletInvite() {
     // Use the user's address if available, otherwise the computed parent address
     const addressToStore = user ? userAddress : parentAddress;
     if (!addressToStore) throw new Error("Address is undefined");
- 
+
     setLoading(true);
     updateNewWalletSigners({
       walletId: newWalletId!,
@@ -74,20 +74,29 @@ export default function PageNewWalletInvite() {
   }
 
   useEffect(() => {
-    let combined = `name:${signersName};\n`;
-    selectedKeys.forEach((key) => {
-      const pubKeyHash = key.publicKey ? getPubKeyHash(key.publicKey) : "N/A";
-      const keyIndex =
-        key.derivationPath.index !== undefined ? key.derivationPath.index : "";
-      combined += `key${keyIndex}:${pubKeyHash};\n`;
-    });
-    setSignerDescription(combined);
+    if (selectedKeys.length > 0) {
+      // Build a combined description from the wallet name and the selected keys (excluding the admin key at index 0)
+      let combined = `name:${signersName};\n`;
+      const keysToInclude = selectedKeys.slice(1, 4);
+      keysToInclude.forEach((key) => {
+        const pubKeyHash = key.publicKey ? getPubKeyHash(key.publicKey) : "N/A";
+        const keyRole =
+          key.derivationPath.role !== undefined ? key.derivationPath.role : "";
+        combined += `key${keyRole}:${pubKeyHash};\n`;
+      });
+      // Update the first entry in the signersDescriptions list
+      setSignerDescription(combined);
+    }
   }, [signersName, selectedKeys]);
 
   useEffect(() => {
     if (!user && selectedKeys.length > 0) {
       // Assume the first key is the parent key
-      const parentAddr = pubKeyToAddr(selectedKeys[1]!,selectedKeys[2]!, false); // false for Testnet, adjust as needed
+      const parentAddr = pubKeyToAddr(
+        selectedKeys[1]!,
+        selectedKeys[2]!,
+        false,
+      ); // false for Testnet, adjust as needed
       setParentAddress(parentAddr);
     }
   }, [user, selectedKeys]);
@@ -144,7 +153,6 @@ export default function PageNewWalletInvite() {
           </Card>
           <WalletComponent
             onSelectChildKeys={(childKeys) => {
-              console.log("Index received selected child keys:", childKeys);
               setSelectedKeys(childKeys);
             }}
           />

@@ -7,8 +7,8 @@ import {
   resolveScriptHashDRepId,
   serializeNativeScript,
 } from "@meshsdk/core";
-import { getDRepIds } from "@meshsdk/core-csl"; 
-//import { getDRepIds } from "@meshsdk/core-cst"; caused a built error
+//import { getDRepIds } from "@meshsdk/core-csl"; 
+import { getDRepIds } from "@meshsdk/core-cst";
 
 export function buildWallet(wallet: DbWallet, network: number) {
   const nativeScript = {
