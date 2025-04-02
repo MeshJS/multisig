@@ -71,6 +71,7 @@ export function getScript(
  */
 export class MultisigWallet {
   name: string;
+  description: string;
   keys: MultisigKey[];
   required: number;
   network: number;
@@ -78,6 +79,7 @@ export class MultisigWallet {
   constructor(
     name: string,
     keys: MultisigKey[],
+    description?: string,
     required?: number,
     network?: number,
   ) {
@@ -90,6 +92,7 @@ export class MultisigWallet {
     this.keys = [...filteredKeys].sort((a, b) =>
       a.keyHash.localeCompare(b.keyHash),
     );
+    this.description = description ? description : "";
     this.required = required ? required : 1;
     this.network = network ? network : 1;
   }
@@ -100,11 +103,11 @@ export class MultisigWallet {
    * @param role - The role of the keys to include in the script. (0 - payment, 2 - staking, 3 - dRep, 4,5) TD enum
    * @returns The multisig NativeScript.
    */
-  buildScript(role: number): NativeScript {
+  buildScript(role: number): NativeScript | undefined {
     // Filter keys by the given role
     const filteredKeys = this.keys.filter((key) => key.role === role);
     if (filteredKeys.length === 0) {
-      throw new Error(`No keys found for role ${role}`);
+      return undefined;
     }
     // Build the script using only the keys of the specified role
     let script = buildMultisigScript(filteredKeys, this.required);
@@ -114,9 +117,9 @@ export class MultisigWallet {
   getScript(): {
     address: string;
     scriptCbor: string | undefined;
-  }  {
+  } {
     return getScript(
-      this.buildScript(0),
+      this.buildScript(0)!,
       this.network,
       this.getStakeCredentialHash(),
     );
@@ -133,7 +136,7 @@ export class MultisigWallet {
     const stakeScript = this.buildScript(2);
     // Compute the stake credential hash by hashing the native script
     // using the resolveNativeScriptHash function from @meshsdk/core.
-    const stakeCredentialHash = resolveNativeScriptHash(stakeScript);
+    const stakeCredentialHash = resolveNativeScriptHash(stakeScript!);
     return stakeCredentialHash;
   }
 
@@ -155,11 +158,10 @@ export class MultisigWallet {
     );
 
     return {
-      json_metadata: {
-        name: this.name,
-        types: types,
-        participants: participants,
-      },
+      name: this.name,
+      description: this.description,
+      participants: participants,
+      types: types,
     };
   }
 }

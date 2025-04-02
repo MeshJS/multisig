@@ -30,6 +30,7 @@ import {
   MultisigKey,
 } from "@/lib/helper/cip146/multisigScriptSdk";
 import { useSiteStore } from "@/lib/zustand/site";
+import RegistrationButton from "./registrationButton";
 
 export default function PageNewWallet() {
   const router = useRouter();
@@ -352,6 +353,7 @@ export default function PageNewWallet() {
       const wallet = new MultisigWallet(
         name,
         keys,
+        description,
         numRequiredSigners,
         network,
       );
@@ -528,6 +530,9 @@ export default function PageNewWallet() {
             </Button>
           )}
         </div>
+        {MSWallet &&<div className="mt-4">
+          <RegistrationButton MSWallet={MSWallet} />
+        </div>}
       </div>
     </>
   );
