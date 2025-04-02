@@ -10,6 +10,7 @@ import {
 //import { getDRepIds } from "@meshsdk/core-csl"; 
 import { getDRepIds } from "@meshsdk/core-cst";
 
+
 export function buildWallet(wallet: DbWallet, network: number) {
   const nativeScript = {
     type: wallet.type ? wallet.type : "atLeast",

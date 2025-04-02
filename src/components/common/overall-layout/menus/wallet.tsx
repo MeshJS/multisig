@@ -1,4 +1,4 @@
-import { Info, List } from "lucide-react";
+import { Banknote, Info, List } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -11,11 +11,10 @@ export default function MenuWallet() {
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
   const { wallets } = useUserWallets();
   const { transactions } = usePendingTransactions();
-  if(!wallets)return;
+  if (!wallets) return;
   return (
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
       <div className="grid items-start">
-
         <MenuLink
           href={`${baseUrl}transactions`}
           className={
@@ -33,6 +32,15 @@ export default function MenuWallet() {
               </Badge>
             )}
           </div>
+        </MenuLink>
+        <MenuLink
+          href={`${baseUrl}assets`}
+          className={
+            router.pathname == "/wallets/[wallet]/assets" ? "text-white" : ""
+          }
+        >
+          <Banknote className="h-4 w-4" />
+          Assets
         </MenuLink>
         <MenuLink
           href={`${baseUrl}chat`}

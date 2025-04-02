@@ -3,12 +3,13 @@ import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { numberWithCommas } from "@/lib/strings";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { Wallet } from "@/types/wallet";
+import type { Wallet } from "@/types/wallet";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
+  const walletAssets = useWalletsStore((state) => state.walletAssets);
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
 
@@ -53,6 +54,10 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
     getBalance();
   }, [utxos]);
 
+  const nonAdaAssets = walletAssets?.filter(
+    (asset) => asset.unit !== "lovelace",
+  );
+
   return (
     <CardUI title="Balance" icon={`₳`}>
       <RowLabelInfo
@@ -60,6 +65,11 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         className="text-2xl font-bold"
       />
       <div>
+        {nonAdaAssets?.length > 0 && (
+          <p className="mb-2 text-sm text-muted-foreground">
+            + {nonAdaAssets.length} asset{nonAdaAssets.length > 1 ? "s" : ""}
+          </p>
+        )}
         {balance <= 0 && (
           <p className="mb-2 text-sm text-muted-foreground">
             Please deposit fund to this script address before continuing

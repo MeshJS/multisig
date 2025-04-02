@@ -87,8 +87,6 @@ export default function RootLayout({
   const pageIsPublic = publicRoutes.includes(router.pathname);
   const isLoggedIn = !!user;
 
-  
-
   return (
     <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       {isLoading && <Loading />}
@@ -127,7 +125,6 @@ export default function RootLayout({
             <button className="md:hidden" onClick={() => setMobileMenuOpen(true)}>
               <MenuIcon className="h-6 w-6" />
             </button>
-            
             {/* Wallet selection + breadcrumb row */}
             {isLoggedIn && (
               <div className="border-t border-border">
