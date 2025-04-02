@@ -344,7 +344,7 @@ export default function PageNewWallet() {
       return null;
     }
     try {
-      let keys: MultisigKey[] = keysHelper();
+      const keys: MultisigKey[] = keysHelper();
       const hasRole0 = keys.some((k) => k.role === 0 && k.keyHash !== "");
       if (!hasRole0) {
         console.warn("No valid role 0 key found. Skipping script generation.");

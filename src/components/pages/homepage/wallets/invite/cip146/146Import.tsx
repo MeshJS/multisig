@@ -1,4 +1,3 @@
-// src/components/pages/homepage/wallets/invite/cip146/146Import.tsx
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +84,6 @@ const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
       const bytesToHex = (bytes: Uint8Array): string =>
         bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
       const pubKeyHex = bytesToHex(dataBytes);
-
       // Validate the decoded key by parsing it with from_hex
       //const bip32Pub = Bip32PublicKey.from_hex(pubKeyHex);
  
@@ -93,7 +91,7 @@ const ImportComponent: React.FC<ImportProps> = ({ onImport }) => {
       setErrorMessage("");
     } catch (error) {
       console.error("Bech32 decoding error:", error);
-      setErrorMessage("Invalid Bech32 address: " + error);
+      setErrorMessage("Invalid Bech32 address: " );
     }
   };
 

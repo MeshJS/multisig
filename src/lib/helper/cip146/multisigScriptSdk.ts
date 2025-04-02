@@ -34,8 +34,8 @@ export function buildMultisigScript(
     a.keyHash.localeCompare(b.keyHash),
   );
   // Build individual sig scripts.
-  const sigScripts = sortedKeys.map((key) => ({
-    type: "sig" as "sig",
+  const sigScripts = sortedKeys.map((key): { type: "sig"; keyHash: string } => ({
+    type: "sig",
     keyHash: key.keyHash,
   }));
   // Create an "atLeast" multisig script.
@@ -110,8 +110,7 @@ export class MultisigWallet {
       return undefined;
     }
     // Build the script using only the keys of the specified role
-    let script = buildMultisigScript(filteredKeys, this.required);
-    return script;
+    return buildMultisigScript(filteredKeys, this.required);
   }
 
   getScript(): {

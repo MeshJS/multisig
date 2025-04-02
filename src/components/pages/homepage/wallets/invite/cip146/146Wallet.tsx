@@ -11,7 +11,7 @@ interface WalletComponentProps {
 }
 
 const WalletComponent: React.FC<WalletComponentProps> = ({
-  onSelectChildKeys = () => {},
+  onSelectChildKeys = () => { /* noop */ },
 }) => {
   const [wallet, setWallet] = useState<WalletConstructor | null>(null);
   const [mnemonicInput, setMnemonicInput] = useState<string>("");
