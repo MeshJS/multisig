@@ -18,8 +18,6 @@ export default function useAppWallet() {
     },
   );
 
-  console.log("setting app wallet");
-
   if (wallet) {
     return { appWallet: buildWallet(wallet, network), isLoading };
   }
