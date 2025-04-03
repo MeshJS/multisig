@@ -100,7 +100,7 @@ export default function TransactionCard({
       const discordId = discordIds?.[signerAddress];
       if (!discordId) return;
 
-      const response = await sendDiscordMessage(
+      await sendDiscordMessage(
         [discordId],
         `**REMINDER:** Your signature is needed for a transaction in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/transactions`,
       );
@@ -330,6 +330,14 @@ export default function TransactionCard({
     );
   }, [txJson, walletAssetMetadata]);
 
+  function handleRemindAll() {
+    appWallet?.signersAddresses.map((signerAddress) => {
+      if (!transaction.signedAddresses.includes(signerAddress)) {
+        sendReminder(signerAddress);
+      }
+    });
+  }
+
   if (!appWallet) return <></>;
   return (
     <Card className="self-start overflow-hidden">
@@ -445,7 +453,16 @@ export default function TransactionCard({
             </>
           )}
 
-          <div className="font-semibold">Signers</div>
+          <div className="flex items-center gap-2">
+            <div className="font-semibold">Signers</div>
+            <Button size="sm" variant="outline" onClick={handleRemindAll}>
+              <div className="flex flex-row items-center gap-1">
+                Remind All
+                <DiscordIcon />
+              </div>
+            </Button>
+          </div>
+
           <ul className="grid gap-3">
             {appWallet.signersAddresses.map((signerAddress, index) => {
               return (
@@ -478,13 +495,15 @@ export default function TransactionCard({
                                   ) && (
                                     <Button
                                       size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
+                                      variant="outline"
                                       onClick={() =>
                                         sendReminder(signerAddress)
                                       }
                                     >
-                                      <DiscordIcon />
+                                      <div className="flex flex-row items-center gap-1">
+                                        Remind
+                                        <DiscordIcon />
+                                      </div>
                                     </Button>
                                   )}
                               </TooltipTrigger>

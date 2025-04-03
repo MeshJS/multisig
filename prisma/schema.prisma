@@ -15,7 +15,7 @@ model User {
   address      String  @unique
   stakeAddress String  @unique
   nostrKey     String  @unique
-  discordId    String?
+  discordId    String  @default("")
 }
 
 model Wallet {

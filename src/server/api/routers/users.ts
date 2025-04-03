@@ -55,7 +55,7 @@ export const userRouter = createTRPCRouter({
           address: input.address,
         },
         data: {
-          discordId: null,
+          discordId: "",
         },
       });
     }),
