@@ -45,6 +45,7 @@ export default function WalletDataLoader() {
   }
 
   async function getTransactionsOnChain() {
+
     try {
       if (appWallet) {
         const maxPage = 4;
@@ -152,6 +153,7 @@ export default function WalletDataLoader() {
     if (appWallet && prevWalletIdRef.current !== appWallet.id) {
       refreshWallet();
       prevWalletIdRef.current = appWallet.id;
+
     }
   }, [appWallet]);
 

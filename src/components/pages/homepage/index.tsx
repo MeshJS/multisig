@@ -4,14 +4,13 @@ import Link from "next/link";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/router";
 import { api } from "@/utils/api";
-import CardUI from "@/components/common/card-content";
-import RowLabelInfo from "@/components/common/row-label-info";
 import Globe from "./globe";
+import PageNewWalletInvite from "./wallets/invite";
 
 export function PageHomepage() {
   const { user } = useUser();
   const router = useRouter();
-  const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
+  const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
@@ -22,45 +21,41 @@ export function PageHomepage() {
   );
 
   return (
-    <div className="h-screen w-full lg:grid lg:grid-cols-3">
-      <div className="flex items-center justify-center py-12">
-        <div className="mx-auto grid max-w-[500px] gap-6">
-          <div className="grid gap-2 text-center">
-            <h1 className="text-3xl font-bold">Multisig Platform</h1>
-            <p className="text-balance text-muted-foreground">
-              Secure your treasury and participant in governance, as a team with
-              multi-signature
-            </p>
-            {newWallet && (
-              <CardUI
-                title={`Invited as signer`}
-                description={`You have been invited to join this wallet as a signer, connect your wallet to accept the invitation`}
-                cardClassName="text-left mt-4"
-              >
-                <RowLabelInfo label="Name" value={newWallet.name} />
-                <RowLabelInfo label="About" value={newWallet.description} />
-              </CardUI>
-            )}
-          </div>
-          <div className="flex items-center justify-center">
-            {user ? (
-              <div className="flex gap-2">
-                <Button size="sm" asChild>
-                  <Link href="/wallets/new-wallet">New Wallet</Link>
-                </Button>
-                <Button size="sm" asChild>
-                  <Link href="/wallets">Your Wallets</Link>
-                </Button>
-              </div>
-            ) : (
-              <ConnectWallet />
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="col-span-2">
+    <div className="relative min-h-screen">
+      {/* Background Globe */}
+      <div className="absolute inset-0 -z-10 flex items-center justify-center">
         <Globe />
       </div>
+
+      {newWallet ? (
+        /* Render the invite page if a new wallet is found */
+        <PageNewWalletInvite />
+      ) : (
+        /* Otherwise show the homepage */
+        <div className="container mx-auto px-4 py-8 relative z-10 flex flex-col items-center justify-center">
+          <div className="mx-auto grid max-w-[500px] gap-6 text-center">
+            <h1 className="text-3xl font-bold">Multisig Platform</h1>
+            <p className="text-balance text-muted-foreground">
+              Secure your treasury and participate in governance as a team with multi-signature
+            </p>
+
+            <div>
+              {user ? (
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" asChild>
+                    <Link href="/wallets/new-wallet">New Wallet</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link href="/wallets">Your Wallets</Link>
+                  </Button>
+                </div>
+              ) : (
+                <ConnectWallet />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
