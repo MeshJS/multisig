@@ -46,4 +46,64 @@ export const userRouter = createTRPCRouter({
         },
       });
     }),
+
+  unlinkDiscord: publicProcedure
+    .input(z.object({ address: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.user.update({
+        where: {
+          address: input.address,
+        },
+        data: {
+          discordId: "",
+        },
+      });
+    }),
+
+  getDiscordIds: publicProcedure
+    .input(
+      z.object({
+        addresses: z.array(z.string()),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const users = await ctx.db.user.findMany({
+        where: {
+          address: {
+            in: input.addresses,
+          },
+        },
+        select: {
+          address: true,
+          discordId: true,
+        },
+      });
+
+      // Return as a map of address -> discordId
+      return users.reduce(
+        (acc, user) => {
+          if (user.discordId) {
+            acc[user.address] = user.discordId;
+          }
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+    }),
+
+  getUserDiscordId: publicProcedure
+    .input(z.object({ address: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = await ctx.db.user.findUnique({
+        where: {
+          address: input.address,
+        },
+      });
+
+      if (user) {
+        return user.discordId;
+      }
+
+      return null;
+    }),
 });

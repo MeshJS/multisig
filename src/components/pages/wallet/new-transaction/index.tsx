@@ -2,7 +2,14 @@ import SectionTitle from "@/components/common/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
-import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
+import {
+  keepRelevant,
+  Quantity,
+  resolveScriptHash,
+  serializeRewardAddress,
+  Unit,
+  UTxO,
+} from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -33,6 +40,8 @@ import { ToastAction } from "@/components/ui/toast";
 import { toast, useToast } from "@/hooks/use-toast";
 import UTxOSelector from "./utxoSelector";
 import { useRouter } from "next/router";
+import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
+import { api } from "@/utils/api";
 import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { cn } from "@/lib/utils";
@@ -63,6 +72,13 @@ export default function PageNewTransaction() {
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
+
+  const { data: discordData } = api.user.getDiscordIds.useQuery({
+    addresses: appWallet?.signersAddresses ?? [],
+  });
+
+  // Extract Discord IDs
+  const discordIds = Object.values(discordData ?? {}).filter(Boolean);
 
   useEffect(() => {
     reset();
@@ -184,6 +200,12 @@ export default function PageNewTransaction() {
           metadata.length > 0 ? { label: "674", value: metadata } : undefined,
       });
       reset();
+
+      // send discord message
+      await sendDiscordMessage(
+        discordIds,
+        `**NEW MULTISIG TRANSACTION:** A new Multisig transaction has been created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
+      );
 
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
