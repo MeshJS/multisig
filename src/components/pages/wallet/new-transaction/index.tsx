@@ -141,7 +141,6 @@ export default function PageNewTransaction() {
         selectedUtxos = keepRelevant(assetMap, utxos);
       }
 
-
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
         return;
@@ -465,7 +464,7 @@ function RecipientRow({
   const appWalletAssets = useMemo(() => {
     return walletAssets.map((asset) => {
       return {
-        policyId: asset.unit,
+        unit: asset.unit,
         assetName: walletAssetMetadata[asset.unit]?.assetName,
         decimals: walletAssetMetadata[asset.unit]?.decimals ?? 0,
         amount: asset.quantity,
@@ -478,11 +477,8 @@ function RecipientRow({
       <>
         {appWalletAssets.map((appWalletAssets) => {
           return (
-            <option
-              key={appWalletAssets.policyId}
-              value={appWalletAssets.policyId}
-            >
-              {appWalletAssets.policyId === "lovelace"
+            <option key={appWalletAssets.unit} value={appWalletAssets.unit}>
+              {appWalletAssets.unit === "lovelace"
                 ? "ADA"
                 : appWalletAssets.assetName}
             </option>

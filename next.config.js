@@ -22,6 +22,10 @@ const config = {
         protocol: "https",
         hostname: "*.discordapp.com",
       },
+      {
+        protocol: "https",
+        hostname: "ipfs.io",
+      },
     ],
   },
   webpack: function (config, options) {

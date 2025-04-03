@@ -34,13 +34,13 @@ export default function MenuWallet() {
           </div>
         </MenuLink>
         <MenuLink
-          href={`${baseUrl}balance`}
+          href={`${baseUrl}assets`}
           className={
-            router.pathname == "/wallets/[wallet]/balance" ? "text-white" : ""
+            router.pathname == "/wallets/[wallet]/assets" ? "text-white" : ""
           }
         >
           <Banknote className="h-4 w-4" />
-          Balance
+          Assets
         </MenuLink>
         <MenuLink
           href={`${baseUrl}chat`}
