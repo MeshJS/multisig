@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useMemo } from "react";
 import DiscordIcon from "@/components/common/discordIcon";
+import DiscordImage from "@/components/common/discordImage";
 
 export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);
@@ -290,16 +291,7 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
             )}
           </>
           {discordId ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <DiscordIcon />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Discord connected</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <DiscordImage discordId={discordId} />
           ) : !isLoadingDiscordIds && userAddress && address == userAddress ? (
             <Button size="sm" onClick={() => handleConnectDiscord()}>
               Connect Discord
