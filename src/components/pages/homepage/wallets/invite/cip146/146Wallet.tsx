@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import MultiSigSelector from "./146MultiSigSelector";
-import { WalletConstructor, MetadataItem, getPubKeyHash, parseDerivationPath, pubKeyToAddr } from "../../../../../../lib/helper/cip146/146sdk";
+import { WalletConstructor, MetadataItem, getPubKeyHash, parseDerivationPath, pubKeyToAddr } from "@/lib/helper/cip146/146sdk";
 
 interface WalletComponentProps {
   onSelectChildKeys: (childKeys: any[]) => void;
