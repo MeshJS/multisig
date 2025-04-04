@@ -243,11 +243,11 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateWalletClarityOrgId: publicProcedure
+  updateWalletClarityApiKey: publicProcedure
     .input(
       z.object({
         walletId: z.string(),
-        clarityOrgId: z.string(),
+        clarityApiKey: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -256,7 +256,7 @@ export const walletRouter = createTRPCRouter({
           id: input.walletId,
         },
         data: {
-          clarityOrgId: input.clarityOrgId,
+          clarityApiKey: input.clarityApiKey,
         },
       });
     }),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +23,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { v4 as uuidv4 } from "uuid";
+import { toast } from "@/hooks/use-toast";
 
 interface Option {
   name: string;
   description: string;
+  id: string;
 }
 
 export default function CreateClarityActionPage() {
@@ -35,8 +38,8 @@ export default function CreateClarityActionPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [options, setOptions] = useState<Option[]>([
-    { name: "Yes", description: "" },
-    { name: "No", description: "" },
+    { name: "Yes", description: "", id: uuidv4() },
+    { name: "No", description: "", id: uuidv4() },
   ]);
   const [numWinners, setNumWinners] = useState(1);
   const [votingOpensDate, setVotingOpensDate] = useState<number>(Date.now());
@@ -64,10 +67,9 @@ export default function CreateClarityActionPage() {
     },
   );
 
-  const clarityOrgId = walletData?.clarityOrgId ?? null;
-
   const handleAddOption = () => {
-    setOptions([...options, { name: "", description: "" }]);
+    const id = uuidv4();
+    setOptions([...options, { name: "", description: "", id: id }]);
   };
 
   const handleRemoveOption = (index: number) => {
@@ -91,7 +93,7 @@ export default function CreateClarityActionPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !description || !clarityOrgId) return;
+    if (!title || !description || !appWallet?.clarityApiKey) return;
 
     // Validate options
     if (options.some((option) => !option.name.trim())) {
@@ -101,24 +103,79 @@ export default function CreateClarityActionPage() {
 
     setLoading(true);
     try {
-      // TODO: HOOK UP CLARITY SDK HERE
-
-      console.log("Creating new governance action:", {
-        title,
-        description,
-        options,
-        numWinners,
-        votingOpensDate,
-        votingDeadline,
-        advancedSettings: {
-          minWinningVotingPower,
-          winningPercentageThreshold,
-          allowMultipleVotes,
-          showVoteCount,
-        },
-        clarityOrgId,
-        walletId: appWallet?.id,
+      const optionsObject: {
+        [id: string]: Option;
+      } = {};
+      options.map((option) => {
+        optionsObject[option.id] = {
+          name: option.name,
+          description: option.description,
+          id: option.id,
+        };
       });
+
+      // Make API call to Clarity
+      const response = await fetch(
+        "http://localhost:8080/govActions/snapshots/createSnapshotProposal",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${appWallet?.clarityApiKey ?? ""}`, // Replace with actual token
+          },
+          body: JSON.stringify({
+            snapshotProposalMetadata: {
+              creator: appWallet?.address,
+              name: title,
+              description,
+              options: optionsObject,
+              daoId: "Justin'sSweetDAO",
+              votingOpensDate,
+              votingDeadline,
+              limitVoteOneSubmission: !allowMultipleVotes,
+              showVoteCount,
+              shuffleSubmissions: false,
+              votingPowerCalculation: "c1f20102-d726-4a49-8074-d829da7bdc0d",
+              quorum: {
+                numberOfWinners: numWinners,
+                winningPercentageThreshold,
+                winningVoteThreshold: minWinningVotingPower,
+              },
+            },
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        toast({
+          title: "Error",
+          description: errorData?.message || `API error: ${response.status}`,
+          duration: 5000,
+        });
+        return;
+      }
+
+      toast({
+        title: "Governance action created",
+        description:
+          "Your governance action has been created on the Clarity Platform.",
+        duration: 5000,
+      });
+
+      setTitle("");
+      setDescription("");
+      setOptions([
+        { name: "Yes", description: "", id: uuidv4() },
+        { name: "No", description: "", id: uuidv4() },
+      ]);
+      setNumWinners(1);
+      setVotingOpensDate(Date.now());
+      setVotingDeadline(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      setMinWinningVotingPower(0);
+      setWinningPercentageThreshold(50);
+      setAllowMultipleVotes(false);
+      setShowVoteCount(false);
 
       // After successful submission, redirect back to the governance page
       router.push(`/wallets/${appWallet?.id}/governance`);
@@ -137,7 +194,7 @@ export default function CreateClarityActionPage() {
     );
   }
 
-  if (error || !clarityOrgId) {
+  if (error || !appWallet?.clarityApiKey) {
     return (
       <div className="flex h-full items-center justify-center">
         <Card>
