@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,11 +26,31 @@ import { Separator } from "@/components/ui/separator";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "@/hooks/use-toast";
 import { useSiteStore } from "@/lib/zustand/site";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Option {
   name: string;
   description: string;
   id: string;
+}
+
+interface VotingPowerCalculation {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  assets?: Array<{
+    id: string;
+    scale: string;
+    type: string;
+    weight: number;
+  }>;
 }
 
 export default function CreateClarityActionPage() {
@@ -54,6 +74,11 @@ export default function CreateClarityActionPage() {
     useState(50);
   const [allowMultipleVotes, setAllowMultipleVotes] = useState(false);
   const [showVoteCount, setShowVoteCount] = useState(false);
+  const [votingPowerCalculations, setVotingPowerCalculations] = useState<
+    Record<string, VotingPowerCalculation>
+  >({});
+  const [selectedVotingPowerCalculation, setSelectedVotingPowerCalculation] =
+    useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +93,41 @@ export default function CreateClarityActionPage() {
       enabled: !!appWallet?.id && !!appWallet?.signersAddresses[0],
     },
   );
+
+  // Fetch voting power calculations
+  useEffect(() => {
+    const fetchVotingPowerCalculations = async () => {
+      if (!appWallet?.clarityApiKey) return;
+
+      try {
+        const response = await fetch(
+          `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/dao/votingPowerCalculations`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${appWallet.clarityApiKey}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          console.error(
+            "Failed to fetch voting power calculations:",
+            response.status,
+          );
+          return;
+        }
+
+        const data = await response.json();
+        setVotingPowerCalculations(data);
+      } catch (error) {
+        console.error("Error fetching voting power calculations:", error);
+      }
+    };
+
+    fetchVotingPowerCalculations();
+  }, [appWallet?.clarityApiKey, network]);
 
   const handleAddOption = () => {
     const id = uuidv4();
@@ -95,7 +155,13 @@ export default function CreateClarityActionPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !description || !appWallet?.clarityApiKey) return;
+    if (
+      !title ||
+      !description ||
+      !appWallet?.clarityApiKey ||
+      !selectedVotingPowerCalculation
+    )
+      return;
 
     // Validate options
     if (options.some((option) => !option.name.trim())) {
@@ -143,7 +209,7 @@ export default function CreateClarityActionPage() {
               showVoteCount,
               shuffleSubmissions: false,
               daoId: "Clarity",
-              votingPowerCalculation: "91d3f39e-a439-4e36-904f-06b9fa424a97",
+              votingPowerCalculation: selectedVotingPowerCalculation,
               quorum: {
                 numberOfWinners: numWinners,
                 winningPercentageThreshold,
@@ -340,6 +406,43 @@ export default function CreateClarityActionPage() {
             {/* Voting Configuration */}
             <div className="space-y-4">
               <h3 className="text-md font-medium">Voting Configuration</h3>
+
+              {/* Voting Power Calculation Dropdown */}
+              <div className="space-y-2">
+                <label
+                  htmlFor="votingPowerCalculation"
+                  className="text-sm font-medium"
+                >
+                  Voting Power Calculation
+                </label>
+                <Select
+                  value={selectedVotingPowerCalculation}
+                  onValueChange={setSelectedVotingPowerCalculation}
+                >
+                  <SelectTrigger id="votingPowerCalculation" className="w-full">
+                    <SelectValue placeholder="Select voting power calculation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(votingPowerCalculations).map(
+                      ([id, calc]) => (
+                        <SelectItem key={id} value={id}>
+                          {calc.name}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+                {selectedVotingPowerCalculation &&
+                  votingPowerCalculations[selectedVotingPowerCalculation] && (
+                    <p className="text-xs text-muted-foreground">
+                      {
+                        votingPowerCalculations[selectedVotingPowerCalculation]
+                          .description
+                      }
+                    </p>
+                  )}
+              </div>
+
               <div className="space-y-2">
                 <label htmlFor="numWinners" className="text-sm font-medium">
                   Number of Winners
