@@ -105,7 +105,6 @@ export default function WalletDataLoader() {
               "",
           );
         }
-        console.log("wallet assets", walletAssets, assets);
         setWalletAssets(walletAssets);
       }
     } catch (error) {

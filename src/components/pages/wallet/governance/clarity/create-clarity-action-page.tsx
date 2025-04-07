@@ -239,12 +239,6 @@ export default function CreateClarityActionPage() {
         };
       });
 
-      console.log(
-        "making request to",
-        `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/govActions/snapshots/createSnapshotProposal`,
-        "api key",
-        appWallet?.clarityApiKey,
-      );
       // Make API call to Clarity
       const response = await fetch(
         `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/govActions/snapshots/createSnapshotProposal`,
@@ -264,7 +258,6 @@ export default function CreateClarityActionPage() {
               votingDeadline,
               limitVoteOneSubmission: !allowMultipleVotes,
               showVoteCount,
-              daoId: "Clarity",
               shuffleSubmissions: false,
               votingPowerCalculation: selectedVotingPowerCalculation,
               quorum: {
