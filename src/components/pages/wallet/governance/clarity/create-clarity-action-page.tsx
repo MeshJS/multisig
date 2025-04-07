@@ -53,6 +53,37 @@ interface VotingPowerCalculation {
   }>;
 }
 
+function formatDateForLocalInput(timestamp: number): string {
+  const date = new Date(timestamp);
+  // Format to YYYY-MM-DDThh:mm format in local time
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseLocalDateToUTC(dateString: string): number {
+  // Parse the local datetime string and convert to UTC timestamp
+  const [datePart, timePart] = dateString.split("T");
+  const [year, month, day] = datePart?.split("-").map(Number) ?? [];
+  const [hours, minutes] = timePart?.split(":").map(Number) ?? [];
+
+  // Create date in local time zone
+  const localDate = new Date(
+    year ?? 0,
+    (month ?? 0) - 1,
+    day ?? 0,
+    hours ?? 0,
+    minutes ?? 0,
+  );
+
+  // Return the UTC timestamp
+  return localDate.getTime();
+}
+
 export default function CreateClarityActionPage() {
   const router = useRouter();
   const { appWallet } = useAppWallet();
@@ -207,6 +238,7 @@ export default function CreateClarityActionPage() {
               votingDeadline,
               limitVoteOneSubmission: !allowMultipleVotes,
               showVoteCount,
+              daoId: "Clarity",
               shuffleSubmissions: false,
               votingPowerCalculation: selectedVotingPowerCalculation,
               quorum: {
@@ -467,9 +499,9 @@ export default function CreateClarityActionPage() {
                   <Input
                     id="votingOpensDate"
                     type="datetime-local"
-                    value={new Date(votingOpensDate).toISOString().slice(0, 16)}
+                    value={formatDateForLocalInput(votingOpensDate)}
                     onChange={(e) =>
-                      setVotingOpensDate(new Date(e.target.value).getTime())
+                      setVotingOpensDate(parseLocalDateToUTC(e.target.value))
                     }
                     required
                   />
@@ -484,9 +516,9 @@ export default function CreateClarityActionPage() {
                   <Input
                     id="votingDeadline"
                     type="datetime-local"
-                    value={new Date(votingDeadline).toISOString().slice(0, 16)}
+                    value={formatDateForLocalInput(votingDeadline)}
                     onChange={(e) =>
-                      setVotingDeadline(new Date(e.target.value).getTime())
+                      setVotingDeadline(parseLocalDateToUTC(e.target.value))
                     }
                     required
                   />
