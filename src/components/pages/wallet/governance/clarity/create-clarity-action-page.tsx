@@ -186,13 +186,39 @@ export default function CreateClarityActionPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !title ||
-      !description ||
-      !appWallet?.clarityApiKey ||
-      !selectedVotingPowerCalculation
-    )
+    if (!title) {
+      toast({
+        title: "Title is required",
+        description: "Please enter a title.",
+        variant: "destructive",
+      });
       return;
+    }
+    if (!description) {
+      toast({
+        title: "Description is required",
+        description: "Please enter a description.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!appWallet?.clarityApiKey) {
+      toast({
+        title: "Clarity API key is required",
+        description:
+          "Make sure your Clarity API Key is linked from your Governance Page of the Mesh Multisig App.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!selectedVotingPowerCalculation) {
+      toast({
+        title: "Voting power calculation is required",
+        description: "Please select a voting power calculation.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Validate options
     if (options.some((option) => !option.name.trim())) {
