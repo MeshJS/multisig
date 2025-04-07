@@ -208,7 +208,6 @@ export default function CreateClarityActionPage() {
               limitVoteOneSubmission: !allowMultipleVotes,
               showVoteCount,
               shuffleSubmissions: false,
-              daoId: "Clarity",
               votingPowerCalculation: selectedVotingPowerCalculation,
               quorum: {
                 numberOfWinners: numWinners,
