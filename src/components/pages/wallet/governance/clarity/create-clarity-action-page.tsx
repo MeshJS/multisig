@@ -102,7 +102,7 @@ export default function CreateClarityActionPage() {
   // Advanced settings
   const [minWinningVotingPower, setMinWinningVotingPower] = useState(0);
   const [winningPercentageThreshold, setWinningPercentageThreshold] =
-    useState(50);
+    useState(0);
   const [allowMultipleVotes, setAllowMultipleVotes] = useState(false);
   const [showVoteCount, setShowVoteCount] = useState(false);
   const [votingPowerCalculations, setVotingPowerCalculations] = useState<
@@ -474,20 +474,6 @@ export default function CreateClarityActionPage() {
                   )}
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="numWinners" className="text-sm font-medium">
-                  Number of Winners
-                </label>
-                <Input
-                  id="numWinners"
-                  type="number"
-                  min={1}
-                  max={options.length}
-                  value={numWinners}
-                  onChange={(e) => setNumWinners(parseInt(e.target.value))}
-                  required
-                />
-              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label
@@ -532,6 +518,25 @@ export default function CreateClarityActionPage() {
                 <AccordionTrigger>Advanced Settings</AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="numWinners"
+                        className="text-sm font-medium"
+                      >
+                        Number of Winners
+                      </label>
+                      <Input
+                        id="numWinners"
+                        type="number"
+                        min={1}
+                        max={options.length}
+                        value={numWinners}
+                        onChange={(e) =>
+                          setNumWinners(parseInt(e.target.value))
+                        }
+                        required
+                      />
+                    </div>
                     <div className="space-y-2">
                       <label
                         htmlFor="minWinningVotingPower"
