@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "@/hooks/use-toast";
+import { useSiteStore } from "@/lib/zustand/site";
 
 interface Option {
   name: string;
@@ -56,6 +57,7 @@ export default function CreateClarityActionPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const network = useSiteStore((state) => state.network);
 
   const { data: walletData, isLoading } = api.wallet.getWallet.useQuery(
     {
@@ -114,9 +116,15 @@ export default function CreateClarityActionPage() {
         };
       });
 
+      console.log(
+        "making request to",
+        `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/govActions/snapshots/createSnapshotProposal`,
+        "api key",
+        appWallet?.clarityApiKey,
+      );
       // Make API call to Clarity
       const response = await fetch(
-        "http://localhost:8080/govActions/snapshots/createSnapshotProposal",
+        `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/govActions/snapshots/createSnapshotProposal`,
         {
           method: "POST",
           headers: {
@@ -129,13 +137,13 @@ export default function CreateClarityActionPage() {
               name: title,
               description,
               options: optionsObject,
-              daoId: "Justin'sSweetDAO",
               votingOpensDate,
               votingDeadline,
               limitVoteOneSubmission: !allowMultipleVotes,
               showVoteCount,
               shuffleSubmissions: false,
-              votingPowerCalculation: "c1f20102-d726-4a49-8074-d829da7bdc0d",
+              daoId: "Clarity",
+              votingPowerCalculation: "91d3f39e-a439-4e36-904f-06b9fa424a97",
               quorum: {
                 numberOfWinners: numWinners,
                 winningPercentageThreshold,
