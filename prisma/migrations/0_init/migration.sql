@@ -62,4 +62,3 @@ CREATE UNIQUE INDEX "User_stakeAddress_key" ON "User"("stakeAddress");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_nostrKey_key" ON "User"("nostrKey");
-
