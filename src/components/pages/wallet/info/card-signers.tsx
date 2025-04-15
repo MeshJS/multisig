@@ -29,6 +29,9 @@ import { useState } from "react";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useMemo } from "react";
+import DiscordIcon from "@/components/common/discordIcon";
+import DiscordImage from "@/components/common/discordImage";
 
 export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);
@@ -52,9 +55,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => setShowEdit(!showEdit)}
-            >
+            <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
               {showEdit ? "Close Edit" : "Edit Signer Descriptions"}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -63,10 +64,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
       cardClassName="col-span-2"
     >
       {showEdit ? (
-        <EditSigners
-          appWallet={appWallet}
-          setShowEdit={setShowEdit}
-        />
+        <EditSigners appWallet={appWallet} setShowEdit={setShowEdit} />
       ) : (
         <ShowSigners appWallet={appWallet} />
       )}
@@ -205,29 +203,49 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
       },
     });
 
-  async function signVerify() {
-    if (!userAddress) throw new Error("User address not found");
-    if (!connected) throw new Error("Wallet not connected");
+  const { data: discordIds, isLoading: isLoadingDiscordIds } =
+    api.user.getDiscordIds.useQuery({
+      addresses: appWallet.signersAddresses,
+    });
 
-    const userRewardAddress = (await wallet.getRewardAddresses())[0];
-    const nonce = generateNonce("Verify this wallet: ");
-    const signature = await wallet.signData(nonce, userRewardAddress);
-    const result = await checkSignature(nonce, signature);
+  const signersList = useMemo(() => {
+    async function signVerify() {
+      if (!userAddress) throw new Error("User address not found");
+      if (!connected) throw new Error("Wallet not connected");
 
-    if (result) {
-      const _verified = appWallet.verified;
-      _verified.push(userAddress);
+      const userRewardAddress = (await wallet.getRewardAddresses())[0];
+      const nonce = generateNonce("Verify this wallet: ");
+      const signature = await wallet.signData(nonce, userRewardAddress);
+      const result = await checkSignature(nonce, signature);
 
-      updateWalletVerifiedList({
-        walletId: appWallet.id,
-        verified: _verified,
-      });
+      if (result) {
+        const _verified = appWallet.verified;
+        _verified.push(userAddress);
+
+        updateWalletVerifiedList({
+          walletId: appWallet.id,
+          verified: _verified,
+        });
+      }
     }
-  }
 
-  return (
-    <>
-      {appWallet.signersAddresses.map((address, index) => (
+    function handleConnectDiscord() {
+      // Discord OAuth2 URL with required scopes
+      const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
+      const redirectUri = encodeURIComponent(
+        `${window.location.origin}/api/auth/discord/callback`,
+      );
+      const scope = encodeURIComponent("identify");
+      const state = encodeURIComponent(userAddress || "");
+
+      const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
+
+      window.location.href = url;
+    }
+
+    return appWallet.signersAddresses.map((address, index) => {
+      const discordId = discordIds?.[address];
+      return (
         <RowLabelInfo
           label={
             appWallet.signersDescriptions[index] &&
@@ -272,8 +290,36 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
               </>
             )}
           </>
+          {discordId ? (
+            <DiscordImage discordId={discordId} />
+          ) : !isLoadingDiscordIds && userAddress && address == userAddress ? (
+            <Button size="sm" onClick={() => handleConnectDiscord()}>
+              Connect Discord
+            </Button>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger className="text-gray-500">
+                  <DiscordIcon />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Discord not connected</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </RowLabelInfo>
-      ))}
-    </>
-  );
+      );
+    });
+  }, [
+    appWallet,
+    discordIds,
+    userAddress,
+    connected,
+    wallet,
+    updateWalletVerifiedList,
+    isLoadingDiscordIds,
+  ]);
+
+  return <>{signersList}</>;
 }

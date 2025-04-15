@@ -20,6 +20,10 @@ const config = {
       },
       {
         protocol: "https",
+        hostname: "*.discordapp.com",
+      },
+      {
+        protocol: "https",
         hostname: "ipfs.io",
       },
     ],
