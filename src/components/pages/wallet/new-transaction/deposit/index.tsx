@@ -374,7 +374,7 @@ function UTxORow({
   const userWalletAssets = useMemo(() => {
     return userAssets.map((asset) => {
       return {
-        policyId: asset.unit,
+        unit: asset.unit,
         assetName: userAssetMetadata[asset.unit]?.assetName,
         decimals: userAssetMetadata[asset.unit]?.decimals ?? 0,
         amount: asset.quantity,
@@ -387,11 +387,8 @@ function UTxORow({
       <>
         {userWalletAssets.map((userWalletAsset) => {
           return (
-            <option
-              key={userWalletAsset.policyId}
-              value={userWalletAsset.policyId}
-            >
-              {userWalletAsset.policyId === "lovelace"
+            <option key={userWalletAsset.unit} value={userWalletAsset.unit}>
+              {userWalletAsset.unit === "lovelace"
                 ? "ADA"
                 : userWalletAsset.assetName}
             </option>

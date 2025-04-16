@@ -1,11 +1,15 @@
 import Button from "@/components/common/button";
 import CardUI from "@/components/common/card-content";
+import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import IPFSImage from "@/components/common/ipfs-image";
 
-export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
+export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const walletAssetMetadata = useWalletsStore(
@@ -65,13 +69,59 @@ export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
       const quantity =
         Number(asset.quantity) / Math.pow(10, metadata?.decimals ?? 0);
       const ticker = metadata?.ticker;
+      const policyId = metadata?.policyId;
+      const imageSrc = metadata?.image;
+      const isImageIpfs = imageSrc?.startsWith("ipfs://");
       return (
         <div
           key={asset.unit}
           className="flex w-full flex-row items-center justify-between"
         >
-          <div className="flex flex-row gap-3">
-            <h3 className="text-lg font-bold">{name}</h3>
+          <div className="flex flex-row items-center gap-3">
+            {imageSrc ? (
+              <div
+                className={`relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full`}
+              >
+                {isImageIpfs ? (
+                  <IPFSImage
+                    src={
+                      "ipfs://QmSNkaU4DW3asABKyUfSx3ykFAtV5PuXLsXu63nMUo8HGv"
+                    }
+                    alt="IPFS Image"
+                    width={300}
+                    height={300}
+                  />
+                ) : (
+                  <Image
+                    src={`data:image/jpeg;base64, ${imageSrc}`}
+                    fill={false}
+                    alt={name}
+                    width={60}
+                    height={60}
+                    className="object-cover"
+                    sizes="60px"
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full">
+                <Image
+                  src={"/assets/unknown.png"}
+                  width={60}
+                  height={60}
+                  alt={name}
+                />
+              </div>
+            )}
+            <LinkCardanoscan
+              url={`tokenPolicy/${policyId}`}
+              className="ml-auto gap-1"
+            >
+              <div className="flex flex-row items-center gap-1">
+                <h3 className="text-lg font-bold">{name}</h3>
+                <ArrowUpRight className="h-4 w-4" />
+              </div>
+            </LinkCardanoscan>
           </div>
           <div className="flex flex-row gap-1">
             <p className="font-bold">{quantity}</p>
@@ -85,7 +135,10 @@ export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
   const adaAmount = useMemo(() => {
     return (
       <div className="flex w-full flex-row items-center justify-between">
-        <div className="flex flex-row gap-3">
+        <div className="flex flex-row items-center gap-3">
+          <div className="relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full">
+            <Image src={"/assets/ada.png"} width={60} height={60} alt="ADA" />
+          </div>
           <h3 className="text-lg font-bold">ADA</h3>
         </div>
         <div className="flex flex-row gap-1">
@@ -97,7 +150,7 @@ export default function FullBalance({ appWallet }: { appWallet: Wallet }) {
   }, [balance]);
 
   return (
-    <CardUI title="Balance" cardClassName="col">
+    <CardUI title="Assets" cardClassName="col">
       <div className="flex flex-col gap-4">
         {adaAmount}
         {nonAdaList}
