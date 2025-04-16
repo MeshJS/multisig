@@ -29,7 +29,12 @@ import { useToast } from "@/hooks/use-toast";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { ToastAction } from "@/components/ui/toast";
 import { csl } from "@meshsdk/core-csl";
+import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
+import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
+import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
+
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import DiscordIcon from "@/components/common/discordIcon";
 
 export default function TransactionCard({
   walletId,
@@ -85,6 +90,37 @@ export default function TransactionCard({
         setLoading(false);
       },
     });
+
+  const { data: discordIds } = api.user.getDiscordIds.useQuery({
+    addresses: appWallet?.signersAddresses || [],
+  });
+
+  async function sendReminder(signerAddress: string) {
+    try {
+      const discordId = discordIds?.[signerAddress];
+      if (!discordId) return;
+
+      await sendDiscordMessage(
+        [discordId],
+        `**REMINDER:** Your signature is needed for a transaction in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/transactions`,
+      );
+
+      toast({
+        title: "Reminder Sent",
+        description: "Discord reminder has been sent to the user",
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description:
+          "Failed to send Discord reminder. Please make sure the user is in the MeshJS Discord Server.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    }
+  }
 
   function handleError(e: any) {
     let hasKnownError = false;
@@ -294,6 +330,14 @@ export default function TransactionCard({
     );
   }, [txJson, walletAssetMetadata]);
 
+  function handleRemindAll() {
+    appWallet?.signersAddresses.map((signerAddress) => {
+      if (!transaction.signedAddresses.includes(signerAddress)) {
+        sendReminder(signerAddress);
+      }
+    });
+  }
+
   if (!appWallet) return <></>;
   return (
     <Card className="self-start overflow-hidden">
@@ -409,7 +453,16 @@ export default function TransactionCard({
             </>
           )}
 
-          <div className="font-semibold">Signers</div>
+          <div className="flex items-center gap-2">
+            <div className="font-semibold">Signers</div>
+            <Button size="sm" variant="outline" onClick={handleRemindAll}>
+              <div className="flex flex-row items-center gap-1">
+                Remind All
+                <DiscordIcon />
+              </div>
+            </Button>
+          </div>
+
           <ul className="grid gap-3">
             {appWallet.signersAddresses.map((signerAddress, index) => {
               return (
@@ -417,13 +470,51 @@ export default function TransactionCard({
                   key={signerAddress}
                   className="flex items-center justify-between"
                 >
-                  <span className="text-muted-foreground">
-                    {appWallet.signersDescriptions[index] &&
-                    appWallet.signersDescriptions[index].length > 0
-                      ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
-                      : getFirstAndLast(signerAddress)}
-                    {signerAddress == userAddress && ` (You)`}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">
+                      {appWallet.signersDescriptions[index] &&
+                      appWallet.signersDescriptions[index].length > 0
+                        ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
+                        : getFirstAndLast(signerAddress)}
+                      {signerAddress == userAddress && ` (You)`}
+                    </span>
+                    {signerAddress !== userAddress &&
+                      !transaction.signedAddresses.includes(signerAddress) &&
+                      discordIds &&
+                      Object.keys(discordIds).includes(signerAddress) && (
+                        <span className="flex items-center">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                {!transaction.signedAddresses.includes(
+                                  signerAddress,
+                                ) &&
+                                  discordIds &&
+                                  Object.keys(discordIds).includes(
+                                    signerAddress,
+                                  ) && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        sendReminder(signerAddress)
+                                      }
+                                    >
+                                      <div className="flex flex-row items-center gap-1">
+                                        Remind
+                                        <DiscordIcon />
+                                      </div>
+                                    </Button>
+                                  )}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Send a Discord reminder.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </span>
+                      )}
+                  </div>
                   <span>
                     {transaction.signedAddresses.includes(signerAddress) ? (
                       <Check className="h-4 w-4 text-green-400" />
