@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircleIcon, Link2Icon, PlusIcon } from "lucide-react";
 import Link from "next/link";
+import { useUserStore } from "@/lib/zustand/user";
+import { toast } from "@/hooks/use-toast";
 
 interface ClarityCardProps {
   appWallet: Wallet;
@@ -15,19 +17,33 @@ interface ClarityCardProps {
 export default function ClarityCard({ appWallet }: ClarityCardProps) {
   const [newApiKey, setNewApiKey] = useState<string>("");
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const ctx = api.useUtils();
+  const userAddress = useUserStore((state) => state.userAddress);
 
-  const { mutate: updateClarityApiKey } =
+  const { mutate: updateClarityApiKey, mutateAsync: updateClarityApiKeyAsync } =
     api.wallet.updateWalletClarityApiKey.useMutation({
       onSuccess: () => {
         setIsEditing(false);
       },
     });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (newApiKey.trim()) {
-      updateClarityApiKey({
+      setIsSaving(true);
+      await updateClarityApiKeyAsync({
         walletId: appWallet.id,
         clarityApiKey: newApiKey.trim(),
+      });
+      toast({
+        title: "Clarity API Key Updated",
+        description: "The Clarity API key has been updated",
+        duration: 5000,
+      });
+      setIsSaving(false);
+      void ctx.wallet.getWallet.invalidate({
+        address: userAddress,
+        walletId: appWallet.id,
       });
     }
   };
@@ -66,10 +82,17 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
                 placeholder="Enter Clarity API Key"
                 className="flex-1"
               />
-              <Button onClick={handleSave} disabled={!newApiKey.trim()}>
+              <Button
+                onClick={handleSave}
+                disabled={!newApiKey.trim() || isSaving}
+              >
                 Save
               </Button>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(false)}
+                disabled={isSaving}
+              >
                 Cancel
               </Button>
             </div>
@@ -80,7 +103,11 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
               No Clarity API Key associated with this wallet.
             </p>
             <div>
-              <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(true)}
+                disabled={isSaving}
+              >
                 <Link2Icon className="mr-2 h-4 w-4" /> Link Clarity API Key
               </Button>
             </div>
