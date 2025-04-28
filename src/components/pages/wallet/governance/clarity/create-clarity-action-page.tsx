@@ -131,6 +131,11 @@ export default function CreateClarityActionPage() {
       if (!appWallet?.clarityApiKey) return;
 
       try {
+        console.log(
+          "hitting api",
+          `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/dao/votingPowerCalculations`,
+          appWallet.clarityApiKey,
+        );
         const response = await fetch(
           `${network === 1 ? "https://api.clarity.vote" : "https://preview.api.clarity.vote"}/dao/votingPowerCalculations`,
           {
@@ -475,7 +480,7 @@ export default function CreateClarityActionPage() {
                   <SelectContent>
                     {Object.entries(votingPowerCalculations).map(
                       ([id, calc]) => (
-                        <SelectItem key={id} value={id}>
+                        <SelectItem key={id} value={calc.id}>
                           {calc.name}
                         </SelectItem>
                       ),

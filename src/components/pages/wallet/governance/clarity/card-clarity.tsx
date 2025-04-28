@@ -58,7 +58,7 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
               <CheckCircleIcon className="h-5 w-5 text-green-500" />
               <span>Connected</span>
             </div>
-            <div>
+            <div className="flex items-center space-x-2">
               <Link
                 href={`/wallets/${appWallet.id}/governance/clarity/create-action`}
               >
@@ -66,6 +66,13 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
                   <PlusIcon className="mr-2 h-4 w-4" /> New Governance Action
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(true)}
+                disabled={isSaving}
+              >
+                Update Clarity API Key
+              </Button>
             </div>
           </div>
         ) : isEditing ? (
