@@ -11,11 +11,11 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  address      String  @unique
-  stakeAddress String  @unique
-  nostrKey     String  @unique
-  discordId    String  @default("")
+  id           String @id @default(cuid())
+  address      String @unique
+  stakeAddress String @unique
+  nostrKey     String @unique
+  discordId    String @default("")
 }
 
 model Wallet {
@@ -23,6 +23,7 @@ model Wallet {
   name                String
   description         String?
   signersAddresses    String[]
+  signersStakeKeys    String[]
   signersDescriptions String[]
   numRequiredSigners  Int?
   verified            String[]
@@ -51,6 +52,8 @@ model NewWallet {
   name                String
   description         String?
   signersAddresses    String[]
+  signersStakeKeys    String[]
   signersDescriptions String[]
+  numRequiredSigners  Int?
   ownerAddress        String
 }

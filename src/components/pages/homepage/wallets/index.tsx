@@ -1,16 +1,19 @@
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
 import Link from "next/link";
-import PageHeader from "@/components/common/page-header";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
 import useUserWallets from "@/hooks/useUserWallets";
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
-import RowLabelInfo from "@/components/common/row-label-info";
-import { getFirstAndLast } from "@/lib/strings";
-import usePendingTransactions from "@/hooks/usePendingTransactions";
-import { useState } from "react";
-import SectionTitle from "@/components/common/section-title";
+import { getFirstAndLast } from "@/utils/strings";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
+
+import { Button } from "@/components/ui/button";
+import PageHeader from "@/components/common/page-header";
+import CardUI from "@/components/common/card-content";
+import RowLabelInfo from "@/components/common/row-label-info";
+import SectionTitle from "@/components/common/section-title";
+
 
 export default function PageWallets() {
   const { wallets } = useUserWallets();

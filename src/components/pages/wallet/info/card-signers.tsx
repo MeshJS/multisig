@@ -1,5 +1,5 @@
 import { Check, MoreVertical, X } from "lucide-react";
-import { getFirstAndLast } from "@/lib/strings";
+import { getFirstAndLast } from "@/utils/strings";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";

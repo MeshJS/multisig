@@ -11,7 +11,7 @@ import { ArrowUpRight, MoreHorizontal } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import CardUI from "@/components/common/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";

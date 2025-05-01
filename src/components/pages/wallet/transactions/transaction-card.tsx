@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import { Separator } from "@/components/ui/separator";
 import { useUserStore } from "@/lib/zustand/user";
 import {
