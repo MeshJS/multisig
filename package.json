@@ -73,6 +73,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.168.0",
     "three-globe": "^2.31.1",
+    "uuid": "^11.1.0",
     "zod": "^3.23.8",
     "zustand": "^4.5.5"
   },

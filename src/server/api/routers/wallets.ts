@@ -96,7 +96,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-    updateWalletSignersDescriptions: publicProcedure
+  updateWalletSignersDescriptions: publicProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -215,7 +215,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-    updateNewWalletSignersDescriptions: publicProcedure
+  updateNewWalletSignersDescriptions: publicProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -239,6 +239,24 @@ export const walletRouter = createTRPCRouter({
       return ctx.db.newWallet.delete({
         where: {
           id: input.walletId,
+        },
+      });
+    }),
+
+  updateWalletClarityApiKey: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        clarityApiKey: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          clarityApiKey: input.clarityApiKey,
         },
       });
     }),
