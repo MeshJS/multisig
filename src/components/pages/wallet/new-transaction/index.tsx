@@ -1,4 +1,4 @@
-import SectionTitle from "@/components/common/section-title";
+import SectionTitle from "@/components/ui/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -34,7 +34,7 @@ import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useSiteStore } from "@/lib/zustand/site";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import useTransaction from "@/hooks/useTransaction";
 import { ToastAction } from "@/components/ui/toast";
 import { toast, useToast } from "@/hooks/use-toast";

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import SectionTitle from "@/components/common/section-title";
+import SectionTitle from "@/components/ui/section-title";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Metadata from "./metadata";

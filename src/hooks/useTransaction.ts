@@ -58,6 +58,9 @@ export default function useTransaction() {
       signedAddresses.push(userAddress);
 
       let txHash = undefined;
+
+      //Todo refactor to as util with Signable.
+
       let submitTx = false;
 
       if (appWallet.type == "any") {

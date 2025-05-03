@@ -1,18 +1,18 @@
-import { Check, MoreVertical, X } from "lucide-react";
-import { getFirstAndLast } from "@/lib/strings";
-import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
-import RowLabelInfo from "@/components/common/row-label-info";
-import { Button } from "@/components/ui/button";
-import { useUserStore } from "@/lib/zustand/user";
-import { api } from "@/utils/api";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useMemo } from "react";
 import { useWallet } from "@meshsdk/react";
 import {
   checkSignature,
   generateNonce,
   resolvePaymentKeyHash,
 } from "@meshsdk/core";
+
+import { Wallet } from "@/types/wallet";
+import { getFirstAndLast } from "@/lib/strings";
+import { useUserStore } from "@/lib/zustand/user";
+import { api } from "@/utils/api";
+import { useToast } from "@/hooks/use-toast";
+
+import { Check, MoreVertical, X } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -25,13 +25,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMemo } from "react";
 import DiscordIcon from "@/components/common/discordIcon";
 import DiscordImage from "@/components/common/discordImage";
+import CardUI from "@/components/ui/card-content";
+import RowLabelInfo from "@/components/common/row-label-info";
+import { Button } from "@/components/ui/button";
 
 export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);

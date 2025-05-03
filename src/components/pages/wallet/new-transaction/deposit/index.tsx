@@ -1,4 +1,4 @@
-import SectionTitle from "@/components/common/section-title";
+import SectionTitle from "@/components/ui/section-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -19,7 +19,7 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
