@@ -430,12 +430,10 @@ function RecipientRow({
 }) {
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [adaHandle, setAdaHandle] = useState<string>("");
-
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
-
   const handleAddressChange = async (value: string) => {
     const newAddresses = [...recipientAddresses];
     newAddresses[index] = value;
@@ -460,7 +458,6 @@ function RecipientRow({
       setAdaHandle("");
     }
   };
-
   const appWalletAssets = useMemo(() => {
     return walletAssets.map((asset) => {
       return {
@@ -487,7 +484,6 @@ function RecipientRow({
       </>
     );
   }, [appWalletAssets]);
-
   return (
     <TableRow>
       <TableCell>

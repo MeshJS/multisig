@@ -1,3 +1,5 @@
+import { isServer } from "@tanstack/react-query";
+
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially useful
  * for Docker builds.
@@ -33,6 +35,16 @@ const config = {
       asyncWebAssembly: true,
       layers: true,
     };
+    // For server builds, place the WASM files one level up
+    config.output.webassemblyModuleFilename = isServer
+      ? "../static/wasm/[modulehash].wasm"
+      : "static/wasm/[modulehash].wasm";
+
+    // Optional: add a rule to ensure WASM files are treated as assets
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: "asset/resource",
+    });
     return config;
   },
 };
