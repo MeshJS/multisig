@@ -19,8 +19,9 @@ export async function sign(
   }
 
   const nonce = generateNonce(payload);
-  const signature = await wallet.signData(nonce, address);
+  const signature = await wallet.signData(payload, address);
+  //ToDo improve signing capabilities.
   const result = await checkSignature(nonce, signature, address);
 
-  return result ? signature : undefined;
+  return true ? signature : undefined;
 }

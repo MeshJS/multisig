@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { Signable } from "@prisma/client";
 
 import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
+import { pubKeyAddress, serializeAddressObj } from "@meshsdk/core";
 import { sign } from "@/utils/signing";
 
 import { useToast } from "@/hooks/use-toast";
@@ -13,10 +14,18 @@ import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
-import { Check, Loader, MoreVertical, X } from "lucide-react";
+import { Check, Loader, MoreVertical, X, ChevronDown } from "lucide-react";
 
 import { Button as ShadcnButton } from "@/components/ui/button";
 import Button from "@/components/common/button";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { ToastAction } from "@/components/ui/toast";
@@ -38,7 +47,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default function SignableCard({
+function SignableCard({
   walletId,
   signable,
 }: {
@@ -90,32 +99,35 @@ export default function SignableCard({
     addresses: appWallet?.signersAddresses || [],
   });
 
-  async function sendReminder(signerAddress: string) {
-    try {
-      const discordId = discordIds?.[signerAddress];
-      if (!discordId) return;
+  const sendReminder = useCallback(
+    async (signerAddress: string) => {
+      try {
+        const discordId = discordIds?.[signerAddress];
+        if (!discordId) return;
 
-      await sendDiscordMessage(
-        [discordId],
-        `**REMINDER:** Your signature is needed for a Datum in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/signing`,
-      );
+        await sendDiscordMessage(
+          [discordId],
+          `**REMINDER:** Your signature is needed for a Datum in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/signing`,
+        );
 
-      toast({
-        title: "Reminder Sent",
-        description: "Discord reminder has been sent to the user",
-        duration: 5000,
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description:
-          "Failed to send Discord reminder. Please make sure the user is on the MeshJS Discord Server.",
-        variant: "destructive",
-        duration: 5000,
-      });
-    }
-  }
+        toast({
+          title: "Reminder Sent",
+          description: "Discord reminder has been sent to the user",
+          duration: 5000,
+        });
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description:
+            "Failed to send Discord reminder. Please make sure the user is on the MeshJS Discord Server.",
+          variant: "destructive",
+          duration: 5000,
+        });
+      }
+    },
+    [discordIds, appWallet, toast],
+  );
 
   function handleError(e: any) {
     let hasKnownError = false;
@@ -149,7 +161,7 @@ export default function SignableCard({
     }
   }
 
-  async function signPayload() {
+  const signPayload = useCallback(async () => {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
@@ -174,7 +186,9 @@ export default function SignableCard({
       signedAddresses.push(userAddress);
 
       const signatures = signable.signatures;
-      signatures.push(signature.signature);
+      signatures.push(
+        `signature: ${signature.signature}, key: ${signature.key}`,
+      );
 
       let submitTx = false;
 
@@ -202,9 +216,9 @@ export default function SignableCard({
       setLoading(false);
       handleError(e);
     }
-  }
+  }, [connected, appWallet, signable, userAddress, updateSignable]);
 
-  async function rejectPayload() {
+  const rejectPayload = useCallback(async () => {
     if (!userAddress) throw new Error("User address not found");
 
     try {
@@ -236,29 +250,36 @@ export default function SignableCard({
       navigator.clipboard.writeText(JSON.stringify(e));
     }
     setLoading(false);
-  }
+  }, [userAddress, wallet, signable, updateSignable, toast]);
 
-  async function deletePayload() {
+  const deletePayload = useCallback(() => {
     setLoading(true);
     deleteSignable({
       signableId: signable.id,
     });
-  }
+  }, [deleteSignable, signable]);
 
-  function handleRemindAll() {
+  const handleRemindAll = useCallback(() => {
     appWallet?.signersAddresses.map((signerAddress) => {
       if (!signable.signedAddresses.includes(signerAddress)) {
         sendReminder(signerAddress);
       }
     });
-  }
+  }, [appWallet, signable, sendReminder]);
 
   if (!appWallet) return <></>;
   return (
-    <Card className="self-start overflow-hidden">
-      <CardHeader className="flex flex-row items-start bg-muted/50">
+    <Card
+      role="region"
+      aria-labelledby={`signable-${signable.id}-title`}
+      className="w-full self-start overflow-hidden rounded-lg shadow-md transition-shadow duration-200 hover:shadow-lg"
+    >
+      <CardHeader className="flex flex-col items-start space-y-2 rounded-t-lg bg-muted/10 p-4 sm:flex-row sm:space-y-0 sm:p-6">
         <div className="grid gap-0.5">
-          <CardTitle className="group flex items-center gap-2 text-lg">
+          <CardTitle
+            id={`signable-${signable.id}-title`}
+            className="group flex items-center gap-2 text-lg"
+          >
             {signable.description}
           </CardTitle>
           <CardDescription>
@@ -268,7 +289,12 @@ export default function SignableCard({
         <div className="ml-auto flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <ShadcnButton size="icon" variant="outline" className="h-8 w-8">
+              <ShadcnButton
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                aria-label="More options"
+              >
                 <MoreVertical className="h-3.5 w-3.5" />
                 <span className="sr-only">More</span>
               </ShadcnButton>
@@ -287,25 +313,56 @@ export default function SignableCard({
                 Copy Payload
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  deletePayload();
-                }}
-              >
+              <DropdownMenuItem onClick={deletePayload}>
                 Delete Transaction
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </CardHeader>
-      <CardContent className="p-6 text-sm">
+
+      <CardContent className="space-y-4 bg-muted/5 p-4 text-sm sm:space-y-6 sm:p-6">
         <div className="grid gap-3">
           <div className="font-semibold">Payload</div>
-          <code className="grid gap-3">{signable.payload}</code>
-          <Separator className="my-2" />
+          <pre className="w-full overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 font-mono text-xs md:text-sm">
+            {signable.payload}
+          </pre>
 
-          <div className="font-semibold">Payload</div>
-          <code className="grid gap-3">{signable.description}</code>
+          <div>
+            <Separator className="my-2" />
+            <details className="group">
+              <summary className="flex cursor-pointer items-center justify-between font-semibold">
+                Signatures
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Signature</TableHead>
+                    <TableHead>Key</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {signable.signatures.map((sigStr, idx) => {
+                    const [sigPart = "", keyPart = ""] = sigStr.split(", key: ");
+                    const signature = sigPart.replace("signature: ", "");
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <code className="break-all">{signature}</code>
+                        </TableCell>
+                        <TableCell>
+                          <code className="break-all">{keyPart}</code>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </details>
+          </div>
+
+          <Separator className="my-2" />
 
           <div className="flex items-center gap-2">
             <div className="font-semibold">Signers</div>
@@ -317,64 +374,54 @@ export default function SignableCard({
             </Button>
           </div>
 
-          <ul className="grid gap-3">
+          <ul className="divide-y divide-border">
             {appWallet.signersAddresses.map((signerAddress, index) => {
+              const descriptionText =
+                appWallet.signersDescriptions[index] &&
+                appWallet.signersDescriptions[index].length > 0
+                  ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
+                  : getFirstAndLast(signerAddress);
+              const canRemind =
+                signerAddress !== userAddress &&
+                !signable.signedAddresses.includes(signerAddress) &&
+                discordIds &&
+                Object.keys(discordIds).includes(signerAddress);
               return (
                 <li
                   key={signerAddress}
-                  className="flex items-center justify-between"
+                  className="flex items-center justify-between py-2"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">
-                      {appWallet.signersDescriptions[index] &&
-                      appWallet.signersDescriptions[index].length > 0
-                        ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
-                        : getFirstAndLast(signerAddress)}
-                      {signerAddress == userAddress && ` (You)`}
+                      {descriptionText}
+                      {signerAddress === userAddress && " (You)"}
                     </span>
-                    {signerAddress !== userAddress &&
-                      !signable.signedAddresses.includes(signerAddress) &&
-                      discordIds &&
-                      Object.keys(discordIds).includes(signerAddress) && (
-                        <span className="flex items-center">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                {!signable.signedAddresses.includes(
-                                  signerAddress,
-                                ) &&
-                                  discordIds &&
-                                  Object.keys(discordIds).includes(
-                                    signerAddress,
-                                  ) && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        sendReminder(signerAddress)
-                                      }
-                                    >
-                                      <div className="flex flex-row items-center gap-1">
-                                        Remind
-                                        <DiscordIcon />
-                                      </div>
-                                    </Button>
-                                  )}
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Send a Discord reminder.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </span>
-                      )}
+                    {canRemind && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => sendReminder(signerAddress)}
+                            >
+                              <div className="flex items-center gap-1">
+                                Remind
+                                <DiscordIcon />
+                              </div>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Send a Discord reminder.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                   <span>
                     {signable.signedAddresses.includes(signerAddress) ? (
                       <Check className="h-4 w-4 text-green-400" />
-                    ) : signable.rejectedAddresses.includes(
-                        signerAddress,
-                      ) ? (
+                    ) : signable.rejectedAddresses.includes(signerAddress) ? (
                       <X className="h-4 w-4 text-red-400" />
                     ) : (
                       <QuestionMarkIcon className="h-4 w-4" />
@@ -390,8 +437,8 @@ export default function SignableCard({
       {userAddress &&
         !signable.signedAddresses.includes(userAddress) &&
         !signable.rejectedAddresses.includes(userAddress) && (
-          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
-            <Button onClick={() => signPayload()} disabled={loading}>
+          <CardFooter className="flex flex-col items-center space-y-2 border-t bg-muted/10 p-4 sm:flex-row sm:justify-end sm:space-x-3 sm:space-y-0">
+            <Button onClick={signPayload} disabled={loading}>
               {loading ? (
                 <Loader className="h-4 w-4 animate-spin" />
               ) : (
@@ -400,7 +447,7 @@ export default function SignableCard({
             </Button>
             <Button
               variant="destructive"
-              onClick={() => rejectPayload()}
+              onClick={rejectPayload}
               disabled={loading}
             >
               {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
@@ -409,17 +456,16 @@ export default function SignableCard({
         )}
 
       {(appWallet.type == "atLeast" &&
-        signable.rejectedAddresses.length >=
-          appWallet.numRequiredSigners!) ||
+        signable.rejectedAddresses.length >= appWallet.numRequiredSigners!) ||
         (appWallet.type == "all" &&
           signable.rejectedAddresses.length ==
             appWallet.signersAddresses.length) ||
         (appWallet.type == "any" && (
           <>
-            <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+            <CardFooter className="flex flex-col items-center space-y-2 border-t bg-muted/10 p-4 sm:flex-row sm:justify-end sm:space-x-3 sm:space-y-0">
               <Button
                 variant="destructive"
-                onClick={() => deletePayload()}
+                onClick={deletePayload}
                 disabled={loading}
                 loading={loading}
                 hold={3000}
@@ -432,3 +478,5 @@ export default function SignableCard({
     </Card>
   );
 }
+
+export default React.memo(SignableCard);

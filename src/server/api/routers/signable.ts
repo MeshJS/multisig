@@ -91,4 +91,17 @@ export const signableRouter = createTRPCRouter({
         },
       });
     }),
+    getCompleteSignables: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return await ctx.db.signable.findMany({
+        where: {
+          walletId: input.walletId,
+          state: 1,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    }),
 });

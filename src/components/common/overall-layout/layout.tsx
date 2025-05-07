@@ -7,7 +7,7 @@ import UserDropDown from "./user-drop-down";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import MenuWallets from "./menus/wallets";
-import MenuWallet from "./menus/wallet";
+import MenuWallet from "./menus/multisig-wallet";
 import useAppWallet from "@/hooks/useAppWallet";
 import WalletDropDown from "./wallet-drop-down";
 import { PageHomepage } from "@/components/pages/homepage";

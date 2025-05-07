@@ -5,12 +5,14 @@ import usePendingTransactions from "@/hooks/usePendingTransactions";
 import useUserWallets from "@/hooks/useUserWallets";
 import { Badge } from "@/components/ui/badge";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
+import usePendingSignables from "@/hooks/usePendingSignables";
 
 export default function MenuWallet() {
   const router = useRouter();
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
   const { wallets } = useUserWallets();
   const { transactions } = usePendingTransactions();
+  const { signables } = usePendingSignables();
   if (!wallets) return;
   return (
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
@@ -36,14 +38,17 @@ export default function MenuWallet() {
         <MenuLink
           href={`${baseUrl}signing`}
           className={
-            router.pathname == "/wallets/[wallet]/signing"
-              ? "text-white"
-              : ""
+            router.pathname == "/wallets/[wallet]/signing" ? "text-white" : ""
           }
         >
           <UserRoundPen className="h-6 w-6" />
           <div className="flex items-center gap-2">
             Signing
+            {signables && signables.length > 0 && (
+              <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+                {signables.length}
+              </Badge>
+            )}
           </div>
         </MenuLink>
         <MenuLink
