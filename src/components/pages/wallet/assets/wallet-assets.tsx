@@ -1,5 +1,5 @@
 import Button from "@/components/common/button";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";

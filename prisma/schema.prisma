@@ -31,6 +31,7 @@ model Wallet {
   stakeCredentialHash String?
   type                String
   isArchived          Boolean  @default(false)
+  clarityApiKey       String?
 }
 
 model Transaction {
@@ -43,6 +44,20 @@ model Transaction {
   description       String?
   state             Int
   txHash            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Signable {
+  id                String   @id @default(cuid())
+  walletId          String
+  payload           String
+  signatures        String[]
+  signedAddresses   String[]
+  rejectedAddresses String[]
+  description       String?
+  method            String?
+  state             Int
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

@@ -25,7 +25,10 @@ export default async function handler(
         client_secret: process.env.DISCORD_CLIENT_SECRET!,
         code: code as string,
         grant_type: "authorization_code",
-        redirect_uri: `http://localhost:3000/api/auth/discord/callback`,
+        redirect_uri:
+          process.env.NODE_ENV === "production"
+            ? `https://multisig.meshjs.dev/api/auth/discord/callback`
+            : `http://localhost:3000/api/auth/discord/callback`,
       }),
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",

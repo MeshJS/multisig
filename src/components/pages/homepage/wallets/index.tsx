@@ -4,7 +4,16 @@ import Link from "next/link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import useUserWallets from "@/hooks/useUserWallets";
 import { Wallet } from "@/types/wallet";
+<<<<<<< HEAD
 import { getFirstAndLast } from "@/utils/strings";
+=======
+import CardUI from "@/components/ui/card-content";
+import RowLabelInfo from "@/components/common/row-label-info";
+import { getFirstAndLast } from "@/lib/strings";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
+import { useState } from "react";
+import SectionTitle from "@/components/ui/section-title";
+>>>>>>> origin/main
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 

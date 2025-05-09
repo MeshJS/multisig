@@ -2,7 +2,7 @@ import AllTransactions from "./all-transactions";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import TransactionCard from "./transaction-card";
 import CardBalance from "./card-balance";
-import SectionTitle from "@/components/common/section-title";
+import SectionTitle from "@/components/ui/section-title";
 import useAppWallet from "@/hooks/useAppWallet";
 
 export default function PageTransactions() {

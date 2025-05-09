@@ -1,7 +1,28 @@
+import { useMemo, useState } from "react";
+
+import { checkSignature, generateNonce } from "@meshsdk/core";
+import { useWallet } from "@meshsdk/react";
+import { csl } from "@meshsdk/core-csl";
+
+import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { useUserStore } from "@/lib/zustand/user";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
+import useAppWallet from "@/hooks/useAppWallet";
+import { useToast } from "@/hooks/use-toast";
+import { Transaction } from "@prisma/client";
+
+import { QuestionMarkIcon } from "@radix-ui/react-icons";
+import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
+
+import { Check, Loader, MoreVertical, X } from "lucide-react";
+import { ToastAction } from "@/components/ui/toast";
+import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
+import DiscordIcon from "@/components/common/discordIcon";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import Button from "@/components/common/button";
-import { Check, Loader, MoreVertical, X } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -10,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+<<<<<<< HEAD
 import { useMemo, useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { Transaction } from "@prisma/client";
@@ -17,6 +39,8 @@ import { QuestionMarkIcon } from "@radix-ui/react-icons";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import { Separator } from "@/components/ui/separator";
 import { useUserStore } from "@/lib/zustand/user";
+=======
+>>>>>>> origin/main
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,17 +48,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useWallet } from "@meshsdk/react";
-import { useToast } from "@/hooks/use-toast";
-import { checkSignature, generateNonce } from "@meshsdk/core";
-import { ToastAction } from "@/components/ui/toast";
-import { csl } from "@meshsdk/core-csl";
-import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
-import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
-import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
-
-import { useWalletsStore } from "@/lib/zustand/wallets";
-import DiscordIcon from "@/components/common/discordIcon";
 
 export default function TransactionCard({
   walletId,

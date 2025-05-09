@@ -8,6 +8,7 @@ import AllProposals from "./proposals";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "./vote-card";
 import { getDRepIds } from "@meshsdk/core-cst";
+import ClarityCard from "./clarity/card-clarity";
 
 export default function PageGovernance() {
   const { appWallet } = useAppWallet();
@@ -45,6 +46,7 @@ export default function PageGovernance() {
         <CardInfo appWallet={appWallet} />
         <AllProposals appWallet={appWallet} />
         <VoteCard appWallet={appWallet} />
+        <ClarityCard appWallet={appWallet} />
       </div>
     </main>
   );

@@ -1,5 +1,5 @@
 import Button from "@/components/common/button";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { numberWithCommas } from "@/utils/strings";
 import { useWalletsStore } from "@/lib/zustand/wallets";
