@@ -1,4 +1,4 @@
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Wallet } from "@/types/wallet";

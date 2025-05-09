@@ -9,7 +9,7 @@ import "@/styles/globals.css";
 import "@meshsdk/react/styles.css";
 import { MeshProvider } from "@meshsdk/react";
 import { Toaster } from "@/components/ui/toaster";
-import Metatags from "@/components/common/metatags";
+import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
 import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
 

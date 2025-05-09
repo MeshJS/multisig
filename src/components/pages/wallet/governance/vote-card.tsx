@@ -1,5 +1,5 @@
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

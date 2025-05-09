@@ -1,6 +1,6 @@
 import React from "react";
-import SectionTitle from "@/components/common/section-title";
-import CardUI from "@/components/common/card-content";
+import SectionTitle from "@/components/ui/section-title";
+import CardUI from "@/components/ui/card-content";
 import Button from "@/components/common/button";
 import Link from "next/link";
 

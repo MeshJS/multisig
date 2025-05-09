@@ -1,18 +1,16 @@
+import { useState } from "react";
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
-import RowLabelInfo from "@/components/common/row-label-info";
+import { MoreVertical } from "lucide-react";
+import { api } from "@/utils/api";
+import { useToast } from "@/hooks/use-toast";
+import { useUserStore } from "@/lib/zustand/user";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
-import { MoreVertical } from "lucide-react";
-import { useState } from "react";
-import { api } from "@/utils/api";
-import { useToast } from "@/hooks/use-toast";
-import { useUserStore } from "@/lib/zustand/user";
 import {
   Select,
   SelectContent,
@@ -21,9 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import CardUI from "@/components/ui/card-content";
+import RowLabelInfo from "@/components/ui/row-label-info";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);

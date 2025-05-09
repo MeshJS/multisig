@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWallet } from "@meshsdk/react";

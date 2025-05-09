@@ -3,12 +3,12 @@ import Link from "next/link";
 import PageHeader from "@/components/common/page-header";
 import useUserWallets from "@/hooks/useUserWallets";
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { getFirstAndLast } from "@/lib/strings";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { useState } from "react";
-import SectionTitle from "@/components/common/section-title";
+import SectionTitle from "@/components/ui/section-title";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 

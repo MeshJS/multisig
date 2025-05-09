@@ -1,5 +1,5 @@
-import CardUI from "@/components/common/card-content";
-import Code from "@/components/common/code";
+import CardUI from "@/components/ui/card-content";
+import Code from "@/components/ui/code";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { Wallet } from "@/types/wallet";
 

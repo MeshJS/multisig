@@ -1,5 +1,5 @@
 import React from "react";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { BlockfrostDrepMetadata } from "@/types/governance";
 import { extractJsonLdValue } from "@/components/common/cardano-objects/jsonLdParser";
 import {
@@ -8,7 +8,7 @@ import {
   MessageCircle,
   Link as LinkIcon,
 } from "lucide-react";
-import Code from "@/components/common/code";
+import Code from "@/components/ui/code";
 
 export default function Metadata({
   drepMetadata,

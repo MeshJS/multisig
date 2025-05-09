@@ -1,4 +1,4 @@
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { useSiteStore } from "@/lib/zustand/site";

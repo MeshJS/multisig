@@ -1,4 +1,4 @@
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { Wallet } from "@/types/wallet";
 
 export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {

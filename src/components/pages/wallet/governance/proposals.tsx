@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { useEffect, useState } from "react";
 import { getProvider } from "@/components/common/cardano-objects/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";

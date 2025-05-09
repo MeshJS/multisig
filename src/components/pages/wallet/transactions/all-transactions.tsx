@@ -12,7 +12,7 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";

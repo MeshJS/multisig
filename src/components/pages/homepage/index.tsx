@@ -4,7 +4,7 @@ import Link from "next/link";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/router";
 import { api } from "@/utils/api";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Globe from "./globe";
 
