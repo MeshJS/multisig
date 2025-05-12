@@ -1,13 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
-import {
-  NativeScript,
-  resolvePaymentKeyHash,
-  resolveStakeKeyHash,
-  serializeNativeScript,
-} from "@meshsdk/core";
-
+import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
+
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -20,7 +15,6 @@ import SignersCard from "@/components/pages/homepage/wallets/new-wallet/nWSigner
 import AdvancedOptionsCard from "@/components/pages/homepage/wallets/new-wallet/nWAdvancedOptionsCard";
 import WalletActionButtons from "@/components/pages/homepage/wallets/new-wallet/nWActionButtons";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
-
 
 export default function PageNewWallet() {
   const router = useRouter();
@@ -82,7 +76,13 @@ export default function PageNewWallet() {
       });
     }
     if (keys.length === 0) return;
-    return new MultisigWallet(name, keys, description, numRequiredSigners, network);
+    return new MultisigWallet(
+      name,
+      keys,
+      description,
+      numRequiredSigners,
+      network,
+    );
   }, [
     name,
     description,
@@ -300,7 +300,7 @@ export default function PageNewWallet() {
 
           {/* Script Inspector */}
           <div className="col-span-2">
-            <InspectMultisigScript wallet={multisigWallet} />
+            <InspectMultisigScript mWallet={multisigWallet} />
           </div>
 
           {/* Action Buttons */}

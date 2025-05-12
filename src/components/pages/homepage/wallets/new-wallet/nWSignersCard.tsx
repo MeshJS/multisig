@@ -1,9 +1,6 @@
 import React from "react";
 import { getFirstAndLast } from "@/utils/strings";
-import {
-    resolvePaymentKeyHash,
-    resolveStakeKeyHash,
-  } from "@meshsdk/core";
+import { checkValidAddress, checkValidStakeKey } from "@/utils/multisigSDK";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -66,23 +63,6 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
     loading,
   } = signerConfig;
 
-  function checkValidAddress(address: string) {
-    try {
-      resolvePaymentKeyHash(address);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-  
-  function checkValidStakeKey(stakeKey: string){
-    try{
-      resolveStakeKeyHash(stakeKey);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
 
   return (
     <Card>

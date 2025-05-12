@@ -6,39 +6,39 @@ import { Carousel } from "@/components/ui/carousel";
 
 // Carousel state: 0 = 1854, 1 = payment, 2 = stake
 export default function InspectMultisigScript({
-  wallet,
+  mWallet,
 }: {
-  wallet?: MultisigWallet;
+  mWallet?: MultisigWallet;
 }) {
   let slides: React.ReactNode[] = [
     <RowLabelInfo
       label="1854:"
-      value={<Code>{JSON.stringify(wallet?.getJsonMetadata(), null, 2)}</Code>}
+      value={<Code>{JSON.stringify(mWallet?.getJsonMetadata(), null, 2)}</Code>}
     />,
     <RowLabelInfo
       label="payment:"
-      value={<Code>{JSON.stringify(wallet?.buildScript(0), null, 2)}</Code>}
+      value={<Code>{JSON.stringify(mWallet?.buildScript(0), null, 2)}</Code>}
     />,
   ];
 
-  if (wallet?.buildScript(2) !== undefined) {
+  if (mWallet?.buildScript(2) !== undefined && mWallet.stakingEnabled()) {
     slides.push(
       <RowLabelInfo
         label="stake:"
-        value={<Code>{JSON.stringify(wallet.buildScript(2), null, 2)}</Code>}
+        value={<Code>{JSON.stringify(mWallet.buildScript(2), null, 2)}</Code>}
       />
     );
   }
-  if (wallet?.buildScript(3) !== undefined) {
+  if (mWallet?.buildScript(3) !== undefined) {
     slides.push(
       <RowLabelInfo
         label="stake:"
-        value={<Code>{JSON.stringify(wallet.buildScript(3), null, 2)}</Code>}
+        value={<Code>{JSON.stringify(mWallet.buildScript(3), null, 2)}</Code>}
       />
     );
   }
 
-  if (!wallet) {
+  if (!mWallet) {
     return null;
   }
 
@@ -48,19 +48,19 @@ export default function InspectMultisigScript({
 
       <RowLabelInfo
         label="Script CBOR"
-        value={<Code>{wallet.getScript().scriptCbor}</Code>}
+        value={<Code>{mWallet.getScript().scriptCbor}</Code>}
       />
       <RowLabelInfo
         label="Address"
-        value={<Code>{wallet.getScript().address}</Code>}
+        value={<Code>{mWallet.getScript().address}</Code>}
       />
-      {wallet.getStakeAddress() && (
+      {mWallet.stakingEnabled() && mWallet.stakingEnabled() && (
         <RowLabelInfo
           label="Stake Address"
-          value={<Code>{wallet.getStakeAddress()}</Code>}
+          value={<Code>{mWallet.getStakeAddress()}</Code>}
         />
       )}
-      <RowLabelInfo label="dRep ID" value={<Code>{wallet.getDRepId()}</Code>} />
+      <RowLabelInfo label="dRep ID" value={<Code>{mWallet.getDRepId()}</Code>} />
     </CardUI>
   );
 }

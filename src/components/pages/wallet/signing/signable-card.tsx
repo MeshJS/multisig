@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import useAppWallet from "@/hooks/useAppWallet";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";

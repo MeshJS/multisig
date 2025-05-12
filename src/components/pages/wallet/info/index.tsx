@@ -1,11 +1,12 @@
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import CardInfo from "./card-info";
-import CardSigners from "./card-signers";
+import CardSigners from "./signers/card-signers";
 import InspectScript from "./inspect-script";
 import { MigrateWallet } from "./migrate-wallet";
 import { ArchiveWallet } from "./archive-wallet";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
+import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -18,7 +19,8 @@ export default function WalletInfo() {
         <div className="grid grid-cols-1 gap-4">
           <CardInfo appWallet={appWallet} />
           <CardSigners appWallet={appWallet} />
-          <InspectMultisigScript wallet={multisigWallet} />
+          <InspectMultisigScript mWallet={multisigWallet} />
+          <UpgradeStakingWallet mWallet={multisigWallet} />
           <ArchiveWallet appWallet={appWallet} />
           <MigrateWallet appWallet={appWallet} />
         </div>

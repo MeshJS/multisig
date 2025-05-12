@@ -80,7 +80,21 @@ export class MultisigWallet {
     }
     const stakeCredentialHash = this.getStakeCredentialHash();
 
-    return getScript(paymentScript, this.network, stakeCredentialHash);
+    return getScript(
+      paymentScript,
+      this.network,
+      this.stakingEnabled() ? stakeCredentialHash : undefined,
+    );
+  }
+  /**
+   * Filters the stored keys for the specified role.
+   *
+   * @param role - The role of the keys to include in the script. (0 - payment, 2 - staking, 3 - dRep, 4,5) TD enum
+   * @returns The multisig keys list.
+   */
+  getKeysByRole(role: number): MultisigKey[] | undefined {
+    const filteredKeys = this.keys.filter((key) => key.role === role);
+    return filteredKeys.length === 0 ? undefined : filteredKeys;
   }
 
   /**
@@ -91,12 +105,17 @@ export class MultisigWallet {
    */
   buildScript(role: number): NativeScript | undefined {
     // Filter keys by the given role
-    const filteredKeys = this.keys.filter((key) => key.role === role);
-    if (filteredKeys.length === 0) {
-      return undefined;
-    }
+    const filteredKeys = this.getKeysByRole(role);
+    if (!filteredKeys) return undefined;
     // Build the script using only the keys of the specified role
     return buildNativeScript(filteredKeys, this.required);
+  }
+
+  stakingEnabled(): boolean {
+    const paymentKeyCount = this.getKeysByRole(0)?.length;
+    const stakeKeyCount = this.getKeysByRole(2)?.length;
+    if (!paymentKeyCount || !stakeKeyCount) return false;
+    return paymentKeyCount === stakeKeyCount;
   }
 
   /**
@@ -114,6 +133,7 @@ export class MultisigWallet {
     const stakeCredentialHash = resolveNativeScriptHash(stakeScript);
     return stakeCredentialHash;
   }
+
   /**
    * Returns the stake address (reward address) of the wallet.
    *
@@ -133,7 +153,7 @@ export class MultisigWallet {
   getDRepId(): string | undefined {
     return getDRepIds(this.getDRepId105()!).cip129;
   }
-  
+
   /**
    * Computes the CIP-105 format DRep ID by hashing the native script
    * built from role-3 keys (DRep keys). Throws if no script is built.
@@ -235,4 +255,22 @@ function getScript(
     throw new Error("Failed to serialize multisig script");
   }
   return { address, scriptCbor };
+}
+
+export function checkValidAddress(address: string) {
+  try {
+    resolvePaymentKeyHash(address);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function checkValidStakeKey(stakeKey: string) {
+  try {
+    resolveStakeKeyHash(stakeKey);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }

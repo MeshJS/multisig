@@ -30,7 +30,7 @@ function buildWallet(
       }
     });
   }
-  if (wallet.signersStakeKeys.length > 0) {
+  if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
     wallet.signersStakeKeys.forEach((stakeKey, i) => {
       if (stakeKey) {
         try {

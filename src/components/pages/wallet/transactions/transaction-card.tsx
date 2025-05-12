@@ -5,7 +5,7 @@ import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
 
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
@@ -31,16 +31,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-<<<<<<< HEAD
-import { useMemo, useState } from "react";
-import useAppWallet from "@/hooks/useAppWallet";
-import { Transaction } from "@prisma/client";
-import { QuestionMarkIcon } from "@radix-ui/react-icons";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
-import { Separator } from "@/components/ui/separator";
-import { useUserStore } from "@/lib/zustand/user";
-=======
->>>>>>> origin/main
 import {
   DropdownMenu,
   DropdownMenuContent,
