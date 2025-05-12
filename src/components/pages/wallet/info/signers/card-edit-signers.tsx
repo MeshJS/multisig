@@ -21,9 +21,6 @@ export default function EditSigners({
 }: EditSignersProps) {
   const signersAddresses = appWallet.signersAddresses;
   const signersStakeKeys = appWallet.signersStakeKeys;
-  const [stakeKeys, setSignerStakeKeys] = useState<string[]>(
-    appWallet.signersStakeKeys,
-  );
   const [signersDescriptions, setSignerDescription] = useState<string[]>(
     appWallet.signersDescriptions,
   );
@@ -64,26 +61,30 @@ export default function EditSigners({
   }
 
   const updatedStakeKeys = useMemo(() => {
-    // Initialize array of empty strings matching signersAddresses length
     const skList: string[] = Array(signersAddresses.length).fill("");
-    // Populate with either existing stakeKeys or the user's stakeAddress
     for (let i = 0; i < signersAddresses.length; i++) {
+      const stakeAddr = user?.stakeAddress;
       if (
         signersAddresses[i] === userAddress &&
-        (!stakeKeys[i] || stakeKeys[i] === "")
+        stakeAddr !== undefined &&
+        !signersStakeKeys[i]
       ) {
-        skList[i] = user?.stakeAddress ?? "";
+        skList[i] = stakeAddr;
       } else {
-        skList[i] = stakeKeys[i] ?? "";
+        skList[i] = signersStakeKeys[i] ?? "";
       }
     }
     return skList;
-  }, [signersAddresses, stakeKeys, userAddress, user?.stakeAddress]);
+  }, [signersAddresses, signersStakeKeys, userAddress, user?.stakeAddress]);
 
-  const newStakekey = (index: number )=>{
-    return (signersAddresses[index] === userAddress && !(signersStakeKeys[index] === user?.stakeAddress!))
-  }
-
+  const newStakekey = (index: number) => {
+    const stakeAddr = user?.stakeAddress;
+    return (
+      signersAddresses[index] === userAddress &&
+      stakeAddr !== undefined &&
+      signersStakeKeys[index] !== stakeAddr
+    );
+  };
 
   return (
     <>
@@ -112,16 +113,13 @@ export default function EditSigners({
                     <Input
                       type="string"
                       placeholder="stake..."
-                      className={`col-span-3 ${
-                        newStakekey(index) &&
-                        "text-green-500"
-                      }`}
+                      className={`col-span-3 ${newStakekey(index) && "text-green-500"}`}
                       value={
                         signersAddresses[index] === userAddress
-                          ? (user?.stakeAddress ?? "")
-                          : stakeKeys[index]
+                          ? user?.stakeAddress ?? ""
+                          : signersStakeKeys[index] ?? ""
                       }
-                      disabled={true}
+                      disabled
                     />
                   </div>
                   {newStakekey(index) && (

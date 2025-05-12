@@ -1,7 +1,7 @@
 import CardUI from "@/components/common/card-content";
 import Code from "@/components/common/code";
 import RowLabelInfo from "@/components/common/row-label-info";
-import { MultisigWallet, stakeAddress } from "@/utils/multisigSDK";
+import type { MultisigWallet } from "@/utils/multisigSDK";
 import { Carousel } from "@/components/ui/carousel";
 
 // Carousel state: 0 = 1854, 1 = payment, 2 = stake
@@ -10,12 +10,14 @@ export default function InspectMultisigScript({
 }: {
   mWallet?: MultisigWallet;
 }) {
-  let slides: React.ReactNode[] = [
+  const slides: React.ReactNode[] = [
     <RowLabelInfo
+      key="meta"
       label="1854:"
       value={<Code>{JSON.stringify(mWallet?.getJsonMetadata(), null, 2)}</Code>}
     />,
     <RowLabelInfo
+      key="payment"
       label="payment:"
       value={<Code>{JSON.stringify(mWallet?.buildScript(0), null, 2)}</Code>}
     />,
@@ -24,6 +26,7 @@ export default function InspectMultisigScript({
   if (mWallet?.buildScript(2) !== undefined && mWallet.stakingEnabled()) {
     slides.push(
       <RowLabelInfo
+        key="stake-2"
         label="stake:"
         value={<Code>{JSON.stringify(mWallet.buildScript(2), null, 2)}</Code>}
       />
@@ -32,6 +35,7 @@ export default function InspectMultisigScript({
   if (mWallet?.buildScript(3) !== undefined) {
     slides.push(
       <RowLabelInfo
+        key="stake-3"
         label="stake:"
         value={<Code>{JSON.stringify(mWallet.buildScript(3), null, 2)}</Code>}
       />

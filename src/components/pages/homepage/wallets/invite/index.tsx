@@ -44,7 +44,7 @@ export default function PageNewWalletInvite() {
           description: "Your info has been updated",
           duration: 5000,
         });
-        router.push("/wallets");
+        await router.push("/wallets");
       },
       onError: (e) => {
         setLoading(false);
@@ -56,13 +56,14 @@ export default function PageNewWalletInvite() {
     if (newWallet === undefined || newWallet === null)
       throw new Error("Wallet invite is undefined");
     if (userAddress === undefined) throw new Error("User address is undefined");
+    if (!user?.stakeAddress) throw new Error("User stake address is undefined");
 
     setLoading(true);
 
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
-      signersStakeKeys: [...newWallet.signersStakeKeys, user?.stakeAddress!],
+      signersStakeKeys: [...newWallet.signersStakeKeys, user.stakeAddress],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,

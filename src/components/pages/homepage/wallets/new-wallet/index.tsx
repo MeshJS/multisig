@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
-import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
+import type { MultisigKey } from "@/utils/multisigSDK";
+import { MultisigWallet } from "@/utils/multisigSDK";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -50,9 +51,9 @@ export default function PageNewWallet() {
             keys.push({
               keyHash: paymentHash,
               role: 0,
-              name: signersDescriptions[i] || "",
+              name: signersDescriptions[i] ?? "",
             });
-          } catch (e) {
+          } catch {
             console.warn(`Invalid payment address at index ${i}:`, addr);
           }
         }
@@ -67,9 +68,9 @@ export default function PageNewWallet() {
             keys.push({
               keyHash: stakeKeyHash,
               role: 2,
-              name: signersDescriptions[i] || "",
+              name: signersDescriptions[i] ?? "",
             });
-          } catch (e) {
+          } catch {
             console.warn(`Invalid stake address at index ${i}:`, stakeKey);
           }
         }
@@ -90,6 +91,7 @@ export default function PageNewWallet() {
     signersStakeKeys,
     signersDescriptions,
     numRequiredSigners,
+    network,
   ]);
 
   const { mutate: deleteWalletInvite } = api.wallet.deleteNewWallet.useMutation(
@@ -101,12 +103,12 @@ export default function PageNewWallet() {
   );
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
-    onSuccess: async () => {
+    onSuccess: () => {
       if (pathIsWalletInvite) {
         deleteWalletInvite({ walletId: walletInviteId! });
       }
       setLoading(false);
-      router.push("/wallets");
+      void router.push("/wallets");
       toast({
         title: "Wallet Created",
         description: "Your wallet has been created",
@@ -120,10 +122,10 @@ export default function PageNewWallet() {
   });
 
   const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setLoading(false);
-      router.push(`/wallets/new-wallet/${data.id}`);
-      navigator.clipboard.writeText(
+      void router.push(`/wallets/new-wallet/${data.id}`);
+      void navigator.clipboard.writeText(
         `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
       );
       toast({
@@ -140,14 +142,14 @@ export default function PageNewWallet() {
   });
 
   const { mutate: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
-    onSuccess: async () => {
+    onSuccess: () => {
       setLoading(false);
       toast({
         title: "Wallet Info Updated",
         description: "Your wallet has been saved",
         duration: 5000,
       });
-      router.push("/wallets");
+      void router.push("/wallets");
     },
     onError: (e) => {
       setLoading(false);
@@ -292,7 +294,7 @@ export default function PageNewWallet() {
                 walletInviteId,
                 nativeScriptType,
                 toast,
-                handleCreateNewWallet,
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,
               }}
             />
@@ -308,8 +310,8 @@ export default function PageNewWallet() {
             <WalletActionButtons
               buttonConfig={{
                 createNativeScript,
-                handleSaveWallet,
-                handleCreateNewWallet,
+                handleSaveWallet: () => void handleSaveWallet(),
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,
                 signersAddresses,
                 name,

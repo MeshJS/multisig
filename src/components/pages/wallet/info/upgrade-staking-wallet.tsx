@@ -1,7 +1,7 @@
 import CardUI from "@/components/ui/card-content";
 import { MultisigWallet } from "@/utils/multisigSDK";
 
-export function UpgradeStakingWallet({ mWallet }: { mWallet: MultisigWallet }) {
+export function UpgradeStakingWallet({ mWallet }: { mWallet?: MultisigWallet }) {
   if (!mWallet || mWallet.stakingEnabled()) return null;
 
   return (
