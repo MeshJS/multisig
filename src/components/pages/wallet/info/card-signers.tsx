@@ -240,7 +240,7 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
       const state = encodeURIComponent(userAddress || "");
 
       const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
-
+      console.log("discord request url", url);
       window.location.href = url;
     }
 
