@@ -234,7 +234,7 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
       // Discord OAuth2 URL with required scopes
       const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
       const redirectUri = encodeURIComponent(
-        `${process.env.NODE_ENV === "production" ? "https://multisig.mesh.dev" : "http://localhost:3000"}/api/auth/discord/callback`,
+        `${process.env.NODE_ENV === "production" ? "https://multisig.meshjs.dev" : "http://localhost:3000"}/api/auth/discord/callback`,
       );
       const scope = encodeURIComponent("identify");
       const state = encodeURIComponent(userAddress || "");
