@@ -18,6 +18,16 @@ export default async function handler(
   const userAddress = decodeURIComponent(state as string);
 
   try {
+    console.log("→ Token Exchange Payload:", {
+      client_id: process.env.DISCORD_CLIENT_ID,
+      client_secret: !!process.env.DISCORD_CLIENT_SECRET,
+      code: code as string,
+      grant_type: "authorization_code",
+      redirect_uri:
+        process.env.NODE_ENV === "production"
+          ? `https://multisig.meshjs.dev/api/auth/discord/callback`
+          : `http://localhost:3000/api/auth/discord/callback`,
+    });
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
       body: new URLSearchParams({
@@ -34,6 +44,9 @@ export default async function handler(
         "Content-Type": "application/x-www-form-urlencoded",
       },
     });
+
+    console.log("← Discord token response status:", tokenResponse.status);
+    console.log("← Discord token response body:", await tokenResponse.text());
 
     const tokens = await tokenResponse.json();
 

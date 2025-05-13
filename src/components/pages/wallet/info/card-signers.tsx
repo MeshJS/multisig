@@ -234,13 +234,19 @@ function ShowSigners({ appWallet }: { appWallet: Wallet }) {
       // Discord OAuth2 URL with required scopes
       const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
       const redirectUri = encodeURIComponent(
-        `${process.env.NODE_ENV === "production" ? "https://multisig.mesh.dev" : "http://localhost:3000"}/api/auth/discord/callback`,
+        `${process.env.NODE_ENV === "production" ? "https://multisig.meshjs.dev" : "http://localhost:3000"}/api/auth/discord/callback`,
       );
       const scope = encodeURIComponent("identify");
       const state = encodeURIComponent(userAddress || "");
 
       const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
-      console.log("discord request url", url);
+      console.log({
+        endpoint: "https://discord.com/api/oauth2/token",
+        client_id: process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID,
+        client_secret_set: !!process.env.DISCORD_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      });
       window.location.href = url;
     }
 
