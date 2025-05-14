@@ -18,24 +18,38 @@ export default async function handler(
   const userAddress = decodeURIComponent(state as string);
 
   try {
+    const redirectUri =
+      process.env.NODE_ENV === "production"
+        ? "https://multisig.meshjs.dev/api/auth/discord/callback"
+        : "http://localhost:3000/api/auth/discord/callback";
+
+    const params = new URLSearchParams({
+      client_id: process.env.DISCORD_CLIENT_ID!,
+      client_secret: process.env.DISCORD_CLIENT_SECRET!,
+      code: code as string,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+    });
+
+    console.log("→ [Discord Token] POST body:", params.toString());
+    console.log("→ [Discord Token] ENV:", {
+      NODE_ENV: process.env.NODE_ENV,
+      CLIENT_ID: process.env.DISCORD_CLIENT_ID,
+      SECRET_SET: !!process.env.DISCORD_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      code: code as string,
+    });
+
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
-      body: new URLSearchParams({
-        client_id: process.env.DISCORD_CLIENT_ID!,
-        client_secret: process.env.DISCORD_CLIENT_SECRET!,
-        code: code as string,
-        grant_type: "authorization_code",
-        redirect_uri:
-          process.env.NODE_ENV === "production"
-            ? `https://multisig.meshjs.dev/api/auth/discord/callback`
-            : `http://localhost:3000/api/auth/discord/callback`,
-      }),
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      body: params,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
 
     const tokens = await tokenResponse.json();
+
+    console.log("← [Discord Token] status:", tokenResponse.status);
+    console.log("← [Discord Token] text:", tokenResponse.text());
 
     if (tokens.error) {
       console.error("Token error:", tokens);
