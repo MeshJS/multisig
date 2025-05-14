@@ -21,7 +21,7 @@ export default async function handler(
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
       body: new URLSearchParams({
-        client_id: process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID!,
+        client_id: process.env.DISCORD_CLIENT_ID!,
         client_secret: process.env.DISCORD_CLIENT_SECRET!,
         code: code as string,
         grant_type: "authorization_code",
