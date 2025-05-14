@@ -31,14 +31,8 @@ export default async function handler(
       redirect_uri: redirectUri,
     });
 
+    // Log exactly what you’re sending:
     console.log("→ [Discord Token] POST body:", params.toString());
-    console.log("→ [Discord Token] ENV:", {
-      NODE_ENV: process.env.NODE_ENV,
-      CLIENT_ID: process.env.DISCORD_CLIENT_ID,
-      SECRET_SET: !!process.env.DISCORD_CLIENT_SECRET,
-      redirect_uri: redirectUri,
-      code: code as string,
-    });
 
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
@@ -46,13 +40,23 @@ export default async function handler(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
 
-    const tokens = await tokenResponse.json();
-
+    // Read it once as text, then JSON.parse
+    const raw = await tokenResponse.text();
     console.log("← [Discord Token] status:", tokenResponse.status);
-    console.log("← [Discord Token] text:", tokenResponse.text());
+    console.log("← [Discord Token] body:", raw);
+
+    let tokens;
+    try {
+      tokens = JSON.parse(raw);
+    } catch {
+      throw new Error("Discord returned non‑JSON on token exchange");
+    }
 
     if (tokens.error) {
-      console.error("Token error:", tokens);
+      console.error(
+        "↪︎ [Discord Token] error_description:",
+        tokens.error_description,
+      );
       return res.status(400).json({ error: tokens.error_description });
     }
 
