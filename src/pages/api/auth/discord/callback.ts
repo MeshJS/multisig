@@ -37,6 +37,7 @@ export default async function handler(
       CLIENT_ID: process.env.DISCORD_CLIENT_ID,
       SECRET_SET: !!process.env.DISCORD_CLIENT_SECRET,
       redirect_uri: redirectUri,
+      code: code as string,
     });
 
     const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
