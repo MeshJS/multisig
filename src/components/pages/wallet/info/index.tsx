@@ -20,7 +20,7 @@ export default function WalletInfo() {
           <CardInfo appWallet={appWallet} />
           <CardSigners appWallet={appWallet} />
           <InspectMultisigScript mWallet={multisigWallet} />
-          <UpgradeStakingWallet mWallet={multisigWallet} />
+          <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />
           <ArchiveWallet appWallet={appWallet} />
           <MigrateWallet appWallet={appWallet} />
         </div>

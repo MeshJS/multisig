@@ -1,7 +1,7 @@
 import { useUserStore } from "@/lib/zustand/user";
+import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 import { buildWallet } from "./common";
-import { useSiteStore } from "@/lib/zustand/site";
 
 export default function useUserWallets() {
   const network = useSiteStore((state) => state.network);

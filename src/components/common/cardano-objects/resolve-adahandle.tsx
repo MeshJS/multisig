@@ -1,5 +1,5 @@
 import { toast } from "@/hooks/use-toast";
-import { getProvider } from "./get-provider";
+import { getProvider } from "@/utils/get-provider";
 
 //AdaHandle look up provider only supports mainnnet
 const provider = getProvider(1)

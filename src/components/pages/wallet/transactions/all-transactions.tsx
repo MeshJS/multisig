@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSiteStore } from "@/lib/zustand/site";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import { useEffect, useMemo, useState } from "react";
 

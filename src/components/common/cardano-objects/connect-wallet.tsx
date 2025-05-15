@@ -13,7 +13,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useEffect } from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
-import { getProvider } from "./get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { Asset } from "@meshsdk/core";
 
 export default function ConnectWallet() {

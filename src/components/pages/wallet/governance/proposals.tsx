@@ -11,7 +11,7 @@ import {
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
 import { useEffect, useState } from "react";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";
 import {
