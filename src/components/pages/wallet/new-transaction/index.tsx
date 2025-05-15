@@ -33,7 +33,7 @@ import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import CardUI from "@/components/ui/card-content";
 import { ToastAction } from "@/components/ui/toast";
 import UTxOSelector from "./utxoSelector";

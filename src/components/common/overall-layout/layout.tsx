@@ -1,17 +1,24 @@
 import React, { useEffect } from "react";
+import { useRouter } from "next/router";
 import Link from "next/link";
-import { api } from "@/utils/api";
-import ConnectWallet from "../cardano-objects/connect-wallet";
+import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { useWallet } from "@meshsdk/react";
-import UserDropDown from "./user-drop-down";
+import { publicRoutes } from "@/data/public-routes";
+import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
-import MenuWallets from "./menus/wallets";
-import MenuWallet from "./menus/multisig-wallet";
 import useAppWallet from "@/hooks/useAppWallet";
-import WalletDropDown from "./wallet-drop-down";
+
+import MenuWallets from "@/components/common/overall-layout/menus/wallets";
+import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
+import WalletDropDown from "@/components/common/overall-layout/wallet-drop-down";
+import UserDropDown from "@/components/common/overall-layout/user-drop-down";
+import DialogReport from "@/components/common/overall-layout/dialog-report";
+import WalletDataLoader from "@/components/common/overall-layout/wallet-data-loader";
 import { PageHomepage } from "@/components/pages/homepage";
-import WalletDataLoader from "./wallet-data-loader";
+import Logo from "@/components/common/overall-layout/logo";
+import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
+import Loading from "@/components/common/overall-layout/loading";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -19,12 +26,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import Logo from "./logo";
-import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
-import { publicRoutes } from "@/data/public-routes";
-import Loading from "./loading";
-import DialogReport from "./dialog-report";
-import { useRouter } from "next/router";
 
 export default function RootLayout({
   children,

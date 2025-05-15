@@ -35,6 +35,7 @@ export const walletRouter = createTRPCRouter({
         description: z.string(),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
+        signersStakeKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
         scriptCbor: z.string(),
         stakeCredentialHash: z.string().optional(),
@@ -48,6 +49,7 @@ export const walletRouter = createTRPCRouter({
           description: input.description,
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: input.signersStakeKeys,
           numRequiredSigners: input.numRequiredSigners,
           scriptCbor: input.scriptCbor,
           stakeCredentialHash: input.stakeCredentialHash,
@@ -100,6 +102,7 @@ export const walletRouter = createTRPCRouter({
     .input(
       z.object({
         walletId: z.string(),
+        signersStakeKeys: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
       }),
     )
@@ -110,6 +113,7 @@ export const walletRouter = createTRPCRouter({
         },
         data: {
           signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: input.signersStakeKeys,
         },
       });
     }),
@@ -156,6 +160,8 @@ export const walletRouter = createTRPCRouter({
         description: z.string(),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
+        signersStakeKeys: z.array(z.string()),
+        numRequiredSigners: z.number(),
         ownerAddress: z.string(),
       }),
     )
@@ -166,6 +172,8 @@ export const walletRouter = createTRPCRouter({
           description: input.description,
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: input.signersStakeKeys,
+          numRequiredSigners: input.numRequiredSigners,
           ownerAddress: input.ownerAddress,
         },
       });
@@ -179,6 +187,8 @@ export const walletRouter = createTRPCRouter({
         description: z.string(),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
+        signersStakeKeys: z.array(z.string()),
+        numRequiredSigners: z.number(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -191,6 +201,8 @@ export const walletRouter = createTRPCRouter({
           description: input.description,
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: input.signersStakeKeys,
+          numRequiredSigners: input.numRequiredSigners,
         },
       });
     }),
@@ -201,6 +213,7 @@ export const walletRouter = createTRPCRouter({
         walletId: z.string(),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
+        signersStakeKeys: z.array(z.string()),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -211,6 +224,7 @@ export const walletRouter = createTRPCRouter({
         data: {
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: input.signersStakeKeys,
         },
       });
     }),

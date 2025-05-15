@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import SectionTitle from "@/components/ui/section-title";
 import Pagination from "@/components/common/overall-layout/pagination";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
 import { useWallet } from "@meshsdk/react";

@@ -5,7 +5,7 @@ import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
 
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";

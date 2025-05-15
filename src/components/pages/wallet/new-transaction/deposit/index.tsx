@@ -17,8 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSiteStore } from "@/lib/zustand/site";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getProvider } from "@/utils/get-provider";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import CardUI from "@/components/ui/card-content";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
