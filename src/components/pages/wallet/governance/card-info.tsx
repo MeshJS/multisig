@@ -15,7 +15,6 @@ import { MoreVertical } from "lucide-react";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
-
   return (
     <CardUI
       title="Info"
@@ -29,13 +28,13 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {/* <DropdownMenuItem asChild>
+            <DropdownMenuItem asChild>
               <Link
                 href={`https://gov.tools/drep_directory/${appWallet.dRepId}`}
               >
                 gov.tools
               </Link>
-            </DropdownMenuItem> */}
+            </DropdownMenuItem>
             <DropdownMenuItem>test</DropdownMenuItem>
             <DropdownMenuItem>test</DropdownMenuItem>
           </DropdownMenuContent>
@@ -50,7 +49,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
       />
       <RowLabelInfo
         label="Status"
-        value={drepInfo?.active ? "Registered" : `Not registered`}
+        value={drepInfo?.active ? "Registered" : "Not registered"}
       />
       <div className="flex gap-2">
         <Button disabled={drepInfo?.active}>

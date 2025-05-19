@@ -9,29 +9,38 @@ import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { LAST_UPDATED_THRESHOLD } from "@/config/wallet";
 import { Asset } from "@meshsdk/core";
+import { getDRepIds } from "@meshsdk/core-cst";
+import DrepOverviewPage from "@/components/pages/homepage/governance/drep";
+import { BlockfrostDrepInfo } from "@/types/governance";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
   const [loading, setLoading] = useState<boolean>(false);
+
+  const prevWalletIdRef = useRef<string | null>(null);
+  const ctx = api.useUtils();
+  const network = useSiteStore((state) => state.network);
+  const setRandomState = useSiteStore((state) => state.setRandomState);
+
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const setWalletsUtxos = useWalletsStore((state) => state.setWalletsUtxos);
+
   const setWalletTransactions = useWalletsStore(
     (state) => state.setWalletTransactions,
   );
+  const fetchingTransactions = useRef(false);
+
   const walletLastUpdated = useWalletsStore((state) => state.walletLastUpdated);
   const setWalletLastUpdated = useWalletsStore(
     (state) => state.setWalletLastUpdated,
   );
+
   const setWalletAssets = useWalletsStore((state) => state.setWalletAssets);
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
-  const fetchingTransactions = useRef(false);
-  const prevWalletIdRef = useRef<string | null>(null);
 
-  const ctx = api.useUtils();
-  const network = useSiteStore((state) => state.network);
-  const setRandomState = useSiteStore((state) => state.setRandomState);
+  const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -133,6 +142,46 @@ export default function WalletDataLoader() {
     }
   }
 
+  function dRepIds() {
+    const dRepId = appWallet?.dRepId;
+    if (!dRepId) throw new Error("No dRep ID found.");
+    return getDRepIds(dRepId);
+  }
+
+  async function getDRepInfo() {
+    try {
+      const blockchainProvider = getProvider(network);
+
+      const drepids = dRepIds()
+  
+      const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
+        `/governance/dreps/${drepids.cip105}`,
+      );
+      console.log("drepInfo", drepInfo);
+      if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
+      setDrepInfo(drepInfo);
+    } catch (err) {
+      setDrepInfo(undefined);
+      console.log(err);
+    }
+  }
+
+  //ToDo: Finish and use for update prefill.
+  async function getdRepMetadata() {
+    try{
+      const blockchainProvider = getProvider(network);
+    const drepids = dRepIds()
+    // get metadata
+    const drepInfoMetadata = await blockchainProvider.get(
+      `/governance/dreps/${drepids.cip105}/metadata`,
+    );
+
+    } catch (err){
+
+    }
+    
+  }
+
   async function refreshWallet() {
     if (fetchingTransactions.current) return;
 
@@ -141,6 +190,7 @@ export default function WalletDataLoader() {
     await fetchUtxos();
     await getTransactionsOnChain();
     await getWalletAssets();
+    await getDRepInfo();
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
     setRandomState();

@@ -16,29 +16,6 @@ export default function PageGovernance() {
   const network = useSiteStore((state) => state.network);
   const randomState = useSiteStore((state) => state.randomState);
 
-  useEffect(() => {
-    async function load() {
-      if (appWallet) {
-        const blockchainProvider = getProvider(network);
-        // console.log("appWallet.dRepId", appWallet.dRepId);
-        const drepids = getDRepIds(appWallet.dRepId);
-        // console.log("drepids", drepids);
-        const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
-          `/governance/dreps/${drepids.cip105}`,
-        );
-        // console.log("drepInfo", drepInfo);
-        setDrepInfo(drepInfo);
-
-        // get metadata
-        const drepInfoMetadata = await blockchainProvider.get(
-          `/governance/dreps/${drepids.cip105}/metadata`,
-        );
-        // console.log("drepInfoMetadata", drepInfoMetadata);
-      }
-    }
-    load();
-  }, [randomState]);
-
   if (appWallet === undefined) return <></>;
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
