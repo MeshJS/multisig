@@ -13,7 +13,6 @@ import {
 import { Address, getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 
-
 export function buildMultisigWallet(
   wallet: DbWallet,
   network: number,
@@ -62,7 +61,11 @@ export function buildMultisigWallet(
   return multisigWallet;
 }
 
-export function buildWallet(wallet: DbWallet, network: number, utxos?:UTxO[]): Wallet {
+export function buildWallet(
+  wallet: DbWallet,
+  network: number,
+  utxos?: UTxO[],
+): Wallet {
   const mWallet = buildMultisigWallet(wallet, network);
   if (!mWallet) {
     console.error("error when building Multisig Wallet!");
@@ -89,11 +92,15 @@ export function buildWallet(wallet: DbWallet, network: number, utxos?:UTxO[]): W
     network,
   ).address;
 
+  let address = paymentAddress;
+
   const stakeableAddress = mWallet.getScript().address;
 
-  const paymentAddrEmpty = utxos?.filter(f=>f.output.address === paymentAddress).length === 0
+  const paymentAddrEmpty =
+    utxos?.filter((f) => f.output.address === paymentAddress).length === 0;
 
-  const address = !paymentAddrEmpty ? paymentAddress : stakeableAddress;
+  if (paymentAddrEmpty && mWallet.stakingEnabled()) address = stakeableAddress
+  
 
   const dRepIdCip105 = resolveScriptHashDRepId(
     resolveNativeScriptHash(nativeScript as NativeScript),

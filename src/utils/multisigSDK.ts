@@ -18,9 +18,6 @@ export function paymentKeyHash(address: string): string {
 export function stakeKeyHash(address: string): string {
   return resolveStakeKeyHash(address);
 }
-export function stakeAddress(stakeKeyHash: string): string {
-  return serializeRewardAddress(stakeKeyHash);
-}
 
 /**
  * Minimal MultisigKey type.
@@ -84,8 +81,35 @@ export class MultisigWallet {
       paymentScript,
       this.network,
       this.stakingEnabled() ? stakeCredentialHash : undefined,
+      this.stakingEnabled(),
     );
   }
+
+  getPaymentScript(): string {
+    const paymentScript = this.buildScript(0);
+    if (!paymentScript) {
+      console.warn("MultisigWallet keys:", this.keys);
+      console.warn("buildScript(0) result:", paymentScript);
+      throw new Error(
+        "Cannot build multisig script: no valid payment keys provided.",
+      );
+    }
+    return getScript(paymentScript, this.network).scriptCbor;
+  }
+
+  getStakingScript(): string {
+    const stakingScript = this.buildScript(2);
+    if (!stakingScript) {
+      console.warn("MultisigWallet keys:", this.keys);
+      console.warn("buildScript(0) result:", stakingScript);
+      throw new Error(
+        "Cannot build multisig script: no valid payment keys provided.",
+      );
+    }
+    return getScript(stakingScript, this.network).scriptCbor;
+  }
+
+
   /**
    * Filters the stored keys for the specified role.
    *
@@ -245,11 +269,13 @@ function getScript(
   script: NativeScript,
   network: number,
   stakeCredentialHash?: string,
+  enabled: boolean = false,
 ): { address: string; scriptCbor: string } {
   const { address, scriptCbor } = serializeNativeScript(
     script,
     stakeCredentialHash,
     network,
+    enabled,
   );
   if (!scriptCbor) {
     throw new Error("Failed to serialize multisig script");

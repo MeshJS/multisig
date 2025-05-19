@@ -5,7 +5,11 @@ import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
 
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
+import {
+  dateToFormatted,
+  getFirstAndLast,
+  lovelaceToAda,
+} from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
@@ -172,15 +176,16 @@ export default function TransactionCard({
       const vkeys = tx.witness_set().vkeys();
       const len = vkeys?.len() || 0;
 
-      if (len != transaction.signedAddresses.length + 1) {
+      const signerAmount = transaction.signedAddresses.length + 1;
+
+      if (len != signerAmount || len != signerAmount * 2) {
         setLoading(false);
         toast({
           title: "Error",
-          description: `Error signing transaction. Please try again.`,
+          description: `Error signing transaction. Please try again. Not matching signer amount multiple.`,
           duration: 5000,
           variant: "destructive",
         });
-        return;
       }
 
       const signedAddresses = transaction.signedAddresses;

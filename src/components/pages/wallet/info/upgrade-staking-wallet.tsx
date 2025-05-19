@@ -35,15 +35,9 @@ export function UpgradeStakingWallet({
   }, [mWallet]);
 
   const upgraded = useMemo(() => {
-    return mWallet?.stakingEnabled() && appWallet.address === newAddress;
+    if(!newAddress){false}
+    return mWallet?.stakingEnabled() &&appWallet.address === newAddress!;
   }, [mWallet, newAddress, appWallet.address]);
-
-  //if balances are 0 update appwallet address to staking address
-  const upgradeWallet = ()=>{
-    if (mWallet?.stakingEnabled() && newAddress){
-    appWallet.address = newAddress;
-    }
-  }
 
   if (!mWallet || upgraded ) return null;
 
