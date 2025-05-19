@@ -3,7 +3,6 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import Retire from "./drep/retire";
-import Button from "@/components/common/button";
 import Link from "next/link";
 import {
   DropdownMenu,
@@ -12,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
@@ -21,11 +21,12 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
       description="Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress."
       headerDom={
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button aria-haspopup="true" size="icon" variant="ghost">
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
+          <DropdownMenuTrigger
+            className="p-2 rounded-md hover:bg-zinc-100 focus:bg-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
+            aria-haspopup="true"
+          >
+            <MoreVertical className="h-4 w-4" />
+            <span className="sr-only">Toggle menu</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
@@ -35,8 +36,6 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
                 gov.tools
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>test</DropdownMenuItem>
-            <DropdownMenuItem>test</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       }
@@ -51,6 +50,15 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
         label="Status"
         value={drepInfo?.active ? "Registered" : "Not registered"}
       />
+      {drepInfo?.active && (
+        <RowLabelInfo
+          label="VotingPower"
+          value={`${Math.round(Number(drepInfo.amount) / 1000000)
+            .toString()
+            .replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₳`}
+        />
+      )}
+
       <div className="flex gap-2">
         <Button disabled={drepInfo?.active}>
           <Link href={`/wallets/${appWallet.id}/governance/register`}>
