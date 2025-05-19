@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { MultisigWallet } from "@/utils/multisigSDK";
+import type { MultisigWallet } from "@/utils/multisigSDK";
 import { getBalanceFromUtxos, getBalance } from "@/utils/getBalance";
 
 import CardUI from "@/components/ui/card-content";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { Wallet } from "@/types/wallet";
+import type { Wallet } from "@/types/wallet";
 import RowLabelInfo from "@/components/ui/row-label-info";
-import Button from "@/components/common/button";
 
 export function UpgradeStakingWallet({
   appWallet,
@@ -19,11 +18,9 @@ export function UpgradeStakingWallet({
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
-  const [totalEmpty, setTotalEmpty] = useState<boolean>(false);
 
   useEffect(() => {
     if (!utxos) return;
-    setTotalEmpty(Object.keys(getBalance(utxos)).length === 0);
 
     const balance = getBalanceFromUtxos(utxos);
     if (!balance) return;
@@ -35,8 +32,10 @@ export function UpgradeStakingWallet({
   }, [mWallet]);
 
   const upgraded = useMemo(() => {
-    if(!newAddress){false}
-    return mWallet?.stakingEnabled() &&appWallet.address === newAddress!;
+    if (!newAddress) {
+      return false;
+    }
+    return mWallet?.stakingEnabled() && appWallet.address === newAddress;
   }, [mWallet, newAddress, appWallet.address]);
 
   if (!mWallet || upgraded ) return null;
