@@ -156,11 +156,6 @@ export default function PageNewTransaction() {
       const paymentScript = multisigWallet?.getPaymentScript()
       const rewardAddress = multisigWallet?.getStakeAddress()
       const stakingScript = multisigWallet?.getStakingScript()
-      
-
-      console.log(paymentScript)
-      console.log(rewardAddress)
-      console.log(stakingScript)
 
       if(!rewardAddress) return
       if(!stakingScript) return
@@ -177,14 +172,12 @@ export default function PageNewTransaction() {
           .txInScript(paymentScript)
       }
 
-      const poolIdHash =
-        "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
+      //const poolIdHash = "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
 
-      txBuilder.registerStakeCertificate(rewardAddress)
-      txBuilder.certificateScript(stakingScript)
-      txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
+      //txBuilder.registerStakeCertificate(rewardAddress)
+      //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
       // attach the multisig staking script for the stake certificate
-      txBuilder.certificateScript(stakingScript)
+      //txBuilder.certificateScript(stakingScript)
 
       const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
       for (const key of paymentKeys) {

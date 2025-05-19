@@ -249,7 +249,7 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
                 </p>
                 <ToggleGroup
                   type="single"
-                  value={numRequiredSigners.toString()}
+                  value={(numRequiredSigners)?numRequiredSigners.toString():"1"}
                   onValueChange={(v) => {
                     if (v) setNumRequiredSigners(Number(v));
                   }}
