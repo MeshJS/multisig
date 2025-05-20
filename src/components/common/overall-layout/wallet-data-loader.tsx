@@ -157,7 +157,6 @@ export default function WalletDataLoader() {
       const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepids.cip105}`,
       );
-      console.log("drepInfo", drepInfo);
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
       setDrepInfo(drepInfo);
     } catch (err) {
