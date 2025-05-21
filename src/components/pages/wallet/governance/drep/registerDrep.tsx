@@ -9,8 +9,7 @@ import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder
 import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
-import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { createAnchor } from "./drepForm";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 
@@ -26,6 +25,7 @@ export default function RegisterDRep() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
+  const [usesGovTools, setUsesGovTools] = useState(true);
 
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
@@ -41,39 +41,6 @@ export default function RegisterDRep() {
     identities: [""],
   });
 
-  async function createAnchor(): Promise<{
-    anchorUrl: string;
-    anchorHash: string;
-  }> {
-    if (!appWallet) {
-      throw new Error("Wallet not connected");
-    }
-    // Cast metadata to a known record type
-    const drepMetadata = (await getDRepMetadata(
-      formState,
-      appWallet,
-    )) as Record<string, unknown>;
-    console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata),
-      }),
-    });
-    const res = (await rawResponse.json()) as PutResponse;
-    const anchorUrl = res.url;
-    // Await file retrieval
-    const fileContent = getFile(anchorUrl);
-    const anchorObj = JSON.parse(fileContent);
-    const anchorHash = hashDrepAnchor(anchorObj);
-    return { anchorUrl, anchorHash };
-  }
-
   async function registerDrep(): Promise<void> {
     if (!connected || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
@@ -82,7 +49,7 @@ export default function RegisterDRep() {
     const txBuilder = getTxBuilder(network);
     const drepIds = getDRepIds(appWallet.dRepId);
     try {
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorHash } = await createAnchor(formState, appWallet);
 
       const selectedUtxos: UTxO[] = manualUtxos;
 

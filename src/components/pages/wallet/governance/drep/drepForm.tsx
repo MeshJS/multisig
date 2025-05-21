@@ -8,7 +8,49 @@ import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
 import Link from "next/link";
 import type { UTxO } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
+import { getDRepMetadata } from "./drepMetadata";
+import { getFile, hashDrepAnchor } from "@meshsdk/core";
 
+export async function createAnchor(
+  formState: {
+    givenName: string;
+    bio: string;
+    motivations: string;
+    objectives: string;
+    qualifications: string;
+    email: string;
+    imageUrl: string;
+    imageSha256: string;
+    links: string[];
+    identities: string[];
+  },
+  appWallet: Wallet
+): Promise<{
+  anchorUrl: string;
+  anchorHash: string;
+}> {
+  if (!appWallet) {
+    throw new Error("Wallet not connected");
+  }
+  const drepMetadata = (await getDRepMetadata(formState, appWallet)) as Record<string, unknown>;
+  const rawResponse = await fetch("/api/vercel-storage/put", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      pathname: `drep/${formState.givenName}.jsonld`,
+      value: JSON.stringify(drepMetadata),
+    }),
+  });
+  const res = (await rawResponse.json()) as { url: string };
+  const anchorUrl = res.url;
+  const fileContent = getFile(anchorUrl);
+  const anchorObj = JSON.parse(fileContent);
+  const anchorHash = hashDrepAnchor(anchorObj);
+  return { anchorUrl, anchorHash };
+}
 
 interface DRepFormProps {
   givenName: string;
@@ -33,7 +75,7 @@ interface DRepFormProps {
   setIdentities: (value: string[]) => void;
   appWallet: Wallet;
   network: number;
-  manualUtxos: UTxO[]; 
+  manualUtxos: UTxO[];
   setManualUtxos: (utxos: UTxO[]) => void;
   setManualSelected: (value: boolean) => void;
   loading: boolean;
@@ -74,6 +116,20 @@ export default function DRepForm({
   // Local state for links and identities for immediate updates
   const [localLinks, setLocalLinks] = useState<string[]>(links);
   const [localIdentities, setLocalIdentities] = useState<string[]>(identities);
+  const [usesGovTools, setUsesGovTools] = useState(true);
+
+  // State for anchor URL input and result
+  const [anchorUrlInput, setAnchorUrlInput] = useState<string>("");
+  const [anchorResult, setAnchorResult] = useState<{ anchorUrl: string; anchorHash: string } | null>(null);
+
+  // Helper: compute anchor hash from URL
+  function createAnchorFromLink(anchorUrl: string) {
+    if (!anchorUrl) throw new Error("Anchor URL is required");
+    const fileContent = getFile(anchorUrl);
+    const anchorObj = JSON.parse(fileContent);
+    const anchorHash = hashDrepAnchor(anchorObj);
+    return { anchorUrl, anchorHash };
+  }
 
   const addLink = () => setLocalLinks([...localLinks, ""]);
   const removeLink = (index: number) =>
@@ -116,106 +172,136 @@ export default function DRepForm({
         .
       </p>
 
-      <fieldset className="grid gap-6">
-        <div className="grid gap-3">
-          <Label>DRep Name</Label>
-          <Input
-            placeholder="name must be without spaces"
-            value={givenName}
-            onChange={(e) => setGivenName(e.target.value)}
-          />
-        </div>
+      <div className="grid gap-3">
+        <Label>Upload Image</Label>
+        <ImgDragAndDrop onImageUpload={handleImageUpload} />
+      </div>
 
-        <div className="grid gap-3">
-          <Label>Bio</Label>
-          <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-        </div>
+      <div className="grid gap-3">
+        <Label>Add File</Label>
+        <Input
+          placeholder="Enter anchor URL"
+          value={anchorUrlInput}
+          onChange={(e) => setAnchorUrlInput(e.target.value)}
+        />
+        <Button
+          onClick={() => {
+            try {
+              const result = createAnchorFromLink(anchorUrlInput);
+              setAnchorResult(result);
+            } catch (err) {
+              console.error(err);
+            }
+          }}
+          disabled={!anchorUrlInput}
+        >
+          Load Anchor
+        </Button>
+        {anchorResult && (
+          <p className="text-sm text-gray-600">
+            Anchor Hash: {anchorResult.anchorHash}
+          </p>
+        )}
+      </div>
+      
 
-        <div className="grid gap-3">
-          <Label>Email</Label>
-          <Input
-            type="email"
-            placeholder="Enter your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
+      {!usesGovTools && (
+        <fieldset className="grid gap-6">
+          <div className="grid gap-3">
+            <Label>DRep Name</Label>
+            <Input
+              placeholder="name must be without spaces"
+              value={givenName}
+              onChange={(e) => setGivenName(e.target.value)}
+            />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Upload Image</Label>
-          <ImgDragAndDrop onImageUpload={handleImageUpload} />
-        </div>
+          <div className="grid gap-3">
+            <Label>Bio</Label>
+            <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Objectives</Label>
-          <Textarea
-            value={objectives}
-            onChange={(e) => setObjectives(e.target.value)}
-          />
-        </div>
+          <div className="grid gap-3">
+            <Label>Email</Label>
+            <Input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Motivations</Label>
-          <Textarea
-            value={motivations}
-            onChange={(e) => setMotivations(e.target.value)}
-          />
-        </div>
+          <div className="grid gap-3">
+            <Label>Objectives</Label>
+            <Textarea
+              value={objectives}
+              onChange={(e) => setObjectives(e.target.value)}
+            />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Qualifications</Label>
-          <Textarea
-            value={qualifications}
-            onChange={(e) => setQualifications(e.target.value)}
-          />
-        </div>
+          <div className="grid gap-3">
+            <Label>Motivations</Label>
+            <Textarea
+              value={motivations}
+              onChange={(e) => setMotivations(e.target.value)}
+            />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Links</Label>
-          {localLinks.map((link, index) => (
-            <div key={index} className="flex gap-2">
-              <Input
-                value={link}
-                onChange={(e) => updateLink(index, e.target.value)}
-                placeholder="https://path/to/info"
-              />
-              <Button
-                onClick={() => removeLink(index)}
-                size="icon"
-                variant="destructive"
-              >
-                X
-              </Button>
-            </div>
-          ))}
-          <Button onClick={addLink} variant="secondary">
-            + Add Link
-          </Button>
-        </div>
+          <div className="grid gap-3">
+            <Label>Qualifications</Label>
+            <Textarea
+              value={qualifications}
+              onChange={(e) => setQualifications(e.target.value)}
+            />
+          </div>
 
-        <div className="grid gap-3">
-          <Label>Identities</Label>
-          {localIdentities.map((identity, index) => (
-            <div key={index} className="flex gap-2">
-              <Input
-                value={identity}
-                onChange={(e) => updateIdentity(index, e.target.value)}
-                placeholder="https://path/to/identity"
-              />
-              <Button
-                onClick={() => removeIdentity(index)}
-                size="icon"
-                variant="destructive"
-              >
-                X
-              </Button>
-            </div>
-          ))}
-          <Button onClick={addIdentity} variant="secondary">
-            + Add Identity
-          </Button>
-        </div>
-      </fieldset>
+          <div className="grid gap-3">
+            <Label>Links</Label>
+            {localLinks.map((link, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  value={link}
+                  onChange={(e) => updateLink(index, e.target.value)}
+                  placeholder="https://path/to/info"
+                />
+                <Button
+                  onClick={() => removeLink(index)}
+                  size="icon"
+                  variant="destructive"
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button onClick={addLink} variant="secondary">
+              + Add Link
+            </Button>
+          </div>
+
+          <div className="grid gap-3">
+            <Label>Identities</Label>
+            {localIdentities.map((identity, index) => (
+              <div key={index} className="flex gap-2">
+                <Input
+                  value={identity}
+                  onChange={(e) => updateIdentity(index, e.target.value)}
+                  placeholder="https://path/to/identity"
+                />
+                <Button
+                  onClick={() => removeIdentity(index)}
+                  size="icon"
+                  variant="destructive"
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button onClick={addIdentity} variant="secondary">
+              + Add Identity
+            </Button>
+          </div>
+        </fieldset>
+      )}
 
       {appWallet && (
         <UTxOSelector
@@ -232,18 +318,14 @@ export default function DRepForm({
         <Button
           onClick={onSubmit}
           disabled={
-            loading ||
-            !givenName ||
-            !motivations ||
-            !objectives ||
-            !qualifications
+            loading 
           }
         >
           {loading
             ? "Loading..."
             : mode === "register"
-            ? "Register DRep"
-            : "Update DRep"}
+              ? "Register DRep"
+              : "Update DRep"}
         </Button>
       </div>
     </div>
