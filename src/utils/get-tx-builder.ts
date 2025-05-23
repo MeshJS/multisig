@@ -1,5 +1,5 @@
 import { MeshTxBuilder } from "@meshsdk/core";
-import { getProvider } from "./get-provider";
+import { getProvider } from "@/utils/get-provider";
 // import { CSLSerializer } from "@meshsdk/core-csl";
 
 export function getTxBuilder(network: number) {

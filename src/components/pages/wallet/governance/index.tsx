@@ -1,7 +1,7 @@
 import { BlockfrostDrepInfo } from "@/types/governance";
 import CardInfo from "./card-info";
 import { useEffect } from "react";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useSiteStore } from "@/lib/zustand/site";
 import AllProposals from "./proposals";

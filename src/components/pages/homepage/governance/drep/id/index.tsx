@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import SectionTitle from "@/components/ui/section-title";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Metadata from "./metadata";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,7 +10,7 @@ import ActiveIndicator from "../activeIndicator";
 import ScriptIndicator from "../scriptIndicator";
 import { useWallet } from "@meshsdk/react";
 import RowLabelInfo from "@/components/common/row-label-info";
-import { extractJsonLdValue } from "@/components/common/cardano-objects/jsonLdParser";
+import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
 import DelegateButton from "./delegateButton";
 

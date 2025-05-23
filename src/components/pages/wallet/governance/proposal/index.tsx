@@ -1,5 +1,5 @@
 import CardUI from "@/components/ui/card-content";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata } from "@/types/governance";

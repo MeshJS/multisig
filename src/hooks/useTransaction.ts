@@ -52,7 +52,12 @@ export default function useTransaction() {
 
       const unsignedTx = await data.txBuilder.complete();
 
+      console.log("unsignedTX:",unsignedTx)
+
       const signedTx = await wallet.signTx(unsignedTx, true);
+
+      console.log("signedTX:",signedTx)
+      
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);

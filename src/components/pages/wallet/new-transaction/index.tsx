@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 import {
   keepRelevant,
   Quantity,
-  resolveScriptHash,
-  serializeRewardAddress,
   Unit,
   UTxO,
 } from "@meshsdk/core";
@@ -16,6 +14,7 @@ import { useWallet } from "@meshsdk/react";
 import useTransaction from "@/hooks/useTransaction";
 import { toast, useToast } from "@/hooks/use-toast";
 import useAppWallet from "@/hooks/useAppWallet";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -25,19 +24,15 @@ import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 
 import { api } from "@/utils/api";
 
-import SectionTitle from "@/components/ui/section-title";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
+import SectionTitle from "@/components/ui/section-title";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import CardUI from "@/components/ui/card-content";
 import { ToastAction } from "@/components/ui/toast";
-import UTxOSelector from "./utxoSelector";
-import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 import {
   Table,
   TableBody,
@@ -51,11 +46,14 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import UTxOSelector from "./utxoSelector";
+import RecipientRow from "./RecipientRow";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
+  const { multisigWallet } = useMultisigWallet();
   const [addDescription, setAddDescription] = useState<boolean>(true);
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
@@ -141,9 +139,8 @@ export default function PageNewTransaction() {
       }
       const utxos = manualUtxos;
       let selectedUtxos = utxos;
+
       if (!sendAllAssets) {
-        // const assetMap = new Map<Unit, Quantity>();
-        // assetMap.set("lovelace", totalAmount.toString());
         selectedUtxos = keepRelevant(assetMap, utxos);
       }
 
@@ -154,6 +151,16 @@ export default function PageNewTransaction() {
 
       const txBuilder = getTxBuilder(network);
 
+      if(!multisigWallet) return
+
+      const paymentScript = multisigWallet?.getPaymentScript()
+      const rewardAddress = multisigWallet?.getStakeAddress()
+      const stakingScript = multisigWallet?.getStakingScript()
+
+      if(!rewardAddress) return
+      if(!stakingScript) return
+      if(!paymentScript) return
+
       for (const utxo of selectedUtxos) {
         txBuilder
           .txIn(
@@ -162,25 +169,26 @@ export default function PageNewTransaction() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(appWallet.scriptCbor);
+          .txInScript(paymentScript)
       }
 
-      // const rewardAddress = serializeRewardAddress(
-      //   resolveScriptHash(appWallet.scriptCbor),
-      //   true,
-      //   0,
-      // );
-      // console.log(rewardAddress);
-      // const poolIdHash =
-      //   "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
-      // console.log(txBuilder)
-      // txBuilder.registerStakeCertificate(rewardAddress)
-      // //txBuilder.certificateRedeemerValue()
-      // console.log(txBuilder)
-      // //txBuilder.certificateScript(appWallet.scriptCbor)
-      // console.log(txBuilder)
-      // //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
-      // console.log(txBuilder)
+      //const poolIdHash = "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
+
+      //txBuilder.registerStakeCertificate(rewardAddress)
+      //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
+      // attach the multisig staking script for the stake certificate
+      //txBuilder.certificateScript(stakingScript)
+
+      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
+      for (const key of paymentKeys) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
+
+      const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
+      for (const key of stakingKeys) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
+      
 
       if (!sendAllAssets) {
         for (let i = 0; i < outputs.length; i++) {
@@ -305,6 +313,13 @@ export default function PageNewTransaction() {
         )}
       </CardUI>
 
+      <CardUI title="Staking" cardClassName="w-full noBorder">
+        Coming soon.
+        {/* //Check if registered-> offer de-/registration
+        //offer stake pool id input
+        //offer withdrawl */}
+      </CardUI>
+
       <CardUI
         title="Description"
         description="To provide more information to other signers."
@@ -415,155 +430,3 @@ export default function PageNewTransaction() {
   );
 }
 
-function RecipientRow({
-  index,
-  recipientAddresses,
-  setRecipientAddresses,
-  amounts,
-  setAmounts,
-  assets,
-  setAssets,
-  disableAdaAmountInput,
-}: {
-  index: number;
-  recipientAddresses: string[];
-  setRecipientAddresses: (value: string[]) => void;
-  amounts: string[];
-  setAmounts: (value: string[]) => void;
-  assets: string[];
-  setAssets: (value: string[]) => void;
-  disableAdaAmountInput: boolean;
-}) {
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
-  const [adaHandle, setAdaHandle] = useState<string>("");
-
-  const walletAssets = useWalletsStore((state) => state.walletAssets);
-  const walletAssetMetadata = useWalletsStore(
-    (state) => state.walletAssetMetadata,
-  );
-
-  const handleAddressChange = async (value: string) => {
-    const newAddresses = [...recipientAddresses];
-    newAddresses[index] = value;
-    setRecipientAddresses(newAddresses);
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    if (value.startsWith("$")) {
-      const newTimeoutId = setTimeout(() => {
-        void resolveAdaHandle(
-          setAdaHandle,
-          setRecipientAddresses,
-          recipientAddresses,
-          index,
-          value,
-        );
-      }, 1000);
-      setTimeoutId(newTimeoutId);
-    } else {
-      setAdaHandle("");
-    }
-  };
-
-  const appWalletAssets = useMemo(() => {
-    return walletAssets.map((asset) => {
-      return {
-        unit: asset.unit,
-        assetName: walletAssetMetadata[asset.unit]?.assetName,
-        decimals: walletAssetMetadata[asset.unit]?.decimals ?? 0,
-        amount: asset.quantity,
-      };
-    });
-  }, [walletAssets, walletAssetMetadata]);
-
-  const assetOptions = useMemo(() => {
-    return (
-      <>
-        {appWalletAssets.map((appWalletAssets) => {
-          return (
-            <option key={appWalletAssets.unit} value={appWalletAssets.unit}>
-              {appWalletAssets.unit === "lovelace"
-                ? "ADA"
-                : appWalletAssets.assetName}
-            </option>
-          );
-        })}
-      </>
-    );
-  }, [appWalletAssets]);
-
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex flex-col gap-1">
-          <Input
-            type="string"
-            placeholder="addr1... or $handle"
-            value={recipientAddresses[index]}
-            onChange={(e) => {
-              void handleAddressChange(e.target.value);
-            }}
-          />
-          {adaHandle && <TableCell>{adaHandle}</TableCell>}
-        </div>
-      </TableCell>
-      <TableCell>
-        <div
-          className="flex flex-col"
-          style={{ minHeight: adaHandle ? "76px" : "auto" }}
-        >
-          <Input
-            type="number"
-            value={amounts[index]}
-            onChange={(e) => {
-              const newAmounts = [...amounts];
-              newAmounts[index] = e.target.value;
-              setAmounts(newAmounts);
-            }}
-            placeholder=""
-            disabled={disableAdaAmountInput}
-          />
-        </div>
-      </TableCell>
-      <TableCell className="w-[240px]">
-        <select
-          value={assets[index]}
-          onChange={(e) => {
-            const newAssets = [...assets];
-            newAssets[index] = e.target.value;
-            setAssets(newAssets);
-          }}
-          disabled={disableAdaAmountInput}
-          className={cn(
-            "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
-          )}
-        >
-          {assetOptions}
-        </select>
-      </TableCell>
-      <TableCell>
-        <div
-          className="flex flex-col"
-          style={{ minHeight: adaHandle ? "76px" : "auto" }}
-        >
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => {
-              const newAddresses = [...recipientAddresses];
-              newAddresses.splice(index, 1);
-              setRecipientAddresses(newAddresses);
-              const newAmounts = [...amounts];
-              newAmounts.splice(index, 1);
-              setAmounts(newAmounts);
-            }}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}

@@ -13,12 +13,17 @@ import {
 import { Address, getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 
+function addressToNetwork(address:string):number {
+  return (address.includes("test"))?0:1;
+}
+
 export function buildMultisigWallet(
   wallet: DbWallet,
-  network: number,
+  network?: number,
 ): MultisigWallet | undefined {
   const keys: MultisigKey[] = [];
   if (wallet.signersAddresses.length > 0) {
+    if(!network) network = addressToNetwork(wallet.signersAddresses[0]!)
     wallet.signersAddresses.forEach((addr, i) => {
       if (addr) {
         try {

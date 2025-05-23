@@ -11,8 +11,8 @@ import { ArrowUpRight, MoreHorizontal } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/lib/strings";
-import CardUI from "@/components/ui/card-content";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
+import CardUI from "@/components/common/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSiteStore } from "@/lib/zustand/site";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import { useEffect, useMemo, useState } from "react";
 

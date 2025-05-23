@@ -23,6 +23,7 @@ model Wallet {
   name                String
   description         String?
   signersAddresses    String[]
+  signersStakeKeys    String[]
   signersDescriptions String[]
   numRequiredSigners  Int?
   verified            String[]
@@ -66,6 +67,8 @@ model NewWallet {
   name                String
   description         String?
   signersAddresses    String[]
+  signersStakeKeys    String[]
   signersDescriptions String[]
+  numRequiredSigners  Int?
   ownerAddress        String
 }

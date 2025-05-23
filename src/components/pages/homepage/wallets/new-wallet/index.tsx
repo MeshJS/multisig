@@ -1,48 +1,34 @@
-import PageHeader from "@/components/common/page-header";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  NativeScript,
-  resolvePaymentKeyHash,
-  serializeNativeScript,
-} from "@meshsdk/core";
-import { PlusCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/router";
+import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
+import type { MultisigKey } from "@/utils/multisigSDK";
+import { MultisigWallet } from "@/utils/multisigSDK";
+
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
-import { useRouter } from "next/router";
+import { useSiteStore } from "@/lib/zustand/site";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
+import PageHeader from "@/components/common/page-header";
+import WalletInfoCard from "@/components/pages/homepage/wallets/new-wallet/nWInfoCard";
+import SignersCard from "@/components/pages/homepage/wallets/new-wallet/nWSignersCard";
+import AdvancedOptionsCard from "@/components/pages/homepage/wallets/new-wallet/nWAdvancedOptionsCard";
+import WalletActionButtons from "@/components/pages/homepage/wallets/new-wallet/nWActionButtons";
+import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
 
 export default function PageNewWallet() {
   const router = useRouter();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
+  const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const userAddress = useUserStore((state) => state.userAddress);
   const { user } = useUser();
+  const network = useSiteStore((state) => state.network);
   const { toast } = useToast();
   const [nativeScriptType, setNativeScriptType] = useState<
     "all" | "any" | "atLeast"
@@ -53,6 +39,61 @@ export default function PageNewWallet() {
     ? (router.query.id as string)
     : undefined;
 
+  const multisigWallet = useMemo(() => {
+    const keys: MultisigKey[] = [];
+    if (signersAddresses.length === 0) return;
+
+    if (signersAddresses.length > 0) {
+      signersAddresses.forEach((addr, i) => {
+        if (addr) {
+          try {
+            const paymentHash = resolvePaymentKeyHash(addr);
+            keys.push({
+              keyHash: paymentHash,
+              role: 0,
+              name: signersDescriptions[i] ?? "",
+            });
+          } catch {
+            console.warn(`Invalid payment address at index ${i}:`, addr);
+          }
+        }
+      });
+    }
+
+    if (signersStakeKeys.length > 0) {
+      signersStakeKeys.forEach((stakeKey, i) => {
+        if (stakeKey) {
+          try {
+            const stakeKeyHash = resolveStakeKeyHash(stakeKey);
+            keys.push({
+              keyHash: stakeKeyHash,
+              role: 2,
+              name: signersDescriptions[i] ?? "",
+            });
+          } catch {
+            console.warn(`Invalid stake address at index ${i}:`, stakeKey);
+          }
+        }
+      });
+    }
+    if (keys.length === 0) return;
+    return new MultisigWallet(
+      name,
+      keys,
+      description,
+      numRequiredSigners,
+      network,
+    );
+  }, [
+    name,
+    description,
+    signersAddresses,
+    signersStakeKeys,
+    signersDescriptions,
+    numRequiredSigners,
+    network,
+  ]);
+
   const { mutate: deleteWalletInvite } = api.wallet.deleteNewWallet.useMutation(
     {
       onError: (e) => {
@@ -62,12 +103,12 @@ export default function PageNewWallet() {
   );
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
-    onSuccess: async () => {
+    onSuccess: () => {
       if (pathIsWalletInvite) {
         deleteWalletInvite({ walletId: walletInviteId! });
       }
       setLoading(false);
-      router.push("/wallets");
+      void router.push("/wallets");
       toast({
         title: "Wallet Created",
         description: "Your wallet has been created",
@@ -81,10 +122,10 @@ export default function PageNewWallet() {
   });
 
   const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setLoading(false);
-      router.push(`/wallets/new-wallet/${data.id}`);
-      navigator.clipboard.writeText(
+      void router.push(`/wallets/new-wallet/${data.id}`);
+      void navigator.clipboard.writeText(
         `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
       );
       toast({
@@ -101,14 +142,14 @@ export default function PageNewWallet() {
   });
 
   const { mutate: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
-    onSuccess: async () => {
+    onSuccess: () => {
       setLoading(false);
       toast({
         title: "Wallet Info Updated",
         description: "Your wallet has been saved",
         duration: 5000,
       });
-      router.push("/wallets");
+      void router.push("/wallets");
     },
     onError: (e) => {
       setLoading(false);
@@ -123,12 +164,13 @@ export default function PageNewWallet() {
     },
   );
 
-  // to add the user address as the first signer
+  // Initialize first signer with current user
   useEffect(() => {
-    if (userAddress === undefined) return;
-    setSignerAddresses([userAddress]);
+    if (!user) return;
+    setSignerAddresses([user.address]);
     setSignerDescriptions([""]);
-  }, [userAddress]);
+    setSignerStakeKeys([user.stakeAddress]);
+  }, [user]);
 
   useEffect(() => {
     if (pathIsWalletInvite && walletInvite) {
@@ -136,63 +178,42 @@ export default function PageNewWallet() {
       setDescription(walletInvite.description ?? "");
       setSignerAddresses(walletInvite.signersAddresses);
       setSignerDescriptions(walletInvite.signersDescriptions);
+      setSignerStakeKeys(walletInvite.signersStakeKeys);
+      setNumRequiredSigners(walletInvite.numRequiredSigners!);
     }
   }, [pathIsWalletInvite, walletInvite]);
 
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
+    setSignerStakeKeys([...signersStakeKeys, ""]);
   }
 
   function createNativeScript() {
     setLoading(true);
 
-    const keyHashes = [];
-    for (let i = 0; i < signersAddresses.length; i++) {
-      const addr = signersAddresses[i] as string;
-      const walletKeyHash = resolvePaymentKeyHash(addr);
-      keyHashes.push(walletKeyHash);
+    if (!multisigWallet) {
+      setLoading(false);
+      throw new Error("Multisig wallet could not be built.");
     }
 
-    const nativeScript: {
-      type: "all" | "any" | "atLeast";
-      scripts: { type: string; keyHash: string }[];
-      required?: number;
-    } = {
-      type: nativeScriptType,
-      scripts: keyHashes.map((keyHash) => ({
-        type: "sig",
-        keyHash,
-      })),
-    };
-
-    if (nativeScriptType == "atLeast") {
-      nativeScript.required = numRequiredSigners;
+    const { scriptCbor } = multisigWallet.getScript();
+    if (!scriptCbor) {
+      setLoading(false);
+      throw new Error("scriptCbor is undefined");
     }
-
-    const { scriptCbor } = serializeNativeScript(nativeScript as NativeScript);
-
-    if (scriptCbor === undefined) throw new Error("scriptCbor is undefined");
 
     createWallet({
       name: name,
       description: description,
       signersAddresses: signersAddresses,
       signersDescriptions: signersDescriptions,
+      signersStakeKeys: signersStakeKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });
-  }
-
-  function checkValidAddress(address: string) {
-    try {
-      resolvePaymentKeyHash(address);
-      return true;
-    } catch (e) {
-      return false;
-    }
   }
 
   async function handleCreateNewWallet() {
@@ -203,7 +224,9 @@ export default function PageNewWallet() {
         description: description,
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
+        signersStakeKeys: signersStakeKeys,
         ownerAddress: userAddress!,
+        numRequiredSigners: numRequiredSigners,
       });
     }
   }
@@ -217,6 +240,8 @@ export default function PageNewWallet() {
         description: description,
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
+        signersStakeKeys: signersStakeKeys,
+        numRequiredSigners: numRequiredSigners,
       });
     }
   }
@@ -227,341 +252,74 @@ export default function PageNewWallet() {
         pageTitle={`New Wallet${pathIsWalletInvite && walletInvite ? `: ${walletInvite.name}` : ""}`}
       ></PageHeader>
       {user && (
-        <div className="grid grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Wallet Info</CardTitle>
-              <CardDescription>
-                Some information to help you remember what is this wallet use
-                for
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div className="grid gap-3">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    className="w-full"
-                    placeholder="Fund12 Project X"
-                    value={name}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 64) setName(e.target.value);
-                    }}
-                  />
-                  {name.length >= 64 && (
-                    <p className="text-red-500">
-                      Name should be less than 64 characters
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-3">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    className="min-h-32"
-                    placeholder="For managing Fund12 Project X catalyst fund / dRep for team X / Company X main spending wallet"
-                    value={description}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 256)
-                        setDescription(e.target.value);
-                    }}
-                  />
-                  {description.length >= 256 && (
-                    <p className="text-red-500">
-                      Description should be less than 256 characters
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-1 md:grid-cols-2">
+          {/* Wallet Info */}
+          <div className="col-span-2 md:col-span-1">
+            <WalletInfoCard
+              walletInfo={{
+                name,
+                setName,
+                description,
+                setDescription,
+              }}
+            />
+          </div>
 
-          <div></div>
+          {/* Advanced Options */}
+          <div className="col-span-2 md:col-span-1">
+            <AdvancedOptionsCard
+              advancedConfig={{
+                stakeKey,
+                setStakeKey,
+                nativeScriptType,
+                setNativeScriptType,
+              }}
+            />
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Signers</CardTitle>
-              <CardDescription className="whitespace-pre-line">
-                {`Add the addresses of the signers who will be required to approve transactions in this wallet. The first address is your address which is automatically added. 
-                The number of required signers is the number of signers required to approve a transaction to make it valid. You can:
-                • add more signers by clicking the "Add Signers" button. 
-                • remove a signer by clicking the "Remove" button next to the signer's address.
-                • save this wallet and create a link to invite signers with the "Invite Signers" button.`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div>
-                  {pathIsWalletInvite ? (
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        navigator.clipboard.writeText(
-                          `https://multisig.meshjs.dev/wallets/invite/${walletInviteId}`,
-                        );
-                        toast({
-                          title: "Copied invite link",
-                          description: "Invite link copied to clipboard",
-                          duration: 5000,
-                        });
-                      }}
-                      className="m-0 h-auto max-w-full justify-start truncate p-0"
-                    >
-                      Invite signers:
-                      https://multisig.meshjs.dev/wallets/invite/
-                      {walletInviteId}
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => handleCreateNewWallet()}
-                      disabled={loading}
-                    >
-                      Invite Signers
-                    </Button>
-                  )}
-                </div>
+          {/* Signers */}
+          <div className="col-span-2">
+            <SignersCard
+              signerConfig={{
+                signersAddresses,
+                setSignerAddresses,
+                signersDescriptions,
+                setSignerDescriptions,
+                signersStakeKeys,
+                setSignerStakeKeys,
+                numRequiredSigners,
+                setNumRequiredSigners,
+                addSigner,
+                pathIsWalletInvite,
+                walletInviteId,
+                nativeScriptType,
+                toast,
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
+                loading,
+              }}
+            />
+          </div>
 
-                <div className="grid gap-3">
-                  <Table>
-                    <TableBody>
-                      {signersAddresses.map((signer, index) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            <div className="grid gap-4 py-4">
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Address</Label>
-                                <Input
-                                  type="string"
-                                  placeholder="addr1..."
-                                  className={`col-span-3 ${
-                                    signersAddresses[index] != "" &&
-                                    !checkValidAddress(
-                                      signersAddresses[index]!,
-                                    ) &&
-                                    "text-red-500"
-                                  }`}
-                                  value={signer}
-                                  onChange={(e) => {
-                                    const newSigners = [...signersAddresses];
-                                    newSigners[index] = e.target.value;
-                                    setSignerAddresses(newSigners);
-                                  }}
-                                  disabled={index === 0}
-                                />
-                              </div>
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">
-                                  Description
-                                </Label>
-                                <Input
-                                  className="col-span-3"
-                                  value={signersDescriptions[index]}
-                                  onChange={(e) => {
-                                    const newSigners = [...signersDescriptions];
-                                    newSigners[index] = e.target.value;
-                                    setSignerDescriptions(newSigners);
-                                  }}
-                                  placeholder="optional name or description of this signer"
-                                />
-                              </div>
+          {/* Script Inspector */}
+          <div className="col-span-2">
+            <InspectMultisigScript mWallet={multisigWallet} />
+          </div>
 
-                              {signersAddresses.filter(
-                                (signer) => signer === signersAddresses[index],
-                              ).length > 1 && (
-                                <p className="text-red-500">
-                                  This address is duplicated with another signer
-                                </p>
-                              )}
-                              {!checkValidAddress(signersAddresses[index]!) &&
-                                signersAddresses[index] != "" && (
-                                  <p className="text-red-500">
-                                    This address is is invalid
-                                  </p>
-                                )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {index > 0 && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="gap-1"
-                                onClick={() => {
-                                  const newSigners = [...signersAddresses];
-                                  newSigners.splice(index, 1);
-                                  setSignerAddresses(newSigners);
-
-                                  const newSignersDesc = [
-                                    ...signersDescriptions,
-                                  ];
-                                  newSignersDesc.splice(index, 1);
-                                  setSignerDescriptions(newSignersDesc);
-                                }}
-                                disabled={index === 0}
-                              >
-                                Remove
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-
-                      <TableRow>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="gap-1"
-                            onClick={() => addSigner()}
-                          >
-                            <PlusCircle className="h-3.5 w-3.5" />
-                            Add Signers
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-                <div className="grid gap-3">
-                  <Label htmlFor="description">Required signers</Label>
-
-                  {nativeScriptType == "atLeast" ? (
-                    <>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Select the number of signers required to approve a
-                        transaction to make it valid in this wallet.
-                      </p>
-                      <ToggleGroup
-                        type="single"
-                        variant="outline"
-                        value={numRequiredSigners.toString()}
-                        disabled={nativeScriptType != "atLeast"}
-                      >
-                        {signersAddresses.length > 0 &&
-                          Array.from(
-                            { length: signersAddresses.length },
-                            (_, i) => i + 1,
-                          ).map((num) => (
-                            <ToggleGroupItem
-                              key={num}
-                              value={num.toString()}
-                              onClick={() => {
-                                if (numRequiredSigners == num) {
-                                  setNumRequiredSigners(0);
-                                } else {
-                                  setNumRequiredSigners(num);
-                                }
-                              }}
-                            >
-                              {num}
-                            </ToggleGroupItem>
-                          ))}
-                      </ToggleGroup>
-                      <p>
-                        You have selected:{" "}
-                        {`You have ${signersAddresses.filter((addr) => addr.length > 0).length} signer(s) and at least ${numRequiredSigners} of signer(s) are required to approve transactions in this wallet.`}
-                      </p>
-                    </>
-                  ) : (
-                    <p>
-                      <b>
-                        {nativeScriptType == "all"
-                          ? "All signers are "
-                          : "Any one signer is "}
-                      </b>
-                      required to approve transactions in this wallet.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div></div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Advance Options</CardTitle>
-              <CardDescription>
-                Customize your wallet with advance options, only if you know
-                what you are doing
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div className="grid gap-3">
-                  <Label htmlFor="stakeKey">Stake Credential Hash</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    className="w-full"
-                    value={stakeKey}
-                    onChange={(e) => setStakeKey(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-3">
-                  <Label htmlFor="type">Native Script Type</Label>
-                  <Select
-                    value={nativeScriptType}
-                    onValueChange={(value) =>
-                      setNativeScriptType(value as "all" | "any" | "atLeast")
-                    }
-                    defaultValue={"atLeast"}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="atLeast">
-                          At Least - the number of participants required to sign
-                          a transaction to make it valid
-                        </SelectItem>
-                        <SelectItem value="all">
-                          All - every participants need to sign to make a
-                          transaction valid
-                        </SelectItem>
-                        <SelectItem value="any">
-                          Any - any participants can sign to make a transaction
-                          valid
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div></div>
-
-          <div className="flex gap-4">
-            <Button
-              onClick={createNativeScript}
-              disabled={
-                signersAddresses.length == 0 ||
-                signersAddresses.some((signer) => !checkValidAddress(signer)) ||
-                (nativeScriptType == "atLeast" && numRequiredSigners == 0) ||
-                name.length == 0 ||
-                loading
-              }
-            >
-              {loading ? "Creating Wallet..." : "Create Wallet"}
-            </Button>
-            {pathIsWalletInvite ? (
-              <Button onClick={() => handleSaveWallet()} disabled={loading}>
-                {loading ? "Saving Wallet..." : "Save Wallet for Later"}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => handleCreateNewWallet()}
-                disabled={loading}
-              >
-                Save Wallet and Invite Signers
-              </Button>
-            )}
+          {/* Action Buttons */}
+          <div className="col-span-2 flex justify-end gap-4 sm:justify-center">
+            <WalletActionButtons
+              buttonConfig={{
+                createNativeScript,
+                handleSaveWallet: () => void handleSaveWallet(),
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
+                loading,
+                signersAddresses,
+                name,
+                nativeScriptType,
+                numRequiredSigners,
+                pathIsWalletInvite,
+              }}
+            />
           </div>
         </div>
       )}
