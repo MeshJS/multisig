@@ -20,7 +20,7 @@ export default function EditSigners({
   setShowEdit,
 }: EditSignersProps) {
   const signersAddresses = appWallet.signersAddresses;
-  const signersStakeKeys = appWallet.signersStakeKeys;
+  const signersStakeKeys = appWallet.signersStakeKeys ?? [];
   const [signersDescriptions, setSignerDescription] = useState<string[]>(
     appWallet.signersDescriptions,
   );
@@ -67,7 +67,7 @@ export default function EditSigners({
       if (
         signersAddresses[i] === userAddress &&
         stakeAddr !== undefined &&
-        !signersStakeKeys[i]
+        !signersStakeKeys?.[i]
       ) {
         skList[i] = stakeAddr;
       } else {

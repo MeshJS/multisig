@@ -283,6 +283,10 @@ function getScript(
   return { address, scriptCbor };
 }
 
+export function addressToNetwork(address:string):number {
+  return (address.includes("test"))?0:1;
+}
+
 export function checkValidAddress(address: string) {
   try {
     resolvePaymentKeyHash(address);
