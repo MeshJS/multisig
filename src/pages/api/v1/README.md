@@ -1,6 +1,6 @@
 # API Endpoints for /api/v1
 
-## `GET /api/v1/wIdsByAddr`
+## `GET /api/v1/walletIdsByAddress`
 
 **Description**: Retrieve all wallet IDs associated with a given address.
 
@@ -15,7 +15,7 @@
 - `404 Not Found`: If no wallets are found.
 - `500 Internal Server Error`: On unexpected failure.
 
-## `GET /api/v1/pendingUTxOsByWId`
+## `GET /api/v1/freeUTxOsByWalletId`
 
 **Description**: Get all UTxOs for a multisig wallet that are not blocked by pending transactions.
 
