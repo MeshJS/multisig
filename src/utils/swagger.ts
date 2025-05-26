@@ -7,7 +7,7 @@ export const swaggerSpec = swaggerJSDoc({
     info: {
       title: "Multisig API",
       version: "1.0.0",
-      description: "OpenAPI documentation for the Multisig API, similar to Blockfrost style",
+      description: "OpenAPI documentation for the Multisig API. This is in alpha stage and under active developement. The endpoints are subject to change.",
     },
   },
   apis: ["./src/pages/api/v1/*.ts"], // Adjust to your API folder

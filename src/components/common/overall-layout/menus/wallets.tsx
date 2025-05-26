@@ -1,5 +1,5 @@
 import useUserWallets from "@/hooks/useUserWallets";
-import { House, Sparkle, Landmark } from "lucide-react";
+import { House, Sparkle, Landmark, FolderCode } from "lucide-react";
 import MenuLink from "./menu-link";
 import { useRouter } from "next/router";
 
@@ -9,7 +9,6 @@ export default function MenuWallets() {
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
 
   return (
-    
     <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
       <br />
       <MenuLink
@@ -27,19 +26,32 @@ export default function MenuWallets() {
         <Sparkle className="h-6 w-6" />
         <div className="flex items-center gap-2">Features</div>
       </MenuLink>
+
+      <MenuLink
+        href={`/api-docs`}
+        className={router.pathname == "/api-docs" ? "text-white" : ""}
+      >
+        <FolderCode className="h-6 w-6" />
+        <div className="flex items-center gap-2">API Docs</div>
+      </MenuLink>
       <br />
+
       {wallets && (
         <div className="my-1">
-        <MenuLink
-          href={ `${baseUrl}` }
-          className={router.pathname.startsWith("/wallets/[wallet]") ? "text-white" : ""}
-        >
-          <p>
-            {wallets
-              .filter((wallet) => wallet.id === router.query.wallet)
-              .map((wallet) => wallet.name)}
-          </p>
-        </MenuLink>
+          <MenuLink
+            href={`${baseUrl}`}
+            className={
+              router.pathname.startsWith("/wallets/[wallet]")
+                ? "text-white"
+                : ""
+            }
+          >
+            <p>
+              {wallets
+                .filter((wallet) => wallet.id === router.query.wallet)
+                .map((wallet) => wallet.name)}
+            </p>
+          </MenuLink>
         </div>
       )}
       <MenuLink
