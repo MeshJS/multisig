@@ -109,7 +109,6 @@ export class MultisigWallet {
     return getScript(stakingScript, this.network).scriptCbor;
   }
 
-
   /**
    * Filters the stored keys for the specified role.
    *
@@ -187,6 +186,10 @@ export class MultisigWallet {
       resolveNativeScriptHash(this.buildScript(0)!), // Still Wrong should be 3 -> for drep keys.
     );
   }
+// Collect unique types (roles) from the wallet keys.
+  getAvailableTypes() {
+    return Array.from(new Set(this.keys.map((key) => key.role)));
+  }
 
   /**
    * Generates CIP-0146 JSON metadata for the wallet.
@@ -195,7 +198,7 @@ export class MultisigWallet {
    */
   getJsonMetadata(): object {
     // Collect unique types (roles) from the wallet keys.
-    const types = Array.from(new Set(this.keys.map((key) => key.role)));
+    const types = this.getAvailableTypes();
     // Build participants mapping using keyHash and the key's name.
     const participants = this.keys.reduce(
       (acc, key) => {
@@ -283,8 +286,8 @@ function getScript(
   return { address, scriptCbor };
 }
 
-export function addressToNetwork(address:string):number {
-  return (address.includes("test"))?0:1;
+export function addressToNetwork(address: string): number {
+  return address.includes("test") ? 0 : 1;
 }
 
 export function checkValidAddress(address: string) {

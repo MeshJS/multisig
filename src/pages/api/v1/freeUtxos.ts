@@ -1,7 +1,5 @@
 //get all utxos for wallet
-
 //get all pending txs for the wallet
-
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
 import { Wallet as DbWallet } from "@prisma/client";
 import { NextApiRequest, NextApiResponse } from "next";
@@ -10,6 +8,55 @@ import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import { UTxO } from "@meshsdk/core";
+
+/**
+ * @swagger
+ * /api/v1/freeUtxos:
+ *   get:
+ *     summary: Get unblocked UTxOs for a wallet
+ *     parameters:
+ *       - name: walletId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: address
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: A list of free UTxOs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   input:
+ *                     type: object
+ *                     properties:
+ *                       txHash:
+ *                         type: string
+ *                       outputIndex:
+ *                         type: number
+ *                   output:
+ *                     type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       amount:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             unit:
+ *                               type: string
+ *                             quantity:
+ *                               type: string
+ */
 
 export default async function handler(
   req: NextApiRequest,
