@@ -58,7 +58,9 @@ Endpoints are automatically documented using JSDoc comments within each API rout
 
 **Response**:
 
-- `200 OK`: Returns a list of native scripts.
+- `200 OK`: Returns a list of objects each containing:
+  - `type`: The script type as a string.
+  - `script`: The native script object.
 - `400 Bad Request`: If walletId or address is invalid.
 - `404 Not Found`: If the wallet cannot be found.
 - `500 Internal Server Error`: On construction or fetching failure.

@@ -71,7 +71,12 @@ export default async function handler(
       return res.status(500).json({ error: "Wallet could not be constructed" });
     }
 
-    return types.map((m) => mWallet.buildScript(m));
+    return res.status(200).json(
+      types.map((m) => ({
+        type: m,
+        script: mWallet.buildScript(m),
+      })),
+    );
   } catch (error) {
     console.error("Error fetching wallet IDs:", error);
     res.status(500).json({ error: "Internal Server Error" });
