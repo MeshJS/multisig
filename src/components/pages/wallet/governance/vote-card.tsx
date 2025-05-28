@@ -1,4 +1,4 @@
-import { Wallet } from "@/types/wallet";
+import type { Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ interface VoteCardProps {
 
 export default function VoteCard({ appWallet, proposalId }: VoteCardProps) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
-  const [localProposalId, setLocalProposalId] = useState<string>(proposalId || "");
+  const [localProposalId, setLocalProposalId] = useState<string>(proposalId ?? "");
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
 
@@ -66,7 +66,7 @@ export default function VoteCard({ appWallet, proposalId }: VoteCardProps) {
         <div className="flex gap-4">
           <VoteButton
             appWallet={appWallet}
-            proposalId={proposalId || localProposalId}
+            proposalId={proposalId ?? localProposalId}
             description={description}
             metadata={metadata}
           />

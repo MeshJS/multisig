@@ -8,7 +8,6 @@ const getBaseUrl = () => {
 };
 
 export const apiServer = createTRPCProxyClient<AppRouter>({
-  transformer: superjson,
   links: [
     loggerLink({
       enabled: (opts) =>
@@ -16,8 +15,8 @@ export const apiServer = createTRPCProxyClient<AppRouter>({
         (opts.direction === "down" && opts.result instanceof Error),
     }),
     httpBatchLink({
-      transformer: superjson,
       url: `${getBaseUrl()}/api/trpc`,
+      transformer: superjson,
     }),
   ],
 });

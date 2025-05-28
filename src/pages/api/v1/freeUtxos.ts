@@ -1,13 +1,13 @@
 //get all utxos for wallet
 //get all pending txs for the wallet
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
-import { Wallet as DbWallet } from "@prisma/client";
-import { NextApiRequest, NextApiResponse } from "next";
+import type { Wallet as DbWallet } from "@prisma/client";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { apiServer } from "@/utils/apiServer";
 import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { UTxO } from "@meshsdk/core";
+import type { UTxO } from "@meshsdk/core";
 
 /**
  * @swagger
@@ -76,9 +76,15 @@ export default async function handler(
   }
 
   try {
-    const pendingTxs = apiServer.transaction.getPendingTransactions.query({
+    const pendingTxsResult = await apiServer.transaction.getPendingTransactions.query({
       walletId,
     });
+
+    if (!pendingTxsResult) {
+      return res
+        .status(500)
+        .json({ error: "Wallet could not fetch pending Txs" });
+    }
 
     const walletFetch: DbWallet | null = await apiServer.wallet.getWallet.query(
       { walletId, address },
@@ -95,25 +101,18 @@ export default async function handler(
 
     const blockchainProvider = getProvider(network);
 
-    let utxos: UTxO[] = await blockchainProvider.fetchAddressUTxOs(addr);
-
-    await pendingTxs;
-    if (!pendingTxs) {
-      return res
-        .status(500)
-        .json({ error: "Wallet could not fetch pending Txs" });
-    }
+    const utxos: UTxO[] = await blockchainProvider.fetchAddressUTxOs(addr);
 
     const blockedUtxos: { hash: string; index: number }[] = (
-      await pendingTxs
-    ).flatMap((m) => {
-      const txJson = JSON.parse(m.txJson);
-      return txJson.inputs.map(
-        (n: { txIn: { txHash: string; txIndex: number } }) => ({
-          hash: n.txIn.txHash ?? undefined,
-          index: n.txIn.txIndex ?? undefined,
-        }),
-      );
+      pendingTxsResult
+    ).flatMap((m): { hash: string; index: number }[] => {
+      const txJson: {
+        inputs: { txIn: { txHash: string; txIndex: number } }[];
+      } = JSON.parse(m.txJson);
+      return txJson.inputs.map((n) => ({
+        hash: n.txIn.txHash,
+        index: n.txIn.txIndex,
+      }));
     });
 
     const freeUtxos = utxos.filter(

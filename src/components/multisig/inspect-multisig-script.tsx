@@ -1,9 +1,13 @@
 import CardUI from "@/components/common/card-content";
 import Code from "@/components/common/code";
 import RowLabelInfo from "@/components/common/row-label-info";
-import { paymentKeyHash, type MultisigWallet } from "@/utils/multisigSDK";
+import { type MultisigWallet } from "@/utils/multisigSDK";
 import { Carousel } from "@/components/ui/carousel";
-import { deserializeAddress, resolveNativeScriptHash } from "@meshsdk/core";
+import { deserializeAddress } from "@meshsdk/core";
+import useAppWallet from "@/hooks/useAppWallet";
+import { useEffect, useState } from "react";
+import { getBalanceFromUtxos } from "@/utils/getBalance";
+import { useWalletsStore } from "@/lib/zustand/wallets";
 
 // Carousel state: 0 = 1854, 1 = payment, 2 = stake
 export default function InspectMultisigScript({
@@ -11,6 +15,18 @@ export default function InspectMultisigScript({
 }: {
   mWallet?: MultisigWallet;
 }) {
+  const { appWallet } = useAppWallet();
+  const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
+  const [balance, setBalance] = useState<number>(0);
+  useEffect(() => {
+    if (!appWallet) return;
+    const utxos = walletsUtxos[appWallet.id];
+    if (!utxos) return;
+    const balance = getBalanceFromUtxos(utxos);
+    if (!balance) return;
+    setBalance(balance);
+  }, [appWallet, walletsUtxos]);
+
   if (!mWallet) return null;
   const dSAddr = deserializeAddress(mWallet.getScript().address);
 
@@ -25,10 +41,7 @@ export default function InspectMultisigScript({
         label="payment:"
         value={<Code>{JSON.stringify(mWallet?.buildScript(0), null, 2)}</Code>}
       />
-      <RowLabelInfo
-        label="Keyhash"
-        value={<Code>{dSAddr.scriptHash}</Code>}
-      />
+      <RowLabelInfo label="Keyhash" value={<Code>{dSAddr.scriptHash}</Code>} />
       <RowLabelInfo
         label="CBOR"
         value={<Code>{mWallet.getPaymentScript()}</Code>}
@@ -72,7 +85,7 @@ export default function InspectMultisigScript({
         value={<Code>{mWallet.getScript().address}</Code>}
         copyString={mWallet.getScript().address}
       />
-
+      <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
       {mWallet.stakingEnabled() && (
         <RowLabelInfo
           label="Stake Address"
@@ -80,7 +93,7 @@ export default function InspectMultisigScript({
           copyString={mWallet.getStakeAddress()}
         />
       )}
-      
+{/* add pending rewards like balance */}
       <RowLabelInfo
         label="dRep ID"
         value={<Code>{mWallet.getDRepId()}</Code>}
