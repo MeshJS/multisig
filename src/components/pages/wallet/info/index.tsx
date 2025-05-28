@@ -7,6 +7,7 @@ import { MigrateWallet } from "./migrate-wallet";
 import { ArchiveWallet } from "./archive-wallet";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
+import { RegisterWallet } from "./register-wallet";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -20,6 +21,7 @@ export default function WalletInfo() {
           <CardInfo appWallet={appWallet} />
           <CardSigners appWallet={appWallet} />
           <InspectMultisigScript mWallet={multisigWallet} />
+          <RegisterWallet mWallet={multisigWallet} appWallet={appWallet} />
           <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />
           <ArchiveWallet appWallet={appWallet} />
           <MigrateWallet appWallet={appWallet} />

@@ -1,5 +1,5 @@
-// src/utils/swagger.ts
 import swaggerJSDoc from "swagger-jsdoc";
+import path from "path";
 
 export const swaggerSpec = swaggerJSDoc({
   definition: {
@@ -7,8 +7,8 @@ export const swaggerSpec = swaggerJSDoc({
     info: {
       title: "Multisig API",
       version: "1.0.0",
-      description: "OpenAPI documentation for the Multisig API. This is in alpha stage and under active developement. The endpoints are subject to change.",
+      description: "OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.",
     },
   },
-  apis: ["./src/pages/api/v1/*.ts"], // Adjust to your API folder
+  apis: [path.resolve(process.cwd(), "src/pages/api/v1/*.ts")],
 });
