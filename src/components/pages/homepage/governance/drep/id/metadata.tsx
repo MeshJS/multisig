@@ -1,7 +1,7 @@
 import React from "react";
 import CardUI from "@/components/ui/card-content";
 import { BlockfrostDrepMetadata } from "@/types/governance";
-import { extractJsonLdValue } from "@/components/common/cardano-objects/jsonLdParser";
+import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import {
   Twitter,
   Instagram,

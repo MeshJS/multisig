@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useEffect, useRef, useState } from "react";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";

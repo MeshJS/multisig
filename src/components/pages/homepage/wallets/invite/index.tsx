@@ -1,5 +1,14 @@
+import { useState } from "react";
+import { api } from "@/utils/api";
+import { useUserStore } from "@/lib/zustand/user";
+import { useRouter } from "next/router";
+import { useToast } from "@/hooks/use-toast";
+import useUser from "@/hooks/useUser";
+
 import PageHeader from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -7,19 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useState } from "react";
-import { api } from "@/utils/api";
-import { useUserStore } from "@/lib/zustand/user";
-import { useRouter } from "next/router";
-import { useToast } from "@/hooks/use-toast";
 
 export default function PageNewWalletInvite() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(false);
   const [signersDescription, setSignerDescription] = useState<string>("");
   const userAddress = useUserStore((state) => state.userAddress);
+  const { user } = useUser();
   const { toast } = useToast();
 
   const pathIsNewWallet = router.pathname == "/wallets/invite/[id]";
@@ -41,7 +44,7 @@ export default function PageNewWalletInvite() {
           description: "Your info has been updated",
           duration: 5000,
         });
-        router.push("/wallets");
+        await router.push("/wallets");
       },
       onError: (e) => {
         setLoading(false);
@@ -53,12 +56,14 @@ export default function PageNewWalletInvite() {
     if (newWallet === undefined || newWallet === null)
       throw new Error("Wallet invite is undefined");
     if (userAddress === undefined) throw new Error("User address is undefined");
+    if (!user?.stakeAddress) throw new Error("User stake address is undefined");
 
     setLoading(true);
 
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
+      signersStakeKeys: [...newWallet.signersStakeKeys, user.stakeAddress],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,
@@ -84,12 +89,22 @@ export default function PageNewWalletInvite() {
             <CardContent>
               <div className="grid gap-6">
                 <div className="grid gap-3">
-                  <Label htmlFor="address">Your address</Label>
+                  <Label htmlFor="address">Your Paymentaddress</Label>
                   <Input
                     id="address"
                     type="text"
                     className="w-full"
                     value={userAddress}
+                    disabled
+                  />
+                </div>
+                <div className="grid gap-3">
+                  <Label htmlFor="stakeAddress">Your Stakeaddress</Label>
+                  <Input
+                    id="stakeAddress"
+                    type="text"
+                    className="w-full"
+                    value={user?.stakeAddress?? ""}
                     disabled
                   />
                 </div>

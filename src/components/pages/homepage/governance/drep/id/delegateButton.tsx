@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useWallet } from "@meshsdk/react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Loader } from "lucide-react";

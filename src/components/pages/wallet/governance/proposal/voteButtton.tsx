@@ -1,8 +1,8 @@
 import { useState } from "react";
 import Button from "@/components/common/button";
 import { useSiteStore } from "@/lib/zustand/site";
-import { getTxBuilder } from "@/components/common/cardano-objects/get-tx-builder";
-import { getProvider } from "@/components/common/cardano-objects/get-provider";
+import { getTxBuilder } from "@/utils/get-tx-builder";
+import { getProvider } from "@/utils/get-provider";
 import useTransaction from "@/hooks/useTransaction";
 import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";

@@ -14,12 +14,14 @@ import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
 import { useToast } from "@/hooks/use-toast";
+import useUser from "@/hooks/useUser";
 
 export default function PageNewWalletInviteInfo() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(false);
   const [signersDescription, setSignerDescription] = useState<string>("");
   const userAddress = useUserStore((state) => state.userAddress);
+  const { user } = useUser();
   const { toast } = useToast();
 
   const pathIsNewWallet = router.pathname == "/wallets/invite/info/[id]";
@@ -91,14 +93,19 @@ export default function PageNewWalletInviteInfo() {
       if (userAddress === undefined) throw new Error("User address is undefined");
   
       const userIndex = newWallet.signersAddresses.findIndex((item) => item === userAddress)
-      if (userIndex === undefined) throw new Error("User index is undefined");
+      if (userIndex === -1) throw new Error("User index is not found");
   
       setLoading(true);
   
+      const updatedAddresses = newWallet.signersAddresses.filter((_, i) => i !== userIndex);
+      const updatedStakeKeys = newWallet.signersStakeKeys.filter((_, i) => i !== userIndex);
+      const updatedDescriptions = newWallet.signersDescriptions.filter((_, i) => i !== userIndex);
+
       updateNewWalletSigners({
         walletId: newWalletId!,
-        signersAddresses: newWallet.signersAddresses.splice(userIndex+1,1),
-        signersDescriptions: newWallet.signersDescriptions.splice(userIndex+1,1),
+        signersAddresses: updatedAddresses,
+        signersStakeKeys: updatedStakeKeys,
+        signersDescriptions: updatedDescriptions,
       });
     }
 
@@ -120,12 +127,22 @@ export default function PageNewWalletInviteInfo() {
             <CardContent>
               <div className="grid gap-6">
                 <div className="grid gap-3">
-                  <Label htmlFor="address">Your address</Label>
+                  <Label htmlFor="address">Your Paymentaddress</Label>
                   <Input
                     id="address"
                     type="text"
                     className="w-full"
                     value={userAddress}
+                    disabled
+                  />
+                </div>
+                <div className="grid gap-3">
+                  <Label htmlFor="Stakeaddress">Your Stakeaddress</Label>
+                  <Input
+                    id="Stakeaddress"
+                    type="text"
+                    className="w-full"
+                    value={user?.stakeAddress ?? ""}
                     disabled
                   />
                 </div>
