@@ -11,8 +11,14 @@ import type { UTxO } from "@meshsdk/core";
 
 /**
  * @swagger
+ * tags:
+ *   - name: V1
+ *     description: |
+ *      This is an alaha Version.
+ *      Click to open or close.
  * /api/v1/freeUtxos:
  *   get:
+ *     tags: [V1]
  *     summary: Get unblocked UTxOs for a wallet
  *     parameters:
  *       - name: walletId

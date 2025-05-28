@@ -2,6 +2,7 @@
  * @swagger
  * /api/v1/nativeScript:
  *   get:
+ *     tags: [V1]
  *     summary: Get native scripts for a multisig wallet
  *     description: Returns native scripts generated from the specified walletId and address.
  *     parameters:

@@ -2,6 +2,7 @@
  * @swagger
  * /api/v1/walletIds:
  *   get:
+ *     tags: [V1]
  *     summary: Get all wallet IDs and names associated with an address
  *     description: Returns a list of wallet identifiers and their names for a given user address.
  *     parameters:

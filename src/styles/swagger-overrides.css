@@ -1,0 +1,7 @@
+.swagger-ui * {
+  color: #ffffff !important;
+}
+
+.swagger-ui .opblock .opblock-section-header {
+        background: hsla(270, 2%, 19%, 0.3);
+}

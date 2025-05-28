@@ -13,6 +13,9 @@ import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
 import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
 
+import 'swagger-ui-react/swagger-ui.css';
+import '../styles/swagger-overrides.css';
+
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,
   pageProps: { session, ...pageProps },
