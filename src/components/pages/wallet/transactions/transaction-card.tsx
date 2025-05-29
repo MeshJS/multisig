@@ -178,7 +178,7 @@ export default function TransactionCard({
 
       const signerAmount = transaction.signedAddresses.length + 1;
 
-      if (len != signerAmount || len != signerAmount * 2) {
+      if (len % signerAmount != 0) {
         setLoading(false);
         toast({
           title: "Error",
