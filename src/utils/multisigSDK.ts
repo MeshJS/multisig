@@ -85,26 +85,28 @@ export class MultisigWallet {
     );
   }
 
-  getPaymentScript(): string {
+  getPaymentScript(): string | undefined {
     const paymentScript = this.buildScript(0);
     if (!paymentScript) {
       console.warn("MultisigWallet keys:", this.keys);
       console.warn("buildScript(0) result:", paymentScript);
-      throw new Error(
+      console.error(
         "Cannot build multisig script: no valid payment keys provided.",
       );
+      return undefined;
     }
     return getScript(paymentScript, this.network).scriptCbor;
   }
 
-  getStakingScript(): string {
+  getStakingScript(): string | undefined {
     const stakingScript = this.buildScript(2);
     if (!stakingScript) {
       console.warn("MultisigWallet keys:", this.keys);
       console.warn("buildScript(0) result:", stakingScript);
-      throw new Error(
-        "Cannot build multisig script: no valid payment keys provided.",
+      console.error(
+        "Cannot build multisig script: no valid staking keys provided.",
       );
+      return undefined;
     }
     return getScript(stakingScript, this.network).scriptCbor;
   }
