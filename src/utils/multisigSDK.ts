@@ -37,6 +37,7 @@ export class MultisigWallet {
   keys: MultisigKey[];
   required: number;
   network: number;
+  stakeCredentialHash: string;
 
   constructor(
     name: string,
@@ -44,6 +45,7 @@ export class MultisigWallet {
     description?: string,
     required?: number,
     network?: number,
+    stakeCredentialHash?: string
   ) {
     this.name = name;
     // Filter out any keys that are not valid
@@ -57,6 +59,7 @@ export class MultisigWallet {
     this.description = description ? description : "";
     this.required = required ? required : 1;
     this.network = network !== undefined ? network : 1;
+    this.stakeCredentialHash = stakeCredentialHash ? stakeCredentialHash : "undefined"
   }
 
   /**
@@ -95,7 +98,7 @@ export class MultisigWallet {
       );
       return undefined;
     }
-    return getScript(paymentScript, this.network).scriptCbor;
+    return getScript(paymentScript, this.network, this.stakeCredentialHash).scriptCbor;
   }
 
   getStakingScript(): string | undefined {
@@ -150,6 +153,7 @@ export class MultisigWallet {
    * @returns The stake credential hash as a string or undefined if no stake script.
    */
   getStakeCredentialHash(): string | undefined {
+    if (this.stakeCredentialHash !== "undefined") return this.stakeCredentialHash
     // Builds script with stake key hashes
     const stakeScript = this.buildScript(2);
     if (!stakeScript) return undefined;
