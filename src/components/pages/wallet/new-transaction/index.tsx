@@ -154,11 +154,11 @@ export default function PageNewTransaction() {
       if(!multisigWallet) return
 
       const paymentScript = multisigWallet?.getPaymentScript()
-      const rewardAddress = multisigWallet?.getStakeAddress()
-      const stakingScript = multisigWallet?.getStakingScript()
+      // const rewardAddress = multisigWallet?.getStakeAddress()
+      // const stakingScript = multisigWallet?.getStakingScript()
 
-      if(!rewardAddress) return
-      if(!stakingScript) return
+      // if(!rewardAddress) return
+      // if(!stakingScript) return
       if(!paymentScript) return
 
       for (const utxo of selectedUtxos) {
