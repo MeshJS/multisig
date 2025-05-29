@@ -46,6 +46,10 @@ export default function InspectMultisigScript({
         label="CBOR"
         value={<Code>{mWallet.getPaymentScript()}</Code>}
       />
+      {appWallet?.stakeCredentialHash && <RowLabelInfo
+        label="Stake Credential Hash"
+        value={<Code>{appWallet?.stakeCredentialHash}</Code>}
+        />}
     </div>,
   ];
 

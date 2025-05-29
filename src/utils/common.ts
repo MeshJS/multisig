@@ -13,17 +13,22 @@ import {
 import { Address, getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 
-function addressToNetwork(address:string):number {
-  return (address.includes("test"))?0:1;
+function addressToNetwork(address: string): number {
+  return address.includes("test") ? 0 : 1;
 }
 
 export function buildMultisigWallet(
   wallet: DbWallet,
   network?: number,
 ): MultisigWallet | undefined {
+  console.log(
+    "buildMultisigWallet - stakeCredentialHash",
+    wallet.stakeCredentialHash,
+  );
+
   const keys: MultisigKey[] = [];
   if (wallet.signersAddresses.length > 0) {
-    if(!network) network = addressToNetwork(wallet.signersAddresses[0]!)
+    if (!network) network = addressToNetwork(wallet.signersAddresses[0]!);
     wallet.signersAddresses.forEach((addr, i) => {
       if (addr) {
         try {
@@ -55,14 +60,22 @@ export function buildMultisigWallet(
       }
     });
   }
-  if (keys.length === 0) return;
+
+  if (keys.length === 0 && !wallet.stakeCredentialHash) {
+    console.warn(
+      "buildMultisigWallet: no valid keys and no stakeCredentialHash provided",
+      wallet,
+    );
+    return;
+  }
+  const stakeCredentialHash = wallet.stakeCredentialHash as undefined | string;
   const multisigWallet = new MultisigWallet(
     wallet.name,
     keys,
     wallet.description ?? "",
     wallet.numRequiredSigners ?? 1,
     network,
-    wallet.stakeCredentialHash ?? undefined
+    stakeCredentialHash,
   );
   return multisigWallet;
 }
@@ -72,6 +85,7 @@ export function buildWallet(
   network: number,
   utxos?: UTxO[],
 ): Wallet {
+  console.log("hi");
   const mWallet = buildMultisigWallet(wallet, network);
   if (!mWallet) {
     console.error("error when building Multisig Wallet!");
@@ -105,8 +119,7 @@ export function buildWallet(
   const paymentAddrEmpty =
     utxos?.filter((f) => f.output.address === paymentAddress).length === 0;
 
-  if (paymentAddrEmpty && mWallet.stakingEnabled()) address = stakeableAddress
-  
+  if (paymentAddrEmpty && mWallet.stakingEnabled()) address = stakeableAddress;
 
   const dRepIdCip105 = resolveScriptHashDRepId(
     resolveNativeScriptHash(nativeScript as NativeScript),

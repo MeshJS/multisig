@@ -105,7 +105,6 @@ function EditInfo({
       isArchived,
     });
   }
-
   return (
     <fieldset className="grid gap-6">
       <div className="grid gap-3">

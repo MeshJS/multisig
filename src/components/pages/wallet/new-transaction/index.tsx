@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 
 import {
   keepRelevant,
+  NativeScript,
   Quantity,
   Unit,
   UTxO,
@@ -153,7 +154,7 @@ export default function PageNewTransaction() {
 
       if(!multisigWallet) return
 
-      const paymentScript = multisigWallet?.getPaymentScript()
+      const paymentScript = appWallet.scriptCbor
       // const rewardAddress = multisigWallet?.getStakeAddress()
       // const stakingScript = multisigWallet?.getStakingScript()
 
@@ -162,6 +163,7 @@ export default function PageNewTransaction() {
       if(!paymentScript) return
       console.log(paymentScript)
       console.log(multisigWallet.getKeysByRole(0))
+      console.log(multisigWallet.getScript())
 
       for (const utxo of selectedUtxos) {
         txBuilder
