@@ -160,6 +160,9 @@ export default function PageNewTransaction() {
       // if(!rewardAddress) return
       // if(!stakingScript) return
       if(!paymentScript) return
+      console.log(paymentScript)
+      console.log(multisigWallet.getKeysByRole(0))
+
       for (const utxo of selectedUtxos) {
         txBuilder
           .txIn(
