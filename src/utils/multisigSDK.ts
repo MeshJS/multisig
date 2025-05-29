@@ -45,7 +45,7 @@ export class MultisigWallet {
     description?: string,
     required?: number,
     network?: number,
-    stakeCredentialHash?: string
+    stakeCredentialHash?: string,
   ) {
     this.name = name;
     // Filter out any keys that are not valid
@@ -59,7 +59,9 @@ export class MultisigWallet {
     this.description = description ? description : "";
     this.required = required ? required : 1;
     this.network = network !== undefined ? network : 1;
-    this.stakeCredentialHash = stakeCredentialHash ? stakeCredentialHash : "undefined"
+    this.stakeCredentialHash = stakeCredentialHash
+      ? stakeCredentialHash
+      : "undefined";
   }
 
   /**
@@ -83,7 +85,11 @@ export class MultisigWallet {
     return getScript(
       paymentScript,
       this.network,
-      this.stakingEnabled() ? stakeCredentialHash : undefined,
+      this.stakingEnabled()
+        ? stakeCredentialHash
+        : this.stakeCredentialHash === "undefined"
+          ? undefined
+          : this.stakeCredentialHash,
       this.stakingEnabled(),
     );
   }
@@ -98,7 +104,7 @@ export class MultisigWallet {
       );
       return undefined;
     }
-    return getScript(paymentScript, this.network, this.stakeCredentialHash).scriptCbor;
+    return getScript(paymentScript, this.network).scriptCbor;
   }
 
   getStakingScript(): string | undefined {
@@ -153,7 +159,8 @@ export class MultisigWallet {
    * @returns The stake credential hash as a string or undefined if no stake script.
    */
   getStakeCredentialHash(): string | undefined {
-    if (this.stakeCredentialHash !== "undefined") return this.stakeCredentialHash
+    if (this.stakeCredentialHash !== "undefined")
+      return this.stakeCredentialHash;
     // Builds script with stake key hashes
     const stakeScript = this.buildScript(2);
     if (!stakeScript) return undefined;
@@ -192,7 +199,7 @@ export class MultisigWallet {
       resolveNativeScriptHash(this.buildScript(0)!), // Still Wrong should be 3 -> for drep keys.
     );
   }
-// Collect unique types (roles) from the wallet keys.
+  // Collect unique types (roles) from the wallet keys.
   getAvailableTypes() {
     return Array.from(new Set(this.keys.map((key) => key.role)));
   }
