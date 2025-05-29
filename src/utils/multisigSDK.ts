@@ -45,7 +45,7 @@ export class MultisigWallet {
     description?: string,
     required?: number,
     network?: number,
-    stakeCredentialHash?: string | undefined,
+    stakeCredentialHash?: string,
   ) {
     this.name = name;
     // Filter out any keys that are not valid
