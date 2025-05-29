@@ -160,7 +160,6 @@ export default function PageNewTransaction() {
       // if(!rewardAddress) return
       // if(!stakingScript) return
       if(!paymentScript) return
-
       for (const utxo of selectedUtxos) {
         txBuilder
           .txIn(
@@ -179,15 +178,16 @@ export default function PageNewTransaction() {
       // attach the multisig staking script for the stake certificate
       //txBuilder.certificateScript(stakingScript)
 
-      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
-      for (const key of paymentKeys) {
-        txBuilder.requiredSignerHash(key.keyHash);
-      }
+      // const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
+      // console.log()
+      // for (const key of paymentKeys) {
+      //   txBuilder.requiredSignerHash(key.keyHash);
+      // }
 
-      const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
-      for (const key of stakingKeys) {
-        txBuilder.requiredSignerHash(key.keyHash);
-      }
+      // const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
+      // for (const key of stakingKeys) {
+      //   txBuilder.requiredSignerHash(key.keyHash);
+      // }
       
 
       if (!sendAllAssets) {
