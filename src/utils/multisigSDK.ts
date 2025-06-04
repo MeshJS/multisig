@@ -317,3 +317,4 @@ export function checkValidStakeKey(stakeKey: string) {
     return false;
   }
 }
+//Add check pending and refactor to only use it through sdk.

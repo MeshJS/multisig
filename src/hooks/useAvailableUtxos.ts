@@ -7,7 +7,7 @@ import { UTxO } from "@meshsdk/core";
  */
 export default function useAvailableUtxos({
   walletId,
-  utxos,
+  utxos
 }: {
   walletId?: string;
   utxos: UTxO[];
@@ -16,7 +16,7 @@ export default function useAvailableUtxos({
   const { data: transactions, isLoading: transactionsLoading } =
     api.transaction.getPendingTransactions.useQuery(
       { walletId: walletId! },
-      { enabled: !!walletId }
+      { enabled: !!walletId },
     );
 
   if (!utxos || utxos.length === 0 || transactionsLoading) {
@@ -27,22 +27,25 @@ export default function useAvailableUtxos({
     return { availableUtxos: utxos, isLoading: false, error: null };
   }
 
-  // Extract blocked UTxOs from pending transactions
-  const blockedUtxos = transactions.flatMap((tx) => {
-    const txJson = JSON.parse(tx.txJson);
-    return txJson.inputs.map((input: { txIn: { txHash: string; txIndex: number } }) => ({
-      hash: input.txIn.txHash,
-      index: input.txIn.txIndex,
-    }));
-  });
-
-  // Filter UTxOs to exclude blocked ones
-  const availableUtxos = utxos.filter(
-    (utxo) =>
-      !blockedUtxos.some(
-        (bU) => bU.hash === utxo.input.txHash && bU.index === utxo.input.outputIndex
-      )
+  const blockedUtxos: { hash: string; index: number }[] = transactions.flatMap(
+    (m) => {
+      const txJson = JSON.parse(m.txJson);
+      return txJson.inputs.map(
+        (n: { txIn: { txHash: string; txIndex: number } }) => ({
+          hash: n.txIn.txHash ?? undefined,
+          index: n.txIn.txIndex ?? undefined,
+        }),
+      );
+    },
   );
 
-  return { availableUtxos, isLoading: false, error: null };
+  const freeUtxos = utxos.filter(
+    (utxo) =>
+      !blockedUtxos.some(
+        (bU) =>
+          bU.hash === utxo.input.txHash && bU.index === utxo.input.outputIndex,
+      ),
+  );
+
+  return { freeUtxos, isLoading: false, error: null };
 }
