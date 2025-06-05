@@ -160,6 +160,65 @@ export const swaggerSpec = swaggerJSDoc({
           },
         },
       },
+      "/api/v1/addTransaction": {
+        post: {
+          tags: ["V1"],
+          summary: "Submit a new external transaction",
+          description: "Adds a new transaction for a multisig wallet, marking the caller's address as already signed.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    txCbor: { type: "string" },
+                    txJson: { type: "string" },
+                    description: { type: "string" },
+                    address: { type: "string" }
+                  },
+                  required: ["walletId", "txCbor", "txJson", "address"]
+                }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: "Transaction successfully created",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      walletId: { type: "string" },
+                      txJson: { type: "string" },
+                      txCbor: { type: "string" },
+                      signedAddresses: {
+                        type: "array",
+                        items: { type: "string" }
+                      },
+                      rejectedAddresses: {
+                        type: "array",
+                        items: { type: "string" }
+                      },
+                      description: { type: "string" },
+                      state: { type: "number" },
+                      createdAt: { type: "string" },
+                      updatedAt: { type: "string" }
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: "Missing required fields" },
+            401: { description: "Unauthorized" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" }
+          }
+        }
+      },
       "/api/v1/authSigner": {
         get: {
           tags: ["Auth"],
