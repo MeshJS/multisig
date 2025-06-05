@@ -3,66 +3,14 @@
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
 import type { Wallet as DbWallet } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { apiServer } from "@/utils/apiServer";
 import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
+import { getServerAuthSession } from "@/server/auth";
+import { createCaller } from "@/server/api/root";
+import { db } from "@/server/db";
 
-/**
- * @swagger
- * tags:
- *   - name: V1
- *     description: |
- *      This is an alaha Version.
- *      Click to open or close.
- * /api/v1/freeUtxos:
- *   get:
- *     tags: [V1]
- *     summary: Get unblocked UTxOs for a wallet
- *     parameters:
- *       - name: walletId
- *         in: query
- *         required: true
- *         schema:
- *           type: string
- *       - name: address
- *         in: query
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: A list of free UTxOs
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   input:
- *                     type: object
- *                     properties:
- *                       txHash:
- *                         type: string
- *                       outputIndex:
- *                         type: number
- *                   output:
- *                     type: object
- *                     properties:
- *                       address:
- *                         type: string
- *                       amount:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             unit:
- *                               type: string
- *                             quantity:
- *                               type: string
- */
 
 export default async function handler(
   req: NextApiRequest,
@@ -71,6 +19,13 @@ export default async function handler(
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
+
+  const session = await getServerAuthSession({ req, res });
+  //auth disabled for testing
+  // if (!session || !session.user) {
+  //   return res.status(401).json({ error: "Unauthorized" });
+  // }
+  const caller = createCaller({ db, session });
 
   const { walletId, address } = req.query;
 
@@ -82,19 +37,14 @@ export default async function handler(
   }
 
   try {
-    const pendingTxsResult = await apiServer.transaction.getPendingTransactions.query({
-      walletId,
-    });
-
+    const pendingTxsResult = await caller.transaction.getPendingTransactions({ walletId });
     if (!pendingTxsResult) {
       return res
         .status(500)
         .json({ error: "Wallet could not fetch pending Txs" });
     }
 
-    const walletFetch: DbWallet | null = await apiServer.wallet.getWallet.query(
-      { walletId, address },
-    );
+    const walletFetch: DbWallet | null = await caller.wallet.getWallet({ walletId, address });
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }

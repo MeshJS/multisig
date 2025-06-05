@@ -1,42 +1,7 @@
-/**
- * @swagger
- * /api/v1/walletIds:
- *   get:
- *     tags: [V1]
- *     summary: Get all wallet IDs and names associated with an address
- *     description: Returns a list of wallet identifiers and their names for a given user address.
- *     parameters:
- *       - in: query
- *         name: address
- *         required: true
- *         schema:
- *           type: string
- *         description: The address associated with the user's wallets
- *     responses:
- *       200:
- *         description: A list of wallet ID-name pairs
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   walletId:
- *                     type: string
- *                   walletName:
- *                     type: string
- *       400:
- *         description: Invalid address parameter
- *       404:
- *         description: Wallets not found
- *       405:
- *         description: Method not allowed
- *       500:
- *         description: Internal server error
- */
 import { NextApiRequest, NextApiResponse } from "next";
-import { apiServer } from "@/utils/apiServer";
+import { getServerAuthSession } from "@/server/auth";
+import { createCaller } from "@/server/api/root";
+import { db } from "@/server/db";
 
 export default async function handler(
   req: NextApiRequest,
@@ -46,6 +11,12 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
+  const session = await getServerAuthSession({ req, res });
+  // if (!session || !session.user) {
+  //   return res.status(401).json({ error: "Unauthorized" });
+  // }
+  const caller = createCaller({ db, session });
+
   const { address } = req.query;
 
   if (typeof address !== "string") {
@@ -53,7 +24,7 @@ export default async function handler(
   }
 
   try {
-    const wallets = await apiServer.wallet.getUserWallets.query({ address });
+    const wallets = await caller.wallet.getUserWallets({ address });
     if (!wallets) {
       return res.status(404).json({ error: "Wallets not found" });
     }

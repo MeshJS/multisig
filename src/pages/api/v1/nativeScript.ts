@@ -1,43 +1,9 @@
-/**
- * @swagger
- * /api/v1/nativeScript:
- *   get:
- *     tags: [V1]
- *     summary: Get native scripts for a multisig wallet
- *     description: Returns native scripts generated from the specified walletId and address.
- *     parameters:
- *       - in: query
- *         name: walletId
- *         required: true
- *         schema:
- *           type: string
- *         description: ID of the multisig wallet
- *       - in: query
- *         name: address
- *         required: true
- *         schema:
- *           type: string
- *         description: Address associated with the wallet
- *     responses:
- *       200:
- *         description: An array of native scripts
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *       400:
- *         description: Invalid address or walletId parameter
- *       404:
- *         description: Wallet not found
- *       500:
- *         description: Internal server error
- */
 import { NextApiRequest, NextApiResponse } from "next";
 import { Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
-import { apiServer } from "@/utils/apiServer";
+import { getServerAuthSession } from "@/server/auth";
+import { createCaller } from "@/server/api/root";
+import { db } from "@/server/db";
 
 export default async function handler(
   req: NextApiRequest,
@@ -57,9 +23,12 @@ export default async function handler(
   }
 
   try {
-    const walletFetch: DbWallet | null = await apiServer.wallet.getWallet.query(
-      { walletId, address },
-    );
+    const session = await getServerAuthSession({ req, res });
+    // if (!session || !session.user) {
+    //   return res.status(401).json({ error: "Unauthorized" });
+    // }
+    const caller = createCaller({ db, session });
+    const walletFetch: DbWallet | null = await caller.wallet.getWallet({ walletId, address });
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
