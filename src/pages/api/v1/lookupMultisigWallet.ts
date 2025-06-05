@@ -1,37 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getProvider } from "@/utils/get-provider";
 
-/**
- * @swagger
- * /api/v1/lookupMultisigWallet:
- *   get:
- *     tags: [V1]
- *     summary: Lookup multisig wallet metadata using pubKeyHashes
- *     parameters:
- *       - name: pubKeyHashes
- *         in: query
- *         required: true
- *         description: |
- *          Single Key Hashes or
- *          Comma-separated list of public key hashes
- *         schema:
- *           type: string
- *       - name: network
- *         in: query
- *         required: false
- *         schema:
- *           type: number
- *     responses:
- *       200:
- *         description: A list of matching metadata items
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- */
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -47,6 +16,7 @@ export default async function handler(
   }
 
   const hashes = pubKeyHashes.split(",").map((s) => s.trim().toLowerCase());
+  console.log(hashes)
   const networkId = parseInt(network as string, 10);
 
   const provider = getProvider(networkId);

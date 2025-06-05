@@ -9,6 +9,9 @@ import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
 
+import SessionProvider from "@/components/SessionProvider"
+import { getServerSession } from "next-auth";
+
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
 import WalletDropDown from "@/components/common/overall-layout/wallet-drop-down";
