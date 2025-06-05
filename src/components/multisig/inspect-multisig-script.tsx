@@ -28,6 +28,7 @@ export default function InspectMultisigScript({
   }, [appWallet, walletsUtxos]);
 
   if (!mWallet) return null;
+  console.log(mWallet)
   const dSAddr = deserializeAddress(mWallet.getScript().address);
 
   const slides: React.ReactNode[] = [

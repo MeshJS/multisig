@@ -151,19 +151,8 @@ export default function PageNewTransaction() {
       }
 
       const txBuilder = getTxBuilder(network);
-
-      if(!multisigWallet) return
-
       const paymentScript = appWallet.scriptCbor
-      // const rewardAddress = multisigWallet?.getStakeAddress()
-      // const stakingScript = multisigWallet?.getStakingScript()
-
-      // if(!rewardAddress) return
-      // if(!stakingScript) return
       if(!paymentScript) return
-      console.log(paymentScript)
-      console.log(multisigWallet.getKeysByRole(0))
-      console.log(multisigWallet.getScript())
 
       for (const utxo of selectedUtxos) {
         txBuilder
@@ -176,6 +165,17 @@ export default function PageNewTransaction() {
           .txInScript(paymentScript)
       }
 
+//add this for staking txs
+//add checks for registration will also be required for some gov stuff
+
+//find way to refactor tx process.
+
+      //if(!multisigWallet) return
+      // const rewardAddress = multisigWallet?.getStakeAddress()
+      // const stakingScript = multisigWallet?.getStakingScript()
+
+      // if(!rewardAddress) return
+      // if(!stakingScript) return
       //const poolIdHash = "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
 
       //txBuilder.registerStakeCertificate(rewardAddress)

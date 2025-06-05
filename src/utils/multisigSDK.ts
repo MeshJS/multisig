@@ -284,6 +284,7 @@ function getScript(
   stakeCredentialHash?: string,
   enabled: boolean = false,
 ): { address: string; scriptCbor: string } {
+  console.log(script)
   const { address, scriptCbor } = serializeNativeScript(
     script,
     stakeCredentialHash,
