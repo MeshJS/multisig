@@ -8,9 +8,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const session = await getServerAuthSession({ req, res });
-//   if (!session || !session.user) {
-//     return res.status(401).json({ error: "Unauthorized." });
-//   }
+  if (!session || !session.user) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
 
 
 //JSON.stringify(txBuilder.meshTxBuilderBody),
