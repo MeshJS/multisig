@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJWT";
+import { verifyJwt } from "@/lib/verifyJwt";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {

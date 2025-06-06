@@ -7,11 +7,17 @@ import {
   DataSignature,
   deserializeAddress,
 } from "@meshsdk/core";
+import { cors } from "@/lib/cors";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  await cors(req, res);
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method === "GET") {
     const { address } = req.query;
     if (typeof address !== "string") {

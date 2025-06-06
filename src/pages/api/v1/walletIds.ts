@@ -1,12 +1,18 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJWT";
+import { verifyJwt } from "@/lib/verifyJwt";
+import { cors } from "@/lib/cors";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  await cors(req, res);
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }

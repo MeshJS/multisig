@@ -10,7 +10,7 @@ import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJWT";
+import { verifyJwt } from "@/lib/verifyJwt";
 
 export default async function handler(
   req: NextApiRequest,

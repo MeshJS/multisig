@@ -1,7 +1,8 @@
+import { cors } from "@/lib/cors";
 import { NextApiRequest, NextApiResponse } from "next";
 import { Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
-import { verifyJwt } from "@/lib/verifyJWT";
+import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 
@@ -9,6 +10,10 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  await cors(req, res);
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
