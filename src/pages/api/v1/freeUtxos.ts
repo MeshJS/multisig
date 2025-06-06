@@ -12,7 +12,6 @@ import { getServerAuthSession } from "@/server/auth";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -42,14 +41,19 @@ export default async function handler(
   }
 
   try {
-    const pendingTxsResult = await caller.transaction.getPendingTransactions({ walletId });
+    const pendingTxsResult = await caller.transaction.getPendingTransactions({
+      walletId,
+    });
     if (!pendingTxsResult) {
       return res
         .status(500)
         .json({ error: "Wallet could not fetch pending Txs" });
     }
 
-    const walletFetch: DbWallet | null = await caller.wallet.getWallet({ walletId, address });
+    const walletFetch: DbWallet | null = await caller.wallet.getWallet({
+      walletId,
+      address,
+    });
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
@@ -64,17 +68,21 @@ export default async function handler(
 
     const utxos: UTxO[] = await blockchainProvider.fetchAddressUTxOs(addr);
 
-    const blockedUtxos: { hash: string; index: number }[] = (
-      pendingTxsResult
-    ).flatMap((m): { hash: string; index: number }[] => {
-      const txJson: {
-        inputs: { txIn: { txHash: string; txIndex: number } }[];
-      } = JSON.parse(m.txJson);
-      return txJson.inputs.map((n) => ({
-        hash: n.txIn.txHash,
-        index: n.txIn.txIndex,
-      }));
-    });
+    const blockedUtxos: { hash: string; index: number }[] =
+      pendingTxsResult.flatMap((m): { hash: string; index: number }[] => {
+        try {
+          const txJson: {
+            inputs: { txIn: { txHash: string; txIndex: number } }[];
+          } = JSON.parse(m.txJson);
+          return txJson.inputs.map((n) => ({
+            hash: n.txIn.txHash,
+            index: n.txIn.txIndex,
+          }));
+        } catch (e) {
+          console.error("Failed to parse txJson:", m.txJson, e);
+          return [];
+        }
+      });
 
     const freeUtxos = utxos.filter(
       (utxo) =>
@@ -87,7 +95,10 @@ export default async function handler(
 
     res.status(200).json(freeUtxos);
   } catch (error) {
-    console.error("Error fetching wallet IDs:", error);
+    console.error("Error in freeUtxos handler", {
+      message: (error as Error)?.message,
+      stack: (error as Error)?.stack,
+    });
     res.status(500).json({ error: "Internal Server Error" });
   }
 }
