@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { getServerAuthSession } from "@/server/auth";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
+import { verifyJwt } from "@/lib/verifyJWT";
 
 export default async function handler(
   req: NextApiRequest,
@@ -11,16 +11,31 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const session = await getServerAuthSession({ req, res });
-  // if (!session || !session.user) {
-  //   return res.status(401).json({ error: "Unauthorized" });
-  // }
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized - Missing token" });
+  }
+
+  const payload = verifyJwt(token);
+  if (!payload) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  const session = {
+    user: { id: payload.address },
+    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
   const caller = createCaller({ db, session });
 
   const { address } = req.query;
 
   if (typeof address !== "string") {
     return res.status(400).json({ error: "Invalid address parameter" });
+  }
+  if (payload.address !== address) {
+    return res.status(403).json({ error: "Address mismatch" });
   }
 
   try {

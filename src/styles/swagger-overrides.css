@@ -1,11 +1,38 @@
-.swagger-ui * {
+
+.swagger-ui .scheme-container,
+.swagger-ui .opblock-tag,
+.swagger-ui .opblock-summary-description,
+.swagger-ui .opblock-summary-path,
+.swagger-ui .response-col_status {
   color: #ffffff !important;
 }
 
-.swagger-ui .opblock .opblock-section-header {
-        background: hsla(270, 2%, 19%, 0.3);
+.swagger-ui input,
+.swagger-ui .auth-wrapper input {
+  color: #000 !important;
+  background-color: #fff !important;
 }
 
-.swagger-ui input[type=text], .swagger-ui textarea {
-    color: #000000 !important;
+.swagger-ui .auth-wrapper {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.swagger-ui .opblock .opblock-section-header {
+  background: hsla(270, 2%, 19%, 0.3);
+}
+
+/* Improve visibility of Swagger UI title, version, and description */
+.swagger-ui .info .title,
+.swagger-ui .topbar .topbar-wrapper span,
+.swagger-ui .info h1,
+.swagger-ui .info p {
+  color: #ffffff !important;
+}
+.swagger-ui .scheme-container {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.2);
 }
