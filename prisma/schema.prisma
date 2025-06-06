@@ -72,3 +72,10 @@ model NewWallet {
   numRequiredSigners  Int?
   ownerAddress        String
 }
+
+model Nonce {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  value     String
+  createdAt DateTime @default(now())
+}

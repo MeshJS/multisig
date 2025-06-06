@@ -8,6 +8,20 @@ export const swaggerSpec = swaggerJSDoc({
       version: "1.0.0",
       description: "OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.",
     },
+    components: {
+  securitySchemes: {
+    BearerAuth: {
+      type: "http",
+      scheme: "bearer",
+      bearerFormat: "JWT",
+    },
+  },
+},
+security: [
+  {
+    BearerAuth: [],
+  },
+],
     paths: {
       "/api/v1/nativeScript": {
         get: {
@@ -262,8 +276,9 @@ export const swaggerSpec = swaggerJSDoc({
                   properties: {
                     address: { type: "string" },
                     signature: { type: "string" },
+                    key: { type: "string" },
                   },
-                  required: ["address", "signature"],
+                  required: ["address", "signature", "key"],
                 },
               },
             },
