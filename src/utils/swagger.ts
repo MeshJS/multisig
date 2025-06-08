@@ -233,7 +233,7 @@ security: [
           }
         }
       },
-      "/api/v1/authSigner": {
+      "/api/v1/getNonce": {
         get: {
           tags: ["Auth"],
           summary: "Request nonce for address-based authentication",
@@ -262,8 +262,13 @@ security: [
             400: {
               description: "Invalid address",
             },
+            404: {
+              description: "Address not found",
+            },
           },
         },
+      },
+      "/api/v1/authSigner": {
         post: {
           tags: ["Auth"],
           summary: "Verify signed nonce and return bearer token",
