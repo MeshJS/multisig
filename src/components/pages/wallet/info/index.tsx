@@ -21,8 +21,8 @@ export default function WalletInfo() {
         <div className="grid grid-cols-1 gap-4">
           <CardInfo appWallet={appWallet} />
           <CardSigners appWallet={appWallet} />
-          {!multisigWallet && <InspectScript appWallet={appWallet} />}
-          {multisigWallet && <InspectMultisigScript mWallet={multisigWallet} />}
+          {(!multisigWallet || !multisigWallet.stakingEnabled()) && <InspectScript appWallet={appWallet} />}
+          {multisigWallet && multisigWallet.stakingEnabled() && <InspectMultisigScript mWallet={multisigWallet} />}
           {multisigWallet && <RegisterWallet mWallet={multisigWallet} appWallet={appWallet} />}
           {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
           <ArchiveWallet appWallet={appWallet} />
