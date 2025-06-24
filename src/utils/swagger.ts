@@ -6,47 +6,49 @@ export const swaggerSpec = swaggerJSDoc({
     info: {
       title: "Multisig API",
       version: "1.0.0",
-      description: "OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.",
+      description:
+        "OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.",
     },
     components: {
-  securitySchemes: {
-    BearerAuth: {
-      type: "http",
-      scheme: "bearer",
-      bearerFormat: "JWT",
+      securitySchemes: {
+        BearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
     },
-  },
-},
-security: [
-  {
-    BearerAuth: [],
-  },
-],
+    security: [
+      {
+        BearerAuth: [],
+      },
+    ],
     paths: {
       "/api/v1/nativeScript": {
         get: {
           tags: ["V1"],
           summary: "Get native scripts for a multisig wallet",
-          description: "Returns native scripts generated from the specified walletId and address.",
+          description:
+            "Returns native scripts generated from the specified walletId and address.",
           parameters: [
             {
               in: "query",
               name: "walletId",
               required: true,
               schema: {
-                type: "string"
+                type: "string",
               },
-              description: "ID of the multisig wallet"
+              description: "ID of the multisig wallet",
             },
             {
               in: "query",
               name: "address",
               required: true,
               schema: {
-                type: "string"
+                type: "string",
               },
-              description: "Address associated with the wallet"
-            }
+              description: "Address associated with the wallet",
+            },
           ],
           responses: {
             200: {
@@ -56,63 +58,23 @@ security: [
                   schema: {
                     type: "array",
                     items: {
-                      type: "object"
-                    }
-                  }
-                }
-              }
+                      type: "object",
+                    },
+                  },
+                },
+              },
             },
             400: {
-              description: "Invalid address or walletId parameter"
+              description: "Invalid address or walletId parameter",
             },
             404: {
-              description: "Wallet not found"
+              description: "Wallet not found",
             },
             500: {
-              description: "Internal server error"
-            }
-          }
-        }
-      },
-            "/api/v1/walletIds": {
-        get: {
-          tags: ["V1"],
-          summary: "Get all wallet IDs and names associated with an address",
-          description: "Returns a list of wallet identifiers and their names for a given user address.",
-          parameters: [
-            {
-              in: "query",
-              name: "address",
-              required: true,
-              schema: { type: "string" },
-              description: "The address associated with the user's wallets"
-            }
-          ],
-          responses: {
-            200: {
-              description: "A list of wallet ID-name pairs",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        walletId: { type: "string" },
-                        walletName: { type: "string" }
-                      }
-                    }
-                  }
-                }
-              }
+              description: "Internal server error",
             },
-            400: { description: "Invalid address parameter" },
-            401: { description: "Unauthorized" },
-            404: { description: "Wallets not found" },
-            405: { description: "Method not allowed" },
-            500: { description: "Internal server error" }
-          }
-        }
+          },
+        },
       },
       "/api/v1/freeUtxos": {
         get: {
@@ -178,7 +140,8 @@ security: [
         post: {
           tags: ["V1"],
           summary: "Submit a new external transaction",
-          description: "Adds a new transaction for a multisig wallet, marking the caller's address as already signed.",
+          description:
+            "Adds a new transaction for a multisig wallet, marking the caller's address as already signed.",
           requestBody: {
             required: true,
             content: {
@@ -190,12 +153,12 @@ security: [
                     txCbor: { type: "string" },
                     txJson: { type: "string" },
                     description: { type: "string" },
-                    address: { type: "string" }
+                    address: { type: "string" },
                   },
-                  required: ["walletId", "txCbor", "txJson", "address"]
-                }
-              }
-            }
+                  required: ["walletId", "txCbor", "txJson", "address"],
+                },
+              },
+            },
           },
           responses: {
             201: {
@@ -211,27 +174,185 @@ security: [
                       txCbor: { type: "string" },
                       signedAddresses: {
                         type: "array",
-                        items: { type: "string" }
+                        items: { type: "string" },
                       },
                       rejectedAddresses: {
                         type: "array",
-                        items: { type: "string" }
+                        items: { type: "string" },
                       },
                       description: { type: "string" },
                       state: { type: "number" },
                       createdAt: { type: "string" },
-                      updatedAt: { type: "string" }
-                    }
-                  }
-                }
-              }
+                      updatedAt: { type: "string" },
+                    },
+                  },
+                },
+              },
             },
             400: { description: "Missing required fields" },
             401: { description: "Unauthorized" },
             405: { description: "Method not allowed" },
-            500: { description: "Internal server error" }
-          }
-        }
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/submitDatum": {
+        post: {
+          tags: ["V1"],
+          summary: "Submit a new signable payload",
+          description:
+            "Adds a new signable payload for a multisig wallet, marking the caller's address as already signed.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    datum: { type: "string" },
+                    description: { type: "string" },
+                    address: { type: "string" },
+                    callbackUrl: { type: "string" },
+                    signature: { type: "string" },
+                    key: { type: "string" },
+                  },
+                  required: [
+                    "walletId",
+                    "datum",
+                    "address",
+                    "signature",
+                    "key",
+                  ],
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: "Signable successfully created",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      walletId: { type: "string" },
+                      payload: { type: "string" },
+                      signatures: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      signedAddresses: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      rejectedAddresses: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      description: { type: "string" },
+                      callbackUrl: { type: "string" },
+                      remoteOrigin: { type: "string" },
+                      state: { type: "number" },
+                      createdAt: { type: "string" },
+                      updatedAt: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing required fields" },
+            401: { description: "Unauthorized" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/walletIds": {
+        get: {
+          tags: ["V1"],
+          summary: "Get all wallet IDs and names associated with an address",
+          description:
+            "Returns a list of wallet identifiers and their names for a given user address.",
+          parameters: [
+            {
+              in: "query",
+              name: "address",
+              required: true,
+              schema: { type: "string" },
+              description: "The address associated with the user's wallets",
+            },
+          ],
+          responses: {
+            200: {
+              description: "A list of wallet ID-name pairs",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        walletId: { type: "string" },
+                        walletName: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid address parameter" },
+            401: { description: "Unauthorized" },
+            404: { description: "Wallets not found" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/lookupMultisigWallet": {
+        get: {
+          tags: ["V1"],
+          summary: "Lookup multisig wallet metadata using pubKeyHashes",
+          parameters: [
+            {
+              name: "pubKeyHashes",
+              in: "query",
+              required: true,
+              description:
+                "Single Key Hash or comma-separated list of public key hashes",
+              schema: {
+                type: "string",
+              },
+            },
+            {
+              name: "network",
+              in: "query",
+              required: false,
+              schema: {
+                type: "number",
+              },
+            },
+          ],
+          responses: {
+            200: {
+              description: "A list of matching metadata items",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing or invalid pubKeyHashes parameter" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal Server Error" },
+          },
+        },
       },
       "/api/v1/getNonce": {
         get: {
@@ -311,49 +432,6 @@ security: [
           },
         },
       },
-      "/api/v1/lookupMultisigWallet": {
-        get: {
-          tags: ["V1"],
-          summary: "Lookup multisig wallet metadata using pubKeyHashes",
-          parameters: [
-            {
-              name: "pubKeyHashes",
-              in: "query",
-              required: true,
-              description: "Single Key Hash or comma-separated list of public key hashes",
-              schema: {
-                type: "string"
-              }
-            },
-            {
-              name: "network",
-              in: "query",
-              required: false,
-              schema: {
-                type: "number"
-              }
-            }
-          ],
-          responses: {
-            200: {
-              description: "A list of matching metadata items",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "array",
-                    items: {
-                      type: "object"
-                    }
-                  }
-                }
-              }
-            },
-            400: { description: "Missing or invalid pubKeyHashes parameter" },
-            405: { description: "Method not allowed" },
-            500: { description: "Internal Server Error" }
-          }
-        }
-      }
     },
   },
   apis: [],

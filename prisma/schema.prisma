@@ -60,6 +60,8 @@ model Signable {
   state             Int
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  callbackUrl       String?
+  remoteOrigin      String?
 }
 
 model NewWallet {

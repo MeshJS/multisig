@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { cors } from "@/lib/cors";
-import { getProvider } from "@/utils/get-provider";
+import { DataSignature } from "@meshsdk/core";
+import { checkSignature } from "@meshsdk/core-cst";
 
 export default async function handler(
   req: NextApiRequest,
@@ -36,15 +37,22 @@ export default async function handler(
 
   const {
     walletId,
+    signature,
+    key,
     address,
-    txCbor,
-    txJson,
-    description = "External Tx",
+    datum,
     callbackUrl,
+    description = "External Tx",
   } = req.body;
 
   if (!walletId) {
     return res.status(400).json({ error: "Missing required field walletId!" });
+  }
+  if (!signature) {
+    return res.status(400).json({ error: "Missing required field signature!" });
+  }
+  if (!signature) {
+    return res.status(400).json({ error: "Missing required field key!" });
   }
   if (!address) {
     return res.status(400).json({ error: "Missing required field address!" });
@@ -53,40 +61,39 @@ export default async function handler(
   if (session.user.id !== address) {
     return res.status(403).json({ error: "Address mismatch" });
   }
-  if (!txCbor) {
-    return res.status(400).json({ error: "Missing required field txCbor!" });
+  if (!datum) {
+    return res.status(400).json({ error: "Missing required field Datum!" });
   }
-  if (!txJson) {
-    return res.status(400).json({ error: "Missing required field txJson!" });
+  if (!callbackUrl) {
+    return res.status(400).json({ error: "Missing required field Datum!" });
   }
-  const wallet = await db.wallet.findUnique({ where: { id: walletId } });
-  const reqSigners = wallet?.numRequiredSigners;
-  const type = wallet?.type;
-  const network = address.includes("test") ? 0 : 1;
 
+  const sig: DataSignature = { signature: signature, key: key };
+
+  const isValid = await checkSignature(datum, sig, address);
+
+  if (!isValid) {
+    return res.status(401).json({ error: "Invalid signature" });
+  }
+  
   try {
-    let newTx;
-    //ToDo refactor to more cases.
-    if (reqSigners === 1 || type === "any") {
-      const blockchainProvider = getProvider(network);
-      newTx = blockchainProvider.submitTx(txCbor);
-    } else {
-      newTx = await db.transaction.create({
-        data: {
-          walletId,
-          txJson: typeof txJson === "object" ? JSON.stringify(txJson) : txJson,
-          txCbor,
-          signedAddresses: [address],
-          rejectedAddresses: [],
-          description,
-          state: 0,
-        },
-      });
-    }
+    const newSignable = await db.signable.create({
+      data: {
+        walletId,
+        payload: datum,
+        signatures: [`signature: ${sig.signature}, key: ${sig.key}`],
+        signedAddresses: [address],
+        rejectedAddresses: [],
+        description,
+        callbackUrl: callbackUrl || null,
+        remoteOrigin: req.headers.origin || null,
+        state: 0,
+      },
+    });
 
-    res.status(201).json(newTx);
+    res.status(201).json(newSignable);
   } catch (error) {
-    console.error("Error creating transaction:", error);
+    console.error("Error creating signable:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 }
