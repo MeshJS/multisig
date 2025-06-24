@@ -46,7 +46,7 @@ export function PageHomepage() {
             {user ? (
               <div className="flex gap-2">
                 <Button size="sm" asChild>
-                  <Link href="/wallets/new-wallet">New Wallet</Link>
+                  <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
                 </Button>
                 <Button size="sm" asChild>
                   <Link href="/wallets">Your Wallets</Link>

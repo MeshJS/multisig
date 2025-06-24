@@ -12,13 +12,18 @@ import useAppWallet from "@/hooks/useAppWallet";
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
 import WalletDropDown from "@/components/common/overall-layout/wallet-drop-down";
-import UserDropDown from "@/components/common/overall-layout/user-drop-down";
-import DialogReport from "@/components/common/overall-layout/dialog-report";
-import WalletDataLoader from "@/components/common/overall-layout/wallet-data-loader";
+import {
+  WalletDataLoaderWrapper,
+  DialogReportWrapper,
+  UserDropDownWrapper,
+} from "@/components/common/overall-layout/mobile-wrappers";
+import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
 import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import Loading from "@/components/common/overall-layout/loading";
+import { MobileNavigation } from "@/components/ui/mobile-navigation";
+import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -87,19 +92,19 @@ export default function RootLayout({
   const isLoggedIn = !!user;
 
   return (
-    <div className="grid h-screen w-full overflow-hidden md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+    <div className="grid h-screen w-screen overflow-hidden md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr]">
       {isLoading && <Loading />}
 
       {/* Sidebar for larger screens */}
-      <aside className="hidden border-r bg-muted/40 md:block">
-        <div className="flex h-full max-h-screen flex-col gap-2">
-          <header className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
+      <aside className="hidden border-r border-gray-200/30 dark:border-white/[0.03] bg-muted/40 md:block">
+        <div className="flex h-full max-h-screen flex-col">
+          <header className="flex h-14 items-center border-b border-gray-200/30 dark:border-white/[0.03] px-4 lg:h-16 lg:px-6" id="logo-header" data-header="sidebar">
+            <Link href="/" className="flex items-center gap-3">
               <Logo />
-              <span>Multi-Sig Platform</span>
+              <span className="font-medium text-sm md:text-base lg:text-lg tracking-[-0.01em] select-none">Multi-Sig Platform</span>
             </Link>
           </header>
-          <nav className="flex-1">
+          <nav className="flex-1 pt-2">
             <MenuWallets />
             {isWalletPath && <MenuWallet />}
           </nav>
@@ -109,11 +114,21 @@ export default function RootLayout({
 
       {/* Main content area */}
       <div className="flex h-screen flex-col">
-        <header className="pointer-events-auto relative z-10 border-b bg-muted/40 px-4 lg:px-6">
-          <div className="flex h-14 items-center gap-4 lg:h-[60px]">
-            {/* Wallet selection + breadcrumb row */}
+        <header className="pointer-events-auto relative z-10 border-b border-gray-200/30 dark:border-white/[0.03] bg-muted/40 px-4 lg:px-6" data-header="main">
+          <div className="flex h-14 items-center gap-4 lg:h-16">
+            {/* Mobile menu button */}
+            <MobileNavigation isWalletPath={isWalletPath} />
+            
+            {/* Wallet selection on mobile - centered */}
             {isLoggedIn && (
-              <div className="border-t border-border">
+              <div className="flex-1 flex justify-center md:hidden">
+                <WalletDropDown />
+              </div>
+            )}
+            
+            {/* Wallet selection + breadcrumb row on desktop */}
+            {isLoggedIn && (
+              <div className="hidden md:block">
                 <div className="mx-1 w-full py-2">
                   <nav className="flex items-center">
                     <WalletDropDown />
@@ -156,16 +171,27 @@ export default function RootLayout({
                 <ConnectWallet />
               ) : (
                 <>
-                  <WalletDataLoader />
-                  <DialogReport />
-                  <UserDropDown />
+                  {/* Desktop buttons */}
+                  <div className="hidden md:flex items-center space-x-2">
+                    <WalletDataLoaderWrapper mode="button" />
+                    <DialogReportWrapper mode="button" />
+                    <UserDropDownWrapper mode="button" />
+                  </div>
+                  {/* Mobile actions menu */}
+                  <MobileActionsMenu>
+                    <WalletDataLoaderWrapper mode="menu-item" />
+                    <DialogReportWrapper mode="menu-item" />
+                    <UserDropDownWrapper mode="menu-item" />
+                    <div className="h-px bg-border -mx-2 my-1" />
+                    <LogoutWrapper mode="menu-item" />
+                  </MobileActionsMenu>
                 </>
               )}
             </div>
           </div>
         </header>
 
-        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-8">
+        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
           {pageIsPublic || userAddress ? children : <PageHomepage />}
         </main>
       </div>

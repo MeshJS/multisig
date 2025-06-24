@@ -40,7 +40,7 @@ export default function PageWallets() {
       <>
         <PageHeader pageTitle="Wallets">
           <Button size="sm" asChild>
-            <Link href="/wallets/new-wallet">New Wallet</Link>
+            <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
           </Button>
           {wallets && wallets.some((wallet) => wallet.isArchived) && (
             <Button
@@ -56,7 +56,7 @@ export default function PageWallets() {
           {wallets && wallets.length === 0 && (
             <div className="col-span-3 text-center text-muted-foreground">
               No wallets,{" "}
-              <Link href="/wallets/new-wallet">
+              <Link href="/wallets/new-wallet-flow/save">
                 <b className="cursor-pointer text-white">create one</b>
               </Link>
               ?
@@ -163,7 +163,7 @@ function CardWalletInvite({
       href={
         viewOnly
           ? `/wallets/invite/info/${wallet.id}`
-          : `/wallets/new-wallet/${wallet.id}`
+          : `/wallets/new-wallet-flow/create/${wallet.id}`
       }
     >
       <CardUI
