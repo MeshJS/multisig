@@ -10,8 +10,6 @@ import {
 } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 
-// import { api } from "@/utils/api";
-
 import useTransaction from "@/hooks/useTransaction";
 import { toast, useToast } from "@/hooks/use-toast";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -49,6 +47,7 @@ import {
 } from "@/components/ui/hover-card";
 import UTxOSelector from "./utxoSelector";
 import RecipientRow from "./RecipientRow";
+import RecipientCsv from "./RecipientCsv";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -101,7 +100,8 @@ export default function PageNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
-
+    console.log(amounts)
+    console.log(assets)
     setLoading(true);
     setError(undefined);
 
@@ -264,6 +264,14 @@ export default function PageNewTransaction() {
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
+        <RecipientCsv
+          setRecipientAddresses={setRecipientAddresses}
+          setAmounts={setAmounts}
+          setAssets={setAssets}
+          recipientAddresses={recipientAddresses}
+          amounts={amounts}
+          assets={assets}
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -434,4 +442,3 @@ export default function PageNewTransaction() {
     </main>
   );
 }
-
