@@ -159,6 +159,9 @@ function RecipientRow({
               const newAmounts = [...amounts];
               newAmounts.splice(index, 1);
               setAmounts(newAmounts);
+              const newAssets = [...assets];
+              newAssets.splice(index, 1);
+              setAssets(newAssets);
             }}
           >
             <X className="h-4 w-4" />

@@ -84,11 +84,11 @@ export default function InspectMultisigScript({
 
   return (
     <CardUI title="Native Script" cardClassName="col-span-2">
-      <RowLabelInfo
+      {mWallet.stakingEnabled() && <RowLabelInfo
         label="Address"
         value={<Code>{mWallet.getScript().address}</Code>}
         copyString={mWallet.getScript().address}
-      />
+      />}
       <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
       {mWallet.stakingEnabled() && (
         <RowLabelInfo
@@ -98,11 +98,11 @@ export default function InspectMultisigScript({
         />
       )}
 {/* add pending rewards like balance */}
-      <RowLabelInfo
+      {mWallet.stakingEnabled() && <RowLabelInfo
         label="dRep ID"
         value={<Code>{mWallet.getDRepId()}</Code>}
         copyString={mWallet.getDRepId()}
-      />
+      />}
 
       <Carousel slides={slides} />
     </CardUI>

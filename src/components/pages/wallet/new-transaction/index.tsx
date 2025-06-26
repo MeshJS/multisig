@@ -10,8 +10,6 @@ import {
 } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 
-// import { api } from "@/utils/api";
-
 import useTransaction from "@/hooks/useTransaction";
 import { toast, useToast } from "@/hooks/use-toast";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -49,6 +47,7 @@ import {
 } from "@/components/ui/hover-card";
 import UTxOSelector from "./utxoSelector";
 import RecipientRow from "./RecipientRow";
+import RecipientCsv from "./RecipientCsv";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -101,7 +100,8 @@ export default function PageNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
-
+    console.log(amounts)
+    console.log(assets)
     setLoading(true);
     setError(undefined);
 
@@ -151,19 +151,8 @@ export default function PageNewTransaction() {
       }
 
       const txBuilder = getTxBuilder(network);
-
-      if(!multisigWallet) return
-
       const paymentScript = appWallet.scriptCbor
-      // const rewardAddress = multisigWallet?.getStakeAddress()
-      // const stakingScript = multisigWallet?.getStakingScript()
-
-      // if(!rewardAddress) return
-      // if(!stakingScript) return
       if(!paymentScript) return
-      console.log(paymentScript)
-      console.log(multisigWallet.getKeysByRole(0))
-      console.log(multisigWallet.getScript())
 
       for (const utxo of selectedUtxos) {
         txBuilder
@@ -176,6 +165,17 @@ export default function PageNewTransaction() {
           .txInScript(paymentScript)
       }
 
+//add this for staking txs
+//add checks for registration will also be required for some gov stuff
+
+//find way to refactor tx process.
+
+      //if(!multisigWallet) return
+      // const rewardAddress = multisigWallet?.getStakeAddress()
+      // const stakingScript = multisigWallet?.getStakingScript()
+
+      // if(!rewardAddress) return
+      // if(!stakingScript) return
       //const poolIdHash = "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
 
       //txBuilder.registerStakeCertificate(rewardAddress)
@@ -264,6 +264,14 @@ export default function PageNewTransaction() {
       <SectionTitle>New Transaction</SectionTitle>
 
       <CardUI title="Recipients" cardClassName="w-full">
+        <RecipientCsv
+          setRecipientAddresses={setRecipientAddresses}
+          setAmounts={setAmounts}
+          setAssets={setAssets}
+          recipientAddresses={recipientAddresses}
+          amounts={amounts}
+          assets={assets}
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -434,4 +442,3 @@ export default function PageNewTransaction() {
     </main>
   );
 }
-
