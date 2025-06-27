@@ -61,7 +61,7 @@ export default function PageSuccessWallet() {
 
   const handleCopyDRepId = () => {
     if (wallet?.getDRepId()) {
-      navigator.clipboard.writeText(wallet?.getDRepId());
+      navigator.clipboard.writeText(wallet?.getDRepId() ?? "");
       toast({
         title: "Copied!",
         description: "DRep ID copied to clipboard",

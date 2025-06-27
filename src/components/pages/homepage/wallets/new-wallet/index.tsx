@@ -1,13 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
-import {
-  NativeScript,
-  resolvePaymentKeyHash,
-  resolveStakeKeyHash,
-  serializeNativeScript,
-} from "@meshsdk/core";
+import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
 
-import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
+import type { MultisigKey } from "@/utils/multisigSDK";
+import { MultisigWallet } from "@/utils/multisigSDK";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -56,7 +52,7 @@ export default function PageNewWallet() {
             keys.push({
               keyHash: paymentHash,
               role: 0,
-              name: signersDescriptions[i] || "",
+              name: signersDescriptions[i] ?? "",
             });
           } catch (e) {
             console.warn(`Invalid payment address at index ${i}:`, addr);
@@ -73,7 +69,7 @@ export default function PageNewWallet() {
             keys.push({
               keyHash: stakeKeyHash,
               role: 2,
-              name: signersDescriptions[i] || "",
+              name: signersDescriptions[i] ?? "",
             });
           } catch (e) {
             console.warn(`Invalid stake address at index ${i}:`, stakeKey);
@@ -90,12 +86,13 @@ export default function PageNewWallet() {
     signersStakeKeys,
     signersDescriptions,
     numRequiredSigners,
+    network,
   ]);
 
   const { mutate: deleteWalletInvite } = api.wallet.deleteNewWallet.useMutation(
     {
-      onError: (e) => {
-        console.error(e);
+      onError: () => {
+        console.error();
       },
     },
   );
@@ -106,24 +103,24 @@ export default function PageNewWallet() {
         deleteWalletInvite({ walletId: walletInviteId! });
       }
       setLoading(false);
-      router.push("/wallets");
+      await router.push("/wallets");
       toast({
         title: "Wallet Created",
         description: "Your wallet has been created",
         duration: 5000,
       });
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
   const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
     onSuccess: async (data) => {
       setLoading(false);
-      router.push(`/wallets/new-wallet/${data.id}`);
-      navigator.clipboard.writeText(
+      await router.push(`/wallets/new-wallet/${data.id}`);
+      await navigator.clipboard.writeText(
         `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
       );
       toast({
@@ -133,9 +130,9 @@ export default function PageNewWallet() {
         duration: 5000,
       });
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
@@ -147,11 +144,11 @@ export default function PageNewWallet() {
         description: "Your wallet has been saved",
         duration: 5000,
       });
-      router.push("/wallets");
+      await router.push("/wallets");
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
@@ -187,7 +184,7 @@ export default function PageNewWallet() {
     setSignerStakeKeys([...signersStakeKeys, ""]);
   }
 
-  function createNativeScript() {
+  async function createNativeScript() {
     setLoading(true);
 
     if (!multisigWallet) {
@@ -292,7 +289,7 @@ export default function PageNewWallet() {
                 walletInviteId,
                 nativeScriptType,
                 toast,
-                handleCreateNewWallet,
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,
               }}
             />
@@ -307,9 +304,9 @@ export default function PageNewWallet() {
           <div className="col-span-2 flex justify-end gap-4 sm:justify-center">
             <WalletActionButtons
               buttonConfig={{
-                createNativeScript,
-                handleSaveWallet,
-                handleCreateNewWallet,
+                createNativeScript: () => void createNativeScript(),
+                handleSaveWallet: () => void handleSaveWallet(),
+                handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,
                 signersAddresses,
                 name,
