@@ -9,10 +9,17 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { buildWallet } from "@/hooks/common";
 
 import PageHeader from "@/components/common/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ProgressIndicator from "@/components/pages/homepage/wallets/new-wallet-flow/shared/ProgressIndicator";
 import WalletFlowPageLayout from "@/components/pages/homepage/wallets/new-wallet-flow/shared/WalletFlowPageLayout";
+import { buildMultisigWallet } from "@/utils/common";
 
 export default function PageSuccessWallet() {
   const router = useRouter();
@@ -25,12 +32,11 @@ export default function PageSuccessWallet() {
   // Get wallet data to show details
   const { data: walletData } = api.wallet.getWallet.useQuery(
     { walletId, address: userAddress || "" },
-    { enabled: !!walletId && !!userAddress }
+    { enabled: !!walletId && !!userAddress },
   );
 
   // Build wallet with address and other computed fields
-  const wallet = walletData ? buildWallet(walletData, network) : null;
-
+  const wallet = walletData ? buildMultisigWallet(walletData, network) : null;
 
   const handleViewWallets = () => {
     setLoading(true);
@@ -43,8 +49,8 @@ export default function PageSuccessWallet() {
   };
 
   const handleCopyAddress = () => {
-    if (wallet?.address) {
-      navigator.clipboard.writeText(wallet.address);
+    if (wallet?.getScript().address) {
+      navigator.clipboard.writeText(wallet?.getScript().address);
       toast({
         title: "Copied!",
         description: "Wallet address copied to clipboard",
@@ -54,8 +60,8 @@ export default function PageSuccessWallet() {
   };
 
   const handleCopyDRepId = () => {
-    if (wallet?.dRepId) {
-      navigator.clipboard.writeText(wallet.dRepId);
+    if (wallet?.getDRepId()) {
+      navigator.clipboard.writeText(wallet?.getDRepId());
       toast({
         title: "Copied!",
         description: "DRep ID copied to clipboard",
@@ -71,11 +77,11 @@ export default function PageSuccessWallet() {
         <CardHeader>
           <CardTitle>Wallet created successfully</CardTitle>
         </CardHeader>
-        
+
         <CardContent className="space-y-4 sm:space-y-6">
           {/* Success notification inline */}
-          <div className="flex items-start gap-3 p-4 bg-muted/50 border border-muted-foreground/20 rounded-lg">
-            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+          <div className="flex items-start gap-3 rounded-lg border border-muted-foreground/20 bg-muted/50 p-4">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600 dark:text-green-400" />
             <div className="space-y-1">
               <p className="text-sm font-medium">
                 Your multi-signature wallet is ready to use
@@ -85,37 +91,46 @@ export default function PageSuccessWallet() {
               </p>
             </div>
           </div>
-          
+
           {/* Wallet Details */}
           {wallet && (
-            <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+            <div className="space-y-3 rounded-lg bg-muted/30 p-4">
               {/* Name */}
-              <div className="grid grid-cols-[120px_1fr] gap-4 items-baseline">
+              <div className="grid grid-cols-[120px_1fr] items-baseline gap-4">
                 <span className="text-sm text-muted-foreground">Name</span>
                 <span className="text-sm font-medium">{wallet.name}</span>
               </div>
               {/* Description - only if exists */}
               {wallet.description && (
-                <div className="grid grid-cols-[120px_1fr] gap-4 items-baseline">
-                  <span className="text-sm text-muted-foreground">Description</span>
+                <div className="grid grid-cols-[120px_1fr] items-baseline gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Description
+                  </span>
                   <span className="text-sm">{wallet.description}</span>
                 </div>
               )}
               {/* Signature Rule */}
-              <div className="grid grid-cols-[120px_1fr] gap-4 items-baseline">
-                <span className="text-sm text-muted-foreground">Signature Rule</span>
+              <div className="grid grid-cols-[120px_1fr] items-baseline gap-4">
+                <span className="text-sm text-muted-foreground">
+                  Signature Rule
+                </span>
                 <span className="text-sm">
-                  {wallet.type === 'atLeast' ? `${wallet.numRequiredSigners} of ${wallet.signersAddresses.length} signers must approve` :
-                   wallet.type === 'all' ? `All signers (of ${wallet.signersAddresses.length}) must approve` :
-                   wallet.type === 'any' ? `Any signer (of ${wallet.signersAddresses.length}) can approve` :
-                   `${wallet.numRequiredSigners} of ${wallet.signersAddresses.length} signers must approve`}
+                  {walletData?.type === "atLeast"
+                    ? `${walletData?.numRequiredSigners} of ${walletData?.signersAddresses.length} signers must approve`
+                    : walletData?.type === "all"
+                      ? `All signers (of ${walletData?.signersAddresses.length}) must approve`
+                      : walletData?.type === "any"
+                        ? `Any signer (of ${walletData?.signersAddresses.length}) can approve`
+                        : `${walletData?.numRequiredSigners} of ${walletData?.signersAddresses.length} signers must approve`}
                 </span>
               </div>
               {/* Wallet Address with Copy Button */}
-              {wallet.address && (
-                <div className="grid grid-cols-[120px_1fr_auto] gap-4 items-center">
+              {wallet?.getScript().address && (
+                <div className="grid grid-cols-[120px_1fr_auto] items-center gap-4">
                   <span className="text-sm text-muted-foreground">Address</span>
-                  <span className="text-xs font-mono break-all">{wallet.address}</span>
+                  <span className="break-all font-mono text-xs">
+                    {wallet?.getScript().address}
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -127,10 +142,12 @@ export default function PageSuccessWallet() {
                 </div>
               )}
               {/* DRep ID with Copy Button */}
-              {wallet.dRepId && (
-                <div className="grid grid-cols-[120px_1fr_auto] gap-4 items-center">
+              {wallet.getDRepId() && (
+                <div className="grid grid-cols-[120px_1fr_auto] items-center gap-4">
                   <span className="text-sm text-muted-foreground">DRep ID</span>
-                  <span className="text-xs font-mono break-all">{wallet.dRepId}</span>
+                  <span className="break-all font-mono text-xs">
+                    {wallet.getDRepId()}
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -143,9 +160,13 @@ export default function PageSuccessWallet() {
               )}
               {/* Stake Credential - only if set */}
               {wallet.stakeCredentialHash && (
-                <div className="grid grid-cols-[120px_1fr] gap-4 items-baseline">
-                  <span className="text-sm text-muted-foreground">Stake Credential</span>
-                  <span className="text-xs font-mono break-all">{wallet.stakeCredentialHash}</span>
+                <div className="grid grid-cols-[120px_1fr] items-baseline gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Stake Credential
+                  </span>
+                  <span className="break-all font-mono text-xs">
+                    {wallet.stakeCredentialHash}
+                  </span>
                 </div>
               )}
             </div>
@@ -154,12 +175,12 @@ export default function PageSuccessWallet() {
       </Card>
 
       {/* Action Section - Buttons aligned right */}
-      <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4 sm:justify-end">
+      <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:justify-end sm:gap-4">
         <Button
           variant="outline"
           onClick={handleViewWallets}
           disabled={loading}
-          className="w-full sm:w-auto order-2 sm:order-1"
+          className="order-2 w-full sm:order-1 sm:w-auto"
           size="lg"
         >
           View All Wallets
@@ -167,7 +188,7 @@ export default function PageSuccessWallet() {
         <Button
           onClick={handleViewWallet}
           disabled={loading}
-          className="w-full sm:w-auto order-1 sm:order-2"
+          className="order-1 w-full sm:order-2 sm:w-auto"
           size="lg"
         >
           Go to Wallet
