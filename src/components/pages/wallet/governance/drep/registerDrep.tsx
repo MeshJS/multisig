@@ -13,6 +13,7 @@ import { getDRepMetadata } from "./drepMetadata";
 import { getFile, hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 interface PutResponse {
   url: string;
@@ -26,6 +27,7 @@ export default function RegisterDRep() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
+  const { multisigWallet } = useMultisigWallet();
 
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
@@ -77,6 +79,7 @@ export default function RegisterDRep() {
   async function registerDrep(): Promise<void> {
     if (!connected || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
+    if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
@@ -110,6 +113,18 @@ export default function RegisterDRep() {
         .certificateScript(appWallet.scriptCbor)
         .changeAddress(appWallet.address)
         .selectUtxosFrom(manualUtxos);
+
+      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
+      for (const key of paymentKeys) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
+      
+      if (multisigWallet.stakingEnabled()) {
+        const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
+        for (const key of stakingKeys) {
+          txBuilder.requiredSignerHash(key.keyHash);
+        }
+      }
 
       await newTransaction({
         txBuilder,

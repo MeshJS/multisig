@@ -18,7 +18,7 @@ export default function useMultisigWallet() {
       enabled: walletId !== undefined && userAddress !== undefined,
     },
   );
-  if (wallet && network !== undefined) {
+  if (wallet) {
     return { multisigWallet: buildMultisigWallet(wallet, network), isLoading };
   }
 
