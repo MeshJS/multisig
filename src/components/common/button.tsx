@@ -62,7 +62,7 @@ export default function Button({
           : undefined
       }
     >
-      {loading && <Loader className="h-4 w-4 animate-spin" />}
+      {loading && <Loader className="h-4 w-4 animate-spin mr-2" />}
       {children}
       {hold &&
         holding &&

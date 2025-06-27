@@ -9,13 +9,17 @@ export default function MenuWallets() {
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
 
   return (
-    <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-      <br />
+    <nav className="grid items-start px-2 text-sm font-medium lg:px-4 space-y-1">
       <MenuLink
         href={`/`}
-        className={router.pathname == "/" ? "text-white" : ""}
+        className={
+          router.pathname == "/" || 
+          router.pathname.startsWith("/wallets") && !router.pathname.startsWith("/wallets/[wallet]")
+            ? "text-white" 
+            : ""
+        }
       >
-        <House className="h-6 w-6" />
+        <House className="h-5 w-5" />
         <div className="flex items-center gap-2">Home</div>
       </MenuLink>
 
@@ -23,7 +27,7 @@ export default function MenuWallets() {
         href={`/features`}
         className={router.pathname == "/features" ? "text-white" : ""}
       >
-        <Sparkle className="h-6 w-6" />
+        <Sparkle className="h-5 w-5" />
         <div className="flex items-center gap-2">Features</div>
       </MenuLink>
 
@@ -31,13 +35,12 @@ export default function MenuWallets() {
         href={`/api-docs`}
         className={router.pathname == "/api-docs" ? "text-white" : ""}
       >
-        <FolderCode className="h-6 w-6" />
+        <FolderCode className="h-5 w-5" />
         <div className="flex items-center gap-2">API Docs</div>
       </MenuLink>
-      <br />
 
       {wallets && (
-        <div className="my-1">
+        <div className="mt-6 pt-4 border-t border-gray-200/30 dark:border-white/[0.03]">
           <MenuLink
             href={`${baseUrl}`}
             className={
@@ -62,7 +65,7 @@ export default function MenuWallets() {
         }
         className={router.pathname.includes("governance") ? "text-white" : ""}
       >
-        <Landmark className="h-6 w-6" />
+        <Landmark className="h-5 w-5" />
         Governance
       </MenuLink>
     </nav>

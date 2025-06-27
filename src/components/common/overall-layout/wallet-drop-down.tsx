@@ -18,6 +18,18 @@ export default function WalletDropDown() {
   const { wallets } = useUserWallets();
   const { appWallet } = useAppWallet();
   const [open, setOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  // Check if desktop (with sidebar)
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsDesktop(window.innerWidth >= 768); // md breakpoint
+    };
+    
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   // Close the dropdown when a route change starts
   useEffect(() => {
@@ -31,12 +43,13 @@ export default function WalletDropDown() {
     };
   }, [router.events]);
 
-  return (
-    <div className="flex items-center rounded-md border border-secondary border-border">
+  return isDesktop ? (
+    // Desktop: Select-Button als Trigger (Option 1)
+    <div className="inline-flex items-center rounded-md border border-border overflow-hidden h-10">
       <button
         type="button"
-        className="flex items-center px-2 text-muted-foreground hover:text-foreground"
-        onClick={() => router.push("/wallets/new-wallet")}
+        className="flex items-center px-3 h-full text-muted-foreground hover:text-foreground hover:bg-muted border-r border-border"
+        onClick={() => router.push("/wallets/new-wallet-flow/save")}
       >
         <Plus className="h-5 w-5" />
       </button>
@@ -44,7 +57,7 @@ export default function WalletDropDown() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="flex items-center rounded-none border-r border-border"
+            className="flex items-center rounded-none px-3 h-full hover:bg-muted"
           >
             {open ? (
               <ChevronUp className="h-5 w-5" />
@@ -57,7 +70,7 @@ export default function WalletDropDown() {
             <Wallet2 className="mx-2 h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="mt-2 p-2">
+        <DropdownMenuContent align="start" className="mt-2 p-2">
           <DropdownMenuItem
             onSelect={() => setOpen(false)}
             onClick={() => router.push("/")}
@@ -77,5 +90,55 @@ export default function WalletDropDown() {
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  ) : (
+    // Mobile: Ganzer Container als Trigger (Option 2)
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <div className="inline-flex items-center rounded-md border border-border overflow-hidden h-10">
+          <button
+            type="button"
+            className="flex items-center px-3 h-full text-muted-foreground hover:text-foreground hover:bg-muted border-r border-border"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push("/wallets/new-wallet-flow/save");
+            }}
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+          <div className="flex items-center px-3 h-full hover:bg-muted cursor-pointer">
+            {open ? (
+              <ChevronUp className="h-5 w-5" />
+            ) : (
+              <ChevronDown className="h-5 w-5" />
+            )}
+            <span className="flex items-center ml-2">
+              {appWallet?.name || "Select Wallet"}
+            </span>
+            <Wallet2 className="mx-2 h-4 w-4" />
+          </div>
+        </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent 
+        align="center" 
+        className="mt-2 p-2 mx-4 max-w-[calc(100vw-2rem)]"
+      >
+        <DropdownMenuItem
+          onSelect={() => setOpen(false)}
+          onClick={() => router.push("/")}
+        >
+          All Wallets
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {wallets &&
+          wallets
+            .filter((wallet) => !wallet.isArchived)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((wallet) => (
+              <DropdownMenuItem asChild key={wallet.id}>
+                <WalletNavLink wallet={wallet} />
+              </DropdownMenuItem>
+            ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

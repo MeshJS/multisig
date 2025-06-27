@@ -1,6 +1,9 @@
 import React from "react";
 import { getFirstAndLast } from "@/utils/strings";
-import { checkValidAddress, checkValidStakeKey } from "@/utils/multisigSDK";
+import {
+    resolvePaymentKeyHash,
+    resolveStakeKeyHash,
+  } from "@meshsdk/core";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +66,23 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
     loading,
   } = signerConfig;
 
+  function checkValidAddress(address: string) {
+    try {
+      resolvePaymentKeyHash(address);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  function checkValidStakeKey(stakeKey: string){
+    try{
+      resolveStakeKeyHash(stakeKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 
   return (
     <Card>
@@ -249,7 +269,7 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
                 </p>
                 <ToggleGroup
                   type="single"
-                  value={(numRequiredSigners)?numRequiredSigners.toString():"1"}
+                  value={numRequiredSigners.toString()}
                   onValueChange={(v) => {
                     if (v) setNumRequiredSigners(Number(v));
                   }}

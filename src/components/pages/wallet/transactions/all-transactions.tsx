@@ -27,6 +27,8 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import { useEffect, useMemo, useState } from "react";
+import ResponsiveTransactionsTable from "./responsive-transactions-table";
+import ScrollableTableWrapper from "./scrollable-table-wrapper";
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -38,6 +40,9 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   );
 
   const walletTransactions = _walletTransactions[appWallet.id];
+  
+  // Toggle between responsive and scrollable table
+  const [useResponsiveTable, setUseResponsiveTable] = useState(false);
 
   if (walletTransactions === undefined)
     return <div className="text-center">No transactions yet</div>;
@@ -59,30 +64,68 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
       }
       cardClassName="col-span-3"
     >
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead></TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Signers</TableHead>
-            <TableHead></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {walletTransactions &&
-            walletTransactions.map((tx) => (
-              <TransactionRow
-                key={tx.hash}
-                transaction={tx}
-                appWallet={appWallet}
-                dbTransaction={
-                  dbTransactions &&
-                  dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
-                }
-              />
-            ))}
-        </TableBody>
-      </Table>
+      {/* Option 1: Using the ScrollableTableWrapper component with shadow indicators */}
+      <ScrollableTableWrapper>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="min-w-[200px]">Transaction</TableHead>
+              <TableHead className="min-w-[150px]">Amount</TableHead>
+              <TableHead className="min-w-[200px]">Signers</TableHead>
+              <TableHead className="min-w-[50px]"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {walletTransactions &&
+              walletTransactions.map((tx) => (
+                <TransactionRow
+                  key={tx.hash}
+                  transaction={tx}
+                  appWallet={appWallet}
+                  dbTransaction={
+                    dbTransactions &&
+                    dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
+                  }
+                />
+              ))}
+          </TableBody>
+        </Table>
+      </ScrollableTableWrapper>
+
+      {/* Option 2: CSS-based force scroll (uncomment to use) */}
+      {/* <div className="force-scroll-container">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="min-w-[200px]">Transaction</TableHead>
+              <TableHead className="min-w-[150px]">Amount</TableHead>
+              <TableHead className="min-w-[200px]">Signers</TableHead>
+              <TableHead className="min-w-[50px]"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {walletTransactions &&
+              walletTransactions.map((tx) => (
+                <TransactionRow
+                  key={tx.hash}
+                  transaction={tx}
+                  appWallet={appWallet}
+                  dbTransaction={
+                    dbTransactions &&
+                    dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
+                  }
+                />
+              ))}
+          </TableBody>
+        </Table>
+      </div> */}
+
+      {/* Option 3: Responsive table without scroll (uncomment to use) */}
+      {/* <ResponsiveTransactionsTable
+        appWallet={appWallet}
+        walletTransactions={walletTransactions}
+        dbTransactions={dbTransactions}
+      /> */}
     </CardUI>
   );
 }

@@ -27,14 +27,20 @@ const WalletNavLink = React.forwardRef<HTMLSpanElement, WalletNavLinkProps>(
               : "border-transparent text-muted-foreground hover:border-secondary"
           }`}
         >
-          <Wallet2 className="mr-1 h-4 w-4" />
-          {wallet.name}
-          {wallet.isArchived && " (Archived)"}
-          {transactions && transactions.length > 0 && (
-            <Badge className="ml-2 flex h-6 w-6 items-center justify-center rounded-full">
-              {transactions.length}
-            </Badge>
-          )}
+          <div className="flex items-start gap-1">
+            <Wallet2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="break-words">
+                {wallet.name}
+                {wallet.isArchived && " (Archived)"}
+              </div>
+            </div>
+            {transactions && transactions.length > 0 && (
+              <Badge className="ml-2 flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0">
+                {transactions.length}
+              </Badge>
+            )}
+          </div>
         </MenuLink>
       </span>
     );

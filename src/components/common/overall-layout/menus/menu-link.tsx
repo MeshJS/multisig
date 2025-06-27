@@ -12,7 +12,7 @@ export default function MenuLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary ${className && className}`}
+      className={`flex items-center gap-3 rounded-md px-3 py-2 text-muted-foreground transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 hover:text-foreground ${className && className === "text-white" ? "!bg-gray-900 dark:!bg-white/10 !text-white dark:!text-white !font-medium" : className}`}
     >
       {children}
     </Link>

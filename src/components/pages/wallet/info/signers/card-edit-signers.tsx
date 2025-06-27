@@ -94,32 +94,42 @@ export default function EditSigners({
             <TableRow key={index}>
               <TableCell>
                 <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label className="text-right">Address</Label>
-                    <Input
-                      type="string"
+                  <div className="grid grid-cols-4 items-start gap-4">
+                    <Label className="text-right mt-2">Address</Label>
+                    <textarea
                       placeholder="addr1..."
-                      className={`col-span-3 ${
+                      className={`col-span-3 flex min-h-[36px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none ${
                         signersAddresses[index] !== "" &&
                         !checkValidAddress(signersAddresses[index]!) &&
                         "text-red-500"
                       }`}
                       value={signer}
                       disabled
+                      rows={1}
+                      onInput={(e) => {
+                        const target = e.target as HTMLTextAreaElement;
+                        target.style.height = 'auto';
+                        target.style.height = target.scrollHeight + 'px';
+                      }}
                     />
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label className="text-right">Stake Address</Label>
-                    <Input
-                      type="string"
+                  <div className="grid grid-cols-4 items-start gap-4">
+                    <Label className="text-right mt-2">Stake Address</Label>
+                    <textarea
                       placeholder="stake..."
-                      className={`col-span-3 ${newStakekey(index) && "text-green-500"}`}
+                      className={`col-span-3 flex min-h-[36px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none ${newStakekey(index) && "text-green-500"}`}
                       value={
                         signersAddresses[index] === userAddress
                           ? user?.stakeAddress ?? ""
                           : signersStakeKeys[index] ?? ""
                       }
                       disabled
+                      rows={1}
+                      onInput={(e) => {
+                        const target = e.target as HTMLTextAreaElement;
+                        target.style.height = 'auto';
+                        target.style.height = target.scrollHeight + 'px';
+                      }}
                     />
                   </div>
                   {newStakekey(index) && (

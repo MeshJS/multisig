@@ -1,6 +1,515 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Prevent horizontal overflow on mobile */
+@layer base {
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* Glass Morphism Design System */
+@layer components {
+  /* Navigation Glass - for sidebar, header, logo */
+  .glass-nav {
+    @apply backdrop-blur-[20px] bg-white/60 dark:bg-white/5;
+    @apply border-gray-200/10 dark:border-white/20;
+    @apply transition-all duration-200;
+  }
+  
+  /* Card Glass - for content cards */
+  .glass-card {
+    @apply backdrop-blur-[10px] bg-white/80 dark:bg-gray-900/50;
+    @apply border border-gray-200/20 dark:border-white/10;
+    @apply rounded-xl shadow-lg;
+  }
+  
+  /* Subtle Glass - for nested elements */
+  .glass-subtle {
+    @apply backdrop-blur-sm bg-white/40 dark:bg-white/5;
+    @apply border-gray-200/5 dark:border-white/10;
+  }
+}
+
+/**
+ * Animation Utilities
+ * Ensures animations work properly across the application
+ */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/**
+ * Glass Morphism Navigation Enhancements
+ * Applied globally to sidebar and header elements
+ */
+
+/* Global Glass Effects for Navigation */
+/* Sidebar Glass Effect */
+aside {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: relative;
+}
+
+html.dark aside {
+  background: rgba(18, 18, 18, 0.5) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Header Glass Effect */
+header {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html.dark header {
+  background: rgba(18, 18, 18, 0.5) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Remove conflicting backgrounds - Enhanced specificity */
+aside.bg-muted\/40,
+header.bg-muted\/40 {
+  background-color: transparent !important;
+}
+
+/* Force remove all Tailwind background utilities from sidebar in dark mode */
+.dark aside[class*="bg-"],
+html.dark aside[class*="bg-"] {
+  background-color: transparent !important;
+}
+
+/* Ensure backdrop-filter is never disabled */
+aside,
+.dark aside,
+html.dark aside {
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Ensure content inside navigation remains visible */
+aside > div,
+header > div {
+  background: transparent !important;
+}
+
+/* Gradient overlay for light mode only */
+aside::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.02)
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ensure gradient doesn't interfere with dark mode blur */
+html.dark aside::before,
+.dark aside::before {
+  display: none;
+}
+
+/* Ensure sidebar content is above the gradient */
+aside > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Sidebar Text Enhancement */
+/* Ensure smooth text scaling and prevent layout shifts */
+#logo-header span {
+  transition: font-size 0.2s ease-in-out;
+  min-width: 0; /* Allow text to shrink if needed */
+}
+
+/* Optional: Add subtle hover effect on logo area */
+#logo-header a:hover span {
+  opacity: 0.9;
+}
+
+/* Ensure logo doesn't shrink */
+#logo-header svg {
+  flex-shrink: 0;
+}
+
+/* Mobile-specific adjustments for very tight spaces */
+@media (max-width: 380px) {
+  #logo-header span {
+    letter-spacing: -0.02em; /* Slightly tighter on very small screens */
+  }
+}
+
+/* Prevent text selection on navigation items for cleaner UX */
+aside nav {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/**
+ * Table and Border Fixes
+ * Ensures consistent appearance in both light and dark modes
+ */
+
+/* Border Consistency Fix
+ * Ensures vertical and horizontal borders appear identical in both light and dark modes
+ * when using glass morphism effects
+ */
+
+/* Light mode - keep borders at 40% opacity for good visibility */
+html:not(.dark) aside.border-r.border-gray-200\/30 {
+  border-right-color: rgba(229, 231, 235, 0.4) !important;
+}
+
+html:not(.dark) header.border-b.border-gray-200\/30 {
+  border-bottom-color: rgba(229, 231, 235, 0.4) !important;
+}
+
+/* Dark mode - subtle borders at 8% opacity */
+/* Only target elements that have both the border AND the dark border class */
+html.dark .border-r.dark\:border-white\/\[0\.03\] {
+  border-right-color: rgba(255, 255, 255, 0.08) !important; /* 8% opacity - subtle but clearly visible */
+}
+
+html.dark .border-b.dark\:border-white\/\[0\.03\] {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important; /* 8% opacity - subtle but clearly visible */
+}
+
+html.dark .border-t.dark\:border-white\/\[0\.03\] {
+  border-top-color: rgba(255, 255, 255, 0.08) !important; /* 8% opacity - subtle but clearly visible */
+}
+
+/* Ensure consistent rendering across browsers */
+aside.border-r,
+header.border-b {
+  /* Prevent background from bleeding into border area */
+  background-clip: padding-box !important;
+  
+  /* Force consistent rendering */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+/**
+ * Signers Table Light Mode Fix
+ * Make light mode table look better like dark mode equivalent
+ */
+
+/* Make table rows more visible in light mode on glass pages */
+.add-wallet-glass-page table tr {
+  transition: background-color 0.2s ease;
+}
+
+/* Light mode - stronger background like dark mode */
+.add-wallet-glass-page table tr:hover {
+  background: rgba(0, 0, 0, 0.08) !important; /* Stronger than zinc-100/50 */
+}
+
+/* Keep dark mode as is */
+.dark .add-wallet-glass-page table tr:hover {
+  background: rgba(255, 255, 255, 0.08) !important; /* Equivalent opacity */
+}
+
+/* Table headers - better contrast */
+.add-wallet-glass-page table th {
+  background: rgba(0, 0, 0, 0.03) !important;
+  font-weight: 600 !important;
+}
+
+.dark .add-wallet-glass-page table th {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Table borders - back to original desktop values */
+.add-wallet-glass-page table tr {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .add-wallet-glass-page table tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important; /* Back to original */
+}
+
+/* Last row no border */
+.add-wallet-glass-page table tr:last-child {
+  border-bottom: none !important;
+}
+
+/* Mobile Signer Cards - very subtle borders */
+.add-wallet-glass-page .sm\\:hidden .border {
+  border-color: rgba(0, 0, 0, 0.06) !important; /* Light mode - more subtle */
+}
+
+.dark .add-wallet-glass-page .sm\\:hidden .border {
+  border-color: rgba(255, 255, 255, 0.01) !important; /* Dark mode - barely visible */
+}
+
+/**
+ * Header Alignment Fixes
+ * Ensures consistent alignment between sidebar and main headers
+ */
+
+/* Alternative approach: Use CSS variables for exact alignment */
+:root {
+  --header-height-base: 56px; /* h-14 */
+  --header-height-lg: 64px; /* lg:h-16 */
+  --header-border-color: rgba(0, 0, 0, 0.08);
+  --header-border-color-dark: rgba(255, 255, 255, 0.15);
+}
+
+/* Ensure consistent box model for all headers */
+header[data-header="sidebar"],
+header[data-header="main"] {
+  /* Force consistent box-sizing */
+  box-sizing: border-box;
+  
+  /* Ensure borders are included in height calculation */
+  border-bottom-width: 1px;
+  
+  /* Remove any potential margin/padding inconsistencies */
+  margin: 0;
+  
+  /* Force GPU acceleration for consistent rendering */
+  transform: translateZ(0);
+  will-change: transform;
+  
+  /* Apply consistent heights using CSS variables */
+  min-height: var(--header-height-base);
+  max-height: var(--header-height-base);
+}
+
+/* Ensure parent containers don't affect alignment */
+aside > div > header[data-header="sidebar"] {
+  /* Remove any inherited transforms or positioning */
+  position: relative;
+  top: 0;
+}
+
+div > header[data-header="main"] {
+  /* Match sidebar header positioning */
+  position: relative;
+  top: 0;
+}
+
+@media (min-width: 1024px) {
+  header[data-header="sidebar"],
+  header[data-header="main"] {
+    min-height: var(--header-height-lg);
+    max-height: var(--header-height-lg);
+  }
+}
+
+/* Ensure flex children don't affect header height */
+header[data-header="sidebar"] > *,
+header[data-header="main"] > div {
+  align-self: center;
+}
+
+/* Force exact same height */
+@media (min-width: 1024px) {
+  header#logo-header,
+  header:not(#logo-header) .flex {
+    height: 64px !important; /* 4rem = h-16 */
+    max-height: 64px !important;
+    min-height: 64px !important;
+  }
+}
+
+/* Glass Morphism Enhancement Styles */
+
+/* Sidebar Navigation Enhancements */
+aside {
+  position: relative;
+}
+
+/* Gradient overlay for light mode only */
+aside::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.02)
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ensure gradient doesn't interfere with dark mode blur */
+html.dark aside::before,
+.dark aside::before {
+  display: none;
+}
+
+/* Ensure sidebar content is above the gradient */
+aside > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Sidebar Text Enhancement Styles */
+#logo-header span {
+  transition: font-size 0.2s ease-in-out;
+  min-width: 0; /* Allow text to shrink if needed */
+}
+
+/* Optional: Add subtle hover effect on logo area */
+#logo-header a:hover span {
+  opacity: 0.9;
+}
+
+/* Ensure logo doesn't shrink */
+#logo-header svg {
+  flex-shrink: 0;
+}
+
+/* Mobile-specific adjustments for very tight spaces */
+@media (max-width: 380px) {
+  #logo-header span {
+    letter-spacing: -0.02em; /* Slightly tighter on very small screens */
+  }
+}
+
+/* Prevent text selection on navigation items for cleaner UX */
+aside nav {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Border Consistency Fix
+ * Ensures vertical and horizontal borders appear identical in both light and dark modes
+ * when using glass morphism effects
+ */
+
+/* Light mode - keep borders at 40% opacity for good visibility */
+html:not(.dark) aside.border-r.border-gray-200\/30 {
+  border-right-color: rgba(229, 231, 235, 0.4) !important;
+}
+
+html:not(.dark) header.border-b.border-gray-200\/30 {
+  border-bottom-color: rgba(229, 231, 235, 0.4) !important;
+}
+
+/* Dark mode - subtle borders at 8% opacity */
+html.dark .border-r.dark\:border-white\/\[0\.03\] {
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.dark .border-b.dark\:border-white\/\[0\.03\] {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.dark .border-t.dark\:border-white\/\[0\.03\] {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Ensure consistent rendering across browsers */
+aside.border-r,
+header.border-b {
+  background-clip: padding-box !important;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+/* Header Alignment Fix */
+header[data-header="sidebar"],
+header[data-header="main"] {
+  box-sizing: border-box;
+  border-bottom-width: 1px;
+  margin: 0;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+aside > div > header[data-header="sidebar"] {
+  position: relative;
+  top: 0;
+}
+
+div > header[data-header="main"] {
+  position: relative;
+  top: 0;
+}
+
+/* Signers Table Light Mode Fix */
+.add-wallet-glass-page table tr {
+  transition: background-color 0.2s ease;
+}
+
+.add-wallet-glass-page table tr:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+.dark .add-wallet-glass-page table tr:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.add-wallet-glass-page table th {
+  background: rgba(0, 0, 0, 0.03) !important;
+  font-weight: 600 !important;
+}
+
+/**
+ * Application-Specific Styles
+ */
+
+/* Globe Background */
+.globe-background {
+  @apply fixed inset-0 -z-10;
+  @apply flex items-center justify-center;
+  @apply pointer-events-none;
+}
+
+/* Apply to Add Wallet page specifically */
+body.add-wallet-glass-page {
+  background: transparent !important;
+}
+
+/* Cards on Add Wallet page */
+body.add-wallet-glass-page main [class*="border"] {
+  backdrop-filter: blur(10px) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
+  /* Use Tailwind's border system */
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+body.add-wallet-glass-page.dark main [class*="border"],
+.dark body.add-wallet-glass-page main [class*="border"] {
+  background: rgba(30, 30, 30, 0.5) !important;
+  /* Use Tailwind's border system */
+}
+
+/* Text colors */
+body.add-wallet-glass-page {
+  @apply text-gray-900 dark:text-white;
+}
+
+/* Logo colors */
+body.add-wallet-glass-page #logo-header svg {
+  @apply fill-current;
+}
+
+/**
+ * Tailwind CSS Custom Properties
+ */
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -29,24 +538,24 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem}
   .dark {
-    --background: 240 10% 3.9%;
+    --background: 0 0% 7%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 0 0% 7%;
     --popover-foreground: 0 0% 98%;
     --primary: 0 0% 98%;
     --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
+    --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 64.9%;
+    --accent: 0 0% 12%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
     --ring: 240 4.9% 83.9%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -61,4 +570,101 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/**
+ * Mobile Menu Styling
+ */
+.mobile-menu-item button {
+  @apply w-full justify-start;
+}
+
+.mobile-menu-item:not(:last-child) {
+  @apply border-b border-gray-200/10 dark:border-white/10 pb-2;
+}
+
+/* Mobile menu wrapper - remove strong dividers between links */
+.mobile-menu-wrapper nav > a {
+  @apply border-none;
+}
+
+/* Add subtle hover background instead of borders */
+.mobile-menu-wrapper a:hover {
+  @apply bg-gray-100/50 dark:bg-white/5;
+}
+
+/* Override Sheet component's default border */
+[data-radix-dialog-content][data-side="left"] {
+  border-right: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark [data-radix-dialog-content][data-side="left"] {
+  border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Mobile Sheet consistent background */
+[data-radix-dialog-content] .border-b {
+  background: transparent !important;
+}
+
+/**
+ * Custom Scrollbar Styles
+ */
+
+/* Custom scrollbar styles for horizontal scrolling */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+/* Dark mode scrollbar */
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280;
+}
+
+/* Force enable scrolling on specific containers */
+.force-scroll-container {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  max-width: 100vw !important;
+  position: relative !important;
+}
+
+/* Custom scrollbar for better visibility */
+.force-scroll-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.force-scroll-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.force-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.force-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
+
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
-
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -16,6 +16,7 @@ import SignersCard from "@/components/pages/homepage/wallets/new-wallet/nWSigner
 import AdvancedOptionsCard from "@/components/pages/homepage/wallets/new-wallet/nWAdvancedOptionsCard";
 import WalletActionButtons from "@/components/pages/homepage/wallets/new-wallet/nWActionButtons";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
+
 
 export default function PageNewWallet() {
   const router = useRouter();
@@ -53,7 +54,7 @@ export default function PageNewWallet() {
               role: 0,
               name: signersDescriptions[i] ?? "",
             });
-          } catch {
+          } catch (e) {
             console.warn(`Invalid payment address at index ${i}:`, addr);
           }
         }
@@ -70,20 +71,14 @@ export default function PageNewWallet() {
               role: 2,
               name: signersDescriptions[i] ?? "",
             });
-          } catch {
+          } catch (e) {
             console.warn(`Invalid stake address at index ${i}:`, stakeKey);
           }
         }
       });
     }
     if (keys.length === 0) return;
-    return new MultisigWallet(
-      name,
-      keys,
-      description,
-      numRequiredSigners,
-      network,
-    );
+    return new MultisigWallet(name, keys, description, numRequiredSigners, network);
   }, [
     name,
     description,
@@ -96,36 +91,36 @@ export default function PageNewWallet() {
 
   const { mutate: deleteWalletInvite } = api.wallet.deleteNewWallet.useMutation(
     {
-      onError: (e) => {
-        console.error(e);
+      onError: () => {
+        console.error();
       },
     },
   );
 
   const { mutate: createWallet } = api.wallet.createWallet.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       if (pathIsWalletInvite) {
         deleteWalletInvite({ walletId: walletInviteId! });
       }
       setLoading(false);
-      void router.push("/wallets");
+      await router.push("/wallets");
       toast({
         title: "Wallet Created",
         description: "Your wallet has been created",
         duration: 5000,
       });
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
   const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setLoading(false);
-      void router.push(`/wallets/new-wallet/${data.id}`);
-      void navigator.clipboard.writeText(
+      await router.push(`/wallets/new-wallet/${data.id}`);
+      await navigator.clipboard.writeText(
         `https://multisig.meshjs.dev/wallets/invite/${data.id}`,
       );
       toast({
@@ -135,25 +130,25 @@ export default function PageNewWallet() {
         duration: 5000,
       });
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
   const { mutate: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       setLoading(false);
       toast({
         title: "Wallet Info Updated",
         description: "Your wallet has been saved",
         duration: 5000,
       });
-      void router.push("/wallets");
+      await router.push("/wallets");
     },
-    onError: (e) => {
+    onError: () => {
       setLoading(false);
-      console.error(e);
+      console.error();
     },
   });
 
@@ -189,7 +184,7 @@ export default function PageNewWallet() {
     setSignerStakeKeys([...signersStakeKeys, ""]);
   }
 
-  function createNativeScript() {
+  async function createNativeScript() {
     setLoading(true);
 
     if (!multisigWallet) {
@@ -309,7 +304,7 @@ export default function PageNewWallet() {
           <div className="col-span-2 flex justify-end gap-4 sm:justify-center">
             <WalletActionButtons
               buttonConfig={{
-                createNativeScript,
+                createNativeScript: () => void createNativeScript(),
                 handleSaveWallet: () => void handleSaveWallet(),
                 handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,

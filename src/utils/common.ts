@@ -85,7 +85,7 @@ export function buildWallet(
   network: number,
   utxos?: UTxO[],
 ): Wallet {
-  console.log("hi");
+  
   const mWallet = buildMultisigWallet(wallet, network);
   if (!mWallet) {
     console.error("error when building Multisig Wallet!");
