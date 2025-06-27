@@ -1,8 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Wallet } from "@/types/wallet";
-// import { useState } from "react";
-// import { api } from "@/utils/api";
-// import { useToast } from "@/hooks/use-toast";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
@@ -11,11 +8,9 @@ import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useTransaction from "@/hooks/useTransaction";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 export default function Retire({ appWallet }: { appWallet: Wallet }) {
-  // const [loading, setLoading] = useState<boolean>(false);
-  // const { toast } = useToast();
-  // const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -23,28 +18,12 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
   const { newTransaction } = useTransaction();
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
-
-  // const { mutate: createTransaction } =
-  //   api.transaction.createTransaction.useMutation({
-  //     onSuccess: async () => {
-  //       setLoading(false);
-  //       toast({
-  //         title: "Transaction Created",
-  //         description: "DRep registration transaction has been created",
-  //         duration: 5000,
-  //       });
-  //       void ctx.transaction.getPendingTransactions.invalidate();
-  //       void ctx.transaction.getAllTransactions.invalidate();
-  //     },
-  //     onError: (e) => {
-  //       console.error(e);
-  //       setLoading(false);
-  //     },
-  //   });
+  const { multisigWallet } = useMultisigWallet();
 
   async function retireDrep() {
     if (!connected) throw new Error("Not connected to wallet");
     if (!userAddress) throw new Error("No user address");
+    if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
 
     setLoading(true);
 
@@ -73,29 +52,16 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
       .drepDeregistrationCertificate(appWallet.dRepId, "500000000")
       .certificateScript(appWallet.scriptCbor);
 
-    // const unsignedTx = await txBuilder.complete();
-
-    // const signedTx = await wallet.signTx(unsignedTx, true);
-
-    // const signedAddresses = [];
-    // signedAddresses.push(userAddress);
-
-    // let txHash = undefined;
-    // let state = 0;
-    // if (appWallet.numRequiredSigners == signedAddresses.length) {
-    //   state = 1;
-    //   txHash = await wallet.submitTx(signedTx);
-    // }
-
-    // createTransaction({
-    //   walletId: appWallet.id,
-    //   txJson: JSON.stringify(txBuilder.meshTxBuilderBody),
-    //   txCbor: signedTx,
-    //   signedAddresses: [userAddress],
-    //   state: state,
-    //   description: "DRep retirement",
-    //   txHash: txHash,
-    // });
+    const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
+    for (const key of paymentKeys) {
+      txBuilder.requiredSignerHash(key.keyHash);
+    }
+    if (multisigWallet.stakingEnabled()) {
+      const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
+      for (const key of stakingKeys) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
+    }
 
     await newTransaction({
       txBuilder,
