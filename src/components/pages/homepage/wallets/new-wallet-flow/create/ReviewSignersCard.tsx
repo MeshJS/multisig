@@ -54,11 +54,12 @@ interface SignerConfig {
 
 interface ReviewSignersCardProps {
   signerConfig: SignerConfig;
+  currentUserAddress?: string;
   walletId?: string;
   onSave?: (signersAddresses: string[], signersDescriptions: string[], signersStakeKeys: string[]) => void;
 }
 
-const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({ signerConfig, walletId, onSave }) => {
+const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({ signerConfig, currentUserAddress, walletId, onSave }) => {
   const {
     signersAddresses,
     setSignerAddresses,
@@ -228,11 +229,16 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({ signerConfig, wal
                     <TableRow key={index}>
                     {/* Signer name */}
                     <TableCell>
-                      {signersDescriptions[index] ? (
-                        <span className="font-medium">{signersDescriptions[index]}</span>
-                      ) : (
-                        <span className="text-muted-foreground italic">Signer {index + 1}</span>
-                      )}
+                      <span className="flex items-center gap-2">
+                        {signersDescriptions[index] ? (
+                          <span className="font-medium">{signersDescriptions[index]}</span>
+                        ) : (
+                          <span className="text-muted-foreground italic">Signer {index + 1}</span>
+                        )}
+                        {currentUserAddress && signer === currentUserAddress && (
+                          <span className="text-muted-foreground text-sm">(self)</span>
+                        )}
+                      </span>
                     </TableCell>
                     
                     {/* Address */}
@@ -296,11 +302,16 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({ signerConfig, wal
                 <div key={index} className="border border-black/10 dark:border-white/5 rounded-lg p-4 space-y-2">
                   {/* Top row: Name and Actions */}
                   <div className="flex justify-between items-start">
-                    {signersDescriptions[index] ? (
-                      <p className="font-medium">{signersDescriptions[index]}</p>
-                    ) : (
-                      <p className="text-muted-foreground italic">Signer {index + 1}</p>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {signersDescriptions[index] ? (
+                        <p className="font-medium">{signersDescriptions[index]}</p>
+                      ) : (
+                        <p className="text-muted-foreground italic">Signer {index + 1}</p>
+                      )}
+                      {currentUserAddress && signer === currentUserAddress && (
+                        <span className="text-muted-foreground text-sm">(self)</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button
                         size="sm"

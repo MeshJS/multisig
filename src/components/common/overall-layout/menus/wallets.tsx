@@ -57,17 +57,17 @@ export default function MenuWallets() {
           </MenuLink>
         </div>
       )}
-      <MenuLink
-        href={
-          router.pathname.startsWith("/wallets/[wallet]")
-            ? `${baseUrl}governance`
-            : "/governance"
-        }
-        className={router.pathname.includes("governance") ? "text-white" : ""}
-      >
-        <Landmark className="h-5 w-5" />
-        Governance
-      </MenuLink>
+      
+      {/* Global Governance - only when NOT in wallet context */}
+      {!router.pathname.startsWith("/wallets/[wallet]") && (
+        <MenuLink
+          href="/governance"
+          className={router.pathname.includes("governance") ? "text-white" : ""}
+        >
+          <Landmark className="h-5 w-5" />
+          Governance
+        </MenuLink>
+      )}
     </nav>
   );
 }

@@ -13,7 +13,12 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { useState, useEffect } from "react";
 import WalletNavLink from "./wallet-nav-link";
 
-export default function WalletDropDown() {
+interface WalletDropDownProps {
+  forceMobile?: boolean;
+  onPlusClick?: () => void;
+}
+
+export default function WalletDropDown({ forceMobile = false, onPlusClick }: WalletDropDownProps) {
   const router = useRouter();
   const { wallets } = useUserWallets();
   const { appWallet } = useAppWallet();
@@ -43,13 +48,16 @@ export default function WalletDropDown() {
     };
   }, [router.events]);
 
-  return isDesktop ? (
+  return (isDesktop && !forceMobile) ? (
     // Desktop: Select-Button als Trigger (Option 1)
     <div className="inline-flex items-center rounded-md border border-border overflow-hidden h-10">
       <button
         type="button"
         className="flex items-center px-3 h-full text-muted-foreground hover:text-foreground hover:bg-muted border-r border-border"
-        onClick={() => router.push("/wallets/new-wallet-flow/save")}
+        onClick={() => {
+          router.push("/wallets/new-wallet-flow/save");
+          onPlusClick?.();
+        }}
       >
         <Plus className="h-5 w-5" />
       </button>
@@ -64,7 +72,7 @@ export default function WalletDropDown() {
             ) : (
               <ChevronDown className="h-5 w-5" />
             )}
-            <span className="flex items-center ml-2">
+            <span className="flex items-center ml-2 max-w-[200px] truncate" title={appWallet?.name || "Select Wallet"}>
               {appWallet?.name || "Select Wallet"}
             </span>
             <Wallet2 className="mx-2 h-4 w-4" />
@@ -91,33 +99,32 @@ export default function WalletDropDown() {
       </DropdownMenu>
     </div>
   ) : (
-    // Mobile: Ganzer Container als Trigger (Option 2)
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <div className="inline-flex items-center rounded-md border border-border overflow-hidden h-10">
-          <button
-            type="button"
-            className="flex items-center px-3 h-full text-muted-foreground hover:text-foreground hover:bg-muted border-r border-border"
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push("/wallets/new-wallet-flow/save");
-            }}
-          >
-            <Plus className="h-5 w-5" />
-          </button>
-          <div className="flex items-center px-3 h-full hover:bg-muted cursor-pointer">
+    // Mobile: Plus Button außerhalb des Dropdown Triggers
+    <div className="flex items-center rounded-md border border-border overflow-hidden h-10 w-full">
+      <button
+        type="button"
+        className="flex items-center px-3 h-full text-muted-foreground hover:text-foreground hover:bg-muted border-r border-border"
+        onClick={() => {
+          router.push("/wallets/new-wallet-flow/save");
+          onPlusClick?.();
+        }}
+      >
+        <Plus className="h-5 w-5" />
+      </button>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <div className="flex items-center px-3 h-full hover:bg-muted cursor-pointer w-full min-w-0">
             {open ? (
-              <ChevronUp className="h-5 w-5" />
+              <ChevronUp className="h-5 w-5 flex-shrink-0" />
             ) : (
-              <ChevronDown className="h-5 w-5" />
+              <ChevronDown className="h-5 w-5 flex-shrink-0" />
             )}
-            <span className="flex items-center ml-2">
+            <span className="ml-2 min-w-0 flex-1 truncate text-left" title={appWallet?.name || "Select Wallet"}>
               {appWallet?.name || "Select Wallet"}
             </span>
-            <Wallet2 className="mx-2 h-4 w-4" />
+            <Wallet2 className="mx-2 h-4 w-4 flex-shrink-0" />
           </div>
-        </div>
-      </DropdownMenuTrigger>
+        </DropdownMenuTrigger>
       <DropdownMenuContent 
         align="center" 
         className="mt-2 p-2 mx-4 max-w-[calc(100vw-2rem)]"
@@ -138,7 +145,8 @@ export default function WalletDropDown() {
                 <WalletNavLink wallet={wallet} />
               </DropdownMenuItem>
             ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
