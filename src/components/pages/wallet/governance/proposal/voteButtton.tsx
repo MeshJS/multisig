@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 interface VoteButtonProps {
   appWallet: Wallet;
@@ -38,7 +39,7 @@ export default function VoteButton({
   const setAlert = useSiteStore((state) => state.setAlert);
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
-
+  const { multisigWallet } = useMultisigWallet();
   async function vote() {
     if (drepInfo === undefined) {
       setAlert("DRep not found");
@@ -60,11 +61,14 @@ export default function VoteButton({
         setLoading(false);
         return;
       }
-
+      if (!multisigWallet)
+        throw new Error("Multisig Wallet could not be built.");
       const dRepId = appWallet.dRepId;
       const txBuilder = getTxBuilder(network);
       const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
+      const utxos = await blockchainProvider.fetchAddressUTxOs(
+        appWallet.address,
+      );
 
       const assetMap = new Map<Unit, Quantity>();
       assetMap.set("lovelace", "5000000");
@@ -76,11 +80,10 @@ export default function VoteButton({
             utxo.input.txHash,
             utxo.input.outputIndex,
             utxo.output.amount,
-            utxo.output.address
+            utxo.output.address,
           )
           .txInScript(appWallet.scriptCbor);
       }
-      console.log(certIndex)
       txBuilder
         .vote(
           {
@@ -93,12 +96,23 @@ export default function VoteButton({
           },
           {
             voteKind: voteKind,
-          }
+          },
         )
         .voteScript(appWallet.scriptCbor)
         .selectUtxosFrom(utxos)
         .changeAddress(appWallet.address);
+        
+      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
+      for (const key of paymentKeys) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
 
+      if (multisigWallet.stakingEnabled()) {
+        const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
+        for (const key of stakingKeys) {
+          txBuilder.requiredSignerHash(key.keyHash);
+        }
+      }
       await newTransaction({
         txBuilder,
         description: `Vote: ${voteKind} - ${description}`,
@@ -113,7 +127,10 @@ export default function VoteButton({
 
       setAlert("Vote transaction successfully created!");
     } catch (error) {
-      if (error instanceof Error && error.message.includes("User rejected transaction")) {
+      if (
+        error instanceof Error &&
+        error.message.includes("User rejected transaction")
+      ) {
         toast({
           title: "Transaction Aborted",
           description: "You canceled the vote transaction.",
@@ -149,30 +166,32 @@ export default function VoteButton({
   }
 
   return (
-<div className="flex flex-col items-center justify-center w-full max-w-sm space-y-2">
-  <Select
-    value={voteKind}
-    onValueChange={(value) => setVoteKind(value as "Yes" | "No" | "Abstain")}
-  >
-    <SelectTrigger className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-      <SelectValue placeholder="Select Vote Kind" />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectGroup>
-        <SelectItem value="Yes">Yes</SelectItem>
-        <SelectItem value="No">No</SelectItem>
-        <SelectItem value="Abstain">Abstain</SelectItem>
-      </SelectGroup>
-    </SelectContent>
-  </Select>
+    <div className="flex w-full max-w-sm flex-col items-center justify-center space-y-2">
+      <Select
+        value={voteKind}
+        onValueChange={(value) =>
+          setVoteKind(value as "Yes" | "No" | "Abstain")
+        }
+      >
+        <SelectTrigger className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500">
+          <SelectValue placeholder="Select Vote Kind" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="Yes">Yes</SelectItem>
+            <SelectItem value="No">No</SelectItem>
+            <SelectItem value="Abstain">Abstain</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
 
-  <Button
-    onClick={vote}
-    disabled={loading || proposalId.length !== 66}
-    className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow"
-  >
-    {loading ? "Voting..." : "Vote"}
-  </Button>
-</div>
+      <Button
+        onClick={vote}
+        disabled={loading || proposalId.length !== 66}
+        className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
+      >
+        {loading ? "Voting..." : "Vote"}
+      </Button>
+    </div>
   );
 }

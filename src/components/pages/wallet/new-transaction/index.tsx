@@ -100,8 +100,6 @@ export default function PageNewTransaction() {
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
-    console.log(amounts)
-    console.log(assets)
     setLoading(true);
     setError(undefined);
 
