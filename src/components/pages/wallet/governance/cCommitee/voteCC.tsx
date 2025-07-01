@@ -215,7 +215,11 @@ export default function VoteCC({
         <div className="mt-6">
           <Button
             onClick={submitCCVote}
-            disabled={loading || selectedCandidates.length === 0}
+            disabled={
+              loading ||
+              selectedCandidates.length === 0 ||
+              anchorUrl.trim() === ""
+            }
           >
             Submit CC Vote
           </Button>
