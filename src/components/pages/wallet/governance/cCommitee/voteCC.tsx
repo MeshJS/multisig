@@ -168,13 +168,13 @@ export default function VoteCC({
     >
       <div className="mb-4">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {selectedCandidates.length} / 7 selected
           </span>
         </div>
-        <div className="h-2.5 w-full rounded-full bg-gray-200">
+        <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
           <div
-            className="h-2.5 rounded-full bg-blue-500 transition-all duration-300"
+            className="h-2.5 rounded-full bg-blue-500 dark:bg-blue-400 transition-all duration-300"
             style={{ width: `${(selectedCandidates.length / 7) * 100}%` }}
           ></div>
         </div>
@@ -189,24 +189,26 @@ export default function VoteCC({
               onClick={() => {
                 if (!isDisabled) toggleCandidate(candidate.id);
               }}
-              className={`cursor-pointer rounded border p-4 text-sm transition ${isSelected ? "border-blue-500 bg-blue-100 font-semibold" : ""} ${isDisabled ? "cursor-not-allowed opacity-50" : "border-gray-300 bg-white hover:shadow"}`}
+              className={`cursor-pointer rounded border p-4 text-sm transition
+                ${isSelected ? "border-blue-500 bg-blue-100 dark:bg-blue-900 dark:border-blue-400 font-semibold ring-2 ring-blue-400 dark:ring-blue-300 shadow-md" : ""}
+                ${isDisabled ? "cursor-not-allowed opacity-50" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:shadow"}`}
             >
-              <div className="text-base font-medium">{candidate.name}</div>
-              <div className="text-xs text-gray-500">ID: {candidate.id}</div>
+              <div className="text-base font-medium text-gray-900 dark:text-gray-100">{candidate.name}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">ID: {candidate.id}</div>
             </div>
           );
         })}
       </div>
       {showAnchorInput && (
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Enter dRep Anchor URL
           </label>
           <input
             type="text"
             value={anchorUrl}
             onChange={(e) => setAnchorUrl(e.target.value)}
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 p-2 text-sm"
             placeholder="https://..."
           />
         </div>
@@ -226,8 +228,8 @@ export default function VoteCC({
         </div>
       )}
       <div className="mt-6">
-        <h3 className="text-lg font-semibold">Selected Candidates</h3>
-        <pre className="rounded bg-gray-100 p-2 text-sm">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Selected Candidates</h3>
+        <pre className="rounded bg-gray-100 dark:bg-gray-800 p-2 text-sm text-gray-800 dark:text-gray-100">
           {JSON.stringify(selectedCandidates, null, 2)}
         </pre>
         {hasReachedLimit && (
