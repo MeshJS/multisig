@@ -119,11 +119,11 @@ export default function VoteCC({
       }
 
       txBuilder
-        .drepUpdateCertificate(appWallet.dRepId, {
+        .drepUpdateCertificate(paymentScript, {
           anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(appWallet.scriptCbor)
+        .certificateScript(paymentScript)
         .changeAddress(appWallet.address)
         .metadataValue("11113", {
           data: {
@@ -137,11 +137,6 @@ export default function VoteCC({
           },
           action: "cast_vote",
         });
-
-      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
-      for (const key of paymentKeys) {
-        txBuilder.requiredSignerHash(key.keyHash);
-      }
 
 
       await newTransaction({
