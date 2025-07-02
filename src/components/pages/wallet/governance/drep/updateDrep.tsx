@@ -107,16 +107,7 @@ export default function UpdateDRep() {
         .changeAddress(appWallet.address)
         .selectUtxosFrom(manualUtxos);
 
-      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
-      for (const key of paymentKeys) {
-        txBuilder.requiredSignerHash(key.keyHash);
-      }
-      if (multisigWallet.stakingEnabled()) {
-        const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
-        for (const key of stakingKeys) {
-          txBuilder.requiredSignerHash(key.keyHash);
-        }
-      }
+
 
       await newTransaction({
         txBuilder,
