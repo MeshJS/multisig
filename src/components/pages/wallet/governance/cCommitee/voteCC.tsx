@@ -119,7 +119,7 @@ export default function VoteCC({
       }
 
       txBuilder
-        .drepUpdateCertificate(paymentScript, {
+        .drepUpdateCertificate(appWallet.dRepId, {
           anchorUrl,
           anchorDataHash: anchorHash,
         })
