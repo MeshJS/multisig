@@ -1,4 +1,4 @@
-import { Banknote, Info, List, Signature, UserRoundPen, ChartNoAxesColumnIncreasing } from "lucide-react";
+import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
