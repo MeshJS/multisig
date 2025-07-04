@@ -37,6 +37,7 @@ export default function PageReviewWallet() {
               addSigner: walletFlow.addSigner,
               removeSigner: walletFlow.removeSigner,
             }}
+            currentUserAddress={walletFlow.userAddress}
             walletId={walletFlow.walletInviteId || walletFlow.router.query.id as string}
             onSave={walletFlow.handleSaveSigners}
           />

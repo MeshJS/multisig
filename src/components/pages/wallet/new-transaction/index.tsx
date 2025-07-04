@@ -261,7 +261,8 @@ export default function PageNewTransaction() {
     <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>New Transaction</SectionTitle>
 
-      <CardUI title="Recipients" cardClassName="w-full">
+      <div className="grid gap-4">
+        <CardUI title="Recipients" cardClassName="w-full">
         <RecipientCsv
           setRecipientAddresses={setRecipientAddresses}
           setAmounts={setAmounts}
@@ -436,6 +437,7 @@ export default function PageNewTransaction() {
           Create and Sign Transaction
         </Button>
         {error && <div className="text-sm text-red-500">{error}</div>}
+      </div>
       </div>
     </main>
   );

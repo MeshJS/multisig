@@ -249,7 +249,8 @@ export default function PageNewTransaction() {
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
       <SectionTitle>Deposit</SectionTitle>
 
-      <CardUI
+      <div className="grid gap-4">
+        <CardUI
         title="Wallet Details"
         description="User wallet balance for Address:"
         cardClassName="w-full"
@@ -337,6 +338,7 @@ export default function PageNewTransaction() {
           </TableBody>
         </Table>
       </CardUI>
+      </div>
 
       <div className="flex h-full items-center justify-center gap-4">
         <Button onClick={() => createNewDeposit()} disabled={loading}>

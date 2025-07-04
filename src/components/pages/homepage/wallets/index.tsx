@@ -36,7 +36,7 @@ export default function PageWallets() {
     );
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
       <>
         <PageHeader pageTitle="Wallets">
           <Button size="sm" asChild>
@@ -97,7 +97,7 @@ export default function PageWallets() {
         {getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
           <>
             <SectionTitle>
-              Wallets you are invited and pending creation
+              New Wallets awaiting creation
             </SectionTitle>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               {getUserNewWalletsNotOwner
@@ -109,7 +109,7 @@ export default function PageWallets() {
           </>
         )}
       </>
-    </>
+    </div>
   );
 }
 
@@ -162,7 +162,7 @@ function CardWalletInvite({
     <Link
       href={
         viewOnly
-          ? `/wallets/invite/info/${wallet.id}`
+          ? `/wallets/invite/${wallet.id}`
           : `/wallets/new-wallet-flow/create/${wallet.id}`
       }
     >

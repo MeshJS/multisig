@@ -20,6 +20,15 @@ export default function MenuWallet() {
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
       <div className="grid items-start">
         <MenuLink
+          href={`${baseUrl}governance`}
+          className={
+            router.pathname == "/wallets/[wallet]/governance" ? "text-white" : ""
+          }
+        >
+          <Landmark className="h-5 w-5" />
+          <div className="flex items-center gap-2">Governance</div>
+        </MenuLink>
+        <MenuLink
           href={`${baseUrl}transactions`}
           className={
             router.pathname == "/wallets/[wallet]/transactions"
@@ -27,7 +36,7 @@ export default function MenuWallet() {
               : ""
           }
         >
-          <List className="h-7 w-7" />
+          <List className="h-5 w-5" />
           <div className="flex items-center gap-2">
             Transactions
             {transactions && transactions.length > 0 && (
@@ -43,7 +52,7 @@ export default function MenuWallet() {
             router.pathname == "/wallets/[wallet]/signing" ? "text-white" : ""
           }
         >
-          <UserRoundPen className="h-6 w-6" />
+          <UserRoundPen className="h-5 w-5" />
           <div className="flex items-center gap-2">
             Signing
             {signables && signables.length > 0 && (
@@ -68,8 +77,8 @@ export default function MenuWallet() {
             router.pathname == "/wallets/[wallet]/assets" ? "text-white" : ""
           }
         >
-          <Banknote className="h-6 w-6" />
-          Assets
+          <Banknote className="h-5 w-5" />
+          <div className="flex items-center gap-2">Assets</div>
         </MenuLink>
         <MenuLink
           href={`${baseUrl}chat`}
@@ -77,8 +86,8 @@ export default function MenuWallet() {
             router.pathname == "/wallets/[wallet]/chat" ? "text-white" : ""
           }
         >
-          <ChatBubbleIcon className="h-6 w-6" />
-          Chat
+          <ChatBubbleIcon className="h-5 w-5" />
+          <div className="flex items-center gap-2">Chat</div>
         </MenuLink>
         <MenuLink
           href={`${baseUrl}info`}
@@ -86,8 +95,8 @@ export default function MenuWallet() {
             router.pathname == "/wallets/[wallet]/info" ? "text-white" : ""
           }
         >
-          <Info className="h-6 w-6" />
-          Info
+          <Info className="h-5 w-5" />
+          <div className="flex items-center gap-2">Info</div>
         </MenuLink>
       </div>
 
