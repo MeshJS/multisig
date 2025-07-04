@@ -1,4 +1,4 @@
-import { Banknote, Info, List, Signature, UserRoundPen } from "lucide-react";
+import { Banknote, Info, List, Signature, UserRoundPen, ChartNoAxesColumnIncreasing } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -6,6 +6,7 @@ import useUserWallets from "@/hooks/useUserWallets";
 import { Badge } from "@/components/ui/badge";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import usePendingSignables from "@/hooks/usePendingSignables";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 export default function MenuWallet() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function MenuWallet() {
   const { wallets } = useUserWallets();
   const { transactions } = usePendingTransactions();
   const { signables } = usePendingSignables();
+  const { multisigWallet } = useMultisigWallet();
   if (!wallets) return;
   return (
     <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
@@ -51,6 +53,15 @@ export default function MenuWallet() {
             )}
           </div>
         </MenuLink>
+        {multisigWallet && multisigWallet.stakingEnabled() && <MenuLink
+          href={`${baseUrl}staking`}
+          className={
+            router.pathname == "/wallets/[wallet]/staking" ? "text-white" : ""
+          }
+        >
+          <ChartNoAxesColumnIncreasing className="h-6 w-6" />
+          Staking
+        </MenuLink>}
         <MenuLink
           href={`${baseUrl}assets`}
           className={

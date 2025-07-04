@@ -24,14 +24,14 @@ export default function PageStaking() {
   useEffect(() => {
     if (!address) return;
     blockchainProvider
-      .fetchAccountInfo(address)
+      .get(`/accounts/${address}`)
       .then((data) => {
         setStakingInfo({
-          poolId: data.poolId,
+          poolId: data.pool_id,
           active: data.active,
-          balance: data.balance,
-          rewards: data.rewards,
-          withdrawals: data.withdrawals,
+          balance: data.controlled_amount,
+          rewards: data.rewards_sum,
+          withdrawals: data.withdrawals_sum,
         });
       })
       .catch((err) => {
@@ -44,13 +44,6 @@ export default function PageStaking() {
           withdrawals: "NA",
         });
       });
-    blockchainProvider
-    .get(`/accounts/${address}/registrations`)
-    .then((data)=>{
-    })
-    .catch((err)=>{
-      console.error("failed:", err)
-    })
   }, [address, blockchainProvider]);
 
   if (!stakingInfo) return <p>Loading staking info...</p>;

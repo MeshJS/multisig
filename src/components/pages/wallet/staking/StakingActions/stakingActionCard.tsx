@@ -2,10 +2,7 @@ import CardUI from "@/components/ui/card-content";
 import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
 import { StakingInfo } from "../stakingInfoCard";
 import { Wallet } from "@/types/wallet";
-import DelegateButton from "./delegate";
-import RegisterButton from "./register";
-import DeregisterButton from "./deregister";
-import WithdrawalButton from "./withdrawal";
+import StakeButton from "./stake";
 import { UTxO } from "@meshsdk/core";
 import { useState } from "react";
 import { MultisigWallet } from "@/utils/multisigSDK";
@@ -29,40 +26,48 @@ export default function StakingActionCard({
   return (
     <CardUI title="Staking Actions">
       <div className="flex flex-wrap gap-2">
-        {stakingInfo.active && (
-          <RegisterButton
+        {!stakingInfo.active && (
+          <StakeButton
             stakingInfo={stakingInfo}
             appWallet={appWallet}
             mWallet={mWallet}
             utxos={selectedUtxos}
             network={network}
             poolHex={poolHex}
+            action="registerAndDelegate"
           />
         )}
-
         {stakingInfo.active && (
           <>
-            <DelegateButton
+            <StakeButton
               stakingInfo={stakingInfo}
               appWallet={appWallet}
+              mWallet={mWallet}
               utxos={selectedUtxos}
-              manualSelected={manualSelected}
+              network={network}
+              poolHex={poolHex}
+              action="delegate"
             />
-            <DeregisterButton
+            <StakeButton
               stakingInfo={stakingInfo}
               appWallet={appWallet}
+              mWallet={mWallet}
               utxos={selectedUtxos}
-              manualSelected={manualSelected}
+              network={network}
+              poolHex={poolHex}
+              action="deregister"
             />
           </>
         )}
-
         {Number(stakingInfo.rewards) > 0 && (
-          <WithdrawalButton
+          <StakeButton
             stakingInfo={stakingInfo}
             appWallet={appWallet}
+            mWallet={mWallet}
             utxos={selectedUtxos}
-            manualSelected={manualSelected}
+            network={network}
+            poolHex={poolHex}
+            action="withdrawal"
           />
         )}
       </div>
