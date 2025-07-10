@@ -9,8 +9,14 @@ import Button from "@/components/common/button";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "../vote-card";
+import { UTxO } from "@meshsdk/core";
+import UTxOSelector from "../../new-transaction/utxoSelector";
 
-export default function WalletGovernanceProposal({ id }: { id: string }) {
+export default function WalletGovernanceProposal({
+  id,
+}: {
+  id: string;
+}) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
@@ -18,6 +24,8 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const { appWallet } = useAppWallet();
   const loading = useSiteStore((state) => state.loading);
+  const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState(false);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -33,7 +41,6 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
     }
     get();
   }, []);
-
 
   if (!proposalMetadata) return <></>;
 
@@ -91,7 +98,23 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
           allowOverflow={true}
         />
       </CardUI>
-      {appWallet && <VoteCard appWallet={appWallet} proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}/>}
+      {appWallet && (
+        <UTxOSelector
+          appWallet={appWallet}
+          network={network}
+          onSelectionChange={(utxos, manual) => {
+            setManualUtxos(utxos);
+            setManualSelected(manual);
+          }}
+        />
+      )}
+      {appWallet && (
+        <VoteCard
+          appWallet={appWallet}
+          utxos={manualUtxos}
+          proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
+        />
+      )}
     </main>
   );
 }

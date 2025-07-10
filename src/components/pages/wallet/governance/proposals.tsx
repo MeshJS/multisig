@@ -24,8 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import Link from "next/link";
 import VoteButton from "./proposal/voteButtton";
+import { UTxO } from "@meshsdk/core";
 
-export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
+export default function AllProposals({ appWallet, utxos }: { appWallet: Wallet; utxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
   const [proposals, setProposals] = useState<ProposalMetadata[]>([]);
   const [limit, setLimit] = useState(5);
@@ -102,6 +103,7 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
                     key={proposal.tx_hash}
                     proposal={proposal}
                     appWallet={appWallet}
+                    utxos={utxos}
                   />
                 ))}
             </TableBody>
@@ -125,9 +127,11 @@ export default function AllProposals({ appWallet }: { appWallet: Wallet }) {
 function ProposalRow({
   proposal,
   appWallet,
+  utxos,
 }: {
   proposal: ProposalMetadata;
   appWallet: Wallet;
+  utxos: UTxO[];
 }) {
   return (
     <TableRow>
@@ -149,6 +153,7 @@ function ProposalRow({
       </TableCell>
       <TableCell>
         <VoteButton
+          utxos={utxos}
           appWallet={appWallet}
           proposalId={proposal.tx_hash + "#" + proposal.cert_index}
         />
