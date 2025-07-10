@@ -9,8 +9,9 @@ import Button from "@/components/common/button";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "../vote-card";
+import { UTxO } from "@meshsdk/core";
 
-export default function WalletGovernanceProposal({ id }: { id: string }) {
+export default function WalletGovernanceProposal({ id, utxos }: { id: string; utxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
@@ -33,7 +34,6 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
     }
     get();
   }, []);
-
 
   if (!proposalMetadata) return <></>;
 
@@ -91,7 +91,13 @@ export default function WalletGovernanceProposal({ id }: { id: string }) {
           allowOverflow={true}
         />
       </CardUI>
-      {appWallet && <VoteCard appWallet={appWallet} proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}/>}
+      {appWallet && (
+        <VoteCard
+          appWallet={appWallet}
+          utxos={utxos}
+          proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
+        />
+      )}
     </main>
   );
 }
