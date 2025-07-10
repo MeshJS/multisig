@@ -10,8 +10,13 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "../vote-card";
 import { UTxO } from "@meshsdk/core";
+import UTxOSelector from "../../new-transaction/utxoSelector";
 
-export default function WalletGovernanceProposal({ id, utxos }: { id: string; utxos: UTxO[] }) {
+export default function WalletGovernanceProposal({
+  id,
+}: {
+  id: string;
+}) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
@@ -19,6 +24,8 @@ export default function WalletGovernanceProposal({ id, utxos }: { id: string; ut
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const { appWallet } = useAppWallet();
   const loading = useSiteStore((state) => state.loading);
+  const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState(false);
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
@@ -92,9 +99,19 @@ export default function WalletGovernanceProposal({ id, utxos }: { id: string; ut
         />
       </CardUI>
       {appWallet && (
+        <UTxOSelector
+          appWallet={appWallet}
+          network={network}
+          onSelectionChange={(utxos, manual) => {
+            setManualUtxos(utxos);
+            setManualSelected(manual);
+          }}
+        />
+      )}
+      {appWallet && (
         <VoteCard
           appWallet={appWallet}
-          utxos={utxos}
+          utxos={manualUtxos}
           proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
         />
       )}
