@@ -4,7 +4,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { getProvider } from "@/utils/get-provider";
 import useTransaction from "@/hooks/useTransaction";
-import { keepRelevant, Quantity, Unit } from "@meshsdk/core";
+import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +24,7 @@ interface VoteButtonProps {
   proposalId: string;
   description?: string;
   metadata?: string;
+  utxos: UTxO[];
 }
 
 export default function VoteButton({
@@ -31,6 +32,7 @@ export default function VoteButton({
   proposalId,
   description = "",
   metadata = "",
+  utxos,
 }: VoteButtonProps) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
@@ -65,10 +67,6 @@ export default function VoteButton({
         throw new Error("Multisig Wallet could not be built.");
       const dRepId = appWallet.dRepId;
       const txBuilder = getTxBuilder(network);
-      const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(
-        appWallet.address,
-      );
 
       const assetMap = new Map<Unit, Quantity>();
       assetMap.set("lovelace", "5000000");
@@ -102,17 +100,6 @@ export default function VoteButton({
         .selectUtxosFrom(utxos)
         .changeAddress(appWallet.address);
         
-      const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
-      for (const key of paymentKeys) {
-        txBuilder.requiredSignerHash(key.keyHash);
-      }
-
-      if (multisigWallet.stakingEnabled()) {
-        const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
-        for (const key of stakingKeys) {
-          txBuilder.requiredSignerHash(key.keyHash);
-        }
-      }
       await newTransaction({
         txBuilder,
         description: `Vote: ${voteKind} - ${description}`,
@@ -187,10 +174,10 @@ export default function VoteButton({
 
       <Button
         onClick={vote}
-        disabled={loading || proposalId.length !== 66}
+        disabled={loading || proposalId.length !== 66 || utxos.length === 0}
         className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
       >
-        {loading ? "Voting..." : "Vote"}
+        {loading ? "Voting..." : utxos.length > 0 ? "Vote" : "No UTxOs Available"}
       </Button>
     </div>
   );
