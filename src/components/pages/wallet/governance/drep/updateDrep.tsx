@@ -76,7 +76,6 @@ export default function UpdateDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(appWallet.dRepId);
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -88,26 +87,23 @@ export default function UpdateDRep() {
       }
 
       for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(appWallet.scriptCbor);
+        txBuilder.txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        );
       }
 
       txBuilder
-        .drepUpdateCertificate(drepIds.cip105, {
+        .txInScript(appWallet.scriptCbor)
+        .changeAddress(appWallet.address)
+        .selectUtxosFrom(manualUtxos)
+        .drepUpdateCertificate(appWallet.dRepId, {
           anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(appWallet.scriptCbor)
-        .changeAddress(appWallet.address)
-        .selectUtxosFrom(manualUtxos);
-
-
+        .certificateScript(appWallet.scriptCbor);
 
       await newTransaction({
         txBuilder,

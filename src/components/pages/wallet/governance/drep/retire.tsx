@@ -52,8 +52,6 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
       .drepDeregistrationCertificate(appWallet.dRepId, "500000000")
       .certificateScript(appWallet.scriptCbor);
 
-
-
     await newTransaction({
       txBuilder,
       description: "DRep retirement",

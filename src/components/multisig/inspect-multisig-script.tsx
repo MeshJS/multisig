@@ -41,7 +41,7 @@ export default function InspectMultisigScript({
         label="payment:"
         value={<Code>{JSON.stringify(mWallet?.buildScript(0), null, 2)}</Code>}
       />
-      <RowLabelInfo label="Keyhash" value={<Code>{dSAddr.scriptHash}</Code>} />
+      <RowLabelInfo label="ScriptHash" value={<Code>{dSAddr.scriptHash}</Code>} />
       <RowLabelInfo
         label="CBOR"
         value={<Code>{mWallet.getPaymentScript()}</Code>}
@@ -61,7 +61,7 @@ export default function InspectMultisigScript({
           value={<Code>{JSON.stringify(mWallet.buildScript(2), null, 2)}</Code>}
         />
         <RowLabelInfo
-          label="Keyhash"
+          label="ScriptHash"
           value={<Code>{dSAddr.stakeScriptCredentialHash}</Code>}
         />
         <RowLabelInfo

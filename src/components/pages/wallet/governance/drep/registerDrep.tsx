@@ -1,6 +1,8 @@
 import { Plus } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import { useState } from "react";
+import RequiredSigners from "@/components/multisig/requiredSigners";
+import { MultisigKey } from "@/utils/multisigSDK";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
@@ -10,7 +12,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { getFile, hashDrepAnchor, resolveNativeScriptHash } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
@@ -42,6 +44,8 @@ export default function RegisterDRep() {
     links: [""],
     identities: [""],
   });
+  const [selectedSigners, setSelectedSigners] = useState<MultisigKey[]>([]);
+  const [selectedPaymentSigners, setSelectedPaymentSigners] = useState<MultisigKey[]>([]);
 
   async function createAnchor(): Promise<{
     anchorUrl: string;
@@ -55,7 +59,6 @@ export default function RegisterDRep() {
       formState,
       appWallet,
     )) as Record<string, unknown>;
-    console.log(drepMetadata);
     const rawResponse = await fetch("/api/vercel-storage/put", {
       method: "POST",
       headers: {
@@ -80,10 +83,12 @@ export default function RegisterDRep() {
     if (!connected || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
     if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
+    const stakingScript = multisigWallet.getStakingScript();
+    if (multisigWallet.stakingEnabled() && !stakingScript)
+      throw new Error("Staking script not found.");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(appWallet.dRepId);
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -95,26 +100,34 @@ export default function RegisterDRep() {
       }
 
       for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(appWallet.scriptCbor);
+        txBuilder.txIn(
+          utxo.input.txHash,
+          utxo.input.outputIndex,
+          utxo.output.amount,
+          utxo.output.address,
+        );
       }
-
-      txBuilder
-        .drepRegistrationCertificate(drepIds.cip105, {
+      
+      const drepids = getDRepIds(appWallet.dRepId)
+      const anchor = {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
-        })
-        .certificateScript(appWallet.scriptCbor)
+        }
+      txBuilder
+        .txInScript(appWallet.scriptCbor)
         .changeAddress(appWallet.address)
-        .selectUtxosFrom(manualUtxos);
+        .drepRegistrationCertificate(drepids.cip129, anchor)
+        .certificateScript(multisigWallet.getPaymentScript()!)
+        ;
 
-
+        console.log(txBuilder)
+      for (const key of selectedPaymentSigners) {
+        txBuilder.requiredSignerHash(key.keyHash);
+      }
+      // if(stakingScript) {
+      //   console.log("Adding staking script to transaction");
+      //   txBuilder.certificateScript(stakingScript);
+      // }
 
       await newTransaction({
         txBuilder,
@@ -130,6 +143,20 @@ export default function RegisterDRep() {
 
   return (
     <CardUI title="Register DRep" icon={Plus}>
+      {multisigWallet && (
+        <>
+          <RequiredSigners
+            multisigWallet={multisigWallet}
+            role={0}
+            onChange={(signers) => setSelectedPaymentSigners(signers)}
+          />
+          <RequiredSigners
+            multisigWallet={multisigWallet}
+            role={2}
+            onChange={(signers) => setSelectedSigners(signers)}
+          />
+        </>
+      )}
       {appWallet && (
         <DRepForm
           _imageUrl={""}
