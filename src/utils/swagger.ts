@@ -24,6 +24,100 @@ export const swaggerSpec = swaggerJSDoc({
       },
     ],
     paths: {
+      "/api/v1/createWallet": {
+        post: {
+          tags: ["V1"],
+          summary: "Create a new wallet",
+          description:
+            "Creates a new Wallet record. This endpoint is open and relies solely on CORS; no authorisation is required.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    signersAddresses: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                    signersStakeKeys: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                    signersDescriptions: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                    scriptCbor: { type: "string" },
+                    type: { type: "string" },
+                    numRequiredSigners: { type: "number" },
+                    description: { type: "string" },
+                    verified: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                    stakeCredentialHash: { type: "string" },
+                    isArchived: { type: "boolean" },
+                    clarityApiKey: { type: "string" },
+                  },
+                  required: [
+                    "name",
+                    "signersAddresses",
+                    "signersStakeKeys",
+                    "signersDescriptions",
+                    "scriptCbor",
+                    "type",
+                  ],
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: "Wallet successfully created",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      signersAddresses: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      signersStakeKeys: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      signersDescriptions: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      numRequiredSigners: { type: "number" },
+                      verified: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                      scriptCbor: { type: "string" },
+                      stakeCredentialHash: { type: "string" },
+                      type: { type: "string" },
+                      isArchived: { type: "boolean" },
+                      clarityApiKey: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing required fields" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
       "/api/v1/nativeScript": {
         get: {
           tags: ["V1"],

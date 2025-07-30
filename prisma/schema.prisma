@@ -17,7 +17,7 @@ model User {
   nostrKey     String @unique
   discordId    String @default("")
 }
-
+//TD add addr and scriptCborStake
 model Wallet {
   id                  String   @id @default(cuid())
   name                String

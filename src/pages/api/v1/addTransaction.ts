@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+  import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { cors } from "@/lib/cors";
