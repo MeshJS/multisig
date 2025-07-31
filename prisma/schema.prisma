@@ -81,3 +81,14 @@ model Nonce {
   value     String
   createdAt DateTime @default(now())
 }
+
+model Ballot {
+  id               String   @id @default(cuid())
+  walletId         String
+  description      String?
+  items            String[]
+  itemDescriptions String[]
+  choices          String[]
+  type             Int
+  createdAt        DateTime @default(now())
+}
