@@ -1,17 +1,38 @@
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
+import { keepRelevant } from "@meshsdk/core";
+import type { Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
-import { toast, useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import React, { useState } from "react";
 import CardUI from "@/components/ui/card-content";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { api } from "@/utils/api";
 import { ToastAction } from "@/components/ui/toast";
 
 const GovAction = 1;
+
+// BallotType should be imported or defined. For now, define it here:
+export type BallotType = {
+  id: string;
+  type: number;
+  description: string | null;
+  walletId: string;
+  createdAt: Date;
+  items: string[];
+  itemDescriptions: string[];
+  choices: string[];
+};
 
 export default function BallotCard({
   appWallet,
@@ -28,7 +49,7 @@ export default function BallotCard({
 }) {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [ballots, setBallots] = useState<any[]>([]);
+  const [ballots, setBallots] = useState<BallotType[]>([]);
   const [creating, setCreating] = useState(false);
 
   const { toast } = useToast();
@@ -44,7 +65,7 @@ export default function BallotCard({
   // CreateBallot mutation
   const createBallot = api.ballot.create.useMutation();
   // Get ballots for wallet
-  const getBallots = api.ballot.getByWallet.useQuery(
+  const getBallots = api.ballot.getByWallet.useQuery<BallotType[]>(
     { walletId: appWallet?.id },
     { enabled: !!appWallet, refetchOnWindowFocus: false },
   );
@@ -119,7 +140,7 @@ export default function BallotCard({
       // Submit a vote for each proposal in the ballot
       for (let i = 0; i < selectedBallot.items.length; ++i) {
         const proposalId = selectedBallot.items[i];
-        const voteKind = selectedBallot.choices?.[i] ?? "Abstain";
+        const voteKind = (selectedBallot.choices?.[i] ?? "Abstain") as "Yes" | "No" | "Abstain";
         const [txHash, certIndex] = (proposalId || "").split("#");
         if (!txHash || certIndex === undefined) {
           // Skip invalid proposalId
@@ -161,7 +182,7 @@ export default function BallotCard({
       // Optionally refresh ballots
       await getBallots.refetch();
       onBallotChanged?.();
-    } catch (error) {
+    } catch (error: unknown) {
       if (
         error instanceof Error &&
         error.message.includes("User rejected transaction")
@@ -174,7 +195,7 @@ export default function BallotCard({
       } else {
         toast({
           title: "Ballot Vote Failed",
-          description: `Error: ${error}`,
+          description: `Error: ${error instanceof Error ? error.message : String(error)}`,
           duration: 10000,
           action: (
             <ToastAction
@@ -201,7 +222,7 @@ export default function BallotCard({
   }
 
   async function handleSubmit(e: React.FormEvent | React.MouseEvent) {
-    if (e.preventDefault) e.preventDefault();
+    if ("preventDefault" in e && typeof e.preventDefault === "function") e.preventDefault();
     if (!description.trim()) return;
     setSubmitting(true);
     try {
@@ -220,14 +241,14 @@ export default function BallotCard({
       });
       await getBallots.refetch();
       onBallotChanged?.();
-    } catch (e) {
+    } catch (error: unknown) {
       // TODO: handle error
     }
     setSubmitting(false);
   }
 
   // Find the selected ballot if selectedBallotId is set
-  const selectedBallot = selectedBallotId
+  const selectedBallot: BallotType | undefined = selectedBallotId
     ? ballots.find((b) => b.id === selectedBallotId)
     : undefined;
 
@@ -315,7 +336,7 @@ export default function BallotCard({
               <Button
                 variant="destructive"
                 className="mt-4"
-                onClick={async () => {
+                onClick={async (e: React.MouseEvent) => {
                   try {
                     await deleteBallot.mutateAsync({ ballotId: selectedBallot.id });
                     await getBallots.refetch();
@@ -326,7 +347,7 @@ export default function BallotCard({
                       variant: "destructive",
                     });
                     onBallotChanged?.();
-                  } catch (e) {
+                  } catch (error: unknown) {
                     // handle error
                   }
                 }}
@@ -348,7 +369,7 @@ function BallotOverviewTable({
   refetchBallots,
   onBallotChanged,
 }: {
-  ballot: any;
+  ballot: BallotType;
   ballotId: string;
   refetchBallots: () => Promise<any>;
   onBallotChanged?: () => void;
@@ -365,22 +386,11 @@ function BallotOverviewTable({
       await removeProposalMutation.mutateAsync({ ballotId, index: idx });
       await refetchBallots();
       onBallotChanged?.();
-    } catch (e) {
+    } catch (error: unknown) {
       // Optionally handle error
     }
     setRemovingIdx(null);
   }
-
-  // Import Select UI
-  const {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } = require("@/components/ui/select");
-  const { Button } = require("@/components/ui/button");
 
   return (
     <div className="overflow-x-auto rounded-lg shadow">
@@ -393,7 +403,7 @@ function BallotOverviewTable({
           </tr>
         </thead>
         <tbody>
-          {ballot.items.map((item: any, idx: number) => (
+          {ballot.items.map((item: string, idx: number) => (
             <tr
               key={item + (ballot.choices?.[idx] ?? "") + idx}
               className={
@@ -422,7 +432,7 @@ function BallotOverviewTable({
                         });
                         await refetchBallots();
                         onBallotChanged?.();
-                      } catch (e) {}
+                      } catch (error: unknown) {}
                       setUpdatingIdx(null);
                     }}
                     disabled={updatingIdx === idx}

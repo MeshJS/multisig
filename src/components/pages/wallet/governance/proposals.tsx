@@ -48,8 +48,11 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
       .then(async (proposalsData) => {
         const skeletons = proposalsData.map((p: any) => ({
           tx_hash: p.tx_hash,
-          cert_index: p.cert_index,
+          cert_index: Number(p.cert_index),
           governance_type: p.governance_type,
+          hash: "",
+          url: "",
+          bytes: "",
           json_metadata: {
             body: {
               title: "Loading...",
@@ -77,8 +80,11 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
               key: p.tx_hash + "#" + p.cert_index,
               data: {
                 tx_hash: p.tx_hash,
-                cert_index: p.cert_index,
+                cert_index: Number(p.cert_index),
                 governance_type: p.governance_type,
+                hash: "",
+                url: "",
+                bytes: "",
                 json_metadata: {
                   body: {
                     title: "Metadata could not be loaded.",
@@ -127,8 +133,11 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
 
       const skeletons: ProposalMetadata[] = newProposalsData.map(p => ({
         tx_hash: p.tx_hash,
-        cert_index: p.cert_index,
+        cert_index: Number(p.cert_index),
         governance_type: p.governance_type,
+        hash: "",
+        url: "",
+        bytes: "",
         json_metadata: {
           body: {
             title: "Loading...",
@@ -160,8 +169,11 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
               key: p.tx_hash + "#" + p.cert_index,
               data: {
                 tx_hash: p.tx_hash,
-                cert_index: p.cert_index,
+                cert_index: Number(p.cert_index),
                 governance_type: p.governance_type,
+                hash: "",
+                url: "",
+                bytes: "",
                 json_metadata: {
                   body: {
                     title: "Metadata could not be loaded.",
