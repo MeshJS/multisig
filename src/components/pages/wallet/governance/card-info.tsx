@@ -39,7 +39,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
           </DropdownMenuContent>
         </DropdownMenu>
       }
-      cardClassName="col-span-2"
+      cardClassName="col-span-2 p-4 sm:p-6"
     >
       <RowLabelInfo
         label="DRep ID"
@@ -59,20 +59,20 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
         />
       )}
 
-      <div className="flex gap-2">
-        <Button disabled={drepInfo?.active}>
+      <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+        <Button className="flex-1 sm:flex-initial" disabled={drepInfo?.active}>
           <Link href={`/wallets/${appWallet.id}/governance/register`}>
             Register DRep
           </Link>
         </Button>
-        <Button disabled={!drepInfo?.active}>
+        <Button className="flex-1 sm:flex-initial" disabled={!drepInfo?.active}>
           <Link href={`/wallets/${appWallet.id}/governance/update`}>
             Update DRep
           </Link>
         </Button>
         <Retire appWallet={appWallet} />
         <Link href={`/wallets/${appWallet.id}/governance/drep`}>
-          <Button>Find a DRep</Button>
+          <Button className="flex-1 sm:flex-initial">Find a DRep</Button>
         </Link>
       </div>
     </CardUI>
