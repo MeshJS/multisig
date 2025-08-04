@@ -57,6 +57,7 @@ export default function EditSigners({
       walletId: appWallet.id,
       signersDescriptions: signersDescriptions,
       signersStakeKeys: updatedStakeKeys,
+      signersDRepKeys: updatedDRepKeys,
     });
   }
 
@@ -77,12 +78,38 @@ export default function EditSigners({
     return skList;
   }, [signersAddresses, signersStakeKeys, userAddress, user?.stakeAddress]);
 
+  const updatedDRepKeys = useMemo(() => {
+    const dkList: string[] = Array(signersAddresses.length).fill("");
+    for (let i = 0; i < signersAddresses.length; i++) {
+      const drepKey = user?.drepKeyHash;
+      if (
+        signersAddresses[i] === userAddress &&
+        drepKey !== undefined &&
+        !appWallet.signersDRepKeys?.[i]
+      ) {
+        dkList[i] = drepKey;
+      } else {
+        dkList[i] = appWallet.signersDRepKeys?.[i] ?? "";
+      }
+    }
+    return dkList;
+  }, [signersAddresses, appWallet.signersDRepKeys, userAddress, user?.drepKeyHash]);
+
   const newStakekey = (index: number) => {
     const stakeAddr = user?.stakeAddress;
     return (
       signersAddresses[index] === userAddress &&
       stakeAddr !== undefined &&
       signersStakeKeys[index] !== stakeAddr
+    );
+  };
+
+  const newDRepKey = (index: number) => {
+    const drepKey = user?.drepKeyHash;
+    return (
+      signersAddresses[index] === userAddress &&
+      drepKey !== undefined &&
+      appWallet.signersDRepKeys?.[index] !== drepKey
     );
   };
 
@@ -135,6 +162,30 @@ export default function EditSigners({
                   {newStakekey(index) && (
                     <Label className="text-right">
                       Click Update to add your stake key to the multisig wallet.
+                    </Label>
+                  )}
+                  <div className="grid grid-cols-4 items-start gap-4">
+                    <Label className="text-right mt-2">DRep Key</Label>
+                    <textarea
+                      placeholder="drep1..."
+                      className={`col-span-3 flex min-h-[36px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none ${newDRepKey(index) && "text-green-500"}`}
+                      value={
+                        signersAddresses[index] === userAddress
+                          ? user?.drepKeyHash ?? ""
+                          : appWallet.signersDRepKeys?.[index] ?? ""
+                      }
+                      disabled
+                      rows={1}
+                      onInput={(e) => {
+                        const target = e.target as HTMLTextAreaElement;
+                        target.style.height = 'auto';
+                        target.style.height = target.scrollHeight + 'px';
+                      }}
+                    />
+                  </div>
+                  {newDRepKey(index) && (
+                    <Label className="text-right">
+                      Click Update to add your DRep key to the multisig wallet.
                     </Label>
                   )}
                   <div className="grid grid-cols-4 items-center gap-4">

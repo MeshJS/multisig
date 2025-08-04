@@ -18,6 +18,7 @@ export const userRouter = createTRPCRouter({
       z.object({
         address: z.string(),
         stakeAddress: z.string(),
+        drepKeyHash: z.string(),
         nostrKey: z.string(),
       }),
     )
@@ -26,8 +27,53 @@ export const userRouter = createTRPCRouter({
         data: {
           address: input.address,
           stakeAddress: input.stakeAddress,
+          drepKeyHash: input.drepKeyHash,
           nostrKey: input.nostrKey,
         },
+      });
+    }),
+
+  updateUser: publicProcedure
+    .input(
+      z.object({
+        address: z.string().optional(),
+        stakeAddress: z.string().optional(),
+        drepKeyHash: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { address, stakeAddress, drepKeyHash } = input;
+
+      if (!address && !stakeAddress && !drepKeyHash) {
+        throw new Error("At least one of address, stakeAddress, or drepKeyHash must be provided.");
+      }
+
+      const user = await ctx.db.user.findFirst({
+        where: {
+          OR: [
+            address ? { address } : undefined,
+            stakeAddress ? { stakeAddress } : undefined,
+            drepKeyHash ? { drepKeyHash } : undefined,
+          ].filter(Boolean) as any,
+        },
+      });
+
+      if (!user) {
+        throw new Error("User not found.");
+      }
+
+      const data: Record<string, string> = {};
+      if (address && address !== user.address) data.address = address;
+      if (stakeAddress && stakeAddress !== user.stakeAddress) data.stakeAddress = stakeAddress;
+      if (drepKeyHash && drepKeyHash !== user.drepKeyHash) data.drepKeyHash = drepKeyHash;
+
+      if (Object.keys(data).length === 0) {
+        throw new Error("No updatable fields provided.");
+      }
+
+      return ctx.db.user.update({
+        where: { id: user.id },
+        data,
       });
     }),
 

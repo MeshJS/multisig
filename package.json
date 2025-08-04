@@ -23,7 +23,7 @@
     "@meshsdk/core": "^1.9.0-beta.18",
     "@meshsdk/core-csl": "^1.9.0-beta.18",
     "@meshsdk/core-cst": "^1.9.0-beta.19",
-    "@meshsdk/react": "^1.9.0-beta.18",
+    "@meshsdk/react": "^1.9.0-beta.69",
     "@octokit/core": "^6.1.2",
     "@prisma/client": "^6.4.1",
     "@radix-ui/react-accordion": "^1.2.0",

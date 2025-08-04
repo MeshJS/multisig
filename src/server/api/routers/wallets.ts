@@ -103,6 +103,7 @@ export const walletRouter = createTRPCRouter({
       z.object({
         walletId: z.string(),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
       }),
     )
@@ -114,6 +115,7 @@ export const walletRouter = createTRPCRouter({
         data: {
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
+          signersDRepKeys: input.signersDRepKeys,
         },
       });
     }),

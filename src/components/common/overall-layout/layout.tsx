@@ -9,7 +9,7 @@ import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
 
-import SessionProvider from "@/components/SessionProvider"
+import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
 
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
@@ -52,6 +52,9 @@ export default function RootLayout({
   const { mutate: createUser } = api.user.createUser.useMutation({
     onError: (e) => console.error(e),
   });
+  const { mutate: updateUser } = api.user.updateUser.useMutation({
+    onError: (e) => console.error(e),
+  });
 
   // Single effect for address + user creation
   useEffect(() => {
@@ -63,30 +66,51 @@ export default function RootLayout({
       if (!address) address = (await wallet.getUnusedAddresses())[0];
       if (address) setUserAddress(address);
 
-      // 2) If user doesn't exist, create it
+      // 2) Get stake address
+      const stakeAddress = (await wallet.getRewardAddresses())[0];
+      if (!stakeAddress || !address) {
+        console.error("No stake address or payment address found");
+        return;
+      }
+
+      // 3) Get DRep key hash
+      const dRepKey = await wallet.getDRep();
+      if (!dRepKey) {
+        console.error("No DRep key found");
+        return;
+      }
+      const drepKeyHash = dRepKey.publicKeyHash;
+      if (!drepKeyHash) {
+        console.error("No DRep key hash found:", drepKeyHash);
+        return;
+      }
+
+      // 4) If user doesn't exist create it
       if (!isLoading && user === null) {
-        const stakeAddress = (await wallet.getRewardAddresses())[0];
-        if (!stakeAddress || !address) {
-          console.error("No stake address or payment address found");
-          return;
-        }
         const nostrKey = generateNsec();
         createUser({
           address,
           stakeAddress,
+          drepKeyHash,
           nostrKey: JSON.stringify(nostrKey),
         });
       }
+
+      // 5) If user exists but missing fields, update it
+      if (
+        !isLoading &&
+        user &&
+        user !== null &&
+        (user.stakeAddress !== stakeAddress || user.drepKeyHash !== drepKeyHash)
+      ) {
+        updateUser({
+          address,
+          stakeAddress,
+          drepKeyHash,
+        });
+      }
     })();
-  }, [
-    connected,
-    wallet,
-    user,
-    isLoading,
-    createUser,
-    generateNsec,
-    setUserAddress,
-  ]);
+  }, [connected, wallet, user, isLoading, generateNsec, setUserAddress]);
 
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
@@ -99,12 +123,18 @@ export default function RootLayout({
       {isLoading && <Loading />}
 
       {/* Sidebar for larger screens */}
-      <aside className="hidden border-r border-gray-200/30 dark:border-white/[0.03] bg-muted/40 md:block">
+      <aside className="hidden border-r border-gray-200/30 bg-muted/40 dark:border-white/[0.03] md:block">
         <div className="flex h-full max-h-screen flex-col">
-          <header className="flex h-14 items-center border-b border-gray-200/30 dark:border-white/[0.03] px-4 lg:h-16 lg:px-6" id="logo-header" data-header="sidebar">
+          <header
+            className="flex h-14 items-center border-b border-gray-200/30 px-4 dark:border-white/[0.03] lg:h-16 lg:px-6"
+            id="logo-header"
+            data-header="sidebar"
+          >
             <Link href="/" className="flex items-center gap-3">
               <Logo />
-              <span className="font-medium text-sm md:text-base lg:text-lg tracking-[-0.01em] select-none">Multi-Sig Platform</span>
+              <span className="select-none text-sm font-medium tracking-[-0.01em] md:text-base lg:text-lg">
+                Multi-Sig Platform
+              </span>
             </Link>
           </header>
           <nav className="flex-1 pt-2">
@@ -117,16 +147,22 @@ export default function RootLayout({
 
       {/* Main content area */}
       <div className="flex h-screen flex-col">
-        <header className="pointer-events-auto relative z-10 border-b border-gray-200/30 dark:border-white/[0.03] bg-muted/40 px-4 lg:px-6" data-header="main">
+        <header
+          className="pointer-events-auto relative z-10 border-b border-gray-200/30 bg-muted/40 px-4 dark:border-white/[0.03] lg:px-6"
+          data-header="main"
+        >
           <div className="flex h-14 items-center gap-4 lg:h-16">
             {/* Mobile menu button */}
             <MobileNavigation isWalletPath={isWalletPath} />
-            
+
             {/* Logo in mobile header - centered */}
-            <div className="flex-1 flex justify-center md:hidden">
-              <Link href="/" className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors">
+            <div className="flex flex-1 justify-center md:hidden">
+              <Link
+                href="/"
+                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
+              >
                 <svg
-                  className="h-7 w-7 text-foreground flex-shrink-0"
+                  className="h-7 w-7 flex-shrink-0 text-foreground"
                   enableBackground="new 0 0 300 200"
                   viewBox="0 0 300 200"
                   xmlns="http://www.w3.org/2000/svg"
@@ -134,10 +170,12 @@ export default function RootLayout({
                 >
                   <path d="m289 127-45-60-45-60c-.9-1.3-2.4-2-4-2s-3.1.7-4 2l-37 49.3c-2 2.7-6 2.7-8 0l-37-49.3c-.9-1.3-2.4-2-4-2s-3.1.7-4 2l-45 60-45 60c-1.3 1.8-1.3 4.2 0 6l45 60c.9 1.3 2.4 2 4 2s3.1-.7 4-2l37-49.3c2-2.7 6-2.7 8 0l37 49.3c.9 1.3 2.4 2 4 2s3.1-.7 4-2l37-49.3c2-2.7 6-2.7 8 0l37 49.3c.9 1.3 2.4 2 4 2s3.1-.7 4-2l45-60c1.3-1.8 1.3-4.2 0-6zm-90-103.3 32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0l-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0zm-90 0 32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0l-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0zm-53 152.6-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0zm90 0-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0zm90 0-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0z" />
                 </svg>
-                <span className="text-base font-medium text-foreground whitespace-nowrap">Multi-Sig Platform</span>
+                <span className="whitespace-nowrap text-base font-medium text-foreground">
+                  Multi-Sig Platform
+                </span>
               </Link>
             </div>
-            
+
             {/* Wallet selection + breadcrumb row on desktop */}
             {isLoggedIn && (
               <div className="hidden md:block">
@@ -184,7 +222,7 @@ export default function RootLayout({
               ) : (
                 <>
                   {/* Desktop buttons */}
-                  <div className="hidden md:flex items-center space-x-2">
+                  <div className="hidden items-center space-x-2 md:flex">
                     <WalletDataLoaderWrapper mode="button" />
                     <DialogReportWrapper mode="button" />
                     <UserDropDownWrapper mode="button" />
@@ -194,7 +232,7 @@ export default function RootLayout({
                     <WalletDataLoaderWrapper mode="menu-item" />
                     <DialogReportWrapper mode="menu-item" />
                     <UserDropDownWrapper mode="menu-item" />
-                    <div className="h-px bg-border -mx-2 my-1" />
+                    <div className="-mx-2 my-1 h-px bg-border" />
                     <LogoutWrapper mode="menu-item" />
                   </MobileActionsMenu>
                 </>
