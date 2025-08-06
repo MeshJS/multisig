@@ -102,7 +102,7 @@ export class MultisigWallet {
       );
       return undefined;
     }
-    return getScript(paymentScript, this.network, ).scriptCbor;
+    return getScript(paymentScript, this.network).scriptCbor;
   }
 
   getStakingScript(): string | undefined {
@@ -183,6 +183,16 @@ export class MultisigWallet {
     );
   }
 
+  isGovernanceEnabled(): boolean {
+    const paymentKeys = this.getKeysByRole(0);
+    const dRepKeys = this.getKeysByRole(3);
+    if (!paymentKeys || !dRepKeys || dRepKeys.length === 0) return false;
+    console.log(
+      `Governance enabled: ${dRepKeys.length} dRep keys and ${paymentKeys.length} payment keys`
+    );
+    return dRepKeys.length === paymentKeys.length;
+  }
+
   getDRepId(): string | undefined {
     return getDRepIds(this.getDRepId105()!).cip129;
   }
@@ -192,6 +202,13 @@ export class MultisigWallet {
    * built from role-3 keys (DRep keys). Throws if no script is built.
    */
   getDRepId105(): string | undefined {
+    // Check if all signers have supplied DRep keys
+    if (this.isGovernanceEnabled()) {
+      const dRepScript = this.buildScript(3);
+      if (dRepScript) {
+        return resolveScriptHashDRepId(resolveNativeScriptHash(dRepScript));
+      }
+    }
     return resolveScriptHashDRepId(
       resolveNativeScriptHash(this.buildScript(0)!), // Still Wrong should be 3 -> for drep keys.
     );
@@ -288,7 +305,7 @@ function getScript(
     script,
     stakeCredentialHash,
     network,
-    enabled
+    enabled,
   );
   if (!scriptCbor) {
     throw new Error("Failed to serialize multisig script");

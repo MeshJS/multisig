@@ -72,11 +72,11 @@ export default function InspectMultisigScript({
     );
   }
 
-  if (mWallet?.buildScript(3) !== undefined) {
+  if (mWallet?.buildScript(3) !== undefined && mWallet.isGovernanceEnabled()) {
     slides.push(
       <RowLabelInfo
         key="stake-3"
-        label="stake:"
+        label="drep:"
         value={<Code>{JSON.stringify(mWallet.buildScript(3), null, 2)}</Code>}
       />,
     );
@@ -98,7 +98,7 @@ export default function InspectMultisigScript({
         />
       )}
 {/* add pending rewards like balance */}
-      {mWallet.stakingEnabled() && <RowLabelInfo
+      {mWallet.isGovernanceEnabled() && <RowLabelInfo
         label="dRep ID"
         value={<Code>{mWallet.getDRepId()}</Code>}
         copyString={mWallet.getDRepId()}
