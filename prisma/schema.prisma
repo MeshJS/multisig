@@ -81,3 +81,13 @@ model Nonce {
   value     String
   createdAt DateTime @default(now())
 }
+
+model Crowdfund {
+  id                String  @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+}

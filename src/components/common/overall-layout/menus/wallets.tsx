@@ -1,5 +1,5 @@
 import useUserWallets from "@/hooks/useUserWallets";
-import { House, Sparkle, Landmark, FolderCode } from "lucide-react";
+import { House, Sparkle, Landmark, FolderCode, Users } from "lucide-react";
 import MenuLink from "./menu-link";
 import { useRouter } from "next/router";
 
@@ -66,6 +66,17 @@ export default function MenuWallets() {
         >
           <Landmark className="h-5 w-5" />
           Governance
+        </MenuLink>
+      )}
+      
+      {/* Global Crowdfund - only when NOT in wallet context */}
+      {!router.pathname.startsWith("/wallets/[wallet]") && (
+        <MenuLink
+          href="/crowdfund"
+          className={router.pathname.includes("crowdfund") ? "text-white" : ""}
+        >
+          <Users className="h-5 w-5" />
+          Crowdfund
         </MenuLink>
       )}
     </nav>
