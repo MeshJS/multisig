@@ -17,6 +17,8 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   wallet: walletRouter,
   signable: signableRouter,
+  ballot: ballotRouter,
+  crowdfund: crowdfundRouter,
 });
 
 // export type definition of API
