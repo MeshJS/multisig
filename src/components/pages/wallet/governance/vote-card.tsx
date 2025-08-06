@@ -12,9 +12,11 @@ interface VoteCardProps {
   appWallet: Wallet;
   utxos: UTxO[];
   proposalId?: string; // Optional proposalId
+  selectedBallotId?: string;
+  proposalTitle?: string;
 }
 
-export default function VoteCard({ appWallet, utxos, proposalId }: VoteCardProps) {
+export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotId, proposalTitle }: VoteCardProps) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [localProposalId, setLocalProposalId] = useState<string>(proposalId ?? "");
   const [description, setDescription] = useState<string>("");
@@ -72,6 +74,8 @@ export default function VoteCard({ appWallet, utxos, proposalId }: VoteCardProps
             description={description}
             metadata={metadata}
             utxos={utxos}
+            selectedBallotId={selectedBallotId}
+            proposalTitle={proposalTitle}
           />
         </div>
       </fieldset>

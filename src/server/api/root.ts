@@ -3,6 +3,8 @@ import { userRouter } from "./routers/users";
 import { walletRouter } from "./routers/wallets";
 import { transactionRouter } from "./routers/transactions";
 import { signableRouter } from "./routers/signable";
+import { ballotRouter } from "./routers/ballot";
+
 import { crowdfundRouter } from "./routers/crowdfunds";
 
 /**
@@ -15,7 +17,6 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   wallet: walletRouter,
   signable: signableRouter,
-  crowdfund: crowdfundRouter
 });
 
 // export type definition of API

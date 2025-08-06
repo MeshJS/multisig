@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Button from "@/components/common/button";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { getProvider } from "@/utils/get-provider";
 import useTransaction from "@/hooks/useTransaction";
 import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
@@ -18,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
+import { api } from "@/utils/api";
+import {useBallot} from "@/hooks/useBallot";
 
 interface VoteButtonProps {
   appWallet: Wallet;
@@ -25,6 +26,8 @@ interface VoteButtonProps {
   description?: string;
   metadata?: string;
   utxos: UTxO[];
+  selectedBallotId?: string;
+  proposalTitle?: string;
 }
 
 export default function VoteButton({
@@ -33,7 +36,30 @@ export default function VoteButton({
   description = "",
   metadata = "",
   utxos,
+  selectedBallotId,
+  proposalTitle,
 }: VoteButtonProps) {
+  // Use the custom hook for ballots
+  const { ballots, refresh } = useBallot(appWallet?.id);
+  const selectedBallot = useMemo(() => {
+    return ballots?.find((b) => b.id === selectedBallotId);
+  }, [ballots, selectedBallotId]);
+
+  const proposalIndex = selectedBallot?.items.findIndex((item) => item === proposalId);
+  const isInBallot = proposalIndex !== undefined && proposalIndex >= 0;
+
+  const addProposalMutation = api.ballot.addProposalToBallot.useMutation({
+    onSuccess: () => {
+      refresh();
+    },
+  });
+
+  const removeProposalMutation = api.ballot.removeProposalFromBallot.useMutation({
+    onSuccess: () => {
+      refresh();
+    },
+  });
+
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
   const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain">("Abstain");
@@ -42,6 +68,7 @@ export default function VoteButton({
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
+
   async function vote() {
     if (drepInfo === undefined) {
       setAlert("DRep not found");
@@ -121,7 +148,7 @@ export default function VoteButton({
         toast({
           title: "Transaction Aborted",
           description: "You canceled the vote transaction.",
-          duration: 5000,
+          duration: 1000,
         });
       } else {
         toast({
@@ -152,6 +179,52 @@ export default function VoteButton({
     }
   }
 
+  async function addProposalToBallot() {
+    if (!selectedBallotId) return;
+    try {
+      await addProposalMutation.mutateAsync({
+        ballotId: selectedBallotId,
+        itemDescription: proposalTitle ?? description,
+        item: proposalId,
+        choice: voteKind,
+      });
+      toast({
+        title: "Added to Ballot",
+        description: "Proposal successfully added to the ballot.",
+        duration: 500,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to Add to Ballot",
+        description: `Error: ${error}`,
+        duration: 10000,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function removeProposalFromBallot() {
+    if (!selectedBallotId || proposalIndex === undefined || proposalIndex < 0) return;
+    try {
+      await removeProposalMutation.mutateAsync({
+        ballotId: selectedBallotId,
+        index: proposalIndex,
+      });
+      toast({
+        title: "Removed from Ballot",
+        description: "Proposal successfully removed from the ballot.",
+        duration: 500,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to Remove from Ballot",
+        description: `Error: ${error}`,
+        duration: 10000,
+        variant: "destructive",
+      });
+    }
+  }
+
   return (
     <div className="flex w-full max-w-sm flex-col items-center justify-center space-y-2">
       <Select
@@ -174,11 +247,24 @@ export default function VoteButton({
 
       <Button
         onClick={vote}
-        disabled={loading || proposalId.length !== 66 || utxos.length === 0}
+        disabled={loading || utxos.length === 0}
         className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
       >
         {loading ? "Voting..." : utxos.length > 0 ? "Vote" : "No UTxOs Available"}
       </Button>
+
+      {selectedBallotId && (
+        <Button
+          onClick={isInBallot ? removeProposalFromBallot : addProposalToBallot}
+          className={`w-full rounded-md ${
+            isInBallot
+              ? "bg-red-600 hover:bg-red-700"
+              : "bg-green-600 hover:bg-green-700"
+          } px-6 py-2 font-semibold text-white shadow`}
+        >
+          {isInBallot ? "Remove proposal from ballot" : "Add proposal to ballot"}
+        </Button>
+      )}
     </div>
   );
 }

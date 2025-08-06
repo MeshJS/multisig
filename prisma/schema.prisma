@@ -82,6 +82,38 @@ model Nonce {
   createdAt DateTime @default(now())
 }
 
+model Ballot {
+  id               String   @id @default(cuid())
+  walletId         String
+  description      String?
+  items            String[]
+  itemDescriptions String[]
+  choices          String[]
+  type             Int
+  createdAt        DateTime @default(now())
+}
+
+model Crowdfund {
+  id                String  @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+}
+
+model Ballot {
+  id               String   @id @default(cuid())
+  walletId         String
+  description      String?
+  items            String[]
+  itemDescriptions String[]
+  choices          String[]
+  type             Int
+  createdAt        DateTime @default(now())
+}
+
 model Crowdfund {
   id                String  @id @default(cuid())
   name              String
