@@ -1,7 +1,5 @@
 import {
-  AssetMetadata,
   conStr0,
-  Data,
   integer,
   mConStr0,
   mOutputReference,
@@ -11,14 +9,11 @@ import {
   bool,
 } from "@meshsdk/common";
 import {
-  deserializeAddress,
   resolveScriptHash,
-  serializeAddressObj,
   serializePlutusScript,
   UTxO,
   applyParamsToScript,
 } from "@meshsdk/core";
-import { parseDatumCbor } from "@meshsdk/core-cst";
 import { MeshTxInitiator, MeshTxInitiatorInput } from "../common";
 import blueprint from "./plutus.json";
 import { CrowdfundDatum, CrowdfundDatumTS } from "../crowdfund";
@@ -107,13 +102,16 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     if (utxos?.length <= 0) {
       throw new Error("No UTxOs found");
     }
+
     const paramUtxo = utxos[0]!;
     this.paramUtxo = paramUtxo.input;
+
     //Set crowdfundAddress depending on the paramUtxo
     const crowdfundAddress = this.setCrowdfundAddress();
     if (!crowdfundAddress) {
       throw new Error("Crowdfund address not set");
     }
+
     //prepare AuthToken mint
     //ToDo add default MeshCrowdfund image to authtoken add param to pass custom image path.
     const paramScript = this.getAuthTokenCbor();
@@ -127,24 +125,37 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const tokenNameST = "";
 
     console.log("datum", datum);
+    
 
-    const mDatum = conStr0([
+    // Ensure all values are defined and valid
+    const mDatum: CrowdfundDatum = conStr0([
       byteString(this.getCrowdfundCbor()), // completion_script
       byteString(policyIdST), // share_token  
       mPubKeyAddress(crowdfundAddress), // crowdfund_address
-      integer(datum.fundraise_target), // fundraise_target
-      integer(datum.current_fundraised_amount), // current_fundraised_amount
-      bool(datum.allow_over_subscription), // allow_over_subscription
-      integer(datum.deadline), // deadline
-      integer(datum.expiry_buffer), // expiry_buffer
+      integer(datum.fundraise_target || 100000000000), // fundraise_target - add fallback
+      integer(datum.current_fundraised_amount || 0), // current_fundraised_amount - add fallback
+      bool(datum.allow_over_subscription || false), // allow_over_subscription
+      integer(datum.deadline || 0), // deadline - add fallback
+      integer(datum.expiry_buffer || 100), // expiry_buffer - add fallback
       mPubKeyAddress(datum.fee_address), // fee_address
-      integer(datum.min_charge), // min_charge
+      integer(datum.min_charge || 2000000), // min_charge - add fallback
     ]);
     
     console.log("mDatum", mDatum);
 
-    // mint AuthToken and send to crowdfundAddress
-    const txHex = await this.mesh
+    // Add debugging before the complete() call
+    console.log("About to complete transaction with:", {
+      crowdfundAddress,
+      walletAddress,
+      policyId,
+      policyIdST,
+      initialContribution,
+      utxosLength: utxos?.length,
+      collateral: collateral?.input?.txHash
+    });
+
+    // Try completing the transaction step by step
+    const txHex = this.mesh
       .txIn(
         paramUtxo.input.txHash,
         paramUtxo.input.outputIndex,
@@ -169,7 +180,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         { unit: policyId, quantity: "1" },
         { unit: "lovelace", quantity: initialContribution.toString() },
       ])
-      .txOutInlineDatumValue(mDatum)
+      .txOutInlineDatumValue(mDatum, "JSON")
       .txOut(walletAddress, [
         { unit: policyIdST, quantity: initialContribution.toString() },
       ])

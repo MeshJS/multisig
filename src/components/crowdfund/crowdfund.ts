@@ -1,4 +1,4 @@
-import { ConStr0, Integer, PubKeyAddress, ByteString } from "@meshsdk/common";
+import { ConStr0, Integer, ByteString, MPubKeyAddress, Bool } from "@meshsdk/common";
 
 export interface CrowdfundDatumTS {
   completion_script: string; // scripthash of the gov_crowdfund
@@ -17,13 +17,13 @@ export type CrowdfundDatum = ConStr0<
   [
     ByteString, // completion_script
     ByteString, // share_token
-    PubKeyAddress, // crowdfund_address
+    MPubKeyAddress, // crowdfund_address - use MPubKeyAddress, not PubKeyAddress
     Integer, // fundraise_target
     Integer, // current_fundraised_amount
-    Boolean, // allow_over_subscription
+    Bool, // allow_over_subscription
     Integer, // deadline
     Integer, // expiry_buffer
-    PubKeyAddress, // fee_address
+    MPubKeyAddress, // fee_address - use MPubKeyAddress, not PubKeyAddress
     Integer, // min_charge
   ]
 >;
