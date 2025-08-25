@@ -13,6 +13,7 @@ export const crowdfundRouter = createTRPCRouter({
         authTokenId: z.string().optional(),
         datum: z.string().optional(),
         address: z.string().optional(),
+        paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -34,6 +35,7 @@ export const crowdfundRouter = createTRPCRouter({
         authTokenId: z.string().optional(),
         datum: z.string().optional(),
         address: z.string().optional(),
+        paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
       }),
     )
     .mutation(async ({ ctx, input }) => {
