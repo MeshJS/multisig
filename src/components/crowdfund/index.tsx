@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar, Users, Coins, Target, Clock, Plus, X } from "lucide-react";
+import { CrowdfundDatumTS } from "./crowdfund";
 
 export default function PageCrowdfund() {
   const { connected, wallet } = useWallet();
@@ -234,17 +235,14 @@ export default function PageCrowdfund() {
               
               {modalView === 'contribute' && (
                 <ContributeToCrowdfund
-                  crowdfundId={selectedCrowdfund.id}
-                  crowdfundName={selectedCrowdfund.name}
+                  crowdfund={selectedCrowdfund}
                   onSuccess={handleSuccess}
                 />
               )}
               
               {modalView === 'withdraw' && (
                 <WithdrawFromCrowdfund
-                  crowdfundId={selectedCrowdfund.id}
-                  crowdfundName={selectedCrowdfund.name}
-                  totalRaised={1500} // Mock data - would come from blockchain
+                  crowdfund={selectedCrowdfund}
                   onSuccess={handleSuccess}
                 />
               )}
@@ -267,14 +265,17 @@ function CrowdfundCard({
   onClick: () => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
+  const secondsLeft = datum.deadline - Math.floor(Date.now() / 1000);
+  const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
   
   // Mock data for demonstration - in real implementation, this would come from the blockchain
   const mockData = {
-    totalRaised: 1500,
-    fundingGoal: 5000,
-    contributors: 23,
-    daysLeft: 15,
-    status: "active" as const
+    totalRaised: datum.current_fundraised_amount,
+    fundingGoal: datum.fundraise_target,
+    contributors: "TODO count",
+    daysLeft: daysLeft,
+    status: daysLeft > 0 ? "active" : "expired" as const
   };
 
   const progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;

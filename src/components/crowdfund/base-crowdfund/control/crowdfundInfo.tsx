@@ -16,6 +16,7 @@ import {
   TrendingUp
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CrowdfundDatumTS } from "../../crowdfund";
 
 interface CrowdfundInfoProps {
   crowdfund: any;
@@ -32,16 +33,19 @@ export function CrowdfundInfo({
 }: CrowdfundInfoProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+  const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
+  const secondsLeft = datum.deadline - Math.floor(Date.now() / 1000);
+  const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
 
   // Mock data for demonstration - in real implementation, this would come from the blockchain
-  const mockData = {
-    totalRaised: 1500,
-    fundingGoal: 5000,
-    contributors: 23,
-    daysLeft: 15,
-    status: "active" as const,
-    startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
-    endDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days from now
+  const crowdfundData = {
+    totalRaised: datum.current_fundraised_amount,
+    fundingGoal: datum.fundraise_target,
+    contributors: "TODO count",
+    daysLeft: daysLeft,
+    status: daysLeft > 0 ? "active" : "expired" as const,
+    startDate: new Date(crowdfund.createdAt),
+    endDate: new Date(datum.deadline * 1000), // 15 days from now
     recentContributions: [
       { address: "addr1...abc123", amount: 100, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       { address: "addr1...def456", amount: 50, timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000) },
@@ -49,9 +53,10 @@ export function CrowdfundInfo({
     ]
   };
 
-  const progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;
-  const isSuccessful = mockData.totalRaised >= mockData.fundingGoal;
-  const isExpired = mockData.daysLeft <= 0;
+
+  const progressPercentage = (crowdfundData.totalRaised / crowdfundData.fundingGoal) * 100;
+  const isSuccessful = crowdfundData.totalRaised >= crowdfundData.fundingGoal;
+  const isExpired = crowdfundData.daysLeft <= 0;
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -120,8 +125,8 @@ export function CrowdfundInfo({
               </div>
               <Progress value={progressPercentage} className="h-3" />
               <div className="flex justify-between text-lg font-semibold">
-                <span>{mockData.totalRaised.toLocaleString()} ADA raised</span>
-                <span>{mockData.fundingGoal.toLocaleString()} ADA goal</span>
+                <span>{crowdfundData.totalRaised.toLocaleString()} ADA raised</span>
+                <span>{crowdfundData.fundingGoal.toLocaleString()} ADA goal</span>
               </div>
             </div>
 
@@ -129,14 +134,14 @@ export function CrowdfundInfo({
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <div className="text-sm font-medium">{mockData.contributors}</div>
+                  <div className="text-sm font-medium">{crowdfundData.contributors}</div>
                   <div className="text-xs text-muted-foreground">Contributors</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <div className="text-sm font-medium">{mockData.daysLeft}</div>
+                  <div className="text-sm font-medium">{crowdfundData.daysLeft}</div>
                   <div className="text-xs text-muted-foreground">Days left</div>
                 </div>
               </div>
@@ -157,7 +162,7 @@ export function CrowdfundInfo({
               </Button>
             )}
             
-            {isOwner && mockData.totalRaised > 0 && (
+            {isOwner && crowdfundData.totalRaised > 0 && (
               <Button 
                 onClick={onWithdraw} 
                 variant="outline" 
@@ -204,13 +209,13 @@ export function CrowdfundInfo({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Start Date</span>
               <span className="text-sm font-medium">
-                {mockData.startDate.toLocaleDateString()}
+                {crowdfundData.startDate.toLocaleDateString()}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">End Date</span>
               <span className="text-sm font-medium">
-                {mockData.endDate.toLocaleDateString()}
+                {crowdfundData.endDate.toLocaleDateString()}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -219,7 +224,7 @@ export function CrowdfundInfo({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Status</span>
-              <span className="text-sm font-medium capitalize">{mockData.status}</span>
+              <span className="text-sm font-medium capitalize">{crowdfundData.status}</span>
             </div>
           </CardContent>
         </Card>
@@ -260,16 +265,16 @@ export function CrowdfundInfo({
           <CardTitle>Recent Contributions</CardTitle>
         </CardHeader>
         <CardContent>
-          {mockData.recentContributions.length > 0 ? (
+          {crowdfundData.recentContributions.length > 0 ? (
             <div className="space-y-3">
-              {mockData.recentContributions.map((contribution, index) => (
+              {crowdfundData.recentContributions.map((contribution, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
                       <Coins className="w-4 h-4 text-primary-foreground" />
                     </div>
                     <div>
-                      <div className="text-sm font-medium">{contribution.amount} ADA</div>
+                      <div className="text-sm font-medium">{contribution.amount.toLocaleString()} ADA</div>
                       <div className="text-xs text-muted-foreground">
                         {contribution.address.slice(0, 8)}...{contribution.address.slice(-6)}
                       </div>

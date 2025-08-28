@@ -8,11 +8,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
-import { deserializeAddress, MeshTxBuilder, conStr0, integer, byteString, bool, mPubKeyAddress } from "@meshsdk/core";
+import {
+  deserializeAddress,
+  MeshTxBuilder,
+} from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { CrowdfundDatum, CrowdfundDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../../crowdfund";
 import { Info, HelpCircle } from "lucide-react";
 import {
   Tooltip,
@@ -112,18 +115,25 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
     if (!name || !proposerKeyHashR0 || !deadline || !fundraiseTarget) {
       toast({
         title: "Missing fields",
-        description: "Please provide name, proposer key hash, deadline, and funding target.",
+        description:
+          "Please provide name, proposer key hash, deadline, and funding target.",
       });
       return;
     }
 
     if (!connected) {
-      toast({ title: "Wallet not connected", description: "Please connect your wallet first." });
+      toast({
+        title: "Wallet not connected",
+        description: "Please connect your wallet first.",
+      });
       return;
     }
 
     if (!provider || !meshTxBuilder || networkId == null || !wallet) {
-      toast({ title: "Initializing…", description: "Wallet/network not ready yet. Try again in a moment." });
+      toast({
+        title: "Initializing…",
+        description: "Wallet/network not ready yet. Try again in a moment.",
+      });
       return;
     }
 
@@ -142,6 +152,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
         min_charge: parseFloat(minCharge) * 1000000,
       };
 
+      // Create the contract instance
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -153,31 +164,55 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
           proposerKeyHash: proposerKeyHashR0,
         },
       );
-      const { tx, paramUtxo } = await contract.setupCrowdfund(initialContribution*1000000, datumData);
+
+      // Setup the crowdfund
+      const { tx, paramUtxo, completion_scriptHash, share_token, crowdfund_address, authTokenId } = await contract.setupCrowdfund(
+        datumData,
+      );
+
+      // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
       const txHash = await wallet.submitTx(signedTx);
-      console.log("Crowdfund setup result:", { txHash, paramUtxo });
-      if (!contract.crowdfundAddress) {
-        console.error("Crowdfund address not set");
-      }
-      console.log("crowdfund address:", contract.crowdfundAddress);
-      createCrowdfund.mutate(
-        {
-          name,
-          description,
-          proposerKeyHashR0,
-          paramUtxo: JSON.stringify({ txHash: `${paramUtxo.txHash}`, outputIndex: paramUtxo.outputIndex }),
-          address: contract.crowdfundAddress,
-          datum: JSON.stringify(datumData),
-        }
-      );
+
+      // Update the datum with the new values
+      const updatedDatum: CrowdfundDatumTS = {
+        completion_script: completion_scriptHash,
+        share_token: share_token,
+        crowdfund_address: crowdfund_address,
+        fundraise_target: datumData.fundraise_target,
+        current_fundraised_amount: datumData.current_fundraised_amount,
+        allow_over_subscription: datumData.allow_over_subscription,
+        deadline: datumData.deadline,
+        expiry_buffer: datumData.expiry_buffer,
+        fee_address: datumData.fee_address,
+        min_charge: datumData.min_charge,
+      };
+
+      // Create the crowdfund in the database
+      createCrowdfund.mutate({
+        name,
+        description,
+        proposerKeyHashR0,
+        paramUtxo: JSON.stringify({
+          txHash: `${paramUtxo.txHash}`,
+          outputIndex: paramUtxo.outputIndex,
+        }),
+        authTokenId: authTokenId,
+        address: crowdfund_address,
+        datum: JSON.stringify(updatedDatum),
+      });
+
+      // Show success toast
       toast({
         title: "Crowdfund setup successful",
         description: `Transaction hash: ${txHash}`,
       });
     } catch (e) {
-      console.error("Crowdfund setup failed:", e);
-      toast({ title: "On-chain setup failed", description: e instanceof Error ? e.message : String(e) });
+      toast({
+        title: "On-chain setup failed",
+        description: e instanceof Error ? e.message : String(e),
+      });
+      console.log(e)
     }
   };
 
@@ -185,13 +220,15 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
 
   return (
     <TooltipProvider>
-      <div className="max-w-2xl mx-auto p-6">
-        <h2 className="mb-6 text-2xl font-bold text-center">Create New Crowdfund</h2>
-        
+      <div className="mx-auto max-w-2xl p-6">
+        <h2 className="mb-6 text-center text-2xl font-bold">
+          Create New Crowdfund
+        </h2>
+
         <div className="space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
               Basic Information
               <Tooltip>
                 <TooltipTrigger>
@@ -202,7 +239,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 </TooltipContent>
               </Tooltip>
             </h3>
-            
+
             <div className="space-y-2">
               <Label htmlFor="name" className="flex items-center gap-2">
                 Crowdfund Name *
@@ -231,7 +268,9 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                     <Info className="h-3 w-3 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Detailed description of your project and funding goals</p>
+                    <p>
+                      Detailed description of your project and funding goals
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </Label>
@@ -246,7 +285,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
 
           {/* Funding Details */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
               Funding Details
               <Tooltip>
                 <TooltipTrigger>
@@ -257,10 +296,13 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 </TooltipContent>
               </Tooltip>
             </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="fundraiseTarget" className="flex items-center gap-2">
+                <Label
+                  htmlFor="fundraiseTarget"
+                  className="flex items-center gap-2"
+                >
                   Funding Target (ADA) *
                   <Tooltip>
                     <TooltipTrigger>
@@ -279,29 +321,9 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                   onChange={(e) => setFundraiseTarget(e.target.value)}
                 />
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="initialContribution" className="flex items-center gap-2">
-                  Initial Contribution (ADA)
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Your initial contribution to start the crowdfund</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </Label>
-                <Input
-                  id="initialContribution"
-                  placeholder="0"
-                  type="number"
-                  value={initialContribution}
-                  onChange={(e) => setInitialContribution(Number(e.target.value))}
-                />
-              </div>
+
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="minCharge" className="flex items-center gap-2">
                 Minimum Contribution (ADA)
@@ -326,7 +348,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
 
           {/* Timeline */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
               Timeline
               <Tooltip>
                 <TooltipTrigger>
@@ -337,7 +359,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 </TooltipContent>
               </Tooltip>
             </h3>
-            
+
             <div className="space-y-2">
               <Label htmlFor="deadline" className="flex items-center gap-2">
                 Deadline *
@@ -357,7 +379,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 onChange={(e) => setDeadline(e.target.value)}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="expiryBuffer" className="flex items-center gap-2">
                 Expiry Buffer (seconds)
@@ -366,7 +388,10 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                     <Info className="h-3 w-3 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Time buffer after deadline before funds can be withdrawn (default: 1 day)</p>
+                    <p>
+                      Time buffer after deadline before funds can be withdrawn
+                      (default: 1 day)
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </Label>
@@ -382,7 +407,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
 
           {/* Advanced Settings */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
               Advanced Settings
               <Tooltip>
                 <TooltipTrigger>
@@ -393,14 +418,19 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 </TooltipContent>
               </Tooltip>
             </h3>
-            
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="allowOverSubscription"
                 checked={allowOverSubscription}
-                onCheckedChange={(checked) => setAllowOverSubscription(checked as boolean)}
+                onCheckedChange={(checked) =>
+                  setAllowOverSubscription(checked as boolean)
+                }
               />
-              <Label htmlFor="allowOverSubscription" className="flex items-center gap-2">
+              <Label
+                htmlFor="allowOverSubscription"
+                className="flex items-center gap-2"
+              >
                 Allow over-subscription
                 <Tooltip>
                   <TooltipTrigger>
@@ -412,7 +442,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                 </Tooltip>
               </Label>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="feeAddress" className="flex items-center gap-2">
                 Fee Address
@@ -421,7 +451,9 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
                     <Info className="h-3 w-3 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Address where fees will be sent (defaults to your address)</p>
+                    <p>
+                      Address where fees will be sent (defaults to your address)
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </Label>
@@ -436,7 +468,13 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
 
           <Button
             onClick={handleCreate}
-            disabled={isPending || !name || !proposerKeyHashR0 || !deadline || !fundraiseTarget}
+            disabled={
+              isPending ||
+              !name ||
+              !proposerKeyHashR0 ||
+              !deadline ||
+              !fundraiseTarget
+            }
             className="w-full"
           >
             {isPending ? "Creating Crowdfund..." : "Create Crowdfund"}

@@ -1,12 +1,10 @@
 import {
-  conStr0,
-  integer,
   mConStr0,
   mOutputReference,
   mPubKeyAddress,
   stringToHex,
-  byteString,
-  bool,
+  mBool,
+  mConStr1,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -16,7 +14,7 @@ import {
 } from "@meshsdk/core";
 import { MeshTxInitiator, MeshTxInitiatorInput } from "../common";
 import blueprint from "./plutus.json";
-import { CrowdfundDatum, CrowdfundDatumTS } from "../crowdfund";
+import { CrowdfundDatumTS } from "../crowdfund";
 /**
  * Mesh Aiken Crowdfund contract class
  *
@@ -47,6 +45,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       stringToHex(this.proposerKeyHash),
     ]);
   };
+
   setCrowdfundAddress = () => {
     const crowdfundAddress = serializePlutusScript(
       {
@@ -94,15 +93,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
    * const { tx, paramUtxo } = await contract.setupCrowdfund();
    * ```
    */
-  setupCrowdfund = async (initialContribution: number, datum: CrowdfundDatumTS) => {
+  setupCrowdfund = async (datum: CrowdfundDatumTS) => {
     const { utxos, collateral, walletAddress } =
       await this.getWalletInfoForTx();
 
-    //look for and get paramUtxo for minting AuthToken
+    //look for, get and set a paramUtxo for minting the AuthToken
     if (utxos?.length <= 0) {
       throw new Error("No UTxOs found");
     }
-
     const paramUtxo = utxos[0]!;
     this.paramUtxo = paramUtxo.input;
 
@@ -118,85 +116,75 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const policyId = resolveScriptHash(paramScript, "V3");
     const tokenName = "";
 
-    //prepare ShareToken mint
-    //ToDo add default MeshCrowdfund image to sharetoken add param to pass custom image path.
+    //prepare Completion scripthash for the datum
+    const completion_scriptHash = resolveScriptHash(
+      this.getCrowdfundCbor(),
+      "V3",
+    );
+
+    //prepare ShareToken policy for the datum
     const paramScriptST = this.getShareTokenCbor();
     const policyIdST = resolveScriptHash(paramScriptST, "V3");
-    const tokenNameST = "";
-
-    console.log("datum", datum);
-    
 
     // Ensure all values are defined and valid
-    const mDatum: CrowdfundDatum = conStr0([
-      byteString(this.getCrowdfundCbor()), // completion_script
-      byteString(policyIdST), // share_token  
+    const mDatum = mConStr0([
+      completion_scriptHash, // completion_script
+      policyIdST, // share_token
       mPubKeyAddress(crowdfundAddress), // crowdfund_address
-      integer(datum.fundraise_target || 100000000000), // fundraise_target - add fallback
-      integer(datum.current_fundraised_amount || 0), // current_fundraised_amount - add fallback
-      bool(datum.allow_over_subscription || false), // allow_over_subscription
-      integer(datum.deadline || 0), // deadline - add fallback
-      integer(datum.expiry_buffer || 100), // expiry_buffer - add fallback
+      datum.fundraise_target || 100000000000, // fundraise_target - add fallback
+      datum.current_fundraised_amount || 0, // current_fundraised_amount - add fallback
+      mBool(datum.allow_over_subscription || false), // allow_over_subscription
+      datum.deadline || 0, // deadline - add fallback
+      datum.expiry_buffer || 100, // expiry_buffer - add fallback
       mPubKeyAddress(datum.fee_address), // fee_address
-      integer(datum.min_charge || 2000000), // min_charge - add fallback
+      datum.min_charge || 2000000, // min_charge - add fallback
     ]);
-    
-    console.log("mDatum", mDatum);
-
-    // Add debugging before the complete() call
-    console.log("About to complete transaction with:", {
-      crowdfundAddress,
-      walletAddress,
-      policyId,
-      policyIdST,
-      initialContribution,
-      utxosLength: utxos?.length,
-      collateral: collateral?.input?.txHash
-    });
 
     // Try completing the transaction step by step
-    const txHex = this.mesh
+    const tx = this.mesh
       .txIn(
         paramUtxo.input.txHash,
         paramUtxo.input.outputIndex,
         paramUtxo.output.amount,
         paramUtxo.output.address,
       )
+      .mintPlutusScriptV3()
+      .mint("1", policyId, tokenName)
+      .mintingScript(paramScript)
+      .mintRedeemerValue(mConStr0([]))
+      .txOut(crowdfundAddress, [{ unit: policyId, quantity: "1" }])
+      .txOutInlineDatumValue(mDatum, "Mesh")
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
         collateral.output.amount,
         collateral.output.address,
       )
-      .mintPlutusScriptV3()
-      .mint("1", policyId, tokenName)
-      .mintingScript(paramScript)
-      .mintRedeemerValue(mConStr0([]))
-      .mintPlutusScriptV3()
-      .mint(initialContribution.toString(), policyIdST, tokenNameST)
-      .mintingScript(paramScriptST)
-      .mintRedeemerValue(mConStr0([]))
-      .txOut(crowdfundAddress, [
-        { unit: policyId, quantity: "1" },
-        { unit: "lovelace", quantity: initialContribution.toString() },
-      ])
-      .txOutInlineDatumValue(mDatum, "JSON")
-      .txOut(walletAddress, [
-        { unit: policyIdST, quantity: initialContribution.toString() },
-      ])
       .changeAddress(walletAddress)
-      .selectUtxosFrom(utxos)
-      .complete();
+      .selectUtxosFrom(utxos);
 
-    return { tx: txHex, paramUtxo: paramUtxo.input };
+    const txHex = await tx.complete();
+
+    return {
+      tx: txHex,
+      paramUtxo: paramUtxo.input,
+      authTokenId: policyId,
+      completion_scriptHash: completion_scriptHash,
+      share_token: policyIdST,
+      crowdfund_address: crowdfundAddress,
+    };
   };
 
   /**
    *
    */
-  contributeCrowdfund = async (contributionAmount: number) => {
+  contributeCrowdfund = async (
+    contributionAmount: number,
+    datum: CrowdfundDatumTS,
+  ) => {
     const { utxos, collateral, walletAddress } =
       await this.getWalletInfoForTx();
+
     if (utxos?.length <= 0) {
       throw new Error("No UTxOs found");
     }
@@ -219,6 +207,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       this.crowdfundAddress,
       policyIdAT,
     );
+
     if (!authTokenUtxos || authTokenUtxos.length === 0) {
       throw new Error("No AuthToken found at crowdfund address");
     }
@@ -234,6 +223,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       throw new Error("No AuthToken amount found");
     }
 
+    //calculate the new amount of Ada at the crowdfundAddress (to keep all funds in one utxo)
     const newCrowdfundAmount = authTokenUtxoAmt.map((amt) =>
       amt.unit == "lovelace"
         ? {
@@ -244,6 +234,21 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
           }
         : amt,
     );
+
+    //prepare the new datum as Mesh Data type
+    const mDatum = mConStr0([
+      datum.completion_script,
+      datum.share_token,
+      mPubKeyAddress(datum.crowdfund_address),
+      datum.fundraise_target,
+      datum.current_fundraised_amount + contributionAmount,
+      mBool(datum.allow_over_subscription),
+      datum.deadline,
+      datum.expiry_buffer,
+      mPubKeyAddress(datum.fee_address),
+      datum.min_charge,
+    ]);
+
     //prepare shareToken mint
     const paramScript = this.getShareTokenCbor();
     const policyId = resolveScriptHash(paramScript, "V3");
@@ -253,12 +258,18 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     // mint ShareToken and send to walletAddress
 
     const txHex = await this.mesh
+      .spendingPlutusScriptV3()
       .txIn(
         authTokenUtxo.input.txHash,
         authTokenUtxo.input.outputIndex,
         authTokenUtxo.output.amount,
         authTokenUtxo.output.address,
       )
+      .spendingReferenceTxInInlineDatumPresent()
+      .spendingReferenceTxInRedeemerValue(mConStr1([]))
+      .txInRedeemerValue(mConStr0([]))
+      .txInScript(this.getCrowdfundCbor())
+      .txInInlineDatumPresent()
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
@@ -273,8 +284,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txOut(walletAddress, [
         { unit: policyId, quantity: contributionAmount.toString() },
       ])
-      //Output to Crowdfund scriptaddress
+      //Output to Crowdfunds scriptaddress
       .txOut(this.crowdfundAddress, newCrowdfundAmount)
+      .txOutInlineDatumValue(mDatum, "Mesh")
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .complete();
@@ -309,9 +321,16 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       throw new Error("Crowdfund address not set");
     }
 
-    const crowdfundInfo = await blockchainProvider.fetchAddressTxs(
+    const crowdfundTxs = await blockchainProvider.fetchAddressTxs(
       this.crowdfundAddress,
     );
+    const crowdfundUtxos = await blockchainProvider.fetchAddressUTxOs(
+      this.crowdfundAddress,
+    );
+    const crowdfundInfo = {
+      txs: crowdfundTxs,
+      utxos: crowdfundUtxos,
+    };
     if (!crowdfundInfo) {
       throw new Error("Crowdfund not found");
     }

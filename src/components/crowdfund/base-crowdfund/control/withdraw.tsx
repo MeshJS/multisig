@@ -8,22 +8,21 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 
 interface WithdrawFromCrowdfundProps {
-  crowdfundId: string;
-  crowdfundName: string;
-  totalRaised: number;
+  crowdfund: any;
   onSuccess?: () => void;
 }
 
 export function WithdrawFromCrowdfund({ 
-  crowdfundId, 
-  crowdfundName, 
-  totalRaised,
+  crowdfund, 
   onSuccess 
 }: WithdrawFromCrowdfundProps) {
   const [amount, setAmount] = useState("");
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const { toast } = useToast();
-
+  const datumData = JSON.parse(crowdfund.datum);
+  const totalRaised = datumData.current_fundraised_amount;
+  const crowdfundName = crowdfund.name;
+  
   const handleWithdraw = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       toast({

@@ -94,7 +94,7 @@ model Ballot {
 }
 
 model Crowdfund {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   name              String
   description       String?
   proposerKeyHashR0 String
@@ -102,4 +102,5 @@ model Crowdfund {
   datum             String?
   address           String?
   paramUtxo         String? // JSON string containing { txHash: string, outputIndex: number }
+  createdAt         DateTime @default(now())
 }
