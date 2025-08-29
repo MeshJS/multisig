@@ -265,28 +265,34 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         authTokenUtxo.output.amount,
         authTokenUtxo.output.address,
       )
-      .spendingReferenceTxInInlineDatumPresent()
-      .spendingReferenceTxInRedeemerValue(mConStr1([]))
+
+      //Add Script and Redeemer
       .txInRedeemerValue(mConStr0([]))
       .txInScript(this.getCrowdfundCbor())
       .txInInlineDatumPresent()
+    //   .spendingReferenceTxInInlineDatumPresent()
+    //   .spendingReferenceTxInRedeemerValue(mConStr0([]))
+
+      //Mint ShareToken with Redeemer
+      .mintPlutusScriptV3()
+      .mint(contributionAmount.toString(), policyId, tokenName)
+      .mintingScript(paramScript)
+      .mintRedeemerValue(mConStr0([]))
+
+      //Output to User and Crowdfund addresses and attach datum
+      .txOut(walletAddress, [
+        { unit: policyId, quantity: contributionAmount.toString() },
+      ])
+      .txOut(this.crowdfundAddress, newCrowdfundAmount)
+      .txOutInlineDatumValue(mDatum, "Mesh")
+
+      //Add coinselection infos and complete
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
         collateral.output.amount,
         collateral.output.address,
       )
-      .mintPlutusScriptV3()
-      .mint(contributionAmount.toString(), policyId, tokenName)
-      .mintingScript(paramScript)
-      .mintRedeemerValue(mConStr0([]))
-      //Output to User
-      .txOut(walletAddress, [
-        { unit: policyId, quantity: contributionAmount.toString() },
-      ])
-      //Output to Crowdfunds scriptaddress
-      .txOut(this.crowdfundAddress, newCrowdfundAmount)
-      .txOutInlineDatumValue(mDatum, "Mesh")
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .complete();
