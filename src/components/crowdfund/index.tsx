@@ -10,7 +10,7 @@ import { ContributeToCrowdfund } from "./base-crowdfund/control/contribute";
 import { WithdrawFromCrowdfund } from "./base-crowdfund/control/withdraw";
 import { CrowdfundInfo } from "./base-crowdfund/control/crowdfundInfo";
 import useUser from "@/hooks/useUser";
-import { deserializeAddress } from "@meshsdk/core";
+import { deserializeAddress, SLOT_CONFIG_NETWORK, slotToBeginUnixTime } from "@meshsdk/core";
 import { api } from "@/utils/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,8 +26,9 @@ export default function PageCrowdfund() {
   const [selectedCrowdfund, setSelectedCrowdfund] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [modalView, setModalView] = useState<'info' | 'contribute' | 'withdraw'>('info');
-
   const [proposerKeyHashR0, setProposerKeyHashR0] = useState("");
+  // Add state for networkId
+  const [networkId, setNetworkId] = useState<number>(0);
 
   useEffect(() => {
     if (user?.address) {
@@ -40,6 +41,12 @@ export default function PageCrowdfund() {
     }
   }, [user?.address]);
   
+  useEffect(() => {
+    if (wallet) {
+      wallet.getNetworkId().then(setNetworkId);
+    }
+  }, [wallet]);
+
   const { data: crowdfunds, isLoading, refetch } = api.crowdfund.getCrowdfundsByProposerKeyHash.useQuery(
     { proposerKeyHashR0 },
     { enabled: !!proposerKeyHashR0 }
@@ -130,6 +137,7 @@ export default function PageCrowdfund() {
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
+                    networkId={networkId}
                     isOwner={true}
                     onClick={() => handleCrowdfundClick(fund)}
                   />
@@ -160,10 +168,11 @@ export default function PageCrowdfund() {
             
             {allCrowdfunds && allCrowdfunds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allCrowdfunds.map((fund) => (
+                {allCrowdfunds.map( (fund) => (
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
+                    networkId={networkId}
                     isOwner={fund.proposerKeyHashR0 === proposerKeyHashR0}
                     onClick={() => handleCrowdfundClick(fund)}
                   />
@@ -227,6 +236,7 @@ export default function PageCrowdfund() {
               {modalView === 'info' && (
                 <CrowdfundInfo
                   crowdfund={selectedCrowdfund}
+                  networkId={networkId}
                   isOwner={selectedCrowdfund.proposerKeyHashR0 === proposerKeyHashR0}
                   onContribute={handleContribute}
                   onWithdraw={handleWithdraw}
@@ -257,16 +267,20 @@ export default function PageCrowdfund() {
 // Enhanced Crowdfund Card Component
 function CrowdfundCard({ 
   crowdfund, 
+  networkId,
   isOwner, 
   onClick 
 }: { 
   crowdfund: any; 
+  networkId: number;
   isOwner: boolean;
   onClick: () => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
-  const secondsLeft = datum.deadline - Math.floor(Date.now() / 1000);
+  const slotConfig = networkId ? SLOT_CONFIG_NETWORK.mainnet : SLOT_CONFIG_NETWORK.preprod;
+  const deadlineUnix = slotToBeginUnixTime(datum.deadline, slotConfig); // Assuming datum.deadline is already in UNIX timestamp
+  const secondsLeft = deadlineUnix / 1000 - Math.floor(Date.now() / 1000);
   const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
   
   // Mock data for demonstration - in real implementation, this would come from the blockchain

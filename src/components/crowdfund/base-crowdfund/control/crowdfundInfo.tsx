@@ -17,9 +17,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CrowdfundDatumTS } from "../../crowdfund";
+import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime } from "@meshsdk/core";
 
 interface CrowdfundInfoProps {
   crowdfund: any;
+  networkId: number;
   isOwner: boolean;
   onContribute?: () => void;
   onWithdraw?: () => void;
@@ -27,6 +29,7 @@ interface CrowdfundInfoProps {
 
 export function CrowdfundInfo({ 
   crowdfund, 
+  networkId, 
   isOwner, 
   onContribute, 
   onWithdraw 
@@ -34,7 +37,10 @@ export function CrowdfundInfo({
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
-  const secondsLeft = datum.deadline - Math.floor(Date.now() / 1000);
+  const slotConfig = networkId ? SLOT_CONFIG_NETWORK.mainnet : SLOT_CONFIG_NETWORK.preprod;
+  const deadlineUnix = slotToBeginUnixTime(datum.deadline, slotConfig);
+
+  const secondsLeft = deadlineUnix / 1000 - Math.floor(Date.now() / 1000);
   const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
 
   // Mock data for demonstration - in real implementation, this would come from the blockchain
@@ -45,7 +51,7 @@ export function CrowdfundInfo({
     daysLeft: daysLeft,
     status: daysLeft > 0 ? "active" : "expired" as const,
     startDate: new Date(crowdfund.createdAt),
-    endDate: new Date(datum.deadline * 1000),
+    endDate: new Date(deadlineUnix),
     recentContributions: [
       { address: "addr1...abc123", amount: 100, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       { address: "addr1...def456", amount: 50, timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000) },
