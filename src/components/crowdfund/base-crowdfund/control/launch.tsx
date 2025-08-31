@@ -11,6 +11,7 @@ import useUser from "@/hooks/useUser";
 import {
   deserializeAddress,
   MeshTxBuilder,
+  resolveSlotNo,
 } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
 import { getProvider } from "@/utils/get-provider";
@@ -138,6 +139,9 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
     }
 
     try {
+      const deadlineDate = new Date(deadline);
+      const deadlineSlot = resolveSlotNo(networkId ? "mainnet" : "preprod", deadlineDate.getTime());
+
       // Create the datum data as CrowdfundDatumTS
       const datumData: CrowdfundDatumTS = {
         completion_script: "", // Will be set by the contract
@@ -146,7 +150,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
         fundraise_target: parseFloat(fundraiseTarget) * 1000000,
         current_fundraised_amount: 0,
         allow_over_subscription: allowOverSubscription,
-        deadline: Math.floor(new Date(deadline).getTime() / 1000),
+        deadline: Number(deadlineSlot),
         expiry_buffer: parseInt(expiryBuffer),
         fee_address: feeAddress,
         min_charge: parseFloat(minCharge) * 1000000,

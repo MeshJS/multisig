@@ -45,7 +45,7 @@ export function CrowdfundInfo({
     daysLeft: daysLeft,
     status: daysLeft > 0 ? "active" : "expired" as const,
     startDate: new Date(crowdfund.createdAt),
-    endDate: new Date(datum.deadline * 1000), // 15 days from now
+    endDate: new Date(datum.deadline * 1000),
     recentContributions: [
       { address: "addr1...abc123", amount: 100, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       { address: "addr1...def456", amount: 50, timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000) },
@@ -155,7 +155,7 @@ export function CrowdfundInfo({
             <CardTitle>Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!isOwner && !isExpired && (
+            {!isOwner  && (
               <Button onClick={onContribute} className="w-full" size="lg">
                 <Coins className="w-4 h-4 mr-2" />
                 Contribute

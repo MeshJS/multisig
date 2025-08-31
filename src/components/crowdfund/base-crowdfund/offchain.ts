@@ -5,6 +5,7 @@ import {
   stringToHex,
   mBool,
   mConStr1,
+  resolveSlotNo,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -254,6 +255,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const policyId = resolveScriptHash(paramScript, "V3");
     const tokenName = "";
 
+    //Set time-to-live (TTL) for the transaction.
+    let minutes = 5; // add 5 minutes
+    let nowDateTime = new Date();
+    let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
+    const slot = resolveSlotNo(this.networkId ? "mainnet" : "preprod", dateTimeAdd5Min.getTime());
+
     // deposit Ada at crowdfundAddress
     // mint ShareToken and send to walletAddress
 
@@ -270,8 +277,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txInRedeemerValue(mConStr0([]))
       .txInScript(this.getCrowdfundCbor())
       .txInInlineDatumPresent()
-    //   .spendingReferenceTxInInlineDatumPresent()
-    //   .spendingReferenceTxInRedeemerValue(mConStr0([]))
+      //   .spendingReferenceTxInInlineDatumPresent()
+      //   .spendingReferenceTxInRedeemerValue(mConStr0([]))
 
       //Mint ShareToken with Redeemer
       .mintPlutusScriptV3()
@@ -280,13 +287,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .mintRedeemerValue(mConStr0([]))
 
       //Output to User and Crowdfund addresses and attach datum
+      .txOut(this.crowdfundAddress, newCrowdfundAmount)
+      .txOutInlineDatumValue(mDatum, "Mesh")
       .txOut(walletAddress, [
         { unit: policyId, quantity: contributionAmount.toString() },
       ])
-      .txOut(this.crowdfundAddress, newCrowdfundAmount)
-      .txOutInlineDatumValue(mDatum, "Mesh")
-
-      //Add coinselection infos and complete
+      //Add coinselection infos, TTL, and complete
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
@@ -295,6 +301,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       )
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
+      .invalidHereafter(Number(slot))
       .complete();
 
     return { tx: txHex };
