@@ -27,6 +27,7 @@ export function ContributeToCrowdfund({
   const { connected, wallet } = useWallet();
   const [networkId, setNetworkId] = useState<number | null>(null);
   const datumData = JSON.parse(crowdfund.datum);
+  console.log("datumData", datumData.min_charge);
   
   // Add the updateCrowdfund mutation
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
@@ -202,7 +203,7 @@ export function ContributeToCrowdfund({
         </div>
 
         <div className="text-sm text-muted-foreground">
-          <p>• Minimum contribution: 1 ADA</p>
+          <p>• Minimum contribution: {datumData.min_charge / 1000000} ADA</p>
           <p>• You'll receive share tokens based on your contribution</p>
           <p>• Transaction fees apply (~0.17 ADA)</p>
         </div>

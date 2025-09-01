@@ -28,7 +28,7 @@ export default function PageCrowdfund() {
   const [modalView, setModalView] = useState<'info' | 'contribute' | 'withdraw'>('info');
   const [proposerKeyHashR0, setProposerKeyHashR0] = useState("");
   // Add state for networkId
-  const [networkId, setNetworkId] = useState<number>(0);
+  const [networkId, setNetworkId] = useState<number>(1);
 
   useEffect(() => {
     if (user?.address) {
@@ -42,9 +42,12 @@ export default function PageCrowdfund() {
   }, [user?.address]);
   
   useEffect(() => {
-    if (wallet) {
-      wallet.getNetworkId().then(setNetworkId);
-    }
+    (async () => {
+      if (wallet) {
+        const id = await wallet.getNetworkId();
+        setNetworkId(id);
+      }
+    })();
   }, [wallet]);
 
   const { data: crowdfunds, isLoading, refetch } = api.crowdfund.getCrowdfundsByProposerKeyHash.useQuery(
