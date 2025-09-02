@@ -38,7 +38,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
   const [deadline, setDeadline] = useState("");
   const [initialContribution, setInitialContribution] = useState(0);
   const [allowOverSubscription, setAllowOverSubscription] = useState(false);
-  const [minCharge, setMinCharge] = useState("1"); // Default 1 ADA
+  const [minCharge, setMinCharge] = useState("2"); // Default 2 ADA
   const [feeAddress, setFeeAddress] = useState("");
   const [expiryBuffer, setExpiryBuffer] = useState("86400"); // Default 1 day in seconds
   const [proposerKeyHashR0, setProposerKeyHashR0] = useState("");
@@ -150,7 +150,7 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
         fundraise_target: parseFloat(fundraiseTarget) * 1000000,
         current_fundraised_amount: 0,
         allow_over_subscription: allowOverSubscription,
-        deadline: Number(deadlineSlot),
+        deadline: Number(deadlineDate),
         expiry_buffer: parseInt(expiryBuffer),
         fee_address: feeAddress,
         min_charge: parseFloat(minCharge) * 1000000,
@@ -342,7 +342,8 @@ export function LaunchCrowdfund(props: LaunchCrowdfundProps = {}) {
               </Label>
               <Input
                 id="minCharge"
-                placeholder="1"
+                placeholder="2"
+                min="2"
                 type="number"
                 value={minCharge}
                 onChange={(e) => setMinCharge(e.target.value)}

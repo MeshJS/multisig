@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Calendar, Users, Coins, Target, Clock, Plus, X } from "lucide-react";
+import { Calendar, Users, Coins, Target, Clock, Plus } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
 
 export default function PageCrowdfund() {
@@ -215,23 +215,13 @@ export default function PageCrowdfund() {
 
       {/* Detail Modal */}
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-hide">
           <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle>
-                {modalView === 'info' && selectedCrowdfund?.name}
-                {modalView === 'contribute' && `Contribute to ${selectedCrowdfund?.name}`}
-                {modalView === 'withdraw' && `Withdraw from ${selectedCrowdfund?.name}`}
-              </DialogTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleModalClose}
-                className="h-8 w-8 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <DialogTitle>
+              {modalView === 'info' && selectedCrowdfund?.name}
+              {modalView === 'contribute' && `Contribute to ${selectedCrowdfund?.name}`}
+              {modalView === 'withdraw' && `Withdraw from ${selectedCrowdfund?.name}`}
+            </DialogTitle>
           </DialogHeader>
           
           {selectedCrowdfund && (
@@ -281,15 +271,13 @@ function CrowdfundCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
-  const slotConfig = networkId ? SLOT_CONFIG_NETWORK.mainnet : SLOT_CONFIG_NETWORK.preprod;
-  const deadlineUnix = slotToBeginUnixTime(datum.deadline, slotConfig); // Assuming datum.deadline is already in UNIX timestamp
-  const secondsLeft = deadlineUnix / 1000 - Math.floor(Date.now() / 1000);
+  const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);
   const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
   
   // Mock data for demonstration - in real implementation, this would come from the blockchain
   const mockData = {
-    totalRaised: datum.current_fundraised_amount,
-    fundingGoal: datum.fundraise_target,
+    totalRaised: datum.current_fundraised_amount / 1000000,
+    fundingGoal: datum.fundraise_target / 1000000,
     contributors: "TODO count",
     daysLeft: daysLeft,
     status: daysLeft > 0 ? "active" : "expired" as const

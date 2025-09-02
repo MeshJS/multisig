@@ -6,6 +6,7 @@ import {
   mBool,
   mConStr1,
   resolveSlotNo,
+  keepRelevant,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -253,13 +254,17 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     //prepare shareToken mint
     const paramScript = this.getShareTokenCbor();
     const policyId = resolveScriptHash(paramScript, "V3");
-    const tokenName = "";
+    const tokenName = datum.completion_script;
 
     //Set time-to-live (TTL) for the transaction.
     let minutes = 5; // add 5 minutes
     let nowDateTime = new Date();
     let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
-    const slot = resolveSlotNo(this.networkId ? "mainnet" : "preprod", dateTimeAdd5Min.getTime());
+    const slot = resolveSlotNo(
+      this.networkId ? "mainnet" : "preprod",
+      dateTimeAdd5Min.getTime(),
+    );
+
 
     // deposit Ada at crowdfundAddress
     // mint ShareToken and send to walletAddress
@@ -273,25 +278,21 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         authTokenUtxo.output.address,
       )
 
-      //Add Script and Redeemer
-      .txInRedeemerValue(mConStr0([]))
-      .txInScript(this.getCrowdfundCbor())
-      .txInInlineDatumPresent()
-      //   .spendingReferenceTxInInlineDatumPresent()
-      //   .spendingReferenceTxInRedeemerValue(mConStr0([]))
-
       //Mint ShareToken with Redeemer
       .mintPlutusScriptV3()
       .mint(contributionAmount.toString(), policyId, tokenName)
       .mintingScript(paramScript)
       .mintRedeemerValue(mConStr0([]))
 
-      //Output to User and Crowdfund addresses and attach datum
+      //Add Script and Redeemer
+      .txInRedeemerValue(mConStr0([]))
+      .txInScript(this.getCrowdfundCbor())
+      .txInInlineDatumPresent()
+
+      //Output to Crowdfund addresses and attach datum
       .txOut(this.crowdfundAddress, newCrowdfundAmount)
       .txOutInlineDatumValue(mDatum, "Mesh")
-      .txOut(walletAddress, [
-        { unit: policyId, quantity: contributionAmount.toString() },
-      ])
+
       //Add coinselection infos, TTL, and complete
       .txInCollateral(
         collateral.input.txHash,
@@ -299,6 +300,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
+      //Output to User address
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .invalidHereafter(Number(slot))

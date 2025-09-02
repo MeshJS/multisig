@@ -37,21 +37,19 @@ export function CrowdfundInfo({
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
-  const slotConfig = networkId ? SLOT_CONFIG_NETWORK.mainnet : SLOT_CONFIG_NETWORK.preprod;
-  const deadlineUnix = slotToBeginUnixTime(datum.deadline, slotConfig);
 
-  const secondsLeft = deadlineUnix / 1000 - Math.floor(Date.now() / 1000);
+  const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);
   const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
 
   // Mock data for demonstration - in real implementation, this would come from the blockchain
   const crowdfundData = {
-    totalRaised: datum.current_fundraised_amount,
-    fundingGoal: datum.fundraise_target,
+    totalRaised: datum.current_fundraised_amount / 1000000,
+    fundingGoal: datum.fundraise_target / 1000000,
     contributors: "TODO count",
     daysLeft: daysLeft,
     status: daysLeft > 0 ? "active" : "expired" as const,
     startDate: new Date(crowdfund.createdAt),
-    endDate: new Date(deadlineUnix),
+    endDate: new Date(datum.deadline),
     recentContributions: [
       { address: "addr1...abc123", amount: 100, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       { address: "addr1...def456", amount: 50, timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000) },

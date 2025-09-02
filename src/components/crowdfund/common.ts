@@ -5,9 +5,11 @@ import {
   LanguageVersion,
   MeshTxBuilder,
   MeshWallet,
+  OfflineFetcher,
   serializePlutusScript,
   UTxO,
 } from "@meshsdk/core";
+import { OfflineEvaluator } from "@meshsdk/core-csl";
 
 export type MeshTxInitiatorInput = {
   mesh: MeshTxBuilder;
@@ -217,5 +219,28 @@ export class MeshTxInitiator {
     }
 
     return undefined;
+  };
+
+  protected evalTx = async (tx: any, utxos: UTxO[] = [], refTxs: string[] = []) => {
+    if (!this.fetcher) {
+      throw new Error("Fetcher not initialized");
+    }
+    console.log("Evaluating tx:", tx);
+    console.log("Utxos:", utxos);
+    console.log("Ref txs:", refTxs);
+
+    
+
+    const evaluator = new OfflineEvaluator(
+      this.fetcher,
+      this.networkId ? "mainnet" : "preprod",
+    );
+    try {
+      const actions = await evaluator.evaluateTx(tx, utxos, refTxs);
+      console.log("Evaluation actions:", actions);
+      return actions;
+    } catch (error) {
+      console.error("Script evaluation failed:", error);
+    }
   };
 }

@@ -23,6 +23,7 @@ export function ContributeToCrowdfund({
 }: ContributeToCrowdfundProps) {
   const [amount, setAmount] = useState("");
   const [isContributing, setIsContributing] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const { toast } = useToast();
   const { connected, wallet } = useWallet();
   const [networkId, setNetworkId] = useState<number | null>(null);
@@ -56,6 +57,31 @@ export function ContributeToCrowdfund({
         if (!cancelled) setNetworkId(id);
       } catch (e) {
         console.error("Failed to get network id:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  // Fetch wallet balance
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!wallet) return;
+        const utxos = await wallet.getUtxos();
+        if (!cancelled) {
+          const totalLovelace = utxos.reduce((total, utxo) => {
+            const lovelaceAmount = utxo.output.amount.find(
+              (a: any) => a.unit === "lovelace"
+            )?.quantity;
+            return total + (lovelaceAmount ? Number(lovelaceAmount) : 0);
+          }, 0);
+          setWalletBalance(totalLovelace);
+        }
+      } catch (e) {
+        console.error("Failed to get wallet balance:", e);
       }
     })();
     return () => {
@@ -105,6 +131,19 @@ export function ContributeToCrowdfund({
     setIsContributing(true);
     
     try {
+      // Check wallet balance before attempting transaction
+      const contributionAmount = Number(amount) * 1000000;
+      const estimatedFees = 200000; // 0.2 ADA estimate
+      const totalRequired = contributionAmount + estimatedFees;
+
+      if (walletBalance < totalRequired) {
+        toast({
+          title: "Insufficient funds",
+          description: `You have ${(walletBalance / 1000000).toFixed(2)} ADA but need at least ${(totalRequired / 1000000).toFixed(2)} ADA (contribution + fees)`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       const contract = new MeshCrowdfundContract(
         {
@@ -118,14 +157,14 @@ export function ContributeToCrowdfund({
           paramUtxo: JSON.parse(crowdfund.paramUtxo),
         },
       );
-      console.log("contract", contract);
 
-      // Ensure amount is a number before arithmetic
-      const contributionAmount = Number(amount) * 1000000;
       const { tx } = await contract.contributeCrowdfund(contributionAmount, datumData);
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
+
+      console.log( await provider.submitTx(signedTx) );
+
       const txHash = await wallet.submitTx(signedTx);
 
 
@@ -156,11 +195,24 @@ export function ContributeToCrowdfund({
       
       setAmount("");
       onSuccess?.();
-    } catch (error) {
+    } catch (error: any) {
       console.log("error", error);
+      
+      // Handle specific error types
+      let errorMessage = "There was an error processing your contribution. Please try again.";
+      
+      if (error.message?.includes("Insufficient funds")) {
+        errorMessage = error.message;
+      } else if (error.message?.includes("Not enough funds")) {
+        errorMessage = "Insufficient funds to complete the transaction. Please ensure you have enough ADA for the contribution plus transaction fees (~0.2 ADA).";
+      } else if (error.message?.includes("No UTXOs")) {
+        errorMessage = "No UTXOs found in your wallet. Please ensure your wallet has ADA.";
+      }
+      
       toast({
         title: "Contribution failed",
-        description: "There was an error processing your contribution. Please try again. Error: " + error,
+        description: errorMessage,
+        variant: "destructive",
       });
     } finally {
       setIsContributing(false);
@@ -203,6 +255,7 @@ export function ContributeToCrowdfund({
         </div>
 
         <div className="text-sm text-muted-foreground">
+          <p>• Your wallet balance: {(walletBalance / 1000000).toFixed(2)} ADA</p>
           <p>• Minimum contribution: {datumData.min_charge / 1000000} ADA</p>
           <p>• You'll receive share tokens based on your contribution</p>
           <p>• Transaction fees apply (~0.17 ADA)</p>
