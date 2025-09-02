@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Code, Database, ArrowLeft, CheckCircle, AlertTriangle, Info } from "lucide-react";
@@ -83,16 +83,16 @@ function GettingStartedGuide({ onBack }: { onBack: () => void }) {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="bg-muted p-3 rounded-lg text-sm font-mono">
-                <div className="text-green-600">// Step 1: Request a nonce</div>
+                                            <div className="text-green-600">{/* Step 1: Request a nonce */}</div>
                 <div>const nonceResponse = await fetch(`/api/v1/getNonce?address=${'{userAddress}'}`);</div>
                 <div>const {'{nonce}'} = await nonceResponse.json();</div>
               </div>
               <div className="bg-muted p-3 rounded-lg text-sm font-mono">
-                <div className="text-green-600">// Step 2: Sign the nonce with user's wallet</div>
+                                            <div className="text-green-600">{/* Step 2: Sign the nonce with user's wallet */}</div>
                 <div>const signature = await userWallet.signData(nonce);</div>
               </div>
               <div className="bg-muted p-3 rounded-lg text-sm font-mono">
-                <div className="text-green-600">// Step 3: Get bearer token</div>
+                                            <div className="text-green-600">{/* Step 3: Get bearer token */}</div>
                 <div>const authResponse = await fetch('/api/v1/authSigner', {'{...}'});</div>
                 <div>const {'{token}'} = await authResponse.json();</div>
               </div>
@@ -113,7 +113,7 @@ function GettingStartedGuide({ onBack }: { onBack: () => void }) {
                 <div className="ml-4">headers: {`{ 'Authorization': \`Bearer \${token}\` }`}</div>
                 <div>{'});'}</div>
                 <div>const wallets = await walletsResponse.json();</div>
-                <div className="text-green-600">// Returns: [{'{walletId: "...", walletName: "..."}'}]</div>
+                <div className="text-green-600">{/* Returns: [{'{walletId: "...", walletName: "..."}'}] */}</div>
               </div>
             </CardContent>
           </Card>

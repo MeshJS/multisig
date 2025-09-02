@@ -13,22 +13,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const html = await response.text();
 
     const extract = (property: string, nameFallback?: string) => {
-      const ogMatch = html.match(new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"));
-      if (ogMatch && ogMatch[1]) return ogMatch[1];
+      const ogRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`, "i");
+      const ogMatch = ogRegex.exec(html);
+      if (ogMatch?.[1]) return ogMatch[1];
       if (nameFallback) {
-        const nameMatch = html.match(new RegExp(`<meta[^>]+name=["']${nameFallback}["'][^>]+content=["']([^"']+)["']`, "i"));
-        if (nameMatch && nameMatch[1]) return nameMatch[1];
+        const nameRegex = new RegExp(`<meta[^>]+name=["']${nameFallback}["'][^>]+content=["']([^"']+)["']`, "i");
+        const nameMatch = nameRegex.exec(html);
+        if (nameMatch?.[1]) return nameMatch[1];
       }
       return undefined;
     };
 
-    const title = extract("og:title", "title") || (html.match(/<title>([^<]+)<\/title>/i)?.[1] ?? undefined);
+    const title = extract("og:title", "title") ?? (() => {
+      const titleRegex = /<title>([^<]+)<\/title>/i;
+      const titleMatch = titleRegex.exec(html);
+      return titleMatch?.[1];
+    })();
     const description = extract("og:description", "description");
     const image = extract("og:image");
     const siteName = extract("og:site_name");
 
     res.status(200).json({ title, description, image, siteName, url });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message ?? "Failed to fetch OG" });
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : "Failed to fetch OG";
+    res.status(500).json({ error: errorMessage });
   }
 }
