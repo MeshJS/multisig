@@ -340,16 +340,20 @@ export default function PageDapps() {
 
       {/* dApps Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <DappCard
-          title="AQUARIUM"
-          description="Explore Aquarium for multisig-compatible DeFi interactions."
-          url="https://aquarium-qa.fluidtokens.com/"
-        />
-        <DappCard
-          title="MINSWAP"
-          description="Launch Minswap in multisig mode (dev environment)."
-          url="https://minswap-multisig-dev.fluidtokens.com/"
-        />
+        <div className="relative">
+          <DappCard
+            title="AQUARIUM"
+            description="Explore Aquarium for multisig-compatible DeFi interactions."
+            url="https://aquarium-qa.fluidtokens.com/"
+          />
+        </div>
+        <div className="relative">
+          <DappCard
+            title="MINSWAP"
+            description="Launch Minswap in multisig mode (dev environment)."
+            url="https://minswap-multisig-dev.fluidtokens.com/"
+          />
+        </div>
       </div>
     </main>
   );
