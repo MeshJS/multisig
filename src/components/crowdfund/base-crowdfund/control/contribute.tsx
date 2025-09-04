@@ -11,6 +11,7 @@ import { MeshTxBuilder } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../../crowdfund";
 import { api } from "@/utils/api";
+import { useSiteStore } from "@/lib/zustand/site";
 
 interface ContributeToCrowdfundProps {
   crowdfund: any;
@@ -26,9 +27,8 @@ export function ContributeToCrowdfund({
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const { toast } = useToast();
   const { connected, wallet } = useWallet();
-  const [networkId, setNetworkId] = useState<number | null>(null);
+  const network = useSiteStore((state) => state.network);
   const datumData = JSON.parse(crowdfund.datum);
-  console.log("datumData", datumData.min_charge);
   
   // Add the updateCrowdfund mutation
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
@@ -46,23 +46,6 @@ export function ContributeToCrowdfund({
       });
     },
   });
-
-  // Resolve network id from the wallet on client after mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (!wallet) return;
-        const id = await wallet.getNetworkId();
-        if (!cancelled) setNetworkId(id);
-      } catch (e) {
-        console.error("Failed to get network id:", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet]);
 
   // Fetch wallet balance
   useEffect(() => {
@@ -90,8 +73,8 @@ export function ContributeToCrowdfund({
   }, [wallet]);
 
   const provider = useMemo(() => {
-    return networkId != null ? getProvider(networkId) : null;
-  }, [networkId]);
+    return network != null ? getProvider(network) : null;
+  }, [network]);
 
   const meshTxBuilder = useMemo(() => {
     if (!provider) return null;
@@ -111,7 +94,7 @@ export function ContributeToCrowdfund({
       return;
     }
 
-    if (!provider || !meshTxBuilder || networkId == null || !wallet) {
+    if (!provider || !meshTxBuilder || network == null || !wallet) {
       toast({
         title: "Initializing…",
         description: "Wallet/network not ready yet. Try again in a moment.",
@@ -150,7 +133,7 @@ export function ContributeToCrowdfund({
           mesh: meshTxBuilder,
           fetcher: provider,
           wallet: wallet,
-          networkId: networkId,
+          networkId: network,
         },
         {
           proposerKeyHash: crowdfund.proposerKeyHashR0,
@@ -162,9 +145,6 @@ export function ContributeToCrowdfund({
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
-
-      console.log( await provider.submitTx(signedTx) );
-
       const txHash = await wallet.submitTx(signedTx);
 
 

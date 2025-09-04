@@ -265,7 +265,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       dateTimeAdd5Min.getTime(),
     );
 
-
     // deposit Ada at crowdfundAddress
     // mint ShareToken and send to walletAddress
 
@@ -312,7 +311,133 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   /**
    *
    */
-  withdrawCrowdfund = async () => {};
+  withdrawCrowdfund = async (
+    withdrawAmount: number,
+    datum: CrowdfundDatumTS,
+  ) => {
+    const { utxos, collateral, walletAddress } =
+      await this.getWalletInfoForTx();
+
+    if (utxos?.length <= 0) {
+      throw new Error("No UTxOs found");
+    }
+    if (this.crowdfundAddress === undefined) {
+      throw new Error(
+        "Crowdfund address not set. Please setupCrowdfund first.",
+      );
+    }
+
+    //find authToken at crowdfundAddress
+    const blockchainProvider = this.mesh.fetcher;
+    if (!blockchainProvider) {
+      throw new Error("Blockchain provider not found");
+    }
+
+    const paramScriptAT = this.getAuthTokenCbor();
+    const policyIdAT = resolveScriptHash(paramScriptAT, "V3");
+
+    const authTokenUtxos = await blockchainProvider.fetchAddressUTxOs(
+      this.crowdfundAddress,
+      policyIdAT,
+    );
+
+    if (!authTokenUtxos || authTokenUtxos.length === 0) {
+      throw new Error("No AuthToken found at crowdfund address");
+    }
+    if (authTokenUtxos.length > 1) {
+      throw new Error("Multiple AuthTokens found at crowdfund address.");
+    }
+    const authTokenUtxo = authTokenUtxos[0];
+    if (!authTokenUtxo) {
+      throw new Error("No AuthToken found");
+    }
+    const authTokenUtxoAmt = authTokenUtxo.output.amount;
+    if (!authTokenUtxoAmt) {
+      throw new Error("No AuthToken amount found");
+    }
+
+    //calculate the new amount of Ada at the crowdfundAddress (to keep all funds in one utxo)
+    const newCrowdfundAmount = authTokenUtxoAmt.map((amt) =>
+      amt.unit == "lovelace"
+        ? {
+            unit: amt.unit,
+            quantity: (
+              BigInt(amt.quantity) - BigInt(withdrawAmount)
+            ).toString(),
+          }
+        : amt,
+    );
+
+    //prepare the new datum as Mesh Data type
+    const mDatum = mConStr0([
+      datum.completion_script,
+      datum.share_token,
+      mPubKeyAddress(datum.crowdfund_address),
+      datum.fundraise_target,
+      datum.current_fundraised_amount - withdrawAmount,
+      mBool(datum.allow_over_subscription),
+      datum.deadline,
+      datum.expiry_buffer,
+      mPubKeyAddress(datum.fee_address),
+      datum.min_charge,
+    ]);
+
+    //prepare shareToken mint
+    const paramScript = this.getShareTokenCbor();
+    const policyId = resolveScriptHash(paramScript, "V3");
+    const tokenName = datum.completion_script;
+
+    //Set time-to-live (TTL) for the transaction.
+    let minutes = 5; // add 5 minutes
+    let nowDateTime = new Date();
+    let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
+    const slot = resolveSlotNo(
+      this.networkId ? "mainnet" : "preprod",
+      dateTimeAdd5Min.getTime(),
+    );
+
+    // deposit Ada at crowdfundAddress
+    // mint ShareToken and send to walletAddress
+
+    const txHex = await this.mesh
+      .spendingPlutusScriptV3()
+      .txIn(
+        authTokenUtxo.input.txHash,
+        authTokenUtxo.input.outputIndex,
+        authTokenUtxo.output.amount,
+        authTokenUtxo.output.address,
+      )
+
+      //Mint ShareToken with Redeemer
+      .mintPlutusScriptV3()
+      .mint((-withdrawAmount).toString(), policyId, tokenName)
+      .mintingScript(paramScript)
+      .mintRedeemerValue(mConStr0([]))
+
+      //Add Script and Redeemer
+      .txInRedeemerValue(mConStr0([]))
+      .txInScript(this.getCrowdfundCbor())
+      .txInInlineDatumPresent()
+
+      //Output to Crowdfund addresses and attach datum
+      .txOut(this.crowdfundAddress, newCrowdfundAmount)
+      .txOutInlineDatumValue(mDatum, "Mesh")
+
+      //Add coinselection infos, TTL, and complete
+      .txInCollateral(
+        collateral.input.txHash,
+        collateral.input.outputIndex,
+        collateral.output.amount,
+        collateral.output.address,
+      )
+      //Output to User address
+      .changeAddress(walletAddress)
+      .selectUtxosFrom(utxos)
+      .invalidHereafter(Number(slot))
+      .complete();
+
+    return { tx: txHex };
+  };
 
   /**
    *
@@ -323,33 +448,4 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
    *
    */
   removeCrowdfund = async () => {};
-
-  /**
-   *
-   */
-  getCrowdfundInfo = async () => {
-    const blockchainProvider = this.mesh.fetcher;
-    if (!blockchainProvider) {
-      throw new Error("Blockchain provider not found");
-    }
-    if (!this.crowdfundAddress) {
-      throw new Error("Crowdfund address not set");
-    }
-
-    const crowdfundTxs = await blockchainProvider.fetchAddressTxs(
-      this.crowdfundAddress,
-    );
-    const crowdfundUtxos = await blockchainProvider.fetchAddressUTxOs(
-      this.crowdfundAddress,
-    );
-    const crowdfundInfo = {
-      txs: crowdfundTxs,
-      utxos: crowdfundUtxos,
-    };
-    if (!crowdfundInfo) {
-      throw new Error("Crowdfund not found");
-    }
-
-    return crowdfundInfo;
-  };
 }

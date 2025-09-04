@@ -159,14 +159,14 @@ export function CrowdfundInfo({
             <CardTitle>Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!isOwner  && (
+            {!isOwner  && crowdfundData.totalRaised < crowdfundData.fundingGoal &&(
               <Button onClick={onContribute} className="w-full" size="lg">
                 <Coins className="w-4 h-4 mr-2" />
                 Contribute
               </Button>
             )}
             
-            {isOwner && crowdfundData.totalRaised > 0 && (
+            {!isOwner && crowdfundData.totalRaised > 0 && (
               <Button 
                 onClick={onWithdraw} 
                 variant="outline" 

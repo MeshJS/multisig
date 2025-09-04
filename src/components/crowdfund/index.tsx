@@ -136,7 +136,7 @@ export default function PageCrowdfund() {
               </div>
             ) : crowdfunds && crowdfunds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {crowdfunds.map((fund) => (
+                {crowdfunds.map((fund: any) => (
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
@@ -171,7 +171,7 @@ export default function PageCrowdfund() {
             
             {allCrowdfunds && allCrowdfunds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allCrowdfunds.map( (fund) => (
+                {allCrowdfunds.map( (fund: any) => (
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
