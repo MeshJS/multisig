@@ -36,6 +36,44 @@ export function CrowdfundInfo({
 }: CrowdfundInfoProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+  
+  // Check if this is a draft crowdfund (no authTokenId)
+  const isDraft = !crowdfund.authTokenId;
+  
+  if (isDraft) {
+    return (
+      <div className="p-6">
+        <div className="text-center space-y-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center justify-center gap-2 text-yellow-800 mb-2">
+              <Clock className="w-5 h-5" />
+              <span className="font-medium">Draft Crowdfund</span>
+            </div>
+            <p className="text-sm text-yellow-700">
+              This crowdfund is saved as a draft and hasn't been deployed to the blockchain yet.
+            </p>
+          </div>
+          
+          {crowdfund.govDatum && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-center gap-2 text-blue-800">
+                <Target className="w-4 h-4" />
+                <span className="font-medium text-sm">Governance Extension</span>
+              </div>
+              <p className="text-xs text-blue-700 mt-1">
+                Configured with governance features
+              </p>
+            </div>
+          )}
+          
+          <div className="text-sm text-muted-foreground">
+            <p>Complete the setup process to launch this crowdfund.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
 
   const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);

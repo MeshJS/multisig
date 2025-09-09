@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet, Download, AlertTriangle, Shield } from "lucide-react";
+import { Wallet, Download, AlertTriangle, Shield, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useWallet } from "@meshsdk/react";
@@ -32,6 +32,26 @@ export function WithdrawFromCrowdfund({
   const [amount, setAmount] = useState("");
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const { toast } = useToast();
+  
+  // Check if this is a draft crowdfund
+  const isDraft = !crowdfund.authTokenId;
+  
+  if (isDraft) {
+    return (
+      <div className="p-6 text-center">
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center justify-center gap-2 text-yellow-800 mb-2">
+            <Clock className="w-5 h-5" />
+            <span className="font-medium">Draft Crowdfund</span>
+          </div>
+          <p className="text-sm text-yellow-700">
+            This crowdfund is still in draft mode and has no funds to withdraw.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
   const datumData = JSON.parse(crowdfund.datum);
   const totalRaised = datumData.current_fundraised_amount;
   const crowdfundName = crowdfund.name;

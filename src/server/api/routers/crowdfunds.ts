@@ -14,6 +14,8 @@ export const crowdfundRouter = createTRPCRouter({
         datum: z.string().optional(),
         address: z.string().optional(),
         paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
+        govDatum: z.string().optional(), // JSON string containing governance data
+        govAddress: z.string().optional(), // Governance contract address
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -36,6 +38,8 @@ export const crowdfundRouter = createTRPCRouter({
         datum: z.string().optional(),
         address: z.string().optional(),
         paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
+        govDatum: z.string().optional(), // JSON string containing governance data
+        govAddress: z.string().optional(), // Governance contract address
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -48,6 +52,19 @@ export const crowdfundRouter = createTRPCRouter({
 
   getAllCrowdfunds: publicProcedure.query(async ({ ctx }) => {
     return ctx.db.crowdfund.findMany();
+  }),
+
+  getPublicCrowdfunds: publicProcedure.query(async ({ ctx }) => {
+    return ctx.db.crowdfund.findMany({
+      where: {
+        authTokenId: {
+          not: null, // Only return crowdfunds that have been deployed (have authTokenId)
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
   }),
 
   getCrowdfundById: publicProcedure

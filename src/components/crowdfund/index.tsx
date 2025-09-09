@@ -16,19 +16,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Calendar, Users, Coins, Target, Clock, Plus } from "lucide-react";
+import { Calendar, Users, Coins, Target, Clock, Plus, X } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function PageCrowdfund() {
   const { connected, wallet } = useWallet();
   const { user } = useUser();
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingDraft, setEditingDraft] = useState<any>(null);
   const [selectedCrowdfund, setSelectedCrowdfund] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [modalView, setModalView] = useState<'info' | 'contribute' | 'withdraw'>('info');
   const [proposerKeyHashR0, setProposerKeyHashR0] = useState("");
-  // Add state for networkId
-  const [networkId, setNetworkId] = useState<number>(1);
+
+  const networkId = useSiteStore((state) => state.network);
 
   useEffect(() => {
     if (user?.address) {
@@ -41,14 +43,6 @@ export default function PageCrowdfund() {
     }
   }, [user?.address]);
   
-  useEffect(() => {
-    (async () => {
-      if (wallet) {
-        const id = await wallet.getNetworkId();
-        setNetworkId(id);
-      }
-    })();
-  }, [wallet]);
 
   const { data: crowdfunds, isLoading, refetch } = api.crowdfund.getCrowdfundsByProposerKeyHash.useQuery(
     { proposerKeyHashR0 },
@@ -56,6 +50,7 @@ export default function PageCrowdfund() {
   );
 
   const { data: allCrowdfunds } = api.crowdfund.getAllCrowdfunds.useQuery();
+  const { data: publicCrowdfunds } = api.crowdfund.getPublicCrowdfunds.useQuery();
 
   const handleCrowdfundClick = (crowdfund: any) => {
     setSelectedCrowdfund(crowdfund);
@@ -93,7 +88,10 @@ export default function PageCrowdfund() {
         </div>
         {connected && (
           <Button 
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => {
+              setEditingDraft(null);
+              setShowCreateForm(!showCreateForm);
+            }}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -108,16 +106,40 @@ export default function PageCrowdfund() {
           {showCreateForm && (
             <Card>
               <CardHeader>
-                <CardTitle>Create New Crowdfund</CardTitle>
-                <CardDescription>
-                  Set up a new crowdfunding campaign with your specifications
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>
+                      {editingDraft ? `Edit Draft: ${editingDraft.name}` : "Create New Crowdfund"}
+                    </CardTitle>
+                    <CardDescription>
+                      {editingDraft 
+                        ? "Continue editing your draft crowdfunding campaign"
+                        : "Set up a new crowdfunding campaign with your specifications"
+                      }
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowCreateForm(false);
+                      setEditingDraft(null);
+                    }}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <LaunchCrowdfund onSuccess={() => {
-                  setShowCreateForm(false);
-                  refetch();
-                }} />
+                <LaunchCrowdfund 
+                  draftData={editingDraft}
+                  onSuccess={() => {
+                    setShowCreateForm(false);
+                    setEditingDraft(null);
+                    refetch();
+                  }} 
+                />
               </CardContent>
             </Card>
           )}
@@ -143,6 +165,10 @@ export default function PageCrowdfund() {
                     networkId={networkId}
                     isOwner={true}
                     onClick={() => handleCrowdfundClick(fund)}
+                    onEditDraft={(crowdfund) => {
+                      setEditingDraft(crowdfund);
+                      setShowCreateForm(true);
+                    }}
                   />
                 ))}
               </div>
@@ -154,7 +180,10 @@ export default function PageCrowdfund() {
                   <p className="text-muted-foreground text-center mb-4">
                     You haven't created any crowdfunding campaigns yet. Start by creating your first campaign.
                   </p>
-                  <Button onClick={() => setShowCreateForm(true)}>
+                  <Button onClick={() => {
+                    setEditingDraft(null);
+                    setShowCreateForm(true);
+                  }}>
                     Create Your First Crowdfund
                   </Button>
                 </CardContent>
@@ -169,15 +198,19 @@ export default function PageCrowdfund() {
               Discover Crowdfunding Campaigns
             </h2>
             
-            {allCrowdfunds && allCrowdfunds.length > 0 ? (
+            {publicCrowdfunds && publicCrowdfunds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allCrowdfunds.map( (fund: any) => (
+                {publicCrowdfunds.map( (fund: any) => (
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
                     networkId={networkId}
                     isOwner={fund.proposerKeyHashR0 === proposerKeyHashR0}
                     onClick={() => handleCrowdfundClick(fund)}
+                    onEditDraft={fund.proposerKeyHashR0 === proposerKeyHashR0 ? (crowdfund) => {
+                      setEditingDraft(crowdfund);
+                      setShowCreateForm(true);
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -262,31 +295,50 @@ function CrowdfundCard({
   crowdfund, 
   networkId,
   isOwner, 
-  onClick 
+  onClick,
+  onEditDraft
 }: { 
   crowdfund: any; 
   networkId: number;
   isOwner: boolean;
   onClick: () => void;
+  onEditDraft?: (crowdfund: any) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
-  const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);
-  const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
   
-  // Mock data for demonstration - in real implementation, this would come from the blockchain
-  const mockData = {
-    totalRaised: datum.current_fundraised_amount / 1000000,
-    fundingGoal: datum.fundraise_target / 1000000,
-    contributors: "TODO count",
-    daysLeft: daysLeft,
-    status: daysLeft > 0 ? "active" : "expired" as const
-  };
+  // Check if this is a draft (no authTokenId means it's a draft)
+  const isDraft = !crowdfund.authTokenId;
+  
+  // For drafts, we don't have actual crowdfund datum data yet (only form data in govDatum)
+  let datum: CrowdfundDatumTS | null = null;
+  let mockData: any = null;
+  let progressPercentage = 0;
+  
+  if (!isDraft && crowdfund.datum) {
+    datum = JSON.parse(crowdfund.datum);
+    const secondsLeft = datum!.deadline / 1000 - Math.floor(Date.now() / 1000);
+    const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
+    
+    // Mock data for demonstration - in real implementation, this would come from the blockchain
+    mockData = {
+      totalRaised: datum!.current_fundraised_amount / 1000000,
+      fundingGoal: datum!.fundraise_target / 1000000,
+      contributors: "TODO count",
+      daysLeft: daysLeft,
+      status: daysLeft > 0 ? "active" : "expired" as const
+    };
 
-  const progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;
+    progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;
+  }
   
   return (
-    <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={onClick}>
+    <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={(e) => {
+      // Don't trigger onClick if clicking on a button
+      if ((e.target as HTMLElement).closest('button')) {
+        return;
+      }
+      onClick();
+    }}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -302,44 +354,74 @@ function CrowdfundCard({
               </Badge>
             )}
             <Badge 
-              variant={mockData.status === "active" ? "default" : "secondary"}
+              variant={isDraft ? "outline" : (mockData?.status === "active" ? "default" : "secondary")}
               className="text-xs"
             >
-              {mockData.status}
+              {isDraft ? "Draft" : mockData?.status}
             </Badge>
           </div>
         </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
-        {/* Progress Bar */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Progress</span>
-            <span className="font-medium">{progressPercentage.toFixed(1)}%</span>
+        {isDraft ? (
+          /* Draft Content */
+          <div className="space-y-4">
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-800">
+                <Clock className="w-4 h-4" />
+                <span className="font-medium">Draft Status</span>
+              </div>
+              <p className="text-sm text-yellow-700 mt-1">
+                This crowdfund is saved as a draft. Complete the setup to launch it.
+              </p>
+            </div>
+            
+            {crowdfund.govDatum && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Target className="w-4 h-4" />
+                  <span className="font-medium text-sm">Governance Extension</span>
+                </div>
+                <p className="text-xs text-blue-700 mt-1">
+                  Configured with governance features
+                </p>
+              </div>
+            )}
           </div>
-          <Progress value={progressPercentage} className="h-2" />
-          <div className="flex justify-between text-sm">
-            <span>{mockData.totalRaised} ADA raised</span>
-            <span>{mockData.fundingGoal} ADA goal</span>
-          </div>
-        </div>
+        ) : (
+          /* Active Crowdfund Content */
+          <>
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Progress</span>
+                <span className="font-medium">{progressPercentage.toFixed(1)}%</span>
+              </div>
+              <Progress value={progressPercentage} className="h-2" />
+              <div className="flex justify-between text-sm">
+                <span>{mockData?.totalRaised} ADA raised</span>
+                <span>{mockData?.fundingGoal} ADA goal</span>
+              </div>
+            </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-muted-foreground" />
-            <span>{mockData.contributors} contributors</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <span>{mockData.daysLeft} days left</span>
-          </div>
-        </div>
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span>{mockData?.contributors} contributors</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span>{mockData?.daysLeft} days left</span>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Address */}
         <div className="text-xs text-muted-foreground break-all">
-          <span className="font-medium">Address:</span> {crowdfund.address || "Not deployed"}
+          <span className="font-medium">Address:</span> {isDraft ? "Draft - Not deployed" : (crowdfund.address || "Not deployed")}
         </div>
 
         {/* Action Buttons */}
@@ -354,7 +436,18 @@ function CrowdfundCard({
             >
               {isExpanded ? "Hide Details" : "View Details"}
             </Button>
-            {!isOwner && (
+            {isDraft && onEditDraft ? (
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="flex-1"
+                onClick={() => {
+                  onEditDraft(crowdfund);
+                }}
+              >
+                Edit Draft
+              </Button>
+            ) : !isOwner && (
               <Button 
                 size="sm" 
                 className="flex-1"

@@ -7,6 +7,7 @@ import {
   mConStr1,
   resolveSlotNo,
   keepRelevant,
+  mConStr2,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -39,9 +40,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       mOutputReference(this.paramUtxo.txHash, this.paramUtxo.outputIndex),
     ]);
   };
+  getAuthTokenPolicyId = () => {
+    return resolveScriptHash(this.getAuthTokenCbor(), "V3");
+  };
 
   getCrowdfundCbor = () => {
-    const authTokenPolicyId = resolveScriptHash(this.getAuthTokenCbor(), "V3");
+    const authTokenPolicyId = this.getAuthTokenPolicyId();
     return applyParamsToScript(blueprint.validators[2]!.compiledCode, [
       authTokenPolicyId,
       stringToHex(this.proposerKeyHash),
@@ -114,8 +118,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     //prepare AuthToken mint
     //ToDo add default MeshCrowdfund image to authtoken add param to pass custom image path.
-    const paramScript = this.getAuthTokenCbor();
-    const policyId = resolveScriptHash(paramScript, "V3");
+    const policyId = this.getAuthTokenPolicyId();
     const tokenName = "";
 
     //prepare Completion scripthash for the datum
@@ -152,7 +155,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       )
       .mintPlutusScriptV3()
       .mint("1", policyId, tokenName)
-      .mintingScript(paramScript)
+      .mintingScript(this.getAuthTokenCbor())
       .mintRedeemerValue(mConStr0([]))
       .txOut(crowdfundAddress, [{ unit: policyId, quantity: "1" }])
       .txOutInlineDatumValue(mDatum, "Mesh")
@@ -412,10 +415,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .mintPlutusScriptV3()
       .mint((-withdrawAmount).toString(), policyId, tokenName)
       .mintingScript(paramScript)
-      .mintRedeemerValue(mConStr0([]))
+      .mintRedeemerValue(mConStr1([]))
 
       //Add Script and Redeemer
-      .txInRedeemerValue(mConStr0([]))
+      .txInRedeemerValue(mConStr2([]))
       .txInScript(this.getCrowdfundCbor())
       .txInInlineDatumPresent()
 

@@ -102,5 +102,7 @@ model Crowdfund {
   datum             String?
   address           String?
   paramUtxo         String? // JSON string containing { txHash: string, outputIndex: number }
+  govDatum          String?
+  govAddress        String?
   createdAt         DateTime @default(now())
 }

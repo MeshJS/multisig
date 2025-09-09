@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Coins, Send, AlertCircle } from "lucide-react";
+import { Coins, Send, AlertCircle, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
@@ -28,6 +28,26 @@ export function ContributeToCrowdfund({
   const { toast } = useToast();
   const { connected, wallet } = useWallet();
   const network = useSiteStore((state) => state.network);
+  
+  // Check if this is a draft crowdfund
+  const isDraft = !crowdfund.authTokenId;
+  
+  if (isDraft) {
+    return (
+      <div className="p-6 text-center">
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center justify-center gap-2 text-yellow-800 mb-2">
+            <Clock className="w-5 h-5" />
+            <span className="font-medium">Draft Crowdfund</span>
+          </div>
+          <p className="text-sm text-yellow-700">
+            This crowdfund is still in draft mode and cannot accept contributions yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
   const datumData = JSON.parse(crowdfund.datum);
   
   // Add the updateCrowdfund mutation
