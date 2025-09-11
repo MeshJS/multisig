@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, CheckCircle2, XCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ReviewNativeScript from "@/components/pages/homepage/wallets/new-wallet-flow/create/ReviewNativeScript";
 import type { MultisigWallet } from "@/utils/multisigSDK";
+import { checkValidStakeKey, stakeKeyHash } from "@/utils/multisigSDK";
 
 
 interface AdvancedSectionProps {
@@ -110,20 +111,37 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
                   {/* Edit Form with background like Add Signer */}
                   <div className="p-4 bg-muted/50 rounded-lg space-y-4">
                     <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 sm:items-start">
-                      <Label htmlFor="stakeKey" className="text-sm sm:pt-2">Hash</Label>
+                      <Label htmlFor="stakeKey" className="text-sm sm:pt-2">Stake Key</Label>
                       <div>
                         <Input
                           id="stakeKey"
                           type="text"
-                          placeholder="Stake credential hash..."
+                          placeholder="Stake address or credential hash..."
                           value={tempStakeKey}
                           onChange={(e) => setTempStakeKey(e.target.value)}
-                          className="w-full text-sm font-mono"
+                          className={`w-full text-sm font-mono ${
+                            tempStakeKey
+                              ? checkValidStakeKey(tempStakeKey)
+                                ? "!border-green-500 focus:!border-green-500"
+                                : "!border-red-500 focus:!border-red-500"
+                              : ""
+                          }`}
                         />
-                        {tempStakeKey.length > 0 && tempStakeKey.length < 56 && (
-                          <p className="text-xs text-red-500 mt-1">
-                            Stake credential hash must be 56 characters long
-                          </p>
+                        {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-green-500" />
+                            <p className="text-xs text-green-500">
+                              Valid stake key format
+                            </p>
+                          </div>
+                        )}
+                        {tempStakeKey && !checkValidStakeKey(tempStakeKey) && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <XCircle className="h-3 w-3 text-red-500" />
+                            <p className="text-xs text-red-500">
+                              Invalid stake key format
+                            </p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -142,13 +160,51 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
                 /* Display Mode */
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Optional: Set a specific stake credential for this wallet. Changes will be applied when you create the wallet, but not be saved before creation.
+                    Optional: Set a specific stake key (address or credential hash) for this wallet. Changes will be applied when you create the wallet, but not be saved before creation.
                   </p>
                   <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
-                    <span className="text-sm text-muted-foreground">Hash</span>
-                    <span className="font-mono text-xs">
-                      {advancedConfig.stakeKey || "Not set"}
-                    </span>
+                    <span className="text-sm text-muted-foreground">Stake Key</span>
+                    <div className="space-y-1">
+                      {advancedConfig.stakeKey ? (
+                        (() => {
+                          // Check if it's a hash (56 characters) - likely loaded from DB
+                          if (advancedConfig.stakeKey.length === 56) {
+                            return (
+                              <div className="font-mono text-xs">
+                                <span className="text-muted-foreground">Hash: </span>
+                                {advancedConfig.stakeKey}
+                              </div>
+                            );
+                          } else {
+                            // It's likely an address or longer input - show both input and hash
+                            try {
+                              const hash = stakeKeyHash(advancedConfig.stakeKey);
+                              return (
+                                <>
+                                  <div className="font-mono text-xs">
+                                    <span className="text-muted-foreground">Input: </span>
+                                    {}
+                                  </div>
+                                  <div className="font-mono text-xs">
+                                    <span className="text-muted-foreground">Hash: </span>
+                                    {hash}
+                                  </div>
+                                </>
+                              );
+                            } catch (error) {
+                              return (
+                                <div className="font-mono text-xs text-red-500">
+                                  <span className="text-muted-foreground">Error: </span>
+                                  Invalid format
+                                </div>
+                              );
+                            }
+                          }
+                        })()
+                      ) : (
+                        <span className="font-mono text-xs">Not set</span>
+                      )}
+                    </div>
                   </div>
                   {/* Edit button */}
                   <div className="pt-2">

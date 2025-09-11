@@ -58,6 +58,7 @@ interface ReviewSignersCardProps {
   signerConfig: SignerConfig;
   currentUserAddress?: string;
   walletId?: string;
+  globalStakeKey?: string;
   onSave?: (
     signersAddresses: string[],
     signersDescriptions: string[],
@@ -69,6 +70,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   signerConfig,
   currentUserAddress,
   walletId,
+  globalStakeKey,
   onSave,
 }) => {
   const {
@@ -83,6 +85,9 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   } = signerConfig;
 
   const { toast } = useToast();
+
+  // Check if signer stake keys should be disabled
+  const isSignerStakeKeysDisabled = globalStakeKey && globalStakeKey.trim() !== "";
 
   // State for edit mode
   const [editMode, setEditMode] = React.useState<"list" | "edit" | "add">(
@@ -99,7 +104,8 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   const startEdit = (index: number) => {
     setEditIndex(index);
     setTempAddress(signersAddresses[index] || "");
-    setTempStakeKey(signersStakeKeys[index] || "");
+    // Clear stake key if global stake key is set
+    setTempStakeKey(isSignerStakeKeysDisabled ? "" : (signersStakeKeys[index] || ""));
     setTempDescription(signersDescriptions[index] || "");
     setEditMode("edit");
   };
@@ -107,7 +113,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   // Start adding a new signer
   const startAdd = () => {
     setTempAddress("");
-    setTempStakeKey("");
+    setTempStakeKey(""); // Always start with empty stake key
     setTempDescription("");
     setEditMode("add");
   };
@@ -124,7 +130,8 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
       const updatedDescriptions = [...signersDescriptions];
 
       updatedAddresses[editIndex] = tempAddress;
-      updatedStakeKeys[editIndex] = tempStakeKey;
+      // Don't save stake key if global stake key is set
+      updatedStakeKeys[editIndex] = isSignerStakeKeysDisabled ? "" : tempStakeKey;
       updatedDescriptions[editIndex] = tempDescription;
 
       newAddresses = updatedAddresses;
@@ -136,7 +143,8 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
       setSignerDescriptions(updatedDescriptions);
     } else if (editMode === "add") {
       newAddresses = [...signersAddresses, tempAddress];
-      newStakeKeys = [...signersStakeKeys, tempStakeKey];
+      // Don't save stake key if global stake key is set
+      newStakeKeys = [...signersStakeKeys, isSignerStakeKeysDisabled ? "" : tempStakeKey];
       newDescriptions = [...signersDescriptions, tempDescription];
 
       setSignerAddresses(newAddresses);
@@ -271,7 +279,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
 
                       {/* Stake Key */}
                       <TableCell>
-                        {signersStakeKeys[index] ? (
+                        {isSignerStakeKeysDisabled ? (
+                          <span className="text-sm text-amber-600 dark:text-amber-400">
+                            Disabled
+                          </span>
+                        ) : signersStakeKeys[index] ? (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -383,7 +395,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                   {/* Stake Key */}
                   <div>
                     <p className="text-xs text-muted-foreground">Stake Key</p>
-                    {signersStakeKeys[index] ? (
+                    {isSignerStakeKeysDisabled ? (
+                      <span className="text-sm text-amber-600 dark:text-amber-400">
+                        Disabled
+                      </span>
+                    ) : signersStakeKeys[index] ? (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -552,10 +568,10 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                           : "!border-red-500 focus:!border-red-500"
                         : ""
                     }`}
-                    placeholder="Staking address"
+                    placeholder={isSignerStakeKeysDisabled ? "Disabled - Global stake key is set" : "Staking address"}
                     value={tempStakeKey}
                     onChange={(e) => setTempStakeKey(e.target.value)}
-                    disabled={editMode === "edit" && editIndex === 0}
+                    disabled={Boolean((editMode === "edit" && editIndex === 0) || isSignerStakeKeysDisabled)}
                   />
                   {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
                     <div className="mt-1 flex items-center gap-1">
@@ -570,6 +586,14 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                       <XCircle className="h-3 w-3 text-red-500" />
                       <p className="text-xs text-red-500">
                         Invalid stake key format
+                      </p>
+                    </div>
+                  )}
+                  {isSignerStakeKeysDisabled && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <XCircle className="h-3 w-3 text-amber-500" />
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Signer stake keys are disabled because a global stake key is set in advanced settings
                       </p>
                     </div>
                   )}

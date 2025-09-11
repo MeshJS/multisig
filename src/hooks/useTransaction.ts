@@ -6,6 +6,7 @@ import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "./useAppWallet";
 import { MeshTxBuilder } from "@meshsdk/core";
+import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
   const ctx = api.useUtils();
@@ -14,6 +15,8 @@ export default function useTransaction() {
   const userAddress = useUserStore((state) => state.userAddress);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { appWallet } = useAppWallet();
+  const network = useSiteStore((state) => state.network);
+  const blockchainProvider = getProvider(network);
 
   const { mutateAsync: createTransaction } =
     api.transaction.createTransaction.useMutation({
@@ -83,6 +86,7 @@ export default function useTransaction() {
       }
 
       if (submitTx) {
+        //txHash = await blockchainProvider.submitTx(signedTx);
         txHash = await wallet.submitTx(signedTx);
       }
 

@@ -15,15 +15,22 @@ export default function PageTransactions() {
   if (appWallet === undefined) return <></>;
 
   return (
-    <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <main className="flex flex-1 flex-col gap-4 p-3 sm:gap-6 sm:p-4 md:gap-8 md:p-8 max-w-7xl mx-auto">
+      {/* Balance Card */}
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <CardBalance appWallet={appWallet} />
       </div>
 
+      {/* Pending Transactions */}
       {pendingTransactions && pendingTransactions.length > 0 && (
-        <>
-          <SectionTitle>Pending Transactions</SectionTitle>
-          <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col gap-2">
+            <SectionTitle>Pending Transactions</SectionTitle>
+            <p className="text-sm text-muted-foreground">
+              Transactions waiting for signatures from other wallet members
+            </p>
+          </div>
+          <div className="grid gap-4 sm:gap-6 md:gap-8 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {pendingTransactions.map((tx) => {
               return (
                 <TransactionCard
@@ -34,11 +41,20 @@ export default function PageTransactions() {
               );
             })}
           </div>
-        </>
+        </div>
       )}
-      <SectionTitle>All Transactions</SectionTitle>
-      <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-        <AllTransactions appWallet={appWallet} />
+
+      {/* All Transactions */}
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-2">
+          <SectionTitle>All Transactions</SectionTitle>
+          <p className="text-sm text-muted-foreground">
+            Complete history of all transactions for this wallet
+          </p>
+        </div>
+        <div className="grid gap-4 sm:gap-6 md:gap-8 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+          <AllTransactions appWallet={appWallet} />
+        </div>
       </div>
     </main>
   );

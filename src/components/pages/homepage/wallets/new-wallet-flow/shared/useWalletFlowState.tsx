@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
 import type { MultisigKey } from "@/utils/multisigSDK";
-import { MultisigWallet } from "@/utils/multisigSDK";
+import { MultisigWallet, stakeKeyHash } from "@/utils/multisigSDK";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -99,6 +99,14 @@ export function useWalletFlowState(): WalletFlowState {
   const [nativeScriptType, setNativeScriptType] = useState<"all" | "any" | "atLeast">("atLeast");
   const [stakeKey, setStakeKey] = useState<string>("");
   
+  // Effect to clear signer stake keys when global stake key is set
+  useEffect(() => {
+    if (stakeKey && stakeKey.trim() !== "") {
+      // Clear all signer stake keys when global stake key is set
+      setSignerStakeKeys(new Array(signersAddresses.length).fill(""));
+    }
+  }, [stakeKey, signersAddresses.length]);
+  
   // Dependencies
   const userAddress = useUserStore((state) => state.userAddress);
   const { user } = useUser();
@@ -148,12 +156,31 @@ export function useWalletFlowState(): WalletFlowState {
       });
     }
     if (keys.length === 0) return;
+    // Convert stake key to hash if it's an address
+    let stakeCredentialHash: string | undefined = undefined;
+    if (stakeKey && stakeKey.trim() !== "") {
+      try {
+        // Check if it's already a hash (56 characters) or an address (64+ characters)
+        if (stakeKey.length === 56) {
+          stakeCredentialHash = stakeKey;
+        } else {
+          // It's likely a stake address, convert to hash
+          stakeCredentialHash = stakeKeyHash(stakeKey);
+        }
+      } catch (error) {
+        console.error("Error converting stake key to hash:", error);
+        // If conversion fails, try to use it as-is (might be a valid hash)
+        stakeCredentialHash = stakeKey;
+      }
+    }
+
     return new MultisigWallet(
       name,
       keys,
       description,
       numRequiredSigners,
       network,
+      stakeCredentialHash,
     );
   }, [
     name,
@@ -163,6 +190,7 @@ export function useWalletFlowState(): WalletFlowState {
     signersDescriptions,
     numRequiredSigners,
     network,
+    stakeKey,
   ]);
 
   // API Mutations
@@ -223,7 +251,81 @@ export function useWalletFlowState(): WalletFlowState {
     },
   });
   
-  // Mutation for saving from cards without redirect
+  // Mutations for saving specific fields
+  const { mutate: saveWalletInfo } = api.wallet.updateNewWalletInfo.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Saved",
+        description: "Wallet info saved successfully",
+        duration: 2000,
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Error",
+        description: "Failed to save wallet info",
+        variant: "destructive",
+        duration: 3000,
+      });
+    },
+  });
+
+  const { mutate: saveSignatureRules } = api.wallet.updateNewWalletSignatureRules.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Saved",
+        description: "Signature rules saved successfully",
+        duration: 2000,
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Error",
+        description: "Failed to save signature rules",
+        variant: "destructive",
+        duration: 3000,
+      });
+    },
+  });
+
+  const { mutate: saveAdvanced } = api.wallet.updateNewWalletAdvanced.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Saved",
+        description: "Advanced settings saved successfully",
+        duration: 2000,
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Error",
+        description: "Failed to save advanced settings",
+        variant: "destructive",
+        duration: 3000,
+      });
+    },
+  });
+
+  // Mutation for signer changes only
+  const { mutate: saveSignersOnly } = api.wallet.updateNewWalletSignersOnly.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Saved",
+        description: "Signers saved successfully",
+        duration: 2000,
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Error",
+        description: "Failed to save signers",
+        variant: "destructive",
+        duration: 3000,
+      });
+    },
+  });
+
+  // Keep the full update mutation for other cases
   const { mutate: saveToBackend } = api.wallet.updateNewWallet.useMutation({
     onSuccess: () => {
       toast({
@@ -251,13 +353,14 @@ export function useWalletFlowState(): WalletFlowState {
     },
   );
 
-  // Initialize first signer with current user
+  // Initialize first signer with current user (only when not loading from existing wallet)
   useEffect(() => {
-    if (!user) return;
+    if (!user || pathIsWalletInvite) return;
     setSignerAddresses([user.address]);
     setSignerDescriptions([""]);
-    setSignerStakeKeys([user.stakeAddress]);
-  }, [user]);
+    // Don't set stake key if global stake key is already set
+    setSignerStakeKeys([stakeKey && stakeKey.trim() !== "" ? "" : user.stakeAddress]);
+  }, [user, stakeKey, pathIsWalletInvite]);
 
   // Adjust numRequiredSigners if it exceeds the number of signers
   useEffect(() => {
@@ -265,6 +368,16 @@ export function useWalletFlowState(): WalletFlowState {
       setNumRequiredSigners(signersAddresses.length);
     }
   }, [signersAddresses.length, numRequiredSigners]);
+
+  // Auto-set numRequiredSigners based on nativeScriptType
+  useEffect(() => {
+    if (nativeScriptType === "all" && signersAddresses.length > 0) {
+      setNumRequiredSigners(signersAddresses.length);
+    } else if (nativeScriptType === "any" && signersAddresses.length > 0) {
+      setNumRequiredSigners(1);
+    }
+    // For "atLeast", keep the current value
+  }, [nativeScriptType, signersAddresses.length]);
 
   // Load wallet invite data
   useEffect(() => {
@@ -275,6 +388,10 @@ export function useWalletFlowState(): WalletFlowState {
       setSignerDescriptions(walletInvite.signersDescriptions);
       setSignerStakeKeys(walletInvite.signersStakeKeys);
       setNumRequiredSigners(walletInvite.numRequiredSigners!);
+      // Load global stake key if it exists
+      if ((walletInvite as any).stakeCredentialHash) {
+        setStakeKey((walletInvite as any).stakeCredentialHash);
+      }
     }
   }, [pathIsWalletInvite, walletInvite]);
 
@@ -282,7 +399,8 @@ export function useWalletFlowState(): WalletFlowState {
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
-    setSignerStakeKeys([...signersStakeKeys, ""]);
+    // Don't add stake key if global stake key is set
+    setSignerStakeKeys([...signersStakeKeys, stakeKey && stakeKey.trim() !== "" ? "" : ""]);
   }
 
   function removeSigner(index: number) {
@@ -313,6 +431,23 @@ export function useWalletFlowState(): WalletFlowState {
       throw new Error("scriptCbor is undefined");
     }
 
+    // Convert stake key to hash before creating wallet
+    let stakeCredentialHash: string | undefined = undefined;
+    if (stakeKey.length > 0) {
+      try {
+        // Check if it's already a hash (56 characters) or an address (64+ characters)
+        if (stakeKey.length === 56) {
+          stakeCredentialHash = stakeKey;
+        } else {
+          // It's likely a stake address, convert to hash
+          stakeCredentialHash = stakeKeyHash(stakeKey);
+        }
+      } catch (error) {
+        console.error("Error converting stake key to hash:", error);
+        stakeCredentialHash = stakeKey; // Fallback
+      }
+    }
+
     createWallet({
       name: name,
       description: description,
@@ -321,7 +456,7 @@ export function useWalletFlowState(): WalletFlowState {
       signersStakeKeys: signersStakeKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
-      stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
+      stakeCredentialHash,
       type: nativeScriptType,
     });
   }
@@ -329,6 +464,23 @@ export function useWalletFlowState(): WalletFlowState {
   async function handleCreateNewWallet() {
     if (router.pathname == "/wallets/new-wallet-flow/save") {
       setLoading(true);
+      // Convert stake key to hash before creating wallet
+      let stakeCredentialHash: string | undefined = undefined;
+      if (stakeKey.length > 0) {
+        try {
+          // Check if it's already a hash (56 characters) or an address (64+ characters)
+          if (stakeKey.length === 56) {
+            stakeCredentialHash = stakeKey;
+          } else {
+            // It's likely a stake address, convert to hash
+            stakeCredentialHash = stakeKeyHash(stakeKey);
+          }
+        } catch (error) {
+          console.error("Error converting stake key to hash:", error);
+          stakeCredentialHash = stakeKey; // Fallback
+        }
+      }
+
       createNewWallet({
         name: name,
         description: description,
@@ -337,6 +489,7 @@ export function useWalletFlowState(): WalletFlowState {
         signersStakeKeys: signersStakeKeys,
         ownerAddress: userAddress!,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash,
       });
     }
   }
@@ -352,6 +505,7 @@ export function useWalletFlowState(): WalletFlowState {
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       });
     }
   }
@@ -359,48 +513,34 @@ export function useWalletFlowState(): WalletFlowState {
   // Save callbacks for create page
   const handleSaveWalletInfo = useCallback((newName: string, newDescription: string) => {
     if (walletInviteId || router.query.id) {
-      saveToBackend({
+      saveWalletInfo({
         walletId: (walletInviteId || router.query.id) as string,
         name: newName,
         description: newDescription,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
-        numRequiredSigners: numRequiredSigners,
       });
     }
-  }, [walletInviteId, router.query.id, signersAddresses, 
-      signersDescriptions, signersStakeKeys, numRequiredSigners, saveToBackend]);
+  }, [walletInviteId, router.query.id, saveWalletInfo]);
 
   const handleSaveSigners = useCallback((newAddresses: string[], newDescriptions: string[], newStakeKeys: string[]) => {
     if (walletInviteId || router.query.id) {
-      saveToBackend({
+      saveSignersOnly({
         walletId: (walletInviteId || router.query.id) as string,
-        name: name,
-        description: description,
         signersAddresses: newAddresses,
         signersDescriptions: newDescriptions,
         signersStakeKeys: newStakeKeys,
-        numRequiredSigners: numRequiredSigners,
       });
     }
-  }, [walletInviteId, router.query.id, name, description, numRequiredSigners, saveToBackend]);
+  }, [walletInviteId, router.query.id, saveSignersOnly]);
 
   const handleSaveSignatureRules = useCallback((numRequired: number) => {
     // Save signature rules
     if (walletInviteId || router.query.id) {
-      saveToBackend({
+      saveSignatureRules({
         walletId: (walletInviteId || router.query.id) as string,
-        name: name,
-        description: description,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
         numRequiredSigners: numRequired,
       });
     }
-  }, [walletInviteId, router.query.id, name, description, signersAddresses, 
-      signersDescriptions, signersStakeKeys, saveToBackend]);
+  }, [walletInviteId, router.query.id, saveSignatureRules]);
 
   const handleSaveAdvanced = useCallback((newStakeKey: string, scriptType: "all" | "any" | "atLeast") => {
     // Update local state
@@ -408,19 +548,29 @@ export function useWalletFlowState(): WalletFlowState {
     setNativeScriptType(scriptType);
     
     if (walletInviteId || router.query.id) {
-      saveToBackend({
+      // Convert to hash before saving
+      let stakeCredentialHash: string | undefined = undefined;
+      if (newStakeKey.length > 0) {
+        try {
+          // Check if it's already a hash (56 characters) or an address (64+ characters)
+          if (newStakeKey.length === 56) {
+            stakeCredentialHash = newStakeKey;
+          } else {
+            // It's likely a stake address, convert to hash
+            stakeCredentialHash = stakeKeyHash(newStakeKey);
+          }
+        } catch (error) {
+          console.error("Error converting stake key to hash:", error);
+          stakeCredentialHash = newStakeKey; // Fallback
+        }
+      }
+      
+      saveAdvanced({
         walletId: (walletInviteId || router.query.id) as string,
-        name: name,
-        description: description,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
-        numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash,
       });
     }
-  }, [walletInviteId, router.query.id, name, description, signersAddresses, 
-      signersDescriptions, signersStakeKeys, numRequiredSigners, saveToBackend, 
-      setStakeKey, setNativeScriptType]);
+  }, [walletInviteId, router.query.id, saveAdvanced, setStakeKey, setNativeScriptType]);
 
   // Validation
   const isValidForSave = !loading && !!name.trim();

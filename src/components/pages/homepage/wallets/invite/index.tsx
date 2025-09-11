@@ -132,14 +132,24 @@ export default function PageNewWalletInvite() {
     if (userAddress === undefined) throw new Error("User address is undefined");
     const dsAddr = deserializeAddress(userAddress);
     console.log("User stake address:", dsAddr);
-    if (!user?.stakeAddress) throw new Error("User stake address is undefined");
+    
+    // Check if we need the user's stake address (only when no global stake key is set)
+    if (!(newWallet as any).stakeCredentialHash && !user?.stakeAddress) {
+      throw new Error("User stake address is undefined and no global stake key is set");
+    }
 
     setLoading(true);
+
+    // If there's a global stake key, don't add individual stake keys
+    // The API will handle clearing signer stake keys when global stake key is set
+    const newSignersStakeKeys = (newWallet as any).stakeCredentialHash 
+      ? [...newWallet.signersStakeKeys, ""] // Add empty string for new signer
+      : [...newWallet.signersStakeKeys, user?.stakeAddress || ""]; // Add user's stake address or empty string
 
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
-      signersStakeKeys: [...newWallet.signersStakeKeys, user.stakeAddress],
+      signersStakeKeys: newSignersStakeKeys,
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,

@@ -73,6 +73,7 @@ model NewWallet {
   signersDescriptions String[]
   numRequiredSigners  Int?
   ownerAddress        String
+  stakeCredentialHash String?
 }
 
 model Nonce {

@@ -163,6 +163,7 @@ export const walletRouter = createTRPCRouter({
         signersStakeKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
         ownerAddress: z.string(),
+        stakeCredentialHash: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -175,7 +176,8 @@ export const walletRouter = createTRPCRouter({
           signersStakeKeys: input.signersStakeKeys,
           numRequiredSigners: input.numRequiredSigners,
           ownerAddress: input.ownerAddress,
-        },
+          stakeCredentialHash: input.stakeCredentialHash,
+        } as any,
       });
     }),
 
@@ -189,6 +191,7 @@ export const walletRouter = createTRPCRouter({
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
+        stakeCredentialHash: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -203,7 +206,8 @@ export const walletRouter = createTRPCRouter({
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
           numRequiredSigners: input.numRequiredSigners,
-        },
+          stakeCredentialHash: input.stakeCredentialHash,
+        } as any,
       });
     }),
 
@@ -217,6 +221,17 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Get the current wallet to check if there's a global stake key
+      const currentWallet = await ctx.db.newWallet.findUnique({
+        where: { id: input.walletId },
+        select: { stakeCredentialHash: true } as any,
+      });
+
+      // If there's a global stake key, clear all signer stake keys
+      const finalSignersStakeKeys = (currentWallet as any)?.stakeCredentialHash 
+        ? new Array(input.signersAddresses.length).fill("")
+        : input.signersStakeKeys;
+
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -224,7 +239,7 @@ export const walletRouter = createTRPCRouter({
         data: {
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
-          signersStakeKeys: input.signersStakeKeys,
+          signersStakeKeys: finalSignersStakeKeys,
         },
       });
     }),
@@ -243,6 +258,95 @@ export const walletRouter = createTRPCRouter({
         },
         data: {
           signersDescriptions: input.signersDescriptions,
+        },
+      });
+    }),
+
+  updateNewWalletInfo: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        name: z.string(),
+        description: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.newWallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          name: input.name,
+          description: input.description,
+        },
+      });
+    }),
+
+  updateNewWalletSignatureRules: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        numRequiredSigners: z.number(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.newWallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          numRequiredSigners: input.numRequiredSigners,
+        },
+      });
+    }),
+
+  updateNewWalletAdvanced: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        stakeCredentialHash: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.newWallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          stakeCredentialHash: input.stakeCredentialHash,
+        } as any,
+      });
+    }),
+
+  updateNewWalletSignersOnly: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        signersAddresses: z.array(z.string()),
+        signersDescriptions: z.array(z.string()),
+        signersStakeKeys: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Get the current wallet to check if there's a global stake key
+      const currentWallet = await ctx.db.newWallet.findUnique({
+        where: { id: input.walletId },
+        select: { stakeCredentialHash: true } as any,
+      });
+
+      // If there's a global stake key, clear all signer stake keys
+      const finalSignersStakeKeys = (currentWallet as any)?.stakeCredentialHash 
+        ? new Array(input.signersAddresses.length).fill("")
+        : input.signersStakeKeys;
+
+      return ctx.db.newWallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: finalSignersStakeKeys,
         },
       });
     }),

@@ -40,6 +40,7 @@ export default function PageReviewWallet() {
             currentUserAddress={walletFlow.userAddress}
             walletId={walletFlow.walletInviteId || walletFlow.router.query.id as string}
             onSave={walletFlow.handleSaveSigners}
+            globalStakeKey={walletFlow.stakeKey}
           />
 
           {/* Required Signatures */}

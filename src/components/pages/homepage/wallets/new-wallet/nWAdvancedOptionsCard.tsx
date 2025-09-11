@@ -2,7 +2,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle2, XCircle } from "lucide-react";
 import React from "react";
+import { checkValidStakeKey } from "@/utils/multisigSDK";
 
 type NativeScriptType = "all" | "any" | "atLeast";
 
@@ -37,19 +39,36 @@ const NWAdvancedOptionsCard: React.FC<NWAdvancedOptionsCardProps> = ({ advancedC
         <div className="grid gap-8">
           {/* Stake Key Input */}
           <div className="grid gap-2">
-            <Label htmlFor="stakeKey">Stake Credential Hash (optional)</Label>
+            <Label htmlFor="stakeKey">Stake Key (optional)</Label>
             <Input
               id="stakeKey"
               type="text"
-              placeholder="Enter stake credential hash (optional)"
+              placeholder="Enter stake address or credential hash (optional)"
               value={stakeKey}
               onChange={(e) => setStakeKey(e.target.value)}
-              className="w-full"
+              className={`w-full font-mono ${
+                stakeKey
+                  ? checkValidStakeKey(stakeKey)
+                    ? "!border-green-500 focus:!border-green-500"
+                    : "!border-red-500 focus:!border-red-500"
+                  : ""
+              }`}
             />
-            {stakeKey.length > 0 && stakeKey.length < 56 && (
-              <p className="text-xs text-red-500">
-                Stake key may be too short — usually 56 characters.
-              </p>
+            {stakeKey && checkValidStakeKey(stakeKey) && (
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                <p className="text-xs text-green-500">
+                  Valid stake key format
+                </p>
+              </div>
+            )}
+            {stakeKey && !checkValidStakeKey(stakeKey) && (
+              <div className="flex items-center gap-1">
+                <XCircle className="h-3 w-3 text-red-500" />
+                <p className="text-xs text-red-500">
+                  Invalid stake key format
+                </p>
+              </div>
             )}
           </div>
 

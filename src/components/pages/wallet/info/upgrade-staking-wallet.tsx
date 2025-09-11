@@ -38,7 +38,7 @@ export function UpgradeStakingWallet({
     return mWallet?.stakingEnabled() && appWallet.address === newAddress;
   }, [mWallet, newAddress, appWallet.address]);
 
-  if (!mWallet || upgraded ) return null;
+  if (!mWallet || upgraded || appWallet.stakeCredentialHash ) return null;
 
   return (
     <CardUI
