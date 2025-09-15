@@ -212,8 +212,8 @@ export default function TransactionCard({
       }
 
       if (submitTx) {
-        txHash = await blockchainProvider.submitTx(signedTx);
         //txHash = await blockchainProvider.submitTx(signedTx);
+        txHash = await wallet.submitTx(signedTx);
       }
 
       updateTransaction({
