@@ -26,13 +26,32 @@ export const cors = initMiddleware(
         console.log("Wildcard origin match. Allowing all.");
         return callback(null, true);
       }
+      
+      // Check for exact match first
       if (allowedOrigins.includes(origin)) {
-        console.log("Origin allowed.");
+        console.log("Exact origin match. Allowing.");
         return callback(null, true);
-      } else {
-        console.error(`Origin ${origin} not allowed by CORS`);
-        return callback(new Error(`Origin ${origin} not allowed by CORS`));
       }
+      
+      // Check for subdomain matches
+      for (const allowedOrigin of allowedOrigins) {
+        try {
+          const allowedUrl = new URL(allowedOrigin);
+          const requestUrl = new URL(origin);
+          
+          // Check if the request origin is a subdomain of the allowed origin
+          if (requestUrl.hostname.endsWith('.' + allowedUrl.hostname) || 
+              requestUrl.hostname === allowedUrl.hostname) {
+            console.log(`Subdomain match: ${origin} matches allowed origin ${allowedOrigin}`);
+            return callback(null, true);
+          }
+        } catch (error) {
+          console.warn(`Invalid URL format for origin: ${allowedOrigin}`, error);
+        }
+      }
+      
+      console.error(`Origin ${origin} not allowed by CORS`);
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
   }),
 );
