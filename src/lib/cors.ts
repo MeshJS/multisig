@@ -1,5 +1,6 @@
 import Cors from "cors";
 import initMiddleware from "./init-middleware";
+import type { NextApiResponse } from "next";
 
 const rawOrigins = process.env.CORS_ORIGINS || "";
 const allowedOrigins =
@@ -10,6 +11,8 @@ export const cors = initMiddleware(
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
+    optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+    preflightContinue: false,
     origin: function (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
@@ -55,3 +58,11 @@ export const cors = initMiddleware(
     },
   }),
 );
+
+// Helper function to add cache-busting headers for CORS
+export function addCorsCacheBustingHeaders(res: NextApiResponse) {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Vary', 'Origin');
+}
