@@ -1,4 +1,4 @@
-import { cors } from "@/lib/cors";
+import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 //get all utxos for wallet
 //get all pending txs for the wallet
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
@@ -16,6 +16,9 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  // Add cache-busting headers for CORS
+  addCorsCacheBustingHeaders(res);
+  
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
