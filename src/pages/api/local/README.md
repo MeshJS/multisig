@@ -33,7 +33,8 @@ curl "http://localhost:3000/api/local/og?url=https%3A%2F%2Ffluidtokens.com%2F"
 - ✅ Origin validation using `CORS_ORIGINS` environment variable
 - ✅ Domain allow-list (only trusted domains)
 - ✅ URL parameter validation
-- ✅ SSRF protection
+- ✅ Multi-layer SSRF protection (CodeQL compliant)
+- ✅ Strict hostname validation with exact matching
 
 ### Image Proxy API (`/api/local/proxy`)
 
@@ -58,7 +59,8 @@ curl "http://localhost:3000/api/local/proxy?src=https%3A%2F%2Ffluidtokens.com%2F
 - ✅ Origin validation using `CORS_ORIGINS` environment variable
 - ✅ Domain allow-list (only trusted domains)
 - ✅ URL parameter validation
-- ✅ SSRF protection
+- ✅ Multi-layer SSRF protection (CodeQL compliant)
+- ✅ Strict hostname validation with exact matching
 
 ## Configuration
 
@@ -91,7 +93,16 @@ export const ALLOWED_DOMAINS = [
   'minswap-multisig-dev.fluidtokens.com',
   'your-new-domain.com', // Add your domain here
 ];
+
+export const ALLOWED_HOSTNAMES = [
+  'fluidtokens.com',
+  'aquarium-qa.fluidtokens.com',
+  'minswap-multisig-dev.fluidtokens.com',
+  'your-new-domain.com', // Add your hostname here (must match ALLOWED_DOMAINS)
+];
 ```
+
+**Important:** Always update both arrays when adding new domains to maintain consistency and CodeQL compliance.
 
 ## Usage in Components
 
@@ -189,10 +200,23 @@ async function fetchOgWithErrorHandling(url: string) {
 
 ## Security Considerations
 
+### CodeQL Compliance
+The APIs implement CodeQL-compliant SSRF protection through:
+
+- **Inline Validation**: URL parsing and hostname extraction performed directly in the API
+- **Hardcoded Allow-List**: Static array of allowed hostnames (no dynamic construction)
+- **Exact Matching**: No wildcards or partial string matching
+- **Protocol Validation**: Explicit HTTP/HTTPS protocol checking
+- **Multi-Layer Protection**: Both flexible domain matching and strict hostname validation
+
+This ensures static analysis tools like CodeQL can verify the security measures.
+
 ### SSRF Protection
 - **Domain Allow-List**: Only approved domains can be accessed
+- **Strict Hostname Validation**: CodeQL-compliant exact hostname matching
 - **Protocol Restriction**: Only HTTP/HTTPS allowed
 - **Private IP Blocking**: Prevents access to internal networks
+- **Multi-Layer Validation**: Both flexible domain matching and strict hostname checking
 
 ### Rate Limiting
 - **Per-IP Limits**: Prevents abuse from individual IPs
@@ -287,8 +311,9 @@ This will show detailed CORS and request information in the console.
 
 ### Adding New dApp Cards
 1. Add the dApp URL to your component
-2. Add the domain to `ALLOWED_DOMAINS` if not already present
+2. Add the domain to both `ALLOWED_DOMAINS` and `ALLOWED_HOSTNAMES` if not already present
 3. Test the OG data fetching
 4. Verify images load correctly
+5. Ensure CodeQL compliance by maintaining both arrays
 
 This API provides a secure, efficient way to fetch and display rich metadata for dApp cards while protecting against common web vulnerabilities.

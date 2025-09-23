@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { checkRateLimit, getClientIP } from "@/lib/security/rateLimit";
 import { validateOrigin, validateUrlParameter } from "@/lib/security/validation";
-import { isAllowedDomain } from "@/lib/security/domains";
+import { isAllowedDomain, ALLOWED_HOSTNAMES } from "@/lib/security/domains";
 
 function extractMeta(html: string, property: string): string | null {
   const propRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
@@ -73,6 +73,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const validatedUrl = url as string;
   
   if (!isAllowedDomain(validatedUrl)) {
+    return res.status(400).json({ error: "Domain not allowed" });
+  }
+  
+  // Additional inline SSRF protection for CodeQL
+  let targetHostname: string;
+  try {
+    const parsedUrl = new URL(validatedUrl);
+    targetHostname = parsedUrl.hostname.toLowerCase();
+    
+    // Only allow HTTP/HTTPS protocols
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ error: "Invalid protocol" });
+    }
+  } catch {
+    return res.status(400).json({ error: "Invalid URL format" });
+  }
+  
+  // Strict hostname allow-list check
+  if (!ALLOWED_HOSTNAMES.includes(targetHostname)) {
     return res.status(400).json({ error: "Domain not allowed" });
   }
 

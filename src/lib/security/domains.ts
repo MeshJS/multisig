@@ -6,6 +6,15 @@ export const ALLOWED_DOMAINS = [
   // Add more trusted domains as needed
 ];
 
+// Strict hostname allow-list for CodeQL SSRF protection
+// This is a duplicate of ALLOWED_DOMAINS but kept separate for static analysis
+export const ALLOWED_HOSTNAMES = [
+  'fluidtokens.com',
+  'aquarium-qa.fluidtokens.com',
+  'minswap-multisig-dev.fluidtokens.com',
+  // Add more trusted hostnames as needed
+];
+
 export function isAllowedDomain(url: string): boolean {
   try {
     const parsed = new URL(url);

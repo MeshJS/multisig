@@ -78,26 +78,38 @@ if (!validation.isValid) {
 Centralized allow-list for trusted domains to prevent SSRF attacks.
 
 **Exports:**
-- `ALLOWED_DOMAINS` - Array of trusted domain names
+- `ALLOWED_DOMAINS` - Array of trusted domain names (with subdomain support)
+- `ALLOWED_HOSTNAMES` - Array of exact hostnames for CodeQL compliance
 - `isAllowedDomain(url)` - Check if URL domain is in allow-list
 
 **Usage:**
 ```typescript
-import { isAllowedDomain, ALLOWED_DOMAINS } from "@/lib/security/domains";
+import { isAllowedDomain, ALLOWED_DOMAINS, ALLOWED_HOSTNAMES } from "@/lib/security/domains";
 
-// Check domain
+// Check domain (with subdomain support)
 if (!isAllowedDomain(url)) {
+  return res.status(400).json({ error: "Domain not allowed" });
+}
+
+// Strict hostname check (CodeQL compliant)
+const hostname = new URL(url).hostname.toLowerCase();
+if (!ALLOWED_HOSTNAMES.includes(hostname)) {
   return res.status(400).json({ error: "Domain not allowed" });
 }
 
 // Add new domain
 ALLOWED_DOMAINS.push('newdomain.com');
+ALLOWED_HOSTNAMES.push('newdomain.com');
 ```
 
 **Current Allowed Domains:**
 - `fluidtokens.com`
 - `aquarium-qa.fluidtokens.com`
 - `minswap-multisig-dev.fluidtokens.com`
+
+**Domain vs Hostname:**
+- **`ALLOWED_DOMAINS`**: Supports subdomain matching (e.g., `*.fluidtokens.com`)
+- **`ALLOWED_HOSTNAMES`**: Exact hostname matching only (CodeQL compliant)
 
 ### Security Middleware (`index.ts`)
 
@@ -162,8 +174,10 @@ Proxies images from trusted domains to avoid CORS issues.
 
 ### 1. SSRF Protection
 - **Domain Allow-List**: Only approved domains can be accessed
+- **Strict Hostname Validation**: CodeQL-compliant exact hostname matching
 - **Protocol Restriction**: Only HTTP/HTTPS allowed
 - **Private IP Blocking**: Prevents access to internal networks
+- **Multi-Layer Validation**: Both flexible domain matching and strict hostname checking
 
 ### 2. Rate Limiting
 - **Per-IP Limits**: Prevents abuse from individual IPs
@@ -192,7 +206,16 @@ export const ALLOWED_DOMAINS = [
   'minswap-multisig-dev.fluidtokens.com',
   'newdomain.com', // Add your domain here
 ];
+
+export const ALLOWED_HOSTNAMES = [
+  'fluidtokens.com',
+  'aquarium-qa.fluidtokens.com',
+  'minswap-multisig-dev.fluidtokens.com',
+  'newdomain.com', // Add your hostname here (must match ALLOWED_DOMAINS)
+];
 ```
+
+**Important:** Always update both arrays when adding new domains to maintain consistency.
 
 ### Updating Allowed Origins
 
