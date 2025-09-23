@@ -1,31 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-
-// Allow-list of trusted domains for dApp OpenGraph fetching
-const ALLOWED_DOMAINS = [
-  'fluidtokens.com',
-  'aquarium-qa.fluidtokens.com',
-  'minswap-multisig-dev.fluidtokens.com',
-  // Add more trusted domains as needed
-];
-
-function isAllowedDomain(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    
-    // Only allow HTTP and HTTPS protocols
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return false;
-    }
-    
-    // Check if hostname is in allow-list
-    const hostname = parsed.hostname.toLowerCase();
-    return ALLOWED_DOMAINS.some(domain => 
-      hostname === domain || hostname.endsWith('.' + domain)
-    );
-  } catch {
-    return false;
-  }
-}
+import { checkRateLimit, getClientIP } from "@/lib/security/rateLimit";
+import { validateOrigin, validateUrlParameter } from "@/lib/security/validation";
+import { isAllowedDomain } from "@/lib/security/domains";
 
 function extractMeta(html: string, property: string): string | null {
   const propRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
@@ -69,19 +45,41 @@ function extractDescription(html: string): string | null {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const url = req.query.url as string | undefined;
-  if (!url) {
-    return res.status(400).json({ error: "Missing url parameter" });
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  if (!isAllowedDomain(url)) {
+  // Validate origin
+  if (!validateOrigin(req)) {
+    return res.status(403).json({ error: 'Forbidden origin' });
+  }
+  
+  // Rate limiting (higher limits for development)
+  const clientIP = getClientIP(req);
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const maxRequests = isDevelopment ? 100 : 10; // 100/min in dev, 10/min in prod
+  if (!checkRateLimit(clientIP, maxRequests, 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  
+  const url = req.query.url as string | undefined;
+  const urlValidation = validateUrlParameter(url, 'url');
+  if (!urlValidation.isValid) {
+    return res.status(400).json({ error: urlValidation.error });
+  }
+  
+  // At this point, url is guaranteed to be a string
+  const validatedUrl = url as string;
+  
+  if (!isAllowedDomain(validatedUrl)) {
     return res.status(400).json({ error: "Domain not allowed" });
   }
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(url, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0" } });
+    const response = await fetch(validatedUrl, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0" } });
     clearTimeout(timeout);
 
     if (!response.ok) {
@@ -89,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const html = await response.text();
-    const base = new URL(url);
+    const base = new URL(validatedUrl);
 
     const ogImageRaw = extractMeta(html, "og:image") ?? extractTwitterMeta(html, "image");
     const faviconRaw =
@@ -110,8 +108,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const resolvedImage = resolveUrl(ogImageRaw);
     const resolvedFavicon = resolveUrl(faviconRaw) ?? `${base.origin}/favicon.ico`;
 
-    const proxiedImage = resolvedImage ? `/api/v1/proxy?src=${encodeURIComponent(resolvedImage)}` : null;
-    const proxiedFavicon = resolvedFavicon ? `/api/v1/proxy?src=${encodeURIComponent(resolvedFavicon)}` : null;
+    const proxiedImage = resolvedImage ? `/api/local/proxy?src=${encodeURIComponent(resolvedImage)}` : null;
+    const proxiedFavicon = resolvedFavicon ? `/api/local/proxy?src=${encodeURIComponent(resolvedFavicon)}` : null;
 
     return res.status(200).json({
       title: title ?? null,

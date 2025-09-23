@@ -15,7 +15,7 @@ function DappCard({ title, description, url }: { title: string; description: str
     async function fetchOg() {
       setIsFetchingOg(true);
       try {
-        const res = await fetch(`/api/v1/og?url=${encodeURIComponent(url)}`);
+        const res = await fetch(`/api/local/og?url=${encodeURIComponent(url)}`);
         const data = await res.json();
         if (!cancelled) {
           setOgImage(data.image || null);
