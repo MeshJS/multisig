@@ -5,41 +5,84 @@ import { ExternalLink, Code, Database, ArrowLeft, CheckCircle, AlertTriangle, In
 
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
   const [ogImage, setOgImage] = useState<string | null>(null);
+  const [favicon, setFavicon] = useState<string | null>(null);
+  const [isFetchingOg, setIsFetchingOg] = useState<boolean>(true);
+  const [imageLoaded, setImageLoaded] = useState<boolean>(false);
+  const [imageError, setImageError] = useState<boolean>(false);
 
   useEffect(() => {
-    async function fetchOgImage() {
+    let cancelled = false;
+    async function fetchOg() {
+      setIsFetchingOg(true);
       try {
         const res = await fetch(`/api/v1/og?url=${encodeURIComponent(url)}`);
         const data = await res.json();
-        if (data.image) {
-          setOgImage(data.image);
+        if (!cancelled) {
+          setOgImage(data.image || null);
+          setFavicon(data.favicon || null);
+          setImageLoaded(false);
+          setImageError(false);
         }
-      } catch (e) {
-        // Ignore errors, just don't show image
+      } catch {
+        if (!cancelled) {
+          setOgImage(null);
+          setFavicon(null);
+          setImageLoaded(false);
+          setImageError(true);
+        }
+      } finally {
+        if (!cancelled) setIsFetchingOg(false);
       }
     }
-    fetchOgImage();
+    fetchOg();
+    return () => {
+      cancelled = true;
+    };
   }, [url]);
 
+  const shouldShowImageArea = Boolean(ogImage) && !imageError;
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="hover:no-underline"
-    >
+    <a href={url} target="_blank" rel="noreferrer noopener" className="hover:no-underline">
       <Card className="h-full hover:border-zinc-400 transition-colors">
-        {ogImage && (
-          <div className="aspect-video overflow-hidden">
-            <img 
-              src={ogImage} 
+        {shouldShowImageArea ? (
+          <div className="overflow-hidden bg-muted">
+            {/* Image: show, track load/error */}
+            <img
+              src={ogImage as string}
               alt={title}
-              className="w-full h-full object-cover"
+              className={`w-full object-cover transition-opacity ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
             />
+            {/* Skeleton overlay while loading */}
+            {!imageLoaded && (
+              <div className="w-full h-48 animate-pulse bg-zinc-200 dark:bg-zinc-800" />
+            )}
+          </div>
+        ) : (
+          // Placeholder area when no image
+          <div className="w-full h-48 bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900/50 dark:to-zinc-800/50 flex items-center justify-center border-b">
+            {isFetchingOg ? (
+              <div className="w-12 h-12 rounded-lg animate-pulse bg-zinc-200 dark:bg-zinc-700" />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                {favicon ? (
+                  <img src={favicon} alt="favicon" className="h-8 w-8 rounded-lg shadow-sm" />
+                ) : (
+                  <div className="h-8 w-8 rounded-lg bg-zinc-300 dark:bg-zinc-700 shadow-sm" />
+                )}
+                <span className="text-xs font-medium">{new URL(url).hostname}</span>
+              </div>
+            )}
           </div>
         )}
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
+
+        <CardHeader className={shouldShowImageArea ? "border-t" : ""}>
+          <CardTitle className="flex items-center gap-2">
+            {favicon && <img src={favicon} alt="favicon" className="h-4 w-4 rounded-sm" />}
+            <span>{title}</span>
+          </CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
       </Card>
@@ -340,6 +383,13 @@ export default function PageDapps() {
 
       {/* dApps Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="relative">
+          <DappCard
+            title="FLUIDTOKENS"
+            description="Revolutionizing Permissionless DeFi with EUTXO chains across Cardano and Bitcoin."
+            url="https://fluidtokens.com/"
+          />
+        </div>
         <div className="relative">
           <DappCard
             title="AQUARIUM"
