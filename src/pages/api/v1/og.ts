@@ -1,6 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-function isValidExternalUrl(url: string): boolean {
+// Allow-list of trusted domains for dApp OpenGraph fetching
+const ALLOWED_DOMAINS = [
+  'fluidtokens.com',
+  'aquarium-qa.fluidtokens.com',
+  'minswap-multisig-dev.fluidtokens.com',
+  // Add more trusted domains as needed
+];
+
+function isAllowedDomain(url: string): boolean {
   try {
     const parsed = new URL(url);
     
@@ -9,30 +17,11 @@ function isValidExternalUrl(url: string): boolean {
       return false;
     }
     
-    // Block private/internal IP ranges
-    const hostname = parsed.hostname;
-    
-    // Block localhost and loopback
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-      return false;
-    }
-    
-    // Block private IP ranges (RFC 1918)
-    const privateRanges = [
-      /^10\./,                    // 10.0.0.0/8
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // 172.16.0.0/12
-      /^192\.168\./,              // 192.168.0.0/16
-      /^169\.254\./,              // Link-local
-      /^::1$/,                    // IPv6 loopback
-      /^fc00:/,                   // IPv6 private
-      /^fe80:/,                   // IPv6 link-local
-    ];
-    
-    if (privateRanges.some(range => range.test(hostname))) {
-      return false;
-    }
-    
-    return true;
+    // Check if hostname is in allow-list
+    const hostname = parsed.hostname.toLowerCase();
+    return ALLOWED_DOMAINS.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
   } catch {
     return false;
   }
@@ -85,8 +74,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Missing url parameter" });
   }
   
-  if (!isValidExternalUrl(url)) {
-    return res.status(400).json({ error: "Invalid or unsafe URL" });
+  if (!isAllowedDomain(url)) {
+    return res.status(400).json({ error: "Domain not allowed" });
   }
 
   try {
