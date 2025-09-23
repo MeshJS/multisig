@@ -3,23 +3,23 @@ import type { NextApiRequest, NextApiResponse } from "next";
 function extractMeta(html: string, property: string): string | null {
   const propRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
   const nameRegex = new RegExp(`<meta[^>]+name=["']${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
-  const propMatch = html.match(propRegex);
-  if (propMatch && propMatch[1]) return propMatch[1];
-  const nameMatch = html.match(nameRegex);
-  if (nameMatch && nameMatch[1]) return nameMatch[1];
+  const propMatch = propRegex.exec(html);
+  if (propMatch?.[1]) return propMatch[1];
+  const nameMatch = nameRegex.exec(html);
+  if (nameMatch?.[1]) return nameMatch[1];
   return null;
 }
 
 function extractTwitterMeta(html: string, property: string): string | null {
   const twitterRegex = new RegExp(`<meta[^>]+name=["']twitter:${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
-  const match = html.match(twitterRegex);
-  return match && match[1] ? match[1] : null;
+  const match = twitterRegex.exec(html);
+  return match?.[1] ?? null;
 }
 
 function extractLink(html: string, rel: string): string | null {
   const regex = new RegExp(`<link[^>]+rel=["'][^"']*${rel}[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>`, "i");
-  const match = html.match(regex);
-  return match && match[1] ? match[1] : null;
+  const match = regex.exec(html);
+  return match?.[1] ?? null;
 }
 
 function extractTitle(html: string): string | null {
@@ -27,8 +27,9 @@ function extractTitle(html: string): string | null {
   if (ogTitle) return ogTitle;
   const twitterTitle = extractTwitterMeta(html, "title");
   if (twitterTitle) return twitterTitle;
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  return titleMatch && titleMatch[1] ? titleMatch[1] : null;
+  const titleRegex = /<title[^>]*>([^<]+)<\/title>/i;
+  const titleMatch = titleRegex.exec(html);
+  return titleMatch?.[1] ?? null;
 }
 
 function extractDescription(html: string): string | null {
@@ -59,9 +60,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const html = await response.text();
     const base = new URL(url);
 
-    const ogImageRaw = extractMeta(html, "og:image") || extractTwitterMeta(html, "image");
+    const ogImageRaw = extractMeta(html, "og:image") ?? extractTwitterMeta(html, "image");
     const faviconRaw =
-      extractLink(html, "icon") || extractLink(html, "shortcut icon") || extractLink(html, "apple-touch-icon");
+      extractLink(html, "icon") ?? extractLink(html, "shortcut icon") ?? extractLink(html, "apple-touch-icon");
 
     const title = extractTitle(html);
     const description = extractDescription(html);
@@ -76,18 +77,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     const resolvedImage = resolveUrl(ogImageRaw);
-    const resolvedFavicon = resolveUrl(faviconRaw) || `${base.origin}/favicon.ico`;
+    const resolvedFavicon = resolveUrl(faviconRaw) ?? `${base.origin}/favicon.ico`;
 
     const proxiedImage = resolvedImage ? `/api/v1/proxy?src=${encodeURIComponent(resolvedImage)}` : null;
     const proxiedFavicon = resolvedFavicon ? `/api/v1/proxy?src=${encodeURIComponent(resolvedFavicon)}` : null;
 
     return res.status(200).json({
-      title: title || null,
-      description: description || null,
+      title: title ?? null,
+      description: description ?? null,
       image: proxiedImage,
       favicon: proxiedFavicon,
     });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: "Unable to fetch OpenGraph data" });
   }
 }
