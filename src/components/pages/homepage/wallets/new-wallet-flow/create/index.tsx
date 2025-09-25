@@ -39,6 +39,7 @@ export default function PageReviewWallet() {
             }}
             currentUserAddress={walletFlow.userAddress}
             walletId={walletFlow.walletInviteId || walletFlow.router.query.id as string}
+            hasExternalStakeCredential={!!walletFlow.stakeKey}
             onSave={walletFlow.handleSaveSigners}
           />
 
@@ -60,6 +61,7 @@ export default function PageReviewWallet() {
               setStakeKey: walletFlow.setStakeKey,
               nativeScriptType: walletFlow.nativeScriptType,
               setNativeScriptType: walletFlow.setNativeScriptType,
+              removeExternalStakeAndBackfill: walletFlow.removeExternalStakeAndBackfill,
             }}
             mWallet={walletFlow.multisigWallet}
             onSave={walletFlow.handleSaveAdvanced}

@@ -136,10 +136,13 @@ export default function PageNewWalletInvite() {
 
     setLoading(true);
 
+    // Only import stake key if no external stake credential is set
+    const stakeKeyToAdd = newWallet.stakeCredentialHash ? "" : user.stakeAddress;
+
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
-      signersStakeKeys: [...newWallet.signersStakeKeys, user.stakeAddress],
+      signersStakeKeys: [...newWallet.signersStakeKeys, stakeKeyToAdd],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,
@@ -270,6 +273,8 @@ export default function PageNewWalletInvite() {
                   walletDescription={newWallet.description || undefined}
                   currentSignersCount={newWallet.signersAddresses.length}
                   requiredSignatures={newWallet.numRequiredSigners || 2}
+                  stakeCredentialHash={(newWallet as any).stakeCredentialHash}
+                  scriptType={(newWallet as any).scriptType}
                 />
 
                 {/* Owner or Already Signer - Show ManageSignerCard */}
@@ -282,6 +287,7 @@ export default function PageNewWalletInvite() {
                     loading={isUpdatingName}
                     walletId={newWalletId}
                     isCreator={isOwner}
+                    hasExternalStakeCredential={!!(newWallet as any).stakeCredentialHash}
                   />
                 )}
 
@@ -310,6 +316,7 @@ export default function PageNewWalletInvite() {
                       setSignerName={setSignerDescription}
                       onJoin={addSigner}
                       loading={loading}
+                      hasExternalStakeCredential={!!(newWallet as any).stakeCredentialHash}
                     />
 
                     <div className="mt-6 flex justify-end sm:mt-8">

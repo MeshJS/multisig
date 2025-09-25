@@ -1,245 +1,224 @@
-# Utils Directory
+# MultisigSDK Documentation
 
-A comprehensive collection of utility functions, SDK implementations, and helper modules for the multisig wallet application. This directory contains core business logic, Cardano blockchain interactions, and API client configurations.
+A comprehensive TypeScript library for creating and managing Cardano multisig wallets using native scripts.
 
-## Core SDK & Blockchain Utilities
+## Overview
 
-### `multisigSDK.ts`
-- **Purpose**: Core multisig wallet SDK implementation using native scripts
-- **Features**:
-  - `MultisigWallet` class for creating and managing multisig wallets
-  - Native script generation for payment, staking, and DRep roles
-  - Address generation and script serialization
-  - CIP-1854 compliant key sorting and script building
-  - DRep ID generation (CIP-105 and CIP-129 formats)
-  - JSON metadata generation for wallet information
-- **Key Classes**:
-  - `MultisigWallet`: Main wallet class with script generation
-  - `MultisigKey`: Interface for wallet keys with roles
-- **Key Functions**:
-  - `paymentKeyHash()`: Extract payment key hash from address
-  - `stakeKeyHash()`: Extract stake key hash from stake address
-  - `addressToNetwork()`: Determine network from address format
-  - `checkValidAddress()`: Validate Cardano addresses
-  - `checkValidStakeKey()`: Validate stake keys
-- **Dependencies**: @meshsdk/core, @meshsdk/core-cst
+The MultisigSDK provides a complete solution for building multisig wallets on Cardano with support for:
 
-### `common.ts`
-- **Purpose**: Wallet building utilities and database integration
-- **Features**:
-  - `buildMultisigWallet()`: Convert database wallet to MultisigWallet instance
-  - `buildWallet()`: Create complete wallet object with address and metadata
-  - Address validation and key hash extraction
-  - Network detection and UTxO integration
-  - DRep ID generation and metadata handling
-- **Key Functions**:
-  - `buildMultisigWallet()`: Database to SDK wallet conversion
-  - `buildWallet()`: Complete wallet object creation
-- **Dependencies**: @meshsdk/core, @meshsdk/core-cst, Prisma client
+- **Multiple Key Roles**: Payment, staking, and DRep keys
+- **Configurable Signatures**: Set custom signature requirements
+- **External Stake Credentials**: Use existing stake addresses
+- **Network Support**: Both mainnet and testnet
+- **CIP-0146 Metadata**: Standardized wallet metadata
+- **Real Address Integration**: Works with actual Cardano addresses
 
-### `get-provider.ts`
-- **Purpose**: Blockchain provider configuration for different networks
-- **Features**:
-  - Blockfrost provider setup for mainnet and preprod
-  - Environment-based API key selection
-  - Network-specific provider instantiation
-- **Key Functions**:
-  - `getProvider(network)`: Returns configured Blockfrost provider
-- **Dependencies**: @meshsdk/core, environment variables
+## Quick Start
 
-### `get-tx-builder.ts`
-- **Purpose**: Transaction builder configuration and setup
-- **Features**:
-  - Mesh transaction builder initialization
-  - Network-specific configuration (mainnet/preprod)
-  - Provider integration for fetcher and evaluator
-  - Verbose logging for development
-- **Key Functions**:
-  - `getTxBuilder(network)`: Returns configured transaction builder
-- **Dependencies**: @meshsdk/core, get-provider utility
+```typescript
+import { MultisigWallet, paymentKeyHash, stakeKeyHash } from './multisigSDK';
 
-## API & Client Utilities
+// Extract key hashes from real addresses
+const keyHash1 = paymentKeyHash("addr_test1qp86rhgehcs4k99rpu48879jncjmeytlhv4nxfd3sw2def6xxu4ylafkwgp2ad5l74sa3s75ttr3enxg2ps2qtrpanyswgshl2");
+const keyHash2 = paymentKeyHash("addr_test1qp2x52vcr5pdqm4gqr5mh8dp48v0cr39rff2dql4t0t64r77sr2nhu8ajahawcz2hnu8mj2wewy9ww0kt8tuq2d80fkqnwuzzp");
 
-### `api.ts`
-- **Purpose**: Client-side tRPC API configuration and type inference
-- **Features**:
-  - tRPC client setup with Next.js integration
-  - HTTP batch linking for optimized requests
-  - Superjson transformer for complex data types
-  - Development logging and error handling
-  - Type inference helpers for inputs and outputs
-- **Key Exports**:
-  - `api`: tRPC client with React Query hooks
-  - `RouterInputs`: Type inference for API inputs
-  - `RouterOutputs`: Type inference for API outputs
-- **Dependencies**: @trpc/client, @trpc/next, superjson
+// Create a 2-of-3 multisig wallet
+const wallet = new MultisigWallet(
+  "Team Wallet",
+  [
+    { keyHash: keyHash1, role: 0, name: "Alice" },
+    { keyHash: keyHash2, role: 0, name: "Bob" },
+    { keyHash: "key3...", role: 0, name: "Charlie" }
+  ],
+  "Our team's shared wallet",
+  2, // require 2 signatures
+  0  // testnet
+);
 
-### `apiServer.ts`
-- **Purpose**: Server-side tRPC client for internal API calls
-- **Features**:
-  - Server-side tRPC proxy client
-  - HTTP batch linking for server-to-server communication
-  - Environment-based URL configuration
-  - Development logging and error handling
-- **Key Exports**:
-  - `apiServer`: Server-side tRPC proxy client
-- **Dependencies**: @trpc/client, superjson
+// Get the wallet address and script
+const { address, scriptCbor } = wallet.getScript();
+console.log("Multisig address:", address);
+```
 
-### `swagger.ts`
-- **Purpose**: OpenAPI/Swagger documentation configuration
-- **Features**:
-  - Complete API documentation for v1 endpoints
-  - JWT Bearer authentication scheme
-  - Detailed endpoint specifications with request/response schemas
-  - Parameter validation and error response documentation
-- **API Endpoints Documented**:
-  - `/api/v1/nativeScript`: Get native scripts for multisig wallet
-  - `/api/v1/freeUtxos`: Get unblocked UTxOs for wallet
-  - `/api/v1/addTransaction`: Submit external transaction
-  - `/api/v1/submitDatum`: Submit signable payload
-  - `/api/v1/walletIds`: Get wallet IDs for address
-  - `/api/v1/lookupMultisigWallet`: Lookup wallet metadata
-  - `/api/v1/getNonce`: Request authentication nonce
-  - `/api/v1/authSigner`: Verify signature and get token
-- **Dependencies**: swagger-jsdoc
+## Key Concepts
 
-## Data Processing & Formatting
+### Key Roles
 
-### `strings.ts`
-- **Purpose**: String manipulation and formatting utilities
-- **Features**:
-  - Address truncation with configurable prefix/suffix lengths
-  - Number formatting with comma separators
-  - Lovelace to ADA conversion with proper formatting
-  - Date formatting for display purposes
-- **Key Functions**:
-  - `getFirstAndLast()`: Truncate strings with ellipsis
-  - `numberWithCommas()`: Add comma separators to numbers
-  - `lovelaceToAda()`: Convert lovelace to ADA with symbol
-  - `dateToFormatted()`: Format dates for display
-- **Dependencies**: None (pure utility functions)
+The SDK supports different key roles for various purposes:
 
-### `getBalance.ts`
-- **Purpose**: UTxO balance calculation and processing
-- **Features**:
-  - Balance aggregation from UTxO arrays
-  - Multi-asset balance calculation
-  - Lovelace balance extraction and conversion
-  - Asset unit mapping and quantity summation
-- **Key Functions**:
-  - `getBalance()`: Calculate balance map from UTxOs
-  - `getBalanceFromUtxos()`: Extract ADA balance from UTxOs
-- **Dependencies**: @meshsdk/core (UTxO type)
+- **Role 0 (Payment)**: Required for all wallets, used for transaction authorization
+- **Role 2 (Staking)**: For staking functionality and reward management
+- **Role 3 (DRep)**: For governance participation and voting
+- **Role 4-5 (Custom)**: Available for custom use cases
 
-### `jsonLdParser.ts`
-- **Purpose**: JSON-LD data extraction and parsing
-- **Features**:
-  - JSON-LD value extraction with fallback handling
-  - Support for nested object structures
-  - Type-safe value extraction from complex JSON-LD
-- **Key Functions**:
-  - `extractJsonLdValue()`: Extract values from JSON-LD with fallback
-- **Dependencies**: None (pure utility functions)
+### Signature Requirements
 
-## Security & Authentication
+You can configure how many signatures are required to authorize transactions:
 
-### `signing.ts`
-- **Purpose**: Cryptographic signing utilities for multisig operations
-- **Features**:
-  - Multi-role signing support (payment, staking, DRep)
-  - Nonce generation and signature verification
-  - Address-based signing with role-specific handling
-  - Signature validation and verification
-- **Key Functions**:
-  - `sign()`: Sign payload with wallet and role-specific address
-- **Dependencies**: @meshsdk/core (signing utilities)
+```typescript
+// Require 2 out of 3 signatures
+const wallet = new MultisigWallet("Wallet", keys, "", 2);
 
-## Architecture Patterns
+// Require all signatures (3 out of 3)
+const wallet = new MultisigWallet("Wallet", keys, "", 3);
+```
 
-### SDK Integration
-- **Mesh SDK**: Core Cardano blockchain interactions
-- **Native Scripts**: CIP-1854 compliant multisig script generation
-- **Provider Pattern**: Network-specific blockchain provider configuration
-- **Builder Pattern**: Transaction and wallet building utilities
+### Network Support
 
-### API Architecture
-- **tRPC Integration**: Type-safe API client configuration
-- **Server/Client Separation**: Different configurations for server and client
-- **Batch Processing**: HTTP batch linking for optimized requests
-- **Type Inference**: Automatic type generation from API schemas
+The SDK supports both Cardano networks:
 
-### Data Processing
-- **UTxO Processing**: Balance calculation and asset aggregation
-- **Address Validation**: Comprehensive address and key validation
-- **Format Conversion**: Lovelace/ADA, date formatting, string manipulation
-- **JSON-LD Parsing**: Structured data extraction and processing
+```typescript
+// Testnet (0)
+const testnetWallet = new MultisigWallet("Wallet", keys, "", 1, 0);
+
+// Mainnet (1)
+const mainnetWallet = new MultisigWallet("Wallet", keys, "", 1, 1);
+```
+
+## Common Use Cases
+
+### 1. Payment-Only Wallet
+
+```typescript
+const paymentKeys = [
+  { keyHash: "key1...", role: 0, name: "Alice" },
+  { keyHash: "key2...", role: 0, name: "Bob" }
+];
+
+const wallet = new MultisigWallet("Payment Wallet", paymentKeys);
+console.log("Staking enabled:", wallet.stakingEnabled()); // false
+```
+
+### 2. Wallet with External Stake Credential
+
+```typescript
+const externalStakeHash = stakeKeyHash("stake_test1uprrw2j075m8yq4wk60l2cwcc02943cueny9qc9q93s7ejgeu5ll8");
+
+const wallet = new MultisigWallet(
+  "External Stake Wallet",
+  paymentKeys,
+  "Wallet with external staking",
+  2,
+  0,
+  externalStakeHash
+);
+
+console.log("Stake credential:", wallet.getStakeCredentialHash());
+```
+
+### 3. Full Staking Wallet
+
+```typescript
+const keys = [
+  { keyHash: "key1...", role: 0, name: "Alice Payment" },
+  { keyHash: "key2...", role: 0, name: "Bob Payment" },
+  { keyHash: "key3...", role: 2, name: "Alice Stake" },
+  { keyHash: "key4...", role: 2, name: "Bob Stake" }
+];
+
+const wallet = new MultisigWallet("Staking Wallet", keys);
+console.log("Staking enabled:", wallet.stakingEnabled()); // true
+console.log("Stake address:", wallet.getStakeAddress());
+```
+
+## API Reference
+
+### Core Functions
+
+#### `paymentKeyHash(address: string): string`
+Extracts the payment key hash from a Cardano address.
+
+#### `stakeKeyHash(stakeAddress: string): string`
+Extracts the stake key hash from a Cardano stake address.
+
+#### `addressToNetwork(address: string): number`
+Determines the network type from an address (0=testnet, 1=mainnet).
+
+#### `checkValidAddress(address: string): boolean`
+Validates a Cardano payment address.
+
+#### `checkValidStakeKey(stakeKey: string): boolean`
+Validates a Cardano stake address.
+
+### MultisigWallet Class
+
+#### Constructor
+```typescript
+new MultisigWallet(
+  name: string,
+  keys: MultisigKey[],
+  description?: string,
+  required?: number,
+  network?: number,
+  stakeCredentialHash?: string
+)
+```
+
+#### Key Methods
+
+- **`getScript()`**: Returns the wallet address and script CBOR
+- **`getKeysByRole(role: number)`**: Filters keys by role
+- **`buildScript(role: number)`**: Builds native script for a role
+- **`stakingEnabled()`**: Checks if staking is enabled
+- **`getStakeCredentialHash()`**: Returns the stake credential hash
+- **`getStakeAddress()`**: Returns the stake address
+- **`getAvailableTypes()`**: Returns available key roles
+- **`getJsonMetadata()`**: Generates CIP-0146 metadata
+
+## Testing
+
+The SDK includes comprehensive tests covering all functionality:
+
+```bash
+# Run all tests
+npm test
+
+# Run with coverage
+npm run test:coverage
+
+# Run specific test scenarios
+npm test -- --testNamePattern="Real Address Test Scenarios"
+```
 
 ## Error Handling
 
-### Validation Functions
-- Address validation with try-catch error handling
-- Stake key validation with proper error reporting
-- Network detection with fallback mechanisms
-- UTxO processing with empty array handling
+The SDK provides clear error messages for common issues:
 
-### SDK Error Handling
-- Script generation error handling with detailed logging
-- Wallet building error handling with fallback values
-- Provider configuration error handling
-- Transaction builder error handling
-
-## Dependencies
-
-### Core Dependencies
-- **@meshsdk/core**: Cardano blockchain SDK
-- **@meshsdk/core-cst**: Cardano serialization utilities
-- **@trpc/client**: Type-safe API client
-- **@trpc/next**: Next.js tRPC integration
-- **superjson**: Data serialization
-- **swagger-jsdoc**: API documentation
-
-### Environment Variables
-- `NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD`: Preprod network API key
-- `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`: Mainnet network API key
-- `VERCEL_URL`: Deployment URL for server-side API calls
-- `PORT`: Development server port
-
-## Usage Examples
-
-### Creating a Multisig Wallet
 ```typescript
-import { MultisigWallet } from '@/utils/multisigSDK';
-
-const wallet = new MultisigWallet(
-  "My Wallet",
-  keys,
-  "Description",
-  2, // required signers
-  1  // mainnet
-);
-const script = wallet.getScript();
+try {
+  const wallet = new MultisigWallet("Wallet", []);
+  const { address } = wallet.getScript();
+} catch (error) {
+  console.error("Error:", error.message);
+  // "Cannot build multisig script: no valid payment keys provided."
+}
 ```
 
-### Building from Database
-```typescript
-import { buildWallet } from '@/utils/common';
+## Best Practices
 
-const wallet = buildWallet(dbWallet, network, utxos);
-```
+1. **Always validate addresses** before extracting key hashes
+2. **Use real addresses** in production (not mock data)
+3. **Test thoroughly** on testnet before mainnet deployment
+4. **Store metadata** using the CIP-0146 format
+5. **Handle errors gracefully** in your application
 
-### API Client Usage
-```typescript
-import { api } from '@/utils/api';
+## Examples
 
-const { data } = await api.wallet.getAll.useQuery();
-```
+See the test files for comprehensive examples:
+- `src/__tests__/realAddressScenarios.test.ts` - Real address scenarios
+- `src/__tests__/multisigSDK.test.ts` - Core functionality tests
+- `src/__tests__/helpers.test.ts` - Utility function tests
 
-### Balance Calculation
-```typescript
-import { getBalance } from '@/utils/getBalance';
+## Contributing
 
-const balance = getBalance(utxos);
-const adaBalance = getBalanceFromUtxos(utxos);
-```
+When contributing to the MultisigSDK:
 
-This utils directory provides the foundational utilities that power the entire multisig wallet application, from blockchain interactions to API communications and data processing.
+1. Add comprehensive JSDoc comments
+2. Include examples in documentation
+3. Write tests for new functionality
+4. Follow the existing code style
+5. Update this README for significant changes
+
+## License
+
+This project is licensed under the same terms as the parent project.
