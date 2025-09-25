@@ -144,6 +144,8 @@ export class MultisigWallet {
   network: number;
   /** Optional external stake credential hash (28-byte hex string) */
   stakeCredentialHash: string | undefined;
+  /** Script type: "all", "any", or "atLeast" */
+  type: "all" | "any" | "atLeast";
 
   /**
    * Creates a new MultisigWallet instance.
@@ -154,6 +156,7 @@ export class MultisigWallet {
    * @param required - Number of signatures required (default: 1)
    * @param network - Network identifier: 0=testnet, 1=mainnet (default: 1)
    * @param stakeCredentialHash - Optional external stake credential hash (28-byte hex string)
+   * @param type - Script type: "all", "any", or "atLeast" (default: "atLeast")
    * 
    * @throws {Error} If no valid payment keys are provided
    * 
@@ -175,7 +178,8 @@ export class MultisigWallet {
    *   "Wallet with staking capabilities",
    *   2, // require 2 signatures
    *   0, // testnet
-   *   "external_stake_credential_hash"
+   *   "external_stake_credential_hash",
+   *   "all" // all signers must approve
    * );
    * ```
    */
@@ -186,6 +190,7 @@ export class MultisigWallet {
     required?: number,
     network?: number,
     stakeCredentialHash?: string,
+    type: "all" | "any" | "atLeast" = "atLeast",
   ) {
     this.name = name;
     // Filter out any keys that are not valid
@@ -200,6 +205,7 @@ export class MultisigWallet {
     this.required = required ? required : 1;
     this.network = network !== undefined ? network : 1;
     this.stakeCredentialHash = stakeCredentialHash;
+    this.type = type;
   }
 
   /**
@@ -339,7 +345,7 @@ export class MultisigWallet {
     const filteredKeys = this.getKeysByRole(role);
     if (!filteredKeys) return undefined;
     // Build the script using only the keys of the specified role
-    return buildNativeScript(filteredKeys, this.required);
+    return buildNativeScript(filteredKeys, this.required, this.type);
   }
 
   /**

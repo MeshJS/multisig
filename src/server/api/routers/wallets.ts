@@ -43,6 +43,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
       return ctx.db.wallet.create({
         data: {
           name: input.name,
@@ -50,7 +51,7 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
+          numRequiredSigners: numRequired as any,
           scriptCbor: input.scriptCbor,
           stakeCredentialHash: input.stakeCredentialHash,
           type: input.type,
@@ -168,6 +169,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.create({
         data: {
           name: input.name,
@@ -175,7 +177,7 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
+          numRequiredSigners: numRequired as any,
           ownerAddress: input.ownerAddress,
           stakeCredentialHash: input.stakeCredentialHash,
           scriptType: input.scriptType,
@@ -198,6 +200,7 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -208,7 +211,7 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
+          numRequiredSigners: numRequired as any,
           stakeCredentialHash: input.stakeCredentialHash,
           scriptType: input.scriptType,
         } as any,
