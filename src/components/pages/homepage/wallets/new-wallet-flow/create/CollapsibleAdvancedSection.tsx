@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReviewNativeScript from "@/components/pages/homepage/wallets/new-wallet-flow/create/ReviewNativeScript";
 import type { MultisigWallet } from "@/utils/multisigSDK";
+import { resolveStakeKeyHash } from "@meshsdk/core";
 
 
 interface AdvancedSectionProps {
@@ -16,6 +18,7 @@ interface AdvancedSectionProps {
     setStakeKey: (stakeKey: string) => void;
     nativeScriptType: "all" | "any" | "atLeast";
     setNativeScriptType: (type: "all" | "any" | "atLeast") => void;
+    removeExternalStakeAndBackfill?: () => void;
   };
   mWallet: MultisigWallet | undefined;
   onSave?: (stakeKey: string, scriptType: "all" | "any" | "atLeast") => void;
@@ -31,17 +34,32 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [tempStakeKey, setTempStakeKey] = useState(advancedConfig.stakeKey);
   const [tempScriptType, setTempScriptType] = useState(advancedConfig.nativeScriptType);
+  const [stakeInputType, setStakeInputType] = useState<"hash" | "address">("hash");
+  const [tempStakeAddress, setTempStakeAddress] = useState("");
   
   const handleSaveStake = () => {
-    advancedConfig.setStakeKey(tempStakeKey);
+    let finalStakeKey = tempStakeKey;
+    
+    // If input type is address, convert to hash
+    if (stakeInputType === "address" && tempStakeAddress) {
+      try {
+        finalStakeKey = resolveStakeKeyHash(tempStakeAddress);
+      } catch (error) {
+        console.error("Invalid stake address:", error);
+        return; // Don't save if conversion fails
+      }
+    }
+    
+    advancedConfig.setStakeKey(finalStakeKey);
     setIsEditingStake(false);
     if (onSave) {
-      onSave(tempStakeKey, advancedConfig.nativeScriptType);
+      onSave(finalStakeKey, advancedConfig.nativeScriptType);
     }
   };
   
   const handleCancelStake = () => {
     setTempStakeKey(advancedConfig.stakeKey);
+    setTempStakeAddress("");
     setIsEditingStake(false);
   };
 
@@ -109,24 +127,55 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
                 <div className="space-y-4">
                   {/* Edit Form with background like Add Signer */}
                   <div className="p-4 bg-muted/50 rounded-lg space-y-4">
-                    <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 sm:items-start">
-                      <Label htmlFor="stakeKey" className="text-sm sm:pt-2">Hash</Label>
-                      <div>
-                        <Input
-                          id="stakeKey"
-                          type="text"
-                          placeholder="Stake credential hash..."
-                          value={tempStakeKey}
-                          onChange={(e) => setTempStakeKey(e.target.value)}
-                          className="w-full text-sm font-mono"
-                        />
-                        {tempStakeKey.length > 0 && tempStakeKey.length < 56 && (
-                          <p className="text-xs text-red-500 mt-1">
-                            Stake credential hash must be 56 characters long
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    <Tabs value={stakeInputType} onValueChange={(value) => setStakeInputType(value as "hash" | "address")}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="hash">Stake Key Hash</TabsTrigger>
+                        <TabsTrigger value="address">Reward Address</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="hash" className="space-y-4 mt-4">
+                        <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 sm:items-start">
+                          <Label htmlFor="stakeKey" className="text-sm sm:pt-2">Hash</Label>
+                          <div>
+                            <Input
+                              id="stakeKey"
+                              type="text"
+                              placeholder="Stake credential hash (56 characters)..."
+                              value={tempStakeKey}
+                              onChange={(e) => setTempStakeKey(e.target.value)}
+                              className="w-full text-sm font-mono"
+                            />
+                            {tempStakeKey.length > 0 && tempStakeKey.length < 56 && (
+                              <p className="text-xs text-red-500 mt-1">
+                                Stake credential hash must be 56 characters long
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Enter the 56-character stake credential hash directly
+                            </p>
+                          </div>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="address" className="space-y-4 mt-4">
+                        <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 sm:items-start">
+                          <Label htmlFor="stakeAddress" className="text-sm sm:pt-2">Address</Label>
+                          <div>
+                            <Input
+                              id="stakeAddress"
+                              type="text"
+                              placeholder="stake1... or stake_test1..."
+                              value={tempStakeAddress}
+                              onChange={(e) => setTempStakeAddress(e.target.value)}
+                              className="w-full text-sm font-mono"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Enter a stake address (reward address) - it will be converted to a hash
+                            </p>
+                          </div>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
                   </div>
                   {/* Edit Actions */}
                   <div className="flex gap-3 justify-end">
@@ -142,7 +191,7 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
                 /* Display Mode */
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Optional: Set a specific stake credential for this wallet. Changes will be applied when you create the wallet, but not be saved before creation.
+                    Optional: Set a specific stake credential for this wallet. You can enter either a stake key hash directly or a reward address (stake address). Changes will be applied when you create the wallet, but not be saved before creation.
                   </p>
                   <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
                     <span className="text-sm text-muted-foreground">Hash</span>
@@ -150,6 +199,22 @@ const CollapsibleAdvancedSection: React.FC<AdvancedSectionProps> = ({
                       {advancedConfig.stakeKey || "Not set"}
                     </span>
                   </div>
+              {/* Remove external stake and backfill button */}
+              {advancedConfig.stakeKey && (
+                <div className="pt-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => advancedConfig.removeExternalStakeAndBackfill?.()}
+                    className="w-full sm:w-auto"
+                  >
+                    Remove external stake credential
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    This will clear the external stake credential and try to resolve stake keys from the signer addresses.
+                  </p>
+                </div>
+              )}
                   {/* Edit button */}
                   <div className="pt-2">
                     <Button

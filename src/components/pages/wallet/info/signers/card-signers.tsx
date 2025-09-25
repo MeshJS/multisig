@@ -21,7 +21,7 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
       description={
         <>
           This wallet requires{" "}
-          <b className="text-white">{appWallet.numRequiredSigners}</b> signers{" "}
+          <b className="text-foreground">{appWallet.numRequiredSigners}</b> signers{" "}
           to sign a transaction.
         </>
       }

@@ -58,6 +58,7 @@ interface ReviewSignersCardProps {
   signerConfig: SignerConfig;
   currentUserAddress?: string;
   walletId?: string;
+  hasExternalStakeCredential?: boolean;
   onSave?: (
     signersAddresses: string[],
     signersDescriptions: string[],
@@ -69,6 +70,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   signerConfig,
   currentUserAddress,
   walletId,
+  hasExternalStakeCredential = false,
   onSave,
 }) => {
   const {
@@ -136,7 +138,8 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
       setSignerDescriptions(updatedDescriptions);
     } else if (editMode === "add") {
       newAddresses = [...signersAddresses, tempAddress];
-      newStakeKeys = [...signersStakeKeys, tempStakeKey];
+      // Don't add stake key if external stake credential is set
+      newStakeKeys = [...signersStakeKeys, hasExternalStakeCredential ? "" : tempStakeKey];
       newDescriptions = [...signersDescriptions, tempDescription];
 
       setSignerAddresses(newAddresses);
@@ -552,10 +555,10 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                           : "!border-red-500 focus:!border-red-500"
                         : ""
                     }`}
-                    placeholder="Staking address"
+                    placeholder={hasExternalStakeCredential ? "External stake credential configured" : "Staking address"}
                     value={tempStakeKey}
                     onChange={(e) => setTempStakeKey(e.target.value)}
-                    disabled={editMode === "edit" && editIndex === 0}
+                    disabled={editMode === "edit" && editIndex === 0 || hasExternalStakeCredential}
                   />
                   {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
                     <div className="mt-1 flex items-center gap-1">
@@ -570,6 +573,13 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                       <XCircle className="h-3 w-3 text-red-500" />
                       <p className="text-xs text-red-500">
                         Invalid stake key format
+                      </p>
+                    </div>
+                  )}
+                  {hasExternalStakeCredential && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <p className="text-xs text-blue-600 dark:text-blue-400">
+                        ℹ️ This wallet uses an external stake credential. Stake keys will not be imported.
                       </p>
                     </div>
                   )}

@@ -57,6 +57,7 @@ export function buildMultisigWallet(
     wallet.description ?? "",
     wallet.numRequiredSigners ?? 1,
     network,
+    wallet.stakeCredentialHash ?? undefined,
   );
   return multisigWallet;
 }
