@@ -12,7 +12,7 @@
     "db:studio": "prisma studio",
     "db:update": "prisma format && prisma db push && prisma generate",
     "dev": "next dev",
-    "postinstall": "prisma format && prisma generate && prisma migrate deploy",
+    "postinstall": "prisma format && prisma generate",
     "lint": "next lint",
     "start": "next start",
     "test": "jest",
