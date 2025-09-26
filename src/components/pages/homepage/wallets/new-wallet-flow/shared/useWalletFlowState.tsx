@@ -158,6 +158,7 @@ export function useWalletFlowState(): WalletFlowState {
       numRequiredSigners,
       network,
       stakeKey || undefined,
+      nativeScriptType,
     );
   }, [
     name,
@@ -168,6 +169,7 @@ export function useWalletFlowState(): WalletFlowState {
     numRequiredSigners,
     network,
     stakeKey,
+    nativeScriptType,
   ]);
 
   // API Mutations

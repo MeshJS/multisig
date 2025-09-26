@@ -20,9 +20,30 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
       title="Signers"
       description={
         <>
-          This wallet requires{" "}
-          <b className="text-foreground">{appWallet.numRequiredSigners}</b> signers{" "}
-          to sign a transaction.
+          {(() => {
+            const signersCount = appWallet.signersAddresses.length;
+            if (appWallet.type === 'all') {
+              return (
+                <>
+                  <b className="text-foreground">All signers</b> (of {signersCount}) must approve each transaction.
+                </>
+              );
+            } else if (appWallet.type === 'any') {
+              return (
+                <>
+                  <b className="text-foreground">Any signer</b> (of {signersCount}) can approve each transaction.
+                </>
+              );
+            } else {
+              return (
+                <>
+                  This wallet requires{" "}
+                  <b className="text-foreground">{appWallet.numRequiredSigners}</b> of {signersCount} signers{" "}
+                  to sign a transaction.
+                </>
+              );
+            }
+          })()}
         </>
       }
       headerDom={
