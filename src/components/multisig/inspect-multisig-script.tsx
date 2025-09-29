@@ -74,11 +74,16 @@ export default function InspectMultisigScript({
 
   if (mWallet?.buildScript(3) !== undefined && mWallet.isGovernanceEnabled()) {
     slides.push(
-      <RowLabelInfo
-        key="stake-3"
-        label="drep:"
-        value={<Code>{JSON.stringify(mWallet.buildScript(3), null, 2)}</Code>}
-      />,
+      <div key="drep-3">
+        <RowLabelInfo
+          label="drep:"
+          value={<Code>{JSON.stringify(mWallet.buildScript(3), null, 2)}</Code>}
+        />
+        <RowLabelInfo
+          label="DRep Script CBOR"
+          value={<Code>{mWallet.getDRepScript()}</Code>}
+        />
+      </div>,
     );
   }
 

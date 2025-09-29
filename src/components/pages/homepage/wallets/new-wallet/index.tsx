@@ -206,6 +206,7 @@ export default function PageNewWallet() {
       signersAddresses: signersAddresses,
       signersDescriptions: signersDescriptions,
       signersStakeKeys: signersStakeKeys,
+      signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
