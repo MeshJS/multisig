@@ -36,6 +36,7 @@ interface ManageSignerCardProps {
   loading: boolean;
   walletId?: string;
   isCreator?: boolean;
+  hasExternalStakeCredential?: boolean;
 }
 
 export default function ManageSignerCard({
@@ -45,7 +46,8 @@ export default function ManageSignerCard({
   onNameChange,
   loading,
   walletId,
-  isCreator = false
+  isCreator = false,
+  hasExternalStakeCredential
 }: ManageSignerCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(signerName);
@@ -148,7 +150,17 @@ export default function ManageSignerCard({
               </div>
               <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
                 <span className="text-sm text-muted-foreground">Stake Key</span>
-                <span className="text-xs font-mono break-all">{stakeAddress}</span>
+                <div className="space-y-1">
+                  {hasExternalStakeCredential ? (
+                    <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        ℹ️ External stake credential used - your stake key not imported
+                      </p>
+                    </div>
+                  ) : (
+                    <span className="text-xs font-mono break-all">{stakeAddress}</span>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
                 <span className="text-sm text-muted-foreground">Status</span>

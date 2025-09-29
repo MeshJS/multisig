@@ -18,6 +18,7 @@ interface JoinAsSignerCardProps {
   setSignerName: (name: string) => void;
   onJoin: () => void;
   loading: boolean;
+  hasExternalStakeCredential?: boolean;
 }
 
 export default function JoinAsSignerCard({
@@ -26,7 +27,8 @@ export default function JoinAsSignerCard({
   signerName,
   setSignerName,
   onJoin,
-  loading
+  loading,
+  hasExternalStakeCredential
 }: JoinAsSignerCardProps) {
   return (
     <Card>
@@ -34,7 +36,7 @@ export default function JoinAsSignerCard({
         <CardTitle>Your Signer Info</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="bg-muted/30 rounded-lg p-6">
+        <div className="bg-muted/30 rounded-lg p-6 space-y-4">
           {/* Name Field - Editable */}
           <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 items-start">
             <Label htmlFor="signerName" className="text-sm font-medium sm:pt-2">
@@ -62,6 +64,29 @@ export default function JoinAsSignerCard({
                   This helps other signers identify you in the wallet
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Stake Key Information */}
+          <div className="grid sm:grid-cols-[120px_1fr] gap-2 sm:gap-4 items-start">
+            <span className="text-sm text-muted-foreground sm:pt-2">Stake Key</span>
+            <div className="space-y-1">
+              {hasExternalStakeCredential ? (
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    ℹ️ This wallet uses an external stake credential. Your stake key will not be imported.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs font-mono text-muted-foreground">
+                    {stakeAddress ? stakeAddress.substring(0, 30) + "..." : "Not available"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your stake key will be imported for staking operations
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

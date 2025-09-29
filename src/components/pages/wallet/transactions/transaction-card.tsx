@@ -42,6 +42,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { get } from "http";
+import { getProvider } from "@/utils/get-provider";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function TransactionCard({
   walletId,
@@ -57,6 +60,8 @@ export default function TransactionCard({
   const [loading, setLoading] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
+  const network = useSiteStore((state) => state.network);
+  const blockchainProvider =getProvider(network);
 
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
@@ -207,6 +212,7 @@ export default function TransactionCard({
       }
 
       if (submitTx) {
+        //txHash = await blockchainProvider.submitTx(signedTx);
         txHash = await wallet.submitTx(signedTx);
       }
 

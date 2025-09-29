@@ -181,7 +181,8 @@ export default function PageNewWallet() {
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
-    setSignerStakeKeys([...signersStakeKeys, ""]);
+    // Only add empty stake key if no external stake credential is set
+    setSignerStakeKeys([...signersStakeKeys, stakeKey ? "" : ""]);
   }
 
   async function createNativeScript() {
@@ -222,6 +223,8 @@ export default function PageNewWallet() {
         signersStakeKeys: signersStakeKeys,
         ownerAddress: userAddress!,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }
@@ -237,6 +240,8 @@ export default function PageNewWallet() {
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }

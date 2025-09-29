@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, Component, ReactNode } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
@@ -34,6 +34,32 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+
+// Simple error boundary component
+class SimpleErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; fallback: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 export default function RootLayout({
   children,

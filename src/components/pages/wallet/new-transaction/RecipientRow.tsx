@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { X } from "lucide-react";
 /*
@@ -69,34 +70,36 @@ function RecipientRow({
   };
 
   const appWalletAssets = useMemo(() => {
-    return walletAssets.map((asset) => {
-      return {
-        unit: asset.unit,
-        assetName: walletAssetMetadata[asset.unit]?.assetName,
-        decimals: walletAssetMetadata[asset.unit]?.decimals ?? 0,
-        amount: asset.quantity,
-      };
-    });
+    // Always include ADA/lovelace as the first option
+    const assets = [
+      {
+        unit: "lovelace",
+        assetName: "ADA",
+        decimals: 6,
+        amount: "0",
+      }
+    ];
+
+    // Add other assets from walletAssets if available
+    if (walletAssets && walletAssets.length > 0) {
+      walletAssets.forEach((asset) => {
+        if (asset.unit !== "lovelace") {
+          assets.push({
+            unit: asset.unit,
+            assetName: walletAssetMetadata[asset.unit]?.assetName || asset.unit,
+            decimals: walletAssetMetadata[asset.unit]?.decimals ?? 0,
+            amount: asset.quantity,
+          });
+        }
+      });
+    }
+
+    return assets;
   }, [walletAssets, walletAssetMetadata]);
 
-  const assetOptions = useMemo(() => {
-    return (
-      <>
-        {appWalletAssets.map((appWalletAssets) => {
-          return (
-            <option key={appWalletAssets.unit} value={appWalletAssets.unit}>
-              {appWalletAssets.unit === "lovelace"
-                ? "ADA"
-                : appWalletAssets.assetName}
-            </option>
-          );
-        })}
-      </>
-    );
-  }, [appWalletAssets]);
 
   return (
-    <TableRow>
+    <TableRow className="hidden sm:table-row">
       <TableCell>
         <div className="flex flex-col gap-1">
           <Input
@@ -107,10 +110,10 @@ function RecipientRow({
               void handleAddressChange(e.target.value);
             }}
           />
-          {adaHandle && <TableCell>{adaHandle}</TableCell>}
+          {adaHandle && <div className="text-xs text-muted-foreground">{adaHandle}</div>}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[120px] sm:w-[140px]">
         <div
           className="flex flex-col"
           style={{ minHeight: adaHandle ? "76px" : "auto" }}
@@ -128,23 +131,29 @@ function RecipientRow({
           />
         </div>
       </TableCell>
-      <TableCell className="w-[240px]">
-        <select
+      <TableCell className="w-[140px] sm:w-[180px]">
+        <Select
           value={assets[index]}
-          onChange={(e) => {
+          onValueChange={(value) => {
             const newAssets = [...assets];
-            newAssets[index] = e.target.value;
+            newAssets[index] = value;
             setAssets(newAssets);
           }}
           disabled={disableAdaAmountInput}
-          className={cn(
-            "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
-          )}
         >
-          {assetOptions}
-        </select>
+          <SelectTrigger className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {appWalletAssets.map((asset) => (
+              <SelectItem key={asset.unit} value={asset.unit}>
+                {asset.unit === "lovelace" ? "ADA" : asset.assetName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </TableCell>
-      <TableCell>
+      <TableCell className="w-[60px] sm:w-[80px]">
         <div
           className="flex flex-col"
           style={{ minHeight: adaHandle ? "76px" : "auto" }}

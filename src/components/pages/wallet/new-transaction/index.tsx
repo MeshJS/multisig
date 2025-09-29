@@ -23,7 +23,7 @@ import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 
 import { api } from "@/utils/api";
 
-import { Loader, PlusCircle, Send, X } from "lucide-react";
+import { Loader, PlusCircle, Send, X, ChevronDown } from "lucide-react";
 import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import SectionTitle from "@/components/ui/section-title";
 import { Button } from "@/components/ui/button";
@@ -45,8 +45,15 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import UTxOSelector from "./utxoSelector";
 import RecipientRow from "./RecipientRow";
+import RecipientRowMobile from "./RecipientRowMobile";
 import RecipientCsv from "./RecipientCsv";
 
 export default function PageNewTransaction() {
@@ -72,7 +79,7 @@ export default function PageNewTransaction() {
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
   const router = useRouter();
-  const [assets, setAssets] = useState<string[]>(["ADA"]);
+  const [assets, setAssets] = useState<string[]>(["lovelace"]);
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
@@ -163,35 +170,6 @@ export default function PageNewTransaction() {
           .txInScript(paymentScript)
       }
 
-//add this for staking txs
-//add checks for registration will also be required for some gov stuff
-
-//find way to refactor tx process.
-
-      //if(!multisigWallet) return
-      // const rewardAddress = multisigWallet?.getStakeAddress()
-      // const stakingScript = multisigWallet?.getStakingScript()
-
-      // if(!rewardAddress) return
-      // if(!stakingScript) return
-      //const poolIdHash = "62d90c8349f6a0675a6ea0f5b62aa68ccd8cb333b86044c69c5dadef"; //example from preprod
-
-      //txBuilder.registerStakeCertificate(rewardAddress)
-      //txBuilder.delegateStakeCertificate(rewardAddress, poolIdHash)
-      // attach the multisig staking script for the stake certificate
-      //txBuilder.certificateScript(stakingScript)
-
-      // const paymentKeys = multisigWallet.getKeysByRole(0) ?? [];
-      // console.log()
-      // for (const key of paymentKeys) {
-      //   txBuilder.requiredSignerHash(key.keyHash);
-      // }
-
-      // const stakingKeys = multisigWallet.getKeysByRole(2) ?? [];
-      // for (const key of stakingKeys) {
-      //   txBuilder.requiredSignerHash(key.keyHash);
-      // }
-      
 
       if (!sendAllAssets) {
         for (let i = 0; i < outputs.length; i++) {
@@ -255,64 +233,229 @@ export default function PageNewTransaction() {
   function addNewRecipient() {
     setRecipientAddresses([...recipientAddresses, ""]);
     setAmounts([...amounts, ""]);
+    setAssets([...assets, "lovelace"]);
+  }
+
+  function addSelfAsRecipient() {
+    if (appWallet?.address) {
+      setRecipientAddresses([...recipientAddresses, appWallet.address]);
+      setAmounts([...amounts, ""]);
+      setAssets([...assets, "lovelace"]);
+    }
+  }
+
+  function addMultisigSignerAsRecipient(signerIndex: number) {
+    if (appWallet?.signersAddresses && appWallet.signersAddresses[signerIndex]) {
+      const signerAddress = appWallet.signersAddresses[signerIndex]!;
+      setRecipientAddresses([...recipientAddresses, signerAddress]);
+      setAmounts([...amounts, ""]);
+      setAssets([...assets, "lovelace"]);
+    }
   }
 
   return (
-    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <SectionTitle>New Transaction</SectionTitle>
+    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-3 sm:gap-6 sm:p-4 md:gap-8 md:p-8 max-w-6xl mx-auto">
+      <div className="flex flex-col gap-2">
+        <SectionTitle>New Transaction</SectionTitle>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Create a new multisig transaction by specifying recipients, amounts, and transaction details.
+        </p>
+      </div>
 
-      <div className="grid gap-4">
-        <CardUI title="Recipients" cardClassName="w-full">
-        <RecipientCsv
-          setRecipientAddresses={setRecipientAddresses}
-          setAmounts={setAmounts}
-          setAssets={setAssets}
-          recipientAddresses={recipientAddresses}
-          amounts={amounts}
-          assets={assets}
-        />
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Address</TableHead>
-              <TableHead className="w-[120px]">Amount</TableHead>
-              <TableHead className="w-[120px]">Asset</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {recipientAddresses.map((_, index) => (
-              <RecipientRow
-                key={index}
-                index={index}
-                recipientAddresses={recipientAddresses}
-                setRecipientAddresses={setRecipientAddresses}
-                amounts={amounts}
-                setAmounts={setAmounts}
-                assets={assets}
-                setAssets={setAssets}
-                disableAdaAmountInput={sendAllAssets}
-              />
-            ))}
-            <TableRow>
-              <TableCell colSpan={3}>
+      <div className="grid gap-4 sm:gap-6">
+        <CardUI 
+          title="Recipients" 
+          description="Specify the recipients and amounts for your transaction"
+          cardClassName="w-full"
+        >
+          <div className="space-y-4">
+            <RecipientCsv
+              setRecipientAddresses={setRecipientAddresses}
+              setAmounts={setAmounts}
+              setAssets={setAssets}
+              recipientAddresses={recipientAddresses}
+              amounts={amounts}
+              assets={assets}
+            />
+            
+            {/* Desktop Table */}
+            <div className="hidden sm:block border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table className="min-w-[600px]">
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="font-semibold min-w-[200px]">Address</TableHead>
+                      <TableHead className="w-[120px] sm:w-[140px] font-semibold">Amount</TableHead>
+                      <TableHead className="w-[140px] sm:w-[180px] font-semibold">Asset</TableHead>
+                      <TableHead className="w-[60px] sm:w-[80px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recipientAddresses.map((_, index) => (
+                      <RecipientRow
+                        key={index}
+                        index={index}
+                        recipientAddresses={recipientAddresses}
+                        setRecipientAddresses={setRecipientAddresses}
+                        amounts={amounts}
+                        setAmounts={setAmounts}
+                        assets={assets}
+                        setAssets={setAssets}
+                        disableAdaAmountInput={sendAllAssets}
+                      />
+                    ))}
+                    <TableRow className="border-t-2">
+                      <TableCell colSpan={4} className="py-3 sm:py-4">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
+                            onClick={() => addNewRecipient()}
+                            disabled={sendAllAssets}
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                            <span className="hidden sm:inline">Add Recipient</span>
+                            <span className="sm:hidden">Add</span>
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
+                            onClick={() => addSelfAsRecipient()}
+                            disabled={sendAllAssets || !appWallet?.address}
+                          >
+                            <PlusCircle className="h-4 w-4" />
+                            <span className="hidden sm:inline">Add Self Multisig</span>
+                            <span className="sm:hidden">Self Multisig</span>
+                          </Button>
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
+                                disabled={sendAllAssets || !appWallet?.signersAddresses || appWallet.signersAddresses.length === 0}
+                              >
+                                <PlusCircle className="h-4 w-4" />
+                                <span className="hidden sm:inline">Add Signer</span>
+                                <span className="sm:hidden">Signer</span>
+                                <ChevronDown className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              {appWallet?.signersAddresses?.map((signerAddress, index) => {
+                                const signerDescription = appWallet.signersDescriptions?.[index] || `Signer ${index + 1}`;
+
+                                return (
+                                  <DropdownMenuItem
+                                    key={index}
+                                    onClick={() => addMultisigSignerAsRecipient(index)}
+                                    className="flex flex-col items-start gap-1"
+                                  >
+                                    <span className="font-medium">{signerDescription}</span>
+                                    <span className="text-xs text-muted-foreground font-mono">
+                                      {signerAddress.slice(0, 20)}...
+                                    </span>
+                                  </DropdownMenuItem>
+                                );
+                              })}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* Mobile Card Layout */}
+            <div className="block sm:hidden">
+              {recipientAddresses.map((_, index) => (
+                <RecipientRowMobile
+                  key={index}
+                  index={index}
+                  recipientAddresses={recipientAddresses}
+                  setRecipientAddresses={setRecipientAddresses}
+                  amounts={amounts}
+                  setAmounts={setAmounts}
+                  assets={assets}
+                  setAssets={setAssets}
+                  disableAdaAmountInput={sendAllAssets}
+                />
+              ))}
+              
+              {/* Mobile Add Buttons */}
+              <div className="mt-4 space-y-2">
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="gap-1"
+                  variant="outline"
+                  className="gap-2 h-9 w-full"
                   onClick={() => addNewRecipient()}
                   disabled={sendAllAssets}
                 >
-                  <PlusCircle className="h-3.5 w-3.5" />
+                  <PlusCircle className="h-4 w-4" />
                   Add Recipient
                 </Button>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardUI>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 h-9"
+                    onClick={() => addSelfAsRecipient()}
+                    disabled={sendAllAssets || !appWallet?.address}
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                    Add Self
+                  </Button>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 h-9"
+                        disabled={sendAllAssets || !appWallet?.signersAddresses || appWallet.signersAddresses.length === 0}
+                      >
+                        <PlusCircle className="h-4 w-4" />
+                        Add Signer
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      {appWallet?.signersAddresses?.map((signerAddress, index) => {
+                        const signerDescription = appWallet.signersDescriptions?.[index] || `Signer ${index + 1}`;
 
-      <CardUI title="UTxOs" cardClassName="w-full noBorder">
+                        return (
+                          <DropdownMenuItem
+                            key={index}
+                            onClick={() => addMultisigSignerAsRecipient(index)}
+                            className="flex flex-col items-start gap-1"
+                          >
+                            <span className="font-medium">{signerDescription}</span>
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {signerAddress.slice(0, 20)}...
+                            </span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardUI>
+
+      <CardUI 
+        title="UTxOs" 
+        description="Select which unspent transaction outputs to use for this transaction"
+        cardClassName="w-full"
+      >
         {appWallet && (
           <UTxOSelector
             appWallet={appWallet}
@@ -321,122 +464,148 @@ export default function PageNewTransaction() {
               setManualUtxos(utxos);
               setManualSelected(manual);
             }}
+            recipientAmounts={amounts}
+            recipientAssets={assets}
           />
         )}
       </CardUI>
 
-      <CardUI title="Staking" cardClassName="w-full noBorder">
-        Coming soon.
-        {/* //Check if registered-> offer de-/registration
-        //offer stake pool id input
-        //offer withdrawl */}
-      </CardUI>
 
       <CardUI
         title="Description"
-        description="To provide more information to other signers."
+        description="Provide context and information for other signers about this transaction"
         cardClassName="w-full"
       >
-        <Table>
-          <TableBody>
-            <TableRow>
-              <TableCell>
-                <Textarea
-                  className="min-h-16"
-                  value={description}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 128)
-                      setDescription(e.target.value);
-                  }}
-                  placeholder="@user contributed PR #123"
-                />
-                {description.length >= 128 && (
-                  <p className="text-red-500">
-                    Description should be less than 128 characters
-                  </p>
-                )}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          <Textarea
+            className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
+            value={description}
+            onChange={(e) => {
+              if (e.target.value.length <= 128)
+                setDescription(e.target.value);
+            }}
+            placeholder="e.g., Payment for services, Contribution to project, etc."
+          />
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
+            <span>Optional description for signers</span>
+            <span className={description.length >= 128 ? "text-destructive" : ""}>
+              {description.length}/128
+            </span>
+          </div>
+          {description.length >= 128 && (
+            <p className="text-sm text-destructive">
+              Description should be less than 128 characters
+            </p>
+          )}
+        </div>
       </CardUI>
 
       <CardUI
         title="On-chain Metadata"
-        description="Metadata attaches additional information to a transaction viewable on the blockchain."
+        description="Attach additional information to the transaction that will be visible on the blockchain"
         cardClassName="w-full"
       >
-        <Table>
-          <TableBody>
-            <TableRow>
-              <TableCell>
-                <Textarea
-                  className="min-h-16"
-                  value={metadata}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 64)
-                      setMetadata(e.target.value);
-                  }}
-                  placeholder={`PR #123`}
-                />
-                {metadata.length >= 64 && (
-                  <p className="text-red-500">
-                    Metadata should be less than 64 characters
-                  </p>
-                )}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          <Textarea
+            className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
+            value={metadata}
+            onChange={(e) => {
+              if (e.target.value.length <= 64)
+                setMetadata(e.target.value);
+            }}
+            placeholder="e.g., PR #123, Invoice #456, etc."
+          />
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
+            <span>Optional metadata for blockchain record</span>
+            <span className={metadata.length >= 64 ? "text-destructive" : ""}>
+              {metadata.length}/64
+            </span>
+          </div>
+          {metadata.length >= 64 && (
+            <p className="text-sm text-destructive">
+              Metadata should be less than 64 characters
+            </p>
+          )}
+        </div>
       </CardUI>
 
       <CardUI
-        title="Transaction options"
-        description="Additional options for the transaction."
+        title="Transaction Options"
+        description="Configure additional settings for your transaction"
         cardClassName="w-full"
       >
-        <Table>
-          <TableBody>
-            <TableRow>
-              <TableCell>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="sendAllAssetCheck"
-                    checked={sendAllAssets}
-                    onCheckedChange={() => setSendAllAssets(!sendAllAssets)}
-                  />
-                  <label
-                    htmlFor="sendAllAssetCheck"
-                    className="flex items-center gap-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Send all assets to one recipient
-                    <HoverCard>
-                      <HoverCardTrigger>
-                        <QuestionMarkCircledIcon className="h-4 w-4" />
-                      </HoverCardTrigger>
-                      <HoverCardContent>
-                        Enable this will send all assets to the first
-                        recipient's address.
-                      </HoverCardContent>
-                    </HoverCard>
-                  </label>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <div className="space-y-4">
+          <div className="flex items-start space-x-3 p-3 sm:p-4 border rounded-lg bg-muted/30">
+            <Checkbox
+              id="sendAllAssetCheck"
+              checked={sendAllAssets}
+              onCheckedChange={() => setSendAllAssets(!sendAllAssets)}
+              className="mt-0.5 flex-shrink-0"
+            />
+            <div className="flex-1 space-y-1 min-w-0">
+              <label
+                htmlFor="sendAllAssetCheck"
+                className="flex items-start gap-2 text-sm font-medium leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                <span className="flex-1">Send all assets to first recipient</span>
+                <HoverCard>
+                  <HoverCardTrigger className="flex-shrink-0">
+                    <QuestionMarkCircledIcon className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-80 max-w-[calc(100vw-2rem)]">
+                    <div className="space-y-2">
+                      <h4 className="font-semibold">Send All Assets</h4>
+                      <p className="text-sm">
+                        When enabled, all assets in the wallet will be sent to the first recipient's address. 
+                        This is useful for wallet consolidation or complete asset transfers.
+                      </p>
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
+              </label>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Transfers all wallet assets to the first recipient instead of specific amounts
+              </p>
+            </div>
+          </div>
+        </div>
       </CardUI>
 
-      <div className="flex h-full items-center justify-center gap-4">
-        <Button onClick={() => createNewTransaction()} disabled={loading}>
+      <div className="flex flex-col items-center gap-4 pt-4 sm:pt-6 border-t">
+        {error && (
+          <div className="w-full max-w-md p-3 sm:p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
+            <div className="flex items-center gap-2 text-destructive">
+              <X className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm font-medium">Transaction Error</span>
+            </div>
+            <p className="text-sm text-destructive/80 mt-1 break-words">{error}</p>
+          </div>
+        )}
+        
+        <Button 
+          onClick={() => createNewTransaction()} 
+          disabled={loading}
+          size="lg"
+          className="w-full sm:min-w-[200px] sm:w-auto h-11 sm:h-12"
+        >
           {loading ? (
-            <Loader className="mr-2 h-4 w-4" />
+            <>
+              <Loader className="mr-2 h-4 w-4 animate-spin" />
+              <span className="hidden sm:inline">Creating Transaction...</span>
+              <span className="sm:hidden">Creating...</span>
+            </>
           ) : (
-            <Send className="mr-2 h-4 w-4" />
+            <>
+              <Send className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Create Transaction</span>
+              <span className="sm:hidden">Create</span>
+            </>
           )}
-          Create and Sign Transaction
         </Button>
-        {error && <div className="text-sm text-red-500">{error}</div>}
+        
+        <p className="text-xs text-muted-foreground text-center max-w-md px-4 leading-relaxed">
+          This will create a multisig transaction that requires signatures from other wallet members
+        </p>
       </div>
       </div>
     </main>

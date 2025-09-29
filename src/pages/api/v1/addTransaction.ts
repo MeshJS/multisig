@@ -1,13 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
-import { cors } from "@/lib/cors";
+import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { getProvider } from "@/utils/get-provider";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  // Add cache-busting headers for CORS
+  addCorsCacheBustingHeaders(res);
+  
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
