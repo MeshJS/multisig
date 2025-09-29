@@ -252,10 +252,7 @@ export class MultisigWallet {
       this.network,
       this.stakingEnabled()
         ? stakeCredentialHash
-        : this.stakeCredentialHash === undefined
-          ? undefined
-          : this.stakeCredentialHash,
-      this.stakingEnabled(),
+        : this.stakeCredentialHash,
     );
   }
 
@@ -276,13 +273,26 @@ export class MultisigWallet {
     const stakingScript = this.buildScript(2);
     if (!stakingScript) {
       console.warn("MultisigWallet keys:", this.keys);
-      console.warn("buildScript(0) result:", stakingScript);
+      console.warn("buildScript(2) result:", stakingScript);
       console.error(
         "Cannot build multisig script: no valid staking keys provided.",
       );
       return undefined;
     }
     return getScript(stakingScript, this.network).scriptCbor;
+  }
+
+  getDRepScript(): string | undefined {
+    const dRepScript = this.buildScript(3);
+    if (!dRepScript) {
+      console.warn("MultisigWallet keys:", this.keys);
+      console.warn("buildScript(3) result:", dRepScript);
+      console.error(
+        "Cannot build multisig script: no valid DRep keys provided.",
+      );
+      return undefined;
+    }
+    return getScript(dRepScript, this.network).scriptCbor;
   }
 
   /**
@@ -670,13 +680,12 @@ function getScript(
   script: NativeScript,
   network: number,
   stakeCredentialHash?: string,
-  enabled: boolean = false,
 ): { address: string; scriptCbor: string } {
   const { address, scriptCbor } = serializeNativeScript(
     script,
     stakeCredentialHash,
     network,
-    enabled,
+    true
   );
   if (!scriptCbor) {
     throw new Error("Failed to serialize multisig script");

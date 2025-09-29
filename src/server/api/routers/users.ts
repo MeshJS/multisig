@@ -23,8 +23,16 @@ export const userRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.user.create({
-        data: {
+      return ctx.db.user.upsert({
+        where: {
+          address: input.address,
+        },
+        update: {
+          stakeAddress: input.stakeAddress,
+          drepKeyHash: input.drepKeyHash,
+          nostrKey: input.nostrKey,
+        },
+        create: {
           address: input.address,
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,

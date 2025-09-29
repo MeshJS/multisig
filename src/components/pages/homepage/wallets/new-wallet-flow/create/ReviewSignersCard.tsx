@@ -50,6 +50,8 @@ interface SignerConfig {
   setSignerDescriptions: React.Dispatch<React.SetStateAction<string[]>>;
   signersStakeKeys: string[];
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
+  signersDRepKeys: string[];
+  setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
   addSigner: () => void;
   removeSigner?: (index: number) => void;
 }
@@ -63,6 +65,7 @@ interface ReviewSignersCardProps {
     signersAddresses: string[],
     signersDescriptions: string[],
     signersStakeKeys: string[],
+    signersDRepKeys: string[],
   ) => void;
 }
 
@@ -80,6 +83,8 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
     setSignerDescriptions,
     signersStakeKeys = [],
     setSignerStakeKeys,
+    signersDRepKeys = [],
+    setSignerDRepKeys,
     addSigner,
     removeSigner,
   } = signerConfig;
@@ -95,6 +100,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   // Temporary form state
   const [tempAddress, setTempAddress] = React.useState("");
   const [tempStakeKey, setTempStakeKey] = React.useState("");
+  const [tempDRepKey, setTempDRepKey] = React.useState("");
   const [tempDescription, setTempDescription] = React.useState("");
 
   // Start editing a signer
@@ -102,6 +108,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
     setEditIndex(index);
     setTempAddress(signersAddresses[index] || "");
     setTempStakeKey(signersStakeKeys[index] || "");
+    setTempDRepKey(signersDRepKeys[index] || "");
     setTempDescription(signersDescriptions[index] || "");
     setEditMode("edit");
   };
@@ -110,6 +117,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   const startAdd = () => {
     setTempAddress("");
     setTempStakeKey("");
+    setTempDRepKey("");
     setTempDescription("");
     setEditMode("add");
   };
@@ -119,38 +127,45 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
     let newAddresses = signersAddresses;
     let newDescriptions = signersDescriptions;
     let newStakeKeys = signersStakeKeys;
+    let newDRepKeys = signersDRepKeys;
 
     if (editMode === "edit" && editIndex >= 0) {
       const updatedAddresses = [...signersAddresses];
       const updatedStakeKeys = [...signersStakeKeys];
+      const updatedDRepKeys = [...signersDRepKeys];
       const updatedDescriptions = [...signersDescriptions];
 
       updatedAddresses[editIndex] = tempAddress;
       updatedStakeKeys[editIndex] = tempStakeKey;
+      updatedDRepKeys[editIndex] = tempDRepKey;
       updatedDescriptions[editIndex] = tempDescription;
 
       newAddresses = updatedAddresses;
       newDescriptions = updatedDescriptions;
       newStakeKeys = updatedStakeKeys;
+      newDRepKeys = updatedDRepKeys;
 
       setSignerAddresses(updatedAddresses);
       setSignerStakeKeys(updatedStakeKeys);
+      setSignerDRepKeys(updatedDRepKeys);
       setSignerDescriptions(updatedDescriptions);
     } else if (editMode === "add") {
       newAddresses = [...signersAddresses, tempAddress];
       // Don't add stake key if external stake credential is set
       newStakeKeys = [...signersStakeKeys, hasExternalStakeCredential ? "" : tempStakeKey];
+      newDRepKeys = [...signersDRepKeys, tempDRepKey];
       newDescriptions = [...signersDescriptions, tempDescription];
 
       setSignerAddresses(newAddresses);
       setSignerStakeKeys(newStakeKeys);
+      setSignerDRepKeys(newDRepKeys);
       setSignerDescriptions(newDescriptions);
     }
 
     setEditMode("list");
 
     if (onSave) {
-      onSave(newAddresses, newDescriptions, newStakeKeys);
+      onSave(newAddresses, newDescriptions, newStakeKeys, newDRepKeys);
     }
   };
 
@@ -186,13 +201,15 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
       const newAddresses = [...signersAddresses];
       const newDescriptions = [...signersDescriptions];
       const newStakeKeys = [...signersStakeKeys];
+      const newDRepKeys = [...signersDRepKeys];
 
       newAddresses.splice(signerToDelete, 1);
       newDescriptions.splice(signerToDelete, 1);
       newStakeKeys.splice(signerToDelete, 1);
+      newDRepKeys.splice(signerToDelete, 1);
 
       if (onSave) {
-        onSave(newAddresses, newDescriptions, newStakeKeys);
+        onSave(newAddresses, newDescriptions, newStakeKeys, newDRepKeys);
       }
     }
     setDeleteDialogOpen(false);
@@ -236,10 +253,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
               <Table className="overflow-hidden rounded-md border">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[25%]">Signer name</TableHead>
-                    <TableHead className="w-[40%]">Address</TableHead>
-                    <TableHead className="w-[13%]">Stake Key</TableHead>
-                    <TableHead className="w-[12%]">Edit</TableHead>
+                    <TableHead className="w-[20%]">Signer name</TableHead>
+                    <TableHead className="w-[30%]">Address</TableHead>
+                    <TableHead className="w-[15%]">Stake Key</TableHead>
+                    <TableHead className="w-[15%]">DRep Key</TableHead>
+                    <TableHead className="w-[10%]">Edit</TableHead>
                     <TableHead className="w-[10%]">Delete</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -285,6 +303,30 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                               <TooltipContent className="max-w-xs">
                                 <p className="break-all font-mono text-xs">
                                   {signersStakeKeys[index]}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            -
+                          </span>
+                        )}
+                      </TableCell>
+
+                      {/* DRep Key */}
+                      <TableCell>
+                        {signersDRepKeys[index] ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help text-sm underline decoration-dotted">
+                                  Yes
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="break-all font-mono text-xs">
+                                  {signersDRepKeys[index]}
                                 </p>
                               </TooltipContent>
                             </Tooltip>
@@ -397,6 +439,29 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                           <TooltipContent className="max-w-xs">
                             <p className="break-all font-mono text-xs">
                               {signersStakeKeys[index]}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </div>
+
+                  {/* DRep Key */}
+                  <div>
+                    <p className="text-xs text-muted-foreground">DRep Key</p>
+                    {signersDRepKeys[index] ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help text-sm underline decoration-dotted">
+                              Yes
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="break-all font-mono text-xs">
+                              {signersDRepKeys[index]}
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -580,6 +645,33 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                     <div className="mt-1 flex items-center gap-1">
                       <p className="text-xs text-blue-600 dark:text-blue-400">
                         ℹ️ This wallet uses an external stake credential. Stake keys will not be imported.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* DRep Key field - stacked on mobile */}
+              <div className="grid gap-2 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-4">
+                <Label htmlFor="drepKey" className="text-sm">
+                  DRep Key{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <div>
+                  <Input
+                    id="drepKey"
+                    className="break-all font-mono text-xs sm:text-sm"
+                    placeholder="DRep key hash"
+                    value={tempDRepKey}
+                    onChange={(e) => setTempDRepKey(e.target.value)}
+                  />
+                  {tempDRepKey && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      <p className="text-xs text-green-500">
+                        DRep key entered
                       </p>
                     </div>
                   )}

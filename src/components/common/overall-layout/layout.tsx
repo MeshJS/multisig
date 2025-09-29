@@ -35,26 +35,33 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-// Simple error boundary component
-class SimpleErrorBoundary extends Component<
+// Enhanced error boundary component for wallet errors
+class WalletErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; error: Error | null }
 > {
   constructor(props: { children: ReactNode; fallback: ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('Error caught by boundary:', error, errorInfo);
+    console.error('Error caught by wallet boundary:', error, errorInfo);
+    
+    // Handle specific wallet errors
+    if (error.message.includes("account changed")) {
+      console.log("Wallet account changed error caught by boundary, reloading page...");
+      window.location.reload();
+      return;
+    }
   }
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.hasError && this.state.error && !this.state.error.message.includes("account changed")) {
       return this.props.fallback;
     }
     return this.props.children;
@@ -75,6 +82,30 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
 
+  // Global error handler for unhandled promise rejections
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('Unhandled promise rejection:', event.reason);
+      
+      // Handle wallet-related errors specifically
+      if (event.reason && typeof event.reason === 'object') {
+        const error = event.reason as Error;
+        if (error.message && error.message.includes("account changed")) {
+          console.log("Account changed error caught by global handler, reloading page...");
+          event.preventDefault(); // Prevent the error from being logged to console
+          window.location.reload();
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   const { mutate: createUser } = api.user.createUser.useMutation({
     onError: (e) => console.error(e),
   });
@@ -87,56 +118,57 @@ export default function RootLayout({
     (async () => {
       if (!connected || !wallet) return;
 
-      // 1) Set user address in store
-      let address = (await wallet.getUsedAddresses())[0];
-      if (!address) address = (await wallet.getUnusedAddresses())[0];
-      if (address) setUserAddress(address);
+      try {
+        // 1) Set user address in store
+        let address = (await wallet.getUsedAddresses())[0];
+        if (!address) address = (await wallet.getUnusedAddresses())[0];
+        if (address) setUserAddress(address);
 
-      // 2) Get stake address
-      const stakeAddress = (await wallet.getRewardAddresses())[0];
-      if (!stakeAddress || !address) {
-        console.error("No stake address or payment address found");
-        return;
-      }
+        // 2) Get stake address
+        const stakeAddress = (await wallet.getRewardAddresses())[0];
+        if (!stakeAddress || !address) {
+          console.error("No stake address or payment address found");
+          return;
+        }
 
-      // 3) Get DRep key hash
-      const dRepKey = await wallet.getDRep();
-      if (!dRepKey) {
-        console.error("No DRep key found");
-        return;
-      }
-      const drepKeyHash = dRepKey.publicKeyHash;
-      if (!drepKeyHash) {
-        console.error("No DRep key hash found:", drepKeyHash);
-        return;
-      }
+        // 3) Get DRep key hash (optional)
+        let drepKeyHash = "";
+        try {
+          const dRepKey = await wallet.getDRep();
+          console.log("DRep key:", dRepKey);
+          if (dRepKey && dRepKey.publicKeyHash) {
+            drepKeyHash = dRepKey.publicKeyHash;
+          }
+        } catch (error) {
+          // DRep key is optional, so we continue without it
+          console.log("No DRep key available for this wallet");
+        }
 
-      // 4) If user doesn't exist create it
-      if (!isLoading && user === null) {
-        const nostrKey = generateNsec();
-        createUser({
-          address,
-          stakeAddress,
-          drepKeyHash,
-          nostrKey: JSON.stringify(nostrKey),
-        });
-      }
-
-      // 5) If user exists but missing fields, update it
-      if (
-        !isLoading &&
-        user &&
-        user !== null &&
-        (user.stakeAddress !== stakeAddress || user.drepKeyHash !== drepKeyHash)
-      ) {
-        updateUser({
-          address,
-          stakeAddress,
-          drepKeyHash,
-        });
+        // 4) Create or update user (upsert pattern handles both cases)
+        if (!isLoading) {
+          const nostrKey = generateNsec();
+          createUser({
+            address,
+            stakeAddress,
+            drepKeyHash,
+            nostrKey: JSON.stringify(nostrKey),
+          });
+        }
+      } catch (error) {
+        console.error("Error in wallet initialization effect:", error);
+        
+        // If we get an "account changed" error, reload the page
+        if (error instanceof Error && error.message.includes("account changed")) {
+          console.log("Account changed detected, reloading page...");
+          window.location.reload();
+          return;
+        }
+        
+        // For other errors, don't throw to prevent app crash
+        // The user can retry by reconnecting their wallet
       }
     })();
-  }, [connected, wallet, user, isLoading, generateNsec, setUserAddress]);
+  }, [connected, wallet, user, isLoading, createUser, generateNsec, setUserAddress]);
 
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
@@ -268,7 +300,22 @@ export default function RootLayout({
         </header>
 
         <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
-          {pageIsPublic || userAddress ? children : <PageHomepage />}
+          <WalletErrorBoundary 
+            fallback={
+              <div className="flex flex-col items-center justify-center h-full">
+                <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+                <p className="text-gray-600 mb-4">Please try refreshing the page or reconnecting your wallet.</p>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Refresh Page
+                </button>
+              </div>
+            }
+          >
+            {pageIsPublic || userAddress ? children : <PageHomepage />}
+          </WalletErrorBoundary>
         </main>
       </div>
     </div>
