@@ -210,7 +210,6 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
     <CardUI
       title="Proposals"
       description={`All proposals submitted by the community`}
-      cardClassName="col-span-3"
     >
       <div className="flex flex-col gap-2">
         {proposals.length > 0 && (

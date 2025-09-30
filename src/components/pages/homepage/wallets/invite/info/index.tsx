@@ -100,11 +100,13 @@ export default function PageNewWalletInviteInfo() {
       const updatedAddresses = newWallet.signersAddresses.filter((_, i) => i !== userIndex);
       const updatedStakeKeys = newWallet.signersStakeKeys.filter((_, i) => i !== userIndex);
       const updatedDescriptions = newWallet.signersDescriptions.filter((_, i) => i !== userIndex);
+      const updatedDRepKeys = newWallet.signersDRepKeys?.filter((_, i) => i !== userIndex) || [];
 
       updateNewWalletSigners({
         walletId: newWalletId!,
         signersAddresses: updatedAddresses,
         signersStakeKeys: updatedStakeKeys,
+        signersDRepKeys: updatedDRepKeys,
         signersDescriptions: updatedDescriptions,
       });
     }

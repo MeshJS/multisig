@@ -138,11 +138,15 @@ export default function PageNewWalletInvite() {
 
     // Only import stake key if no external stake credential is set
     const stakeKeyToAdd = newWallet.stakeCredentialHash ? "" : user.stakeAddress;
+    
+    // Add DRep key if available
+    const drepKeyToAdd = user?.drepKeyHash || "";
 
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
       signersStakeKeys: [...newWallet.signersStakeKeys, stakeKeyToAdd],
+      signersDRepKeys: [...(newWallet.signersDRepKeys || []), drepKeyToAdd],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,
@@ -195,6 +199,9 @@ export default function PageNewWalletInvite() {
     const updatedStakeKeys = newWallet.signersStakeKeys.filter(
       (_, i) => i !== userIndex,
     );
+    const updatedDRepKeys = (newWallet.signersDRepKeys || []).filter(
+      (_, i) => i !== userIndex,
+    );
     const updatedDescriptions = newWallet.signersDescriptions.filter(
       (_, i) => i !== userIndex,
     );
@@ -203,6 +210,7 @@ export default function PageNewWalletInvite() {
       walletId: newWalletId!,
       signersAddresses: updatedAddresses,
       signersStakeKeys: updatedStakeKeys,
+      signersDRepKeys: updatedDRepKeys,
       signersDescriptions: updatedDescriptions,
     });
   }
@@ -282,6 +290,7 @@ export default function PageNewWalletInvite() {
                   <ManageSignerCard
                     userAddress={userAddress || ""}
                     stakeAddress={user?.stakeAddress ?? ""}
+                    drepKeyHash={user?.drepKeyHash ?? ""}
                     signerName={localSignerName}
                     onNameChange={handleNameChange}
                     loading={isUpdatingName}
@@ -312,6 +321,7 @@ export default function PageNewWalletInvite() {
                     <JoinAsSignerCard
                       userAddress={userAddress || ""}
                       stakeAddress={getStakeAddress(userAddress) ?? ""}
+                      drepKeyHash={user?.drepKeyHash ?? ""}
                       signerName={signersDescription}
                       setSignerName={setSignerDescription}
                       onJoin={addSigner}

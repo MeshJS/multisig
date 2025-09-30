@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useEffect, useRef, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -21,6 +22,7 @@ export default function WalletDataLoaderWrapper({
   onAction 
 }: WalletDataLoaderWrapperProps) {
   const { appWallet } = useAppWallet();
+  const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
 
   const prevWalletIdRef = useRef<string | null>(null);
@@ -149,25 +151,31 @@ export default function WalletDataLoaderWrapper({
   }
 
   function dRepIds() {
-    const dRepId = appWallet?.dRepId;
-    if (!dRepId) throw new Error("No dRep ID found.");
+    // Use multisig wallet DRep ID if available, otherwise fallback to appWallet
+    const dRepId = multisigWallet?.getDRepId() || appWallet?.dRepId;
+    if (!dRepId) return null;
     return getDRepIds(dRepId);
   }
 
   async function getDRepInfo() {
     try {
-      const blockchainProvider = getProvider(network);
+      const drepids = dRepIds();
+      if (!drepids) {
+        setDrepInfo(undefined);
+        return;
+      }
 
-      const drepids = dRepIds()
-  
+      const blockchainProvider = getProvider(network);
       const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepids.cip105}`,
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
       setDrepInfo(drepInfo);
     } catch (err) {
+      // DRep not found (404) is expected if DRep hasn't been registered yet
+      // This is normal behavior - the DRep ID exists but isn't registered on-chain
       setDrepInfo(undefined);
-      // Handle error silently
+      console.log(`DRep not yet registered on-chain (this is normal before registration)`);
     }
   }
 

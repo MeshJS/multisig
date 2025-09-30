@@ -4,6 +4,7 @@ import { MoreVertical } from "lucide-react";
 import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 
 import {
   DropdownMenu,
@@ -171,6 +172,11 @@ function EditInfo({
 }
 
 function ShowInfo({ appWallet }: { appWallet: Wallet }) {
+  const { multisigWallet } = useMultisigWallet();
+  
+  // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
+  const dRepId = multisigWallet?.getDRepId() || appWallet.dRepId;
+  
   return (
     <>
       <RowLabelInfo
@@ -180,8 +186,8 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
       />
       <RowLabelInfo
         label="DRep ID"
-        value={appWallet.dRepId}
-        copyString={appWallet.dRepId}
+        value={dRepId}
+        copyString={dRepId}
       />
     </>
   );

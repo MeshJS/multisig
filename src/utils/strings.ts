@@ -1,7 +1,7 @@
 export function getFirstAndLast(
   value: string,
-  firstN: number = 5,
-  lastN: number = 12,
+  firstN: number = 15,
+  lastN: number = 6,
 ) {
   return `${value.slice(0, firstN)}...${value.slice(-lastN)}`;
 }

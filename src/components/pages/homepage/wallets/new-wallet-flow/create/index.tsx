@@ -34,6 +34,8 @@ export default function PageReviewWallet() {
               setSignerDescriptions: walletFlow.setSignerDescriptions,
               signersStakeKeys: walletFlow.signersStakeKeys,
               setSignerStakeKeys: walletFlow.setSignerStakeKeys,
+              signersDRepKeys: walletFlow.signersDRepKeys,
+              setSignerDRepKeys: walletFlow.setSignerDRepKeys,
               addSigner: walletFlow.addSigner,
               removeSigner: walletFlow.removeSigner,
             }}

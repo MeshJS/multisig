@@ -1,5 +1,4 @@
 import { Plus } from "lucide-react";
-import CardUI from "@/components/ui/card-content";
 import { useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWallet } from "@meshsdk/react";
@@ -50,6 +49,9 @@ export default function RegisterDRep() {
     if (!appWallet) {
       throw new Error("Wallet not connected");
     }
+    if (!multisigWallet) {
+      throw new Error("Multisig wallet not connected");
+    }
     // Cast metadata to a known record type
     const drepMetadata = (await getDRepMetadata(
       formState,
@@ -77,13 +79,12 @@ export default function RegisterDRep() {
   }
 
   async function registerDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet)
-      throw new Error("Wallet not connected");
-    if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
+    if (!connected || !userAddress || !multisigWallet || !appWallet)
+      throw new Error("Multisig wallet not connected");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(appWallet.dRepId);
+    const drepIds = getDRepIds(multisigWallet.getDRepId()!);
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -102,7 +103,7 @@ export default function RegisterDRep() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(appWallet.scriptCbor);
+          .txInScript(multisigWallet.getScript().scriptCbor!);
       }
 
       txBuilder
@@ -110,9 +111,8 @@ export default function RegisterDRep() {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(appWallet.scriptCbor)
-        .changeAddress(appWallet.address)
-        .selectUtxosFrom(manualUtxos);
+        .certificateScript(multisigWallet.getDRepScript()!)
+        .changeAddress(multisigWallet.getScript().address);
 
 
 
@@ -129,7 +129,13 @@ export default function RegisterDRep() {
   }
 
   return (
-    <CardUI title="Register DRep" icon={Plus}>
+    <div className="w-full max-w-4xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <Plus className="h-6 w-6" />
+          Register DRep
+        </h1>
+      </div>
       {appWallet && (
         <DRepForm
           _imageUrl={""}
@@ -177,6 +183,6 @@ export default function RegisterDRep() {
           mode="register"
         />
       )}
-    </CardUI>
+    </div>
   );
 }
