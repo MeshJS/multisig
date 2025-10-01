@@ -2,8 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { validateMultisigImportPayload } from "@/utils/validateMultisigImport";
 import { db } from "@/server/db";
-import { addressToNetwork } from "@/utils/multisigSDK";
-import { getProvider } from "@/utils/get-provider";
+
 
 // Draft endpoint: accepts POST request values and logs them
 export default async function handler(
@@ -52,57 +51,15 @@ export default async function handler(
             "Imported via ejection redirect",
         );
 
-        // Backfill missing signer payment addresses via stake address lookup
+        // Backfill missing signer payment addresses using stake keys instead of fetching
         const stakeAddresses = Array.isArray(summary.stakeAddressesUsed) ? summary.stakeAddressesUsed : [];
         const signerAddresses = Array.isArray(summary.signerAddresses) ? summary.signerAddresses : [];
-        type BlockchainProvider = {
-            get: (path: string) => Promise<unknown>;
-        };
-        function isRecord(v: unknown): v is Record<string, unknown> {
-            return typeof v === "object" && v !== null;
-        }
-        function normalizeArrayResponse(resp: unknown): unknown[] {
-            if (Array.isArray(resp)) return resp;
-            if (isRecord(resp) && Array.isArray(resp.data)) return resp.data as unknown[];
-            return [];
-        }
-        function extractFirstAddress(arr: unknown[]): string | null {
-            if (!Array.isArray(arr) || arr.length === 0) return null;
-            const first = arr[0];
-            if (typeof first === "string") return first;
-            if (isRecord(first)) {
-                const maybe = (first as { address?: unknown }).address;
-                if (typeof maybe === "string") return maybe;
-            }
-            return null;
-        }
-        async function fetchFirstPaymentAddressForStake(stakeAddr: string): Promise<string | null> {
-            try {
-                const network = addressToNetwork(stakeAddr);
-                const blockchainProvider = getProvider(network) as unknown as BlockchainProvider;
-                const endpoint = `/accounts/${stakeAddr}/addresses?count=1&order=asc`;
-                const resp = await blockchainProvider.get(endpoint).catch(() => null);
-                const arr = normalizeArrayResponse(resp);
-                const addr = extractFirstAddress(arr);
-                if (addr) {
-                    return addr;
-                }
-            } catch (e) {
-                console.error("[api/v1/ejection/redirect] fetchFirstPaymentAddressForStake error", e);
-            }
-            return null;
-        }
-
-        const paymentAddressesUsed = await Promise.all(
-            (signerAddresses || []).map(async (addr, idx) => {
-                const trimmed = typeof addr === "string" ? addr.trim() : "";
-                if (trimmed) return trimmed;
-                const stakeAddr = stakeAddresses[idx];
-                if (!stakeAddr) return "";
-                const found = await fetchFirstPaymentAddressForStake(stakeAddr);
-                return found ?? "";
-            })
-        );
+        const paymentAddressesUsed = (signerAddresses || []).map((addr, idx) => {
+            const trimmed = typeof addr === "string" ? addr.trim() : "";
+            if (trimmed) return trimmed;
+            const stakeAddr = stakeAddresses[idx];
+            return typeof stakeAddr === "string" ? stakeAddr : "";
+        });
 
         // Persist to NewWallet using validated data
         let dbUpdated = false;
