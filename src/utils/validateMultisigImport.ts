@@ -1,5 +1,5 @@
-import { checkValidAddress, addressToNetwork } from "@/utils/multisigSDK";
-import { serializeRewardAddress, resolveStakeKeyHash } from "@meshsdk/core";
+import { checkValidAddress, addressToNetwork, stakeKeyHash } from "@/utils/multisigSDK";
+import { serializeRewardAddress } from "@meshsdk/core";
 import type { csl } from "@meshsdk/core-csl";
 import { deserializeNativeScript } from "@meshsdk/core-csl";
 
@@ -214,7 +214,7 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
         for (const netId of networksToTry) {
             try {
                 const stakeAddr = serializeRewardAddress(hex, false, netId);
-                const resolved = resolveStakeKeyHash(stakeAddr)?.toLowerCase();
+                const resolved = stakeKeyHash(stakeAddr)?.toLowerCase();
                 if (resolved === hex) {
                     validForAny = true;
                     break;
@@ -288,7 +288,7 @@ function buildStakeAddressesFromHashes(stakeKeys: string[], network: number | un
         for (const netId of tryNetworks) {
             try {
                 const addr = serializeRewardAddress(hex, false, netId);
-                const resolved = resolveStakeKeyHash(addr)?.toLowerCase();
+                const resolved = stakeKeyHash(addr)?.toLowerCase();
                 if (resolved === hex) {
                     chosen = addr;
                     break;

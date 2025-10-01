@@ -24,8 +24,6 @@ export default async function handler(
 
     try {
         const receivedAt = new Date().toISOString();
-        const origin = req.headers.origin ?? null;
-        const userAgent = req.headers["user-agent"] ?? null;
 
         const result = validateMultisigImportPayload(req.body);
         if (!result.ok) {
@@ -33,31 +31,32 @@ export default async function handler(
         }
         const { summary, rows } = result;
 
-        console.log("[api/v1/ejection/redirect] Received multisig import POST:", {
-            receivedAt,
-            origin,
-            userAgent,
-            query: req.query,
-            multisigId: summary.multisigId,
-            multisigName: summary.multisigName,
-            multisigAddress: summary.multisigAddress,
-            network: summary.network,
-            signerCount: summary.signerStakeKeys.length,
-            signerStakeKeys: summary.signerStakeKeys,
-            signerAddresses: summary.signerAddresses,
-            rows: rows,
-        });
 
 
-        // Use aligned signersDescriptions from validator (already tag-stripped and ordered)
-        const signersDescriptions = Array.isArray(summary.signersDescriptions) ? summary.signersDescriptions : [];
+        // Build wallet description from the first non-empty tagless community_description
+        function stripTags(v: string) {
+            return v.replace(/<[^>]*>/g, "").trim();
+        }
+        const walletDescription = (() => {
+            for (const r of rows) {
+                const desc = (r as { community_description?: unknown }).community_description;
+                if (typeof desc === "string" && desc.trim().length > 0) {
+                    return stripTags(desc);
+                }
+            }
+            return "";
+        })();
+
+        // Set each signersDescriptions value to a fixed import message
+        const signersDescriptions = new Array((summary.signerAddresses || []).length).fill(
+            "Imported via ejection redirect",
+        );
 
         // Backfill missing signer payment addresses via stake address lookup
         const stakeAddresses = Array.isArray(summary.stakeAddressesUsed) ? summary.stakeAddressesUsed : [];
         const signerAddresses = Array.isArray(summary.signerAddresses) ? summary.signerAddresses : [];
         type BlockchainProvider = {
             get: (path: string) => Promise<unknown>;
-            fetchAccountInfo?: (stakeAddr: string) => Promise<unknown>;
         };
         function isRecord(v: unknown): v is Record<string, unknown> {
             return typeof v === "object" && v !== null;
@@ -109,42 +108,45 @@ export default async function handler(
         let dbUpdated = false;
         let newWalletId: string | null = null;
         try {
-            // ownerAddress must strictly be the multisigAddress
-            const ownerAddress = summary.multisigAddress ?? "";
-            if (!ownerAddress) {
-                return res.status(400).json({ error: "multisigAddress is required as ownerAddress" });
-            }
+            const specifiedId = typeof summary.multisigId === "string" && summary.multisigId.trim().length > 0
+                ? summary.multisigId.trim()
+                : null;
 
-            // Find existing wallet by ownerAddress to avoid duplicates
-            const existing = await db.newWallet.findFirst({ where: { ownerAddress } });
-            if (existing) {
-                const updated = await db.newWallet.update({
-                    where: { id: existing.id },
-                    data: {
-                        name: summary.multisigName ?? existing.name ?? "Imported Multisig",
-                        description: "Imported via ejection redirect",
+            if (specifiedId) {
+                const saved = await db.newWallet.upsert({
+                    where: { id: specifiedId },
+                    update: {
+                        name: summary.multisigName ?? "Imported Multisig",
+                        description: walletDescription,
                         signersAddresses: paymentAddressesUsed,
-                        signersStakeKeys: summary.signerStakeKeys,
+                        signersStakeKeys: summary.stakeAddressesUsed,
                         signersDescriptions,
                         numRequiredSigners: summary.numRequiredSigners,
-                        ownerAddress,
+                    },
+                    create: {
+                        id: specifiedId,
+                        name: summary.multisigName ?? "Imported Multisig",
+                        description: walletDescription,
+                        signersAddresses: paymentAddressesUsed,
+                        signersStakeKeys: summary.stakeAddressesUsed,
+                        signersDescriptions,
+                        numRequiredSigners: summary.numRequiredSigners,
+                        ownerAddress: "",
                     },
                 });
-                console.log("[api/v1/ejection/redirect] NewWallet update success:", { id: updated.id });
+                console.log("[api/v1/ejection/redirect] NewWallet upsert success:", { id: saved.id });
                 dbUpdated = true;
-                newWalletId = updated.id;
+                newWalletId = saved.id;
             } else {
                 const created = await db.newWallet.create({
                     data: {
-                        // Let Prisma generate id (cuid()) when multisigId is not present
-                        ...(summary.multisigId ? { id: summary.multisigId } : {}),
                         name: summary.multisigName ?? "Imported Multisig",
-                        description: "Imported via ejection redirect",
+                        description: walletDescription,
                         signersAddresses: paymentAddressesUsed,
-                        signersStakeKeys: summary.signerStakeKeys,
+                        signersStakeKeys: summary.stakeAddressesUsed,
                         signersDescriptions,
                         numRequiredSigners: summary.numRequiredSigners,
-                        ownerAddress,
+                        ownerAddress: "",
                     },
                 });
                 console.log("[api/v1/ejection/redirect] NewWallet create success:", { id: created.id });
@@ -161,12 +163,6 @@ export default async function handler(
             multisigId: summary.multisigId,
             multisigName: summary.multisigName,
             multisigAddress: summary.multisigAddress,
-            network: summary.network,
-            signerCount: summary.signerStakeKeys.length,
-            numRequiredSigners: summary.numRequiredSigners,
-            stakeKeysUsed: summary.stakeAddressesUsed,
-            paymentKeysUsed: paymentAddressesUsed,
-            stakeKeyHexes: summary.signerStakeKeys,
             dbUpdated,
             newWalletId,
         });
