@@ -46,9 +46,9 @@ export default async function handler(
             return "";
         })();
 
-        // Set each signersDescriptions value to a fixed import message
-        const signersDescriptions = new Array((summary.signerAddresses || []).length).fill(
-            "Imported via ejection redirect",
+        // Set each signersDescriptions value to "Signer 1", "Signer 2", etc.
+        const signersDescriptions = Array.from({ length: (summary.signerAddresses || []).length }, (_, index) => 
+            `Signer ${index + 1}`
         );
 
         // Backfill missing signer payment addresses using stake keys instead of fetching
@@ -77,8 +77,11 @@ export default async function handler(
                         description: walletDescription,
                         signersAddresses: paymentAddressesUsed,
                         signersStakeKeys: summary.stakeAddressesUsed,
+                        signersDRepKeys: [],
                         signersDescriptions,
                         numRequiredSigners: summary.numRequiredSigners,
+                        stakeCredentialHash: null,
+                        scriptType: null,
                     },
                     create: {
                         id: specifiedId,
@@ -86,9 +89,12 @@ export default async function handler(
                         description: walletDescription,
                         signersAddresses: paymentAddressesUsed,
                         signersStakeKeys: summary.stakeAddressesUsed,
+                        signersDRepKeys: [],
                         signersDescriptions,
                         numRequiredSigners: summary.numRequiredSigners,
                         ownerAddress: "",
+                        stakeCredentialHash: null,
+                        scriptType: null,
                     },
                 });
                 console.log("[api/v1/ejection/redirect] NewWallet upsert success:", { id: saved.id });
@@ -101,9 +107,12 @@ export default async function handler(
                         description: walletDescription,
                         signersAddresses: paymentAddressesUsed,
                         signersStakeKeys: summary.stakeAddressesUsed,
+                        signersDRepKeys: [],
                         signersDescriptions,
                         numRequiredSigners: summary.numRequiredSigners,
                         ownerAddress: "",
+                        stakeCredentialHash: null,
+                        scriptType: null,
                     },
                 });
                 console.log("[api/v1/ejection/redirect] NewWallet create success:", { id: created.id });
@@ -114,14 +123,16 @@ export default async function handler(
             console.error("[api/v1/ejection/redirect] NewWallet upsert failed:", err);
         }
 
+        // Generate the URL for the multisig wallet invite page
+        const baseUrl = "https://multisig.meshjs.dev";
+        const inviteUrl = newWalletId ? `${baseUrl}/wallets/invite/${newWalletId}` : null;
+
         return res.status(200).json({
             ok: true,
             receivedAt,
-            multisigId: summary.multisigId,
-            multisigName: summary.multisigName,
             multisigAddress: summary.multisigAddress,
             dbUpdated,
-            newWalletId,
+            inviteUrl
         });
     } catch (error) {
         console.error("[api/v1/ejection/redirect] Error handling POST:", error);

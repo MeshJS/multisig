@@ -35,9 +35,12 @@ export type MultisigImportSummary = {
     signerStakeKeys: string[];
     signerAddresses: string[];
     signersDescriptions: string[];
+    signersDRepKeys: string[];
     network?: number;
     stakeAddressesUsed: string[];
     paymentAddressesUsed: string[];
+    stakeCredentialHash?: string | null;
+    scriptType?: string | null;
 };
 
 export type ValidationSuccess = { ok: true; rows: ImportedMultisigRow[]; summary: MultisigImportSummary };
@@ -166,8 +169,8 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
         };
     }
 
-    // Build aligned arrays for signer stake keys, addresses, and descriptions; ensure deterministic ordering
-    type CombinedSigner = { stake: string; address: string; description: string };
+    // Build aligned arrays for signer stake keys, addresses, descriptions, and drep keys; ensure deterministic ordering
+    type CombinedSigner = { stake: string; address: string; description: string; drepKey: string };
     const combined: CombinedSigner[] = [];
     const seenStake = new Set<string>();
     const stripTags = (v: string) => v.replace(/<[^>]*>/g, "").trim();
@@ -178,11 +181,13 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
         seenStake.add(hex);
         const addr = typeof r.user_address_bech32 === "string" ? r.user_address_bech32.trim() : "";
         const desc = typeof r.community_description === "string" ? stripTags(r.community_description) : "";
-        combined.push({ stake: hex, address: addr, description: desc });
+        const drepKey = ""; // Empty for now as requested
+        combined.push({ stake: hex, address: addr, description: desc, drepKey });
     }
     const signerStakeKeys = combined.map((c) => c.stake);
     const signerAddresses = combined.map((c) => c.address);
     const signersDescriptions = combined.map((c) => c.description);
+    const signersDRepKeys = combined.map((c) => c.drepKey);
 
     // Infer network: prefer multisigAddress; if absent, fall back to the first valid user_address_bech32
     let network: 0 | 1 | undefined = undefined;
@@ -273,9 +278,12 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             signerStakeKeys,
             signerAddresses,
             signersDescriptions,
+            signersDRepKeys,
             network,
             stakeAddressesUsed,
             paymentAddressesUsed: signerAddresses,
+            stakeCredentialHash: null, // Empty for now as requested
+            scriptType: null, // Empty for now as requested
         },
     };
 }
