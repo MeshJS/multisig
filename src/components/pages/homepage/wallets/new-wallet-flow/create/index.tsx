@@ -34,11 +34,14 @@ export default function PageReviewWallet() {
               setSignerDescriptions: walletFlow.setSignerDescriptions,
               signersStakeKeys: walletFlow.signersStakeKeys,
               setSignerStakeKeys: walletFlow.setSignerStakeKeys,
+              signersDRepKeys: walletFlow.signersDRepKeys,
+              setSignerDRepKeys: walletFlow.setSignerDRepKeys,
               addSigner: walletFlow.addSigner,
               removeSigner: walletFlow.removeSigner,
             }}
             currentUserAddress={walletFlow.userAddress}
             walletId={walletFlow.walletInviteId || walletFlow.router.query.id as string}
+            hasExternalStakeCredential={!!walletFlow.stakeKey}
             onSave={walletFlow.handleSaveSigners}
           />
 
@@ -60,6 +63,7 @@ export default function PageReviewWallet() {
               setStakeKey: walletFlow.setStakeKey,
               nativeScriptType: walletFlow.nativeScriptType,
               setNativeScriptType: walletFlow.setNativeScriptType,
+              removeExternalStakeAndBackfill: walletFlow.removeExternalStakeAndBackfill,
             }}
             mWallet={walletFlow.multisigWallet}
             onSave={walletFlow.handleSaveAdvanced}

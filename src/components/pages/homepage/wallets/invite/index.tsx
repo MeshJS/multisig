@@ -136,10 +136,17 @@ export default function PageNewWalletInvite() {
 
     setLoading(true);
 
+    // Only import stake key if no external stake credential is set
+    const stakeKeyToAdd = newWallet.stakeCredentialHash ? "" : user.stakeAddress;
+    
+    // Add DRep key if available
+    const drepKeyToAdd = user?.drepKeyHash || "";
+
     updateNewWalletSigners({
       walletId: newWalletId!,
       signersAddresses: [...newWallet.signersAddresses, userAddress],
-      signersStakeKeys: [...newWallet.signersStakeKeys, user.stakeAddress],
+      signersStakeKeys: [...newWallet.signersStakeKeys, stakeKeyToAdd],
+      signersDRepKeys: [...(newWallet.signersDRepKeys || []), drepKeyToAdd],
       signersDescriptions: [
         ...newWallet.signersDescriptions,
         signersDescription,
@@ -192,6 +199,9 @@ export default function PageNewWalletInvite() {
     const updatedStakeKeys = newWallet.signersStakeKeys.filter(
       (_, i) => i !== userIndex,
     );
+    const updatedDRepKeys = (newWallet.signersDRepKeys || []).filter(
+      (_, i) => i !== userIndex,
+    );
     const updatedDescriptions = newWallet.signersDescriptions.filter(
       (_, i) => i !== userIndex,
     );
@@ -200,6 +210,7 @@ export default function PageNewWalletInvite() {
       walletId: newWalletId!,
       signersAddresses: updatedAddresses,
       signersStakeKeys: updatedStakeKeys,
+      signersDRepKeys: updatedDRepKeys,
       signersDescriptions: updatedDescriptions,
     });
   }
@@ -270,6 +281,8 @@ export default function PageNewWalletInvite() {
                   walletDescription={newWallet.description || undefined}
                   currentSignersCount={newWallet.signersAddresses.length}
                   requiredSignatures={newWallet.numRequiredSigners || 2}
+                  stakeCredentialHash={(newWallet as any).stakeCredentialHash}
+                  scriptType={(newWallet as any).scriptType}
                 />
 
                 {/* Owner or Already Signer - Show ManageSignerCard */}
@@ -277,11 +290,13 @@ export default function PageNewWalletInvite() {
                   <ManageSignerCard
                     userAddress={userAddress || ""}
                     stakeAddress={user?.stakeAddress ?? ""}
+                    drepKeyHash={user?.drepKeyHash ?? ""}
                     signerName={localSignerName}
                     onNameChange={handleNameChange}
                     loading={isUpdatingName}
                     walletId={newWalletId}
                     isCreator={isOwner}
+                    hasExternalStakeCredential={!!(newWallet as any).stakeCredentialHash}
                   />
                 )}
 
@@ -306,10 +321,12 @@ export default function PageNewWalletInvite() {
                     <JoinAsSignerCard
                       userAddress={userAddress || ""}
                       stakeAddress={getStakeAddress(userAddress) ?? ""}
+                      drepKeyHash={user?.drepKeyHash ?? ""}
                       signerName={signersDescription}
                       setSignerName={setSignerDescription}
                       onJoin={addSigner}
                       loading={loading}
+                      hasExternalStakeCredential={!!(newWallet as any).stakeCredentialHash}
                     />
 
                     <div className="mt-6 flex justify-end sm:mt-8">

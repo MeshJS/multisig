@@ -28,7 +28,7 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
     setLoading(true);
 
     const blockchainProvider = getProvider(network);
-    const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
+    const utxos = await blockchainProvider.fetchAddressUTxOs(multisigWallet.getScript().address);
 
     const assetMap = new Map<Unit, Quantity>();
     assetMap.set("lovelace", "5000000");
@@ -47,17 +47,15 @@ export default function Retire({ appWallet }: { appWallet: Wallet }) {
     }
 
     txBuilder
-      .txInScript(appWallet.scriptCbor)
-      .changeAddress(appWallet.address)
-      .drepDeregistrationCertificate(appWallet.dRepId, "500000000")
-      .certificateScript(appWallet.scriptCbor);
-
-
+      .txInScript(multisigWallet.getScript().scriptCbor!)
+      .changeAddress(multisigWallet.getScript().address)
+      .drepDeregistrationCertificate(multisigWallet.getDRepId()!, "500000000")
+      .certificateScript(multisigWallet.getDRepScript()!);
 
     await newTransaction({
       txBuilder,
       description: "DRep retirement",
-      toastMessage: "DRep registration transaction has been created",
+      toastMessage: "DRep retirement transaction has been created",
     });
   }
 

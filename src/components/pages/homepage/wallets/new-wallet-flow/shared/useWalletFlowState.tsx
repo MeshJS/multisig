@@ -4,9 +4,9 @@
  * Eliminates 300-400 lines of duplicate code from save/create pages
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
-import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
+import { resolvePaymentKeyHash, resolveStakeKeyHash, resolveRewardAddress } from "@meshsdk/core";
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
 
@@ -30,6 +30,8 @@ export interface WalletFlowState {
   setSignerDescriptions: React.Dispatch<React.SetStateAction<string[]>>;
   signersStakeKeys: string[];
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
+  signersDRepKeys: string[];
+  setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
   addSigner: () => void;
   removeSigner: (index: number) => void;
   
@@ -42,6 +44,7 @@ export interface WalletFlowState {
   // Advanced options
   stakeKey: string;
   setStakeKey: React.Dispatch<React.SetStateAction<string>>;
+  removeExternalStakeAndBackfill: () => void;
   
   // UI state
   loading: boolean;
@@ -82,7 +85,7 @@ export interface WalletFlowState {
   
   // Save callbacks for create page
   handleSaveWalletInfo: (newName: string, newDescription: string) => void;
-  handleSaveSigners: (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[]) => void;
+  handleSaveSigners: (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[], newDRepKeys: string[]) => void;
   handleSaveSignatureRules: (numRequired: number) => void;
   handleSaveAdvanced: (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => void;
 }
@@ -92,6 +95,7 @@ export function useWalletFlowState(): WalletFlowState {
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
+  const [signersDRepKeys, setSignerDRepKeys] = useState<string[]>([]);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -131,7 +135,8 @@ export function useWalletFlowState(): WalletFlowState {
       });
     }
 
-    if (signersStakeKeys.length > 0) {
+    // Only add individual signer stake keys if no external stake credential
+    if (!stakeKey && signersStakeKeys.length > 0) {
       signersStakeKeys.forEach((stakeKey, i) => {
         if (stakeKey) {
           try {
@@ -147,6 +152,25 @@ export function useWalletFlowState(): WalletFlowState {
         }
       });
     }
+
+    // Add DRep keys
+    if (signersDRepKeys.length > 0) {
+      signersDRepKeys.forEach((drepKey, i) => {
+        if (drepKey) {
+          try {
+            // DRep keys are already key hashes, so we can use them directly
+            keys.push({
+              keyHash: drepKey,
+              role: 3,
+              name: signersDescriptions[i] ?? "",
+            });
+          } catch {
+            // Invalid DRep key at index
+          }
+        }
+      });
+    }
+    
     if (keys.length === 0) return;
     return new MultisigWallet(
       name,
@@ -154,15 +178,20 @@ export function useWalletFlowState(): WalletFlowState {
       description,
       numRequiredSigners,
       network,
+      stakeKey || undefined,
+      nativeScriptType,
     );
   }, [
     name,
     description,
     signersAddresses,
     signersStakeKeys,
+    signersDRepKeys,
     signersDescriptions,
     numRequiredSigners,
     network,
+    stakeKey,
+    nativeScriptType,
   ]);
 
   // API Mutations
@@ -251,13 +280,46 @@ export function useWalletFlowState(): WalletFlowState {
     },
   );
 
-  // Initialize first signer with current user
+  // Initialize first signer with current user (only when not loading from wallet invite)
   useEffect(() => {
     if (!user) return;
-    setSignerAddresses([user.address]);
-    setSignerDescriptions([""]);
-    setSignerStakeKeys([user.stakeAddress]);
-  }, [user]);
+    
+    // For new wallets, initialize everything
+    if (!pathIsWalletInvite) {
+      setSignerAddresses([user.address]);
+      setSignerDescriptions([""]);
+      // Only import stake key if no external stake credential is set
+      setSignerStakeKeys([stakeKey ? "" : user.stakeAddress]);
+      // Import DRep key from user data
+      setSignerDRepKeys([(user as any).drepKeyHash || ""]);
+    }
+  }, [user, stakeKey, pathIsWalletInvite]);
+
+  // Separate effect for populating DRep keys in wallet invites
+  const drepKeyPopulatedRef = useRef(false);
+  useEffect(() => {
+    console.log("DRep key population effect:", {
+      hasUser: !!user,
+      isWalletInvite: pathIsWalletInvite,
+      alreadyPopulated: drepKeyPopulatedRef.current,
+      userDrepKey: (user as any)?.drepKeyHash,
+      signersDRepKeysLength: signersDRepKeys.length,
+      firstDRepKey: signersDRepKeys[0],
+      hasWalletInvite: !!walletInvite
+    });
+    
+    if (!user || !pathIsWalletInvite || !walletInvite || drepKeyPopulatedRef.current) return;
+    
+    // For wallet invites, only populate DRep key if it's empty and user has one
+    const userDrepKey = (user as any).drepKeyHash;
+    if (userDrepKey && signersDRepKeys.length > 0 && (!signersDRepKeys[0] || signersDRepKeys[0] === "")) {
+      console.log("Populating DRep key:", userDrepKey);
+      const updatedDRepKeys = [...signersDRepKeys];
+      updatedDRepKeys[0] = userDrepKey;
+      setSignerDRepKeys(updatedDRepKeys);
+      drepKeyPopulatedRef.current = true;
+    }
+  }, [user, pathIsWalletInvite, walletInvite, signersDRepKeys.length]);
 
   // Adjust numRequiredSigners if it exceeds the number of signers
   useEffect(() => {
@@ -269,12 +331,16 @@ export function useWalletFlowState(): WalletFlowState {
   // Load wallet invite data
   useEffect(() => {
     if (pathIsWalletInvite && walletInvite) {
+      console.log("Loading wallet invite data:", walletInvite);
       setName(walletInvite.name);
       setDescription(walletInvite.description ?? "");
       setSignerAddresses(walletInvite.signersAddresses);
       setSignerDescriptions(walletInvite.signersDescriptions);
       setSignerStakeKeys(walletInvite.signersStakeKeys);
+      setSignerDRepKeys((walletInvite as any).signersDRepKeys ?? []);
       setNumRequiredSigners(walletInvite.numRequiredSigners!);
+      setStakeKey((walletInvite as any).stakeCredentialHash ?? "");
+      setNativeScriptType((walletInvite as any).scriptType ?? "atLeast");
     }
   }, [pathIsWalletInvite, walletInvite]);
 
@@ -282,7 +348,9 @@ export function useWalletFlowState(): WalletFlowState {
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
-    setSignerStakeKeys([...signersStakeKeys, ""]);
+    // Always add empty stake key when external stake credential is set, otherwise add empty string
+    setSignerStakeKeys([...signersStakeKeys, stakeKey ? "" : ""]);
+    setSignerDRepKeys([...signersDRepKeys, ""]);
   }
 
   function removeSigner(index: number) {
@@ -297,6 +365,10 @@ export function useWalletFlowState(): WalletFlowState {
     const updatedStakeKeys = [...signersStakeKeys];
     updatedStakeKeys.splice(index, 1);
     setSignerStakeKeys(updatedStakeKeys);
+
+    const updatedDRepKeys = [...signersDRepKeys];
+    updatedDRepKeys.splice(index, 1);
+    setSignerDRepKeys(updatedDRepKeys);
   }
 
   function createNativeScript() {
@@ -319,6 +391,7 @@ export function useWalletFlowState(): WalletFlowState {
       signersAddresses: signersAddresses,
       signersDescriptions: signersDescriptions,
       signersStakeKeys: signersStakeKeys,
+      signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
@@ -335,8 +408,11 @@ export function useWalletFlowState(): WalletFlowState {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         ownerAddress: userAddress!,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }
@@ -351,7 +427,10 @@ export function useWalletFlowState(): WalletFlowState {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }
@@ -366,13 +445,16 @@ export function useWalletFlowState(): WalletFlowState {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }, [walletInviteId, router.query.id, signersAddresses, 
-      signersDescriptions, signersStakeKeys, numRequiredSigners, saveToBackend]);
+      signersDescriptions, signersStakeKeys, signersDRepKeys, numRequiredSigners, saveToBackend, stakeKey, nativeScriptType]);
 
-  const handleSaveSigners = useCallback((newAddresses: string[], newDescriptions: string[], newStakeKeys: string[]) => {
+  const handleSaveSigners = useCallback((newAddresses: string[], newDescriptions: string[], newStakeKeys: string[], newDRepKeys: string[]) => {
     if (walletInviteId || router.query.id) {
       saveToBackend({
         walletId: (walletInviteId || router.query.id) as string,
@@ -381,10 +463,13 @@ export function useWalletFlowState(): WalletFlowState {
         signersAddresses: newAddresses,
         signersDescriptions: newDescriptions,
         signersStakeKeys: newStakeKeys,
+        signersDRepKeys: newDRepKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
-  }, [walletInviteId, router.query.id, name, description, numRequiredSigners, saveToBackend]);
+  }, [walletInviteId, router.query.id, name, description, numRequiredSigners, saveToBackend, stakeKey, nativeScriptType]);
 
   const handleSaveSignatureRules = useCallback((numRequired: number) => {
     // Save signature rules
@@ -396,16 +481,29 @@ export function useWalletFlowState(): WalletFlowState {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequired,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }, [walletInviteId, router.query.id, name, description, signersAddresses, 
-      signersDescriptions, signersStakeKeys, saveToBackend]);
+      signersDescriptions, signersStakeKeys, signersDRepKeys, saveToBackend, stakeKey, nativeScriptType]);
 
   const handleSaveAdvanced = useCallback((newStakeKey: string, scriptType: "all" | "any" | "atLeast") => {
     // Update local state
     setStakeKey(newStakeKey);
     setNativeScriptType(scriptType);
+    
+    // If external stake credential is set, clear all signer stake keys
+    const updatedSignerStakeKeys = newStakeKey ? 
+      signersStakeKeys.map(() => "") : 
+      signersStakeKeys;
+    
+    // Update signer stake keys if external credential is set
+    if (newStakeKey) {
+      setSignerStakeKeys(updatedSignerStakeKeys);
+    }
     
     if (walletInviteId || router.query.id) {
       saveToBackend({
@@ -414,13 +512,57 @@ export function useWalletFlowState(): WalletFlowState {
         description: description,
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
+        signersStakeKeys: updatedSignerStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: newStakeKey || undefined,
+        scriptType: scriptType,
       });
     }
   }, [walletInviteId, router.query.id, name, description, signersAddresses, 
-      signersDescriptions, signersStakeKeys, numRequiredSigners, saveToBackend, 
-      setStakeKey, setNativeScriptType]);
+      signersDescriptions, signersStakeKeys, signersDRepKeys, numRequiredSigners, saveToBackend, 
+      setStakeKey, setNativeScriptType, setSignerStakeKeys]);
+
+  // Remove external stake credential and try to backfill stake keys from addresses
+  const removeExternalStakeAndBackfill = useCallback(() => {
+    // Clear external stake credential
+    setStakeKey("");
+
+    // Attempt to resolve stake keys from existing addresses
+    const backfilledStakeKeys = signersAddresses.map((addr, idx) => {
+      try {
+        // Try to derive stake reward address from payment address
+        const rewardAddress = resolveRewardAddress(addr);
+        return rewardAddress || signersStakeKeys[idx] || "";
+      } catch {
+        return signersStakeKeys[idx] || "";
+      }
+    });
+
+    setSignerStakeKeys(backfilledStakeKeys);
+
+    // Persist to backend if in an existing flow
+    if (walletInviteId || router.query.id) {
+      saveToBackend({
+        walletId: (walletInviteId || router.query.id) as string,
+        name,
+        description,
+        signersAddresses,
+        signersDescriptions,
+        signersStakeKeys: backfilledStakeKeys,
+        signersDRepKeys,
+        numRequiredSigners,
+        stakeCredentialHash: null,
+        scriptType: nativeScriptType,
+      });
+    }
+
+    toast({
+      title: "External stake removed",
+      description: "Stake keys were backfilled from addresses where possible.",
+      duration: 3000,
+    });
+  }, [signersAddresses, signersStakeKeys, signersDRepKeys, walletInviteId, router.query.id, name, description, signersDescriptions, numRequiredSigners, nativeScriptType, saveToBackend, toast]);
 
   // Validation
   const isValidForSave = !loading && !!name.trim();
@@ -444,6 +586,8 @@ export function useWalletFlowState(): WalletFlowState {
     setSignerDescriptions,
     signersStakeKeys,
     setSignerStakeKeys,
+    signersDRepKeys,
+    setSignerDRepKeys,
     addSigner,
     removeSigner,
     
@@ -456,6 +600,7 @@ export function useWalletFlowState(): WalletFlowState {
     // Advanced options
     stakeKey,
     setStakeKey,
+    removeExternalStakeAndBackfill,
     
     // UI state
     loading,

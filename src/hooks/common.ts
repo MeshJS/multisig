@@ -50,6 +50,21 @@ export function buildMultisigWallet(
       }
     });
   }
+  if (wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0) {
+    wallet.signersDRepKeys.forEach((dRepKey, i) => {
+      if (dRepKey) {
+        try {
+          keys.push({
+            keyHash: dRepKey,
+            role: 3,
+            name: wallet.signersDescriptions[i] || "",
+          });
+        } catch (e) {
+          console.warn(`Invalid dRep address at index ${i}:`, dRepKey);
+        }
+      }
+    });
+  }
   if (keys.length === 0) return;
   const multisigWallet = new MultisigWallet(
     wallet.name,
@@ -57,6 +72,8 @@ export function buildMultisigWallet(
     wallet.description ?? "",
     wallet.numRequiredSigners ?? 1,
     network,
+    wallet.stakeCredentialHash ?? undefined,
+    (wallet.type as "all" | "any" | "atLeast") ?? "atLeast",
   );
   return multisigWallet;
 }

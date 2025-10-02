@@ -22,7 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronLeft, Copy } from "lucide-react";
+import { ChevronLeft, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getFirstAndLast } from "@/utils/strings";
 
@@ -31,24 +31,29 @@ const MAX_SIGNER_NAME_LENGTH = 32;
 interface ManageSignerCardProps {
   userAddress: string;
   stakeAddress: string;
+  drepKeyHash: string;
   signerName: string;
   onNameChange: (newName: string) => void;
   loading: boolean;
   walletId?: string;
   isCreator?: boolean;
+  hasExternalStakeCredential?: boolean;
 }
 
 export default function ManageSignerCard({
   userAddress,
   stakeAddress,
+  drepKeyHash,
   signerName,
   onNameChange,
   loading,
   walletId,
-  isCreator = false
+  isCreator = false,
+  hasExternalStakeCredential
 }: ManageSignerCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(signerName);
+  const [isTechnicalExpanded, setIsTechnicalExpanded] = useState(false);
   const { toast } = useToast();
 
   // Update editName when signerName prop changes
@@ -143,14 +148,6 @@ export default function ManageSignerCard({
                 </span>
               </div>
               <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
-                <span className="text-sm text-muted-foreground">Address</span>
-                <span className="text-xs font-mono break-all">{userAddress}</span>
-              </div>
-              <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
-                <span className="text-sm text-muted-foreground">Stake Key</span>
-                <span className="text-xs font-mono break-all">{stakeAddress}</span>
-              </div>
-              <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
                 <span className="text-sm text-muted-foreground">Status</span>
                 <span className="text-sm">
                   {isCreator 
@@ -158,6 +155,59 @@ export default function ManageSignerCard({
                     : "You are a signer in this new wallet. You can edit your name or remove yourself (only before the wallet is finally created by the wallet creator)."}
                 </span>
               </div>
+            </div>
+
+            {/* Technical Details - Collapsible */}
+            <div className="space-y-2">
+              <button
+                onClick={() => setIsTechnicalExpanded(!isTechnicalExpanded)}
+                className="flex items-center gap-2 text-sm font-medium text-blue-900 dark:text-blue-100 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              >
+                {isTechnicalExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Technical Details
+              </button>
+              
+              {isTechnicalExpanded && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg space-y-3 animate-in slide-in-from-top-2 duration-200">
+                  {/* Address Information */}
+                  <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
+                    <span className="text-xs text-blue-700 dark:text-blue-300">Address</span>
+                    <span className="text-xs font-mono text-blue-800 dark:text-blue-200 break-all">{userAddress}</span>
+                  </div>
+                  
+                  {/* Stake Key Information */}
+                  <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
+                    <span className="text-xs text-blue-700 dark:text-blue-300">Stake Key</span>
+                    <div className="space-y-1">
+                      {hasExternalStakeCredential ? (
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded">
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            ℹ️ External stake credential used - your stake key not imported
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-mono text-blue-800 dark:text-blue-200 break-all">{stakeAddress}</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* DRep Key Information */}
+                  <div className="grid grid-cols-[90px_1fr] gap-4 items-baseline">
+                    <span className="text-xs text-blue-700 dark:text-blue-300">DRep Key</span>
+                    <div className="space-y-1">
+                      {drepKeyHash ? (
+                        <span className="text-xs font-mono text-blue-800 dark:text-blue-200 break-all">{drepKeyHash}</span>
+                      ) : (
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded">
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            ⚠️ No DRep key - governance participation not available
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             {/* Edit button at bottom */}
