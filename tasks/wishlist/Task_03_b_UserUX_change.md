@@ -48,7 +48,6 @@ As a user working with multiple multisig wallets, I want clear feedback when I s
   - Detect when wallet account changes occur at runtime
   - Listen for account change events from wallet providers
   - Identify when the current user address has changed
-  - Handle both manual and automatic account switches
 
 - **FR-2: Multisig Wallet Authorization Check**
   - Check if the changed user address is a participant of the current multisig wallet
