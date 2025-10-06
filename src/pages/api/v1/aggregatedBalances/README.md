@@ -12,7 +12,7 @@ All endpoints require authentication using the `SNAPSHOT_AUTH_TOKEN` environment
 
 ### `/api/v1/aggregatedBalances/wallets`
 - **Method**: GET
-- **Purpose**: Returns all wallet information without fetching balances
+- **Purpose**: Returns all wallet information without fetching balances or building wallet objects
 - **Authentication**: Required (Bearer token)
 - **Response**: 
   ```json
@@ -20,15 +20,20 @@ All endpoints require authentication using the `SNAPSHOT_AUTH_TOKEN` environment
     "wallets": [
       {
         "walletId": "string",
-        "walletName": "string", 
+        "walletName": "string",
+        "description": "string|null",
         "signersAddresses": ["string"],
+        "signersStakeKeys": ["string"],
+        "signersDRepKeys": ["string"],
+        "signersDescriptions": ["string"],
         "numRequiredSigners": number,
-        "type": "string",
+        "verified": ["string"],
+        "scriptCbor": "string",
         "stakeCredentialHash": "string|null",
+        "type": "string",
         "isArchived": boolean,
-        "network": number,
-        "paymentAddress": "string",
-        "stakeableAddress": "string"
+        "clarityApiKey": "string|null",
+        "network": number
       }
     ],
     "walletCount": number,
@@ -39,7 +44,7 @@ All endpoints require authentication using the `SNAPSHOT_AUTH_TOKEN` environment
 
 ### `/api/v1/aggregatedBalances/balance`
 - **Method**: GET
-- **Purpose**: Fetches balance for a single wallet
+- **Purpose**: Fetches balance for a single wallet (builds wallet and generates addresses internally)
 - **Authentication**: Required (Bearer token)
 - **Query Parameters**: 
   - `walletId` (required) - Wallet ID
@@ -50,8 +55,6 @@ All endpoints require authentication using the `SNAPSHOT_AUTH_TOKEN` environment
   - `stakeCredentialHash` (optional) - Stake credential hash
   - `isArchived` (required) - Whether wallet is archived
   - `network` (required) - Network ID (0=testnet, 1=mainnet)
-  - `paymentAddress` (required) - Payment address
-  - `stakeableAddress` (required) - Stakeable address
 - **Response**: 
   ```json
   {

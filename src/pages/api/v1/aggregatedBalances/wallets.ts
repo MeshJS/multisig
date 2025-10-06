@@ -1,23 +1,25 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import type { Wallet as DbWallet } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { buildMultisigWallet } from "@/utils/common";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { resolvePaymentKeyHash, serializeNativeScript } from "@meshsdk/core";
 import { db } from "@/server/db";
-import type { NativeScript } from "@meshsdk/core";
 
 interface WalletInfo {
   walletId: string;
   walletName: string;
+  description: string | null;
   signersAddresses: string[];
+  signersStakeKeys: string[];
+  signersDRepKeys: string[];
+  signersDescriptions: string[];
   numRequiredSigners: number;
-  type: string;
+  verified: string[];
+  scriptCbor: string;
   stakeCredentialHash: string | null;
+  type: string;
   isArchived: boolean;
+  clarityApiKey: string | null;
   network: number;
-  paymentAddress: string;
-  stakeableAddress: string;
 }
 
 interface WalletsResponse {
@@ -78,7 +80,7 @@ export default async function handler(
     let activeWalletCount = 0;
     let archivedWalletCount = 0;
 
-    // Process each wallet to extract wallet information
+    // Process each wallet to extract basic wallet information
     for (const wallet of allWallets) {
       try {
         // Determine network from signer addresses
@@ -87,33 +89,6 @@ export default async function handler(
           const signerAddr = wallet.signersAddresses[0]!;
           network = addressToNetwork(signerAddr);
         }
-        
-        const mWallet = buildMultisigWallet(wallet, network);
-        if (!mWallet) {
-          console.warn(`Failed to build multisig wallet for wallet ${wallet.id}`);
-          continue;
-        }
-
-        // Use the same address logic as the frontend buildWallet function
-        const nativeScript = {
-          type: wallet.type ? wallet.type : "atLeast",
-          scripts: wallet.signersAddresses.map((addr) => ({
-            type: "sig",
-            keyHash: resolvePaymentKeyHash(addr),
-          })),
-        };
-        if (nativeScript.type == "atLeast") {
-          //@ts-ignore
-          nativeScript.required = wallet.numRequiredSigners!;
-        }
-
-        const paymentAddress = serializeNativeScript(
-          nativeScript as NativeScript,
-          wallet.stakeCredentialHash as undefined | string,
-          network,
-        ).address;
-
-        const stakeableAddress = mWallet.getScript().address;
 
         // Count wallet types
         if (wallet.isArchived) {
@@ -125,14 +100,19 @@ export default async function handler(
         wallets.push({
           walletId: wallet.id,
           walletName: wallet.name,
+          description: wallet.description,
           signersAddresses: wallet.signersAddresses,
+          signersStakeKeys: wallet.signersStakeKeys,
+          signersDRepKeys: wallet.signersDRepKeys,
+          signersDescriptions: wallet.signersDescriptions,
           numRequiredSigners: wallet.numRequiredSigners!,
-          type: wallet.type || "atLeast",
+          verified: wallet.verified,
+          scriptCbor: wallet.scriptCbor,
           stakeCredentialHash: wallet.stakeCredentialHash,
+          type: wallet.type || "atLeast",
           isArchived: wallet.isArchived,
+          clarityApiKey: wallet.clarityApiKey,
           network,
-          paymentAddress,
-          stakeableAddress,
         });
 
       } catch (error) {

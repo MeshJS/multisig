@@ -151,8 +151,6 @@ export default async function handler(
             stakeCredentialHash: wallet.stakeCredentialHash || '',
             isArchived: wallet.isArchived.toString(),
             network: wallet.network.toString(),
-            paymentAddress: wallet.paymentAddress,
-            stakeableAddress: wallet.stakeableAddress,
           })}`;
           
           const balanceResponse = await fetch(balanceUrl, { headers });

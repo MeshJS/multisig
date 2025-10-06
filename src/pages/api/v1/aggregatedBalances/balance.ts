@@ -53,10 +53,10 @@ export default async function handler(
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { walletId, walletName, signersAddresses, numRequiredSigners, type, stakeCredentialHash, isArchived, network, paymentAddress, stakeableAddress } = req.query;
+  const { walletId, walletName, signersAddresses, numRequiredSigners, type, stakeCredentialHash, isArchived, network } = req.query;
 
   // Validate required parameters
-  if (!walletId || !walletName || !signersAddresses || !numRequiredSigners || !type || !network || !paymentAddress || !stakeableAddress) {
+  if (!walletId || !walletName || !signersAddresses || !numRequiredSigners || !type || !network) {
     return res.status(400).json({ error: "Missing required parameters" });
   }
 
@@ -69,8 +69,6 @@ export default async function handler(
     const stakeCredentialHashStr = stakeCredentialHash as string;
     const isArchivedBool = isArchived === 'true';
     const networkNum = parseInt(network as string);
-    const paymentAddressStr = paymentAddress as string;
-    const stakeableAddressStr = stakeableAddress as string;
 
     // Build multisig wallet for address determination
     const walletData = {
@@ -97,6 +95,27 @@ export default async function handler(
       return res.status(400).json({ error: "Failed to build multisig wallet" });
     }
 
+    // Generate addresses from the built wallet
+    const nativeScript = {
+      type: typeStr || "atLeast",
+      scripts: signersAddressesArray.map((addr: string) => ({
+        type: "sig",
+        keyHash: resolvePaymentKeyHash(addr),
+      })),
+    };
+    if (nativeScript.type == "atLeast") {
+      //@ts-ignore
+      nativeScript.required = numRequiredSignersNum;
+    }
+
+    const paymentAddress = serializeNativeScript(
+      nativeScript as NativeScript,
+      stakeCredentialHashStr as undefined | string,
+      networkNum,
+    ).address;
+
+    const stakeableAddress = mWallet.getScript().address;
+
     // Determine which address to use
     const blockchainProvider = getProvider(networkNum);
     
@@ -104,22 +123,22 @@ export default async function handler(
     let stakeableUtxos: UTxO[] = [];
     
     try {
-      paymentUtxos = await blockchainProvider.fetchAddressUTxOs(paymentAddressStr);
-      stakeableUtxos = await blockchainProvider.fetchAddressUTxOs(stakeableAddressStr);
+      paymentUtxos = await blockchainProvider.fetchAddressUTxOs(paymentAddress);
+      stakeableUtxos = await blockchainProvider.fetchAddressUTxOs(stakeableAddress);
     } catch (utxoError) {
       console.error(`Failed to fetch UTxOs for wallet ${walletIdStr}:`, utxoError);
       // Continue with empty UTxOs
     }
 
     const paymentAddrEmpty = paymentUtxos.length === 0;
-    let walletAddress = paymentAddressStr;
+    let walletAddress = paymentAddress;
     
     if (paymentAddrEmpty && mWallet.stakingEnabled()) {
-      walletAddress = stakeableAddressStr;
+      walletAddress = stakeableAddress;
     }
 
     // Use the UTxOs from the selected address
-    let utxos: UTxO[] = walletAddress === stakeableAddressStr ? stakeableUtxos : paymentUtxos;
+    let utxos: UTxO[] = walletAddress === stakeableAddress ? stakeableUtxos : paymentUtxos;
     
     // If we still have no UTxOs, try the other network as fallback
     if (utxos.length === 0) {
