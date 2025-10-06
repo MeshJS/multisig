@@ -132,7 +132,7 @@ export default async function handler(
     }
 
     // Collect all wallet balances for snapshots
-    let allWalletBalances = [];
+    const allWalletBalances = [];
     let totalAdaBalance = 0;
     let processedWallets = 0;
     let failedWallets = 0;

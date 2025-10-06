@@ -73,7 +73,7 @@ export default async function handler(
         });
         return 1;
       } catch (error) {
-        console.error(`Failed to store snapshot for wallet ${walletBalance.walletId}:`, error);
+        console.error('Failed to store snapshot for wallet %s:', walletBalance.walletId, error);
         return 0;
       }
     });
