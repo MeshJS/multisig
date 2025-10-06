@@ -1,0 +1,212 @@
+name: Daily Balance Snapshots
+
+# This workflow takes daily snapshots of wallet balances and stores them in the database.
+# API requests require SNAPSHOT_AUTH_TOKEN secret to be set in GitHub repository settings.
+
+on:
+  #schedule:
+    # Run at midnight UTC every day
+    #- cron: '0 0 * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  snapshot-balances:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Take balance snapshots
+        run: |
+          # Configuration - adjust these values based on your needs
+          API_BASE_URL="https://multisig.meshjs.dev"
+          AUTH_TOKEN="${{ secrets.SNAPSHOT_AUTH_TOKEN }}"
+          
+          # Rate limiting configuration
+          BATCH_SIZE=3                    # Wallets per batch (adjust based on Blockfrost plan)
+          DELAY_BETWEEN_REQUESTS=3        # Seconds between requests (20/min = 3s)
+          DELAY_BETWEEN_BATCHES=15        # Seconds between batches
+          MAX_RETRIES=3                   # Max retries for failed requests
+          REQUEST_TIMEOUT=30              # Request timeout in seconds
+          
+          echo "🔄 Starting daily balance snapshot process..."
+          echo "📊 Configuration: batch_size=$BATCH_SIZE, request_delay=${DELAY_BETWEEN_REQUESTS}s, batch_delay=${DELAY_BETWEEN_BATCHES}s"
+          
+          # Step 1: Get all wallets
+          echo "📋 Fetching all wallets..."
+          wallets_response=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            "$API_BASE_URL/api/v1/aggregatedBalances/wallets")
+          
+          wallets_http_code=$(echo "$wallets_response" | tail -n1)
+          wallets_body=$(echo "$wallets_response" | head -n -1)
+          
+          echo "Wallets HTTP Status: $wallets_http_code"
+          
+          if [ "$wallets_http_code" -ne 200 ]; then
+            echo "❌ Failed to fetch wallets. HTTP Status: $wallets_http_code"
+            echo "Response: $wallets_body"
+            exit 1
+          fi
+          
+          # Extract wallet data
+          wallet_count=$(echo "$wallets_body" | jq -r '.walletCount')
+          echo "✅ Found $wallet_count wallets"
+          
+          if [ "$wallet_count" -eq 0 ]; then
+            echo "ℹ️ No wallets found, skipping snapshot process"
+            exit 0
+          fi
+          
+          # Step 2: Get balances for each wallet with rate limiting
+          echo "💰 Fetching balances for each wallet with rate limiting..."
+          
+          # Create temporary files for collecting results
+          temp_balances="/tmp/wallet_balances.json"
+          temp_failed="/tmp/failed_wallets.txt"
+          echo "[]" > "$temp_balances"
+          echo "0" > "$temp_failed"
+          
+          # Process wallets in batches to respect rate limits
+          batch_size=$BATCH_SIZE
+          delay_between_requests=$DELAY_BETWEEN_REQUESTS
+          delay_between_batches=$DELAY_BETWEEN_BATCHES
+          
+          # Convert wallets to array for batch processing
+          wallets_array=$(echo "$wallets_body" | jq -r '.wallets')
+          total_wallets=$(echo "$wallets_array" | jq 'length')
+          echo "Processing $total_wallets wallets in batches of $batch_size"
+          
+          # Process wallets in batches
+          for ((i=0; i<total_wallets; i+=batch_size)); do
+            batch_end=$((i + batch_size))
+            if [ $batch_end -gt $total_wallets ]; then
+              batch_end=$total_wallets
+            fi
+            
+            echo "📦 Processing batch $((i/batch_size + 1)): wallets $((i+1))-$batch_end"
+            
+            # Process each wallet in the current batch
+            for ((j=i; j<batch_end; j++)); do
+              wallet=$(echo "$wallets_array" | jq -r ".[$j]")
+              wallet_id=$(echo "$wallet" | jq -r '.walletId')
+              wallet_name=$(echo "$wallet" | jq -r '.walletName')
+              
+              echo "  Processing wallet: $wallet_name ($wallet_id)"
+              
+              # Build query parameters
+              query_params="walletId=$(echo "$wallet" | jq -r '.walletId')"
+              query_params="$query_params&walletName=$(echo "$wallet" | jq -r '.walletName')"
+              query_params="$query_params&signersAddresses=$(echo "$wallet" | jq -r '.signersAddresses | @json')"
+              query_params="$query_params&numRequiredSigners=$(echo "$wallet" | jq -r '.numRequiredSigners')"
+              query_params="$query_params&type=$(echo "$wallet" | jq -r '.type')"
+              query_params="$query_params&stakeCredentialHash=$(echo "$wallet" | jq -r '.stakeCredentialHash // ""')"
+              query_params="$query_params&isArchived=$(echo "$wallet" | jq -r '.isArchived')"
+              query_params="$query_params&network=$(echo "$wallet" | jq -r '.network')"
+              query_params="$query_params&paymentAddress=$(echo "$wallet" | jq -r '.paymentAddress')"
+              query_params="$query_params&stakeableAddress=$(echo "$wallet" | jq -r '.stakeableAddress')"
+              
+              # Fetch balance for this wallet with retry logic
+              max_retries=$MAX_RETRIES
+              retry_count=0
+              success=false
+              
+              while [ $retry_count -lt $max_retries ] && [ "$success" = false ]; do
+                balance_response=$(curl -s -w "\n%{http_code}" \
+                  --max-time $REQUEST_TIMEOUT \
+                  --connect-timeout 10 \
+                  -H "Authorization: Bearer $AUTH_TOKEN" \
+                  "$API_BASE_URL/api/v1/aggregatedBalances/balance?$query_params")
+                
+                balance_http_code=$(echo "$balance_response" | tail -n1)
+                balance_body=$(echo "$balance_response" | head -n -1)
+                
+                if [ "$balance_http_code" -eq 200 ]; then
+                  wallet_balance=$(echo "$balance_body" | jq -r '.walletBalance')
+                  echo "    ✅ Balance: $(echo "$wallet_balance" | jq -r '.adaBalance') ADA"
+                  
+                  # Add to balances array
+                  current_balances=$(cat "$temp_balances")
+                  updated_balances=$(echo "$current_balances" | jq ". + [$(echo "$wallet_balance" | jq -c .)]")
+                  echo "$updated_balances" > "$temp_balances"
+                  
+                  success=true
+                elif [ "$balance_http_code" -eq 429 ]; then
+                  # Rate limited - wait longer before retry
+                  retry_delay=$((delay_between_requests * (retry_count + 1) * 2))
+                  echo "    ⚠️ Rate limited (429). Waiting ${retry_delay}s before retry $((retry_count + 1))/$max_retries"
+                  sleep $retry_delay
+                  retry_count=$((retry_count + 1))
+                else
+                  echo "    ❌ Failed to fetch balance for wallet $wallet_id: $balance_http_code"
+                  failed_count=$(cat "$temp_failed")
+                  echo $((failed_count + 1)) > "$temp_failed"
+                  success=true  # Don't retry on non-rate-limit errors
+                fi
+              done
+              
+              if [ "$success" = false ]; then
+                echo "    ❌ Max retries exceeded for wallet $wallet_id"
+                failed_count=$(cat "$temp_failed")
+                echo $((failed_count + 1)) > "$temp_failed"
+              fi
+              
+              # Delay between requests within a batch
+              if [ $((j+1)) -lt $batch_end ]; then
+                sleep $delay_between_requests
+              fi
+            done
+            
+            # Delay between batches (except for the last batch)
+            if [ $batch_end -lt $total_wallets ]; then
+              echo "  ⏳ Waiting ${delay_between_batches}s before next batch..."
+              sleep $delay_between_batches
+            fi
+          done
+          
+          # Read final results
+          wallet_balances=$(cat "$temp_balances")
+          failed_wallets=$(cat "$temp_failed")
+          
+          echo "📊 Balance fetching completed. Failed wallets: $failed_wallets"
+          echo "✅ Successfully processed: $(echo "$wallet_balances" | jq 'length') wallets"
+          
+          # Step 3: Store snapshots using the collected balances
+          echo "💾 Storing balance snapshots..."
+          snapshots_response=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"walletBalances\": $wallet_balances}" \
+            "$API_BASE_URL/api/v1/aggregatedBalances/snapshots")
+          
+          snapshots_http_code=$(echo "$snapshots_response" | tail -n1)
+          snapshots_body=$(echo "$snapshots_response" | head -n -1)
+          
+          echo "Snapshots HTTP Status: $snapshots_http_code"
+          echo "Response: $snapshots_body"
+          
+          # Check if the request was successful
+          if [ "$snapshots_http_code" -eq 200 ]; then
+            # Parse the response to get the number of snapshots stored
+            snapshots_stored=$(echo "$snapshots_body" | jq -r '.snapshotsStored // 0')
+            total_tvl=$(echo "$snapshots_body" | jq -r '.totalValueLocked.ada')
+            echo "✅ Successfully stored $snapshots_stored balance snapshots"
+            echo "💰 Total Value Locked: $total_tvl ADA"
+            
+            # Optional: Send notification on success (you can add Discord/Slack webhook here)
+            # curl -X POST -H 'Content-type: application/json' \
+            #   --data "{\"text\":\"✅ Daily balance snapshots completed: $snapshots_stored snapshots stored, TVL: $total_tvl ADA\"}" \
+            #   ${{ secrets.DISCORD_WEBHOOK_URL }}
+          else
+            echo "❌ Failed to store balance snapshots. HTTP Status: $snapshots_http_code"
+            echo "Response: $snapshots_body"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Daily balance snapshot job failed"
+          # Optional: Send failure notification
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data "{\"text\":\"❌ Daily balance snapshots failed. Check the GitHub Actions logs.\"}" \
+          #   ${{ secrets.DISCORD_WEBHOOK_URL }}
