@@ -88,6 +88,8 @@ export default async function handler(
       clarityApiKey: null,
       drepKey: null,
       scriptType: null,
+      scriptCbor: "", // Required field for DbWallet type
+      verified: [], // Required field for DbWallet type
     };
 
     const mWallet = buildMultisigWallet(walletData, networkNum);

@@ -64,7 +64,7 @@ export default async function handler(
 
   try {
     // Test endpoints by making actual HTTP requests to fetch real data
-    const baseUrl = req.headers.host ? `http://${req.headers.host}` : 'http://localhost:3000';
+    const baseUrl = process.env.INTERNAL_BASE_URL || 'http://localhost:3000';
     const endpoints = {
       wallets: `${baseUrl}/api/v1/aggregatedBalances/wallets`,
       balance: `${baseUrl}/api/v1/aggregatedBalances/balance`,
