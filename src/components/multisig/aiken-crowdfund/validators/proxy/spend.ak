@@ -39,18 +39,6 @@ validator crowdfund(auth_token: PolicyId, proposer_key_hash: ByteArray) {
     expect [auth_input] =
       inputs_at_with_policy(inputs, current_address, auth_token)
 
-    let CrowdfundDatum {
-      current_fundraised_amount,
-      fundraise_target,
-      allow_over_subscription,
-      deadline,
-      completion_script,
-      share_token,
-      min_charge,
-      fee_address,
-      expiry_buffer,
-      ..
-    } = auth_input_datum
     when redeemer is {
       ContributeFund -> {
         expect [auth_output] =
@@ -144,27 +132,8 @@ validator crowdfund(auth_token: PolicyId, proposer_key_hash: ByteArray) {
       }
 
       RemoveEmptyInstance -> {
-        let validity_check = valid_after(validity_range, deadline)
 
-        let token_burnt_check =
-          if current_fundraised_amount > 0 {
-            policy_only_minted_token(
-              mint,
-              share_token,
-              completion_script,
-              -current_fundraised_amount,
-            )? && policy_only_minted_token(
-              mint,
-              auth_token,
-              completion_script,
-              -1,
-            )?
-          } else {
-            only_minted_token(mint, auth_token, completion_script, -1)?
-          }
-        let proposer_key_signed_check =
-          key_signed(extra_signatories, proposer_key_hash)
-        validity_check? && token_burnt_check? && proposer_key_signed_check?
+        let token_burnt_check = only_minted_token(mint, auth_token, completion_script, -10)?
       }
     }
   }

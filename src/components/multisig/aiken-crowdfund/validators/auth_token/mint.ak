@@ -15,9 +15,9 @@ validator auth_token(utxo_ref: OutputReference) {
       RMint -> {
         let is_output_consumed =
           list.any(inputs, fn(input) { input.output_reference == utxo_ref })
-        is_output_consumed? && quantity == 1
+        is_output_consumed? && quantity == 10
       }
-      RBurn -> quantity == -1
+      RBurn -> quantity == -10
     }
   }
 
