@@ -210,7 +210,8 @@ async function main() {
     await orchestrator.run();
     process.exit(0);
   } catch (error) {
-    console.error('❌ Orchestrator execution failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Orchestrator execution failed:', errorMessage);
     process.exit(1);
   }
 }

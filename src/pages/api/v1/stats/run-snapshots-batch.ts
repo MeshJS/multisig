@@ -69,7 +69,7 @@ export default async function handler(
     console.warn('Unauthorized request attempt', {
       ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
       userAgent: req.headers['user-agent'],
-      authToken: authToken ? 'present' : 'missing',
+      authTokenProvided: !!authToken,
       timestamp: new Date().toISOString()
     });
     return res.status(401).json({ error: "Unauthorized" });
@@ -127,7 +127,7 @@ export default async function handler(
 
     for (const wallet of wallets) {
       try {
-        console.log(`  Processing wallet: (${wallet.id})`);
+        console.log(`  Processing wallet: (${wallet.id.slice(0, 8)}...)`);
 
         // Determine network from signer addresses
         let network = 1; // Default to mainnet
@@ -158,7 +158,7 @@ export default async function handler(
 
         const mWallet = buildMultisigWallet(walletData, network);
         if (!mWallet) {
-          console.error(`Failed to build multisig wallet for ${wallet.id}`);
+          console.error(`Failed to build multisig wallet for ${wallet.id.slice(0, 8)}...`);
           failedInBatch++;
           continue;
         }
@@ -194,7 +194,7 @@ export default async function handler(
           paymentUtxos = await blockchainProvider.fetchAddressUTxOs(paymentAddress);
           stakeableUtxos = await blockchainProvider.fetchAddressUTxOs(stakeableAddress);
         } catch (utxoError) {
-          console.error(`Failed to fetch UTxOs for wallet ${wallet.id}:`, utxoError);
+          console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}...:`, utxoError);
           // Continue with empty UTxOs
         }
 
@@ -214,9 +214,9 @@ export default async function handler(
           try {
             const fallbackProvider = getProvider(fallbackNetwork);
             utxos = await fallbackProvider.fetchAddressUTxOs(walletAddress);
-            console.log(`Successfully fetched ${utxos.length} UTxOs for wallet ${wallet.id} on fallback network ${fallbackNetwork}`);
+            console.log(`Successfully fetched ${utxos.length} UTxOs for wallet ${wallet.id.slice(0, 8)}... on fallback network ${fallbackNetwork}`);
           } catch (fallbackError) {
-            console.error(`Failed to fetch UTxOs for wallet ${wallet.id} on fallback network ${fallbackNetwork}:`, fallbackError);
+            console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}... on fallback network ${fallbackNetwork}:`, fallbackError);
             // Continue with empty UTxOs - this wallet will show 0 balance
           }
         }
@@ -244,7 +244,7 @@ export default async function handler(
         console.log(`    ✅ Balance: ${roundedAdaBalance} ADA`);
 
       } catch (error) {
-        console.error(`Error processing wallet ${wallet.id}:`, error);
+        console.error(`Error processing wallet ${wallet.id.slice(0, 8)}...:`, error);
         failedInBatch++;
       }
     }
@@ -268,7 +268,7 @@ export default async function handler(
           });
           return 1;
         } catch (error) {
-          console.error('Failed to store snapshot for wallet %s:', walletBalance.walletId, error);
+          console.error('Failed to store snapshot for wallet %s:', walletBalance.walletId.slice(0, 8) + '...', error);
           return 0;
         }
       });
