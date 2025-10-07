@@ -1,0 +1,48 @@
+name: Daily Balance Snapshots
+
+# This workflow takes daily snapshots of wallet balances and stores them in the database.
+# API requests require SNAPSHOT_AUTH_TOKEN secret to be set in GitHub repository settings.
+
+on:
+  #schedule:
+    # Run at midnight UTC every day
+    #- cron: '0 0 * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  snapshot-balances:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run balance snapshots
+        run: node scripts/balance-snapshots.js
+        env:
+          API_BASE_URL: "https://multisig.meshjs.dev"
+          SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
+          BATCH_SIZE: 3
+          DELAY_BETWEEN_REQUESTS: 3
+          DELAY_BETWEEN_BATCHES: 15
+          MAX_RETRIES: 3
+          REQUEST_TIMEOUT: 30
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Daily balance snapshot job failed"
+          # Optional: Send failure notification
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data "{\"text\":\"❌ Daily balance snapshots failed. Check the GitHub Actions logs.\"}" \
+          #   ${{ secrets.DISCORD_WEBHOOK_URL }}
