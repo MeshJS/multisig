@@ -8,8 +8,8 @@
  * It handles timeout issues by processing wallets in small batches.
  * 
  * Usage:
- *   node scripts/batch-snapshot-orchestrator.js
- *   SNAPSHOT_AUTH_TOKEN=your_token node scripts/batch-snapshot-orchestrator.js
+ *   npx tsx scripts/batch-snapshot-orchestrator.ts
+ *   SNAPSHOT_AUTH_TOKEN=your_token npx tsx scripts/batch-snapshot-orchestrator.ts
  * 
  * Environment Variables:
  *   - API_BASE_URL: Base URL for the API (default: http://localhost:3000)
@@ -19,7 +19,49 @@
  *   - MAX_RETRIES: Maximum retries for failed batches (default: 3)
  */
 
+interface BatchProgress {
+  processedInBatch: number;
+  walletsInBatch: number;
+  failedInBatch: number;
+  snapshotsStored: number;
+  totalAdaBalance: number;
+  totalBatches: number;
+}
+
+interface BatchResponse {
+  success: boolean;
+  message?: string;
+  progress: BatchProgress;
+}
+
+interface BatchResults {
+  totalBatches: number;
+  completedBatches: number;
+  failedBatches: number;
+  totalWalletsProcessed: number;
+  totalWalletsFailed: number;
+  totalAdaBalance: number;
+  totalSnapshotsStored: number;
+  executionTime: number;
+}
+
+interface BatchConfig {
+  apiBaseUrl: string;
+  authToken: string;
+  batchSize: number;
+  delayBetweenBatches: number;
+  maxRetries: number;
+}
+
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+}
+
 class BatchSnapshotOrchestrator {
+  private config: BatchConfig;
+  private results: BatchResults;
+
   constructor() {
     this.config = this.loadConfig();
     this.results = {
@@ -34,7 +76,7 @@ class BatchSnapshotOrchestrator {
     };
   }
 
-  loadConfig() {
+  private loadConfig(): BatchConfig {
     const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
     const authToken = process.env.SNAPSHOT_AUTH_TOKEN;
 
@@ -51,48 +93,55 @@ class BatchSnapshotOrchestrator {
     };
   }
 
-  async makeRequest(/** @type {string} */ url, /** @type {RequestInit} */ options = {}) {
+  private async makeRequest<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     try {
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(url, {
         ...options,
+        signal: controller.signal,
         headers: {
           'Authorization': `Bearer ${this.config.authToken}`,
           'Content-Type': 'application/json',
           ...(options.headers || {}),
         },
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as T;
       return { data, status: response.status };
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout after 30 seconds');
+      }
       throw error;
     }
   }
 
-  async delay(/** @type {number} */ seconds) {
+  private async delay(seconds: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, seconds * 1000));
   }
 
-  async processBatch(/** @type {number} */ batchNumber, /** @type {string} */ batchId) {
+  private async processBatch(batchNumber: number, batchId: string): Promise<BatchProgress | null> {
     console.log(`📦 Processing batch ${batchNumber}...`);
 
     for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
       try {
-        const { data } = await this.makeRequest(
-          `${this.config.apiBaseUrl}/api/v1/stats/run-snapshots-batch`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              batchId,
-              batchNumber,
-              batchSize: this.config.batchSize,
-            }),
-          }
-        );
+        const url = new URL(`${this.config.apiBaseUrl}/api/v1/stats/run-snapshots-batch`);
+        url.searchParams.set('batchId', batchId);
+        url.searchParams.set('batchNumber', batchNumber.toString());
+        url.searchParams.set('batchSize', this.config.batchSize.toString());
+
+        const { data } = await this.makeRequest<BatchResponse>(url.toString(), {
+          method: 'POST',
+        });
 
         if (data.success) {
           console.log(`✅ Batch ${batchNumber} completed successfully`);
@@ -124,7 +173,7 @@ class BatchSnapshotOrchestrator {
     return null;
   }
 
-  async run() {
+  public async run(): Promise<BatchResults> {
     const startTime = Date.now();
     const batchId = `snapshot-${Date.now()}`;
     
@@ -152,10 +201,8 @@ class BatchSnapshotOrchestrator {
       // Process remaining batches
       for (let batchNumber = 2; batchNumber <= this.results.totalBatches; batchNumber++) {
         // Delay between batches to prevent overwhelming the server
-        if (batchNumber > 2) {
-          console.log(`⏳ Waiting ${this.config.delayBetweenBatches}s before next batch...`);
-          await this.delay(this.config.delayBetweenBatches);
-        }
+        console.log(`⏳ Waiting ${this.config.delayBetweenBatches}s before next batch...`);
+        await this.delay(this.config.delayBetweenBatches);
 
         const batchProgress = await this.processBatch(batchNumber, batchId);
         
@@ -204,7 +251,7 @@ class BatchSnapshotOrchestrator {
 }
 
 // Main execution
-async function main() {
+async function main(): Promise<void> {
   try {
     const orchestrator = new BatchSnapshotOrchestrator();
     await orchestrator.run();
@@ -217,7 +264,7 @@ async function main() {
 }
 
 // Export for use in other modules
-export { BatchSnapshotOrchestrator };
+export { BatchSnapshotOrchestrator, type BatchResults, type BatchProgress, type BatchConfig };
 
 // Run if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {

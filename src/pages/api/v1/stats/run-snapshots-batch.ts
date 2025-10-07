@@ -75,24 +75,28 @@ export default async function handler(
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { batchId, batchNumber, batchSize = 10 } = req.body;
+  const { batchId, batchNumber, batchSize } = req.query;
   const startTime = new Date().toISOString();
 
+  // Convert string parameters to numbers
+  const parsedBatchNumber = batchNumber ? parseInt(batchNumber as string, 10) : 1;
+  const parsedBatchSize = batchSize ? parseInt(batchSize as string, 10) : 10;
+
   try {
-    console.log(`🔄 Starting batch ${batchNumber || 1} of balance snapshots...`);
+    console.log(`🔄 Starting batch ${parsedBatchNumber} of balance snapshots...`);
 
     // Step 1: Get total wallet count and calculate batches
     const totalWallets = await db.wallet.count();
-    const totalBatches = Math.ceil(totalWallets / batchSize);
-    const currentBatch = batchNumber || 1;
-    const offset = (currentBatch - 1) * batchSize;
+    const totalBatches = Math.ceil(totalWallets / parsedBatchSize);
+    const currentBatch = parsedBatchNumber;
+    const offset = (currentBatch - 1) * parsedBatchSize;
 
-    console.log(`📊 Processing batch ${currentBatch}/${totalBatches} (${batchSize} wallets per batch)`);
+    console.log(`📊 Processing batch ${currentBatch}/${totalBatches} (${parsedBatchSize} wallets per batch)`);
 
     // Step 2: Fetch wallets for this batch
     const wallets: DbWallet[] = await db.wallet.findMany({
       skip: offset,
-      take: batchSize,
+      take: parsedBatchSize,
       orderBy: { id: 'asc' }, // Consistent ordering
     });
 
@@ -101,7 +105,7 @@ export default async function handler(
         success: true,
         message: "No wallets found in this batch",
         progress: {
-          batchId: batchId || `batch-${currentBatch}`,
+          batchId: (batchId as string) || `batch-${currentBatch}`,
           totalBatches,
           currentBatch,
           walletsInBatch: 0,
@@ -281,8 +285,8 @@ export default async function handler(
 
     // Step 5: Calculate progress
     const isComplete = currentBatch >= totalBatches;
-    const totalProcessed = (currentBatch - 1) * batchSize + processedInBatch;
-    const totalFailed = (currentBatch - 1) * batchSize + failedInBatch;
+    const totalProcessed = (currentBatch - 1) * parsedBatchSize + processedInBatch;
+    const totalFailed = (currentBatch - 1) * parsedBatchSize + failedInBatch;
 
     console.log(`📊 Batch ${currentBatch}/${totalBatches} completed:`);
     console.log(`   • Processed: ${processedInBatch}/${wallets.length}`);
@@ -292,7 +296,7 @@ export default async function handler(
     console.log(`   • Overall progress: ${totalProcessed}/${totalWallets} wallets`);
 
     const progress: BatchProgress = {
-      batchId: batchId || `batch-${currentBatch}`,
+      batchId: (batchId as string) || `batch-${currentBatch}`,
       totalBatches,
       currentBatch,
       walletsInBatch: wallets.length,
@@ -326,9 +330,9 @@ export default async function handler(
       success: false,
       message: `Batch snapshot process failed: ${errorMessage}`,
       progress: {
-        batchId: batchId || `batch-${batchNumber || 1}`,
+        batchId: (batchId as string) || `batch-${parsedBatchNumber}`,
         totalBatches: 0,
-        currentBatch: batchNumber || 1,
+        currentBatch: parsedBatchNumber,
         walletsInBatch: 0,
         processedInBatch: 0,
         failedInBatch: 0,
