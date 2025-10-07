@@ -1,115 +1,23 @@
 # Stats API Routes
 
-This directory contains the API routes for handling wallet balance snapshots using a batch processing system to avoid timeout issues.
+This directory contains the API route for handling wallet balance snapshots using a batch processing system to avoid timeout issues.
 
-## Recent Updates
+## Overview
 
-This batch processing system addresses timeout issues when processing large numbers of wallets:
+The batch processing system addresses timeout issues when processing large numbers of wallets by:
 
 - **Solves**: Timeout issues with large wallet counts
 - **Improves**: Reliability, monitoring, and error handling
 - **Adds**: Comprehensive progress tracking and TVL reporting
+- **Consolidates**: All snapshot functionality into a single, efficient endpoint
 
 ## Authentication
 
-All endpoints require authentication using the `SNAPSHOT_AUTH_TOKEN` environment variable:
+The endpoint requires authentication using the `SNAPSHOT_AUTH_TOKEN` environment variable:
 - **Header**: `Authorization: Bearer <token>`
 - **Environment Variable**: `SNAPSHOT_AUTH_TOKEN`
 
-## Routes
-
-### `/api/v1/stats/wallets`
-- **Method**: GET
-- **Purpose**: Returns all wallet information for batch processing
-- **Authentication**: Required (Bearer token)
-- **Response**: 
-  ```json
-  {
-    "wallets": [
-      {
-        "walletId": "string",
-        "walletName": "string",
-        "description": "string|null",
-        "signersAddresses": ["string"],
-        "signersStakeKeys": ["string"],
-        "signersDRepKeys": ["string"],
-        "signersDescriptions": ["string"],
-        "numRequiredSigners": number,
-        "verified": ["string"],
-        "scriptCbor": "string",
-        "stakeCredentialHash": "string|null",
-        "type": "string",
-        "isArchived": boolean,
-        "clarityApiKey": "string|null",
-        "network": number
-      }
-    ],
-    "walletCount": number,
-    "activeWalletCount": number,
-    "archivedWalletCount": number
-  }
-  ```
-
-### `/api/v1/stats/balance`
-- **Method**: GET
-- **Purpose**: Fetches balance for a single wallet (used internally by batch processing)
-- **Authentication**: Required (Bearer token)
-- **Query Parameters**: 
-  - `walletId` (required) - Wallet ID
-  - `walletName` (required) - Wallet name
-  - `signersAddresses` (required) - JSON array of signer addresses
-  - `numRequiredSigners` (required) - Number of required signers
-  - `type` (required) - Wallet type
-  - `stakeCredentialHash` (optional) - Stake credential hash
-  - `isArchived` (required) - Whether wallet is archived
-  - `network` (required) - Network ID (0=testnet, 1=mainnet)
-- **Response**: 
-  ```json
-  {
-    "walletBalance": {
-      "walletId": "string",
-      "walletName": "string",
-      "address": "string",
-      "balance": {
-        "lovelace": "string",
-        "assetId": "quantity"
-      },
-      "adaBalance": number,
-      "isArchived": boolean
-    }
-  }
-  ```
-
-### `/api/v1/stats/snapshots`
-- **Method**: POST
-- **Purpose**: Stores balance snapshots in the database
-- **Authentication**: Required (Bearer token)
-- **Content-Type**: `application/json`
-- **Body**: 
-  ```json
-  {
-    "walletBalances": [
-      {
-        "walletId": "string",
-        "walletName": "string",
-        "address": "string", 
-        "balance": {
-          "lovelace": "string",
-          "assetId": "quantity"
-        },
-        "adaBalance": number,
-        "isArchived": boolean
-      }
-    ]
-  }
-  ```
-- **Response**: 
-  ```json
-  {
-    "snapshotsStored": number,
-    "totalWallets": number
-  }
-  ```
+## Route
 
 ### `/api/v1/stats/run-snapshots-batch`
 - **Method**: POST
