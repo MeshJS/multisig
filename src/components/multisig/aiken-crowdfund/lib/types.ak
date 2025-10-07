@@ -5,7 +5,7 @@ pub type MintPolarity {
   RBurn
 }
 
-pub type CrowdfundRedeemer {
+pub type ProxyRedeemer {
   
   RemoveEmptyInstance
 }

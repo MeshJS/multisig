@@ -8,14 +8,12 @@ use cocktail.{
   value_length,
 }
 use types.{
-  CompleteCrowdfund, ContributeFund, ContributorWithdrawal, CrowdfundDatum,
-  CrowdfundRedeemer, RemoveEmptyInstance,
+  ProxyRedeemer, RemoveEmptyInstance,
 }
-use utils.{check_fundraise_target, outputs_at_with_lovelace}
 
 validator proxy(auth_token: PolicyId) {
   spend(
-    redeemer: CrowdfundRedeemer,
+    redeemer: ProxyRedeemer,
     input: OutputReference,
     self: Transaction,
   ) {
@@ -31,11 +29,10 @@ validator proxy(auth_token: PolicyId) {
 
     when redeemer is {
 
-      
+
       
 
       RemoveEmptyInstance -> {
-
         let token_burnt_check = only_minted_token(mint, auth_token, completion_script, -10)?
       }
     }
