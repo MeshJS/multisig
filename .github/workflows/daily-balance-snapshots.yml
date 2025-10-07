@@ -27,22 +27,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
-      - name: Run balance snapshots
-        run: node scripts/balance-snapshots.js
+      - name: Run batch snapshot orchestration
+        run: node scripts/batch-snapshot-orchestrator.js
         env:
           API_BASE_URL: "https://multisig.meshjs.dev"
           SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
-          BATCH_SIZE: 3
-          DELAY_BETWEEN_REQUESTS: 3
-          DELAY_BETWEEN_BATCHES: 15
+          BATCH_SIZE: 10
+          DELAY_BETWEEN_BATCHES: 5
           MAX_RETRIES: 3
-          REQUEST_TIMEOUT: 30
 
       - name: Notify on failure
         if: failure()
+        # Send failure notification
         run: |
           echo "❌ Daily balance snapshot job failed"
-          # Optional: Send failure notification
-          # curl -X POST -H 'Content-type: application/json' \
-          #   --data "{\"text\":\"❌ Daily balance snapshots failed. Check the GitHub Actions logs.\"}" \
-          #   ${{ secrets.DISCORD_WEBHOOK_URL }}
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ Daily balance snapshots failed. Check the GitHub Actions logs.\"}" \
+            ${{ secrets.SNAPSHOT_ERROR_DISCORD_WEBHOOK_URL }}
