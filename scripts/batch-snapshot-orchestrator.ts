@@ -15,7 +15,7 @@
  *   - API_BASE_URL: Base URL for the API (default: http://localhost:3000)
  *   - SNAPSHOT_AUTH_TOKEN: Authentication token for API requests
  *   - BATCH_SIZE: Number of wallets per batch (default: 10)
- *   - DELAY_BETWEEN_BATCHES: Delay between batches in seconds (default: 5)
+ *   - DELAY_BETWEEN_BATCHES: Delay between batches in seconds (default: 10)
  *   - MAX_RETRIES: Maximum retries for failed batches (default: 3)
  */
 
@@ -24,8 +24,18 @@ interface BatchProgress {
   walletsInBatch: number;
   failedInBatch: number;
   snapshotsStored: number;
-  totalAdaBalance: number;
   totalBatches: number;
+  // Network-specific data
+  mainnetWallets: number;
+  testnetWallets: number;
+  mainnetAdaBalance: number;
+  testnetAdaBalance: number;
+  // Failure details
+  failures: Array<{
+    walletId: string;
+    errorType: string;
+    errorMessage: string;
+  }>;
 }
 
 interface BatchResponse {
@@ -40,9 +50,21 @@ interface BatchResults {
   failedBatches: number;
   totalWalletsProcessed: number;
   totalWalletsFailed: number;
-  totalAdaBalance: number;
   totalSnapshotsStored: number;
   executionTime: number;
+  // Network-specific data
+  totalMainnetWallets: number;
+  totalTestnetWallets: number;
+  totalMainnetAdaBalance: number;
+  totalTestnetAdaBalance: number;
+  // Failure tracking
+  allFailures: Array<{
+    walletId: string;
+    errorType: string;
+    errorMessage: string;
+    batchNumber: number;
+  }>;
+  failureSummary: Record<string, number>;
 }
 
 interface BatchConfig {
@@ -70,9 +92,16 @@ class BatchSnapshotOrchestrator {
       failedBatches: 0,
       totalWalletsProcessed: 0,
       totalWalletsFailed: 0,
-      totalAdaBalance: 0,
       totalSnapshotsStored: 0,
       executionTime: 0,
+      // Network-specific data
+      totalMainnetWallets: 0,
+      totalTestnetWallets: 0,
+      totalMainnetAdaBalance: 0,
+      totalTestnetAdaBalance: 0,
+      // Failure tracking
+      allFailures: [],
+      failureSummary: {},
     };
   }
 
@@ -88,7 +117,7 @@ class BatchSnapshotOrchestrator {
       apiBaseUrl,
       authToken,
       batchSize: parseInt(process.env.BATCH_SIZE || '10'),
-      delayBetweenBatches: parseInt(process.env.DELAY_BETWEEN_BATCHES || '5'),
+      delayBetweenBatches: parseInt(process.env.DELAY_BETWEEN_BATCHES || '10'),
       maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
     };
   }
@@ -129,6 +158,17 @@ class BatchSnapshotOrchestrator {
     return new Promise(resolve => setTimeout(resolve, seconds * 1000));
   }
 
+  private getFriendlyErrorName(errorType: string): string {
+    const errorMap: Record<string, string> = {
+      'wallet_build_failed': 'Wallet Build Failed',
+      'utxo_fetch_failed': 'UTxO Fetch Failed',
+      'address_generation_failed': 'Address Generation Failed',
+      'balance_calculation_failed': 'Balance Calculation Failed',
+      'processing_failed': 'General Processing Failed',
+    };
+    return errorMap[errorType] || errorType;
+  }
+
   private async processBatch(batchNumber: number, batchId: string): Promise<BatchProgress | null> {
     console.log(`📦 Processing batch ${batchNumber}...`);
 
@@ -148,7 +188,8 @@ class BatchSnapshotOrchestrator {
           console.log(`   • Processed: ${data.progress.processedInBatch}/${data.progress.walletsInBatch} wallets`);
           console.log(`   • Failed: ${data.progress.failedInBatch}`);
           console.log(`   • Snapshots stored: ${data.progress.snapshotsStored}`);
-          console.log(`   • Batch ADA balance: ${Math.round(data.progress.totalAdaBalance * 100) / 100} ADA`);
+          console.log(`   • Mainnet: ${data.progress.mainnetWallets} wallets, ${Math.round(data.progress.mainnetAdaBalance * 100) / 100} ADA`);
+          console.log(`   • Testnet: ${data.progress.testnetWallets} wallets, ${Math.round(data.progress.testnetAdaBalance * 100) / 100} ADA`);
           
           return data.progress;
         } else {
@@ -193,8 +234,22 @@ class BatchSnapshotOrchestrator {
       this.results.completedBatches = 1;
       this.results.totalWalletsProcessed += firstBatch.processedInBatch;
       this.results.totalWalletsFailed += firstBatch.failedInBatch;
-      this.results.totalAdaBalance += firstBatch.totalAdaBalance;
       this.results.totalSnapshotsStored += firstBatch.snapshotsStored;
+      
+      // Accumulate network-specific data
+      this.results.totalMainnetWallets += firstBatch.mainnetWallets;
+      this.results.totalTestnetWallets += firstBatch.testnetWallets;
+      this.results.totalMainnetAdaBalance += firstBatch.mainnetAdaBalance;
+      this.results.totalTestnetAdaBalance += firstBatch.testnetAdaBalance;
+      
+      // Accumulate failures
+      firstBatch.failures.forEach(failure => {
+        this.results.allFailures.push({
+          ...failure,
+          batchNumber: 1
+        });
+        this.results.failureSummary[failure.errorType] = (this.results.failureSummary[failure.errorType] || 0) + 1;
+      });
 
       console.log(`📊 Total batches to process: ${this.results.totalBatches}`);
 
@@ -210,8 +265,22 @@ class BatchSnapshotOrchestrator {
           this.results.completedBatches++;
           this.results.totalWalletsProcessed += batchProgress.processedInBatch;
           this.results.totalWalletsFailed += batchProgress.failedInBatch;
-          this.results.totalAdaBalance += batchProgress.totalAdaBalance;
           this.results.totalSnapshotsStored += batchProgress.snapshotsStored;
+          
+          // Accumulate network-specific data
+          this.results.totalMainnetWallets += batchProgress.mainnetWallets;
+          this.results.totalTestnetWallets += batchProgress.testnetWallets;
+          this.results.totalMainnetAdaBalance += batchProgress.mainnetAdaBalance;
+          this.results.totalTestnetAdaBalance += batchProgress.testnetAdaBalance;
+          
+          // Accumulate failures
+          batchProgress.failures.forEach(failure => {
+            this.results.allFailures.push({
+              ...failure,
+              batchNumber
+            });
+            this.results.failureSummary[failure.errorType] = (this.results.failureSummary[failure.errorType] || 0) + 1;
+          });
         } else {
           this.results.failedBatches++;
           console.error(`❌ Batch ${batchNumber} failed completely`);
@@ -234,11 +303,42 @@ class BatchSnapshotOrchestrator {
       console.log(`   • Wallets processed: ${this.results.totalWalletsProcessed}`);
       console.log(`   • Wallets failed: ${this.results.totalWalletsFailed}`);
       console.log(`   • Snapshots stored: ${this.results.totalSnapshotsStored}`);
-      console.log(`   • Total TVL: ${Math.round(this.results.totalAdaBalance * 100) / 100} ADA`);
       console.log(`   • Execution time: ${this.results.executionTime}s`);
+      
+      // Network-specific breakdown
+      console.log(`\n🌐 Network Breakdown:`);
+      console.log(`   📈 Mainnet:`);
+      console.log(`      • Wallets: ${this.results.totalMainnetWallets}`);
+      console.log(`      • TVL: ${Math.round(this.results.totalMainnetAdaBalance * 100) / 100} ADA`);
+      console.log(`   🧪 Testnet:`);
+      console.log(`      • Wallets: ${this.results.totalTestnetWallets}`);
+      console.log(`      • TVL: ${Math.round(this.results.totalTestnetAdaBalance * 100) / 100} ADA`);
+      
+      // Failure analysis
+      if (this.results.totalWalletsFailed > 0) {
+        console.log(`\n❌ Failure Analysis:`);
+        console.log(`   • Total failed wallets: ${this.results.totalWalletsFailed}`);
+        
+        // Show failure summary by type
+        Object.entries(this.results.failureSummary).forEach(([errorType, count]) => {
+          const friendlyName = this.getFriendlyErrorName(errorType);
+          console.log(`   • ${friendlyName}: ${count} wallets`);
+        });
+        
+        // Show sample failures (first 3)
+        if (this.results.allFailures.length > 0) {
+          console.log(`\n📋 Sample Failures:`);
+          this.results.allFailures.slice(0, 3).forEach((failure, index) => {
+            console.log(`   ${index + 1}. ${failure.walletId.slice(0, 8)}... - ${failure.errorMessage}`);
+          });
+          if (this.results.allFailures.length > 3) {
+            console.log(`   ... and ${this.results.allFailures.length - 3} more`);
+          }
+        }
+      }
 
       if (this.results.failedBatches > 0) {
-        console.log(`⚠️ Warning: ${this.results.failedBatches} batches failed. You may need to retry those batches manually.`);
+        console.log(`\n⚠️ Warning: ${this.results.failedBatches} batches failed. You may need to retry those batches manually.`);
       }
 
       return this.results;
