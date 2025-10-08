@@ -1,0 +1,163 @@
+{
+  "preamble": {
+    "title": "mesh/proxy",
+    "description": "Aiken contracts for project 'aiken-proxy'",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.17+c3a7fba"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": [
+    {
+      "title": "auth_token/mint.auth_token.mint",
+      "redeemer": {
+        "title": "redeemer",
+        "schema": {
+          "$ref": "#/definitions/types~1MintPolarity"
+        }
+      },
+      "parameters": [
+        {
+          "title": "utxo_ref",
+          "schema": {
+            "$ref": "#/definitions/cardano~1transaction~1OutputReference"
+          }
+        }
+      ],
+      "compiledCode": "59017b010100229800aba2aba1aba0aab9faab9eaab9dab9a488888896600264653001300800198041804800cdc3a400130080024888966002600460106ea800e2646644b300130050018acc004c030dd5003c00a2c806a2b30013370e9001000c56600260186ea801e00516403516402880504c966002601e00313259800980298059baa0078acc004c8cc004004dd6180818069baa0052259800800c528456600266ebcc044c038dd5180880080a4528c4cc008008c04800500c201e899b8700148052294100a44cdc3800a40268050dd698059807000c5900c192cc004cdc3a400460146ea8006297adef6c6089bab300e300b37540028048c8cc004004dd59807180798079807980798059baa0032259800800c5300103d87a8000899192cc004cdc8802800c56600266e3c014006266e95200033010300e0024bd7045300103d87a80004031133004004301200340306eb8c030004c03c00500d18049baa005375c601860126ea800e2c8038601000260066ea802229344d9590011",
+      "hash": "eaff18079b75649a8cfc35b99f8a145c4fabf5c02e239822316e9321"
+    },
+    {
+      "title": "auth_token/mint.auth_token.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "utxo_ref",
+          "schema": {
+            "$ref": "#/definitions/cardano~1transaction~1OutputReference"
+          }
+        }
+      ],
+      "compiledCode": "59017b010100229800aba2aba1aba0aab9faab9eaab9dab9a488888896600264653001300800198041804800cdc3a400130080024888966002600460106ea800e2646644b300130050018acc004c030dd5003c00a2c806a2b30013370e9001000c56600260186ea801e00516403516402880504c966002601e00313259800980298059baa0078acc004c8cc004004dd6180818069baa0052259800800c528456600266ebcc044c038dd5180880080a4528c4cc008008c04800500c201e899b8700148052294100a44cdc3800a40268050dd698059807000c5900c192cc004cdc3a400460146ea8006297adef6c6089bab300e300b37540028048c8cc004004dd59807180798079807980798059baa0032259800800c5300103d87a8000899192cc004cdc8802800c56600266e3c014006266e95200033010300e0024bd7045300103d87a80004031133004004301200340306eb8c030004c03c00500d18049baa005375c601860126ea800e2c8038601000260066ea802229344d9590011",
+      "hash": "eaff18079b75649a8cfc35b99f8a145c4fabf5c02e239822316e9321"
+    },
+    {
+      "title": "proxy/spend.proxy.spend",
+      "datum": {
+        "title": "_datum",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "redeemer": {
+        "title": "redeemer",
+        "schema": {
+          "$ref": "#/definitions/types~1ProxyRedeemer"
+        }
+      },
+      "parameters": [
+        {
+          "title": "auth_token",
+          "schema": {
+            "$ref": "#/definitions/cardano~1assets~1PolicyId"
+          }
+        }
+      ],
+      "compiledCode": "590253010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e00198049baa0048992cc004cdc3a400060146ea8016266e212000323300100132330010013758602000644b30010018a5eb8226644b3001323300100132330010013756602a602c60246ea8010896600200314bd7044c8cc88c8cc004004dd5980b802112cc00400620071323301b374e660366ea4014cc06cc060004cc06cc0640052f5c066006006603a004603600280c8dd7180980099801801980c001180b000a0282259800800c528456600266e3cdd7180a9bac301500100f8a51899801001180b000a020404d13301200233004004001899802002000a01c30110013012001403c44b30010018a40011337009001198010011808800a01c899912cc0040060051598009808800c4c8c96600266e3cdd71809001006456600266e3cdd71809000a44100899b87375a602460260029009c528201a8a50403460240026eb0c040006004807100e0a5032330010013756601e6020602000444b30010018a5eb82264664464660020026eacc044010896600200310038991980a9ba733015375200a6602a60240026602a602600297ae03300300330170023015001404c6eb8c034004cc00c00cc048008c04000500e2012300e300e300a375400491112cc004cdc3a400000515980098071baa008800c5900f456600266e1d20020028acc004c038dd500440062c807a2c806100c0c024dd50014590070c024004c010dd5004c52689b2b200401",
+      "hash": "0dc0f294df05817b4471985a0fd255fa8c9b81fadc4c630a66783943"
+    },
+    {
+      "title": "proxy/spend.proxy.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "auth_token",
+          "schema": {
+            "$ref": "#/definitions/cardano~1assets~1PolicyId"
+          }
+        }
+      ],
+      "compiledCode": "590253010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e00198049baa0048992cc004cdc3a400060146ea8016266e212000323300100132330010013758602000644b30010018a5eb8226644b3001323300100132330010013756602a602c60246ea8010896600200314bd7044c8cc88c8cc004004dd5980b802112cc00400620071323301b374e660366ea4014cc06cc060004cc06cc0640052f5c066006006603a004603600280c8dd7180980099801801980c001180b000a0282259800800c528456600266e3cdd7180a9bac301500100f8a51899801001180b000a020404d13301200233004004001899802002000a01c30110013012001403c44b30010018a40011337009001198010011808800a01c899912cc0040060051598009808800c4c8c96600266e3cdd71809001006456600266e3cdd71809000a44100899b87375a602460260029009c528201a8a50403460240026eb0c040006004807100e0a5032330010013756601e6020602000444b30010018a5eb82264664464660020026eacc044010896600200310038991980a9ba733015375200a6602a60240026602a602600297ae03300300330170023015001404c6eb8c034004cc00c00cc048008c04000500e2012300e300e300a375400491112cc004cdc3a400000515980098071baa008800c5900f456600266e1d20020028acc004c038dd500440062c807a2c806100c0c024dd50014590070c024004c010dd5004c52689b2b200401",
+      "hash": "0dc0f294df05817b4471985a0fd255fa8c9b81fadc4c630a66783943"
+    }
+  ],
+  "definitions": {
+    "ByteArray": {
+      "title": "ByteArray",
+      "dataType": "bytes"
+    },
+    "Data": {
+      "title": "Data",
+      "description": "Any Plutus data."
+    },
+    "Int": {
+      "dataType": "integer"
+    },
+    "cardano/assets/PolicyId": {
+      "title": "PolicyId",
+      "dataType": "bytes"
+    },
+    "cardano/transaction/OutputReference": {
+      "title": "OutputReference",
+      "description": "An `OutputReference` is a unique reference to an output on-chain. The `output_index`\n corresponds to the position in the output list of the transaction (identified by its id)\n that produced that output",
+      "anyOf": [
+        {
+          "title": "OutputReference",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "transaction_id",
+              "$ref": "#/definitions/ByteArray"
+            },
+            {
+              "title": "output_index",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        }
+      ]
+    },
+    "types/MintPolarity": {
+      "title": "MintPolarity",
+      "anyOf": [
+        {
+          "title": "RMint",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        },
+        {
+          "title": "RBurn",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    "types/ProxyRedeemer": {
+      "title": "ProxyRedeemer",
+      "anyOf": [
+        {
+          "title": "SpendFunds",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        },
+        {
+          "title": "RemoveEmptyInstance",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": []
+        }
+      ]
+    }
+  }
+}
