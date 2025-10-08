@@ -16,6 +16,13 @@ interface WalletBalance {
   balance: Record<string, string>;
   adaBalance: number;
   isArchived: boolean;
+  network: number; // 0 = testnet, 1 = mainnet
+}
+
+interface WalletFailure {
+  walletId: string;
+  errorType: string; // e.g., "wallet_build_failed", "utxo_fetch_failed", "balance_calculation_failed"
+  errorMessage: string; // sanitized error message
 }
 
 interface BatchProgress {
@@ -27,11 +34,17 @@ interface BatchProgress {
   failedInBatch: number;
   totalProcessed: number;
   totalFailed: number;
-  totalAdaBalance: number;
   snapshotsStored: number;
   isComplete: boolean;
   startedAt: string;
   lastUpdatedAt: string;
+  // Network-specific data
+  mainnetWallets: number;
+  testnetWallets: number;
+  mainnetAdaBalance: number;
+  testnetAdaBalance: number;
+  // Failure details
+  failures: WalletFailure[];
 }
 
 interface BatchResponse {
@@ -113,11 +126,17 @@ export default async function handler(
           failedInBatch: 0,
           totalProcessed: 0,
           totalFailed: 0,
-          totalAdaBalance: 0,
           snapshotsStored: 0,
           isComplete: true,
           startedAt: startTime,
           lastUpdatedAt: new Date().toISOString(),
+          // Network-specific data
+          mainnetWallets: 0,
+          testnetWallets: 0,
+          mainnetAdaBalance: 0,
+          testnetAdaBalance: 0,
+          // Failure details
+          failures: [],
         },
         timestamp: new Date().toISOString(),
       });
@@ -125,9 +144,13 @@ export default async function handler(
 
     // Step 3: Process wallets in this batch
     const walletBalances: WalletBalance[] = [];
+    const failures: WalletFailure[] = [];
     let processedInBatch = 0;
     let failedInBatch = 0;
-    let totalAdaBalance = 0;
+    let mainnetWallets = 0;
+    let testnetWallets = 0;
+    let mainnetAdaBalance = 0;
+    let testnetAdaBalance = 0;
 
     for (const wallet of wallets) {
       try {
@@ -163,6 +186,11 @@ export default async function handler(
         const mWallet = buildMultisigWallet(walletData, network);
         if (!mWallet) {
           console.error(`Failed to build multisig wallet for ${wallet.id.slice(0, 8)}...`);
+          failures.push({
+            walletId: wallet.id.slice(0, 8),
+            errorType: "wallet_build_failed",
+            errorMessage: "Unable to build multisig wallet from provided data"
+          });
           failedInBatch++;
           continue;
         }
@@ -239,16 +267,49 @@ export default async function handler(
           balance,
           adaBalance: roundedAdaBalance,
           isArchived: wallet.isArchived,
+          network,
         };
 
         walletBalances.push(walletBalance);
-        totalAdaBalance += roundedAdaBalance;
+        
+        // Track network-specific data
+        if (network === 1) {
+          mainnetWallets++;
+          mainnetAdaBalance += roundedAdaBalance;
+        } else {
+          testnetWallets++;
+          testnetAdaBalance += roundedAdaBalance;
+        }
+        
         processedInBatch++;
         
-        console.log(`    ✅ Balance: ${roundedAdaBalance} ADA`);
+        console.log(`    ✅ Balance: ${roundedAdaBalance} ADA (${network === 1 ? 'mainnet' : 'testnet'})`);
 
       } catch (error) {
-        console.error(`Error processing wallet ${wallet.id.slice(0, 8)}...:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Error processing wallet ${wallet.id.slice(0, 8)}...:`, errorMessage);
+        
+        // Determine error type based on error message
+        let errorType = "processing_failed";
+        let sanitizedMessage = "Wallet processing failed";
+        
+        if (errorMessage.includes("fetchAddressUTxOs") || errorMessage.includes("UTxO")) {
+          errorType = "utxo_fetch_failed";
+          sanitizedMessage = "Failed to fetch UTxOs from blockchain";
+        } else if (errorMessage.includes("serializeNativeScript") || errorMessage.includes("address")) {
+          errorType = "address_generation_failed";
+          sanitizedMessage = "Failed to generate wallet address";
+        } else if (errorMessage.includes("balance") || errorMessage.includes("lovelace")) {
+          errorType = "balance_calculation_failed";
+          sanitizedMessage = "Failed to calculate wallet balance";
+        }
+        
+        failures.push({
+          walletId: wallet.id.slice(0, 8),
+          errorType,
+          errorMessage: sanitizedMessage
+        });
+        
         failedInBatch++;
       }
     }
@@ -292,7 +353,8 @@ export default async function handler(
     console.log(`   • Processed: ${processedInBatch}/${wallets.length}`);
     console.log(`   • Failed: ${failedInBatch}`);
     console.log(`   • Snapshots stored: ${snapshotsStored}`);
-    console.log(`   • Batch ADA balance: ${Math.round(totalAdaBalance * 100) / 100} ADA`);
+    console.log(`   • Mainnet: ${mainnetWallets} wallets, ${Math.round(mainnetAdaBalance * 100) / 100} ADA`);
+    console.log(`   • Testnet: ${testnetWallets} wallets, ${Math.round(testnetAdaBalance * 100) / 100} ADA`);
     console.log(`   • Overall progress: ${totalProcessed}/${totalWallets} wallets`);
 
     const progress: BatchProgress = {
@@ -304,11 +366,17 @@ export default async function handler(
       failedInBatch,
       totalProcessed,
       totalFailed,
-      totalAdaBalance,
       snapshotsStored,
       isComplete,
       startedAt: startTime,
       lastUpdatedAt: new Date().toISOString(),
+      // Network-specific data
+      mainnetWallets,
+      testnetWallets,
+      mainnetAdaBalance,
+      testnetAdaBalance,
+      // Failure details
+      failures,
     };
 
     const response: BatchResponse = {
@@ -338,11 +406,17 @@ export default async function handler(
         failedInBatch: 0,
         totalProcessed: 0,
         totalFailed: 0,
-        totalAdaBalance: 0,
         snapshotsStored: 0,
         isComplete: false,
         startedAt: startTime,
         lastUpdatedAt: new Date().toISOString(),
+        // Network-specific data
+        mainnetWallets: 0,
+        testnetWallets: 0,
+        mainnetAdaBalance: 0,
+        testnetAdaBalance: 0,
+        // Failure details
+        failures: [],
       },
       timestamp: new Date().toISOString(),
     });
