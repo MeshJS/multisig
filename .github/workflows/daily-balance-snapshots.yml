@@ -4,9 +4,9 @@ name: Daily Balance Snapshots
 # API requests require SNAPSHOT_AUTH_TOKEN secret to be set in GitHub repository settings.
 
 on:
-  #schedule:
-    # Run at midnight UTC every day
-    #- cron: '0 0 * * *'
+  schedule:
+  # Run at midnight UTC every day
+    - cron: '0 0 * * *'
   # Allow manual triggering for testing
   workflow_dispatch:
 

@@ -187,7 +187,7 @@ export default async function handler(
         if (!mWallet) {
           console.error(`Failed to build multisig wallet for ${wallet.id.slice(0, 8)}...`);
           failures.push({
-            walletId: wallet.id,
+            walletId: wallet.id.slice(0, 8),
             errorType: "wallet_build_failed",
             errorMessage: "Unable to build multisig wallet from provided data"
           });
@@ -305,7 +305,7 @@ export default async function handler(
         }
         
         failures.push({
-          walletId: wallet.id,
+          walletId: wallet.id.slice(0, 8),
           errorType,
           errorMessage: sanitizedMessage
         });

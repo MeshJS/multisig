@@ -191,6 +191,14 @@ class BatchSnapshotOrchestrator {
           console.log(`   • Mainnet: ${data.progress.mainnetWallets} wallets, ${Math.round(data.progress.mainnetAdaBalance * 100) / 100} ADA`);
           console.log(`   • Testnet: ${data.progress.testnetWallets} wallets, ${Math.round(data.progress.testnetAdaBalance * 100) / 100} ADA`);
           
+          // Show failures for this batch
+          if (data.progress.failures.length > 0) {
+            console.log(`   ❌ Failures in this batch:`);
+            data.progress.failures.forEach((failure, index) => {
+              console.log(`      ${index + 1}. ${failure.walletId}... - ${failure.errorMessage}`);
+            });
+          }
+          
           return data.progress;
         } else {
           throw new Error(data.message || 'Batch processing failed');
@@ -316,7 +324,7 @@ class BatchSnapshotOrchestrator {
       
       // Failure analysis
       if (this.results.totalWalletsFailed > 0) {
-        console.log(`\n❌ Failure Analysis:`);
+        console.log(`\n❌ Failure Summary:`);
         console.log(`   • Total failed wallets: ${this.results.totalWalletsFailed}`);
         
         // Show failure summary by type
@@ -324,17 +332,6 @@ class BatchSnapshotOrchestrator {
           const friendlyName = this.getFriendlyErrorName(errorType);
           console.log(`   • ${friendlyName}: ${count} wallets`);
         });
-        
-        // Show sample failures (first 3)
-        if (this.results.allFailures.length > 0) {
-          console.log(`\n📋 Sample Failures:`);
-          this.results.allFailures.slice(0, 3).forEach((failure, index) => {
-            console.log(`   ${index + 1}. ${failure.walletId.slice(0, 8)}... - ${failure.errorMessage}`);
-          });
-          if (this.results.allFailures.length > 3) {
-            console.log(`   ... and ${this.results.allFailures.length - 3} more`);
-          }
-        }
       }
 
       if (this.results.failedBatches > 0) {
