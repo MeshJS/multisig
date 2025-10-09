@@ -92,7 +92,17 @@ export default function VoteButton({
       }
       if (!multisigWallet)
         throw new Error("Multisig Wallet could not be built.");
-      const dRepId = appWallet.dRepId;
+      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      if (!dRepId) {
+        setAlert("DRep not found");
+        toast({
+          title: "DRep not found",
+          description: `Please register as a DRep and retry.`,
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
       const txBuilder = getTxBuilder(network);
 
       const assetMap = new Map<Unit, Quantity>();

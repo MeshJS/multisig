@@ -84,7 +84,10 @@ export default function RegisterDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(multisigWallet.getDRepId()!);
+    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+    if (!dRepId) {
+      throw new Error("DRep not found");
+    }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -107,7 +110,7 @@ export default function RegisterDRep() {
       }
 
       txBuilder
-        .drepRegistrationCertificate(drepIds.cip105, {
+        .drepRegistrationCertificate(dRepId, {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
         })
