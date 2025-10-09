@@ -14,9 +14,10 @@
  * Environment Variables:
  *   - API_BASE_URL: Base URL for the API (default: http://localhost:3000)
  *   - SNAPSHOT_AUTH_TOKEN: Authentication token for API requests
- *   - BATCH_SIZE: Number of wallets per batch (default: 10)
+ *   - BATCH_SIZE: Number of wallets per batch (default: 5)
  *   - DELAY_BETWEEN_BATCHES: Delay between batches in seconds (default: 10)
  *   - MAX_RETRIES: Maximum retries for failed batches (default: 3)
+ *   - REQUEST_TIMEOUT: Request timeout in seconds (default: 45)
  */
 
 interface BatchProgress {
@@ -35,6 +36,26 @@ interface BatchProgress {
     walletId: string;
     errorType: string;
     errorMessage: string;
+    walletStructure?: {
+      name: string;
+      type: string;
+      numRequiredSigners: number;
+      signersCount: number;
+      hasStakeCredential: boolean;
+      hasScriptCbor: boolean;
+      isArchived: boolean;
+      verified: number;
+      hasDRepKeys: boolean;
+      hasClarityApiKey: boolean;
+      // Character counts for key fields
+      scriptCborLength: number;
+      stakeCredentialLength: number;
+      signersAddressesLength: number;
+      signersStakeKeysLength: number;
+      signersDRepKeysLength: number;
+      signersDescriptionsLength: number;
+      clarityApiKeyLength: number;
+    };
   }>;
 }
 
@@ -63,6 +84,26 @@ interface BatchResults {
     errorType: string;
     errorMessage: string;
     batchNumber: number;
+    walletStructure?: {
+      name: string;
+      type: string;
+      numRequiredSigners: number;
+      signersCount: number;
+      hasStakeCredential: boolean;
+      hasScriptCbor: boolean;
+      isArchived: boolean;
+      verified: number;
+      hasDRepKeys: boolean;
+      hasClarityApiKey: boolean;
+      // Character counts for key fields
+      scriptCborLength: number;
+      stakeCredentialLength: number;
+      signersAddressesLength: number;
+      signersStakeKeysLength: number;
+      signersDRepKeysLength: number;
+      signersDescriptionsLength: number;
+      clarityApiKeyLength: number;
+    };
   }>;
   failureSummary: Record<string, number>;
 }
@@ -73,6 +114,7 @@ interface BatchConfig {
   batchSize: number;
   delayBetweenBatches: number;
   maxRetries: number;
+  requestTimeout: number; // in seconds
 }
 
 interface ApiResponse<T> {
@@ -113,20 +155,52 @@ class BatchSnapshotOrchestrator {
       throw new Error('SNAPSHOT_AUTH_TOKEN environment variable is required');
     }
 
+    if (authToken.trim().length === 0) {
+      throw new Error('SNAPSHOT_AUTH_TOKEN environment variable cannot be empty');
+    }
+
+    // Validate API base URL format
+    try {
+      new URL(apiBaseUrl);
+    } catch (error) {
+      throw new Error(`Invalid API_BASE_URL format: ${apiBaseUrl}`);
+    }
+
+    // Parse and validate numeric environment variables
+    const batchSize = this.parseAndValidateNumber(process.env.BATCH_SIZE || '5', 'BATCH_SIZE', 1, 10);
+    const delayBetweenBatches = this.parseAndValidateNumber(process.env.DELAY_BETWEEN_BATCHES || '10', 'DELAY_BETWEEN_BATCHES', 1, 300);
+    const maxRetries = this.parseAndValidateNumber(process.env.MAX_RETRIES || '3', 'MAX_RETRIES', 1, 10);
+    const requestTimeout = this.parseAndValidateNumber(process.env.REQUEST_TIMEOUT || '45', 'REQUEST_TIMEOUT', 10, 300);
+
     return {
       apiBaseUrl,
       authToken,
-      batchSize: parseInt(process.env.BATCH_SIZE || '10'),
-      delayBetweenBatches: parseInt(process.env.DELAY_BETWEEN_BATCHES || '10'),
-      maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
+      batchSize,
+      delayBetweenBatches,
+      maxRetries,
+      requestTimeout,
     };
+  }
+
+  private parseAndValidateNumber(value: string, name: string, min: number, max: number): number {
+    const parsed = parseInt(value, 10);
+    
+    if (isNaN(parsed)) {
+      throw new Error(`${name} must be a valid integer, got: ${value}`);
+    }
+    
+    if (parsed < min || parsed > max) {
+      throw new Error(`${name} must be between ${min} and ${max}, got: ${parsed}`);
+    }
+    
+    return parsed;
   }
 
   private async makeRequest<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     try {
-      // Add timeout to prevent hanging requests
+      // Add configurable timeout to prevent hanging requests
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout * 1000);
       
       const response = await fetch(url, {
         ...options,
@@ -148,7 +222,7 @@ class BatchSnapshotOrchestrator {
       return { data, status: response.status };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timeout after 30 seconds');
+        throw new Error(`Request timeout after ${this.config.requestTimeout} seconds`);
       }
       throw error;
     }
@@ -171,6 +245,15 @@ class BatchSnapshotOrchestrator {
 
   private async processBatch(batchNumber: number, batchId: string): Promise<BatchProgress | null> {
     console.log(`📦 Processing batch ${batchNumber}...`);
+
+    // Validate inputs
+    if (!Number.isInteger(batchNumber) || batchNumber < 1) {
+      throw new Error(`Invalid batchNumber: ${batchNumber}. Must be a positive integer.`);
+    }
+
+    if (!batchId || typeof batchId !== 'string' || batchId.trim().length === 0) {
+      throw new Error(`Invalid batchId: ${batchId}. Must be a non-empty string.`);
+    }
 
     for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
       try {
@@ -196,6 +279,22 @@ class BatchSnapshotOrchestrator {
             console.log(`   ❌ Failures in this batch:`);
             data.progress.failures.forEach((failure, index) => {
               console.log(`      ${index + 1}. ${failure.walletId}... - ${failure.errorMessage}`);
+              if (failure.walletStructure) {
+                const structure = failure.walletStructure;
+                console.log(`         📋 Wallet Structure:`);
+                console.log(`            • Name: ${structure.name} (${structure.name.length} chars)`);
+                console.log(`            • Type: ${structure.type} (${structure.type.length} chars)`);
+                console.log(`            • Required Signers: ${structure.numRequiredSigners}/${structure.signersCount}`);
+                console.log(`            • Has Stake Credential: ${structure.hasStakeCredential} (${structure.stakeCredentialLength} chars)`);
+                console.log(`            • Has Script CBOR: ${structure.hasScriptCbor} (${structure.scriptCborLength} chars)`);
+                console.log(`            • Is Archived: ${structure.isArchived}`);
+                console.log(`            • Verified Count: ${structure.verified}`);
+                console.log(`            • Has DRep Keys: ${structure.hasDRepKeys} (${structure.signersDRepKeysLength} items)`);
+                console.log(`            • Has Clarity API Key: ${structure.hasClarityApiKey} (${structure.clarityApiKeyLength} chars)`);
+                console.log(`            • Signers Addresses: ${structure.signersAddressesLength} items`);
+                console.log(`            • Signers Stake Keys: ${structure.signersStakeKeysLength} items`);
+                console.log(`            • Signers Descriptions: ${structure.signersDescriptionsLength} items`);
+              }
             });
           }
           
@@ -214,8 +313,10 @@ class BatchSnapshotOrchestrator {
           return null;
         }
         
-        // Wait before retry
-        await this.delay(this.config.delayBetweenBatches);
+        // For 405 errors (Method Not Allowed), wait longer as it might be a server-side issue
+        const waitTime = errorMessage.includes('405') ? this.config.delayBetweenBatches * 2 : this.config.delayBetweenBatches;
+        console.log(`    ⏳ Waiting ${waitTime}s before retry...`);
+        await this.delay(waitTime);
       }
     }
 
@@ -253,8 +354,11 @@ class BatchSnapshotOrchestrator {
       // Accumulate failures
       firstBatch.failures.forEach(failure => {
         this.results.allFailures.push({
-          ...failure,
-          batchNumber: 1
+          walletId: failure.walletId,
+          errorType: failure.errorType,
+          errorMessage: failure.errorMessage,
+          batchNumber: 1,
+          walletStructure: failure.walletStructure
         });
         this.results.failureSummary[failure.errorType] = (this.results.failureSummary[failure.errorType] || 0) + 1;
       });
@@ -284,8 +388,11 @@ class BatchSnapshotOrchestrator {
           // Accumulate failures
           batchProgress.failures.forEach(failure => {
             this.results.allFailures.push({
-              ...failure,
-              batchNumber
+              walletId: failure.walletId,
+              errorType: failure.errorType,
+              errorMessage: failure.errorMessage,
+              batchNumber,
+              walletStructure: failure.walletStructure
             });
             this.results.failureSummary[failure.errorType] = (this.results.failureSummary[failure.errorType] || 0) + 1;
           });

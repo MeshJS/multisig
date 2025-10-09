@@ -40,9 +40,10 @@ jobs:
         env:
           API_BASE_URL: "https://multisig.meshjs.dev"
           SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
-          BATCH_SIZE: 10
+          BATCH_SIZE: 5
           DELAY_BETWEEN_BATCHES: 10
           MAX_RETRIES: 3
+          REQUEST_TIMEOUT: 45
 
       - name: Notify on failure
         if: failure()

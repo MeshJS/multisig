@@ -8,6 +8,7 @@ import type { UTxO, NativeScript } from "@meshsdk/core";
 import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { Wallet as DbWallet } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 
 interface WalletBalance {
   walletId: string;
@@ -23,6 +24,26 @@ interface WalletFailure {
   walletId: string;
   errorType: string; // e.g., "wallet_build_failed", "utxo_fetch_failed", "balance_calculation_failed"
   errorMessage: string; // sanitized error message
+  walletStructure?: {
+    name: string;
+    type: string;
+    numRequiredSigners: number;
+    signersCount: number;
+    hasStakeCredential: boolean;
+    hasScriptCbor: boolean;
+    isArchived: boolean;
+    verified: number;
+    hasDRepKeys: boolean;
+    hasClarityApiKey: boolean;
+    // Character counts for key fields
+    scriptCborLength: number;
+    stakeCredentialLength: number;
+    signersAddressesLength: number;
+    signersStakeKeysLength: number;
+    signersDRepKeysLength: number;
+    signersDescriptionsLength: number;
+    clarityApiKeyLength: number;
+  };
 }
 
 interface BatchProgress {
@@ -54,6 +75,29 @@ interface BatchResponse {
   timestamp: string;
 }
 
+function getWalletStructure(wallet: DbWallet): WalletFailure['walletStructure'] {
+  return {
+    name: wallet.name ? wallet.name.substring(0, 5) + (wallet.name.length > 5 ? '...' : '') : 'N/A',
+    type: wallet.type || 'unknown',
+    numRequiredSigners: wallet.numRequiredSigners || 0,
+    signersCount: wallet.signersAddresses?.length || 0,
+    hasStakeCredential: !!wallet.stakeCredentialHash,
+    hasScriptCbor: !!wallet.scriptCbor,
+    isArchived: wallet.isArchived || false,
+    verified: wallet.verified?.length || 0, // verified is String[] in schema
+    hasDRepKeys: !!(wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0),
+    hasClarityApiKey: !!wallet.clarityApiKey,
+    // Character counts for key fields
+    scriptCborLength: wallet.scriptCbor?.length || 0,
+    stakeCredentialLength: wallet.stakeCredentialHash?.length || 0,
+    signersAddressesLength: wallet.signersAddresses?.length || 0,
+    signersStakeKeysLength: wallet.signersStakeKeys?.length || 0,
+    signersDRepKeysLength: wallet.signersDRepKeys?.length || 0,
+    signersDescriptionsLength: wallet.signersDescriptions?.length || 0,
+    clarityApiKeyLength: wallet.clarityApiKey?.length || 0,
+  };
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<BatchResponse | { error: string }>,
@@ -79,21 +123,84 @@ export default async function handler(
   }
   
   if (!authToken || authToken !== expectedToken) {
-    console.warn('Unauthorized request attempt', {
-      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
-      userAgent: req.headers['user-agent'],
-      authTokenProvided: !!authToken,
-      timestamp: new Date().toISOString()
-    });
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   const { batchId, batchNumber, batchSize } = req.query;
   const startTime = new Date().toISOString();
 
-  // Convert string parameters to numbers
-  const parsedBatchNumber = batchNumber ? parseInt(batchNumber as string, 10) : 1;
-  const parsedBatchSize = batchSize ? parseInt(batchSize as string, 10) : 10;
+  // Helper function to create error response
+  const createErrorResponse = (message: string, batchNumber: number = 0, batchSize: number = 0) => ({
+    success: false,
+    message,
+    progress: {
+      batchId: (batchId as string) || 'invalid',
+      totalBatches: 0,
+      currentBatch: batchNumber,
+      walletsInBatch: 0,
+      processedInBatch: 0,
+      failedInBatch: 0,
+      totalProcessed: 0,
+      totalFailed: 0,
+      snapshotsStored: 0,
+      isComplete: false,
+      startedAt: startTime,
+      lastUpdatedAt: new Date().toISOString(),
+      mainnetWallets: 0,
+      testnetWallets: 0,
+      mainnetAdaBalance: 0,
+      testnetAdaBalance: 0,
+      failures: [],
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  // Validate batchId parameter
+  if (!batchId || typeof batchId !== 'string' || batchId.trim().length === 0) {
+    return res.status(400).json(createErrorResponse('batchId parameter is required and must be a non-empty string'));
+  }
+
+  if (batchId.length > 100) {
+    return res.status(400).json(createErrorResponse('batchId parameter must be 100 characters or less'));
+  }
+
+  // Validate batchNumber parameter
+  if (!batchNumber || typeof batchNumber !== 'string') {
+    return res.status(400).json(createErrorResponse('batchNumber parameter is required and must be a string'));
+  }
+
+  const parsedBatchNumber = parseInt(batchNumber, 10);
+  
+  if (isNaN(parsedBatchNumber)) {
+    return res.status(400).json(createErrorResponse('batchNumber must be a valid integer'));
+  }
+
+  if (parsedBatchNumber < 1) {
+    return res.status(400).json(createErrorResponse('batchNumber must be greater than 0', parsedBatchNumber));
+  }
+
+  if (parsedBatchNumber > 10000) {
+    return res.status(400).json(createErrorResponse('batchNumber must be 10000 or less', parsedBatchNumber));
+  }
+
+  // Validate batchSize parameter
+  if (!batchSize || typeof batchSize !== 'string') {
+    return res.status(400).json(createErrorResponse('batchSize parameter is required and must be a string'));
+  }
+
+  const parsedBatchSize = parseInt(batchSize, 10);
+  
+  if (isNaN(parsedBatchSize)) {
+    return res.status(400).json(createErrorResponse('batchSize must be a valid integer'));
+  }
+
+  if (parsedBatchSize < 1) {
+    return res.status(400).json(createErrorResponse('batchSize must be greater than 0', parsedBatchNumber, parsedBatchSize));
+  }
+
+  if (parsedBatchSize > 5) {
+    return res.status(400).json(createErrorResponse('batchSize must be 5 or less', parsedBatchNumber, parsedBatchSize));
+  }
 
   try {
     console.log(`🔄 Starting batch ${parsedBatchNumber} of balance snapshots...`);
@@ -189,7 +296,8 @@ export default async function handler(
           failures.push({
             walletId: wallet.id.slice(0, 8),
             errorType: "wallet_build_failed",
-            errorMessage: "Unable to build multisig wallet from provided data"
+            errorMessage: "Unable to build multisig wallet from provided data",
+            walletStructure: getWalletStructure(wallet)
           });
           failedInBatch++;
           continue;
@@ -226,8 +334,18 @@ export default async function handler(
           paymentUtxos = await blockchainProvider.fetchAddressUTxOs(paymentAddress);
           stakeableUtxos = await blockchainProvider.fetchAddressUTxOs(stakeableAddress);
         } catch (utxoError) {
-          console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}...:`, utxoError);
-          // Continue with empty UTxOs
+          const errorMessage = utxoError instanceof Error ? utxoError.message : 'Unknown UTxO fetch error';
+          console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}...:`, errorMessage);
+          
+          // Track UTxO fetch failures
+          failures.push({
+            walletId: wallet.id.slice(0, 8),
+            errorType: "utxo_fetch_failed",
+            errorMessage: "Failed to fetch UTxOs from blockchain",
+            walletStructure: getWalletStructure(wallet)
+          });
+          failedInBatch++;
+          continue;
         }
 
         const paymentAddrEmpty = paymentUtxos.length === 0;
@@ -248,8 +366,18 @@ export default async function handler(
             utxos = await fallbackProvider.fetchAddressUTxOs(walletAddress);
             console.log(`Successfully fetched ${utxos.length} UTxOs for wallet ${wallet.id.slice(0, 8)}... on fallback network ${fallbackNetwork}`);
           } catch (fallbackError) {
-            console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}... on fallback network ${fallbackNetwork}:`, fallbackError);
-            // Continue with empty UTxOs - this wallet will show 0 balance
+            const errorMessage = fallbackError instanceof Error ? fallbackError.message : 'Unknown fallback UTxO fetch error';
+            console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}... on fallback network ${fallbackNetwork}:`, errorMessage);
+            
+            // Track fallback UTxO fetch failures
+            failures.push({
+              walletId: wallet.id.slice(0, 8),
+              errorType: "utxo_fetch_failed",
+              errorMessage: "Failed to fetch UTxOs from both networks",
+              walletStructure: getWalletStructure(wallet)
+            });
+            failedInBatch++;
+            continue;
           }
         }
         
@@ -307,7 +435,8 @@ export default async function handler(
         failures.push({
           walletId: wallet.id.slice(0, 8),
           errorType,
-          errorMessage: sanitizedMessage
+          errorMessage: sanitizedMessage,
+          walletStructure: getWalletStructure(wallet)
         });
         
         failedInBatch++;
@@ -321,12 +450,12 @@ export default async function handler(
       
       const snapshotPromises = walletBalances.map(async (walletBalance: WalletBalance) => {
         try {
-          await (db as any).balanceSnapshot.create({
+          await db.balanceSnapshot.create({
             data: {
               walletId: walletBalance.walletId,
               walletName: walletBalance.walletName,
               address: walletBalance.address,
-              adaBalance: walletBalance.adaBalance,
+              adaBalance: new Decimal(walletBalance.adaBalance),
               assetBalances: walletBalance.balance,
               isArchived: walletBalance.isArchived,
             },
