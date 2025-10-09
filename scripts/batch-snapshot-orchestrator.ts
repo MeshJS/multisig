@@ -46,7 +46,6 @@ interface BatchProgress {
       isArchived: boolean;
       verified: number;
       hasDRepKeys: boolean;
-      hasClarityApiKey: boolean;
       // Character counts for key fields
       scriptCborLength: number;
       stakeCredentialLength: number;
@@ -54,7 +53,6 @@ interface BatchProgress {
       signersStakeKeysLength: number;
       signersDRepKeysLength: number;
       signersDescriptionsLength: number;
-      clarityApiKeyLength: number;
     };
   }>;
 }
@@ -94,7 +92,6 @@ interface BatchResults {
       isArchived: boolean;
       verified: number;
       hasDRepKeys: boolean;
-      hasClarityApiKey: boolean;
       // Character counts for key fields
       scriptCborLength: number;
       stakeCredentialLength: number;
@@ -102,7 +99,6 @@ interface BatchResults {
       signersStakeKeysLength: number;
       signersDRepKeysLength: number;
       signersDescriptionsLength: number;
-      clarityApiKeyLength: number;
     };
   }>;
   failureSummary: Record<string, number>;
@@ -290,7 +286,6 @@ class BatchSnapshotOrchestrator {
                 console.log(`            • Is Archived: ${structure.isArchived}`);
                 console.log(`            • Verified Count: ${structure.verified}`);
                 console.log(`            • Has DRep Keys: ${structure.hasDRepKeys} (${structure.signersDRepKeysLength} items)`);
-                console.log(`            • Has Clarity API Key: ${structure.hasClarityApiKey} (${structure.clarityApiKeyLength} chars)`);
                 console.log(`            • Signers Addresses: ${structure.signersAddressesLength} items`);
                 console.log(`            • Signers Stake Keys: ${structure.signersStakeKeysLength} items`);
                 console.log(`            • Signers Descriptions: ${structure.signersDescriptionsLength} items`);

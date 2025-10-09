@@ -34,7 +34,6 @@ interface WalletFailure {
     isArchived: boolean;
     verified: number;
     hasDRepKeys: boolean;
-    hasClarityApiKey: boolean;
     // Character counts for key fields
     scriptCborLength: number;
     stakeCredentialLength: number;
@@ -42,7 +41,6 @@ interface WalletFailure {
     signersStakeKeysLength: number;
     signersDRepKeysLength: number;
     signersDescriptionsLength: number;
-    clarityApiKeyLength: number;
   };
 }
 
@@ -86,7 +84,6 @@ function getWalletStructure(wallet: DbWallet): WalletFailure['walletStructure'] 
     isArchived: wallet.isArchived || false,
     verified: wallet.verified?.length || 0, // verified is String[] in schema
     hasDRepKeys: !!(wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0),
-    hasClarityApiKey: !!wallet.clarityApiKey,
     // Character counts for key fields
     scriptCborLength: wallet.scriptCbor?.length || 0,
     stakeCredentialLength: wallet.stakeCredentialHash?.length || 0,
@@ -94,7 +91,6 @@ function getWalletStructure(wallet: DbWallet): WalletFailure['walletStructure'] 
     signersStakeKeysLength: wallet.signersStakeKeys?.length || 0,
     signersDRepKeysLength: wallet.signersDRepKeys?.length || 0,
     signersDescriptionsLength: wallet.signersDescriptions?.length || 0,
-    clarityApiKeyLength: wallet.clarityApiKey?.length || 0,
   };
 }
 
