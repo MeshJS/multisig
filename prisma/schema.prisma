@@ -94,3 +94,15 @@ model Ballot {
   type             Int
   createdAt        DateTime @default(now())
 }
+
+model Proxy {
+  id           String   @id @default(cuid())
+  walletId     String   @unique
+  proxyAddress String
+  authTokenId  String
+  paramUtxo    String
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

@@ -51,7 +51,7 @@
       "datum": {
         "title": "_datum",
         "schema": {
-          "$ref": "#/definitions/Data"
+          "$ref": "#/definitions/cardano~1transaction~1Datum"
         }
       },
       "redeemer": {
@@ -100,9 +100,47 @@
     "Int": {
       "dataType": "integer"
     },
+    "aiken/crypto/DataHash": {
+      "title": "DataHash",
+      "dataType": "bytes"
+    },
     "cardano/assets/PolicyId": {
       "title": "PolicyId",
       "dataType": "bytes"
+    },
+    "cardano/transaction/Datum": {
+      "title": "Datum",
+      "description": "An output `Datum`.",
+      "anyOf": [
+        {
+          "title": "NoDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        },
+        {
+          "title": "DatumHash",
+          "description": "A datum referenced by its hash digest.",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": [
+            {
+              "$ref": "#/definitions/aiken~1crypto~1DataHash"
+            }
+          ]
+        },
+        {
+          "title": "InlineDatum",
+          "description": "A datum completely inlined in the output.",
+          "dataType": "constructor",
+          "index": 2,
+          "fields": [
+            {
+              "$ref": "#/definitions/Data"
+            }
+          ]
+        }
+      ]
     },
     "cardano/transaction/OutputReference": {
       "title": "OutputReference",

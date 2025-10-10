@@ -5,13 +5,15 @@ use mocktail.{
   complete, mint, mock_policy_id, mock_pub_key_address, mock_tx_hash,
   mock_utxo_ref, mocktail_tx, tx_in,
 }
-use tests/utils.{mock_auth_token}
 use types.{RBurn, RMint}
+
+
+const auth_token = mock_policy_id(0)
 
 test s1_mint_success_mint() {
   let redeemer = RMint
   let input_utxo = mock_utxo_ref(0, 1)
-  let policy_id = mock_auth_token
+  let policy_id = auth_token
 
   let tx =
     mocktail_tx()
@@ -24,7 +26,7 @@ test s1_mint_success_mint() {
 
 test s1_mint_fail_mint_no_utxo_ref_supply() {
   let redeemer = RMint
-  let policy_id = mock_auth_token
+  let policy_id = auth_token
 
   let tx =
     mocktail_tx()
@@ -36,7 +38,7 @@ test s1_mint_fail_mint_no_utxo_ref_supply() {
 
 test s1_mint_success_burn() {
   let redeemer = RBurn
-  let policy_id = mock_auth_token
+  let policy_id = auth_token
 
   let tx = Transaction { ..placeholder, mint: from_asset(policy_id, "", -1) }
   auth_token_mint.auth_token.mint(mock_utxo_ref(0, 0), redeemer, policy_id, tx)
@@ -44,7 +46,7 @@ test s1_mint_success_burn() {
 
 test s1_mint_success_burn_with_other_minting() {
   let redeemer = RBurn
-  let policy_id = mock_auth_token
+  let policy_id = auth_token
 
   let tx =
     Transaction {
@@ -56,7 +58,7 @@ test s1_mint_success_burn_with_other_minting() {
 
 test s1_mint_fail_burn_with_mint() {
   let redeemer = RBurn
-  let policy_id = mock_auth_token
+  let policy_id = auth_token
 
   let tx = Transaction { ..placeholder, mint: from_asset(policy_id, "", 1) }
   !auth_token_mint.auth_token.mint(mock_utxo_ref(0, 0), redeemer, policy_id, tx)
