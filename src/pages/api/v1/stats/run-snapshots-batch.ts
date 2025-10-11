@@ -1,10 +1,10 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildWallet } from "@/utils/common";
+import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
 import { getProvider } from "@/utils/get-provider";
-import { resolvePaymentKeyHash, serializeNativeScript } from "@meshsdk/core";
-import type { UTxO, NativeScript } from "@meshsdk/core";
+import { resolvePaymentKeyHash, resolveStakeKeyHash, type UTxO } from "@meshsdk/core";
 import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { Wallet as DbWallet } from "@prisma/client";
@@ -266,69 +266,63 @@ export default async function handler(
           network = addressToNetwork(signerAddr);
         }
 
-        // Build multisig wallet for address determination
-        const walletData = {
-          id: wallet.id,
-          name: wallet.name,
-          signersAddresses: wallet.signersAddresses,
-          numRequiredSigners: wallet.numRequiredSigners!,
-          type: wallet.type || "atLeast",
-          stakeCredentialHash: wallet.stakeCredentialHash,
-          isArchived: wallet.isArchived,
-          description: wallet.description,
-          signersStakeKeys: wallet.signersStakeKeys,
-          signersDRepKeys: wallet.signersDRepKeys,
-          signersDescriptions: wallet.signersDescriptions,
-          clarityApiKey: wallet.clarityApiKey,
-          drepKey: null,
-          scriptType: null,
-          scriptCbor: wallet.scriptCbor,
-          verified: wallet.verified,
-        };
-
-        const mWallet = buildMultisigWallet(walletData, network);
-        if (!mWallet) {
-          console.error(`Failed to build multisig wallet for ${wallet.id.slice(0, 8)}...`);
+        // Build wallet conditionally: use MultisigSDK ordering if signersStakeKeys exist
+        let walletAddress: string;
+        try {
+          const hasStakeKeys = !!(wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0);
+          if (hasStakeKeys) {
+            // Build MultisigSDK wallet with ordered keys
+            const keys: MultisigKey[] = [];
+            wallet.signersAddresses.forEach((addr: string, i: number) => {
+              if (!addr) return;
+              try {
+                keys.push({ keyHash: resolvePaymentKeyHash(addr), role: 0, name: wallet.signersDescriptions[i] || "" });
+              } catch {}
+            });
+            wallet.signersStakeKeys?.forEach((stakeKey: string, i: number) => {
+              if (!stakeKey) return;
+              try {
+                keys.push({ keyHash: resolveStakeKeyHash(stakeKey), role: 2, name: wallet.signersDescriptions[i] || "" });
+              } catch {}
+            });
+            if (keys.length === 0 && !wallet.stakeCredentialHash) {
+              throw new Error("No valid keys or stakeCredentialHash provided");
+            }
+            const mWallet = new MultisigWallet(
+              wallet.name,
+              keys,
+              wallet.description ?? "",
+              wallet.numRequiredSigners ?? 1,
+              network,
+              wallet.stakeCredentialHash as undefined | string,
+              (wallet.type as any) || "atLeast"
+            );
+            walletAddress = mWallet.getScript().address;
+          } else {
+            const builtWallet = buildWallet(wallet, network);
+            walletAddress = builtWallet.address;
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown wallet build error';
+          console.error(`Failed to build wallet for ${wallet.id.slice(0, 8)}...:`, errorMessage);
+          
           failures.push({
             walletId: wallet.id.slice(0, 8),
             errorType: "wallet_build_failed",
-            errorMessage: "Unable to build multisig wallet from provided data",
+            errorMessage: "Unable to build wallet from provided data",
             walletStructure: getWalletStructure(wallet)
           });
           failedInBatch++;
           continue;
         }
 
-        // Generate addresses from the built wallet
-        const nativeScript = {
-          type: wallet.type || "atLeast",
-          scripts: wallet.signersAddresses.map((addr: string) => ({
-            type: "sig",
-            keyHash: resolvePaymentKeyHash(addr),
-          })),
-        };
-        if (nativeScript.type == "atLeast") {
-          //@ts-ignore
-          nativeScript.required = wallet.numRequiredSigners!;
-        }
-
-        const paymentAddress = serializeNativeScript(
-          nativeScript as NativeScript,
-          wallet.stakeCredentialHash as undefined | string,
-          network,
-        ).address;
-
-        const stakeableAddress = mWallet.getScript().address;
-
         // Determine which address to use
         const blockchainProvider = getProvider(network);
         
-        let paymentUtxos: UTxO[] = [];
-        let stakeableUtxos: UTxO[] = [];
+        let utxos: UTxO[] = [];
         
         try {
-          paymentUtxos = await blockchainProvider.fetchAddressUTxOs(paymentAddress);
-          stakeableUtxos = await blockchainProvider.fetchAddressUTxOs(stakeableAddress);
+          utxos = await blockchainProvider.fetchAddressUTxOs(walletAddress);
         } catch (utxoError) {
           const errorMessage = utxoError instanceof Error ? utxoError.message : 'Unknown UTxO fetch error';
           console.error(`Failed to fetch UTxOs for wallet ${wallet.id.slice(0, 8)}...:`, errorMessage);
@@ -343,16 +337,6 @@ export default async function handler(
           failedInBatch++;
           continue;
         }
-
-        const paymentAddrEmpty = paymentUtxos.length === 0;
-        let walletAddress = paymentAddress;
-        
-        if (paymentAddrEmpty && mWallet.stakingEnabled()) {
-          walletAddress = stakeableAddress;
-        }
-
-        // Use the UTxOs from the selected address
-        let utxos: UTxO[] = walletAddress === stakeableAddress ? stakeableUtxos : paymentUtxos;
         
         // If we still have no UTxOs, try the other network as fallback
         if (utxos.length === 0) {
