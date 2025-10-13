@@ -18,6 +18,7 @@
  *   - DELAY_BETWEEN_BATCHES: Delay between batches in seconds (default: 10)
  *   - MAX_RETRIES: Maximum retries for failed batches (default: 3)
  *   - REQUEST_TIMEOUT: Request timeout in seconds (default: 45)
+ *   - ENABLE_WARM_UP: Enable API route warm-up to prevent cold start issues (default: true)
  */
 
 interface BatchProgress {
@@ -111,6 +112,7 @@ interface BatchConfig {
   delayBetweenBatches: number;
   maxRetries: number;
   requestTimeout: number; // in seconds
+  enableWarmUp: boolean; // whether to warm up API route before processing
 }
 
 interface ApiResponse<T> {
@@ -167,6 +169,9 @@ class BatchSnapshotOrchestrator {
     const delayBetweenBatches = this.parseAndValidateNumber(process.env.DELAY_BETWEEN_BATCHES || '10', 'DELAY_BETWEEN_BATCHES', 1, 300);
     const maxRetries = this.parseAndValidateNumber(process.env.MAX_RETRIES || '3', 'MAX_RETRIES', 1, 10);
     const requestTimeout = this.parseAndValidateNumber(process.env.REQUEST_TIMEOUT || '45', 'REQUEST_TIMEOUT', 10, 300);
+    
+    // Parse boolean environment variable for warm-up feature
+    const enableWarmUp = process.env.ENABLE_WARM_UP !== 'false'; // Default to true unless explicitly disabled
 
     return {
       apiBaseUrl,
@@ -175,6 +180,7 @@ class BatchSnapshotOrchestrator {
       delayBetweenBatches,
       maxRetries,
       requestTimeout,
+      enableWarmUp,
     };
   }
 
@@ -211,7 +217,16 @@ class BatchSnapshotOrchestrator {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Provide more specific error messages for common cold start issues
+        if (response.status === 405) {
+          throw new Error(`HTTP 405: Method Not Allowed - Possible cold start issue`);
+        } else if (response.status === 503) {
+          throw new Error(`HTTP 503: Service Unavailable - Server may be starting up`);
+        } else if (response.status === 502) {
+          throw new Error(`HTTP 502: Bad Gateway - Upstream server may be cold`);
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
       }
 
       const data = await response.json() as T;
@@ -226,6 +241,35 @@ class BatchSnapshotOrchestrator {
 
   private async delay(seconds: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+  }
+
+  private async warmUpApiRoute(): Promise<boolean> {
+    console.log('🔥 Warming up API route to prevent cold start issues...');
+    
+    try {
+      // Make a simple OPTIONS request to warm up the route
+      const url = new URL(`${this.config.apiBaseUrl}/api/v1/stats/run-snapshots-batch`);
+      
+      const response = await fetch(url.toString(), {
+        method: 'OPTIONS',
+        headers: {
+          'Authorization': `Bearer ${this.config.authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok || response.status === 200) {
+        console.log('✅ API route warmed up successfully');
+        return true;
+      } else {
+        console.log(`⚠️ API route warm-up returned status ${response.status}, but continuing...`);
+        return true; // Still continue as the route might be ready
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`⚠️ API route warm-up failed: ${errorMessage}, but continuing...`);
+      return true; // Still continue as warm-up is optional
+    }
   }
 
   private getFriendlyErrorName(errorType: string): string {
@@ -308,9 +352,21 @@ class BatchSnapshotOrchestrator {
           return null;
         }
         
-        // For 405 errors (Method Not Allowed), wait longer as it might be a server-side issue
-        const waitTime = errorMessage.includes('405') ? this.config.delayBetweenBatches * 2 : this.config.delayBetweenBatches;
-        console.log(`    ⏳ Waiting ${waitTime}s before retry...`);
+        // Calculate wait time with exponential backoff for cold start issues
+        let waitTime = this.config.delayBetweenBatches;
+        
+        if (errorMessage.includes('405') || errorMessage.includes('cold start') || errorMessage.includes('503') || errorMessage.includes('502')) {
+          // Cold start issue - use exponential backoff
+          waitTime = Math.min(this.config.delayBetweenBatches * Math.pow(2, attempt - 1), 60);
+          console.log(`    🥶 Cold start detected, using exponential backoff: ${waitTime}s`);
+        } else if (errorMessage.includes('timeout')) {
+          // Timeout issue - wait longer
+          waitTime = this.config.delayBetweenBatches * 2;
+          console.log(`    ⏰ Timeout detected, waiting longer: ${waitTime}s`);
+        } else {
+          console.log(`    ⏳ Standard retry delay: ${waitTime}s`);
+        }
+        
         await this.delay(waitTime);
       }
     }
@@ -325,6 +381,15 @@ class BatchSnapshotOrchestrator {
     try {
       console.log('🔄 Starting batch snapshot orchestration...');
       console.log(`📊 Configuration: batch_size=${this.config.batchSize}, delay=${this.config.delayBetweenBatches}s`);
+
+      // Warm up the API route to prevent cold start issues (if enabled)
+      if (this.config.enableWarmUp) {
+        await this.warmUpApiRoute();
+        // Small delay after warm-up to ensure route is fully ready
+        await this.delay(2);
+      } else {
+        console.log('🔥 Warm-up disabled via ENABLE_WARM_UP=false');
+      }
 
       // First, get the total number of batches by processing batch 1
       console.log('📋 Determining total batches...');
