@@ -134,7 +134,6 @@ export default function VoteButton({
           },
         )
         .voteScript(appWallet.scriptCbor)
-        .selectUtxosFrom(utxos)
         .changeAddress(appWallet.address);
         
       await newTransaction({
