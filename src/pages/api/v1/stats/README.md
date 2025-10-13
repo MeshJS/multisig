@@ -24,15 +24,7 @@ The endpoint requires authentication using the `SNAPSHOT_AUTH_TOKEN` environment
 - **Method**: POST
 - **Purpose**: Processes a batch of wallets for balance snapshots (main endpoint)
 - **Authentication**: Required (Bearer token)
-- **Content-Type**: `application/json`
-- **Body**: 
-  ```json
-  {
-    "batchId": "string",
-    "batchNumber": number,
-    "batchSize": number
-  }
-  ```
+- **Parameters**: passed via query string (no request body)
 - **Query Parameters**:
   - `batchId`: Unique identifier for the batch session
   - `batchNumber`: Current batch number (1-based, must be ≥ 1)
@@ -74,7 +66,12 @@ The endpoint requires authentication using the `SNAPSHOT_AUTH_TOKEN` environment
             "isArchived": boolean,
             "verified": number,
             "hasDRepKeys": boolean,
-            "hasClarityApiKey": boolean
+            "scriptCborLength": number,
+            "stakeCredentialLength": number,
+            "signersAddressesLength": number,
+            "signersStakeKeysLength": number,
+            "signersDRepKeysLength": number,
+            "signersDescriptionsLength": number
           }
         }
       ]
@@ -82,6 +79,14 @@ The endpoint requires authentication using the `SNAPSHOT_AUTH_TOKEN` environment
     "timestamp": "string"
   }
   ```
+
+#### Example (curl)
+
+```bash
+curl -X POST \
+  "$API_BASE_URL/api/v1/stats/run-snapshots-batch?batchId=snapshot-$(date +%s)&batchNumber=1&batchSize=5" \
+  -H "Authorization: Bearer $SNAPSHOT_AUTH_TOKEN"
+```
 
 ## Batch Processing System
 
@@ -94,6 +99,8 @@ The new system processes wallets in small batches to avoid timeout issues:
 4. **Fault Tolerant**: Failed batches can be retried individually
 5. **Input Validation**: Comprehensive validation for batch parameters
 6. **Error Tracking**: Detailed error reporting with wallet structure information
+7. **Network Fallback**: If no UTxOs are found on the inferred network, the opposite network is tried
+8. **Wallet Build Strategy**: Uses ordered keys via `MultisigWallet` when `signersStakeKeys` exist; otherwise falls back to legacy `buildWallet`
 
 ### Orchestrator Script
 The `scripts/batch-snapshot-orchestrator.ts` script manages the entire process:
@@ -112,7 +119,7 @@ The `scripts/batch-snapshot-orchestrator.ts` script manages the entire process:
 - **`BATCH_SIZE`**: Wallets per batch (default: 5, range: 1-5)
 - **`DELAY_BETWEEN_BATCHES`**: Seconds between batches (default: 10)
 - **`MAX_RETRIES`**: Retry attempts for failed batches (default: 3)
-- **`REQUEST_TIMEOUT`**: Request timeout in seconds (default: 60)
+- **`REQUEST_TIMEOUT`**: Request timeout in seconds (default: 45)
 
 ## GitHub Actions Integration
 
@@ -182,7 +189,7 @@ The orchestrator will:
 
 ### Type Safety & Validation
 - **Fixed Decimal Type**: Proper handling of Decimal types in database operations
-- **Input Validation**: Comprehensive validation for batch parameters (batch number ≥ 1, batch size 1-100)
+- **Input Validation**: Comprehensive validation for batch parameters (batch number ≥ 1, batch size 1-5)
 - **Error Tracking**: Enhanced error handling with detailed wallet structure information
 
 ### Configuration & Reliability
@@ -190,3 +197,5 @@ The orchestrator will:
 - **Enhanced Error Handling**: UTxO fetch failures are now properly tracked and reported
 - **Network-Specific Reporting**: Separate tracking for mainnet and testnet wallets and balances
 - **Improved Documentation**: Updated documentation to reflect all recent changes
+ - **Network Fallback**: Attempts the opposite network if no UTxOs are found
+ - **Wallet Build Logic**: Uses ordered keys with `MultisigWallet` when stake keys are available, with legacy fallback (no stake keys)

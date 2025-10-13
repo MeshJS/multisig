@@ -259,11 +259,16 @@ export default async function handler(
       try {
         console.log(`  Processing wallet: (${wallet.id.slice(0, 8)}...)`);
 
-        // Determine network from signer addresses
+        // Determine network from signer addresses, fallback to signer stake keys
         let network = 1; // Default to mainnet
         if (wallet.signersAddresses.length > 0) {
           const signerAddr = wallet.signersAddresses[0]!;
           network = addressToNetwork(signerAddr);
+        } else if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
+          const stakeAddr = wallet.signersStakeKeys.find((s) => !!s);
+          if (stakeAddr) {
+            network = addressToNetwork(stakeAddr);
+          }
         }
 
         // Build wallet conditionally: use MultisigSDK ordering if signersStakeKeys exist
@@ -299,6 +304,7 @@ export default async function handler(
             );
             walletAddress = mWallet.getScript().address;
           } else {
+            // Fallback: build the wallet without enforcing key ordering (legacy payment-script build)
             const builtWallet = buildWallet(wallet, network);
             walletAddress = builtWallet.address;
           }
