@@ -182,6 +182,8 @@ export default function WalletDataLoaderWrapper({
     await getDRepInfo();
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    // Also refresh proxy data
+    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
     setRandomState();
     setLoading(false);
     fetchingTransactions.current = false;

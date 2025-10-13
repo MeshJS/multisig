@@ -37,6 +37,13 @@ export class MeshProxyContract extends MeshTxInitiator {
   stakeCredential?: string | undefined;
   networkId: number;
 
+  // Reset method to clear state for retry
+  reset() {
+    this.paramUtxo = { outputIndex: 0, txHash: "" };
+    this.proxyAddress = undefined;
+    this.stakeCredential = undefined;
+  }
+
   getAuthTokenCbor = () => {
     return applyParamsToScript(blueprint.validators[0]!.compiledCode, [
       mOutputReference(this.paramUtxo.txHash, this.paramUtxo.outputIndex),
@@ -114,8 +121,15 @@ export class MeshProxyContract extends MeshTxInitiator {
     const policyId = this.getAuthTokenPolicyId();
     const tokenName = "";
 
+    console.log("policyId", policyId);
+    console.log("tokenName", tokenName);
+    console.log("walletAddress", walletAddress);
+    console.log("paramUtxo", paramUtxo);
+    console.log("collateral", collateral);
+    console.log("utxos", utxos);
+
     // Try completing the transaction step by step
-    const tx = this.mesh
+    let tx = await this.mesh
       .txIn(
         paramUtxo.input.txHash,
         paramUtxo.input.outputIndex,
@@ -126,8 +140,13 @@ export class MeshProxyContract extends MeshTxInitiator {
       .mint("10", policyId, tokenName)
       .mintingScript(this.getAuthTokenCbor())
       .mintRedeemerValue(mConStr0([]))
-      .txOut(walletAddress, [{ unit: policyId, quantity: "10" }])
-      .txInCollateral(
+      .txOut(proxyAddress, [{ unit: "lovelace", quantity: "1000000" }])
+
+      for(let i = 0; i < 10; i++) {
+      tx.txOut(walletAddress, [{ unit: policyId, quantity: "1" }])
+      }
+      
+      tx.txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
         collateral.output.amount,
@@ -151,6 +170,9 @@ export class MeshProxyContract extends MeshTxInitiator {
   ) => {
     const { utxos, collateral, walletAddress } =
       await this.getWalletInfoForTx();
+    console.log("utxos", utxos);
+    console.log("collateral", collateral);
+    console.log("walletAddress", walletAddress);
 
     if (utxos?.length <= 0) {
       throw new Error("No UTxOs found");
@@ -181,6 +203,7 @@ export class MeshProxyContract extends MeshTxInitiator {
 
     console.log("authTokenUtxos", authTokenUtxos);
     console.log("policyIdAT", policyIdAT);
+  
 
     if (!authTokenUtxos || authTokenUtxos.length === 0) {
       throw new Error("No AuthToken found at control wallet address");
@@ -207,7 +230,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       )
       .txInScript(this.getProxyCbor())
       .txInRedeemerValue(mConStr0([]))
-      .txInDatumValue(mConStr0([])) // Add empty datum since script expects Option<Data>
+      .txInInlineDatumPresent()
       .txIn(
         authTokenUtxo.input.txHash,
         authTokenUtxo.input.outputIndex,

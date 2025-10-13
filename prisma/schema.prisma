@@ -97,7 +97,8 @@ model Ballot {
 
 model Proxy {
   id           String   @id @default(cuid())
-  walletId     String   @unique
+  walletId     String?  // Optional - can be linked to wallet or user
+  userId       String?  // Optional - can be linked to user directly
   proxyAddress String
   authTokenId  String
   paramUtxo    String
