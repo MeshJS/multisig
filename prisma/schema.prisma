@@ -97,3 +97,14 @@ model Ballot {
   type             Int
   createdAt        DateTime @default(now())
 }
+
+model BalanceSnapshot {
+  id            String   @id @default(cuid())
+  walletId      String
+  walletName    String
+  address       String
+  adaBalance    Decimal
+  assetBalances Json
+  isArchived    Boolean
+  snapshotDate  DateTime @default(now())
+}

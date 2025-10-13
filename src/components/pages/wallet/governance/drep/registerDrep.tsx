@@ -84,7 +84,18 @@ export default function RegisterDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(multisigWallet.getDRepId()!);
+    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+    if (!dRepId) {
+      throw new Error("DRep not found");
+    }
+    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
+    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
+    if (!scriptCbor) {
+      throw new Error("Script not found");
+    }
+    if (!drepCbor) {
+      throw new Error("DRep script not found");
+    }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -103,15 +114,15 @@ export default function RegisterDRep() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(multisigWallet.getScript().scriptCbor!);
+          .txInScript(scriptCbor);
       }
 
       txBuilder
-        .drepRegistrationCertificate(drepIds.cip105, {
+        .drepRegistrationCertificate(dRepId, {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(multisigWallet.getDRepScript()!)
+        .certificateScript(drepCbor)
         .changeAddress(multisigWallet.getScript().address);
 
 
