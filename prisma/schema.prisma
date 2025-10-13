@@ -78,6 +78,7 @@ model NewWallet {
   ownerAddress        String
   stakeCredentialHash String?
   scriptType          String?
+  paymentCbor         String
 }
 
 model Nonce {

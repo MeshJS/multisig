@@ -70,50 +70,56 @@ export default async function handler(
                 : null;
 
             if (specifiedId) {
+                const updateData: any = {
+                    name: summary.multisigName ?? "Imported Multisig",
+                    description: walletDescription,
+                    signersAddresses: paymentAddressesUsed,
+                    signersStakeKeys: summary.stakeAddressesUsed,
+                    signersDRepKeys: [],
+                    signersDescriptions,
+                    numRequiredSigners: summary.numRequiredSigners,
+                    stakeCredentialHash: null,
+                    scriptType: null,
+                    paymentCbor: summary.paymentCbor ?? "",
+                };
+                const createDataWithId: any = {
+                    id: specifiedId,
+                    name: summary.multisigName ?? "Imported Multisig",
+                    description: walletDescription,
+                    signersAddresses: paymentAddressesUsed,
+                    signersStakeKeys: summary.stakeAddressesUsed,
+                    signersDRepKeys: [],
+                    signersDescriptions,
+                    numRequiredSigners: summary.numRequiredSigners,
+                    ownerAddress: "",
+                    stakeCredentialHash: null,
+                    scriptType: null,
+                    paymentCbor: summary.paymentCbor ?? "",
+                };
                 const saved = await db.newWallet.upsert({
                     where: { id: specifiedId },
-                    update: {
-                        name: summary.multisigName ?? "Imported Multisig",
-                        description: walletDescription,
-                        signersAddresses: paymentAddressesUsed,
-                        signersStakeKeys: summary.stakeAddressesUsed,
-                        signersDRepKeys: [],
-                        signersDescriptions,
-                        numRequiredSigners: summary.numRequiredSigners,
-                        stakeCredentialHash: null,
-                        scriptType: null,
-                    },
-                    create: {
-                        id: specifiedId,
-                        name: summary.multisigName ?? "Imported Multisig",
-                        description: walletDescription,
-                        signersAddresses: paymentAddressesUsed,
-                        signersStakeKeys: summary.stakeAddressesUsed,
-                        signersDRepKeys: [],
-                        signersDescriptions,
-                        numRequiredSigners: summary.numRequiredSigners,
-                        ownerAddress: "",
-                        stakeCredentialHash: null,
-                        scriptType: null,
-                    },
+                    update: updateData,
+                    create: createDataWithId,
                 });
                 console.log("[api/v1/ejection/redirect] NewWallet upsert success:", { id: saved.id });
                 dbUpdated = true;
                 newWalletId = saved.id;
             } else {
+                const createData: any = {
+                    name: summary.multisigName ?? "Imported Multisig",
+                    description: walletDescription,
+                    signersAddresses: paymentAddressesUsed,
+                    signersStakeKeys: summary.stakeAddressesUsed,
+                    signersDRepKeys: [],
+                    signersDescriptions,
+                    numRequiredSigners: summary.numRequiredSigners,
+                    ownerAddress: "",
+                    stakeCredentialHash: null,
+                    scriptType: null,
+                    paymentCbor: summary.paymentCbor ?? "",
+                };
                 const created = await db.newWallet.create({
-                    data: {
-                        name: summary.multisigName ?? "Imported Multisig",
-                        description: walletDescription,
-                        signersAddresses: paymentAddressesUsed,
-                        signersStakeKeys: summary.stakeAddressesUsed,
-                        signersDRepKeys: [],
-                        signersDescriptions,
-                        numRequiredSigners: summary.numRequiredSigners,
-                        ownerAddress: "",
-                        stakeCredentialHash: null,
-                        scriptType: null,
-                    },
+                    data: createData,
                 });
                 console.log("[api/v1/ejection/redirect] NewWallet create success:", { id: created.id });
                 dbUpdated = true;

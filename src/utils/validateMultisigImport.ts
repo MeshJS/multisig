@@ -32,6 +32,7 @@ export type MultisigImportSummary = {
     multisigName: string | null;
     multisigAddress: string | null;
     numRequiredSigners?: number | null;
+    paymentCbor: string;
     signerStakeKeys: string[];
     signerAddresses: string[];
     signersDescriptions: string[];
@@ -275,6 +276,7 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             multisigName,
             multisigAddress,
             numRequiredSigners: requiredFromPaymentScript ?? null,
+            paymentCbor: providedPaymentCbor ?? "",
             signerStakeKeys,
             signerAddresses,
             signersDescriptions,
