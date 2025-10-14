@@ -5,5 +5,4 @@ DROP INDEX "BalanceSnapshot_snapshotDate_idx";
 DROP INDEX "BalanceSnapshot_walletId_idx";
 
 -- AlterTable
-ALTER TABLE "NewWallet" ADD COLUMN     "paymentCbor" TEXT,
-
+ALTER TABLE "NewWallet" ADD COLUMN "paymentCbor" TEXT;

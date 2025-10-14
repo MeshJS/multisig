@@ -51,15 +51,10 @@ export default async function handler(
             `Signer ${index + 1}`
         );
 
-        // Backfill missing signer payment addresses using stake keys instead of fetching
-        const stakeAddresses = Array.isArray(summary.stakeAddressesUsed) ? summary.stakeAddressesUsed : [];
-        const signerAddresses = Array.isArray(summary.signerAddresses) ? summary.signerAddresses : [];
-        const paymentAddressesUsed = (signerAddresses || []).map((addr, idx) => {
-            const trimmed = typeof addr === "string" ? addr.trim() : "";
-            if (trimmed) return trimmed;
-            const stakeAddr = stakeAddresses[idx];
-            return typeof stakeAddr === "string" ? stakeAddr : "";
-        });
+        // Use signer payment addresses as provided; leave empty string if missing
+        const paymentAddressesUsed = Array.isArray(summary.signerAddresses)
+            ? summary.signerAddresses.map((addr) => (typeof addr === "string" ? addr.trim() : ""))
+            : [];
 
         // Persist to NewWallet using validated data
         let dbUpdated = false;
@@ -79,8 +74,10 @@ export default async function handler(
                     signersDescriptions,
                     numRequiredSigners: summary.numRequiredSigners,
                     stakeCredentialHash: null,
-                    scriptType: null,
+                    scriptType: summary.scriptType ?? null,
                     paymentCbor: summary.paymentCbor ?? "",
+                    stakeCbor: summary.stakeCbor ?? "",
+                    usesStored: Boolean(summary.usesStored),
                 };
                 const createDataWithId: any = {
                     id: specifiedId,
@@ -93,8 +90,10 @@ export default async function handler(
                     numRequiredSigners: summary.numRequiredSigners,
                     ownerAddress: "",
                     stakeCredentialHash: null,
-                    scriptType: null,
+                    scriptType: summary.scriptType ?? null,
                     paymentCbor: summary.paymentCbor ?? "",
+                    stakeCbor: summary.stakeCbor ?? "",
+                    usesStored: Boolean(summary.usesStored),
                 };
                 const saved = await db.newWallet.upsert({
                     where: { id: specifiedId },
@@ -115,8 +114,10 @@ export default async function handler(
                     numRequiredSigners: summary.numRequiredSigners,
                     ownerAddress: "",
                     stakeCredentialHash: null,
-                    scriptType: null,
+                    scriptType: summary.scriptType ?? null,
                     paymentCbor: summary.paymentCbor ?? "",
+                    stakeCbor: summary.stakeCbor ?? "",
+                    usesStored: Boolean(summary.usesStored),
                 };
                 const created = await db.newWallet.create({
                     data: createData,

@@ -33,6 +33,7 @@ export type MultisigImportSummary = {
     multisigAddress: string | null;
     numRequiredSigners?: number | null;
     paymentCbor: string;
+    stakeCbor: string;
     signerStakeKeys: string[];
     signerAddresses: string[];
     signersDescriptions: string[];
@@ -42,6 +43,7 @@ export type MultisigImportSummary = {
     paymentAddressesUsed: string[];
     stakeCredentialHash?: string | null;
     scriptType?: string | null;
+    usesStored: boolean;
 };
 
 export type ValidationSuccess = { ok: true; rows: ImportedMultisigRow[]; summary: MultisigImportSummary };
@@ -250,8 +252,10 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
         };
     }
 
-    // If a payment_script CBOR is provided, attempt to decode it to extract the required signers count
+    // If a payment_script CBOR is provided, attempt to decode it to extract the required signers count and script type
     let requiredFromPaymentScript: number | undefined = undefined;
+    let scriptTypeFromPaymentScript: "all" | "any" | "atLeast" | undefined = undefined;
+    let isPaymentHierarchical = false;
     const providedPaymentCbor = typeof rows[0]!.payment_script === "string" ? rows[0]!.payment_script.trim() : null;
     if (providedPaymentCbor) {
         try {
@@ -260,9 +264,28 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             // eslint-disable-next-line no-console
             console.log("Imported payment native script (decoded):", JSON.stringify(decoded, null, 2));
             requiredFromPaymentScript = computeRequiredSigners(decoded);
+            // Determine script type by inspecting parents of "sig" leaves.
+            // Prefer the parent type of any signature node (atLeast > all > any). If none, fall back to root or "atLeast".
+            scriptTypeFromPaymentScript = detectTypeFromSigParents(decoded);
+            isPaymentHierarchical = isHierarchicalScript(decoded);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.warn("Failed to decode provided payment_script CBOR:", e);
+        }
+    }
+
+    // If a stake_script CBOR is provided, attempt to decode it and log for visibility
+    const providedStakeCbor = typeof rows[0]!.stake_script === "string" ? rows[0]!.stake_script.trim() : null;
+    let isStakeHierarchical = false;
+    if (providedStakeCbor) {
+        try {
+            const decodedStake = decodeNativeScriptFromCbor(providedStakeCbor);
+            // eslint-disable-next-line no-console
+            console.log("Imported stake native script (decoded):", JSON.stringify(decodedStake, null, 2));
+            isStakeHierarchical = isHierarchicalScript(decodedStake);
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("Failed to decode provided stake_script CBOR:", e);
         }
     }
 
@@ -277,6 +300,7 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             multisigAddress,
             numRequiredSigners: requiredFromPaymentScript ?? null,
             paymentCbor: providedPaymentCbor ?? "",
+            stakeCbor: providedStakeCbor ?? "",
             signerStakeKeys,
             signerAddresses,
             signersDescriptions,
@@ -285,9 +309,43 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             stakeAddressesUsed,
             paymentAddressesUsed: signerAddresses,
             stakeCredentialHash: null, // Empty for now as requested
-            scriptType: null, // Empty for now as requested
+            scriptType: scriptTypeFromPaymentScript ?? null,
+            usesStored: Boolean(isPaymentHierarchical || isStakeHierarchical),
         },
     };
+}
+
+// Returns the signature rule type for storage by inspecting parents of "sig" leaves:
+// - If any signature's parent is "atLeast", return "atLeast"
+// - Else if any signature's parent is "all", return "all"
+// - Else if any signature's parent is "any", return "any"
+// - Else fall back to the root type if it is "all" or "any"; otherwise return "atLeast" (1 of 1)
+function detectTypeFromSigParents(script: DecodedNativeScript): "all" | "any" | "atLeast" {
+    const parentTypes = new Set<"all" | "any" | "atLeast">();
+    collectSigParentTypes(script, null, parentTypes);
+    if (parentTypes.has("atLeast")) return "atLeast";
+    if (parentTypes.has("all")) return "all";
+    if (parentTypes.has("any")) return "any";
+    if (script.type === "all" || script.type === "any") return script.type;
+    return "atLeast";
+}
+
+function collectSigParentTypes(
+    node: DecodedNativeScript,
+    parentType: "all" | "any" | "atLeast" | null,
+    out: Set<"all" | "any" | "atLeast">
+): void {
+    if (node.type === "sig") {
+        if (parentType) out.add(parentType);
+        return;
+    }
+    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
+        for (const child of node.scripts) {
+            collectSigParentTypes(child, node.type, out);
+        }
+        return;
+    }
+    // timelock nodes: nothing to traverse further
 }
 
 function buildStakeAddressesFromHashes(stakeKeys: string[], network: number | undefined): string[] {
@@ -318,10 +376,20 @@ type DecodedNativeScript =
     | { type: "sig"; keyHash: string }
     | { type: "all"; scripts: DecodedNativeScript[] }
     | { type: "any"; scripts: DecodedNativeScript[] }
-    | { type: "atLeast"; required: number; scripts: DecodedNativeScript[] };
+    | { type: "atLeast"; required: number; scripts: DecodedNativeScript[] }
+    | { type: "timelockStart" }
+    | { type: "timelockExpiry" };
+
+function normalizeCborHex(cborHex: string): string {
+    const trimmed = (cborHex || "").trim();
+    if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+        return trimmed.slice(2);
+    }
+    return trimmed;
+}
 
 function decodeNativeScriptFromCbor(cborHex: string): DecodedNativeScript {
-    const ns = deserializeNativeScript(cborHex);
+    const ns = deserializeNativeScript(normalizeCborHex(cborHex));
     return decodeNativeScriptFromCsl(ns);
 }
 
@@ -330,6 +398,16 @@ function decodeNativeScriptFromCsl(ns: csl.NativeScript): DecodedNativeScript {
     if (sp) {
         const keyHash = sp.addr_keyhash().to_hex();
         return { type: "sig", keyHash };
+    }
+
+    const tls = ns.as_timelock_start?.();
+    if (tls) {
+        return { type: "timelockStart" };
+    }
+
+    const tle = ns.as_timelock_expiry?.();
+    if (tle) {
+        return { type: "timelockExpiry" };
     }
 
     const saAll = ns.as_script_all();
@@ -375,18 +453,51 @@ function computeRequiredSigners(script: DecodedNativeScript): number {
     switch (script.type) {
         case "sig":
             return 1;
+        case "timelockStart":
+        case "timelockExpiry":
+            return 0;
         case "any":
-            return script.scripts.length > 0 ? 1 : 0;
+            if (script.scripts.length === 0) return 0;
+            return Math.min(...script.scripts.map((s) => computeRequiredSigners(s)));
         case "all": {
             let total = 0;
             for (const s of script.scripts) total += computeRequiredSigners(s);
             return total;
         }
         case "atLeast":
-            return Math.max(0, script.required);
+            if (script.scripts.length === 0) return Math.max(0, script.required);
+            const childReqs = script.scripts.map((s) => computeRequiredSigners(s)).sort((a, b) => a - b);
+            const need = Math.max(0, Math.min(script.required, childReqs.length));
+            let sum = 0;
+            for (let i = 0; i < need; i++) sum += childReqs[i]!;
+            return sum;
         default:
             return 0;
     }
+}
+
+// A script is considered hierarchical ONLY if some signature node is nested under
+// two or more logical groups (all/any/atLeast). Examples:
+// - atLeast(sig, sig) -> NOT hierarchical (sig depth = 1)
+// - all(any(sig, ...), ...) -> hierarchical (sig depth = 2)
+// Timelock nodes are ignored and do not contribute to depth.
+function isHierarchicalScript(script: DecodedNativeScript): boolean {
+    return hasSigWithLogicalDepth(script, 0);
+}
+
+function hasSigWithLogicalDepth(node: DecodedNativeScript, logicalDepth: number): boolean {
+    if (node.type === "sig") {
+        // Require depth >= 2: root logical group -> child logical group -> sig
+        return logicalDepth >= 2;
+    }
+    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
+        for (const child of node.scripts) {
+            if (hasSigWithLogicalDepth(child, logicalDepth + 1)) return true;
+        }
+        return false;
+    }
+    // Timelock nodes do not count towards logical depth and have no children to traverse
+    return false;
 }
 
 
