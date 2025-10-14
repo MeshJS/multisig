@@ -27,19 +27,7 @@ Send an array of rows. Each row should include:
   - `stake_script`
 - Optional per row:
   - `user_address_bech32`
-  - `user_name`
-  - `user_ada_handle`
-  - `user_profile_photo_url`
-  - `user_created_at`
-  - `community_id`
-  - `community_name`
   - `community_description`
-  - `community_profile_photo_url`
-  - `community_verified`
-  - `community_verified_name`
-  - `community_created_at`
-  - `multisig_created_at`
-  - `multisig_updated_at`
 
 Minimal example payload:
 
