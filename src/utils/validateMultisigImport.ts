@@ -1,4 +1,4 @@
-import { checkValidAddress, addressToNetwork, stakeKeyHash } from "@/utils/multisigSDK";
+import { checkValidAddress, addressToNetwork, stakeKeyHash, paymentKeyHash } from "@/utils/multisigSDK";
 import { serializeRewardAddress } from "@meshsdk/core";
 import type { csl } from "@meshsdk/core-csl";
 import { deserializeNativeScript } from "@meshsdk/core-csl";
@@ -44,6 +44,10 @@ export type MultisigImportSummary = {
     stakeCredentialHash?: string | null;
     scriptType?: string | null;
     usesStored: boolean;
+    sigMatches?: {
+        payment: SigMatch[];
+        stake: SigMatch[];
+    };
 };
 
 export type ValidationSuccess = { ok: true; rows: ImportedMultisigRow[]; summary: MultisigImportSummary };
@@ -256,6 +260,8 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
     let requiredFromPaymentScript: number | undefined = undefined;
     let scriptTypeFromPaymentScript: "all" | "any" | "atLeast" | undefined = undefined;
     let isPaymentHierarchical = false;
+    let paymentSigKeyHashes: string[] = [];
+    let paymentSigMatches: SigMatch[] = [];
     const providedPaymentCbor = typeof rows[0]!.payment_script === "string" ? rows[0]!.payment_script.trim() : null;
     if (providedPaymentCbor) {
         try {
@@ -268,6 +274,12 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             // Prefer the parent type of any signature node (atLeast > all > any). If none, fall back to root or "atLeast".
             scriptTypeFromPaymentScript = detectTypeFromSigParents(decoded);
             isPaymentHierarchical = isHierarchicalScript(decoded);
+            paymentSigKeyHashes = collectSigKeyHashes(decoded);
+            // eslint-disable-next-line no-console
+            console.log("Payment script sig key hashes:", paymentSigKeyHashes);
+            paymentSigMatches = matchPaymentSigs(paymentSigKeyHashes, signerAddresses);
+            // eslint-disable-next-line no-console
+            console.log("Payment sig match results:", JSON.stringify(paymentSigMatches, null, 2));
         } catch (e) {
             // eslint-disable-next-line no-console
             console.warn("Failed to decode provided payment_script CBOR:", e);
@@ -277,12 +289,20 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
     // If a stake_script CBOR is provided, attempt to decode it and log for visibility
     const providedStakeCbor = typeof rows[0]!.stake_script === "string" ? rows[0]!.stake_script.trim() : null;
     let isStakeHierarchical = false;
+    let stakeSigKeyHashes: string[] = [];
+    let stakeSigMatches: SigMatch[] = [];
     if (providedStakeCbor) {
         try {
             const decodedStake = decodeNativeScriptFromCbor(providedStakeCbor);
             // eslint-disable-next-line no-console
             console.log("Imported stake native script (decoded):", JSON.stringify(decodedStake, null, 2));
             isStakeHierarchical = isHierarchicalScript(decodedStake);
+            stakeSigKeyHashes = collectSigKeyHashes(decodedStake);
+            // eslint-disable-next-line no-console
+            console.log("Stake script sig key hashes:", stakeSigKeyHashes);
+            stakeSigMatches = matchStakeSigs(stakeSigKeyHashes, signerStakeKeys);
+            // eslint-disable-next-line no-console
+            console.log("Stake sig match results:", JSON.stringify(stakeSigMatches, null, 2));
         } catch (e) {
             // eslint-disable-next-line no-console
             console.warn("Failed to decode provided stake_script CBOR:", e);
@@ -290,6 +310,24 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
     }
 
     const stakeAddressesUsed = buildStakeAddressesFromHashes(signerStakeKeys, network);
+
+    // Reorder signer addresses to match payment script key hash order; fill gaps with key hashes
+    let signerAddressesOrdered: string[] = signerAddresses;
+    if (paymentSigKeyHashes.length > 0) {
+        const lowerMatches = new Map<string, SigMatch>();
+        for (const m of paymentSigMatches) {
+            lowerMatches.set(m.sigKeyHash.toLowerCase(), m);
+        }
+        signerAddressesOrdered = paymentSigKeyHashes.map((sig) => {
+            const m = lowerMatches.get(sig.toLowerCase());
+            const addr = m?.signerAddress;
+            if (m?.matched && typeof addr === "string" && addr.trim().length > 0) {
+                return addr;
+            }
+            // Fallback: use the keyHash itself where no payment address was provided
+            return sig;
+        });
+    }
 
     return {
         ok: true,
@@ -302,15 +340,19 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             paymentCbor: providedPaymentCbor ?? "",
             stakeCbor: providedStakeCbor ?? "",
             signerStakeKeys,
-            signerAddresses,
+            signerAddresses: signerAddressesOrdered,
             signersDescriptions,
             signersDRepKeys,
             network,
             stakeAddressesUsed,
-            paymentAddressesUsed: signerAddresses,
+            paymentAddressesUsed: signerAddressesOrdered,
             stakeCredentialHash: null, // Empty for now as requested
             scriptType: scriptTypeFromPaymentScript ?? null,
             usesStored: Boolean(isPaymentHierarchical || isStakeHierarchical),
+            sigMatches: {
+                payment: paymentSigMatches,
+                stake: stakeSigMatches,
+            },
         },
     };
 }
@@ -379,6 +421,15 @@ type DecodedNativeScript =
     | { type: "atLeast"; required: number; scripts: DecodedNativeScript[] }
     | { type: "timelockStart" }
     | { type: "timelockExpiry" };
+
+type SigMatch = {
+    sigKeyHash: string;
+    matched: boolean;
+    matchedBy?: "paymentAddress" | "stakeKey";
+    signerIndex?: number;
+    signerAddress?: string;
+    signerStakeKey?: string;
+};
 
 function normalizeCborHex(cborHex: string): string {
     const trimmed = (cborHex || "").trim();
@@ -498,6 +549,77 @@ function hasSigWithLogicalDepth(node: DecodedNativeScript, logicalDepth: number)
     }
     // Timelock nodes do not count towards logical depth and have no children to traverse
     return false;
+}
+
+// Collect all sig key hashes from a decoded native script tree
+function collectSigKeyHashes(node: DecodedNativeScript): string[] {
+    if (node.type === "sig") return [node.keyHash.toLowerCase()];
+    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
+        const out: string[] = [];
+        for (const child of node.scripts) out.push(...collectSigKeyHashes(child));
+        // De-duplicate in case of repeated leaves
+        return Array.from(new Set(out));
+    }
+    return [];
+}
+
+// Match payment script sig key hashes to signer payment addresses
+function matchPaymentSigs(sigKeyHashes: string[], signerAddresses: string[]): SigMatch[] {
+    // Build mapping from payment key hash -> first signer index that yields it
+    const pkhToIndex = new Map<string, number>();
+    const indexToAddress = new Map<number, string>();
+    for (let i = 0; i < signerAddresses.length; i++) {
+        const addr = signerAddresses[i];
+        if (typeof addr !== "string" || addr.trim().length === 0) continue;
+        try {
+            const pkh = paymentKeyHash(addr).toLowerCase();
+            if (!pkhToIndex.has(pkh)) pkhToIndex.set(pkh, i);
+            indexToAddress.set(i, addr);
+        } catch {
+            // ignore invalid address
+        }
+    }
+    const matches: SigMatch[] = [];
+    for (const sig of sigKeyHashes) {
+        const idx = pkhToIndex.get(sig.toLowerCase());
+        if (idx !== undefined) {
+            matches.push({
+                sigKeyHash: sig,
+                matched: true,
+                matchedBy: "paymentAddress",
+                signerIndex: idx,
+                signerAddress: indexToAddress.get(idx),
+            });
+        } else {
+            matches.push({ sigKeyHash: sig, matched: false });
+        }
+    }
+    return matches;
+}
+
+// Match stake script sig key hashes to signer stake key hashes
+function matchStakeSigs(sigKeyHashes: string[], signerStakeKeys: string[]): SigMatch[] {
+    const stakeSet = new Map<string, number>();
+    for (let i = 0; i < signerStakeKeys.length; i++) {
+        const hex = (signerStakeKeys[i] || "").toLowerCase();
+        if (/^[0-9a-f]{56}$/.test(hex) && !stakeSet.has(hex)) stakeSet.set(hex, i);
+    }
+    const matches: SigMatch[] = [];
+    for (const sig of sigKeyHashes) {
+        const idx = stakeSet.get(sig.toLowerCase());
+        if (idx !== undefined) {
+            matches.push({
+                sigKeyHash: sig,
+                matched: true,
+                matchedBy: "stakeKey",
+                signerIndex: idx,
+                signerStakeKey: signerStakeKeys[idx],
+            });
+        } else {
+            matches.push({ sigKeyHash: sig, matched: false });
+        }
+    }
+    return matches;
 }
 
 
