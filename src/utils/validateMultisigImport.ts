@@ -329,6 +329,58 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
         });
     }
 
+    // Decide whether to order stake keys by stake script key hash order:
+    // - If no payment addresses matched the payment script key hashes, OR
+    // - If the stake script differs from the payment script.
+    const paymentCborNorm = providedPaymentCbor ? normalizeCborHex(providedPaymentCbor) : "";
+    const stakeCborNorm = providedStakeCbor ? normalizeCborHex(providedStakeCbor) : "";
+    const stakeScriptDiffers = paymentCborNorm !== stakeCborNorm;
+    const anyPaymentMatch = Array.isArray(paymentSigMatches) && paymentSigMatches.some((m) => m.matched);
+    const noPaymentMatches = paymentSigKeyHashes.length > 0 ? !anyPaymentMatch : false;
+
+    let signerStakeKeysOrdered: string[] = signerStakeKeys;
+    let stakeAddressesUsedFinal: string[] = stakeAddressesUsed;
+    if ((noPaymentMatches || stakeScriptDiffers) && stakeSigKeyHashes.length > 0) {
+        const lowerMatches = new Map<string, SigMatch>();
+        for (const m of stakeSigMatches) {
+            lowerMatches.set(m.sigKeyHash.toLowerCase(), m);
+        }
+        signerStakeKeysOrdered = stakeSigKeyHashes.map((sig) => {
+            const m = lowerMatches.get(sig.toLowerCase());
+            const providedStakeHex = m?.signerStakeKey;
+            if (m?.matched && typeof providedStakeHex === "string" && providedStakeHex.trim().length > 0) {
+                return providedStakeHex.toLowerCase();
+            }
+            // Fallback: use the keyHash itself where no stake key was provided
+            return sig.toLowerCase();
+        });
+        // Build stakeAddressesUsed positionally: reward addresses for matched keys, else raw key hash placeholders
+        stakeAddressesUsedFinal = stakeSigKeyHashes.map((sig) => {
+            const m = lowerMatches.get(sig.toLowerCase());
+            const providedStakeHex = m?.signerStakeKey;
+            if (m?.matched && typeof providedStakeHex === "string" && providedStakeHex.trim().length > 0) {
+                // Try to compute a reward address for the matched stake key hash
+                const hex = providedStakeHex.toLowerCase();
+                const tryNetworks: Array<0 | 1> = network === undefined ? [0, 1] : [network as 0 | 1];
+                for (const netId of tryNetworks) {
+                    try {
+                        const addr = serializeRewardAddress(hex, false, netId);
+                        const resolved = stakeKeyHash(addr)?.toLowerCase();
+                        if (resolved === hex) {
+                            return addr;
+                        }
+                    } catch {
+                        // continue to next
+                    }
+                }
+                // If we couldn't build a valid reward address, fall back to the hex itself
+                return hex;
+            }
+            // No match: use the script key hash in this position
+            return sig.toLowerCase();
+        });
+    }
+
     return {
         ok: true,
         rows,
@@ -339,12 +391,12 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             numRequiredSigners: requiredFromPaymentScript ?? null,
             paymentCbor: providedPaymentCbor ?? "",
             stakeCbor: providedStakeCbor ?? "",
-            signerStakeKeys,
+            signerStakeKeys: signerStakeKeysOrdered,
             signerAddresses: signerAddressesOrdered,
             signersDescriptions,
             signersDRepKeys,
             network,
-            stakeAddressesUsed,
+            stakeAddressesUsed: stakeAddressesUsedFinal,
             paymentAddressesUsed: signerAddressesOrdered,
             stakeCredentialHash: null, // Empty for now as requested
             scriptType: scriptTypeFromPaymentScript ?? null,
