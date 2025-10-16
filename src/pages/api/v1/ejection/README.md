@@ -9,7 +9,7 @@ Simple import endpoint to create/update a multisig wallet from an external data 
 ### What it does
 
 - Validates incoming rows for a multisig import.
-- Upserts a `NewWallet` with signer data and `paymentCbor` (from `payment_script`).
+- Upserts a `NewWallet` with signer data, `paymentCbor` (from `payment_script`), and `stakeCbor` (from `stake_script`).
 - Returns the invite URL for the newly imported wallet.
 
 ### Request body
@@ -83,4 +83,7 @@ curl -X POST \
 ### Notes
 
 - CORS is enabled; `OPTIONS` requests return 200.
+- If a `multisig_id` is supplied, the wallet is upserted with that id; otherwise a new id is created.
+- The first non-empty `community_description` is used for the wallet description (HTML tags are stripped).
+- If the database write fails, `dbUpdated` will be `false` and `inviteUrl` will be `null`.
 

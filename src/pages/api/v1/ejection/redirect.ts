@@ -30,8 +30,12 @@ export default async function handler(
         }
         const { summary, rows } = result;
 
-
-
+		// Normalize request body into an array for consistent handling of signersDescriptions
+		const bodyAsArray: unknown[] = req.body == null
+			? []
+			: Array.isArray(req.body)
+				? (req.body as unknown[])
+				: [req.body];
         // Build wallet description from the first non-empty tagless community_description
         function stripTags(v: string) {
             return v.replace(/<[^>]*>/g, "").trim();
@@ -46,10 +50,10 @@ export default async function handler(
             return "";
         })();
 
-        // Set each signersDescriptions value to "Signer 1", "Signer 2", etc.
-        const signersDescriptions = Array.from({ length: (summary.signerAddresses || []).length }, (_, index) => 
-            `Signer ${index + 1}`
-        );
+		// Build signersDescriptions from the request body array; stringify non-strings to ensure consistency
+		const signersDescriptions = bodyAsArray.map((item) =>
+			typeof item === "string" ? item : JSON.stringify(item)
+		);
 
         // Use signer payment addresses as provided; leave empty string if missing
         const paymentAddressesUsed = Array.isArray(summary.signerAddresses)
