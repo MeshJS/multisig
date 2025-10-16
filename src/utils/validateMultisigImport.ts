@@ -1,7 +1,8 @@
 import { checkValidAddress, addressToNetwork, stakeKeyHash, paymentKeyHash } from "@/utils/multisigSDK";
-import { serializeRewardAddress } from "@meshsdk/core";
+import { serializeRewardAddress, pubKeyAddress } from "@meshsdk/core";
 import type { csl } from "@meshsdk/core-csl";
 import { deserializeNativeScript } from "@meshsdk/core-csl";
+import { getProvider } from "@/utils/get-provider";
 
 export type ImportedMultisigRow = {
     multisig_id?: string;
@@ -57,7 +58,7 @@ export type ValidationResult = ValidationSuccess | ValidationFailure;
 const normalize = (v?: string | null) => (typeof v === "string" ? v.trim() : null);
 const requiredField = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
-export function validateMultisigImportPayload(payload: unknown): ValidationResult {
+export async function validateMultisigImportPayload(payload: unknown): Promise<ValidationResult> {
     const rowsUnknown = Array.isArray(payload)
         ? (payload as unknown[])
         : Array.isArray((payload as { rows?: unknown })?.rows)
@@ -277,7 +278,15 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
             paymentSigKeyHashes = collectSigKeyHashes(decoded);
             // eslint-disable-next-line no-console
             console.log("Payment script sig key hashes:", paymentSigKeyHashes);
-            paymentSigMatches = matchPaymentSigs(paymentSigKeyHashes, signerAddresses);
+            // Build stake addresses early so we can expand candidate payment addresses via stake keys
+            const stakeAddressesUsedForExpansion = buildStakeAddressesFromHashes(signerStakeKeys, network);
+            // Try to match using provided payment addresses and any addresses fetched from stake accounts
+            paymentSigMatches = await matchPaymentSigsExpanded(
+                paymentSigKeyHashes,
+                signerAddresses,
+                stakeAddressesUsedForExpansion,
+                network,
+            );
             // eslint-disable-next-line no-console
             console.log("Payment sig match results:", JSON.stringify(paymentSigMatches, null, 2));
         } catch (e) {
@@ -409,6 +418,29 @@ export function validateMultisigImportPayload(payload: unknown): ValidationResul
     };
 }
 
+async function fetchStakePaymentAddresses(stakeKey: string, network: number): Promise<string[]> {
+    const blockchainProvider = getProvider(network);
+    const res = await blockchainProvider.get(`/accounts/${stakeKey}/addresses`);
+    // Normalize provider response to an array of bech32 strings
+    const arr: unknown[] = Array.isArray(res) ? res : [];
+    const out: string[] = [];
+    for (const item of arr) {
+        if (typeof item === "string") {
+            out.push(item);
+            continue;
+        }
+        if (item && typeof item === "object") {
+            const maybe = (item as Record<string, unknown>).address
+                ?? (item as Record<string, unknown>).bech32
+                ?? (item as Record<string, unknown>).paymentAddress
+                ?? (item as Record<string, unknown>).payment_address;
+            if (typeof maybe === "string") out.push(maybe);
+        }
+    }
+    const unique = Array.from(new Set(out.filter((s) => typeof s === "string" && s.trim().length > 0)));
+    return unique;
+}
+
 // Returns the signature rule type for storage by inspecting parents of "sig" leaves:
 // - If any signature's parent is "atLeast", return "atLeast"
 // - Else if any signature's parent is "all", return "all"
@@ -451,6 +483,7 @@ function buildStakeAddressesFromHashes(stakeKeys: string[], network: number | un
             try {
                 const addr = serializeRewardAddress(hex, false, netId);
                 const resolved = stakeKeyHash(addr)?.toLowerCase();
+                console.log("resolved", resolved, "hex", hex, "addr", addr);
                 if (resolved === hex) {
                     chosen = addr;
                     break;
@@ -647,6 +680,122 @@ function matchPaymentSigs(sigKeyHashes: string[], signerAddresses: string[]): Si
         }
     }
     return matches;
+}
+
+// Expanded matcher: also fetch payment bech32s from stake accounts when
+// - a signer has no provided payment address, or
+// - a provided address's payment key hash is not among the required key hashes
+async function matchPaymentSigsExpanded(
+    sigKeyHashes: string[],
+    signerAddresses: string[],
+    stakeAddresses: string[],
+    network: number | undefined,
+): Promise<SigMatch[]> {
+    const required = new Set(sigKeyHashes.map((s) => s.toLowerCase()));
+
+    // Map payment key hash -> preferred candidate { index, address }
+    const pkhToCandidate = new Map<string, { index: number; address: string }>();
+
+    // First, consider provided signer addresses (no network calls)
+    for (let i = 0; i < signerAddresses.length; i++) {
+        const addr = signerAddresses[i];
+        if (!addr || addr.trim().length === 0) continue;
+        try {
+            const pkh = paymentKeyHash(addr).toLowerCase();
+            // Only store if it's one of the required hashes
+            if (required.has(pkh) && !pkhToCandidate.has(pkh)) {
+                pkhToCandidate.set(pkh, { index: i, address: addr });
+            }
+        } catch {
+            // ignore invalid address
+        }
+    }
+    
+
+    // Determine which indices need expansion via stake account fetch
+    const indicesNeedingExpansion: number[] = [];
+    for (let i = 0; i < signerAddresses.length; i++) {
+        const addr = signerAddresses[i];
+        let needs = false;
+        if (!addr || addr.trim().length === 0) {
+            needs = true;
+        } else {
+            try {
+                const pkh = paymentKeyHash(addr).toLowerCase();
+                if (!required.has(pkh)) needs = true;
+            } catch {
+                needs = true;
+            }
+        }
+        if (needs) indicesNeedingExpansion.push(i);
+    }
+
+    // If network unknown, skip fetching
+    if (network !== 0 && network !== 1) {
+        // Build matches from whatever candidates we already have
+        const matches = sigKeyHashes.map((sig) => {
+            const lower = sig.toLowerCase();
+            const cand = pkhToCandidate.get(lower);
+            if (cand) {
+                return {
+                    sigKeyHash: sig,
+                    matched: true,
+                    matchedBy: "paymentAddress",
+                    signerIndex: cand.index,
+                    signerAddress: cand.address,
+                } as SigMatch;
+            }
+            return { sigKeyHash: sig, matched: false } as SigMatch;
+        });
+        
+        return matches;
+    }
+
+    // Fetch additional addresses per stake account for the indices needing expansion
+    const fetchPromises: Array<Promise<void>> = [];
+    for (const i of indicesNeedingExpansion) {
+        const stakeAddr = stakeAddresses[i];
+        if (!stakeAddr || stakeAddr.trim().length === 0) continue;
+        fetchPromises.push((async () => {
+            try {
+                const addrs = await fetchStakePaymentAddresses(stakeAddr, network);
+                
+                for (const a of addrs) {
+                    try {
+                        const pkh = paymentKeyHash(a).toLowerCase();
+                        if (required.has(pkh) && !pkhToCandidate.has(pkh)) {
+                            pkhToCandidate.set(pkh, { index: i, address: a });
+                        }
+                    } catch {
+                        // ignore invalid address
+                    }
+                }
+                
+            } catch {
+                // ignore fetch failure, continue
+            }
+        })());
+    }
+
+    await Promise.all(fetchPromises);
+
+    // Build final matches, preserving order of sigKeyHashes
+    const results = sigKeyHashes.map((sig) => {
+        const lower = sig.toLowerCase();
+        const cand = pkhToCandidate.get(lower);
+        if (cand) {
+            return {
+                sigKeyHash: sig,
+                matched: true,
+                matchedBy: "paymentAddress",
+                signerIndex: cand.index,
+                signerAddress: cand.address,
+            } as SigMatch;
+        }
+        return { sigKeyHash: sig, matched: false } as SigMatch;
+    });
+    
+    return results;
 }
 
 // Match stake script sig key hashes to signer stake key hashes

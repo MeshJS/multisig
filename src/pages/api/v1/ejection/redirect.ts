@@ -24,7 +24,7 @@ export default async function handler(
     try {
         const receivedAt = new Date().toISOString();
 
-        const result = validateMultisigImportPayload(req.body);
+        const result = await validateMultisigImportPayload(req.body);
         if (!result.ok) {
             return res.status(result.status).json(result.body);
         }
@@ -53,7 +53,7 @@ export default async function handler(
 
         // Use signer payment addresses as provided; leave empty string if missing
         const paymentAddressesUsed = Array.isArray(summary.signerAddresses)
-            ? summary.signerAddresses.map((addr) => (typeof addr === "string" ? addr.trim() : ""))
+            ? summary.signerAddresses.map((addr: string) => (typeof addr === "string" ? addr.trim() : ""))
             : [];
 
         // Persist to NewWallet using validated data
