@@ -27,6 +27,7 @@ Send an array of rows. Each row should include:
   - `stake_script`
 - Optional per row:
   - `user_address_bech32`
+  - `user_name`
   - `community_description`
 
 Minimal example payload:
@@ -40,6 +41,7 @@ Minimal example payload:
     "payment_script": "82018183...34",
     "stake_script": "82018183...34",
     "user_id": "51d3015c-04b1...107eb",
+    "user_name": "Bob",
     "user_address_bech32": "",
     "user_stake_pubkey_hash_hex": "5a4006...5b1"
   },
@@ -50,6 +52,7 @@ Minimal example payload:
     "payment_script": "82018183...34",
     "stake_script": "82018183...34",
     "user_id": "97f9d721-7246...76",
+    "user_name": "Carol",
     "user_address_bech32": "addr1...3zka",
     "user_stake_pubkey_hash_hex": "f7f32d1a...9d1"
   },

@@ -50,15 +50,20 @@ export default async function handler(
             return "";
         })();
 
-		// Build signersDescriptions from the request body array; stringify non-strings to ensure consistency
-		const signersDescriptions = bodyAsArray.map((item) =>
-			typeof item === "string" ? item : JSON.stringify(item)
-		);
+        // Use descriptions computed from validation (user_name aligned with signerAddresses)
+        const signersDescriptions = Array.isArray(summary.signersDescriptions) ? summary.signersDescriptions : [];
 
         // Use signer payment addresses as provided; leave empty string if missing
         const paymentAddressesUsed = Array.isArray(summary.signerAddresses)
             ? summary.signerAddresses.map((addr: string) => (typeof addr === "string" ? addr.trim() : ""))
             : [];
+
+        // Prepare raw import bodies to persist: prefer rows if provided, otherwise normalize req.body
+        const rawImportBodies = Array.isArray((req.body as any)?.rows)
+            ? (req.body as any).rows
+            : Array.isArray(req.body)
+                ? req.body
+                : [req.body];
 
         // Persist to NewWallet using validated data
         let dbUpdated = false;
@@ -82,6 +87,7 @@ export default async function handler(
                     paymentCbor: summary.paymentCbor ?? "",
                     stakeCbor: summary.stakeCbor ?? "",
                     usesStored: Boolean(summary.usesStored),
+                    rawImportBodies,
                 };
                 const createDataWithId: any = {
                     id: specifiedId,
@@ -98,6 +104,7 @@ export default async function handler(
                     paymentCbor: summary.paymentCbor ?? "",
                     stakeCbor: summary.stakeCbor ?? "",
                     usesStored: Boolean(summary.usesStored),
+                    rawImportBodies,
                 };
                 const saved = await db.newWallet.upsert({
                     where: { id: specifiedId },
@@ -122,6 +129,7 @@ export default async function handler(
                     paymentCbor: summary.paymentCbor ?? "",
                     stakeCbor: summary.stakeCbor ?? "",
                     usesStored: Boolean(summary.usesStored),
+                    rawImportBodies,
                 };
                 const created = await db.newWallet.create({
                     data: createData,

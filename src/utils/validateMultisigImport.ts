@@ -177,8 +177,8 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
         };
     }
 
-    // Build aligned arrays for signer stake keys, addresses, descriptions, and drep keys; ensure deterministic ordering
-    type CombinedSigner = { stake: string; address: string; description: string; drepKey: string };
+    // Build aligned arrays for signer stake keys, addresses, user names, and drep keys; ensure deterministic ordering
+    type CombinedSigner = { stake: string; address: string; name: string; drepKey: string };
     const combined: CombinedSigner[] = [];
     const seenStake = new Set<string>();
     const stripTags = (v: string) => v.replace(/<[^>]*>/g, "").trim();
@@ -188,13 +188,14 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
         if (!hex || seenStake.has(hex)) continue;
         seenStake.add(hex);
         const addr = typeof r.user_address_bech32 === "string" ? r.user_address_bech32.trim() : "";
-        const desc = typeof r.community_description === "string" ? stripTags(r.community_description) : "";
+        // Use user_name for descriptions as requested
+        const name = typeof r.user_name === "string" ? r.user_name.trim() : "";
         const drepKey = ""; // Empty for now as requested
-        combined.push({ stake: hex, address: addr, description: desc, drepKey });
+        combined.push({ stake: hex, address: addr, name, drepKey });
     }
     const signerStakeKeys = combined.map((c) => c.stake);
     const signerAddresses = combined.map((c) => c.address);
-    const signersDescriptions = combined.map((c) => c.description);
+    const signerNames = combined.map((c) => c.name);
     const signersDRepKeys = combined.map((c) => c.drepKey);
 
     // Infer network: prefer multisigAddress; if absent, fall back to the first valid user_address_bech32
@@ -322,6 +323,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
 
     // Reorder signer addresses to match payment script key hash order; fill gaps with key hashes
     let signerAddressesOrdered: string[] = signerAddresses;
+    let signersDescriptionsOrdered: string[] = signerNames; // will realign to addresses order
     if (paymentSigKeyHashes.length > 0) {
         const lowerMatches = new Map<string, SigMatch>();
         for (const m of paymentSigMatches) {
@@ -335,6 +337,15 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             }
             // Fallback: use the keyHash itself where no payment address was provided
             return sig;
+        });
+        // Build descriptions in the same order as signerAddressesOrdered
+        signersDescriptionsOrdered = paymentSigKeyHashes.map((sig) => {
+            const m = lowerMatches.get(sig.toLowerCase());
+            if (m?.matched && typeof m.signerIndex === "number") {
+                const idx = m.signerIndex;
+                return typeof signerNames[idx] === "string" ? signerNames[idx] : "";
+            }
+            return ""; // unknown when no address match
         });
     }
 
@@ -402,7 +413,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             stakeCbor: providedStakeCbor ?? "",
             signerStakeKeys: signerStakeKeysOrdered,
             signerAddresses: signerAddressesOrdered,
-            signersDescriptions,
+            signersDescriptions: signersDescriptionsOrdered,
             signersDRepKeys,
             network,
             stakeAddressesUsed: stakeAddressesUsedFinal,

@@ -81,6 +81,7 @@ model NewWallet {
   usesStored          Boolean  @default(false)
   paymentCbor         String?
   stakeCbor           String?
+  rawImportBodies     Json?
 }
 
 model Nonce {
