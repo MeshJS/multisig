@@ -7,9 +7,13 @@ import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useAppWallet from "@/hooks/useAppWallet";
 import { api } from "@/utils/api";
+import useTransaction from "@/hooks/useTransaction";
 import ProxyOverview from "./ProxyOverview";
 import ProxySetup from "./ProxySetup";
 import ProxySpend from "./ProxySpend";
+import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
+import { getProvider } from "@/utils/get-provider";
+import { MeshTxBuilder, UTxO } from "@meshsdk/core";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,7 +29,7 @@ interface ProxyOutput {
 }
 
 interface ProxySetupResult {
-  tx: string;
+  tx: MeshTxBuilder;
   paramUtxo: { txHash: string; outputIndex: number };
   authTokenId: string;
   proxyAddress: string;
@@ -38,12 +42,9 @@ export default function ProxyControl() {
   const network = useSiteStore((state) => state.network);
   const { appWallet } = useAppWallet();
   const ctx = api.useUtils();
+  const { newTransaction } = useTransaction();
 
-  const { mutateAsync: createTransaction } = api.transaction.createTransaction.useMutation({
-    onSuccess: () => {
-      void ctx.transaction.getPendingTransactions.invalidate();
-    },
-  });
+
 
   const { mutateAsync: createProxy } = api.proxy.createProxy.useMutation({
     onSuccess: () => {
@@ -63,13 +64,26 @@ export default function ProxyControl() {
     { enabled: !!userAddress && !appWallet?.id }
   );
 
-  const { data: proxies, refetch: refetchProxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: proxies, refetch: refetchProxies, isLoading: proxiesLoading, error: proxiesError } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
       walletId: appWallet?.id || undefined,
       userAddress: userAddress || undefined,
     },
     { enabled: !!(appWallet?.id || userAddress) }
   );
+
+  // Debug logging for proxy loading
+  useEffect(() => {
+    console.log("Proxy loading debug:", {
+      appWalletId: appWallet?.id,
+      userAddress,
+      enabled: !!(appWallet?.id || userAddress),
+      proxiesLoading,
+      proxiesError,
+      proxiesCount: proxies?.length || 0,
+      proxies: proxies
+    });
+  }, [appWallet?.id, userAddress, proxiesLoading, proxiesError, proxies]);
 
   // State management
   const [proxyContract, setProxyContract] = useState<MeshProxyContract | null>(null);
@@ -87,7 +101,7 @@ export default function ProxyControl() {
     paramUtxo?: { txHash: string; outputIndex: number };
     authTokenId?: string;
     proxyAddress?: string;
-    txHex?: string;
+    txHex?: MeshTxBuilder;
     description?: string;
   }>({});
 
@@ -105,6 +119,25 @@ export default function ProxyControl() {
     { address: "", unit: "lovelace", amount: "" }
   ]);
 
+  // UTxO selection state (UI only). We will still pass all UTxOs from provider to contract.
+  const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
+  const [manualSelected, setManualSelected] = useState<boolean>(false);
+
+  // Helper to resolve inputs for multisig controlled txs
+  const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
+    if (!appWallet?.address) {
+      throw new Error("Multisig wallet address not available");
+    }
+    const provider = getProvider(network);
+    const utxos = await provider.fetchAddressUTxOs(appWallet.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error("No UTxOs found at multisig wallet address");
+    }
+    console.log("utxos", utxos);
+    console.log("walletAddress", appWallet.address);
+    return { utxos, walletAddress: appWallet.address };
+  }, [appWallet?.address, network]);
+
   // Initialize proxy contract
   useEffect(() => {
     if (connected && wallet && userAddress) {
@@ -116,7 +149,8 @@ export default function ProxyControl() {
             wallet: wallet,
             networkId: network,
           },
-          {}
+          {},
+          appWallet?.scriptCbor || undefined,
         );
         setProxyContract(contract);
       } catch (error) {
@@ -172,8 +206,10 @@ export default function ProxyControl() {
       // Reset proxy contract state to prevent policy ID conflicts
       proxyContract.reset();
 
-      const result: ProxySetupResult = await proxyContract.setupProxy();
-      
+      // Use multisig wallet inputs: pass all UTxOs, first >=5 ADA as collateral, and ms wallet address
+      const { utxos, collateral, walletAddress } = await getMsInputs();
+      const result: ProxySetupResult = await proxyContract.setupProxy(utxos, walletAddress);
+
       setSetupData({
         paramUtxo: result.paramUtxo,
         authTokenId: result.authTokenId,
@@ -217,9 +253,21 @@ export default function ProxyControl() {
       setSetupLoading(true);
       setLoading(true);
 
-      // Sign and submit the transaction
-      const signedTx = await wallet.signTx(setupData.txHex, true);
-      await wallet.submitTx(signedTx);
+      // If msCbor is set, route through useTransaction hook to create a signable
+      if (appWallet?.scriptCbor && setupData.txHex) {
+        
+        await newTransaction({
+          txBuilder: setupData.txHex,
+          description: setupData.description,
+          toastMessage: "Proxy setup transaction created",
+        });
+      } else if (setupData.txHex) {
+        // Sign and submit the transaction
+        const signedTx = await wallet.signTx(await setupData.txHex.complete(), true);
+        await wallet.submitTx(signedTx);
+      } else {
+        throw new Error("No transaction to submit");
+      }
 
       // Store proxy information in the database
       if (!appWallet?.id && !userAddress) {
@@ -430,7 +478,7 @@ export default function ProxyControl() {
   // Handle proxy selection
   const handleProxySelection = useCallback(async (proxyId: string) => {
     setSelectedProxy(proxyId);
-    const proxy = proxies?.find(p => p.id === proxyId);
+    const proxy = proxies?.find((p: any) => p.id === proxyId);
     if (proxy) {
       const balance = await getProxyBalance(proxy.proxyAddress);
       setSelectedProxyBalance(balance);
@@ -477,7 +525,7 @@ export default function ProxyControl() {
       setLoading(true);
 
       // Get the selected proxy
-      const proxy = proxies?.find(p => p.id === selectedProxy);
+      const proxy = proxies?.find((p: any) => p.id === selectedProxy);
       if (!proxy) {
         throw new Error("Selected proxy not found");
       }
@@ -491,21 +539,23 @@ export default function ProxyControl() {
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
-        }
+        },
+        appWallet?.scriptCbor || undefined,
       );
       selectedProxyContract.proxyAddress = proxy.proxyAddress;
 
-      const txHex = await selectedProxyContract.spendProxySimple(validOutputs);
-      
-      // Sign and submit the transaction
-      const signedTx = await wallet.signTx(txHex, true);
-      await wallet.submitTx(signedTx);
-
-      toast({
-        title: "Success",
-        description: "Proxy spend transaction submitted successfully",
-        variant: "default",
-      });
+      // Pass multisig inputs to spend as well
+      const { utxos, walletAddress } = await getMsInputs();
+      const txHex = await selectedProxyContract.spendProxySimple(validOutputs, utxos, walletAddress);
+      if (appWallet?.scriptCbor) {
+      await newTransaction({
+        txBuilder: txHex,
+          description: "Proxy spend transaction",
+          toastMessage: "Proxy spend transaction created",
+        });
+      } else {
+        await wallet.submitTx(await txHex.complete());
+      }
 
       // Refresh balance after successful spend
       await handleProxySelection(selectedProxy);
@@ -701,6 +751,20 @@ export default function ProxyControl() {
                 onUpdateProxy={handleUpdateProxy}
                 onRefreshAllBalances={refreshAllBalances}
               />
+
+              {/* UTxO Selector for visibility/control. Contract uses all UTxOs from provider. */}
+              {appWallet && (
+                <div className="mt-2">
+                  <UTxOSelector
+                    appWallet={appWallet}
+                    network={network}
+                    onSelectionChange={(utxos, manual) => {
+                      setSelectedUtxos(utxos);
+                      setManualSelected(manual);
+                    }}
+                  />
+                </div>
+              )}
 
             </div>
           </CardContent>

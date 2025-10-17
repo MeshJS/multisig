@@ -85,12 +85,12 @@ export const proxyRouter = createTRPCRouter({
       userAddress: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const conditions: any = {
-        isActive: true,
-      };
-
+      console.log("getProxiesByUserOrWallet called with:", input);
+      
+      const orConditions: any[] = [];
+      
       if (input.walletId) {
-        conditions.walletId = input.walletId;
+        orConditions.push({ walletId: input.walletId });
       }
 
       if (input.userAddress) {
@@ -101,16 +101,27 @@ export const proxyRouter = createTRPCRouter({
         });
 
         if (user) {
-          conditions.userId = user.id;
+          orConditions.push({ userId: user.id });
         }
       }
 
-      return ctx.db.proxy.findMany({
-        where: conditions,
+      if (orConditions.length === 0) {
+        console.log("No conditions found, returning empty array");
+        return [];
+      }
+
+      const result = await ctx.db.proxy.findMany({
+        where: {
+          isActive: true,
+          OR: orConditions,
+        },
         orderBy: {
           createdAt: "desc",
         },
       });
+      
+      console.log("Found proxies:", result.length, result);
+      return result;
     }),
 
   getProxyById: publicProcedure
@@ -129,6 +140,8 @@ export const proxyRouter = createTRPCRouter({
         id: z.string(),
         description: z.string().optional(),
         isActive: z.boolean().optional(),
+        walletId: z.string().optional(),
+        userId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -139,6 +152,8 @@ export const proxyRouter = createTRPCRouter({
         data: {
           description: input.description,
           isActive: input.isActive,
+          walletId: input.walletId,
+          userId: input.userId,
         },
       });
     }),

@@ -13,6 +13,7 @@ import {
   Play,
   Check
 } from "lucide-react";
+import { MeshTxBuilder } from "@meshsdk/core";
 
 interface ProxySetupProps {
   setupStep: number;
@@ -20,7 +21,7 @@ interface ProxySetupProps {
     paramUtxo?: { txHash: string; outputIndex: number };
     authTokenId?: string;
     proxyAddress?: string;
-    txHex?: string;
+    txHex?: MeshTxBuilder;
     description?: string;
   };
   setupLoading: boolean;

@@ -29,7 +29,7 @@
     "@meshsdk/core-cst": "^1.9.0-beta.19",
     "@meshsdk/react": "^1.9.0-beta.18",
     "@octokit/core": "^6.1.2",
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "^6.17.1",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.0",
@@ -111,7 +111,7 @@
     "postcss": "^8.4.39",
     "prettier": "^3.3.2",
     "prettier-plugin-tailwindcss": "^0.6.5",
-    "prisma": "^6.4.1",
+    "prisma": "^6.17.1",
     "tailwindcss": "^3.4.3",
     "ts-jest": "^29.4.4",
     "typescript": "^5.5.3"

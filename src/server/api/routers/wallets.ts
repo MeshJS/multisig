@@ -285,4 +285,57 @@ export const walletRouter = createTRPCRouter({
         },
       });
     }),
+
+  setMigrationTarget: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      migrationTargetWalletId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: input.migrationTargetWalletId,
+        },
+      });
+    }),
+
+  clearMigrationTarget: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
+
+  abortMigration: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      newWalletId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Delete the new wallet that was created for migration
+      await ctx.db.newWallet.delete({
+        where: {
+          id: input.newWalletId,
+        },
+      });
+
+      // Clear the migration target reference from the original wallet
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
 });
