@@ -175,7 +175,10 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   const { multisigWallet } = useMultisigWallet();
   
   // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
-  const dRepId = multisigWallet?.getDRepId() || appWallet.dRepId;
+  const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+  if (!dRepId) {
+    throw new Error("DRep not found");
+  }
   
   return (
     <>

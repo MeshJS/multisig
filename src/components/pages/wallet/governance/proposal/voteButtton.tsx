@@ -92,7 +92,32 @@ export default function VoteButton({
       }
       if (!multisigWallet)
         throw new Error("Multisig Wallet could not be built.");
-      const dRepId = appWallet.dRepId;
+      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      if (!dRepId) {
+        setAlert("DRep not found");
+        toast({
+          title: "DRep not found",
+          description: `Please register as a DRep and retry.`,
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
+      const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
+      if (!scriptCbor) {
+        setAlert("Script not found");
+        return;
+      }
+      if (!drepCbor) {
+        setAlert("DRep script not found");
+        return;
+      }
+      const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
+      if (!changeAddress) {
+        setAlert("Change address not found");
+        return;
+      }
       const txBuilder = getTxBuilder(network);
 
       const assetMap = new Map<Unit, Quantity>();
@@ -107,7 +132,7 @@ export default function VoteButton({
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(appWallet.scriptCbor);
+          .txInScript(scriptCbor);
       }
       txBuilder
         .vote(
@@ -123,9 +148,8 @@ export default function VoteButton({
             voteKind: voteKind,
           },
         )
-        .voteScript(appWallet.scriptCbor)
-        .selectUtxosFrom(utxos)
-        .changeAddress(appWallet.address);
+        .voteScript(drepCbor)
+        .changeAddress(changeAddress);
         
       await newTransaction({
         txBuilder,
