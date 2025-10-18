@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useRouter } from "next/router";
@@ -44,6 +44,14 @@ export default function PageNewWalletInvite() {
     },
   );
 
+  const ownerUpdateTriggered = useRef(false);
+
+  const { mutate: updateNewWalletOwner } = api.wallet.updateNewWalletOwner.useMutation({
+    onSuccess: async () => {
+      void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
+    },
+  });
+
   useEffect(() => {
     if (!newWallet) {
       setShowNotFound(false);
@@ -55,7 +63,31 @@ export default function PageNewWalletInvite() {
   }, [newWallet]);
 
   // Calculate user role once (after newWallet is loaded)
-  const isOwner = newWallet?.ownerAddress === userAddress;
+  const isOwner = !!newWallet && (
+    newWallet.ownerAddress === userAddress ||
+    (newWallet.ownerAddress === "all" && (
+      (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
+      (userAddress ? newWallet.signersAddresses?.includes(userAddress) : false)
+    ))
+  );
+
+  // If owner is set to "all" and the connected user qualifies, claim ownership
+  useEffect(() => {
+    if (!newWallet || !userAddress) return;
+    if (ownerUpdateTriggered.current) return;
+
+    const qualifies =
+      newWallet.ownerAddress === "all" && (
+        (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
+        newWallet.signersAddresses?.includes(userAddress)
+      );
+
+    if (qualifies) {
+      ownerUpdateTriggered.current = true;
+      updateNewWalletOwner({ walletId: newWallet.id, ownerAddress: userAddress });
+    }
+  }, [newWallet, userAddress, user, updateNewWalletOwner]);
+  console.log(user, newWallet)
   const isAlreadySigner =
     newWallet?.signersAddresses.includes(userAddress || "") || false;
 

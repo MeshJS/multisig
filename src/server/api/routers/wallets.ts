@@ -268,6 +268,39 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
+  updateNewWalletOwner: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        ownerAddress: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Look up user's stake address for stake-key membership check
+      const user = await ctx.db.user.findUnique({ where: { address: input.ownerAddress } });
+      const stakeAddr = user?.stakeAddress || "";
+
+      // Atomic conditional claim: only if owner is currently "all" AND caller qualifies
+      const result = await ctx.db.newWallet.updateMany({
+        where: {
+          id: input.walletId,
+          ownerAddress: "all",
+          OR: [
+            { signersAddresses: { has: input.ownerAddress } },
+            stakeAddr ? { signersStakeKeys: { has: stakeAddr } } : { id: "__never__" },
+          ],
+        },
+        data: { ownerAddress: input.ownerAddress },
+      });
+
+      if (result.count === 0) {
+        // Either already claimed, not eligible, or wallet not found
+        return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
+      }
+
+      return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
+    }),
+
   deleteNewWallet: publicProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
