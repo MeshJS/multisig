@@ -20,6 +20,7 @@ import WalletInfoCard from "./WalletInfoCard";
 import JoinAsSignerCard from "./JoinAsSignerCard";
 import ManageSignerCard from "./ManageSignerCard";
 import { serializeRewardAddress, deserializeAddress } from "@meshsdk/core";
+import { paymentKeyHash, stakeKeyHash } from "@/utils/multisigSDK";
 
 export default function PageNewWalletInvite() {
   const router = useRouter();
@@ -52,57 +53,6 @@ export default function PageNewWalletInvite() {
     },
   });
 
-  useEffect(() => {
-    if (!newWallet) {
-      setShowNotFound(false);
-      const timer = setTimeout(() => {
-        setShowNotFound(true);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [newWallet]);
-
-  // Calculate user role once (after newWallet is loaded)
-  const isOwner = !!newWallet && (
-    newWallet.ownerAddress === userAddress ||
-    (newWallet.ownerAddress === "all" && (
-      (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
-      (userAddress ? newWallet.signersAddresses?.includes(userAddress) : false)
-    ))
-  );
-
-  // If owner is set to "all" and the connected user qualifies, claim ownership
-  useEffect(() => {
-    if (!newWallet || !userAddress) return;
-    if (ownerUpdateTriggered.current) return;
-
-    const qualifies =
-      newWallet.ownerAddress === "all" && (
-        (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
-        newWallet.signersAddresses?.includes(userAddress)
-      );
-
-    if (qualifies) {
-      ownerUpdateTriggered.current = true;
-      updateNewWalletOwner({ walletId: newWallet.id, ownerAddress: userAddress });
-    }
-  }, [newWallet, userAddress, user, updateNewWalletOwner]);
-  console.log(user, newWallet)
-  const isAlreadySigner =
-    newWallet?.signersAddresses.includes(userAddress || "") || false;
-
-  // Set initial signer name when wallet data loads
-  useEffect(() => {
-    if (newWallet && userAddress) {
-      const signerIndex = newWallet.signersAddresses.findIndex(
-        (addr) => addr === userAddress,
-      );
-      if (signerIndex !== -1) {
-        setLocalSignerName(newWallet.signersDescriptions[signerIndex] || "");
-      }
-    }
-  }, [newWallet, userAddress]);
-
   const { mutate: updateNewWalletSigners } =
     api.wallet.updateNewWalletSigners.useMutation({
       onSuccess: async () => {
@@ -126,6 +76,258 @@ export default function PageNewWalletInvite() {
         });
       },
     });
+
+  // Prevent repeated normalization updates
+  const normalizationTriggered = useRef(false);
+
+  useEffect(() => {
+    if (!newWallet) {
+      setShowNotFound(false);
+      const timer = setTimeout(() => {
+        setShowNotFound(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newWallet]);
+
+  // Helper to detect native script key hash entries (28-byte hex)
+  const isNativeKeyHash = (value: string | undefined): boolean =>
+    !!value && /^[0-9a-fA-F]{56}$/.test(value);
+
+  // Compare script CBORs if present
+  const hasBothCbors = !!((newWallet as any)?.paymentCbor && (newWallet as any)?.stakeCbor);
+  const paymentEqualsStake = !!(
+    hasBothCbors && (newWallet as any)?.paymentCbor === (newWallet as any)?.stakeCbor
+  );
+  const paymentNotEqualsStake = !!(
+    hasBothCbors && (newWallet as any)?.paymentCbor !== (newWallet as any)?.stakeCbor
+  );
+
+  const userPaymentHash = userAddress ? paymentKeyHash(userAddress) : "";
+  const userStakeHash = user?.stakeAddress ? stakeKeyHash(user.stakeAddress) : "";
+
+  // Calculate user role once (after newWallet is loaded)
+  const isOwner = !!newWallet && (
+    newWallet.ownerAddress === userAddress ||
+    (newWallet.ownerAddress === "all" && (
+      (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
+      (userAddress ? newWallet.signersAddresses?.includes(userAddress) : false)
+    ))
+  );
+
+  // If owner is set to "all" and the connected user qualifies, claim ownership
+  useEffect(() => {
+    if (!newWallet || !userAddress) return;
+    if (ownerUpdateTriggered.current) return;
+
+  const qualifiesByKeyHash = (() => {
+      // Equal CBORs: only compare payment key hash against signersAddresses
+      if (paymentEqualsStake) {
+        if (!userPaymentHash) return false;
+        if (!newWallet.signersAddresses?.some(isNativeKeyHash)) return false;
+        return newWallet.signersAddresses.some(
+          (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+        );
+      }
+      // Not equal CBORs: require BOTH payment hash in signersAddresses AND stake hash in signersStakeKeys
+      if (paymentNotEqualsStake) {
+        const paymentMatch = !!(
+          userPaymentHash &&
+          newWallet.signersAddresses?.some(
+            (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+          )
+        );
+        const stakeMatch = !!(
+          userStakeHash &&
+          newWallet.signersStakeKeys?.some(
+            (sk) => isNativeKeyHash(sk) && sk.toLowerCase() === userStakeHash.toLowerCase(),
+          )
+        );
+        return paymentMatch && stakeMatch;
+      }
+      return false;
+    })();
+
+    const qualifies =
+      newWallet.ownerAddress === "all" && (
+        (user?.stakeAddress ? newWallet.signersStakeKeys?.includes(user.stakeAddress) : false) ||
+        newWallet.signersAddresses?.includes(userAddress) ||
+        qualifiesByKeyHash
+      );
+
+    if (qualifies) {
+      ownerUpdateTriggered.current = true;
+      updateNewWalletOwner({ walletId: newWallet.id, ownerAddress: userAddress });
+    }
+  }, [newWallet, userAddress, user, updateNewWalletOwner]);
+  console.log(user, newWallet)
+  const isAlreadySigner = (() => {
+    if (!newWallet) return false;
+    if (userAddress && newWallet.signersAddresses.includes(userAddress)) return true;
+    // If equal CBORs: allow payment key hash match in signersAddresses
+    if (paymentEqualsStake) {
+      if (!userPaymentHash) return false;
+      if (!newWallet.signersAddresses.some(isNativeKeyHash)) return false;
+      return newWallet.signersAddresses.some(
+        (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+      );
+    }
+    // If not equal CBORs: require BOTH payment key hash in signersAddresses AND stake key match (direct or hash)
+    if (paymentNotEqualsStake) {
+      const paymentMatch = !!(
+        userPaymentHash &&
+        newWallet.signersAddresses.some(
+          (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+        )
+      );
+      const stakeDirectMatch = !!(
+        user?.stakeAddress && newWallet.signersStakeKeys?.includes(user.stakeAddress)
+      );
+      const stakeHashMatch = !!(
+        userStakeHash &&
+        newWallet.signersStakeKeys?.some(
+          (sk) => isNativeKeyHash(sk) && sk.toLowerCase() === userStakeHash.toLowerCase(),
+        )
+      );
+      const stakeMatched = stakeDirectMatch || stakeHashMatch;
+      return paymentMatch && stakeMatched;
+    }
+    return false;
+  })();
+
+  // Normalize any key-hash placeholders to actual addresses when we can identify the user
+  useEffect(() => {
+    if (!newWallet) return;
+    if (normalizationTriggered.current) return;
+    if (!userAddress && !user?.stakeAddress) return;
+
+    let nextSignersAddresses = [...newWallet.signersAddresses];
+    let nextSignersStakeKeys = [...newWallet.signersStakeKeys];
+    let didChangeAddresses = false;
+    let didChangeStake = false;
+
+    // Debug: compute and log match status before normalization
+    const nativeAddressKeyHashes = newWallet.signersAddresses?.filter(isNativeKeyHash) || [];
+    const nativeStakeKeyHashes = newWallet.signersStakeKeys?.filter(isNativeKeyHash) || [];
+    const paymentAddrKeyHashMatch = !!(
+      userPaymentHash && nativeAddressKeyHashes.some((h) => h.toLowerCase() === userPaymentHash.toLowerCase())
+    );
+    const stakeKeyHashMatch = !!(
+      userStakeHash && nativeStakeKeyHashes.some((h) => h.toLowerCase() === userStakeHash.toLowerCase())
+    );
+    const stakeDirectMatch = !!(
+      user?.stakeAddress && newWallet.signersStakeKeys?.includes(user.stakeAddress)
+    );
+
+    // If CBORs differ, wait until both payment and stake data are present so we can update both sides together
+    if (paymentNotEqualsStake) {
+      if (!userAddress || !user?.stakeAddress || !userPaymentHash || !userStakeHash) {
+        console.log("[invite] normalize: waiting for both user payment and stake info before updating (CBORs differ)");
+        return;
+      }
+    }
+
+    // Replace payment keyHash in signersAddresses with userAddress
+    if (userAddress && userPaymentHash && newWallet.signersAddresses?.some(isNativeKeyHash)) {
+      const replaced = nextSignersAddresses.map((addr) =>
+        isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase()
+          ? userAddress
+          : addr,
+      );
+      if (replaced.some((v, i) => v !== nextSignersAddresses[i])) {
+        nextSignersAddresses = replaced;
+        didChangeAddresses = true;
+      }
+    }
+
+    // Replace stake keyHash in signersStakeKeys with user's stake address
+    if (user?.stakeAddress && userStakeHash && newWallet.signersStakeKeys?.some(isNativeKeyHash)) {
+      const replacedStake = nextSignersStakeKeys.map((sk) =>
+        isNativeKeyHash(sk) && sk.toLowerCase() === userStakeHash.toLowerCase()
+          ? user.stakeAddress as string
+          : sk,
+      );
+      if (replacedStake.some((v, i) => v !== nextSignersStakeKeys[i])) {
+        nextSignersStakeKeys = replacedStake;
+        didChangeStake = true;
+      }
+    }
+
+    // Extra logs to see which replacements will be sent
+    console.log("[invite] normalize: replacements computed", {
+      didChangeAddresses,
+      didChangeStake,
+      paymentEqualsStake,
+      paymentNotEqualsStake,
+    });
+
+    // If CBORs are equal: allow updating addresses-only.
+    // If CBORs differ: require both sides to change in the same mutation to keep indices aligned.
+    if (paymentEqualsStake) {
+      if (!didChangeAddresses && !didChangeStake) return;
+    } else if (paymentNotEqualsStake) {
+      if (!(didChangeAddresses && didChangeStake)) return;
+    } else {
+      if (!didChangeAddresses && !didChangeStake) return;
+    }
+
+    normalizationTriggered.current = true;
+    updateNewWalletSigners(
+      {
+        walletId: newWalletId!,
+        signersAddresses: nextSignersAddresses,
+        signersStakeKeys: nextSignersStakeKeys,
+        signersDRepKeys: newWallet.signersDRepKeys || [],
+        signersDescriptions: newWallet.signersDescriptions,
+      },
+      {
+        onSuccess: async () => {
+          // silent refresh
+          void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
+        },
+        onError: () => {
+          // allow retry on next render if it fails
+          normalizationTriggered.current = false;
+        },
+      },
+    );
+  }, [newWallet, userAddress, user?.stakeAddress, userPaymentHash, userStakeHash, updateNewWalletSigners, utils, newWalletId]);
+
+  // Set initial signer name when wallet data loads
+  useEffect(() => {
+    if (newWallet && userAddress) {
+      let signerIndex = newWallet.signersAddresses.findIndex(
+        (addr) => addr === userAddress,
+      );
+      // Equal CBORs: fallback to payment hash in signersAddresses
+      if (signerIndex === -1 && paymentEqualsStake && userPaymentHash) {
+        signerIndex = newWallet.signersAddresses.findIndex(
+          (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+        );
+      }
+      // Not equal CBORs: only set name when BOTH indices match and align
+      if (signerIndex === -1 && paymentNotEqualsStake) {
+        const addrIdx = userPaymentHash
+          ? newWallet.signersAddresses.findIndex(
+              (addr) => isNativeKeyHash(addr) && addr.toLowerCase() === userPaymentHash.toLowerCase(),
+            )
+          : -1;
+        const stakeIdx = userStakeHash
+          ? newWallet.signersStakeKeys.findIndex(
+              (sk) => isNativeKeyHash(sk) && sk.toLowerCase() === userStakeHash.toLowerCase(),
+            )
+          : -1;
+        if (addrIdx !== -1 && stakeIdx !== -1 && addrIdx === stakeIdx) {
+          signerIndex = addrIdx;
+        }
+      }
+      if (signerIndex !== -1) {
+        setLocalSignerName(newWallet.signersDescriptions[signerIndex] || "");
+      }
+    }
+  }, [newWallet, userAddress, paymentEqualsStake, paymentNotEqualsStake, userPaymentHash, userStakeHash]);
+
+  
 
   const updateNewWalletSignersDescriptionsMutation =
     api.wallet.updateNewWalletSignersDescriptions.useMutation({
