@@ -114,6 +114,7 @@ export default function PageNewWalletInvite() {
   // Fallback payment key hashes derived from user's stake address payment addresses
   const [stakePaymentHashes, setStakePaymentHashes] = useState<string[]>([]);
   const stakeFetchTriggered = useRef(false);
+  const stakeKeyUpdateTriggered = useRef(false);
 
   // If user's own payment hash does not match any signer key-hash entries,
   // fetch first few payment addresses for the user's stake address and compare their hashes
@@ -151,6 +152,64 @@ export default function PageNewWalletInvite() {
           })
           .filter((h) => !!h);
         setStakePaymentHashes(hashes);
+
+        // If CBORs are equal and any derived payment hash matches a signer key-hash entry,
+        // update the corresponding index in signersStakeKeys with user's stake address
+        try {
+          if (!newWallet) return;
+          if (!user?.stakeAddress) return;
+          if (!paymentEqualsStake) return; // keep indices strictly aligned; skip stake-only updates when CBORs differ
+          if (stakeKeyUpdateTriggered.current) return;
+
+          const signerAddresses = newWallet.signersAddresses || [];
+          const existingStakeKeys = newWallet.signersStakeKeys || [];
+          const lowerDerived = hashes.map((h) => h.toLowerCase());
+
+          const indicesToUpdate = signerAddresses
+            .map((addr, idx) =>
+              isNativeKeyHash(addr) && lowerDerived.includes(addr.toLowerCase())
+                ? idx
+                : -1,
+            )
+            .filter((idx) => idx !== -1)
+            // avoid writing if already set to user's stake address
+            .filter((idx) => existingStakeKeys[idx] !== user.stakeAddress);
+
+          if (indicesToUpdate.length === 0) return;
+
+          const nextStakeKeys = signerAddresses.map((_, idx) =>
+            indicesToUpdate.includes(idx)
+              ? (user.stakeAddress as string)
+              : existingStakeKeys[idx] ?? "",
+          );
+
+          stakeKeyUpdateTriggered.current = true;
+          updateNewWalletSigners(
+            {
+              walletId: newWalletId!,
+              // keep signer key-hash entries unchanged
+              signersAddresses: signerAddresses,
+              // write stake address at matched indices
+              signersStakeKeys: nextStakeKeys,
+              signersDRepKeys: newWallet.signersDRepKeys || [],
+              signersDescriptions: newWallet.signersDescriptions,
+            },
+            {
+              onSuccess: async () => {
+                void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
+              },
+              onError: () => {
+                // allow retry on next render if it fails
+                stakeKeyUpdateTriggered.current = false;
+              },
+            },
+          );
+        } catch (err) {
+          console.error(
+            "[invite] failed updating signersStakeKeys from derived payment hashes",
+            err,
+          );
+        }
       })
       .catch((err: any) => {
         console.error("[invite] failed fetching addresses by stake address", err);
