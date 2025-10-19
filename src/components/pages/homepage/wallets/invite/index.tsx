@@ -644,14 +644,14 @@ export default function PageNewWalletInvite() {
                       signerName={signersDescription}
                       setSignerName={setSignerDescription}
                       onJoin={addSigner}
-                      loading={loading}
+                      loading={loading || hasBothCbors}
                       hasExternalStakeCredential={!!(newWallet as any).stakeCredentialHash}
                     />
 
                     <div className="mt-6 flex justify-end sm:mt-8">
                       <Button
                         onClick={addSigner}
-                        disabled={loading}
+                        disabled={loading || hasBothCbors}
                         className="w-full sm:w-auto"
                         size="lg"
                       >
