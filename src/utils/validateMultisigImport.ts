@@ -59,18 +59,46 @@ const normalize = (v?: string | null) => (typeof v === "string" ? v.trim() : nul
 const requiredField = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 export async function validateMultisigImportPayload(payload: unknown): Promise<ValidationResult> {
-    const rowsUnknown = Array.isArray(payload)
-        ? (payload as unknown[])
-        : Array.isArray((payload as { rows?: unknown })?.rows)
-            ? (((payload as { rows: unknown }).rows as unknown[]))
-            : [];
-    const rows = rowsUnknown as ImportedMultisigRow[];
+    // Accept only new shape: { community, multisig, users }
+    const p = (payload as Record<string, unknown>) ?? {};
+    const community = (p as any)?.community ?? {};
+    const multisig = (p as any)?.multisig ?? {};
+    const users = Array.isArray((p as any)?.users) ? ((p as any).users as any[]) : [];
+
+    let rows: ImportedMultisigRow[] = [];
+    if (users.length > 0 && (multisig?.id || multisig?.address || multisig?.payment_script || multisig?.stake_script)) {
+        rows = users.map((u: any) => {
+            const stakeHex = typeof u?.stake_pubkey_hash_hex === "string" ? u.stake_pubkey_hash_hex.trim().toLowerCase() : null;
+            const out: ImportedMultisigRow = {
+                multisig_id: typeof multisig?.id === "string" ? multisig.id : undefined,
+                multisig_name: typeof multisig?.name === "string" ? multisig.name : null,
+                multisig_address: typeof multisig?.address === "string" ? multisig.address : undefined,
+                multisig_created_at: typeof multisig?.created_at === "string" ? multisig.created_at : null,
+                payment_script: typeof multisig?.payment_script === "string" ? multisig.payment_script : null,
+                stake_script: typeof multisig?.stake_script === "string" ? multisig.stake_script : null,
+                user_id: typeof u?.id === "string" ? u.id : undefined,
+                user_name: typeof u?.name === "string" ? u.name : "",
+                user_address_bech32: typeof u?.address_bech32 === "string" ? u.address_bech32 : "",
+                user_stake_pubkey_hash_hex: stakeHex,
+                user_ada_handle: typeof u?.ada_handle === "string" ? u.ada_handle : "",
+                user_profile_photo_url: typeof u?.profile_photo_url === "string" ? u.profile_photo_url : null,
+                community_id: typeof community?.id === "string" ? community.id : null,
+                community_name: typeof community?.name === "string" ? community.name : null,
+                community_description: typeof community?.description === "string" ? community.description : null,
+                community_profile_photo_url: typeof community?.profile_photo_url === "string" ? community.profile_photo_url : null,
+                community_verified: typeof community?.verified === "boolean" ? community.verified : null,
+                community_verified_name: typeof community?.verified_name === "string" ? community.verified_name : null,
+                community_created_at: null,
+            };
+            return out;
+        });
+    }
 
     if (!Array.isArray(rows) || rows.length === 0) {
         return {
             ok: false,
             status: 400,
-            body: { error: "Expected an array of rows or { rows: [...] }" },
+            body: { error: "Expected payload: { community, multisig, users }" },
         };
     }
 
@@ -86,66 +114,16 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             ok: false,
             status: 400,
             body: {
-                error: "Each row must include user_id and user_stake_pubkey_hash_hex",
+                error: "Each user must include id and stake_pubkey_hash_hex",
                 invalidIndexes,
             },
         };
     }
 
-    // If provided, all multisig_id values must match
-    const providedIds = rows
-        .map((r) => r.multisig_id)
-        .filter((v): v is string => typeof v === "string" && v.trim().length > 0);
-    const multisigIds = new Set(providedIds);
-    if (multisigIds.size > 1) {
-        return {
-            ok: false,
-            status: 400,
-            body: {
-                error: "All rows must belong to the same multisig_id",
-                multisigIds: Array.from(multisigIds),
-            },
-        };
-    }
-
-    const multisigId = rows[0]!.multisig_id ?? null;
-    const multisigName = rows[0]!.multisig_name ?? null;
-    const multisigAddress = rows[0]!.multisig_address ?? null;
-
-    // Shared field consistency
-    const base = {
-        multisig_name: normalize(multisigName),
-        multisig_address: normalize(multisigAddress),
-        payment_script: normalize(rows[0]!.payment_script ?? null),
-        stake_script: normalize(rows[0]!.stake_script ?? null),
-    } as const;
-
-    const fieldMismatches: Record<string, number[]> = {};
-    for (let i = 0; i < rows.length; i++) {
-        const r = rows[i]!;
-        if (normalize(r.multisig_name) !== base.multisig_name) {
-            (fieldMismatches.multisig_name ||= []).push(i);
-        }
-        if (normalize(r.multisig_address) !== base.multisig_address) {
-            (fieldMismatches.multisig_address ||= []).push(i);
-        }
-        if (normalize(r.payment_script) !== base.payment_script) {
-            (fieldMismatches.payment_script ||= []).push(i);
-        }
-        if (normalize(r.stake_script) !== base.stake_script) {
-            (fieldMismatches.stake_script ||= []).push(i);
-        }
-    }
-    if (Object.keys(fieldMismatches).length > 0) {
-        return {
-            ok: false,
-            status: 400,
-            body: {
-                error: "All rows must share the same multisig_name, multisig_address, payment_script, and stake_script",
-                fieldMismatches,
-            },
-        };
-    }
+    // Read multisig fields from top-level payload
+    const multisigId = typeof (payload as any)?.multisig?.id === "string" ? (payload as any).multisig.id : null;
+    const multisigName = typeof (payload as any)?.multisig?.name === "string" ? (payload as any).multisig.name : null;
+    const multisigAddress = typeof (payload as any)?.multisig?.address === "string" ? (payload as any).multisig.address : null;
 
     // Validate multisig address if present
     if (typeof multisigAddress === "string" && multisigAddress.trim().length > 0) {
@@ -264,7 +242,9 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     let isPaymentHierarchical = false;
     let paymentSigKeyHashes: string[] = [];
     let paymentSigMatches: SigMatch[] = [];
-    const providedPaymentCbor = typeof rows[0]!.payment_script === "string" ? rows[0]!.payment_script.trim() : null;
+    const providedPaymentCbor = typeof (payload as any)?.multisig?.payment_script === "string"
+        ? ((payload as any).multisig.payment_script as string).trim()
+        : null;
     if (providedPaymentCbor) {
         try {
             const decoded = decodeNativeScriptFromCbor(providedPaymentCbor);
@@ -297,7 +277,9 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     }
 
     // If a stake_script CBOR is provided, attempt to decode it and log for visibility
-    const providedStakeCbor = typeof rows[0]!.stake_script === "string" ? rows[0]!.stake_script.trim() : null;
+    const providedStakeCbor = typeof (payload as any)?.multisig?.stake_script === "string"
+        ? ((payload as any).multisig.stake_script as string).trim()
+        : null;
     let isStakeHierarchical = false;
     let stakeSigKeyHashes: string[] = [];
     let stakeSigMatches: SigMatch[] = [];

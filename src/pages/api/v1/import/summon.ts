@@ -41,6 +41,11 @@ export default async function handler(
             return v.replace(/<[^>]*>/g, "").trim();
         }
         const walletDescription = (() => {
+            // Prefer new shape: req.body.community.description
+            const maybeDesc = (req.body as any)?.community?.description;
+            if (typeof maybeDesc === "string" && maybeDesc.trim().length > 0) {
+                return stripTags(maybeDesc);
+            }
             for (const r of rows) {
                 const desc = (r as { community_description?: unknown }).community_description;
                 if (typeof desc === "string" && desc.trim().length > 0) {
@@ -58,12 +63,8 @@ export default async function handler(
             ? summary.signerAddresses.map((addr: string) => (typeof addr === "string" ? addr.trim() : ""))
             : [];
 
-        // Prepare raw import bodies to persist: prefer rows if provided, otherwise normalize req.body
-        const rawImportBodies = Array.isArray((req.body as any)?.rows)
-            ? (req.body as any).rows
-            : Array.isArray(req.body)
-                ? req.body
-                : [req.body];
+        // Store the raw request body directly (new API only receives new shape)
+        const rawImportBodies = req.body;
 
         // Persist to NewWallet using validated data
         let dbUpdated = false;
@@ -112,7 +113,7 @@ export default async function handler(
                     update: updateData,
                     create: createDataWithId,
                 });
-                console.log("[api/v1/ejection/redirect] NewWallet upsert success:", { id: saved.id });
+                console.log("[api/v1/import/summon] NewWallet upsert success:", { id: saved.id });
                 dbUpdated = true;
                 newWalletId = saved.id;
             } else {
@@ -135,12 +136,12 @@ export default async function handler(
                 const created = await db.newWallet.create({
                     data: createData,
                 });
-                console.log("[api/v1/ejection/redirect] NewWallet create success:", { id: created.id });
+                console.log("[api/v1/import/summon] NewWallet create success:", { id: created.id });
                 dbUpdated = true;
                 newWalletId = created.id;
             }
         } catch (err) {
-            console.error("[api/v1/ejection/redirect] NewWallet upsert failed:", err);
+            console.error("[api/v1/import/summon] NewWallet upsert failed:", err);
         }
 
         // Generate the URL for the multisig wallet invite page
@@ -155,7 +156,7 @@ export default async function handler(
             inviteUrl
         });
     } catch (error) {
-        console.error("[api/v1/ejection/redirect] Error handling POST:", error);
+        console.error("[api/v1/import/summon] Error handling POST:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }
