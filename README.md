@@ -2,6 +2,7 @@
 
 A comprehensive, enterprise-grade multi-signature wallet solution built on Cardano, designed for teams, DAOs, and organizations to securely manage treasury funds and participate in governance.
 
+
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.4-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-6.4.1-2D3748)](https://www.prisma.io/)
