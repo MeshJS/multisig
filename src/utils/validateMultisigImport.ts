@@ -95,6 +95,56 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     }
 
     if (!Array.isArray(rows) || rows.length === 0) {
+        // Fallback: when users array is empty, derive users from stakeCbor if it differs from paymentCbor
+        try {
+            const paymentCborRaw = typeof (multisig as any)?.payment_script === "string"
+                ? ((multisig as any).payment_script as string).trim()
+                : null;
+            const stakeCborRaw = typeof (multisig as any)?.stake_script === "string"
+                ? ((multisig as any).stake_script as string).trim()
+                : null;
+            const paymentCborNorm = paymentCborRaw ? normalizeCborHex(paymentCborRaw) : "";
+            const stakeCborNorm = stakeCborRaw ? normalizeCborHex(stakeCborRaw) : "";
+            const differs = paymentCborNorm && stakeCborNorm && paymentCborNorm !== stakeCborNorm;
+
+            if (differs && stakeCborRaw) {
+                const decodedStakeForUsers = decodeNativeScriptFromCbor(stakeCborRaw);
+                const stakeHashesForUsers = collectSigKeyHashes(decodedStakeForUsers);
+                if (Array.isArray(stakeHashesForUsers) && stakeHashesForUsers.length > 0) {
+                    rows = stakeHashesForUsers.map((hex) => {
+                        const stakeHex = (hex || "").toLowerCase();
+                        const out: ImportedMultisigRow = {
+                            multisig_id: typeof (multisig as any)?.id === "string" ? (multisig as any).id : undefined,
+                            multisig_name: typeof (multisig as any)?.name === "string" ? (multisig as any).name : null,
+                            multisig_address: typeof (multisig as any)?.address === "string" ? (multisig as any).address : undefined,
+                            multisig_created_at: typeof (multisig as any)?.created_at === "string" ? (multisig as any).created_at : null,
+                            payment_script: typeof (multisig as any)?.payment_script === "string" ? (multisig as any).payment_script : null,
+                            stake_script: typeof (multisig as any)?.stake_script === "string" ? (multisig as any).stake_script : null,
+                            user_id: stakeHex, // Use stake hash as a deterministic id
+                            user_name: "",
+                            user_address_bech32: "",
+                            user_stake_pubkey_hash_hex: stakeHex,
+                            user_ada_handle: "",
+                            user_profile_photo_url: null,
+                            community_id: typeof (community as any)?.id === "string" ? (community as any).id : null,
+                            community_name: typeof (community as any)?.name === "string" ? (community as any).name : null,
+                            community_description: typeof (community as any)?.description === "string" ? (community as any).description : null,
+                            community_profile_photo_url: typeof (community as any)?.profile_photo_url === "string" ? (community as any).profile_photo_url : null,
+                            community_verified: typeof (community as any)?.verified === "boolean" ? (community as any).verified : null,
+                            community_verified_name: typeof (community as any)?.verified_name === "string" ? (community as any).verified_name : null,
+                            community_created_at: null,
+                        };
+                        return out;
+                    });
+                }
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn("Failed to derive users from stakeCbor fallback:", e);
+        }
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
         return {
             ok: false,
             status: 400,
