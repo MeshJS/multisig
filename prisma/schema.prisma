@@ -34,6 +34,7 @@ model Wallet {
   type                String
   isArchived          Boolean  @default(false)
   clarityApiKey       String?
+  rawImportBodies     Json?
 }
 
 model Transaction {
