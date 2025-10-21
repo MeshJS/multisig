@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import type { RawImportBodies } from "@/types/wallet";
+import { Prisma } from "@prisma/client";
 
 export const walletRouter = createTRPCRouter({
   getUserWallets: publicProcedure
@@ -41,24 +43,26 @@ export const walletRouter = createTRPCRouter({
         scriptCbor: z.string(),
         stakeCredentialHash: z.string().optional(),
         type: z.enum(["atLeast", "all", "any"]),
+        rawImportBodies: z.custom<RawImportBodies>().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
-      return ctx.db.wallet.create({
-        data: {
-          name: input.name,
-          description: input.description,
-          signersAddresses: input.signersAddresses,
-          signersDescriptions: input.signersDescriptions,
-          signersStakeKeys: input.signersStakeKeys,
-          signersDRepKeys: input.signersDRepKeys,
-          numRequiredSigners: numRequired as any,
-          scriptCbor: input.scriptCbor,
-          stakeCredentialHash: input.stakeCredentialHash,
-          type: input.type,
-        },
-      });
+      const data = {
+        name: input.name,
+        description: input.description,
+        signersAddresses: input.signersAddresses,
+        signersDescriptions: input.signersDescriptions,
+        signersStakeKeys: input.signersStakeKeys,
+        signersDRepKeys: input.signersDRepKeys,
+        numRequiredSigners: numRequired as any,
+        scriptCbor: input.scriptCbor,
+        stakeCredentialHash: input.stakeCredentialHash,
+        type: input.type,
+        rawImportBodies: input.rawImportBodies as Prisma.InputJsonValue,
+      } as unknown as Prisma.WalletCreateInput;
+
+      return ctx.db.wallet.create({ data });
     }),
 
   updateWalletVerifiedList: publicProcedure

@@ -9,6 +9,7 @@ import { useRouter } from "next/router";
 import { resolvePaymentKeyHash, resolveStakeKeyHash, resolveRewardAddress } from "@meshsdk/core";
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
+import type { RawImportBodies } from "@/types/wallet";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -380,7 +381,13 @@ export function useWalletFlowState(): WalletFlowState {
     }
 
     // Prefer imported payment CBOR from walletInvite when available
-    const importedPaymentCbor = (walletInvite as any)?.paymentCbor as string | undefined;
+    type WalletInviteExtras = {
+      paymentCbor?: string;
+      stakeCbor?: string | null;
+      rawImportBodies?: RawImportBodies | null;
+    };
+    const inviteExtras = (walletInvite as unknown as WalletInviteExtras) || {};
+    const importedPaymentCbor = inviteExtras.paymentCbor;
     let scriptCborToUse: string | undefined;
 
     if (importedPaymentCbor && importedPaymentCbor.length > 0) {
@@ -404,6 +411,7 @@ export function useWalletFlowState(): WalletFlowState {
       signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCborToUse,
+      rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });
