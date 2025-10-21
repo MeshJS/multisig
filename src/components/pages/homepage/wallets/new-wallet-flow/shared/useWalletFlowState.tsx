@@ -379,8 +379,18 @@ export function useWalletFlowState(): WalletFlowState {
       throw new Error("Multisig wallet could not be built.");
     }
 
-    const { scriptCbor } = multisigWallet.getScript();
-    if (!scriptCbor) {
+    // Prefer imported payment CBOR from walletInvite when available
+    const importedPaymentCbor = (walletInvite as any)?.paymentCbor as string | undefined;
+    let scriptCborToUse: string | undefined;
+
+    if (importedPaymentCbor && importedPaymentCbor.length > 0) {
+      scriptCborToUse = importedPaymentCbor;
+    } else {
+      const { scriptCbor } = multisigWallet.getScript();
+      scriptCborToUse = scriptCbor;
+    }
+
+    if (!scriptCborToUse) {
       setLoading(false);
       throw new Error("scriptCbor is undefined");
     }
@@ -393,7 +403,7 @@ export function useWalletFlowState(): WalletFlowState {
       signersStakeKeys: signersStakeKeys,
       signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
-      scriptCbor: scriptCbor,
+      scriptCbor: scriptCborToUse,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });
