@@ -23,6 +23,8 @@ export interface WalletFlowState {
   setName: React.Dispatch<React.SetStateAction<string>>;
   description: string;
   setDescription: React.Dispatch<React.SetStateAction<string>>;
+  usesStored: boolean;
+  setUsesStored: React.Dispatch<React.SetStateAction<boolean>>;
   
   // Signers management
   signersAddresses: string[];
@@ -100,6 +102,7 @@ export function useWalletFlowState(): WalletFlowState {
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const [usesStored, setUsesStored] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [nativeScriptType, setNativeScriptType] = useState<"all" | "any" | "atLeast">("atLeast");
   const [stakeKey, setStakeKey] = useState<string>("");
@@ -335,9 +338,23 @@ export function useWalletFlowState(): WalletFlowState {
       console.log("Loading wallet invite data:", walletInvite);
       setName(walletInvite.name);
       setDescription(walletInvite.description ?? "");
+      setUsesStored(Boolean((walletInvite as any)?.usesStored));
       setSignerAddresses(walletInvite.signersAddresses);
       setSignerDescriptions(walletInvite.signersDescriptions);
-      setSignerStakeKeys(walletInvite.signersStakeKeys);
+      // Conditionally apply signer stake keys based on CBOR policy
+      const paymentCbor = (walletInvite as any)?.paymentCbor || "";
+      const stakeCbor = (walletInvite as any)?.stakeCbor || "";
+      const hasPayment = !!paymentCbor;
+      const hasStake = !!stakeCbor;
+      const bothEmpty = !hasPayment && !hasStake;
+      const bothHave = hasPayment && hasStake;
+      const equal = bothHave && paymentCbor === stakeCbor;
+      const incomingStakeKeys = equal
+        ? []
+        : (bothHave || bothEmpty)
+          ? (walletInvite.signersStakeKeys || [])
+          : [];
+      setSignerStakeKeys(incomingStakeKeys);
       setSignerDRepKeys((walletInvite as any).signersDRepKeys ?? []);
       setNumRequiredSigners(walletInvite.numRequiredSigners!);
       setStakeKey((walletInvite as any).stakeCredentialHash ?? "");
@@ -346,6 +363,7 @@ export function useWalletFlowState(): WalletFlowState {
   }, [pathIsWalletInvite, walletInvite]);
 
   // Utility functions
+
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
@@ -596,6 +614,8 @@ export function useWalletFlowState(): WalletFlowState {
     setName,
     description,
     setDescription,
+    usesStored,
+    setUsesStored,
     
     // Signers management
     signersAddresses,
