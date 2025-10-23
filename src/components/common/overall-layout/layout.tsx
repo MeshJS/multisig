@@ -135,10 +135,13 @@ export default function RootLayout({
         let drepKeyHash = "";
         try {
           const dRepKey = await wallet.getDRep();
+          console.log("DRep key:", dRepKey);
           if (dRepKey && dRepKey.publicKeyHash) {
             drepKeyHash = dRepKey.publicKeyHash;
           }
         } catch (error) {
+          // DRep key is optional, so we continue without it
+          console.log("No DRep key available for this wallet");
         }
 
         // 4) Create or update user (upsert pattern handles both cases)

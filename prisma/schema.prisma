@@ -78,10 +78,6 @@ model NewWallet {
   ownerAddress        String
   stakeCredentialHash String?
   scriptType          String?
-  usesStored          Boolean  @default(false)
-  paymentCbor         String?
-  stakeCbor           String?
-  rawImportBodies     Json?
 }
 
 model Nonce {
@@ -100,15 +96,4 @@ model Ballot {
   choices          String[]
   type             Int
   createdAt        DateTime @default(now())
-}
-
-model BalanceSnapshot {
-  id            String   @id @default(cuid())
-  walletId      String
-  walletName    String
-  address       String
-  adaBalance    Decimal
-  assetBalances Json
-  isArchived    Boolean
-  snapshotDate  DateTime @default(now())
 }

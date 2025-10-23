@@ -84,22 +84,7 @@ export default function UpdateDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
-      throw new Error("DRep not found");
-    }
-    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
-    if (!scriptCbor) {
-      throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
-    }
-    const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
-    if (!changeAddress) {
-      throw new Error("Change address not found");
-    }
+    const drepIds = getDRepIds(multisigWallet.getDRepId()!);
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -118,16 +103,16 @@ export default function UpdateDRep() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(scriptCbor);
+          .txInScript(multisigWallet.getScript().scriptCbor!);
       }
 
       txBuilder
-        .drepUpdateCertificate(dRepId, {
+        .drepUpdateCertificate(drepIds.cip105, {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(drepCbor)
-        .changeAddress(changeAddress);
+        .certificateScript(multisigWallet.getDRepScript()!)
+        .changeAddress(multisigWallet.getScript().address);
 
       await newTransaction({
         txBuilder,

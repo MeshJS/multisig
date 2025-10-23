@@ -19,10 +19,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const { toast } = useToast();
   
   // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
-  const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-  if (!dRepId) {
-    throw new Error("DRep not found");
-  }
+  const dRepId = multisigWallet?.getDRepId() || appWallet.dRepId;
   
   // Check if DRep is actually registered (has info from Blockfrost)
   const isDRepRegistered = drepInfo?.active === true;

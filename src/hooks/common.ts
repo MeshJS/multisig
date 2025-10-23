@@ -90,7 +90,6 @@ export function buildWallet(
   }
 
   //depricated -> only payment-script left in for compatibility
-  //uses unordered keys for payment script
   //Remove later when refactoring
   const nativeScript = {
     type: wallet.type ? wallet.type : "atLeast",

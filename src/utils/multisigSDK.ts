@@ -283,12 +283,7 @@ export class MultisigWallet {
   }
 
   getDRepScript(): string | undefined {
-    let dRepScript = this.buildScript(3);
-
-    if(!dRepScript) {
-      dRepScript = this.buildScript(0);
-    }
-
+    const dRepScript = this.buildScript(3);
     if (!dRepScript) {
       console.warn("MultisigWallet keys:", this.keys);
       console.warn("buildScript(3) result:", dRepScript);
