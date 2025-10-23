@@ -209,15 +209,26 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     type CombinedSigner = { stake: string; address: string; name: string; drepKey: string };
     const combined: CombinedSigner[] = [];
     const seenStake = new Set<string>();
-    const stripTags = (v: string) => v.replace(/<[^>]*>/g, "").trim();
+    const sanitizeText = (v: string) => {
+        const noTags = v.replace(/<[^>]*>/g, "");
+        return noTags
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;")
+            .replace(/`/g, "&#96;")
+            .trim();
+    };
     for (const r of rows) {
         const raw = r.user_stake_pubkey_hash_hex!;
         const hex = typeof raw === "string" ? raw.trim().toLowerCase() : "";
         if (!hex || seenStake.has(hex)) continue;
         seenStake.add(hex);
         const addr = typeof r.user_address_bech32 === "string" ? r.user_address_bech32.trim() : "";
-        // Use user_name for descriptions as requested
-        const name = typeof r.user_name === "string" ? r.user_name.trim() : "";
+        // Use user_name for descriptions as requested, sanitized for safety
+        const nameRaw = typeof r.user_name === "string" ? r.user_name.trim() : "";
+        const name = nameRaw ? sanitizeText(nameRaw) : "";
         const drepKey = ""; // Empty for now as requested
         combined.push({ stake: hex, address: addr, name, drepKey });
     }

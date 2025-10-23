@@ -37,19 +37,27 @@ export default async function handler(
 				? (req.body as unknown[])
 				: [req.body];
         // Build wallet description from the first non-empty tagless community_description
-        function stripTags(v: string) {
-            return v.replace(/<[^>]*>/g, "").trim();
+        function sanitizeDescription(v: string) {
+            const noTags = v.replace(/<[^>]*>/g, "");
+            return noTags
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;")
+                .replace(/`/g, "&#96;")
+                .trim();
         }
         const walletDescription = (() => {
             // Prefer new shape: req.body.community.description
             const maybeDesc = (req.body as any)?.community?.description;
             if (typeof maybeDesc === "string" && maybeDesc.trim().length > 0) {
-                return stripTags(maybeDesc);
+                return sanitizeDescription(maybeDesc);
             }
             for (const r of rows) {
                 const desc = (r as { community_description?: unknown }).community_description;
                 if (typeof desc === "string" && desc.trim().length > 0) {
-                    return stripTags(desc);
+                    return sanitizeDescription(desc);
                 }
             }
             return "";
