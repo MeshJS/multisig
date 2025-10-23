@@ -209,8 +209,19 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     type CombinedSigner = { stake: string; address: string; name: string; drepKey: string };
     const combined: CombinedSigner[] = [];
     const seenStake = new Set<string>();
+    const removeTagsLinear = (input: string) => {
+        let out = "";
+        let inTag = false;
+        for (let i = 0; i < input.length; i++) {
+            const ch = input[i]!;
+            if (ch === "<") { inTag = true; continue; }
+            if (ch === ">") { inTag = false; continue; }
+            if (!inTag) out += ch;
+        }
+        return out;
+    };
     const sanitizeText = (v: string) => {
-        const noTags = v.replace(/<[^>]*>/g, "");
+        const noTags = removeTagsLinear(v);
         return noTags
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")

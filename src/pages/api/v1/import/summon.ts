@@ -37,13 +37,24 @@ export default async function handler(
 				? (req.body as unknown[])
 				: [req.body];
         // Build wallet description from the first non-empty tagless community_description
+        function removeTagsLinear(input: string) {
+            let out = "";
+            let inTag = false;
+            for (let i = 0; i < input.length; i++) {
+                const ch = input[i]!;
+                if (ch === "<") { inTag = true; continue; }
+                if (ch === ">") { inTag = false; continue; }
+                if (!inTag) out += ch;
+            }
+            return out;
+        }
         function sanitizeDescription(v: string) {
-            const noTags = v.replace(/<[^>]*>/g, "");
+            const noTags = removeTagsLinear(v);
             return noTags
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
-                .replace(/\"/g, "&quot;")
+                .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#39;")
                 .replace(/`/g, "&#96;")
                 .trim();
