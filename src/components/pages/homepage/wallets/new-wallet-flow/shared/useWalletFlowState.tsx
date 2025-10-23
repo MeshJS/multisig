@@ -57,6 +57,7 @@ export interface WalletFlowState {
   multisigWallet?: MultisigWallet;
   isValidForSave: boolean;
   isValidForCreate: boolean;
+  hasSignerHashInAddresses: boolean;
   
   // Router info
   router: ReturnType<typeof useRouter>;
@@ -602,11 +603,21 @@ export function useWalletFlowState(): WalletFlowState {
 
   // Validation
   const isValidForSave = !loading && !!name.trim();
+  const hasSignerHashInAddresses = useMemo(() => {
+    return signersAddresses.some((addr) => {
+      if (!addr) return false;
+      const isBech = addr.startsWith("addr1") || addr.startsWith("addr_test1");
+      const isHex56 = /^[0-9a-fA-F]{56}$/.test(addr);
+      return !isBech && isHex56;
+    });
+  }, [signersAddresses]);
+
   const isValidForCreate = signersAddresses.length > 0 &&
     !signersAddresses.some((signer) => !signer || signer.length === 0) &&
     (nativeScriptType !== "atLeast" || numRequiredSigners > 0) &&
     name.length > 0 &&
-    !loading;
+    !loading &&
+    !hasSignerHashInAddresses;
 
   return {
     // Core wallet data
@@ -648,6 +659,7 @@ export function useWalletFlowState(): WalletFlowState {
     multisigWallet,
     isValidForSave,
     isValidForCreate,
+    hasSignerHashInAddresses,
     
     // Router info
     router,

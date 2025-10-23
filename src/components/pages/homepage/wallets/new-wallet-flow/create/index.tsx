@@ -80,6 +80,10 @@ export default function PageReviewWallet() {
                 <p className="text-sm text-foreground">
                   <strong>Not yet compatible:</strong> This wallet was created with a stored script format that is not supported for creation here yet. Please check back soon.
                 </p>
+              ) : walletFlow.hasSignerHashInAddresses ? (
+                <p className="text-sm text-foreground">
+                  <strong>Invite not completed:</strong> Not all signers visited the invite link.
+                </p>
               ) : (
                 <p className="text-sm text-foreground">
                   <strong>Important:</strong> Creation is final - signers and rules can not be changed afterwards.
