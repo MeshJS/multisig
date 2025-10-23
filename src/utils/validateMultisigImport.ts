@@ -392,7 +392,38 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
 
     let signerStakeKeysOrdered: string[] = signerStakeKeys;
     let stakeAddressesUsedFinal: string[] = stakeAddressesUsed;
-    if ((noPaymentMatches || stakeScriptDiffers) && stakeSigKeyHashes.length > 0) {
+    // If payment and stake scripts are identical, align stake keys order to signer addresses order
+    if (!stakeScriptDiffers && paymentSigKeyHashes.length > 0) {
+        const lowerMatches = new Map<string, SigMatch>();
+        for (const m of paymentSigMatches) {
+            lowerMatches.set(m.sigKeyHash.toLowerCase(), m);
+        }
+        signerStakeKeysOrdered = paymentSigKeyHashes.map((sig, i) => {
+            const m = lowerMatches.get(sig.toLowerCase());
+            if (m?.matched && typeof m.signerIndex === "number") {
+                const idx = m.signerIndex;
+                const hex = (signerStakeKeys[idx] || "").toLowerCase();
+                return hex && /^[0-9a-f]{56}$/.test(hex) ? hex : (stakeSigKeyHashes[i] || sig).toLowerCase();
+            }
+            // Fallback to stake script's key hash at same position, or the payment sig itself
+            return (stakeSigKeyHashes[i] || sig).toLowerCase();
+        });
+        // Recompute stakeAddressesUsed to stay positionally aligned with the reordered stake keys
+        stakeAddressesUsedFinal = signerStakeKeysOrdered.map((hex) => {
+            const h = (hex || "").toLowerCase();
+            const tryNetworks: Array<0 | 1> = network === undefined ? [0, 1] : [network as 0 | 1];
+            for (const netId of tryNetworks) {
+                try {
+                    const addr = serializeRewardAddress(h, false, netId);
+                    const resolved = stakeKeyHash(addr)?.toLowerCase();
+                    if (resolved === h) return addr;
+                } catch {
+                    // try next
+                }
+            }
+            return h;
+        });
+    } else if ((noPaymentMatches || stakeScriptDiffers) && stakeSigKeyHashes.length > 0) {
         const lowerMatches = new Map<string, SigMatch>();
         for (const m of stakeSigMatches) {
             lowerMatches.set(m.sigKeyHash.toLowerCase(), m);
