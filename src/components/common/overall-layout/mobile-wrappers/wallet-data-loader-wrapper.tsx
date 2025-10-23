@@ -152,7 +152,7 @@ export default function WalletDataLoaderWrapper({
 
   function dRepIds() {
     // Use multisig wallet DRep ID if available, otherwise fallback to appWallet
-    const dRepId = multisigWallet?.getDRepId() || appWallet?.dRepId;
+    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
     if (!dRepId) return null;
     return getDRepIds(dRepId);
   }

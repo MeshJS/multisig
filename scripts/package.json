@@ -1,0 +1,15 @@
+{
+  "name": "batch-snapshot-orchestrator",
+  "version": "1.0.0",
+  "description": "Batch snapshot orchestrator for wallet balance snapshots",
+  "type": "module",
+  "scripts": {
+    "start": "tsx batch-snapshot-orchestrator.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
