@@ -425,10 +425,10 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             if (m?.matched && typeof m.signerIndex === "number") {
                 const idx = m.signerIndex;
                 const hex = (signerStakeKeys[idx] || "").toLowerCase();
-                return hex && /^[0-9a-f]{56}$/.test(hex) ? hex : (stakeSigKeyHashes[i] || "").toLowerCase();
+                return hex && /^[0-9a-f]{56}$/.test(hex) ? hex : "";
             }
-            // Fallback to stake script's key hash at same position, or empty string
-            return (stakeSigKeyHashes[i] || "").toLowerCase();
+            // Fallback to empty string when no aligned stake key is available
+            return "";
         });
         // Recompute stakeAddressesUsed to stay positionally aligned with the reordered stake keys
         stakeAddressesUsedFinal = signerStakeKeysOrdered.map((hex) => {
