@@ -162,7 +162,7 @@ export default function PageNewWalletInvite() {
           if (stakeKeyUpdateTriggered.current) return;
 
           const signerAddresses = newWallet.signersAddresses || [];
-          const existingStakeKeys = newWallet.signersStakeKeys || [];
+          const existingStakeKeys = (newWallet.signersStakeKeys || []) as string[];
           const lowerDerived = hashes.map((h) => h.toLowerCase());
 
           const indicesToUpdate = signerAddresses
@@ -177,10 +177,21 @@ export default function PageNewWalletInvite() {
 
           if (indicesToUpdate.length === 0) return;
 
-          const nextStakeKeys = signerAddresses.map((_, idx) =>
+          // First align existing stake keys to their payment addresses where possible
+          const alignedStakeKeys: string[] = signerAddresses.map((addr, idx) => {
+            // If we have a full payment address (not a native key-hash placeholder),
+            // derive its stake address and prefer that alignment.
+            if (addr && !isNativeKeyHash(addr)) {
+              const derivedStake = getStakeAddress(addr);
+              if (derivedStake) return derivedStake;
+            }
+            return existingStakeKeys[idx] ?? "";
+          });
+
+          const nextStakeKeys: string[] = signerAddresses.map((_, idx) =>
             indicesToUpdate.includes(idx)
               ? (user.stakeAddress as string)
-              : existingStakeKeys[idx] ?? "",
+              : (alignedStakeKeys[idx] ?? ""),
           );
 
           stakeKeyUpdateTriggered.current = true;
