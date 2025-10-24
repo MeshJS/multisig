@@ -47,31 +47,6 @@
       "hash": "eaff18079b75649a8cfc35b99f8a145c4fabf5c02e239822316e9321"
     },
     {
-      "title": "proxy/spend.proxy.spend",
-      "datum": {
-        "title": "_datum",
-        "schema": {
-          "$ref": "#/definitions/cardano~1transaction~1Datum"
-        }
-      },
-      "redeemer": {
-        "title": "redeemer",
-        "schema": {
-          "$ref": "#/definitions/types~1ProxyRedeemer"
-        }
-      },
-      "parameters": [
-        {
-          "title": "auth_token",
-          "schema": {
-            "$ref": "#/definitions/cardano~1assets~1PolicyId"
-          }
-        }
-      ],
-      "compiledCode": "590253010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e00198049baa0048992cc004cdc3a400060146ea8016266e212000323300100132330010013758602000644b30010018a5eb8226644b3001323300100132330010013756602a602c60246ea8010896600200314bd7044c8cc88c8cc004004dd5980b802112cc00400620071323301b374e660366ea4014cc06cc060004cc06cc0640052f5c066006006603a004603600280c8dd7180980099801801980c001180b000a0282259800800c528456600266e3cdd7180a9bac301500100f8a51899801001180b000a020404d13301200233004004001899802002000a01c30110013012001403c44b30010018a40011337009001198010011808800a01c899912cc0040060051598009808800c4c8c96600266e3cdd71809001006456600266e3cdd71809000a44100899b87375a602460260029009c528201a8a50403460240026eb0c040006004807100e0a5032330010013756601e6020602000444b30010018a5eb82264664464660020026eacc044010896600200310038991980a9ba733015375200a6602a60240026602a602600297ae03300300330170023015001404c6eb8c034004cc00c00cc048008c04000500e2012300e300e300a375400491112cc004cdc3a400000515980098071baa008800c5900f456600266e1d20020028acc004c038dd500440062c807a2c806100c0c024dd50014590070c024004c010dd5004c52689b2b200401",
-      "hash": "0dc0f294df05817b4471985a0fd255fa8c9b81fadc4c630a66783943"
-    },
-    {
       "title": "proxy/spend.proxy.else",
       "redeemer": {
         "schema": {}
@@ -84,8 +59,8 @@
           }
         }
       ],
-      "compiledCode": "590253010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e00198049baa0048992cc004cdc3a400060146ea8016266e212000323300100132330010013758602000644b30010018a5eb8226644b3001323300100132330010013756602a602c60246ea8010896600200314bd7044c8cc88c8cc004004dd5980b802112cc00400620071323301b374e660366ea4014cc06cc060004cc06cc0640052f5c066006006603a004603600280c8dd7180980099801801980c001180b000a0282259800800c528456600266e3cdd7180a9bac301500100f8a51899801001180b000a020404d13301200233004004001899802002000a01c30110013012001403c44b30010018a40011337009001198010011808800a01c899912cc0040060051598009808800c4c8c96600266e3cdd71809001006456600266e3cdd71809000a44100899b87375a602460260029009c528201a8a50403460240026eb0c040006004807100e0a5032330010013756601e6020602000444b30010018a5eb82264664464660020026eacc044010896600200310038991980a9ba733015375200a6602a60240026602a602600297ae03300300330170023015001404c6eb8c034004cc00c00cc048008c04000500e2012300e300e300a375400491112cc004cdc3a400000515980098071baa008800c5900f456600266e1d20020028acc004c038dd500440062c807a2c806100c0c024dd50014590070c024004c010dd5004c52689b2b200401",
-      "hash": "0dc0f294df05817b4471985a0fd255fa8c9b81fadc4c630a66783943"
+      "compiledCode": "59011a010100229800aba2aba1aba0aab9faab9eaab9dab9a9bae0024888888896600266e212000323300100132330010013758601260146014600c6ea8c024c018dd5005912cc004006297ae0899912cc004c8cc004004c8cc004004dd59807180798059baa0042259800800c52f5c1132332232330010013756602000844b30010018801c4c8cc050dd39980a1ba90053301430110013301430120014bd7019801801980b001180a000a024375c6018002660060066022004601e0028068896600200314a115980099b8f375c601c6eb0c0380040222946266004004601e002804900c44cc02c008cc0100100062660080080028038c028004c02c005008112cc0040062900044cdc024004660040046014002803a29344d95900201",
+      "hash": "2baa0c6ed4aa555c15d53f6b85062d8661f380fb8d023d1b1535b035"
     }
   ],
   "definitions": {
@@ -93,54 +68,12 @@
       "title": "ByteArray",
       "dataType": "bytes"
     },
-    "Data": {
-      "title": "Data",
-      "description": "Any Plutus data."
-    },
     "Int": {
       "dataType": "integer"
-    },
-    "aiken/crypto/DataHash": {
-      "title": "DataHash",
-      "dataType": "bytes"
     },
     "cardano/assets/PolicyId": {
       "title": "PolicyId",
       "dataType": "bytes"
-    },
-    "cardano/transaction/Datum": {
-      "title": "Datum",
-      "description": "An output `Datum`.",
-      "anyOf": [
-        {
-          "title": "NoDatum",
-          "dataType": "constructor",
-          "index": 0,
-          "fields": []
-        },
-        {
-          "title": "DatumHash",
-          "description": "A datum referenced by its hash digest.",
-          "dataType": "constructor",
-          "index": 1,
-          "fields": [
-            {
-              "$ref": "#/definitions/aiken~1crypto~1DataHash"
-            }
-          ]
-        },
-        {
-          "title": "InlineDatum",
-          "description": "A datum completely inlined in the output.",
-          "dataType": "constructor",
-          "index": 2,
-          "fields": [
-            {
-              "$ref": "#/definitions/Data"
-            }
-          ]
-        }
-      ]
     },
     "cardano/transaction/OutputReference": {
       "title": "OutputReference",
@@ -174,23 +107,6 @@
         },
         {
           "title": "RBurn",
-          "dataType": "constructor",
-          "index": 1,
-          "fields": []
-        }
-      ]
-    },
-    "types/ProxyRedeemer": {
-      "title": "ProxyRedeemer",
-      "anyOf": [
-        {
-          "title": "SpendFunds",
-          "dataType": "constructor",
-          "index": 0,
-          "fields": []
-        },
-        {
-          "title": "RemoveEmptyInstance",
           "dataType": "constructor",
           "index": 1,
           "fields": []

@@ -16,6 +16,7 @@ import {
   UTxO,
   applyCborEncoding,
   applyParamsToScript,
+  resolveScriptHashDRepId,
 } from "@meshsdk/core";
 import { parseDatumCbor } from "@meshsdk/core-cst";
 
@@ -104,11 +105,8 @@ export class MeshProxyContract extends MeshTxInitiator {
    * const { tx, paramUtxo } = await contract.setupProxy();
    * ```
    */
-  setupProxy = async (
-    msUtxos?: UTxO[],
-    msWalletAddress?: string,
-  ) => {
-    if (this.msCbor && !msUtxos  && !msWalletAddress) {
+  setupProxy = async (msUtxos?: UTxO[], msWalletAddress?: string) => {
+    if (this.msCbor && !msUtxos && !msWalletAddress) {
       throw new Error(
         "No UTxOs and wallet address for multisig script cbor found",
       );
@@ -116,7 +114,7 @@ export class MeshProxyContract extends MeshTxInitiator {
 
     let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
 
-    if (this.msCbor && msUtxos && msWalletAddress){
+    if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
       walletAddress = msWalletAddress;
     }
@@ -126,10 +124,12 @@ export class MeshProxyContract extends MeshTxInitiator {
       throw new Error("No UTxOs found");
     }
     const paramUtxo = utxos?.filter((utxo) =>
-      utxo.output.amount.map(
-        (asset) =>
-          asset.unit === "lovelace" && Number(asset.quantity) >= 20000000,
-      ).reduce((pa,ca,i,a)=>pa||ca),
+      utxo.output.amount
+        .map(
+          (asset) =>
+            asset.unit === "lovelace" && Number(asset.quantity) >= 20000000,
+        )
+        .reduce((pa, ca, i, a) => pa || ca),
     )[0];
     if (!paramUtxo) {
       throw new Error(
@@ -167,9 +167,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       .txOut(proxyAddress, [{ unit: "lovelace", quantity: "1000000" }]);
 
     for (let i = 0; i < 10; i++) {
-      tx.txOut(walletAddress, [
-        { unit: policyId, quantity: "1" },
-      ]);
+      tx.txOut(walletAddress, [{ unit: policyId, quantity: "1" }]);
     }
 
     tx.txInCollateral(
@@ -178,7 +176,6 @@ export class MeshProxyContract extends MeshTxInitiator {
       collateral.output.amount,
       collateral.output.address,
     ).changeAddress(walletAddress);
-    //.selectUtxosFrom(utxos);
 
     const txHex = tx;
 
@@ -195,42 +192,29 @@ export class MeshProxyContract extends MeshTxInitiator {
     msUtxos?: UTxO[],
     msWalletAddress?: string,
   ) => {
-    
-    if (this.msCbor && !msUtxos  && !msWalletAddress) {
+    if (this.msCbor && !msUtxos && !msWalletAddress) {
       throw new Error(
         "No UTxOs and wallet address for multisig script cbor found",
       );
     }
-    console.log("msCbor", this.msCbor);
-    console.log("msUtxos", msUtxos);
-    console.log("msWalletAddress", msWalletAddress);
-
     let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
-    if (this.msCbor && msUtxos && msWalletAddress){
+    // If multisig inputs are provided, use them instead of the wallet inputs
+    if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
       walletAddress = msWalletAddress;
     }
-
-    console.log("utxos", utxos);
-    console.log("collateral", collateral);
-    console.log("walletAddress", walletAddress);
-
     if (!utxos || utxos.length <= 0) {
       throw new Error("No UTxOs found");
     }
-
     if (!walletAddress) {
       throw new Error("No wallet address found");
     }
-
     if (!collateral) {
       throw new Error("No collateral found");
     }
-
     if (this.proxyAddress === undefined) {
       throw new Error("Proxy address not set. Please setupProxy first.");
     }
-
     const blockchainProvider = this.mesh.fetcher;
     if (!blockchainProvider) {
       throw new Error("Blockchain provider not found");
@@ -249,7 +233,8 @@ export class MeshProxyContract extends MeshTxInitiator {
       requiredByUnit.set(out.unit, prev + BigInt(out.amount));
     }
     // Add buffer to lovelace
-    const lovelaceNeed = (requiredByUnit.get("lovelace") ?? BigInt(0)) + REQUIRED_FEE_BUFFER;
+    const lovelaceNeed =
+      (requiredByUnit.get("lovelace") ?? BigInt(0)) + REQUIRED_FEE_BUFFER;
     requiredByUnit.set("lovelace", lovelaceNeed);
 
     const availableByUnit = new Map<string, bigint>();
@@ -263,7 +248,9 @@ export class MeshProxyContract extends MeshTxInitiator {
     for (const [unit, needed] of requiredByUnit.entries()) {
       const available = availableByUnit.get(unit) ?? BigInt(0);
       if (available < needed) {
-        throw new Error(`Insufficient proxy balance for ${unit}. Needed: ${needed.toString()}, Available: ${available.toString()}`);
+        throw new Error(
+          `Insufficient proxy balance for ${unit}. Needed: ${needed.toString()}, Available: ${available.toString()}`,
+        );
       }
     }
 
@@ -279,7 +266,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       return false;
     };
 
-    const contributionScore = (utxo: typeof proxyUtxos[number]) => {
+    const contributionScore = (utxo: (typeof proxyUtxos)[number]) => {
       let score = BigInt(0);
       for (const asset of utxo.output.amount) {
         const remaining = remainingByUnit.get(asset.unit) ?? BigInt(0);
@@ -302,7 +289,9 @@ export class MeshProxyContract extends MeshTxInitiator {
         }
       }
       if (bestIdx === -1 || bestScore === BigInt(0)) {
-        throw new Error("Unable to select proxy UTxOs to cover required amounts.");
+        throw new Error(
+          "Unable to select proxy UTxOs to cover required amounts.",
+        );
       }
       const chosen = candidateUtxos.splice(bestIdx, 1)[0]!;
       selectedUtxos.push(chosen);
@@ -318,17 +307,11 @@ export class MeshProxyContract extends MeshTxInitiator {
     }
 
     const freeProxyUtxos = selectedUtxos;
-    console.log("freeProxyUtxos", freeProxyUtxos);
-
     const paramScriptAT = this.getAuthTokenCbor();
     const policyIdAT = resolveScriptHash(paramScriptAT, "V3");
-
     const authTokenUtxos = utxos.filter((utxo) =>
       utxo.output.amount.some((asset) => asset.unit === policyIdAT),
     );
-
-    console.log("authTokenUtxos", authTokenUtxos);
-    console.log("policyIdAT", policyIdAT);
 
     if (!authTokenUtxos || authTokenUtxos.length === 0) {
       throw new Error("No AuthToken found at control wallet address");
@@ -347,20 +330,20 @@ export class MeshProxyContract extends MeshTxInitiator {
     //1 Get
     let txHex = await this.mesh;
 
-    for ( const input of freeProxyUtxos) {
+    for (const input of freeProxyUtxos) {
       txHex
-      .spendingPlutusScriptV3()
-      .txIn(
-        input.input.txHash,
-        input.input.outputIndex,
-        input.output.amount,
-        input.output.address,
-      )
-      .txInScript(this.getProxyCbor())
-      .txInRedeemerValue(mConStr0([]))
-      .txInInlineDatumPresent()
+        .spendingPlutusScriptV3()
+        .txIn(
+          input.input.txHash,
+          input.input.outputIndex,
+          input.output.amount,
+          input.output.address,
+        )
+        .txInScript(this.getProxyCbor())
+        .txInInlineDatumPresent()
+        .txInRedeemerValue(mConStr0([]));
     }
-    
+
     txHex
       .txIn(
         authTokenUtxo.input.txHash,
@@ -374,9 +357,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
-      .txOut(walletAddress, [
-        { unit: policyIdAT, quantity: "1" },
-      ]);
+      .txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }]);
 
     for (const output of outputs) {
       txHex.txOut(output.address, [
@@ -391,8 +372,85 @@ export class MeshProxyContract extends MeshTxInitiator {
       txHex.txInScript(this.msCbor);
     }
 
-    console.log("tx", txHex);
+    return txHex;
+  };
 
+  registerProxyDrep = async (anchorUrl: string, anchorHash: string, msUtxos?: UTxO[], msWalletAddress?: string ) => {
+    if (this.proxyAddress === undefined) {
+      throw new Error("Proxy address not set. Please setupProxy first.");
+    }
+    if (!anchorUrl || !anchorHash) {
+      throw new Error("Anchor URL and hash are required");
+    }
+    if (this.msCbor && !msUtxos && !msWalletAddress) {
+      throw new Error(
+        "No UTxOs and wallet address for multisig script cbor found",
+      );
+    }
+    let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
+    // If multisig inputs are provided, use them instead of the wallet inputs
+    if (this.msCbor && msUtxos && msWalletAddress) {
+      utxos = msUtxos;
+      walletAddress = msWalletAddress;
+    }
+    if (!utxos || utxos.length <= 0) {
+      throw new Error("No UTxOs found");
+    }
+    if (!walletAddress) {
+      throw new Error("No wallet address found");
+    }
+    if (!collateral) {
+      throw new Error("No collateral found");
+    }
+    if (this.proxyAddress === undefined) {
+      throw new Error("Proxy address not set. Please setupProxy first.");
+    }
+    const blockchainProvider = this.mesh.fetcher;
+    if (!blockchainProvider) {
+      throw new Error("Blockchain provider not found");
+    }
+
+    const paramScriptAT = this.getAuthTokenCbor();
+    const policyIdAT = resolveScriptHash(paramScriptAT, "V3");
+    const authTokenUtxos = utxos.filter((utxo) =>
+      utxo.output.amount.some((asset) => asset.unit === policyIdAT),
+    );
+
+    if (!authTokenUtxos || authTokenUtxos.length === 0) {
+      throw new Error("No AuthToken found at control wallet address");
+    }
+    //ToDo check if AuthToken utxo is used in a pending transaction and blocked then use a free AuthToken
+    const authTokenUtxo = authTokenUtxos[0];
+    if (!authTokenUtxo) {
+      throw new Error("No AuthToken found");
+    }
+    const authTokenUtxoAmt = authTokenUtxo.output.amount;
+    if (!authTokenUtxoAmt) {
+      throw new Error("No AuthToken amount found");
+    }
+
+    const drepId = resolveScriptHashDRepId(this.getProxyCbor());
+    const txHex = await this.mesh;
+    txHex
+      .txIn(
+        authTokenUtxo.input.txHash,
+        authTokenUtxo.input.outputIndex,
+        authTokenUtxo.output.amount,
+        authTokenUtxo.output.address,
+      )
+      .txInCollateral(
+        collateral.input.txHash,
+        collateral.input.outputIndex,
+        collateral.output.amount,
+        collateral.output.address,
+      )
+      .txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }])
+      .drepRegistrationCertificate(drepId, {
+        anchorUrl: anchorUrl,
+        anchorDataHash: anchorHash,
+      })
+      .certificateScript(this.getProxyCbor())
+      .changeAddress(walletAddress);
     return txHex;
   };
 
