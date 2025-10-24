@@ -53,14 +53,14 @@ export default function PageNewWalletInvite() {
   const ownerUpdateTriggered = useRef(false);
 
   const { mutate: updateNewWalletOwner } = api.wallet.updateNewWalletOwner.useMutation({
-    onSuccess: async () => {
+    onSuccess: () => {
       void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
     },
   });
 
   const { mutate: updateNewWalletSigners } =
     api.wallet.updateNewWalletSigners.useMutation({
-      onSuccess: async () => {
+      onSuccess: () => {
         setLoading(false);
         // Clear the name input after successful addition
         setSignerDescription("");
@@ -72,7 +72,7 @@ export default function PageNewWalletInvite() {
         // No reload - just refetch the wallet data
         void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
       },
-      onError: (error) => {
+      onError: () => {
         setLoading(false);
         toast({
           title: "Page No Longer Available",
@@ -195,7 +195,7 @@ export default function PageNewWalletInvite() {
               signersDescriptions: newWallet.signersDescriptions,
             },
             {
-              onSuccess: async () => {
+              onSuccess: () => {
                 void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
               },
               onError: () => {
@@ -366,7 +366,7 @@ export default function PageNewWalletInvite() {
         signersDescriptions: newWallet.signersDescriptions,
       },
       {
-        onSuccess: async () => {
+        onSuccess: () => {
           // silent refresh
           void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
         },
