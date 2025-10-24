@@ -11,6 +11,7 @@ model User {
   id           String @id @default(cuid())
   address      String @unique
   stakeAddress String @unique
+  drepKeyHash  String @default("")
   nostrKey     String @unique
   discordId    String @default("")
 }
@@ -21,6 +22,7 @@ model Wallet {
   description             String?
   signersAddresses        String[]
   signersStakeKeys        String[]
+  signersDRepKeys         String[]
   signersDescriptions     String[]
   numRequiredSigners      Int?
   verified                String[]
@@ -68,11 +70,16 @@ model NewWallet {
   description         String?
   signersAddresses    String[]
   signersStakeKeys    String[]
+  signersDRepKeys     String[]
   signersDescriptions String[]
   numRequiredSigners  Int?
   ownerAddress        String
   stakeCredentialHash String?
   scriptType          String?
+  usesStored          Boolean  @default(false)
+  paymentCbor         String?
+  stakeCbor           String?
+  rawImportBodies     Json?
 }
 
 model Nonce {
@@ -104,4 +111,15 @@ model Proxy {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   userId       String?
+}
+
+model BalanceSnapshot {
+  id            String   @id @default(cuid())
+  walletId      String
+  walletName    String
+  address       String
+  adaBalance    Decimal
+  assetBalances Json
+  isArchived    Boolean
+  snapshotDate  DateTime @default(now())
 }

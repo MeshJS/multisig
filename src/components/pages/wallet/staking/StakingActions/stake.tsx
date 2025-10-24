@@ -57,19 +57,19 @@ export default function StakeButton({
 
       const actionsMap = {
         register: {
-          execute: () => txBuilder.registerStakeCertificate(rewardAddress),
+          execute: () => txBuilder.registerStakeCertificate(rewardAddress).certificateScript(stakingScript),
           description: "Register stake.",
           successTitle: "Stake Registered",
           successMessage: "Your stake address has been registered.",
         },
         deregister: {
-          execute: () => txBuilder.deregisterStakeCertificate(rewardAddress),
+          execute: () => txBuilder.deregisterStakeCertificate(rewardAddress).certificateScript(stakingScript),
           description: "Deregister stake.",
           successTitle: "Stake Deregistered",
           successMessage: "Your stake address has been deregistered.",
         },
         delegate: {
-          execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex),
+          execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript),
           description: "Delegate stake.",
           successTitle: "Stake Delegated",
           successMessage: "Your stake has been delegated.",
@@ -83,7 +83,7 @@ export default function StakeButton({
         registerAndDelegate: {
           execute: () => {
             txBuilder.registerStakeCertificate(rewardAddress);
-            txBuilder.delegateStakeCertificate(rewardAddress, poolHex);
+            txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript);
           },
           description: "Register & delegate stake.",
           successTitle: "Stake Registered & Delegated",
@@ -98,10 +98,7 @@ export default function StakeButton({
 
       actionConfig.execute();
 
-      txBuilder
-        .selectUtxosFrom(utxos)
-        .changeAddress(appWallet.address)
-        .certificateScript(stakingScript);
+      txBuilder.changeAddress(appWallet.address);
 
       await newTransaction({
         txBuilder,

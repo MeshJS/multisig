@@ -106,6 +106,9 @@ export default function ReviewNativeScript({
     ...(mWallet?.buildScript(2) !== undefined && mWallet.stakingEnabled() 
       ? [{ id: "stake", label: "Stake Script" }] 
       : []),
+    ...(mWallet?.buildScript(3) !== undefined && mWallet.isGovernanceEnabled() 
+      ? [{ id: "drep", label: "DRep Script" }] 
+      : []),
   ];
 
   const renderContent = () => {
@@ -194,6 +197,22 @@ export default function ReviewNativeScript({
               label="CBOR"
               value={mWallet.getStakingScript()}
               copyString={mWallet.getStakingScript()}
+            />
+          </div>
+        );
+      
+      case "drep":
+        return (
+          <div className="space-y-4 min-h-[200px]">
+            <RowLabelInfo
+              label="DRep Script"
+              value={JSON.stringify(mWallet.buildScript(3), null, 2)}
+              copyString={JSON.stringify(mWallet.buildScript(3), null, 2)}
+            />
+            <RowLabelInfo
+              label="DRep Script CBOR"
+              value={mWallet.getDRepScript()}
+              copyString={mWallet.getDRepScript()}
             />
           </div>
         );

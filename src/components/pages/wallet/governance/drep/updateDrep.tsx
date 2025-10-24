@@ -1,5 +1,4 @@
 import { Minus } from "lucide-react";
-import CardUI from "@/components/ui/card-content";
 import { useState } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWallet } from "@meshsdk/react";
@@ -14,6 +13,10 @@ import { getFile, hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
+
+interface PutResponse {
+  url: string;
+}
 
 export default function UpdateDRep() {
   const { appWallet } = useAppWallet();
@@ -46,10 +49,15 @@ export default function UpdateDRep() {
     if (!appWallet) {
       throw new Error("Wallet not connected");
     }
+    if (!multisigWallet) {
+      throw new Error("Multisig wallet not connected");
+    }
+    // Cast metadata to a known record type
     const drepMetadata = (await getDRepMetadata(
       formState,
       appWallet,
     )) as Record<string, unknown>;
+    console.log(drepMetadata);
     const rawResponse = await fetch("/api/vercel-storage/put", {
       method: "POST",
       headers: {
@@ -61,8 +69,9 @@ export default function UpdateDRep() {
         value: JSON.stringify(drepMetadata),
       }),
     });
-    const res = (await rawResponse.json()) as { url: string };
+    const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
+    // Await file retrieval
     const fileContent = getFile(anchorUrl);
     const anchorObj = JSON.parse(fileContent);
     const anchorHash = hashDrepAnchor(anchorObj);
@@ -70,13 +79,27 @@ export default function UpdateDRep() {
   }
 
   async function updateDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet)
-      throw new Error("Wallet not connected");
-    if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
+    if (!connected || !userAddress || !multisigWallet || !appWallet)
+      throw new Error("Multisig wallet not connected");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const drepIds = getDRepIds(appWallet.dRepId);
+    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+    if (!dRepId) {
+      throw new Error("DRep not found");
+    }
+    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
+    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
+    if (!scriptCbor) {
+      throw new Error("Script not found");
+    }
+    if (!drepCbor) {
+      throw new Error("DRep script not found");
+    }
+    const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
+    if (!changeAddress) {
+      throw new Error("Change address not found");
+    }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
 
@@ -95,19 +118,16 @@ export default function UpdateDRep() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(appWallet.scriptCbor);
+          .txInScript(scriptCbor);
       }
 
       txBuilder
-        .drepUpdateCertificate(drepIds.cip105, {
-          anchorUrl,
+        .drepUpdateCertificate(dRepId, {
+          anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
         })
-        .certificateScript(appWallet.scriptCbor)
-        .changeAddress(appWallet.address)
-        .selectUtxosFrom(manualUtxos);
-
-
+        .certificateScript(drepCbor)
+        .changeAddress(changeAddress);
 
       await newTransaction({
         txBuilder,
@@ -122,7 +142,13 @@ export default function UpdateDRep() {
   }
 
   return (
-    <CardUI title="Update DRep" icon={Minus}>
+    <div className="w-full max-w-4xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <Minus className="h-6 w-6" />
+          Update DRep
+        </h1>
+      </div>
       {appWallet && (
         <DRepForm
           _imageUrl={""}
@@ -163,13 +189,13 @@ export default function UpdateDRep() {
           manualUtxos={manualUtxos}
           setManualUtxos={setManualUtxos}
           setManualSelected={() => {
-            // Intentionally left empty.
+            // This function is intentionally left empty.
           }}
           loading={loading}
           onSubmit={updateDrep}
           mode="update"
         />
       )}
-    </CardUI>
+    </div>
   );
 }
