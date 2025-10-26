@@ -24,8 +24,7 @@ export default function PageHeader({
       <h1 className="flex-1 shrink-0 whitespace-nowrap text-2xl font-semibold tracking-tight sm:grow-0">
         {pageTitle}
       </h1>
-      <div className="ml-auto sm:ml-0"></div>
-      <div className="hidden items-center gap-2 md:ml-auto md:flex">
+      <div className="flex items-center gap-2 ml-auto">
         {children}
       </div>
     </div>

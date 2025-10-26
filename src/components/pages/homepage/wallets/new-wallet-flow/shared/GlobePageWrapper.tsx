@@ -1,7 +1,7 @@
 /**
- * Glass Morphism Page Wrapper
- * Shared wrapper for all new-wallet-flow pages with glass effect and globe background
- * Eliminates 70+ lines of duplicate code per page
+ * Globe Page Wrapper
+ * Shared wrapper that adds globe background to pages
+ * Glass morphism styles are now applied globally via CSS
  */
 
 import React from 'react';
@@ -13,22 +13,19 @@ const Globe = dynamic(() => import('@/components/pages/homepage/globe'), {
   loading: () => null
 });
 
-interface GlassMorphismPageWrapperProps {
+interface GlobePageWrapperProps {
   children: React.ReactNode;
   className?: string;
 }
 
-export default function GlassMorphismPageWrapper({ 
-  children, 
-  className = '' 
-}: GlassMorphismPageWrapperProps) {
+export default function GlobePageWrapper({
+  children,
+  className = ''
+}: GlobePageWrapperProps) {
   const [isDarkMode, setIsDarkMode] = React.useState(false);
-  
-  // Add subtle glass effect styles
+
+  // Detect dark mode for globe background
   React.useEffect(() => {
-    // Add glass class to body for this page only
-    document.body.classList.add('add-wallet-glass-page');
-    
     const updateLocalTheme = () => {
       const isDark = document.documentElement.classList.contains('dark');
       setIsDarkMode(isDark);
@@ -43,10 +40,8 @@ export default function GlassMorphismPageWrapper({
       attributes: true,
       attributeFilter: ['class']
     });
-    
+
     return () => {
-      // Clean up when leaving the page
-      document.body.classList.remove('add-wallet-glass-page');
       observer.disconnect();
     };
   }, []);
@@ -67,7 +62,7 @@ export default function GlassMorphismPageWrapper({
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ 
+        <div style={{
           width: '100vmin',
           height: '100vmin',
           maxWidth: '750px',
@@ -80,7 +75,7 @@ export default function GlassMorphismPageWrapper({
           <Globe />
         </div>
       </div>
-      
+
       {/* Page content */}
       <div style={{ position: 'relative' }} className={className}>
         {children}

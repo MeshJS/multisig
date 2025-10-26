@@ -1,20 +1,50 @@
 import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 overflow-hidden",
-      className
-    )}
-    {...props}
-  />
-))
+const cardVariants = cva(
+  cn(
+    "rounded-xl transition-all overflow-hidden",
+    // Glass Morphism as DEFAULT (base styles)
+    "bg-white/80 dark:bg-gray-900/50",
+    "backdrop-blur-[10px] backdrop-saturate-150",
+    "border border-gray-200/20 dark:border-white/10",
+    "shadow-lg",
+    "text-zinc-950 dark:text-zinc-50"
+  ),
+  {
+    variants: {
+      variant: {
+        default: "", // Uses base styles (glass)
+        solid: cn(
+          // Non-glass fallback
+          "bg-white dark:bg-zinc-950",
+          "backdrop-blur-none",
+          "border-zinc-200 dark:border-zinc-800",
+          "shadow"
+        ),
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+export interface CardProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof cardVariants> {}
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(cardVariants({ variant }), className)}
+      {...props}
+    />
+  )
+)
 Card.displayName = "Card"
 
 const CardHeader = React.forwardRef<
@@ -73,4 +103,4 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent, cardVariants }

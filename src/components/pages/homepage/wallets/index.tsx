@@ -13,6 +13,7 @@ import PageHeader from "@/components/common/page-header";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import SectionTitle from "@/components/common/section-title";
+import GlobePageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlobePageWrapper";
 
 
 export default function PageWallets() {
@@ -36,46 +37,45 @@ export default function PageWallets() {
     );
 
   return (
-    <div className="flex flex-col gap-4">
-      <>
-        <PageHeader pageTitle="Wallets">
-          <Button size="sm" asChild>
-            <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
-          </Button>
-          {wallets && wallets.some((wallet) => wallet.isArchived) && (
-            <Button
-              variant={showArchived ? "default" : "secondary"}
-              onClick={() => setShowArchived(!showArchived)}
-            >
-              {showArchived ? "Hide Archived" : "Show Archived"}
-            </Button>
-          )}
-        </PageHeader>
+    <GlobePageWrapper>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-8">
+      <PageHeader pageTitle="Wallets">
+        <Button size="sm" asChild>
+          <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
+        </Button>
+      </PageHeader>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {wallets && wallets.length === 0 && (
-            <div className="col-span-3 text-center text-muted-foreground">
-              No wallets,{" "}
-              <Link href="/wallets/new-wallet-flow/save">
-                <b className="cursor-pointer text-white">create one</b>
-              </Link>
-              ?
-            </div>
-          )}
-          {wallets &&
-            wallets
-              .filter((wallet) => showArchived || !wallet.isArchived)
-              .sort((a, b) =>
-                a.isArchived === b.isArchived
-                  ? a.name.localeCompare(b.name)
-                  : a.isArchived
-                    ? 1
-                    : -1,
-              )
-              .map((wallet) => (
-                <CardWallet key={wallet.id} wallet={wallet as Wallet} />
-              ))}
-        </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {(() => {
+          const activeWallets = wallets
+            ? wallets.filter((wallet) => !wallet.isArchived)
+            : [];
+
+          if (activeWallets.length === 0) {
+            return (
+              <div className="backdrop-blur-[10px] backdrop-saturate-150 bg-white/80 dark:bg-gray-900/50 border border-gray-200/20 dark:border-white/10 rounded-xl p-6">
+                <h3 className="text-xl font-medium text-foreground mb-4">
+                  No active wallet yet
+                </h3>
+                <p className="text-muted-foreground mb-6">
+                  Add and create a wallet to get started.
+                </p>
+                <Button asChild>
+                  <Link href="/wallets/new-wallet-flow/save">
+                    Add wallet
+                  </Link>
+                </Button>
+              </div>
+            );
+          }
+
+          return activeWallets
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((wallet) => (
+              <CardWallet key={wallet.id} wallet={wallet as Wallet} />
+            ));
+        })()}
+      </div>
 
         {newPendingWallets && newPendingWallets.length > 0 && (
           <>
@@ -108,8 +108,43 @@ export default function PageWallets() {
             </div>
           </>
         )}
-      </>
-    </div>
+
+        {wallets && wallets.some((wallet) => wallet.isArchived) && !showArchived && (
+          <div className="flex justify-start">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowArchived(true)}
+            >
+              Show Archived
+            </Button>
+          </div>
+        )}
+
+        {showArchived && wallets && wallets.some((wallet) => wallet.isArchived) && (
+          <>
+            <div className="flex items-center gap-4">
+              <SectionTitle>Archived Wallets</SectionTitle>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowArchived(false)}
+              >
+                Hide
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              {wallets
+                .filter((wallet) => wallet.isArchived)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((wallet) => (
+                  <CardWallet key={wallet.id} wallet={wallet as Wallet} />
+                ))}
+            </div>
+          </>
+        )}
+      </div>
+    </GlobePageWrapper>
   );
 }
 

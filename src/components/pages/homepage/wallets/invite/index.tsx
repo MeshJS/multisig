@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import GlassMorphismPageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlassMorphismPageWrapper";
+import GlobePageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlobePageWrapper";
 import WalletInfoCard from "./WalletInfoCard";
 import JoinAsSignerCard from "./JoinAsSignerCard";
 import ManageSignerCard from "./ManageSignerCard";
@@ -230,7 +230,7 @@ export default function PageNewWalletInvite() {
   }
 
   return (
-    <GlassMorphismPageWrapper>
+    <GlobePageWrapper>
       <div className="min-h-screen w-full overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl">
           {/* Main Title */}
@@ -369,6 +369,6 @@ export default function PageNewWalletInvite() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </GlassMorphismPageWrapper>
+    </GlobePageWrapper>
   );
 }

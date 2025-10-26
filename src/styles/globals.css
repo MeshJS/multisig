@@ -48,6 +48,28 @@
   animation: spin 1s linear infinite;
 }
 
+/* Aurora Background Animation - Simple gradient slide (CSS limitation: no real liquid effect) */
+@keyframes aurora {
+  from {
+    background-position: 50% 50%;
+  }
+  to {
+    background-position: 350% 50%;
+  }
+}
+
+.animate-aurora {
+  /* 70s = Smoother, more subtle gradient movement (~15% slower) */
+  animation: aurora 70s linear infinite;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora {
+    animation-duration: 140s; /* Slower for accessibility */
+  }
+}
+
 /**
  * Glass Morphism Navigation Enhancements
  * Applied globally to sidebar and header elements
@@ -212,51 +234,51 @@ header.border-b {
  * Make light mode table look better like dark mode equivalent
  */
 
-/* Make table rows more visible in light mode on glass pages */
-.add-wallet-glass-page table tr {
+/* Make table rows more visible in light mode */
+table tr {
   transition: background-color 0.2s ease;
 }
 
 /* Light mode - stronger background like dark mode */
-.add-wallet-glass-page table tr:hover {
+table tr:hover {
   background: rgba(0, 0, 0, 0.08) !important; /* Stronger than zinc-100/50 */
 }
 
 /* Keep dark mode as is */
-.dark .add-wallet-glass-page table tr:hover {
+.dark table tr:hover {
   background: rgba(255, 255, 255, 0.08) !important; /* Equivalent opacity */
 }
 
 /* Table headers - better contrast */
-.add-wallet-glass-page table th {
+table th {
   background: rgba(0, 0, 0, 0.03) !important;
   font-weight: 600 !important;
 }
 
-.dark .add-wallet-glass-page table th {
+.dark table th {
   background: rgba(255, 255, 255, 0.05) !important;
 }
 
 /* Table borders - back to original desktop values */
-.add-wallet-glass-page table tr {
+table tr {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
-.dark .add-wallet-glass-page table tr {
+.dark table tr {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important; /* Back to original */
 }
 
 /* Last row no border */
-.add-wallet-glass-page table tr:last-child {
+table tr:last-child {
   border-bottom: none !important;
 }
 
 /* Mobile Signer Cards - very subtle borders */
-.add-wallet-glass-page .sm\\:hidden .border {
+.sm\\:hidden .border {
   border-color: rgba(0, 0, 0, 0.06) !important; /* Light mode - more subtle */
 }
 
-.dark .add-wallet-glass-page .sm\\:hidden .border {
+.dark .sm\\:hidden .border {
   border-color: rgba(255, 255, 255, 0.01) !important; /* Dark mode - barely visible */
 }
 
@@ -448,24 +470,6 @@ div > header[data-header="main"] {
   top: 0;
 }
 
-/* Signers Table Light Mode Fix */
-.add-wallet-glass-page table tr {
-  transition: background-color 0.2s ease;
-}
-
-.add-wallet-glass-page table tr:hover {
-  background: rgba(0, 0, 0, 0.08) !important;
-}
-
-.dark .add-wallet-glass-page table tr:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.add-wallet-glass-page table th {
-  background: rgba(0, 0, 0, 0.03) !important;
-  font-weight: 600 !important;
-}
-
 /**
  * Application-Specific Styles
  */
@@ -477,33 +481,30 @@ div > header[data-header="main"] {
   @apply pointer-events-none;
 }
 
-/* Apply to Add Wallet page specifically */
-body.add-wallet-glass-page {
-  background: transparent !important;
+/* Global Glass Morphism Styles */
+body {
+  background: #ffffff !important;
+  @apply text-gray-900 dark:text-white;
 }
 
-/* Cards on Add Wallet page */
-body.add-wallet-glass-page main [class*="border"] {
+.dark body {
+  background: #121212 !important;
+}
+
+/* Cards with Glass Morphism Effect */
+main [class*="border"] {
   backdrop-filter: blur(10px) !important;
   background: rgba(255, 255, 255, 0.8) !important;
-  /* Use Tailwind's border system */
   border-radius: 0.75rem !important;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
 }
 
-body.add-wallet-glass-page.dark main [class*="border"],
-.dark body.add-wallet-glass-page main [class*="border"] {
+.dark main [class*="border"] {
   background: rgba(30, 30, 30, 0.5) !important;
-  /* Use Tailwind's border system */
-}
-
-/* Text colors */
-body.add-wallet-glass-page {
-  @apply text-gray-900 dark:text-white;
 }
 
 /* Logo colors */
-body.add-wallet-glass-page #logo-header svg {
+#logo-header svg {
   @apply fill-current;
 }
 

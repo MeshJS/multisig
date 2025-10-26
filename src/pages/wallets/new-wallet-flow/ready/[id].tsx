@@ -4,12 +4,12 @@
  */
 
 import PageSuccessWallet from "@/components/pages/homepage/wallets/new-wallet-flow/ready";
-import GlassMorphismPageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlassMorphismPageWrapper";
+import GlobePageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlobePageWrapper";
 
 export default function Page() {
   return (
-    <GlassMorphismPageWrapper>
+    <GlobePageWrapper>
       <PageSuccessWallet />
-    </GlassMorphismPageWrapper>
+    </GlobePageWrapper>
   );
 }
