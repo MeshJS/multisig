@@ -25,7 +25,10 @@ import {
   TrendingUp,
   Edit3,
   Save,
-  X
+  X,
+  UserCheck,
+  UserX,
+  Users
 } from "lucide-react";
 
 // ProxyCard Component
@@ -446,6 +449,9 @@ interface ProxyOverviewProps {
   selectedProxyBalance: Array<{ unit: string; quantity: string }>;
   proxyBalance: Array<{ unit: string; quantity: string }>;
   isProxySetup: boolean;
+  selectedProxyDrepId: string;
+  selectedProxyDrepStatus: any;
+  drepLoading: boolean;
   onProxySelection: (proxyId: string) => void;
   onCopyToClipboard: (text: string) => void;
   onStartSetup: () => void;
@@ -461,6 +467,9 @@ const ProxyOverview = memo(function ProxyOverview({
   selectedProxyBalance,
   proxyBalance,
   isProxySetup,
+  selectedProxyDrepId,
+  selectedProxyDrepStatus,
+  drepLoading,
   onProxySelection,
   onCopyToClipboard,
   onStartSetup,
@@ -485,6 +494,86 @@ const ProxyOverview = memo(function ProxyOverview({
                 <div>
                   <p className="font-medium text-foreground">Proxy system active</p>
                   <p className="text-sm text-muted-foreground">Ready for automated transactions</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* DRep Information Card - Only show when a proxy is selected */}
+        {selectedProxy && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-blue-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Proxy DRep Information</p>
+                  <p className="text-sm text-muted-foreground">Delegated Representative details</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* DRep ID */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Hash className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs font-medium">DRep ID</span>
+                    {selectedProxyDrepId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 ml-auto"
+                        onClick={() => onCopyToClipboard(selectedProxyDrepId)}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="p-2 bg-muted/50 rounded text-xs font-mono break-all">
+                    {drepLoading ? (
+                      <div className="h-4 bg-muted animate-pulse rounded"></div>
+                    ) : selectedProxyDrepId ? (
+                      selectedProxyDrepId
+                    ) : (
+                      <span className="text-muted-foreground">Not registered</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* DRep Status */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    {selectedProxyDrepStatus?.active ? (
+                      <UserCheck className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <UserX className="h-3 w-3 text-muted-foreground" />
+                    )}
+                    <span className="text-xs font-medium">Status</span>
+                  </div>
+                  <div className="p-2 bg-muted/50 rounded text-xs">
+                    {drepLoading ? (
+                      <div className="h-4 bg-muted animate-pulse rounded"></div>
+                    ) : selectedProxyDrepStatus ? (
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedProxyDrepStatus.active 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                        }`}>
+                          {selectedProxyDrepStatus.active ? 'Active' : 'Inactive'}
+                        </span>
+                        {selectedProxyDrepStatus.amount && (
+                          <span className="text-muted-foreground">
+                            {Math.round(Number(selectedProxyDrepStatus.amount) / 1000000).toLocaleString()} ₳
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Not registered</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>

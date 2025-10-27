@@ -12,20 +12,104 @@ import { MoreVertical, Info, ExternalLink, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useToast } from "@/hooks/use-toast";
+import { useProxy } from "@/hooks/useProxy";
+import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import { getTxBuilder } from "@/utils/get-tx-builder";
+import { useSiteStore } from "@/lib/zustand/site";
+import { api } from "@/utils/api";
+import { useState, useEffect } from "react";
+import { UTxO } from "@meshsdk/core";
 
-export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
+export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const { multisigWallet } = useMultisigWallet();
   const { toast } = useToast();
+  const { isProxyEnabled, selectedProxyId } = useProxy();
+  const network = useSiteStore((state) => state.network);
   
-  // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
-  const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-  if (!dRepId) {
+  // Proxy DRep state
+  const [proxyDrepInfo, setProxyDrepInfo] = useState<any>(null);
+  const [proxyDrepId, setProxyDrepId] = useState<string | null>(null);
+  const [loadingProxyDrep, setLoadingProxyDrep] = useState(false);
+
+  // Get proxies for the current wallet
+  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+    { 
+      walletId: appWallet?.id || undefined,
+    },
+    { enabled: !!(appWallet?.id && isProxyEnabled) }
+  );
+  
+  // Fetch proxy DRep information when proxy mode is enabled
+  useEffect(() => {
+    const fetchProxyDrepInfo = async () => {
+      if (!isProxyEnabled || !selectedProxyId || !proxies || !appWallet) {
+        setProxyDrepInfo(null);
+        setProxyDrepId(null);
+        return;
+      }
+
+      try {
+        setLoadingProxyDrep(true);
+        
+        // Get the selected proxy
+        const proxy = proxies.find((p: any) => p.id === selectedProxyId);
+        if (!proxy) {
+          setProxyDrepInfo(null);
+          setProxyDrepId(null);
+          return;
+        }
+
+        // Create proxy contract instance
+        const txBuilder = getTxBuilder(network);
+        const proxyContract = new MeshProxyContract(
+          {
+            mesh: txBuilder,
+            wallet: undefined, // We don't need wallet for getting DRep info
+            networkId: network,
+          },
+          {
+            paramUtxo: JSON.parse(proxy.paramUtxo),
+          },
+          appWallet.scriptCbor,
+        );
+        proxyContract.proxyAddress = proxy.proxyAddress;
+
+        // Get DRep ID and status
+        const drepId = proxyContract.getDrepId();
+        setProxyDrepId(drepId);
+        
+        try {
+          const drepStatus = await proxyContract.getDrepStatus();
+          setProxyDrepInfo(drepStatus);
+        } catch (error) {
+          console.log("DRep not registered yet or error fetching status:", error);
+          setProxyDrepInfo(null);
+        }
+      } catch (error) {
+        console.error("Error fetching proxy DRep info:", error);
+        setProxyDrepInfo(null);
+        setProxyDrepId(null);
+      } finally {
+        setLoadingProxyDrep(false);
+      }
+    };
+
+    fetchProxyDrepInfo();
+  }, [isProxyEnabled, selectedProxyId, proxies, appWallet, network]);
+
+  // Determine which DRep info to use
+  const currentDrepId = isProxyEnabled && proxyDrepId ? proxyDrepId : 
+    (multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId);
+  
+  const currentDrepInfo = isProxyEnabled ? proxyDrepInfo : drepInfo;
+  
+  if (!currentDrepId) {
     throw new Error("DRep not found");
   }
   
   // Check if DRep is actually registered (has info from Blockfrost)
-  const isDRepRegistered = drepInfo?.active === true;
+  const isDRepRegistered = currentDrepInfo?.active === true;
   return (
     <div className="w-full">
       {/* Header */}
@@ -39,7 +123,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
               DRep Information
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
+              {isProxyEnabled ? "Proxy DRep Management - Note: governance features are currently in alpha" : "Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress."}
             </p>
           </div>
         </div>
@@ -55,7 +139,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
               <Link
-                href={`https://gov.tools/drep_directory/${dRepId}`}
+                href={`https://gov.tools/drep_directory/${currentDrepId}`}
                 className="flex items-center gap-2"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -66,30 +150,50 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
         </DropdownMenu>
       </div>
 
+      {/* Proxy Mode Indicator */}
+      {isProxyEnabled && (
+        <div className="mb-4 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Proxy Mode Active
+            </span>
+            <span className="text-xs text-blue-600 dark:text-blue-400">
+              Using proxy DRep for governance operations
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* DRep ID */}
         <div className="space-y-2 md:col-span-2 lg:col-span-3">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            DRep ID
+            {isProxyEnabled ? "Proxy DRep ID" : "DRep ID"}
           </label>
           <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
-                {dRepId}
-              </span>
+              {loadingProxyDrep ? (
+                <span className="text-sm text-gray-500">Loading proxy DRep ID...</span>
+              ) : (
+                <span className="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                  {currentDrepId}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  navigator.clipboard.writeText(dRepId);
+                  navigator.clipboard.writeText(currentDrepId);
                   toast({
                     title: "Copied",
-                    description: "DRep ID copied to clipboard",
+                    description: `${isProxyEnabled ? "Proxy " : ""}DRep ID copied to clipboard`,
                     duration: 2000,
                   });
                 }}
                 className="h-6 w-6 p-0 flex-shrink-0"
+                disabled={loadingProxyDrep}
               >
                 <Copy className="h-3 w-3" />
               </Button>
@@ -117,14 +221,14 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
         </div>
 
         {/* Voting Power */}
-        {isDRepRegistered && (
+        {isDRepRegistered && currentDrepInfo && (
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Voting Power
             </label>
             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border">
               <span className="text-lg font-semibold text-green-600 dark:text-green-400">
-                {Math.round(Number(drepInfo.amount) / 1000000)
+                {Math.round(Number(currentDrepInfo.amount) / 1000000)
                   .toString()
                   .replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₳
               </span>
@@ -153,7 +257,7 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
             Update DRep
           </Link>
         </Button>
-        <Retire appWallet={appWallet} />
+        <Retire appWallet={appWallet} manualUtxos={manualUtxos} />
         <Link href={`/wallets/${appWallet.id}/governance/drep`}>
           <Button className="flex-1 sm:flex-initial" variant="outline">
             Find a DRep

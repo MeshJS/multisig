@@ -17,6 +17,7 @@ import {
   applyCborEncoding,
   applyParamsToScript,
   resolveScriptHashDRepId,
+  MeshTxBuilder,
 } from "@meshsdk/core";
 import { parseDatumCbor } from "@meshsdk/core-cst";
 
@@ -375,12 +376,23 @@ export class MeshProxyContract extends MeshTxInitiator {
     return txHex;
   };
 
-  registerProxyDrep = async (anchorUrl: string, anchorHash: string, msUtxos?: UTxO[], msWalletAddress?: string ) => {
+  manageProxyDrep = async (
+    action: "register" | "deregister" | "update",
+    anchorUrl?: string,
+    anchorHash?: string,
+    msUtxos?: UTxO[],
+    msWalletAddress?: string,
+  ) => {
     if (this.proxyAddress === undefined) {
       throw new Error("Proxy address not set. Please setupProxy first.");
     }
-    if (!anchorUrl || !anchorHash) {
-      throw new Error("Anchor URL and hash are required");
+    if (
+      (action === "register" || action === "update") &&
+      (!anchorUrl || !anchorHash)
+    ) {
+      throw new Error(
+        "Anchor URL and hash are required for register and update actions",
+      );
     }
     if (this.msCbor && !msUtxos && !msWalletAddress) {
       throw new Error(
@@ -405,6 +417,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     if (this.proxyAddress === undefined) {
       throw new Error("Proxy address not set. Please setupProxy first.");
     }
+
     const blockchainProvider = this.mesh.fetcher;
     if (!blockchainProvider) {
       throw new Error("Blockchain provider not found");
@@ -429,29 +442,140 @@ export class MeshProxyContract extends MeshTxInitiator {
       throw new Error("No AuthToken amount found");
     }
 
-    const drepId = resolveScriptHashDRepId(this.getProxyCbor());
+    const proxyCbor = this.getProxyCbor();
+    const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
+    const drepId = resolveScriptHashDRepId(proxyScriptHash);
+
     const txHex = await this.mesh;
+    txHex.txIn(
+      authTokenUtxo.input.txHash,
+      authTokenUtxo.input.outputIndex,
+      authTokenUtxo.output.amount,
+      authTokenUtxo.output.address,
+    );
+
+    if (this.msCbor) {
+      txHex.txInScript(this.msCbor);
+    }
+    txHex.txInCollateral(
+      collateral.input.txHash,
+      collateral.input.outputIndex,
+      collateral.output.amount,
+      collateral.output.address,
+    );
+
+    // add more utxo inputs until the required amount is reached, use utxos list.
+    // Register requires 505 ADA, deregister and update only need 2 ADA
+    const requiredAmount =
+      action === "register" ? BigInt(505000000) : BigInt(2000000);
+    let totalAmount = BigInt(0);
+    for (const utxo of utxos) {
+      if (totalAmount >= requiredAmount) {
+        break;
+      }
+      txHex.txIn(
+        utxo.input.txHash,
+        utxo.input.outputIndex,
+        utxo.output.amount,
+        utxo.output.address,
+      );
+      if (this.msCbor) {
+        txHex.txInScript(this.msCbor);
+      }
+      totalAmount += BigInt(
+        utxo.output.amount.find((asset: any) => asset.unit === "lovelace")
+          ?.quantity || "0",
+      );
+    }
+
+    txHex.txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }]);
+
+    // Add the appropriate certificate based on action
+    if (action === "register") {
+      txHex.drepRegistrationCertificate(drepId, {
+        anchorUrl: anchorUrl!,
+        anchorDataHash: anchorHash!,
+      });
+    } else if (action === "deregister") {
+      txHex.drepDeregistrationCertificate(drepId, "500000000");
+    } else if (action === "update") {
+      txHex.drepUpdateCertificate(drepId, {
+        anchorUrl: anchorUrl!,
+        anchorDataHash: anchorHash!,
+      });
+    }
+
     txHex
-      .txIn(
-        authTokenUtxo.input.txHash,
-        authTokenUtxo.input.outputIndex,
-        authTokenUtxo.output.amount,
-        authTokenUtxo.output.address,
-      )
-      .txInCollateral(
-        collateral.input.txHash,
-        collateral.input.outputIndex,
-        collateral.output.amount,
-        collateral.output.address,
-      )
-      .txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }])
-      .drepRegistrationCertificate(drepId, {
-        anchorUrl: anchorUrl,
-        anchorDataHash: anchorHash,
-      })
-      .certificateScript(this.getProxyCbor())
+      .certificateScript(this.getProxyCbor(), "V3")
+      .certificateRedeemerValue(mConStr0([]))
       .changeAddress(walletAddress);
+
     return txHex;
+  };
+
+  /**
+   * Register a proxy DRep
+   *
+   * @param anchorUrl - URL for the DRep metadata
+   * @param anchorHash - Hash of the DRep metadata
+   * @param msUtxos - Optional multisig UTxOs
+   * @param msWalletAddress - Optional multisig wallet address
+   * @returns - Transaction hex for signing
+   */
+  registerProxyDrep = async (
+    anchorUrl: string,
+    anchorHash: string,
+    msUtxos?: UTxO[],
+    msWalletAddress?: string,
+  ) => {
+    return this.manageProxyDrep(
+      "register",
+      anchorUrl,
+      anchorHash,
+      msUtxos,
+      msWalletAddress,
+    );
+  };
+
+  /**
+   * Deregister a proxy DRep
+   *
+   * @param msUtxos - Optional multisig UTxOs
+   * @param msWalletAddress - Optional multisig wallet address
+   * @returns - Transaction hex for signing
+   */
+  deregisterProxyDrep = async (msUtxos?: UTxO[], msWalletAddress?: string) => {
+    return this.manageProxyDrep(
+      "deregister",
+      undefined,
+      undefined,
+      msUtxos,
+      msWalletAddress,
+    );
+  };
+
+  /**
+   * Update a proxy DRep
+   *
+   * @param anchorUrl - URL for the DRep metadata
+   * @param anchorHash - Hash of the DRep metadata
+   * @param msUtxos - Optional multisig UTxOs
+   * @param msWalletAddress - Optional multisig wallet address
+   * @returns - Transaction hex for signing
+   */
+  updateProxyDrep = async (
+    anchorUrl: string,
+    anchorHash: string,
+    msUtxos?: UTxO[],
+    msWalletAddress?: string,
+  ) => {
+    return this.manageProxyDrep(
+      "update",
+      anchorUrl,
+      anchorHash,
+      msUtxos,
+      msWalletAddress,
+    );
   };
 
   /**
@@ -496,5 +620,190 @@ export class MeshProxyContract extends MeshTxInitiator {
     );
 
     return balance;
+  };
+
+  getDrepId = () => {
+    const proxyCbor = this.getProxyCbor();
+    const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
+    return resolveScriptHashDRepId(proxyScriptHash);
+  };
+
+  getDrepStatus = async () => {
+    const drepId = this.getDrepId();
+    const drepStatus = await this.mesh.fetcher?.get(
+      `/governance/dreps/${drepId}`,
+    );
+    return drepStatus;
+  };
+
+  /**
+   * Vote on governance proposals using proxy DRep
+   * @param votes Array of vote objects with proposalId, voteKind, and optional metadata
+   * @param msUtxos Multisig UTxOs for transaction inputs (optional)
+   * @param msWalletAddress Multisig wallet address (optional)
+   * @returns Transaction builder
+   */
+  voteProxyDrep = async (
+    votes: Array<{
+      proposalId: string;
+      voteKind: "Yes" | "No" | "Abstain";
+      metadata?: any;
+    }>,
+    msUtxos?: UTxO[],
+    msWalletAddress?: string,
+  ): Promise<MeshTxBuilder> => {
+    if (!votes || votes.length === 0) {
+      throw new Error("No votes provided");
+    }
+
+    // Get wallet info for transaction
+    const walletInfo = await this.getWalletInfoForTx();
+
+    // Use multisig inputs if provided, otherwise use regular wallet
+    const utxos = msUtxos || walletInfo.utxos;
+    const walletAddress = msWalletAddress || walletInfo.walletAddress;
+
+    // Always get collateral from user's regular wallet
+    let collateral: UTxO;
+    try {
+      const collateralInfo = await this.getWalletInfoForTx();
+      const foundCollateral = collateralInfo.utxos.find((utxo: UTxO) =>
+        utxo.output.amount.some(
+          (amount: any) =>
+            amount.unit === "lovelace" &&
+            BigInt(amount.quantity) >= BigInt(5000000),
+        ),
+      );
+      if (!foundCollateral) {
+        throw new Error(
+          "No suitable collateral UTxO found in regular wallet. Please add at least 5 ADA to your regular wallet.",
+        );
+      }
+      collateral = foundCollateral;
+    } catch (error) {
+      throw new Error(
+        "Failed to get collateral from regular wallet. Please ensure you have at least 5 ADA in your regular wallet for transaction collateral.",
+      );
+    }
+
+    if (!walletAddress) {
+      throw new Error("No wallet address found");
+    }
+    if (!collateral) {
+      throw new Error("No collateral found");
+    }
+    if (this.proxyAddress === undefined) {
+      throw new Error("Proxy address not set. Please setupProxy first.");
+    }
+
+    const blockchainProvider = this.mesh.fetcher;
+    if (!blockchainProvider) {
+      throw new Error("Blockchain provider not found");
+    }
+
+    const paramScriptAT = this.getAuthTokenCbor();
+    const policyIdAT = resolveScriptHash(paramScriptAT, "V3");
+    const authTokenUtxos = utxos.filter((utxo) =>
+      utxo.output.amount.some((asset) => asset.unit === policyIdAT),
+    );
+
+    if (!authTokenUtxos || authTokenUtxos.length === 0) {
+      throw new Error("No AuthToken found at control wallet address");
+    }
+
+    const authTokenUtxo = authTokenUtxos[0];
+    if (!authTokenUtxo) {
+      throw new Error("No AuthToken found");
+    }
+    const authTokenUtxoAmt = authTokenUtxo.output.amount;
+    if (!authTokenUtxoAmt) {
+      throw new Error("No AuthToken amount found");
+    }
+
+    const proxyCbor = this.getProxyCbor();
+    const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
+    const drepId = resolveScriptHashDRepId(proxyScriptHash);
+
+    const txHex = await this.mesh;
+
+    // 1. Add AuthToken UTxO first (following manageProxyDrep pattern)
+    txHex.txIn(
+      authTokenUtxo.input.txHash,
+      authTokenUtxo.input.outputIndex,
+      authTokenUtxo.output.amount,
+      authTokenUtxo.output.address,
+    );
+
+    if (this.msCbor) {
+      txHex.txInScript(this.msCbor);
+    }
+
+    // 2. Add collateral
+    txHex.txInCollateral(
+      collateral.input.txHash,
+      collateral.input.outputIndex,
+      collateral.output.amount,
+      collateral.output.address,
+    );
+
+    // 3. Add additional UTxOs if needed (for voting fees)
+    const requiredAmount = BigInt(2000000); // 2 ADA for voting
+    let totalAmount = BigInt(0);
+    for (const utxo of utxos) {
+      if (totalAmount >= requiredAmount) {
+        break;
+      }
+      txHex.txIn(
+        utxo.input.txHash,
+        utxo.input.outputIndex,
+        utxo.output.amount,
+        utxo.output.address,
+      );
+      if (this.msCbor) {
+        txHex.txInScript(this.msCbor);
+      }
+      totalAmount += BigInt(
+        utxo.output.amount.find((asset: any) => asset.unit === "lovelace")
+          ?.quantity || "0",
+      );
+    }
+
+    // 4. Add output (return AuthToken)
+    txHex.txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }]);
+
+    console.log("votes", votes);
+    console.log("txHex", txHex);
+
+    // 5. Add votes for each proposal
+    for (const vote of votes) {
+      const [txHash, certIndex] = vote.proposalId.split("#");
+      if (!txHash || certIndex === undefined) {
+        throw new Error(`Invalid proposal ID format: ${vote.proposalId}`);
+      }
+
+      txHex
+      .votePlutusScriptV3()
+      .vote(
+        {
+          type: "DRep",
+          drepId: drepId,
+        },
+        {
+          txHash: txHash,
+          txIndex: parseInt(certIndex),
+        },
+        {
+          voteKind: vote.voteKind,
+        },
+      )
+      .voteScript(this.getProxyCbor())
+      .voteRedeemerValue("")
+    }
+
+    // 6. Add certificate script and redeemer (following manageProxyDrep pattern)
+    txHex
+      .changeAddress(walletAddress);
+
+    return txHex;
   };
 }
