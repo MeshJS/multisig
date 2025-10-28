@@ -48,7 +48,7 @@ export default function WalletDataLoaderWrapper({
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
-  const { fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo, setProxies } = useProxyActions();
+  const { fetchAllProxyData, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
@@ -189,49 +189,20 @@ export default function WalletDataLoaderWrapper({
           walletId: appWallet.id,
         });
 
-
         // First, add proxies to the store
         setProxies(appWallet.id, proxies);
 
-        // Fetch balance and DRep info for each proxy
-        for (const proxy of proxies) {
-          try {
-            
-            // Fetch balance
-            await fetchProxyBalance(
-              appWallet.id, 
-              proxy.id, 
-              proxy.proxyAddress, 
-              network.toString()
-            );
-            
-            // Fetch DRep info with force refresh
-            await fetchProxyDrepInfo(
-              appWallet.id, 
-              proxy.id, 
-              proxy.proxyAddress, 
-              proxy.authTokenId, 
-              appWallet.scriptCbor, 
-              network.toString(),
-              proxy.paramUtxo,
-              true // Force refresh to bypass cache
-            );
-            
-            // Fetch delegators info with force refresh
-            await fetchProxyDelegatorsInfo(
-              appWallet.id, 
-              proxy.id, 
-              proxy.proxyAddress, 
-              proxy.authTokenId, 
-              appWallet.scriptCbor, 
-              network.toString(),
-              proxy.paramUtxo,
-              true // Force refresh to bypass cache
-            );
-            
-          } catch (error) {
-            console.error(`WalletDataLoaderWrapper: Error fetching data for proxy ${proxy.id}:`, error);
-          }
+        // Fetch all proxy data in parallel using the new batch function
+        if (proxies.length > 0) {
+          console.log(`WalletDataLoaderWrapper: Fetching data for ${proxies.length} proxies in parallel`);
+          await fetchAllProxyData(
+            appWallet.id, 
+            proxies, 
+            appWallet.scriptCbor, 
+            network.toString(),
+            false // Use cache to avoid duplicate requests
+          );
+          console.log("WalletDataLoaderWrapper: Successfully fetched all proxy data");
         }
       } catch (error) {
         console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);
@@ -267,9 +238,6 @@ export default function WalletDataLoaderWrapper({
     if (appWallet && prevWalletIdRef.current !== appWallet.id) {
       refreshWallet();
       prevWalletIdRef.current = appWallet.id;
-    } else if (appWallet) {
-      // If wallet exists but we already have data, still fetch proxy data
-      fetchProxyData();
     }
   }, [appWallet]);
 

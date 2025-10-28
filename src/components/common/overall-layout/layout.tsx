@@ -161,6 +161,19 @@ export default function RootLayout({
           return;
         }
         
+        // Handle connection errors with retry logic
+        if (error instanceof Error && (
+          error.message.includes("Could not establish connection") ||
+          error.message.includes("Receiving end does not exist") ||
+          error.message.includes("Cannot read properties of undefined")
+        )) {
+          console.log("Browser extension connection error detected, retrying in 2 seconds...");
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+          return;
+        }
+        
         // For other errors, don't throw to prevent app crash
         // The user can retry by reconnecting their wallet
       }
