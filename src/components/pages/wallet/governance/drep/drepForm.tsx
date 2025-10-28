@@ -39,6 +39,7 @@ interface DRepFormProps {
   loading: boolean;
   onSubmit: () => void;
   mode: "register" | "update";
+  isProxyMode?: boolean;
 }
 
 export default function DRepForm({
@@ -70,6 +71,7 @@ export default function DRepForm({
   loading,
   onSubmit,
   mode,
+  isProxyMode = false,
 }: DRepFormProps) {
   // Local state for links and identities for immediate updates
   const [localLinks, setLocalLinks] = useState<string[]>(links);
@@ -228,7 +230,7 @@ export default function DRepForm({
         />
       )}
 
-      <div>
+      <div className="space-y-2">
         <Button
           onClick={onSubmit}
           disabled={
@@ -238,13 +240,19 @@ export default function DRepForm({
             !objectives ||
             !qualifications
           }
+          className="w-full"
         >
           {loading
             ? "Loading..."
             : mode === "register"
-            ? "Register DRep"
-            : "Update DRep"}
+            ? `Register DRep ${isProxyMode ? "(Proxy Mode)" : "(Standard Mode)"}`
+            : `Update DRep ${isProxyMode ? "(Proxy Mode)" : "(Standard Mode)"}`}
         </Button>
+        {isProxyMode && (
+          <p className="text-xs text-muted-foreground text-center">
+            This will create a multisig transaction for proxy DRep registration
+          </p>
+        )}
       </div>
     </div>
   );

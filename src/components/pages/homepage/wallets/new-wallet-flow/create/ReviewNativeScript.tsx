@@ -84,7 +84,20 @@ export default function ReviewNativeScript({
   }, [appWallet, walletsUtxos]);
 
   if (!mWallet) return null;
-  const dSAddr = deserializeAddress(mWallet.getScript().address);
+  
+  let dSAddr;
+  try {
+    dSAddr = deserializeAddress(mWallet.getScript().address);
+  } catch (error) {
+    console.error("Failed to get script address:", error);
+    return (
+      <div className="p-4 border rounded-lg bg-red-50 border-red-200">
+        <p className="text-red-800 text-sm">
+          Unable to generate script address. Please check your wallet configuration.
+        </p>
+      </div>
+    );
+  }
 
   const menuItems = [
     { id: "basics", label: "Basics" },

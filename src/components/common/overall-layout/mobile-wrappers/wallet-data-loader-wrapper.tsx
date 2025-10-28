@@ -11,6 +11,7 @@ import { Asset } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
+import { useProxyActions } from "@/lib/zustand/proxy";
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -47,6 +48,7 @@ export default function WalletDataLoaderWrapper({
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
+  const { fetchAllProxyData, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
@@ -179,6 +181,35 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
+  async function fetchProxyData() {
+    if (appWallet?.id && appWallet?.scriptCbor) {     
+      try {
+        // Get proxies from API
+        const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
+          walletId: appWallet.id,
+        });
+
+        // First, add proxies to the store
+        setProxies(appWallet.id, proxies);
+
+        // Fetch all proxy data in parallel using the new batch function
+        if (proxies.length > 0) {
+          console.log(`WalletDataLoaderWrapper: Fetching data for ${proxies.length} proxies in parallel`);
+          await fetchAllProxyData(
+            appWallet.id, 
+            proxies, 
+            appWallet.scriptCbor, 
+            network.toString(),
+            false // Use cache to avoid duplicate requests
+          );
+          console.log("WalletDataLoaderWrapper: Successfully fetched all proxy data");
+        }
+      } catch (error) {
+        console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);
+      }
+    }
+  }
+
   async function refreshWallet() {
     if (fetchingTransactions.current) return;
 
@@ -188,8 +219,11 @@ export default function WalletDataLoaderWrapper({
     await getTransactionsOnChain();
     await getWalletAssets();
     await getDRepInfo();
+    await fetchProxyData(); // Fetch proxy data
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    // Also refresh proxy data
+    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
     setRandomState();
     setLoading(false);
     fetchingTransactions.current = false;
