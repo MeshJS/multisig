@@ -7,7 +7,7 @@ import { Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { toast } from "@/hooks/use-toast";
-import ProxySetup from "@/components/multisig/proxy/ProxySetup";
+import ProxyControl from "@/components/multisig/proxy/ProxyControl";
 
 interface ProxySetupStepProps {
   appWallet: Wallet;
@@ -26,7 +26,6 @@ export default function ProxySetupStep({
   const [isCheckingProxies, setIsCheckingProxies] = useState(true);
   const [hasExistingProxy, setHasExistingProxy] = useState(false);
   const [showProxySetup, setShowProxySetup] = useState(false);
-  const [isCreatingProxy, setIsCreatingProxy] = useState(false);
 
   // Check for existing proxies
   const { data: existingProxies, isLoading: isLoadingProxies } = api.proxy.getProxiesByWallet.useQuery(
@@ -67,23 +66,6 @@ export default function ProxySetupStep({
     setShowProxySetup(true);
   };
 
-  const handleProxyCreated = () => {
-    setIsCreatingProxy(false);
-    toast({
-      title: "Success",
-      description: "Proxy created successfully!",
-    });
-    onContinue();
-  };
-
-  const handleProxyError = (error: string) => {
-    setIsCreatingProxy(false);
-    toast({
-      title: "Error",
-      description: `Failed to create proxy: ${error}`,
-      variant: "destructive",
-    });
-  };
 
   if (isCheckingProxies) {
     return (
@@ -108,12 +90,7 @@ export default function ProxySetupStep({
           description="Set up a proxy for your new wallet"
           cardClassName="col-span-2"
         >
-          <ProxySetup
-            walletId={newWalletId}
-            onSuccess={handleProxyCreated}
-            onError={handleProxyError}
-            onCancel={() => setShowProxySetup(false)}
-          />
+          <ProxyControl />
         </CardUI>
       </div>
     );
@@ -188,20 +165,13 @@ export default function ProxySetupStep({
           </Button>
           <Button
             onClick={handleShowProxySetup}
-            disabled={isCreatingProxy}
+            disabled={false}
             className="flex-1"
           >
-            {isCreatingProxy ? (
-              <>
-                <Loader className="h-4 w-4 mr-2 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                Create Proxy
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </>
-            )}
+            <>
+              Create Proxy
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </>
           </Button>
         </div>
       </CardUI>

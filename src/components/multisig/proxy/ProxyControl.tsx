@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useWallet } from "@meshsdk/react";
 import { MeshProxyContract } from "./offchain";
 import { useUserStore } from "@/lib/zustand/user";
@@ -13,7 +13,7 @@ import ProxySetup from "./ProxySetup";
 import ProxySpend from "./ProxySpend";
 import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
 import { getProvider } from "@/utils/get-provider";
-import { MeshTxBuilder, UTxO } from "@meshsdk/core";
+import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 
@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertCircle, ChevronDown, ChevronUp, Wallet, TrendingUp, Info, UserCheck, UserX } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Wallet, TrendingUp, Info } from "lucide-react";
 
 interface ProxyOutput {
   address: string;
@@ -43,25 +43,23 @@ export default function ProxyControl() {
   const setLoading = useSiteStore((state) => state.setLoading);
   const network = useSiteStore((state) => state.network);
   const { appWallet } = useAppWallet();
-  const ctx = api.useUtils();
   const { newTransaction } = useTransaction();
-  const { isProxyEnabled, selectedProxyId, setSelectedProxy, clearSelectedProxy } = useProxy();
+  const { selectedProxyId, setSelectedProxy, clearSelectedProxy } = useProxy();
   
   // Get proxies from proxy store (includes balance and DRep info)
-  const { proxies: storeProxies, loading: storeLoading, error: storeError } = useProxyData(appWallet?.id);
+  const { proxies: storeProxies, loading: storeLoading } = useProxyData(appWallet?.id);
   
   // Get proxies from API (for mutations)
-  const { data: apiProxies, refetch: refetchProxies, isLoading: apiLoading, error: apiError } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: apiProxies, refetch: refetchProxies, isLoading: apiLoading } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
-      walletId: appWallet?.id || undefined,
+      walletId: appWallet?.id ?? undefined,
     },
     { enabled: !!appWallet?.id }
   );
 
   // Use store proxies if available, otherwise fall back to API proxies
-  const proxies = storeProxies.length > 0 ? storeProxies : (apiProxies || []);
+  const proxies = useMemo(() => storeProxies.length > 0 ? storeProxies : (apiProxies ?? []), [storeProxies, apiProxies]);
   const proxiesLoading = storeLoading || apiLoading;
-  const proxiesError = storeError || apiError;
 
   const { mutateAsync: createProxy } = api.proxy.createProxy.useMutation({
     onSuccess: () => {
@@ -78,7 +76,7 @@ export default function ProxyControl() {
   // State management
   const [proxyContract, setProxyContract] = useState<MeshProxyContract | null>(null);
   const [isProxySetup, setIsProxySetup] = useState<boolean>(false);
-  const [localLoading, setLocalLoading] = useState<boolean>(false);
+  const [, setLocalLoading] = useState<boolean>(false);
   const [tvlLoading, setTvlLoading] = useState<boolean>(false);
 
   // Setup flow state
@@ -106,8 +104,8 @@ export default function ProxyControl() {
   ]);
 
   // UTxO selection state (UI only). We will still pass all UTxOs from provider to contract.
-  const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
-  const [manualSelected, setManualSelected] = useState<boolean>(false);
+  const [, setSelectedUtxos] = useState<UTxO[]>([]);
+  const [, setManualSelected] = useState<boolean>(false);
 
   // Helper to resolve inputs for multisig controlled txs
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
@@ -137,7 +135,7 @@ export default function ProxyControl() {
             networkId: network,
           },
           {},
-          appWallet?.scriptCbor || undefined,
+          appWallet?.scriptCbor ?? undefined,
         );
         setProxyContract(contract);
       } catch (error) {
@@ -149,7 +147,7 @@ export default function ProxyControl() {
         });
       }
     }
-  }, [connected, wallet, userAddress, network]);
+  }, [connected, wallet, userAddress, network, appWallet?.scriptCbor]);
 
   // Check if proxy is already set up
   const checkProxySetup = useCallback(async () => {
@@ -158,7 +156,7 @@ export default function ProxyControl() {
     try {
       const balance = await proxyContract.getProxyBalance();
       setIsProxySetup(balance.length > 0);
-    } catch (error) {
+    } catch {
       // Proxy not set up yet
       setIsProxySetup(false);
     }
@@ -166,7 +164,7 @@ export default function ProxyControl() {
 
   // Load initial state
   useEffect(() => {
-    checkProxySetup();
+    void checkProxySetup();
   }, [checkProxySetup]);
 
   // Step 1: Initialize proxy setup
@@ -200,7 +198,7 @@ export default function ProxyControl() {
         authTokenId: result.authTokenId,
         proxyAddress: result.proxyAddress,
         txHex: result.tx,
-        description: description || undefined,
+        description: description ?? undefined,
       });
 
       setSetupStep(1);
@@ -221,7 +219,7 @@ export default function ProxyControl() {
       setSetupLoading(false);
       setLocalLoading(false);
     }
-  }, [proxyContract, connected, setLoading]);
+  }, [proxyContract, connected, getMsInputs, newTransaction]);
 
   // Step 2: Review and confirm setup
   const handleConfirmSetup = useCallback(async () => {
@@ -260,12 +258,12 @@ export default function ProxyControl() {
       }
 
       await createProxy({
-        walletId: appWallet?.id || undefined,
+        walletId: appWallet?.id ?? undefined,
         userId: undefined,
         proxyAddress: setupData.proxyAddress,
         authTokenId: setupData.authTokenId,
         paramUtxo: JSON.stringify(setupData.paramUtxo),
-        description: setupData.description || undefined,
+        description: setupData.description ?? undefined,
       });
 
       // Update local state
@@ -312,7 +310,7 @@ export default function ProxyControl() {
       setSetupLoading(false);
       setLocalLoading(false);
     }
-  }, [setupData, wallet, appWallet, createProxy, refetchProxies, setLoading]);
+  }, [setupData, wallet, appWallet, createProxy, refetchProxies, getMsInputs, newTransaction]);
 
   // Reset setup flow
   const handleResetSetup = useCallback(() => {
@@ -372,8 +370,8 @@ export default function ProxyControl() {
     }
   }, [proxyContract, network, wallet]);
 
-  // Get DRep information for a specific proxy
-  const getProxyDrepInfo = useCallback(async (proxy: any) => {
+  // Get DRep information for a specific proxy (unused but kept for potential future use)
+  const getProxyDrepInfo = useCallback(async (proxy: { paramUtxo: string; proxyAddress: string }) => {
     if (!proxy) return { drepId: "", status: null };
 
     try {
@@ -385,15 +383,15 @@ export default function ProxyControl() {
           networkId: network,
         },
         {
-          paramUtxo: JSON.parse(proxy.paramUtxo),
+          paramUtxo: JSON.parse(proxy.paramUtxo) as { txHash: string; outputIndex: number },
         },
-        appWallet?.scriptCbor || undefined,
+        appWallet?.scriptCbor ?? undefined,
       );
       tempContract.proxyAddress = proxy.proxyAddress;
       
       // Get DRep ID and status
-      const drepId = await tempContract.getDrepId();
-      const status = await tempContract.getDrepStatus();
+      const drepId = tempContract.getDrepId();
+      const status = tempContract.getDrepStatus();
       
       return { drepId, status };
     } catch (error) {
@@ -438,12 +436,12 @@ export default function ProxyControl() {
 
     let totalADA = 0;
     let totalAssets = 0;
-    let totalProxies = proxies.length;
+    const totalProxies = proxies.length;
 
     // Calculate TVL from store data
     proxies.forEach(proxy => {
       if ('balance' in proxy && proxy.balance && proxy.balance.length > 0) {
-        proxy.balance.forEach((asset: any) => {
+        proxy.balance.forEach((asset: { unit: string; quantity: string }) => {
           if (asset.unit === 'lovelace') {
             totalADA += parseInt(asset.quantity) / 1000000; // Convert lovelace to ADA
           } else {
@@ -461,7 +459,7 @@ export default function ProxyControl() {
   // Fetch all proxy balances when proxies change
   useEffect(() => {
     if (proxies && proxies.length > 0 && proxyContract) {
-      fetchAllProxyBalances();
+      void fetchAllProxyBalances();
     }
   }, [proxies, proxyContract, fetchAllProxyBalances]);
 
@@ -470,7 +468,7 @@ export default function ProxyControl() {
     if (proxies && proxies.length > 0 && proxyContract && connected) {
       // Small delay to ensure everything is initialized
       const timer = setTimeout(() => {
-        fetchAllProxyBalances();
+        void fetchAllProxyBalances();
       }, 1000);
       return () => clearTimeout(timer);
     }
@@ -483,10 +481,10 @@ export default function ProxyControl() {
     }
   }, [proxies, proxyContract, fetchAllProxyBalances]);
 
-  // Global refresh function for all proxy balances
+  // Global refresh function for all proxy balances (unused but kept for potential future use)
   const refreshAllBalances = useCallback(async () => {
     if (proxies && proxies.length > 0 && proxyContract) {
-      await fetchAllProxyBalances();
+      void fetchAllProxyBalances();
     }
   }, [proxies, proxyContract, fetchAllProxyBalances]);
 
@@ -512,7 +510,7 @@ export default function ProxyControl() {
         description: "Proxy mode enabled for governance operations.",
       });
     }
-  }, [selectedProxyId, setSelectedProxy, clearSelectedProxy, toast]);
+  }, [selectedProxyId, setSelectedProxy, clearSelectedProxy]);
 
 
   // Spend from proxy
@@ -554,7 +552,7 @@ export default function ProxyControl() {
       setLocalLoading(true);
 
       // Get the selected proxy
-      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
+      const proxy = proxies?.find((p: { id: string }) => p.id === selectedProxyId);
       if (!proxy) {
         throw new Error("Selected proxy not found");
       }
@@ -567,9 +565,9 @@ export default function ProxyControl() {
           networkId: network,
         },
         {
-          paramUtxo: JSON.parse(proxy.paramUtxo),
+          paramUtxo: JSON.parse(proxy.paramUtxo) as { txHash: string; outputIndex: number },
         },
-        appWallet?.scriptCbor || undefined,
+        appWallet?.scriptCbor ?? undefined,
       );
       selectedProxyContract.proxyAddress = proxy.proxyAddress;
 
@@ -577,8 +575,8 @@ export default function ProxyControl() {
       const { utxos, walletAddress } = await getMsInputs();
       const txHex = await selectedProxyContract.spendProxySimple(validOutputs, utxos, walletAddress);
       if (appWallet?.scriptCbor) {
-      await newTransaction({
-        txBuilder: txHex,
+        await newTransaction({
+          txBuilder: txHex,
           description: "Proxy spend transaction",
           toastMessage: "Proxy spend transaction created",
         });
@@ -587,7 +585,7 @@ export default function ProxyControl() {
       }
 
       // Refresh balance after successful spend
-      await handleProxySelection(selectedProxyId);
+      handleProxySelection(selectedProxyId);
 
       // Close the spend modal after successful transaction
       setTimeout(() => {
@@ -618,18 +616,18 @@ export default function ProxyControl() {
       setSpendLoading(false);
       setLocalLoading(false);
     }
-  }, [proxyContract, connected, spendOutputs, selectedProxyId, proxies, network, wallet, setLoading, handleProxySelection]);
+  }, [proxyContract, connected, spendOutputs, selectedProxyId, proxies, network, wallet, handleProxySelection, getMsInputs, newTransaction, appWallet?.scriptCbor]);
 
 
   // Copy to clipboard
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied",
       description: "Address copied to clipboard",
       variant: "default",
     });
-  };
+  }, []);
 
 
   if (!connected) {
@@ -734,7 +732,7 @@ export default function ProxyControl() {
                           className="h-6 w-6 p-0"
                           onClick={(e) => {
                             e.stopPropagation();
-                            refreshTVL();
+                            void refreshTVL();
                           }}
                           disabled={tvlLoading}
                         >
@@ -744,7 +742,7 @@ export default function ProxyControl() {
                       <div className="text-sm space-y-1">
                         <div>Total ADA: {totalADA.toFixed(6)} ADA</div>
                         <div>Total Assets: {totalAssets}</div>
-                        <div>Active Proxies: {proxies?.length || 0}</div>
+                        <div>Active Proxies: {proxies?.length ?? 0}</div>
                         {tvlLoading && (
                           <div className="text-xs text-muted-foreground">Updating balances...</div>
                         )}

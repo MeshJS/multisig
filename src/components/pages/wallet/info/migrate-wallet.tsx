@@ -259,7 +259,7 @@ export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {
       if (existingMigration && migrationState.step === null && !migrationState.hasAborted) {
         updateMigrationState({
           migrationId: existingMigration.id,
-          step: existingMigration.currentStep,
+          step: existingMigration.currentStep as MigrationStep,
           newWalletId: existingMigration.newWalletId || null,
         });
       }

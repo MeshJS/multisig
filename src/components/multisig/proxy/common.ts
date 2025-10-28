@@ -1,11 +1,11 @@
 import {
-  BrowserWallet,
+  serializePlutusScript,
+} from "@meshsdk/core";
+import type {
   IFetcher,
   IWallet,
   LanguageVersion,
   MeshTxBuilder,
-  MeshWallet,
-  serializePlutusScript,
   UTxO,
 } from "@meshsdk/core";
 
@@ -122,7 +122,7 @@ export class MeshTxInitiator {
     }
     return utxos.filter((u) => {
       const lovelaceAmount = u.output.amount.find(
-        (a: any) => a.unit === "lovelace",
+        (a: { unit: string; quantity: string }) => a.unit === "lovelace",
       )?.quantity;
       return Number(lovelaceAmount) > lovelace;
     });
@@ -138,7 +138,7 @@ export class MeshTxInitiator {
     }
     return utxos.filter((u) => {
       const assetAmount = u.output.amount.find(
-        (a: any) => a.unit === assetHex,
+        (a: { unit: string; quantity: string }) => a.unit === assetHex,
       )?.quantity;
       return Number(assetAmount) >= 1;
     });
@@ -155,7 +155,7 @@ export class MeshTxInitiator {
     }
     return utxos.filter((u) => {
       const lovelaceAmount = u.output.amount.find(
-        (a: any) => a.unit === "lovelace",
+        (a: { unit: string; quantity: string }) => a.unit === "lovelace",
       )?.quantity;
       return Number(lovelaceAmount) > lovelace;
     });
@@ -172,7 +172,7 @@ export class MeshTxInitiator {
     }
     return utxos.filter((u) => {
       const assetAmount = u.output.amount.find(
-        (a: any) => a.unit === assetHex,
+        (a: { unit: string; quantity: string }) => a.unit === assetHex,
       )?.quantity;
       return Number(assetAmount) >= 1;
     });
@@ -209,7 +209,7 @@ export class MeshTxInitiator {
           this.networkId,
         ).address;
         scriptUtxo =
-          utxos.filter((utxo) => utxo.output.address === scriptAddr)[0] ||
+          utxos.find((utxo) => utxo.output.address === scriptAddr) ??
           utxos[0];
       }
 

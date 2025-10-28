@@ -1,27 +1,15 @@
+import { mConStr0, mOutputReference } from "@meshsdk/common";
 import {
-  AssetMetadata,
-  conStr0,
-  Data,
-  integer,
-  mConStr0,
-  mOutputReference,
-  mPubKeyAddress,
-  stringToHex,
-} from "@meshsdk/common";
-import {
-  deserializeAddress,
   resolveScriptHash,
-  serializeAddressObj,
   serializePlutusScript,
-  UTxO,
-  applyCborEncoding,
   applyParamsToScript,
   resolveScriptHashDRepId,
-  MeshTxBuilder,
 } from "@meshsdk/core";
-import { parseDatumCbor } from "@meshsdk/core-cst";
+import type { UTxO, MeshTxBuilder } from "@meshsdk/core";
+// import { parseDatumCbor } from "@meshsdk/core-cst";
 
-import { MeshTxInitiator, MeshTxInitiatorInput } from "./common";
+import { MeshTxInitiator } from "./common";
+import type { MeshTxInitiatorInput } from "./common";
 import blueprint from "./aiken-workspace/plutus.json";
 
 /**
@@ -34,7 +22,7 @@ import blueprint from "./aiken-workspace/plutus.json";
  * With each new NFT minted, the token index within the oracle is incremented by one, ensuring a consistent and orderly progression in the numbering of the NFTs.
  */
 // Cache for DRep status to avoid multiple API calls
-const drepStatusCache = new Map<string, { data: any; timestamp: number }>();
+const drepStatusCache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export class MeshProxyContract extends MeshTxInitiator {
@@ -98,7 +86,7 @@ export class MeshProxyContract extends MeshTxInitiator {
   ) {
     super(inputs);
     this.stakeCredential = inputs.stakeCredential;
-    this.networkId = inputs.networkId ? inputs.networkId : 0;
+    this.networkId = inputs.networkId ?? 0;
     this.msCbor = msCbor;
 
     // Set the proxyAddress if paramUtxo is provided
@@ -126,7 +114,9 @@ export class MeshProxyContract extends MeshTxInitiator {
       );
     }
 
-    let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
+    const walletInfo = await this.getWalletInfoForTx();
+    let { utxos, walletAddress } = walletInfo;
+    const { collateral } = walletInfo;
 
     if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
@@ -137,14 +127,11 @@ export class MeshProxyContract extends MeshTxInitiator {
     if (!utxos || utxos.length <= 0) {
       throw new Error("No UTxOs found");
     }
-    const paramUtxo = utxos?.filter((utxo) =>
-      utxo.output.amount
-        .map(
-          (asset) =>
-            asset.unit === "lovelace" && Number(asset.quantity) >= 20000000,
-        )
-        .reduce((pa, ca, i, a) => pa || ca),
-    )[0];
+    const paramUtxo = utxos?.find((utxo) =>
+      utxo.output.amount.some(
+        (asset) => asset.unit === "lovelace" && Number(asset.quantity) >= 20000000,
+      ),
+    );
     if (!paramUtxo) {
       throw new Error(
         "Insufficicient balance. Create one utxo holding at Least 20 ADA.",
@@ -163,7 +150,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const tokenName = "";
 
     // Try completing the transaction step by step
-    let tx = await this.mesh.txIn(
+    const tx = this.mesh.txIn(
       paramUtxo.input.txHash,
       paramUtxo.input.outputIndex,
       paramUtxo.output.amount,
@@ -211,7 +198,9 @@ export class MeshProxyContract extends MeshTxInitiator {
         "No UTxOs and wallet address for multisig script cbor found",
       );
     }
-    let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
+    const walletInfo = await this.getWalletInfoForTx();
+    let { utxos, walletAddress } = walletInfo;
+    const { collateral } = walletInfo;
     // If multisig inputs are provided, use them instead of the wallet inputs
     if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
@@ -342,7 +331,7 @@ export class MeshProxyContract extends MeshTxInitiator {
 
     //prepare Proxy spend
     //1 Get
-    let txHex = await this.mesh;
+    const txHex = this.mesh;
 
     for (const input of freeProxyUtxos) {
       txHex
@@ -412,7 +401,9 @@ export class MeshProxyContract extends MeshTxInitiator {
         "No UTxOs and wallet address for multisig script cbor found",
       );
     }
-    let { utxos, collateral, walletAddress } = await this.getWalletInfoForTx();
+    const walletInfo2 = await this.getWalletInfoForTx();
+    let { utxos, walletAddress } = walletInfo2;
+    const { collateral } = walletInfo2;
     // If multisig inputs are provided, use them instead of the wallet inputs
     if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
@@ -459,7 +450,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
     const drepId = resolveScriptHashDRepId(proxyScriptHash);
 
-    const txHex = await this.mesh;
+    const txHex = this.mesh;
     txHex.txIn(
       authTokenUtxo.input.txHash,
       authTokenUtxo.input.outputIndex,
@@ -496,8 +487,8 @@ export class MeshProxyContract extends MeshTxInitiator {
         txHex.txInScript(this.msCbor);
       }
       totalAmount += BigInt(
-        utxo.output.amount.find((asset: any) => asset.unit === "lovelace")
-          ?.quantity || "0",
+        (utxo.output.amount.find((asset: { unit: string; quantity: string }) => asset.unit === "lovelace")
+          ?.quantity) ?? "0",
       );
     }
 
@@ -620,7 +611,7 @@ export class MeshProxyContract extends MeshTxInitiator {
 
       for (const utxo of utxos) {
         for (const asset of utxo.output.amount) {
-          const currentAmount = balanceMap.get(asset.unit) || BigInt(0);
+          const currentAmount = balanceMap.get(asset.unit) ?? BigInt(0);
           balanceMap.set(asset.unit, currentAmount + BigInt(asset.quantity));
         }
       }
@@ -634,8 +625,9 @@ export class MeshProxyContract extends MeshTxInitiator {
       );
 
       return balance;
-    } catch (error: any) {
-      throw new Error(`Failed to fetch proxy balance: ${error?.message || 'Unknown error'}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to fetch proxy balance: ${errorMessage}`);
     }
   };
 
@@ -670,9 +662,9 @@ export class MeshProxyContract extends MeshTxInitiator {
       });
       
       return drepStatus;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Parse the error if it's a stringified JSON
-      let parsedError = error;
+      let parsedError: unknown = error;
       if (typeof error === 'string') {
         try {
           parsedError = JSON.parse(error);
@@ -682,17 +674,19 @@ export class MeshProxyContract extends MeshTxInitiator {
       }
       
       // Handle specific error cases - check multiple possible 404 indicators
-      const is404 = error?.status === 404 || 
-                   error?.response?.status === 404 || 
-                   error?.data?.status_code === 404 ||
-                   parsedError?.status === 404 ||
-                   parsedError?.data?.status_code === 404 ||
-                   error?.message?.includes('404') ||
-                   error?.message?.includes('Not Found') ||
-                   error?.message?.includes('not found') ||
-                   error?.message?.includes('NOT_FOUND') ||
-                   (error?.response?.data && error.response.data.status_code === 404) ||
-                   (error?.data && error.data.status_code === 404);
+      const errorObj = error as Record<string, unknown>;
+      const parsedObj = parsedError as Record<string, unknown>;
+      const is404 = errorObj?.status === 404 || 
+                   (errorObj?.response as Record<string, unknown>)?.status === 404 || 
+                   (errorObj?.data as Record<string, unknown>)?.status_code === 404 ||
+                   parsedObj?.status === 404 ||
+                   (parsedObj?.data as Record<string, unknown>)?.status_code === 404 ||
+                   (errorObj?.message as string)?.includes('404') ||
+                   (errorObj?.message as string)?.includes('Not Found') ||
+                   (errorObj?.message as string)?.includes('not found') ||
+                   (errorObj?.message as string)?.includes('NOT_FOUND') ||
+                   ((errorObj?.response as Record<string, unknown>)?.data as Record<string, unknown>)?.status_code === 404 ||
+                   ((errorObj?.data as Record<string, unknown>)?.status_code === 404);
       
       if (is404) {
         // DRep not registered yet - cache null result
@@ -704,7 +698,8 @@ export class MeshProxyContract extends MeshTxInitiator {
       }
       
       // For other errors, don't cache and re-throw
-      console.log(`Failed to fetch DRep status: ${error?.message || 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`Failed to fetch DRep status: ${errorMessage}`);
     }
   };
 
@@ -719,7 +714,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     votes: Array<{
       proposalId: string;
       voteKind: "Yes" | "No" | "Abstain";
-      metadata?: any;
+      metadata?: unknown;
     }>,
     msUtxos?: UTxO[],
     msWalletAddress?: string,
@@ -732,8 +727,8 @@ export class MeshProxyContract extends MeshTxInitiator {
     const walletInfo = await this.getWalletInfoForTx();
 
     // Use multisig inputs if provided, otherwise use regular wallet
-    const utxos = msUtxos || walletInfo.utxos;
-    const walletAddress = msWalletAddress || walletInfo.walletAddress;
+    const utxos = msUtxos ?? walletInfo.utxos;
+    const walletAddress = msWalletAddress ?? walletInfo.walletAddress;
 
     // Always get collateral from user's regular wallet
     let collateral: UTxO;
@@ -741,7 +736,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       const collateralInfo = await this.getWalletInfoForTx();
       const foundCollateral = collateralInfo.utxos.find((utxo: UTxO) =>
         utxo.output.amount.some(
-          (amount: any) =>
+          (amount: { unit: string; quantity: string }) =>
             amount.unit === "lovelace" &&
             BigInt(amount.quantity) >= BigInt(5000000),
         ),
@@ -752,7 +747,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         );
       }
       collateral = foundCollateral;
-    } catch (error) {
+    } catch {
       throw new Error(
         "Failed to get collateral from regular wallet. Please ensure you have at least 5 ADA in your regular wallet for transaction collateral.",
       );
@@ -796,7 +791,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
     const drepId = resolveScriptHashDRepId(proxyScriptHash);
 
-    const txHex = await this.mesh;
+    const txHex = this.mesh;
 
     // 1. Add AuthToken UTxO first (following manageProxyDrep pattern)
     txHex.txIn(
@@ -835,16 +830,14 @@ export class MeshProxyContract extends MeshTxInitiator {
         txHex.txInScript(this.msCbor);
       }
       totalAmount += BigInt(
-        utxo.output.amount.find((asset: any) => asset.unit === "lovelace")
-          ?.quantity || "0",
+        (utxo.output.amount.find((asset: { unit: string; quantity: string }) => asset.unit === "lovelace")
+          ?.quantity) ?? "0",
       );
     }
 
     // 4. Add output (return AuthToken)
     txHex.txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }]);
 
-    console.log("votes", votes);
-    console.log("txHex", txHex);
 
     // 5. Add votes for each proposal
     for (const vote of votes) {

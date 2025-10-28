@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, ArrowRight, Loader, AlertCircle, CheckCircle, Users } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import type { Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { toast } from "@/hooks/use-toast";
 
@@ -29,7 +29,7 @@ export default function ProxyTransferStep({
   });
 
   // Mutation to transfer proxies
-  const { mutate: transferProxies } = api.proxy.transferProxies.useMutation({
+  const { mutateAsync: transferProxies } = api.proxy.transferProxies.useMutation({
     onSuccess: () => {
       setTransferComplete(true);
       toast({
@@ -82,7 +82,7 @@ export default function ProxyTransferStep({
     );
   }
 
-  const hasProxies = existingProxies && existingProxies.length > 0;
+  const hasProxies = (existingProxies && existingProxies.length > 0) ?? false;
 
   return (
     <div className="space-y-6">
@@ -109,14 +109,14 @@ export default function ProxyTransferStep({
         <div className="space-y-4">
           {hasProxies ? (
             <div className="space-y-3">
-              {existingProxies.map((proxy, index) => (
+              {(existingProxies ?? []).map((proxy, index) => (
                 <div key={proxy.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center gap-3">
                     <Users className="h-5 w-5 text-blue-500" />
                     <div>
                       <h4 className="font-medium">Proxy {index + 1}</h4>
                       <p className="text-sm text-muted-foreground">
-                        {proxy.name || `Proxy ${index + 1}`}
+                        {proxy.description ?? `Proxy ${index + 1}`}
                       </p>
                     </div>
                   </div>

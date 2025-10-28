@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useProxyStore, useProxyData, useProxyActions } from "@/lib/zustand/proxy";
+import { useProxyData, useProxyActions } from "@/lib/zustand/proxy";
 import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 
 export default function ProxyDataLoader() {
   const { appWallet } = useAppWallet();
   const network = useSiteStore((state) => state.network);
-  const { proxies, loading, error } = useProxyData(appWallet?.id);
+  const { proxies } = useProxyData(appWallet?.id);
   const { 
     setProxies, 
     fetchProxyBalance, 
@@ -18,9 +18,9 @@ export default function ProxyDataLoader() {
   
 
   // Get proxies from API
-  const { data: apiProxies, refetch: refetchProxies, isLoading: apiLoading } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: apiProxies, refetch: refetchProxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
-      walletId: appWallet?.id || undefined,
+      walletId: appWallet?.id ?? undefined,
     },
     { 
       enabled: !!appWallet?.id,
@@ -49,36 +49,29 @@ export default function ProxyDataLoader() {
 
   // Fetch additional data for each proxy
   useEffect(() => {
-    
     if (proxies.length > 0 && appWallet?.id && appWallet?.scriptCbor) {
-      proxies.forEach(async (proxy) => {
-        // Only fetch if we don't have recent data (older than 5 minutes)
-        const isStale = !proxy.lastUpdated || (Date.now() - proxy.lastUpdated) > 5 * 60 * 1000;
-        
-        
-        if (isStale) {
-          try {
-            
-            // Fetch balance
-            await fetchProxyBalance(appWallet.id, proxy.id, proxy.proxyAddress, network.toString());
-            
-            // Fetch DRep info
-            await fetchProxyDrepInfo(
-              appWallet.id, 
-              proxy.id, 
-              proxy.proxyAddress, 
-              proxy.authTokenId, 
-              appWallet.scriptCbor, 
-              network.toString(),
-              proxy.paramUtxo
-            );
-            
-            
-          } catch (error) {
-            console.error(`Error fetching data for proxy ${proxy.id}:`, error);
+      void (async () => {
+        for (const proxy of proxies) {
+          // Only fetch if we don't have recent data (older than 5 minutes)
+          const isStale = !proxy.lastUpdated || (Date.now() - proxy.lastUpdated) > 5 * 60 * 1000;
+          if (isStale) {
+            try {
+              await fetchProxyBalance(appWallet.id, proxy.id, proxy.proxyAddress, network.toString());
+              await fetchProxyDrepInfo(
+                appWallet.id,
+                proxy.id,
+                proxy.proxyAddress,
+                proxy.authTokenId,
+                appWallet.scriptCbor,
+                network.toString(),
+                proxy.paramUtxo,
+              );
+            } catch (error) {
+              console.error(`Error fetching data for proxy ${proxy.id}:`, error);
+            }
           }
         }
-      });
+      })();
     }
   }, [proxies, appWallet?.id, appWallet?.scriptCbor, network, fetchProxyBalance, fetchProxyDrepInfo]);
 
@@ -95,7 +88,10 @@ export default function ProxyDataLoader() {
   useEffect(() => {
     // Store refetch function in window for global access if needed
     if (typeof window !== 'undefined') {
-      (window as any).refetchProxyData = refetchProxies;
+      const w = window as Window & { refetchProxyData?: () => void };
+      w.refetchProxyData = () => {
+        void refetchProxies();
+      };
     }
   }, [refetchProxies]);
 

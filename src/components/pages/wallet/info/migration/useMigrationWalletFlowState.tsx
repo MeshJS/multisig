@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
+import { resolveStakeKeyHash } from "@meshsdk/core";
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
 import { paymentKeyHash } from "@/utils/multisigSDK";
@@ -14,7 +14,7 @@ import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet } from "@/types/wallet";
+import type { Wallet } from "@/types/wallet";
 
 export interface MigrationWalletFlowState {
   // Core wallet data
@@ -104,12 +104,13 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
   );
 
   // Get existing new wallet data if migration is in progress
+  type WalletWithMigration = { migrationTargetWalletId?: string };
   const { data: existingNewWallet } = api.wallet.getNewWallet.useQuery(
     {
-      walletId: (appWallet as any).migrationTargetWalletId || "",
+      walletId: ((appWallet as unknown as WalletWithMigration).migrationTargetWalletId) ?? "",
     },
     {
-      enabled: !!(appWallet as any).migrationTargetWalletId,
+      enabled: Boolean((appWallet as unknown as WalletWithMigration).migrationTargetWalletId),
     }
   );
 
@@ -117,12 +118,12 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
   useEffect(() => {
     if (walletData) {
       setName(`${walletData.name} - Migrated`);
-      setDescription(walletData.description || "");
-      setSignerAddresses(walletData.signersAddresses || []);
-      setSignerDescriptions(walletData.signersDescriptions || []);
-      setNumRequiredSigners(walletData.numRequiredSigners || 1);
-      setNativeScriptType((walletData.type as "atLeast" | "all" | "any") || "atLeast");
-      setStakeKey(walletData.stakeCredentialHash || "");
+      setDescription(walletData.description ?? "");
+      setSignerAddresses(walletData.signersAddresses ?? []);
+      setSignerDescriptions(walletData.signersDescriptions ?? []);
+      setNumRequiredSigners(walletData.numRequiredSigners ?? 1);
+      setNativeScriptType((walletData.type as "atLeast" | "all" | "any") ?? "atLeast");
+      setStakeKey(walletData.stakeCredentialHash ?? "");
 
       // Filter and process stake keys
       const validStakeKeys = (walletData.signersStakeKeys || []).filter((key: string) => {
@@ -140,7 +141,11 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       setSignerStakeKeys(validStakeKeys);
       
       // Initialize DRep keys (empty for now, can be added later)
-      setSignerDRepKeys((walletData as any).signersDRepKeys || []);
+      setSignerDRepKeys(
+        Array.isArray((walletData as unknown as { signersDRepKeys?: string[] }).signersDRepKeys)
+          ? (walletData as unknown as { signersDRepKeys?: string[] }).signersDRepKeys!
+          : [],
+      );
     }
   }, [walletData]);
 
@@ -149,14 +154,18 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     if (existingNewWallet) {
       setNewWalletId(existingNewWallet.id);
       setName(existingNewWallet.name);
-      setDescription(existingNewWallet.description || "");
-      setSignerAddresses(existingNewWallet.signersAddresses || []);
-      setSignerDescriptions(existingNewWallet.signersDescriptions || []);
-      setSignerStakeKeys(existingNewWallet.signersStakeKeys || []);
-      setSignerDRepKeys((existingNewWallet as any).signersDRepKeys || []);
-      setNumRequiredSigners(existingNewWallet.numRequiredSigners || 1);
-      setStakeKey(existingNewWallet.stakeCredentialHash || "");
-      setNativeScriptType((existingNewWallet.scriptType as "atLeast" | "all" | "any") || "atLeast");
+      setDescription(existingNewWallet.description ?? "");
+      setSignerAddresses(existingNewWallet.signersAddresses ?? []);
+      setSignerDescriptions(existingNewWallet.signersDescriptions ?? []);
+      setSignerStakeKeys(existingNewWallet.signersStakeKeys ?? []);
+      setSignerDRepKeys(
+        Array.isArray((existingNewWallet as unknown as { signersDRepKeys?: string[] }).signersDRepKeys)
+          ? (existingNewWallet as unknown as { signersDRepKeys?: string[] }).signersDRepKeys!
+          : [],
+      );
+      setNumRequiredSigners(existingNewWallet.numRequiredSigners ?? 1);
+      setStakeKey(existingNewWallet.stakeCredentialHash ?? "");
+      setNativeScriptType((existingNewWallet.scriptType as "atLeast" | "all" | "any") ?? "atLeast");
     }
   }, [existingNewWallet]);
 
@@ -233,7 +242,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         duration: 3000,
       });
     },
-    onError: (e) => {
+    onError: (_e) => {
       setLoading(false);
       toast({
         title: "Error",
@@ -252,7 +261,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         duration: 2000,
       });
     },
-    onError: (e) => {
+    onError: (_e) => {
       toast({
         title: "Error",
         description: "Failed to save changes",
@@ -266,9 +275,6 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
   const { mutateAsync: deleteNewWallet } = api.wallet.deleteNewWallet.useMutation();
 
   const { mutate: setMigrationTarget } = api.wallet.setMigrationTarget.useMutation({
-    onSuccess: () => {
-      // Migration target set successfully - no need for additional toast since wallet creation already shows success
-    },
     onError: (e) => {
       console.error("Failed to set migration target:", e);
       toast({
@@ -339,7 +345,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         signersStakeKeys: signersStakeKeys,
         signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
-        ownerAddress: userAddress || "",
+        ownerAddress: userAddress ?? "",
         stakeCredentialHash: stakeKey || undefined,
         scriptType: nativeScriptType || undefined,
       };
@@ -356,7 +362,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         variant: "destructive",
       });
     }
-  }, [newWalletId, name, signersAddresses, description, signersDescriptions, signersStakeKeys, numRequiredSigners, stakeKey, nativeScriptType, createNewWallet, toast]);
+  }, [newWalletId, name, signersAddresses, description, signersDescriptions, signersStakeKeys, signersDRepKeys, numRequiredSigners, stakeKey, nativeScriptType, createNewWallet, toast, userAddress]);
 
   // Create final migration wallet
   async function createMigrationWallet(): Promise<string | null> {
@@ -380,7 +386,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     }
 
     // Check if final wallet has already been created
-    if (appWallet.migrationTargetWalletId) {
+    if ((appWallet as unknown as WalletWithMigration).migrationTargetWalletId) {
       toast({
         title: "Error",
         description: "Final wallet has already been created for this migration. You can only create one new wallet per migration.",
@@ -411,7 +417,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
           stakeCredentialHash: stakeKey || undefined,
           type: nativeScriptType,
         }, {
-          onSuccess: async (data) => {
+          onSuccess: (data) => {
             
             // Set migration target after successful wallet creation
             setMigrationTarget({
@@ -421,10 +427,9 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
             
             // Clean up the temporary NewWallet
             if (newWalletId && newWalletId !== data.id) {
-              try {
-                await deleteNewWallet({ walletId: newWalletId });
-              } catch (error) {
-              }
+              void deleteNewWallet({ walletId: newWalletId }).catch((err) => {
+                console.warn("Failed to delete temporary new wallet:", err);
+              });
             }
             
             setNewWalletId(data.id);
@@ -445,7 +450,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
               variant: "destructive",
               duration: 3000,
             });
-            reject(error);
+            reject(error instanceof Error ? error : new Error(error?.message ?? 'Unknown error'));
           }
         });
       });
@@ -468,7 +473,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     setDescription(newDescription);
     
     if (newWalletId) {
-      updateNewWallet({
+      void updateNewWallet({
         walletId: newWalletId,
         name: newName,
         description: newDescription,
@@ -481,7 +486,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         scriptType: nativeScriptType || undefined,
       });
     }
-  }, [newWalletId, signersAddresses, signersDescriptions, signersStakeKeys, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet]);
+  }, [newWalletId, signersAddresses, signersDescriptions, signersStakeKeys, signersDRepKeys, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet]);
 
   const handleSaveSigners = useCallback(async (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[], newDRepKeys: string[]) => {
     // Ensure all arrays are defined and filter out undefined values
@@ -549,7 +554,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         console.error("Failed to update new wallet:", error);
       }
     }
-  }, [newWalletId, name, description, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet]);
+  }, [newWalletId, name, description, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet, toast]);
 
   const handleSaveSignatureRules = useCallback(async (numRequired: number) => {
     setNumRequiredSigners(numRequired);
@@ -572,7 +577,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         console.error("Failed to update signature rules:", error);
       }
     }
-  }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, stakeKey, nativeScriptType, updateNewWallet]);
+  }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, signersDRepKeys, stakeKey, nativeScriptType, updateNewWallet]);
 
   const handleSaveAdvanced = useCallback(async (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => {
     setStakeKey(newStakeKey);
@@ -605,7 +610,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         console.error("Failed to update advanced settings:", error);
       }
     }
-  }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, numRequiredSigners, updateNewWallet]);
+  }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, signersDRepKeys, numRequiredSigners, updateNewWallet]);
 
   // Remove external stake credential and try to backfill stake keys from addresses
   const removeExternalStakeAndBackfill = useCallback(() => {
@@ -613,7 +618,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     setSignerStakeKeys(signersStakeKeys);
     
     if (newWalletId) {
-      updateNewWallet({
+      void updateNewWallet({
         walletId: newWalletId,
         name: name,
         description: description,
@@ -632,7 +637,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       description: "External stake credential has been removed.",
       duration: 3000,
     });
-  }, [signersAddresses, signersStakeKeys, newWalletId, name, description, signersDescriptions, numRequiredSigners, nativeScriptType, updateNewWallet, toast]);
+  }, [signersAddresses, signersStakeKeys, signersDRepKeys, newWalletId, name, description, signersDescriptions, numRequiredSigners, nativeScriptType, updateNewWallet, toast]);
 
   // Validation
   const isValidForCreate = signersAddresses.length > 0 &&
