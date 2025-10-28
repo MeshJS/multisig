@@ -9,6 +9,7 @@ import { useRouter } from "next/router";
 import { resolvePaymentKeyHash, resolveStakeKeyHash, resolveRewardAddress } from "@meshsdk/core";
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
+import type { RawImportBodies } from "@/types/wallet";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -22,6 +23,8 @@ export interface WalletFlowState {
   setName: React.Dispatch<React.SetStateAction<string>>;
   description: string;
   setDescription: React.Dispatch<React.SetStateAction<string>>;
+  usesStored: boolean;
+  setUsesStored: React.Dispatch<React.SetStateAction<boolean>>;
   
   // Signers management
   signersAddresses: string[];
@@ -54,6 +57,7 @@ export interface WalletFlowState {
   multisigWallet?: MultisigWallet;
   isValidForSave: boolean;
   isValidForCreate: boolean;
+  hasSignerHashInAddresses: boolean;
   
   // Router info
   router: ReturnType<typeof useRouter>;
@@ -99,6 +103,7 @@ export function useWalletFlowState(): WalletFlowState {
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const [usesStored, setUsesStored] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [nativeScriptType, setNativeScriptType] = useState<"all" | "any" | "atLeast">("atLeast");
   const [stakeKey, setStakeKey] = useState<string>("");
@@ -334,9 +339,23 @@ export function useWalletFlowState(): WalletFlowState {
       console.log("Loading wallet invite data:", walletInvite);
       setName(walletInvite.name);
       setDescription(walletInvite.description ?? "");
+      setUsesStored(Boolean((walletInvite as any)?.usesStored));
       setSignerAddresses(walletInvite.signersAddresses);
       setSignerDescriptions(walletInvite.signersDescriptions);
-      setSignerStakeKeys(walletInvite.signersStakeKeys);
+      // Conditionally apply signer stake keys based on CBOR policy
+      const paymentCbor = (walletInvite as any)?.paymentCbor || "";
+      const stakeCbor = (walletInvite as any)?.stakeCbor || "";
+      const hasPayment = !!paymentCbor;
+      const hasStake = !!stakeCbor;
+      const bothEmpty = !hasPayment && !hasStake;
+      const bothHave = hasPayment && hasStake;
+      const equal = bothHave && paymentCbor === stakeCbor;
+      const incomingStakeKeys = equal
+        ? []
+        : (bothHave || bothEmpty)
+          ? (walletInvite.signersStakeKeys || [])
+          : [];
+      setSignerStakeKeys(incomingStakeKeys);
       setSignerDRepKeys((walletInvite as any).signersDRepKeys ?? []);
       setNumRequiredSigners(walletInvite.numRequiredSigners!);
       setStakeKey((walletInvite as any).stakeCredentialHash ?? "");
@@ -345,6 +364,7 @@ export function useWalletFlowState(): WalletFlowState {
   }, [pathIsWalletInvite, walletInvite]);
 
   // Utility functions
+
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
@@ -379,8 +399,24 @@ export function useWalletFlowState(): WalletFlowState {
       throw new Error("Multisig wallet could not be built.");
     }
 
-    const { scriptCbor } = multisigWallet.getScript();
-    if (!scriptCbor) {
+    // Prefer imported payment CBOR from walletInvite when available
+    type WalletInviteExtras = {
+      paymentCbor?: string;
+      stakeCbor?: string | null;
+      rawImportBodies?: RawImportBodies | null;
+    };
+    const inviteExtras = (walletInvite as unknown as WalletInviteExtras) || {};
+    const importedPaymentCbor = inviteExtras.paymentCbor;
+    let scriptCborToUse: string | undefined;
+
+    if (importedPaymentCbor && importedPaymentCbor.length > 0) {
+      scriptCborToUse = importedPaymentCbor;
+    } else {
+      const { scriptCbor } = multisigWallet.getScript();
+      scriptCborToUse = scriptCbor;
+    }
+
+    if (!scriptCborToUse) {
       setLoading(false);
       throw new Error("scriptCbor is undefined");
     }
@@ -393,7 +429,8 @@ export function useWalletFlowState(): WalletFlowState {
       signersStakeKeys: signersStakeKeys,
       signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
-      scriptCbor: scriptCbor,
+      scriptCbor: scriptCborToUse,
+      rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });
@@ -566,11 +603,21 @@ export function useWalletFlowState(): WalletFlowState {
 
   // Validation
   const isValidForSave = !loading && !!name.trim();
+  const hasSignerHashInAddresses = useMemo(() => {
+    return signersAddresses.some((addr) => {
+      if (!addr) return false;
+      const isBech = addr.startsWith("addr1") || addr.startsWith("addr_test1");
+      const isHex56 = /^[0-9a-fA-F]{56}$/.test(addr);
+      return !isBech && isHex56;
+    });
+  }, [signersAddresses]);
+
   const isValidForCreate = signersAddresses.length > 0 &&
     !signersAddresses.some((signer) => !signer || signer.length === 0) &&
     (nativeScriptType !== "atLeast" || numRequiredSigners > 0) &&
     name.length > 0 &&
-    !loading;
+    !loading &&
+    !hasSignerHashInAddresses;
 
   return {
     // Core wallet data
@@ -578,6 +625,8 @@ export function useWalletFlowState(): WalletFlowState {
     setName,
     description,
     setDescription,
+    usesStored,
+    setUsesStored,
     
     // Signers management
     signersAddresses,
@@ -610,6 +659,7 @@ export function useWalletFlowState(): WalletFlowState {
     multisigWallet,
     isValidForSave,
     isValidForCreate,
+    hasSignerHashInAddresses,
     
     // Router info
     router,
