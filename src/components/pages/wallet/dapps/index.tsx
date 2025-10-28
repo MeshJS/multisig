@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Code, Database, ArrowLeft, CheckCircle, AlertTriangle, Info } from "lucide-react";
+import ProxyControl from "@/components/multisig/proxy/ProxyControl";
 
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
   const [ogImage, setOgImage] = useState<string | null>(null);
@@ -379,6 +380,11 @@ export default function PageDapps() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Proxy Control Section */}
+      <div className="space-y-4">
+        <ProxyControl />
       </div>
 
       {/* dApps Grid */}

@@ -88,28 +88,37 @@ export default function InspectMultisigScript({
   }
 
   return (
-    <CardUI title="Native Script" cardClassName="col-span-2">
-      {mWallet.stakingEnabled() && <RowLabelInfo
-        label="Address"
-        value={<Code>{mWallet.getScript().address}</Code>}
-        copyString={mWallet.getScript().address}
-      />}
-      <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
-      {mWallet.stakingEnabled() && (
-        <RowLabelInfo
-          label="Stake Address"
-          value={<Code>{mWallet.getStakeAddress()}</Code>}
-          copyString={mWallet.getStakeAddress()}
-        />
-      )}
-{/* add pending rewards like balance */}
-      {mWallet.isGovernanceEnabled() && <RowLabelInfo
-        label="dRep ID"
-        value={<Code>{mWallet.getDRepId()}</Code>}
-        copyString={mWallet.getDRepId()}
-      />}
+    <div className="col-span-2 w-full rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
+      <div className="flex flex-row items-center justify-between space-y-0 pb-2 p-6">
+        <h3 className="text-xl font-medium">Native Script</h3>
+      </div>
+      <div className="p-6 pt-0">
+        <div className="mt-1 flex flex-col gap-2">
+          <div className="mt-1 flex flex-col gap-2">
+            {mWallet.stakingEnabled() && <RowLabelInfo
+              label="Address"
+              value={<Code>{mWallet.getScript().address}</Code>}
+              copyString={mWallet.getScript().address}
+            />}
+            <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
+            {mWallet.stakingEnabled() && (
+              <RowLabelInfo
+                label="Stake Address"
+                value={<Code>{mWallet.getStakeAddress()}</Code>}
+                copyString={mWallet.getStakeAddress()}
+              />
+            )}
+            {/* add pending rewards like balance */}
+            {mWallet.isGovernanceEnabled() && <RowLabelInfo
+              label="dRep ID"
+              value={<Code>{mWallet.getDRepId()}</Code>}
+              copyString={mWallet.getDRepId()}
+            />}
 
-      <Carousel slides={slides} />
-    </CardUI>
+            <Carousel slides={slides} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

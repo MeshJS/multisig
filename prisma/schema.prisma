@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -20,20 +17,21 @@ model User {
 }
 
 model Wallet {
-  id                  String   @id @default(cuid())
-  name                String
-  description         String?
-  signersAddresses    String[]
-  signersStakeKeys    String[]
-  signersDRepKeys     String[]
-  signersDescriptions String[]
-  numRequiredSigners  Int?
-  verified            String[]
-  scriptCbor          String
-  stakeCredentialHash String?
-  type                String
-  isArchived          Boolean  @default(false)
-  clarityApiKey       String?
+  id                      String   @id @default(cuid())
+  name                    String
+  description             String?
+  signersAddresses        String[]
+  signersStakeKeys        String[]
+  signersDRepKeys         String[]
+  signersDescriptions     String[]
+  numRequiredSigners      Int?
+  verified                String[]
+  scriptCbor              String
+  stakeCredentialHash     String?
+  type                    String
+  isArchived              Boolean  @default(false)
+  clarityApiKey           String?
+  migrationTargetWalletId String?
 }
 
 model Transaction {
@@ -102,6 +100,19 @@ model Ballot {
   createdAt        DateTime @default(now())
 }
 
+model Proxy {
+  id           String   @id @default(cuid())
+  walletId     String?
+  proxyAddress String
+  authTokenId  String
+  paramUtxo    String
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String?
+}
+
 model BalanceSnapshot {
   id            String   @id @default(cuid())
   walletId      String
@@ -111,4 +122,24 @@ model BalanceSnapshot {
   assetBalances Json
   isArchived    Boolean
   snapshotDate  DateTime @default(now())
+}
+
+model Migration {
+  id               String    @id @default(cuid())
+  originalWalletId String // The wallet being migrated from
+  newWalletId      String? // The new wallet being created (null until created)
+  ownerAddress     String // The user who initiated the migration
+  currentStep      Int       @default(0) // 0=pre-checks, 1=create wallet, 2=proxy setup, 3=transfer funds, 4=complete
+  status           String    @default("pending") // pending, in_progress, completed, failed, cancelled
+  migrationData    Json? // Store any additional migration-specific data
+  errorMessage     String? // Store error details if migration fails
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
+
+  // Indexes for efficient querying
+  @@index([ownerAddress])
+  @@index([originalWalletId])
+  @@index([status])
+  @@index([createdAt])
 }

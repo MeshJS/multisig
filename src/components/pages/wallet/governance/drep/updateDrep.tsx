@@ -1,5 +1,5 @@
 import { Minus } from "lucide-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
@@ -13,6 +13,10 @@ import { getFile, hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
+import { useProxy } from "@/hooks/useProxy";
+import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import { api } from "@/utils/api";
+import { getProvider } from "@/utils/get-provider";
 
 interface PutResponse {
   url: string;
@@ -20,15 +24,37 @@ interface PutResponse {
 
 export default function UpdateDRep() {
   const { appWallet } = useAppWallet();
-  const { connected } = useWallet();
+  const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
+  const { isProxyEnabled, selectedProxyId } = useProxy();
 
+  // UTxO selection state
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
+
+  // Get proxies for proxy mode
+  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+    { 
+      walletId: appWallet?.id || undefined,
+      userAddress: userAddress || undefined,
+    },
+    { enabled: !!(appWallet?.id || userAddress) }
+  );
+
+  // Helper function to get multisig inputs (like in register component)
+  const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
+    if (!multisigWallet?.getScript().address) {
+      throw new Error("Multisig wallet address not available");
+    }
+    if (!manualUtxos || manualUtxos.length === 0) {
+      throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
+    }
+    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
+  }, [multisigWallet?.getScript().address, manualUtxos]);
   const [formState, setFormState] = useState({
     givenName: "",
     bio: "",
@@ -76,6 +102,62 @@ export default function UpdateDRep() {
     const anchorObj = JSON.parse(fileContent);
     const anchorHash = hashDrepAnchor(anchorObj);
     return { anchorUrl, anchorHash };
+  }
+
+  async function updateProxyDrep(): Promise<void> {
+    if (!connected || !userAddress || !multisigWallet || !appWallet) {
+      throw new Error("Multisig wallet not connected");
+    }
+    if (!isProxyEnabled || !selectedProxyId) {
+      throw new Error("Proxy mode not enabled or no proxy selected");
+    }
+
+    setLoading(true);
+
+    try {
+      // Get the selected proxy
+      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
+      if (!proxy) {
+        throw new Error("Selected proxy not found");
+      }
+
+      // Create anchor metadata
+      const { anchorUrl, anchorHash } = await createAnchor();
+
+      // Get multisig inputs
+      const { utxos, walletAddress } = await getMsInputs();
+
+      // Create proxy contract instance
+      const txBuilder = getTxBuilder(network);
+      const proxyContract = new MeshProxyContract(
+        {
+          mesh: txBuilder,
+          wallet: wallet,
+          networkId: network,
+        },
+        {
+          paramUtxo: JSON.parse(proxy.paramUtxo),
+        },
+        appWallet.scriptCbor,
+      );
+      proxyContract.proxyAddress = proxy.proxyAddress;
+
+      // Update DRep using proxy
+      const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorHash, utxos, walletAddress);
+
+      await newTransaction({
+        txBuilder: txHex,
+        description: "Proxy DRep update",
+        toastMessage: "Proxy DRep update transaction has been created",
+      });
+
+      router.push(`/wallets/${appWallet.id}/governance`);
+    } catch (error) {
+      console.error("Proxy DRep update error:", error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function updateDrep(): Promise<void> {
@@ -192,8 +274,9 @@ export default function UpdateDRep() {
             // This function is intentionally left empty.
           }}
           loading={loading}
-          onSubmit={updateDrep}
+          onSubmit={isProxyEnabled ? updateProxyDrep : updateDrep}
           mode="update"
+          isProxyMode={isProxyEnabled}
         />
       )}
     </div>

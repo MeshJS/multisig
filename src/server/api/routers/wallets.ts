@@ -295,4 +295,97 @@ export const walletRouter = createTRPCRouter({
         },
       });
     }),
+
+  setMigrationTarget: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      migrationTargetWalletId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: input.migrationTargetWalletId,
+        },
+      });
+    }),
+
+  clearMigrationTarget: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
+
+  abortMigration: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      newWalletId: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Try to delete the new wallet if it exists (it might be a NewWallet or Wallet)
+      if (input.newWalletId) {
+        try {
+          // First check if it exists in NewWallet table
+          const newWallet = await ctx.db.newWallet.findUnique({
+            where: { id: input.newWalletId }
+          });
+          
+          if (newWallet) {
+            await ctx.db.newWallet.delete({
+              where: { id: input.newWalletId }
+            });
+            console.log("Deleted NewWallet:", input.newWalletId);
+          } else {
+            // Check if it exists in Wallet table
+            const wallet = await ctx.db.wallet.findUnique({
+              where: { id: input.newWalletId }
+            });
+            
+            if (wallet) {
+              await ctx.db.wallet.delete({
+                where: { id: input.newWalletId }
+              });
+              console.log("Deleted Wallet:", input.newWalletId);
+            } else {
+              console.log("No wallet found with ID:", input.newWalletId, "- migration might be in a different state");
+            }
+          }
+        } catch (error) {
+          console.error("Error deleting wallet during migration abort:", error);
+          // Continue with clearing migration target even if deletion fails
+        }
+      }
+
+      // Clear the migration target reference from the original wallet
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
+
+  archiveWallet: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          isArchived: true,
+        },
+      });
+    }),
 });

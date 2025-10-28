@@ -11,6 +11,7 @@ import { Asset } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
+import { useProxyActions } from "@/lib/zustand/proxy";
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -47,6 +48,7 @@ export default function WalletDataLoaderWrapper({
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
+  const { fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
@@ -179,6 +181,64 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
+  async function fetchProxyData() {
+    if (appWallet?.id && appWallet?.scriptCbor) {     
+      try {
+        // Get proxies from API
+        const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
+          walletId: appWallet.id,
+        });
+
+
+        // First, add proxies to the store
+        setProxies(appWallet.id, proxies);
+
+        // Fetch balance and DRep info for each proxy
+        for (const proxy of proxies) {
+          try {
+            
+            // Fetch balance
+            await fetchProxyBalance(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              network.toString()
+            );
+            
+            // Fetch DRep info with force refresh
+            await fetchProxyDrepInfo(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              proxy.authTokenId, 
+              appWallet.scriptCbor, 
+              network.toString(),
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
+            );
+            
+            // Fetch delegators info with force refresh
+            await fetchProxyDelegatorsInfo(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              proxy.authTokenId, 
+              appWallet.scriptCbor, 
+              network.toString(),
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
+            );
+            
+          } catch (error) {
+            console.error(`WalletDataLoaderWrapper: Error fetching data for proxy ${proxy.id}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);
+      }
+    }
+  }
+
   async function refreshWallet() {
     if (fetchingTransactions.current) return;
 
@@ -188,8 +248,11 @@ export default function WalletDataLoaderWrapper({
     await getTransactionsOnChain();
     await getWalletAssets();
     await getDRepInfo();
+    await fetchProxyData(); // Fetch proxy data
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    // Also refresh proxy data
+    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
     setRandomState();
     setLoading(false);
     fetchingTransactions.current = false;
@@ -204,6 +267,9 @@ export default function WalletDataLoaderWrapper({
     if (appWallet && prevWalletIdRef.current !== appWallet.id) {
       refreshWallet();
       prevWalletIdRef.current = appWallet.id;
+    } else if (appWallet) {
+      // If wallet exists but we already have data, still fetch proxy data
+      fetchProxyData();
     }
   }, [appWallet]);
 
