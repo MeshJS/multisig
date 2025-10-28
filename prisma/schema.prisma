@@ -123,3 +123,23 @@ model BalanceSnapshot {
   isArchived    Boolean
   snapshotDate  DateTime @default(now())
 }
+
+model Migration {
+  id               String    @id @default(cuid())
+  originalWalletId String // The wallet being migrated from
+  newWalletId      String? // The new wallet being created (null until created)
+  ownerAddress     String // The user who initiated the migration
+  currentStep      Int       @default(0) // 0=pre-checks, 1=create wallet, 2=proxy setup, 3=transfer funds, 4=complete
+  status           String    @default("pending") // pending, in_progress, completed, failed, cancelled
+  migrationData    Json? // Store any additional migration-specific data
+  errorMessage     String? // Store error details if migration fails
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
+
+  // Indexes for efficient querying
+  @@index([ownerAddress])
+  @@index([originalWalletId])
+  @@index([status])
+  @@index([createdAt])
+}

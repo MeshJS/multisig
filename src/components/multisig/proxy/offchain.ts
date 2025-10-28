@@ -33,6 +33,10 @@ import blueprint from "./aiken-workspace/plutus.json";
  *
  * With each new NFT minted, the token index within the oracle is incremented by one, ensuring a consistent and orderly progression in the numbering of the NFTs.
  */
+// Cache for DRep status to avoid multiple API calls
+const drepStatusCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export class MeshProxyContract extends MeshTxInitiator {
   paramUtxo: UTxO["input"] = { outputIndex: 0, txHash: "" };
   proxyAddress?: string;
@@ -45,6 +49,15 @@ export class MeshProxyContract extends MeshTxInitiator {
     this.paramUtxo = { outputIndex: 0, txHash: "" };
     this.proxyAddress = undefined;
     this.stakeCredential = undefined;
+  }
+
+  // Static method to clear DRep status cache
+  static clearDrepStatusCache(drepId?: string) {
+    if (drepId) {
+      drepStatusCache.delete(drepId);
+    } else {
+      drepStatusCache.clear();
+    }
   }
 
   getAuthTokenCbor = () => {
@@ -599,27 +612,31 @@ export class MeshProxyContract extends MeshTxInitiator {
       throw new Error("Blockchain provider not found");
     }
 
-    const utxos = await blockchainProvider.fetchAddressUTxOs(this.proxyAddress);
+    try {
+      const utxos = await blockchainProvider.fetchAddressUTxOs(this.proxyAddress);
 
-    // Aggregate all assets from UTxOs
-    const balanceMap = new Map<string, bigint>();
+      // Aggregate all assets from UTxOs
+      const balanceMap = new Map<string, bigint>();
 
-    for (const utxo of utxos) {
-      for (const asset of utxo.output.amount) {
-        const currentAmount = balanceMap.get(asset.unit) || BigInt(0);
-        balanceMap.set(asset.unit, currentAmount + BigInt(asset.quantity));
+      for (const utxo of utxos) {
+        for (const asset of utxo.output.amount) {
+          const currentAmount = balanceMap.get(asset.unit) || BigInt(0);
+          balanceMap.set(asset.unit, currentAmount + BigInt(asset.quantity));
+        }
       }
+
+      // Convert back to string format for consistency
+      const balance = Array.from(balanceMap.entries()).map(
+        ([unit, quantity]) => ({
+          unit,
+          quantity: quantity.toString(),
+        }),
+      );
+
+      return balance;
+    } catch (error: any) {
+      throw new Error(`Failed to fetch proxy balance: ${error?.message || 'Unknown error'}`);
     }
-
-    // Convert back to string format for consistency
-    const balance = Array.from(balanceMap.entries()).map(
-      ([unit, quantity]) => ({
-        unit,
-        quantity: quantity.toString(),
-      }),
-    );
-
-    return balance;
   };
 
   getDrepId = () => {
@@ -630,10 +647,65 @@ export class MeshProxyContract extends MeshTxInitiator {
 
   getDrepStatus = async () => {
     const drepId = this.getDrepId();
-    const drepStatus = await this.mesh.fetcher?.get(
-      `/governance/dreps/${drepId}`,
-    );
-    return drepStatus;
+    
+    // Check cache first
+    const cached = drepStatusCache.get(drepId);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      return cached.data;
+    }
+    
+    if (!this.mesh.fetcher) {
+      throw new Error("Blockchain provider not found");
+    }
+    
+    try {
+      const drepStatus = await this.mesh.fetcher.get(
+        `/governance/dreps/${drepId}`,
+      );
+      
+      // Cache the successful result
+      drepStatusCache.set(drepId, {
+        data: drepStatus,
+        timestamp: Date.now()
+      });
+      
+      return drepStatus;
+    } catch (error: any) {
+      // Parse the error if it's a stringified JSON
+      let parsedError = error;
+      if (typeof error === 'string') {
+        try {
+          parsedError = JSON.parse(error);
+        } catch {
+          // If parsing fails, use the original error
+        }
+      }
+      
+      // Handle specific error cases - check multiple possible 404 indicators
+      const is404 = error?.status === 404 || 
+                   error?.response?.status === 404 || 
+                   error?.data?.status_code === 404 ||
+                   parsedError?.status === 404 ||
+                   parsedError?.data?.status_code === 404 ||
+                   error?.message?.includes('404') ||
+                   error?.message?.includes('Not Found') ||
+                   error?.message?.includes('not found') ||
+                   error?.message?.includes('NOT_FOUND') ||
+                   (error?.response?.data && error.response.data.status_code === 404) ||
+                   (error?.data && error.data.status_code === 404);
+      
+      if (is404) {
+        // DRep not registered yet - cache null result
+        drepStatusCache.set(drepId, {
+          data: null,
+          timestamp: Date.now()
+        });
+        return null;
+      }
+      
+      // For other errors, don't cache and re-throw
+      console.log(`Failed to fetch DRep status: ${error?.message || 'Unknown error'}`);
+    }
   };
 
   /**

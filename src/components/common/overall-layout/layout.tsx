@@ -296,6 +296,7 @@ export default function RootLayout({
           </div>
         </header>
 
+
         <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
           <WalletErrorBoundary 
             fallback={

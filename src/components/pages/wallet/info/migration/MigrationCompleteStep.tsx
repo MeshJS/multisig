@@ -24,6 +24,11 @@ export default function MigrationCompleteStep({
   const router = useRouter();
   const [isCompleting, setIsCompleting] = useState(false);
 
+  // Define mutations
+  const { mutateAsync: clearMigrationTarget } = api.wallet.clearMigrationTarget.useMutation();
+  const { mutateAsync: archiveWallet } = api.wallet.archiveWallet.useMutation();
+  const utils = api.useUtils();
+
   // Get new wallet data
   const { data: newWalletData, isLoading: isLoadingNewWallet } = api.wallet.getWallet.useQuery(
     {
@@ -39,17 +44,22 @@ export default function MigrationCompleteStep({
     setIsCompleting(true);
     try {
       // Clear migration target from old wallet
-      await api.wallet.clearMigrationTarget.mutate({
+      await clearMigrationTarget({
+        walletId: appWallet.id,
+      });
+
+      // Archive the old wallet
+      await archiveWallet({
         walletId: appWallet.id,
       });
 
       // Invalidate queries to refresh UI
-      await api.useContext().wallet.getWallet.invalidate();
-      await api.useContext().wallet.getUserWallets.invalidate();
+      await utils.wallet.getWallet.invalidate();
+      await utils.wallet.getUserWallets.invalidate();
 
       toast({
         title: "Migration Complete",
-        description: "Your wallet migration has been completed successfully!",
+        description: "Your wallet migration has been completed successfully! The old wallet has been archived.",
       });
 
       // Navigate to the new wallet
@@ -109,6 +119,7 @@ export default function MigrationCompleteStep({
               <li>• Your new wallet is ready to use</li>
               <li>• All funds have been transferred</li>
               <li>• Proxy settings have been updated</li>
+              <li>• Old wallet will be archived</li>
               <li>• You can now use your new wallet for transactions</li>
             </ul>
           </div>
@@ -139,8 +150,8 @@ export default function MigrationCompleteStep({
           <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
             <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-800 dark:text-blue-200">
-              <strong>Important:</strong> Your old wallet configuration is still available but is no longer 
-              the active migration target. You can continue using your new wallet for all future transactions.
+              <strong>Important:</strong> Your old wallet will be archived after migration completion. 
+              You can continue using your new wallet for all future transactions.
             </AlertDescription>
           </Alert>
         </div>

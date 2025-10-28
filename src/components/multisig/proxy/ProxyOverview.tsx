@@ -40,15 +40,18 @@ interface ProxyCardProps {
     description: string | null;
     isActive: boolean;
     createdAt: Date;
+    balance?: Array<{ unit: string; quantity: string }>;
+    drepId?: string;
+    drepInfo?: any;
+    lastUpdated?: number;
   };
   isSelected: boolean;
-  balance: Array<{ unit: string; quantity: string }>;
-  balanceLoading?: boolean;
   onSelect: () => void;
   onCopy: () => void;
   onSpend: () => void;
   onUpdateProxy: (proxyId: string, description: string) => Promise<void>;
   onRefreshBalance?: () => void;
+  onCopyToClipboard: (text: string, label?: string) => void;
 }
 
 // Component to fetch and display proxy balance
@@ -58,58 +61,46 @@ const ProxyCardWithBalance = memo(function ProxyCardWithBalance({
   onSelect, 
   onCopy, 
   onSpend, 
-  onGetProxyBalance,
-  onUpdateProxy
-}: Omit<ProxyCardProps, 'balance'> & { 
-  onGetProxyBalance: (proxyAddress: string) => Promise<Array<{ unit: string; quantity: string }>>;
-  onUpdateProxy: (proxyId: string, description: string) => Promise<void>;
-}) {
-  const [balance, setBalance] = useState<Array<{ unit: string; quantity: string }>>([]);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+  onUpdateProxy,
+  onCopyToClipboard
+}: ProxyCardProps) {
+  // Use balance and DRep data directly from proxy object
+  const balance = proxy.balance || [];
+  const drepId = proxy.drepId;
+  const drepInfo = proxy.drepInfo;
+  const lastUpdated = proxy.lastUpdated;
 
-  const fetchBalance = React.useCallback(async () => {
-    setBalanceLoading(true);
-    try {
-      const proxyBalance = await onGetProxyBalance(proxy.proxyAddress);
-      setBalance(proxyBalance);
-      setLastFetchTime(Date.now());
-    } catch (error) {
-      console.error("Failed to fetch proxy balance:", error);
-      setBalance([]);
-    } finally {
-      setBalanceLoading(false);
-    }
-  }, [proxy.proxyAddress, onGetProxyBalance]);
 
-  // Initial fetch and refresh when proxy address changes
-  useEffect(() => {
-    fetchBalance();
-  }, [fetchBalance]);
 
-  // Refresh balance when proxy is selected (to ensure latest data)
-  useEffect(() => {
-    if (isSelected && Date.now() - lastFetchTime > 5000) { // Refresh if older than 5 seconds
-      fetchBalance();
-    }
-  }, [isSelected, fetchBalance, lastFetchTime]);
+  // No need to fetch balance - it's already in the proxy object
 
   return (
     <ProxyCard
       proxy={proxy}
       isSelected={isSelected}
-      balance={balance}
-      balanceLoading={balanceLoading}
       onSelect={onSelect}
       onCopy={onCopy}
       onSpend={onSpend}
       onUpdateProxy={onUpdateProxy}
-      onRefreshBalance={fetchBalance}
+      onCopyToClipboard={onCopyToClipboard}
     />
   );
 });
 
-const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceLoading = false, onSelect, onCopy, onSpend, onUpdateProxy, onRefreshBalance }: ProxyCardProps) {
+const ProxyCard = memo(function ProxyCard({ 
+  proxy, 
+  isSelected, 
+  onSelect, 
+  onCopy, 
+  onSpend, 
+  onUpdateProxy, 
+  onCopyToClipboard
+}: ProxyCardProps) {
+  // Use balance and DRep data directly from proxy object
+  const displayBalance = proxy.balance || [];
+  const drepId = proxy.drepId;
+  const drepInfo = proxy.drepInfo;
+  const balanceLoading = false; // No loading state needed since data is already loaded
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editDescription, setEditDescription] = React.useState(proxy.description || "");
@@ -189,7 +180,7 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
             </Button>
           </div>
         </div>
-        <CardDescription className="text-xs">
+        <div className="text-xs text-muted-foreground">
           {isEditing ? (
             <div className="flex items-center gap-2">
               <Input
@@ -236,7 +227,7 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
               <Edit3 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           )}
-        </CardDescription>
+        </div>
       </CardHeader>
       
       <CardContent className="pt-0 space-y-4">
@@ -245,30 +236,16 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
           <div className="flex items-center gap-2">
             <Wallet className="h-3 w-3 text-muted-foreground" />
             <span className="text-xs font-medium">Balance</span>
-            {onRefreshBalance && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-4 w-4 p-0 ml-auto"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRefreshBalance();
-                }}
-                disabled={balanceLoading}
-              >
-                <TrendingUp className={`h-3 w-3 ${balanceLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            )}
           </div>
           
           {balanceLoading ? (
             <div className="h-4 bg-muted rounded animate-pulse"></div>
-          ) : balance.length > 0 ? (
+          ) : displayBalance.length > 0 ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="cursor-help">
-                    {balance.map((asset, index) => (
+                    {displayBalance.map((asset: any, index: number) => (
                       <div key={index} className="flex items-center justify-between text-xs">
                         <span className="font-mono">
                           {asset.unit === "lovelace" 
@@ -284,7 +261,7 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
                   <div className="space-y-2">
                     <div className="font-semibold">Proxy Balance Details</div>
                     <div className="text-sm space-y-1">
-                      {balance.map((asset, index) => (
+                      {displayBalance.map((asset: any, index: number) => (
                         <div key={index} className="flex justify-between">
                           <span>{asset.unit === "lovelace" ? "ADA" : asset.unit}:</span>
                           <span className="font-mono">
@@ -296,7 +273,7 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
                         </div>
                       ))}
                       <div className="text-xs text-muted-foreground pt-1 border-t">
-                        Total: {balance.length} asset{balance.length !== 1 ? 's' : ''}
+                        Total: {displayBalance.length} asset{displayBalance.length !== 1 ? 's' : ''}
                       </div>
                     </div>
                   </div>
@@ -389,13 +366,75 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
                 {proxy.id}
               </div>
             </div>
+
+            {/* DRep Information - Only show when this proxy is selected */}
+            {isSelected && (
+              <div className="space-y-3 pt-3 border-t">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm font-medium">DRep Information</span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* DRep ID */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Hash className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs font-medium">DRep ID</span>
+                      {drepId && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-4 w-4 p-0 ml-auto"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCopyToClipboard(drepId);
+                          }}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="p-2 bg-muted/50 rounded text-xs font-mono break-all">
+                      {drepId ? (
+                        drepId
+                      ) : (
+                        <span className="text-muted-foreground">Not registered</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DRep Status */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {drepInfo?.active ? (
+                        <UserCheck className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <UserX className="h-3 w-3 text-red-500" />
+                      )}
+                      <span className="text-xs font-medium">Status</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={drepInfo?.active ? "default" : "secondary"}>
+                        {drepInfo?.active ? "Active" : "Inactive"}
+                      </Badge>
+                      {drepInfo?.amount && (
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(Number(drepInfo.amount) / 1000000)} ₳
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
         
         {/* Actions */}
         <div className="flex items-center gap-2 pt-2">
           <Button
-            variant={isSelected ? "default" : "outline"}
+            variant={isSelected ? "destructive" : "outline"}
             size="sm"
             className="flex-1 h-8 text-xs transition-all duration-200"
             onClick={(e) => {
@@ -403,8 +442,17 @@ const ProxyCard = memo(function ProxyCard({ proxy, isSelected, balance, balanceL
               onSelect();
             }}
           >
-            <CheckCircle className="h-3 w-3 mr-1" />
-            <span className="hidden sm:inline">{isSelected ? 'Selected' : 'Select'}</span>
+            {isSelected ? (
+              <>
+                <X className="h-3 w-3 mr-1" />
+                <span className="hidden sm:inline">Unselect</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-3 w-3 mr-1" />
+                <span className="hidden sm:inline">Select</span>
+              </>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -446,37 +494,23 @@ interface ProxyOverviewProps {
     createdAt: Date;
   }> | undefined;
   selectedProxy: string;
-  selectedProxyBalance: Array<{ unit: string; quantity: string }>;
-  proxyBalance: Array<{ unit: string; quantity: string }>;
   isProxySetup: boolean;
-  selectedProxyDrepId: string;
-  selectedProxyDrepStatus: any;
-  drepLoading: boolean;
   onProxySelection: (proxyId: string) => void;
   onCopyToClipboard: (text: string) => void;
   onStartSetup: () => void;
   onStartSpending: () => void;
-  onGetProxyBalance: (proxyAddress: string) => Promise<Array<{ unit: string; quantity: string }>>;
   onUpdateProxy: (proxyId: string, description: string) => Promise<void>;
-  onRefreshAllBalances?: () => void;
 }
 
 const ProxyOverview = memo(function ProxyOverview({
   proxies,
   selectedProxy,
-  selectedProxyBalance,
-  proxyBalance,
   isProxySetup,
-  selectedProxyDrepId,
-  selectedProxyDrepStatus,
-  drepLoading,
   onProxySelection,
   onCopyToClipboard,
   onStartSetup,
   onStartSpending,
-  onGetProxyBalance,
   onUpdateProxy,
-  onRefreshAllBalances,
 }: ProxyOverviewProps) {
   return (
     <div className="space-y-6">
@@ -500,85 +534,6 @@ const ProxyOverview = memo(function ProxyOverview({
           </Card>
         )}
 
-        {/* DRep Information Card - Only show when a proxy is selected */}
-        {selectedProxy && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
-                  <Users className="h-4 w-4 text-blue-500" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">Proxy DRep Information</p>
-                  <p className="text-sm text-muted-foreground">Delegated Representative details</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* DRep ID */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Hash className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs font-medium">DRep ID</span>
-                    {selectedProxyDrepId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-4 w-4 p-0 ml-auto"
-                        onClick={() => onCopyToClipboard(selectedProxyDrepId)}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                  <div className="p-2 bg-muted/50 rounded text-xs font-mono break-all">
-                    {drepLoading ? (
-                      <div className="h-4 bg-muted animate-pulse rounded"></div>
-                    ) : selectedProxyDrepId ? (
-                      selectedProxyDrepId
-                    ) : (
-                      <span className="text-muted-foreground">Not registered</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* DRep Status */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {selectedProxyDrepStatus?.active ? (
-                      <UserCheck className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <UserX className="h-3 w-3 text-muted-foreground" />
-                    )}
-                    <span className="text-xs font-medium">Status</span>
-                  </div>
-                  <div className="p-2 bg-muted/50 rounded text-xs">
-                    {drepLoading ? (
-                      <div className="h-4 bg-muted animate-pulse rounded"></div>
-                    ) : selectedProxyDrepStatus ? (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          selectedProxyDrepStatus.active 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                            : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
-                        }`}>
-                          {selectedProxyDrepStatus.active ? 'Active' : 'Inactive'}
-                        </span>
-                        {selectedProxyDrepStatus.amount && (
-                          <span className="text-muted-foreground">
-                            {Math.round(Number(selectedProxyDrepStatus.amount) / 1000000).toLocaleString()} ₳
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Not registered</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Proxy Carousel */}
@@ -590,16 +545,6 @@ const ProxyOverview = memo(function ProxyOverview({
               <Label className="text-base font-semibold">Available Proxies</Label>
             </div>
             <div className="flex items-center gap-2">
-              {onRefreshAllBalances && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={onRefreshAllBalances}
-                >
-                  <TrendingUp className="h-3 w-3" />
-                </Button>
-              )}
               <Badge variant="secondary">{proxies.length} proxy{proxies.length !== 1 ? 'ies' : ''}</Badge>
             </div>
           </div>
@@ -622,8 +567,8 @@ const ProxyOverview = memo(function ProxyOverview({
                     onSelect={() => onProxySelection(proxy.id)}
                     onCopy={() => onCopyToClipboard(proxy.proxyAddress)}
                     onSpend={() => onStartSpending()}
-                    onGetProxyBalance={onGetProxyBalance}
                     onUpdateProxy={onUpdateProxy}
+                    onCopyToClipboard={onCopyToClipboard}
                   />
                 ))}
               </div>

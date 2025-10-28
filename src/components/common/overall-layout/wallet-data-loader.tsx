@@ -7,6 +7,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
+import { useProxyActions } from "@/lib/zustand/proxy";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -19,6 +20,7 @@ export default function WalletDataLoader() {
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
+  const { fetchProxyBalance, fetchProxyDrepInfo, setProxies } = useProxyActions();
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -53,10 +55,64 @@ export default function WalletDataLoader() {
     }
   }
 
+  async function fetchProxyData() {
+    if (appWallet?.id && appWallet?.scriptCbor) {
+      console.log("WalletDataLoader: Fetching proxy data for wallet", appWallet.id);
+      
+      try {
+        // Get proxies from API
+        const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
+          walletId: appWallet.id,
+        });
+
+        console.log("WalletDataLoader: Found proxies", proxies);
+
+        // First, add proxies to the store
+        setProxies(appWallet.id, proxies);
+
+        // Fetch balance and DRep info for each proxy
+        for (const proxy of proxies) {
+          try {
+            console.log(`WalletDataLoader: Fetching data for proxy ${proxy.id}`);
+            
+            // Fetch balance
+            await fetchProxyBalance(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              network.toString()
+            );
+            
+            // Fetch DRep info
+            await fetchProxyDrepInfo(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              proxy.authTokenId, 
+              appWallet.scriptCbor, 
+              network.toString(),
+              proxy.paramUtxo
+            );
+            
+            console.log(`WalletDataLoader: Successfully fetched data for proxy ${proxy.id}`);
+          } catch (error) {
+            console.error(`WalletDataLoader: Error fetching data for proxy ${proxy.id}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error("WalletDataLoader: Error fetching proxy data:", error);
+      }
+    }
+  }
+
   async function refreshWallet() {
+    console.log("WalletDataLoader: refreshWallet called");
     setLoading(true);
     await fetchUtxos();
     await getTransactionsOnChain();
+    console.log("WalletDataLoader: About to fetch proxy data");
+    await fetchProxyData(); // Fetch proxy data
+    console.log("WalletDataLoader: Finished fetching proxy data");
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
     // Also refresh proxy data
@@ -66,8 +122,19 @@ export default function WalletDataLoader() {
   }
 
   useEffect(() => {
+    console.log("WalletDataLoader: useEffect triggered", {
+      hasAppWallet: !!appWallet,
+      walletId: appWallet?.id,
+      hasUtxos: appWallet?.id ? walletsUtxos[appWallet.id] !== undefined : false
+    });
+    
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
+      console.log("WalletDataLoader: Calling refreshWallet");
       refreshWallet();
+    } else if (appWallet) {
+      // If wallet exists but we already have UTxOs, still fetch proxy data
+      console.log("WalletDataLoader: Calling fetchProxyData directly");
+      fetchProxyData();
     }
   }, [appWallet]);
 

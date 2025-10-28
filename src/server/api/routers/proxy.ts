@@ -85,43 +85,34 @@ export const proxyRouter = createTRPCRouter({
       userAddress: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      console.log("getProxiesByUserOrWallet called with:", input);
-      
-      const orConditions: any[] = [];
-      
+      // Prefer fetching by walletId when available
       if (input.walletId) {
-        orConditions.push({ walletId: input.walletId });
+        return ctx.db.proxy.findMany({
+          where: {
+            walletId: input.walletId,
+            isActive: true,
+          },
+          orderBy: { createdAt: "desc" },
+        });
       }
 
+      // Fallback: fetch by user address if provided
       if (input.userAddress) {
         const user = await ctx.db.user.findUnique({
-          where: {
-            address: input.userAddress,
-          },
+          where: { address: input.userAddress },
         });
-
-        if (user) {
-          orConditions.push({ userId: user.id });
-        }
+        if (!user) return [];
+        return ctx.db.proxy.findMany({
+          where: {
+            userId: user.id,
+            isActive: true,
+          },
+          orderBy: { createdAt: "desc" },
+        });
       }
 
-      if (orConditions.length === 0) {
-        console.log("No conditions found, returning empty array");
-        return [];
-      }
-
-      const result = await ctx.db.proxy.findMany({
-        where: {
-          isActive: true,
-          OR: orConditions,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      
-      console.log("Found proxies:", result.length, result);
-      return result;
+      // No criteria provided
+      return [];
     }),
 
   getProxyById: publicProcedure
@@ -179,5 +170,39 @@ export const proxyRouter = createTRPCRouter({
           isActive: false,
         },
       });
+    }),
+
+  transferProxies: publicProcedure
+    .input(z.object({ 
+      fromWalletId: z.string(),
+      toWalletId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Find all active proxies for the source wallet
+      const proxies = await ctx.db.proxy.findMany({
+        where: {
+          walletId: input.fromWalletId,
+          isActive: true,
+        },
+      });
+
+      if (proxies.length === 0) {
+        return { transferred: 0, message: "No proxies found to transfer" };
+      }
+
+      // Update all proxies to point to the new wallet
+      const updatePromises = proxies.map(proxy =>
+        ctx.db.proxy.update({
+          where: { id: proxy.id },
+          data: { walletId: input.toWalletId },
+        })
+      );
+
+      await Promise.all(updatePromises);
+
+      return { 
+        transferred: proxies.length, 
+        message: `Successfully transferred ${proxies.length} proxy${proxies.length !== 1 ? 'ies' : ''}` 
+      };
     }),
 });

@@ -1,48 +1,56 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { zustandStorage } from "@/lib/indexeddb";
 
+// Simple proxy state interface
 interface ProxyState {
-  isProxyEnabled: boolean;
   selectedProxyId: string;
-  toggleProxy: () => void;
-  setProxyEnabled: (enabled: boolean) => void;
   setSelectedProxy: (proxyId: string) => void;
   clearSelectedProxy: () => void;
 }
 
+// Create a simple proxy store
 export const useProxyStore = create<ProxyState>()(
   persist(
     (set) => ({
-      isProxyEnabled: false,
       selectedProxyId: "",
-      toggleProxy: () => set((state) => ({ isProxyEnabled: !state.isProxyEnabled })),
-      setProxyEnabled: (enabled: boolean) => set({ isProxyEnabled: enabled }),
       setSelectedProxy: (proxyId: string) => set({ selectedProxyId: proxyId }),
       clearSelectedProxy: () => set({ selectedProxyId: "" }),
     }),
     {
-      name: "proxy-settings", // unique name for localStorage key
+      name: "proxy-settings",
+      storage: createJSONStorage(() => zustandStorage),
     }
   )
 );
 
-// Hook for easy access to proxy state
+// Re-export from the main proxy store
+export { 
+  useProxyData, 
+  useSelectedProxy, 
+  useProxyActions 
+} from "@/lib/zustand/proxy";
+
+// Convenience hook for backward compatibility
 export const useProxy = () => {
-  const { 
-    isProxyEnabled, 
-    selectedProxyId, 
-    toggleProxy, 
-    setProxyEnabled, 
-    setSelectedProxy, 
-    clearSelectedProxy 
-  } = useProxyStore();
+  const selectedProxyId = useProxyStore((state) => state.selectedProxyId);
+  const setSelectedProxy = useProxyStore((state) => state.setSelectedProxy);
+  const clearSelectedProxy = useProxyStore((state) => state.clearSelectedProxy);
+  
+  // Proxy is enabled when a proxy is selected
+  const isProxyEnabled = !!selectedProxyId;
+  
+  // Enhanced clearSelectedProxy with debugging
+  const enhancedClearSelectedProxy = () => {
+    console.log("useProxy: Clearing selected proxy, current:", selectedProxyId);
+    clearSelectedProxy();
+    console.log("useProxy: Proxy cleared");
+  };
   
   return {
     isProxyEnabled,
     selectedProxyId,
-    toggleProxy,
-    setProxyEnabled,
     setSelectedProxy,
-    clearSelectedProxy,
+    clearSelectedProxy: enhancedClearSelectedProxy,
   };
 };

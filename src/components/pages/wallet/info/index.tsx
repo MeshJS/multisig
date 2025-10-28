@@ -27,10 +27,10 @@ export default function WalletInfo() {
           {multisigWallet && multisigWallet.stakingEnabled() && <InspectMultisigScript mWallet={multisigWallet} />}
           <MigrateWallet appWallet={appWallet} />
           {multisigWallet && <RegisterWallet mWallet={multisigWallet} appWallet={appWallet} />}
+          <ProxyControlCard />
           {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
           {multisigWallet && <UpgradeGovernanceWallet mWallet={multisigWallet} />}
           <ArchiveWallet appWallet={appWallet} />
-          <ProxyControlCard />
         </div>
       </main>
     </>

@@ -30,6 +30,8 @@ export interface MigrationWalletFlowState {
   setSignerDescriptions: React.Dispatch<React.SetStateAction<string[]>>;
   signersStakeKeys: string[];
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
+  signersDRepKeys: string[];
+  setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
   addSigner: () => void;
   removeSigner: (index: number) => void;
   
@@ -62,19 +64,21 @@ export interface MigrationWalletFlowState {
   newWalletId?: string;
   
   // Actions
-  createMigrationWallet: () => Promise<void>;
+  createTemporaryWallet: () => Promise<void>;
+  createMigrationWallet: () => Promise<string | null>;
   
   // Save callbacks for create page
   handleSaveWalletInfo: (newName: string, newDescription: string) => void;
-  handleSaveSigners: (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[]) => void;
-  handleSaveSignatureRules: (numRequired: number) => void;
-  handleSaveAdvanced: (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => void;
+  handleSaveSigners: (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[], newDRepKeys: string[]) => Promise<void>;
+  handleSaveSignatureRules: (numRequired: number) => Promise<void>;
+  handleSaveAdvanced: (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => Promise<void>;
 }
 
 export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletFlowState {
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
+  const [signersDRepKeys, setSignerDRepKeys] = useState<string[]>([]);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -117,7 +121,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       setSignerAddresses(walletData.signersAddresses || []);
       setSignerDescriptions(walletData.signersDescriptions || []);
       setNumRequiredSigners(walletData.numRequiredSigners || 1);
-      setNativeScriptType(walletData.type || "atLeast");
+      setNativeScriptType((walletData.type as "atLeast" | "all" | "any") || "atLeast");
       setStakeKey(walletData.stakeCredentialHash || "");
 
       // Filter and process stake keys
@@ -134,6 +138,9 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       });
 
       setSignerStakeKeys(validStakeKeys);
+      
+      // Initialize DRep keys (empty for now, can be added later)
+      setSignerDRepKeys((walletData as any).signersDRepKeys || []);
     }
   }, [walletData]);
 
@@ -146,9 +153,10 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       setSignerAddresses(existingNewWallet.signersAddresses || []);
       setSignerDescriptions(existingNewWallet.signersDescriptions || []);
       setSignerStakeKeys(existingNewWallet.signersStakeKeys || []);
+      setSignerDRepKeys((existingNewWallet as any).signersDRepKeys || []);
       setNumRequiredSigners(existingNewWallet.numRequiredSigners || 1);
       setStakeKey(existingNewWallet.stakeCredentialHash || "");
-      setNativeScriptType(existingNewWallet.scriptType || "atLeast");
+      setNativeScriptType((existingNewWallet.scriptType as "atLeast" | "all" | "any") || "atLeast");
     }
   }, [existingNewWallet]);
 
@@ -236,7 +244,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     },
   });
 
-  const { mutate: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
+  const { mutateAsync: updateNewWallet } = api.wallet.updateNewWallet.useMutation({
     onSuccess: () => {
       toast({
         title: "Saved",
@@ -254,35 +262,8 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     },
   });
 
-  const { mutate: createWallet } = api.wallet.createWallet.useMutation({
-    onSuccess: (data) => {
-      console.log("Wallet created successfully:", data);
-      
-      // Set migration target after successful wallet creation
-      setMigrationTarget({
-        walletId: appWallet.id,
-        newWalletId: data.id,
-      });
-      
-      setNewWalletId(data.id);
-      setLoading(false);
-      toast({
-        title: "Success",
-        description: "New wallet created successfully!",
-        duration: 3000,
-      });
-    },
-    onError: (e) => {
-      console.error("Failed to create wallet:", e);
-      setLoading(false);
-      toast({
-        title: "Error",
-        description: "Failed to create new wallet",
-        variant: "destructive",
-        duration: 3000,
-      });
-    },
-  });
+  const { mutate: createWallet } = api.wallet.createWallet.useMutation();
+  const { mutateAsync: deleteNewWallet } = api.wallet.deleteNewWallet.useMutation();
 
   const { mutate: setMigrationTarget } = api.wallet.setMigrationTarget.useMutation({
     onSuccess: () => {
@@ -304,6 +285,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
     setSignerStakeKeys([...signersStakeKeys, ""]);
+    setSignerDRepKeys([...signersDRepKeys, ""]);
   }
 
   function removeSigner(index: number) {
@@ -318,6 +300,10 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     const updatedStakeKeys = [...signersStakeKeys];
     updatedStakeKeys.splice(index, 1);
     setSignerStakeKeys(updatedStakeKeys);
+
+    const updatedDRepKeys = [...signersDRepKeys];
+    updatedDRepKeys.splice(index, 1);
+    setSignerDRepKeys(updatedDRepKeys);
   }
 
   // Adjust numRequiredSigners if it exceeds the number of signers
@@ -327,9 +313,53 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     }
   }, [signersAddresses.length, numRequiredSigners]);
 
-  // Create migration wallet
-  async function createMigrationWallet() {
-    console.log("createMigrationWallet called", { multisigWallet, name, signersAddresses });
+  // Create temporary wallet for invite link (if not already created)
+  const createTemporaryWallet = useCallback(async () => {
+    if (newWalletId) {
+      return; // Already created
+    }
+
+    
+    if (!name || signersAddresses.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please provide wallet name and at least one signer before creating invite link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const walletData = {
+        name: name,
+        description: description,
+        signersAddresses: signersAddresses,
+        signersDescriptions: signersDescriptions,
+        signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
+        numRequiredSigners: numRequiredSigners,
+        ownerAddress: userAddress || "",
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType || undefined,
+      };
+      
+      
+      // Create temporary wallet for invite link
+      createNewWallet(walletData);
+    } catch (error) {
+      console.error("Failed to create temporary wallet:", error);
+      setLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to create temporary wallet. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, [newWalletId, name, signersAddresses, description, signersDescriptions, signersStakeKeys, numRequiredSigners, stakeKey, nativeScriptType, createNewWallet, toast]);
+
+  // Create final migration wallet
+  async function createMigrationWallet(): Promise<string | null> {
     
     if (!multisigWallet) {
       toast({
@@ -337,7 +367,26 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         description: "Invalid wallet configuration. Please check your settings.",
         variant: "destructive",
       });
-      return;
+      return null;
+    }
+
+    if (!newWalletId) {
+      toast({
+        title: "Error",
+        description: "Please create the temporary wallet first to generate invite link.",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    // Check if final wallet has already been created
+    if (appWallet.migrationTargetWalletId) {
+      toast({
+        title: "Error",
+        description: "Final wallet has already been created for this migration. You can only create one new wallet per migration.",
+        variant: "destructive",
+      });
+      return null;
     }
 
     setLoading(true);
@@ -347,28 +396,58 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         throw new Error("Failed to generate script CBOR");
       }
 
-      console.log("Creating wallet with data:", {
-        name,
-        description,
-        signersAddresses,
-        signersDescriptions,
-        signersStakeKeys,
-        numRequiredSigners,
-        stakeCredentialHash: stakeKey || undefined,
-        type: nativeScriptType,
-      });
 
-      // Create the new wallet directly
-      createWallet({
-        name: name,
-        description: description,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
-        numRequiredSigners: numRequiredSigners,
-        scriptCbor: scriptCbor,
-        stakeCredentialHash: stakeKey || undefined,
-        type: nativeScriptType,
+      // Create the final wallet using the mutation
+      return new Promise((resolve, reject) => {
+        createWallet({
+          name: name,
+          description: description,
+          signersAddresses: signersAddresses,
+          signersDescriptions: signersDescriptions,
+          signersStakeKeys: signersStakeKeys,
+          signersDRepKeys: signersDRepKeys,
+          numRequiredSigners: numRequiredSigners,
+          scriptCbor: scriptCbor,
+          stakeCredentialHash: stakeKey || undefined,
+          type: nativeScriptType,
+        }, {
+          onSuccess: async (data) => {
+            
+            // Set migration target after successful wallet creation
+            setMigrationTarget({
+              walletId: appWallet.id,
+              migrationTargetWalletId: data.id,
+            });
+            
+            // Clean up the temporary NewWallet
+            if (newWalletId && newWalletId !== data.id) {
+              try {
+                await deleteNewWallet({ walletId: newWalletId });
+              } catch (error) {
+              }
+            }
+            
+            setNewWalletId(data.id);
+            setLoading(false);
+            toast({
+              title: "Success",
+              description: "New wallet created successfully!",
+              duration: 3000,
+            });
+            resolve(data.id);
+          },
+          onError: (error) => {
+            console.error("Failed to create wallet:", error);
+            setLoading(false);
+            toast({
+              title: "Error",
+              description: "Failed to create new wallet",
+              variant: "destructive",
+              duration: 3000,
+            });
+            reject(error);
+          }
+        });
       });
 
     } catch (error) {
@@ -379,6 +458,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         description: "Failed to create new wallet. Please try again.",
         variant: "destructive",
       });
+      return null;
     }
   }
 
@@ -395,52 +475,106 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
         stakeCredentialHash: stakeKey || undefined,
-        scriptType: nativeScriptType,
+        scriptType: nativeScriptType || undefined,
       });
     }
   }, [newWalletId, signersAddresses, signersDescriptions, signersStakeKeys, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet]);
 
-  const handleSaveSigners = useCallback((newAddresses: string[], newDescriptions: string[], newStakeKeys: string[]) => {
-    setSignerAddresses(newAddresses);
-    setSignerDescriptions(newDescriptions);
-    setSignerStakeKeys(newStakeKeys);
+  const handleSaveSigners = useCallback(async (newAddresses: string[], newDescriptions: string[], newStakeKeys: string[], newDRepKeys: string[]) => {
+    // Ensure all arrays are defined and filter out undefined values
+    const safeAddresses = (newAddresses || []).filter(addr => addr !== undefined);
+    const safeDescriptions = (newDescriptions || []).filter(desc => desc !== undefined);
+    const safeStakeKeys = (newStakeKeys || []).filter(key => key !== undefined);
+    const safeDRepKeys = (newDRepKeys || []).filter(key => key !== undefined);
+    
+    // Ensure all arrays have the same length
+    const maxLength = Math.max(safeAddresses.length, safeDescriptions.length, safeStakeKeys.length, safeDRepKeys.length);
+    
+    const paddedAddresses = [...safeAddresses];
+    const paddedDescriptions = [...safeDescriptions];
+    const paddedStakeKeys = [...safeStakeKeys];
+    const paddedDRepKeys = [...safeDRepKeys];
+    
+    // Pad arrays to same length with empty strings
+    while (paddedAddresses.length < maxLength) paddedAddresses.push("");
+    while (paddedDescriptions.length < maxLength) paddedDescriptions.push("");
+    while (paddedStakeKeys.length < maxLength) paddedStakeKeys.push("");
+    while (paddedDRepKeys.length < maxLength) paddedDRepKeys.push("");
+    
+    setSignerAddresses(paddedAddresses);
+    setSignerDescriptions(paddedDescriptions);
+    setSignerStakeKeys(paddedStakeKeys);
+    setSignerDRepKeys(paddedDRepKeys);
     
     if (newWalletId) {
-      updateNewWallet({
+      const updateData = {
         walletId: newWalletId,
         name: name,
         description: description,
-        signersAddresses: newAddresses,
-        signersDescriptions: newDescriptions,
-        signersStakeKeys: newStakeKeys,
+        signersAddresses: paddedAddresses,
+        signersDescriptions: paddedDescriptions,
+        signersStakeKeys: paddedStakeKeys,
+        signersDRepKeys: paddedDRepKeys,
         numRequiredSigners: numRequiredSigners,
         stakeCredentialHash: stakeKey || undefined,
-        scriptType: nativeScriptType,
-      });
+        scriptType: nativeScriptType || undefined,
+      };
+      
+      // Validate data before sending
+      if (!updateData.walletId || !updateData.name) {
+        toast({
+          title: "Error",
+          description: "Invalid wallet data. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Ensure all arrays contain only strings
+      const validatedData = {
+        ...updateData,
+        signersAddresses: paddedAddresses.map(addr => String(addr || "")),
+        signersDescriptions: paddedDescriptions.map(desc => String(desc || "")),
+        signersStakeKeys: paddedStakeKeys.map(key => String(key || "")),
+        signersDRepKeys: paddedDRepKeys.map(key => String(key || "")),
+      };
+      
+      
+      try {
+        await updateNewWallet(validatedData);
+      } catch (error) {
+        console.error("Failed to update new wallet:", error);
+      }
     }
   }, [newWalletId, name, description, numRequiredSigners, stakeKey, nativeScriptType, updateNewWallet]);
 
-  const handleSaveSignatureRules = useCallback((numRequired: number) => {
+  const handleSaveSignatureRules = useCallback(async (numRequired: number) => {
     setNumRequiredSigners(numRequired);
     
     if (newWalletId) {
-      updateNewWallet({
-        walletId: newWalletId,
-        name: name,
-        description: description,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: signersStakeKeys,
-        numRequiredSigners: numRequired,
-        stakeCredentialHash: stakeKey || undefined,
-        scriptType: nativeScriptType,
-      });
+      try {
+        await updateNewWallet({
+          walletId: newWalletId,
+          name: name,
+          description: description,
+          signersAddresses: signersAddresses,
+          signersDescriptions: signersDescriptions,
+          signersStakeKeys: signersStakeKeys,
+          signersDRepKeys: signersDRepKeys,
+          numRequiredSigners: numRequired,
+          stakeCredentialHash: stakeKey || undefined,
+          scriptType: nativeScriptType || undefined,
+        });
+      } catch (error) {
+        console.error("Failed to update signature rules:", error);
+      }
     }
   }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, stakeKey, nativeScriptType, updateNewWallet]);
 
-  const handleSaveAdvanced = useCallback((newStakeKey: string, scriptType: "all" | "any" | "atLeast") => {
+  const handleSaveAdvanced = useCallback(async (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => {
     setStakeKey(newStakeKey);
     setNativeScriptType(scriptType);
     
@@ -454,17 +588,22 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     }
     
     if (newWalletId) {
-      updateNewWallet({
-        walletId: newWalletId,
-        name: name,
-        description: description,
-        signersAddresses: signersAddresses,
-        signersDescriptions: signersDescriptions,
-        signersStakeKeys: updatedSignerStakeKeys,
-        numRequiredSigners: numRequiredSigners,
-        stakeCredentialHash: newStakeKey || undefined,
-        scriptType: scriptType,
-      });
+      try {
+        await updateNewWallet({
+          walletId: newWalletId,
+          name: name,
+          description: description,
+          signersAddresses: signersAddresses,
+          signersDescriptions: signersDescriptions,
+          signersStakeKeys: updatedSignerStakeKeys,
+          signersDRepKeys: signersDRepKeys,
+          numRequiredSigners: numRequiredSigners,
+          stakeCredentialHash: newStakeKey || null,
+          scriptType: scriptType,
+        });
+      } catch (error) {
+        console.error("Failed to update advanced settings:", error);
+      }
     }
   }, [newWalletId, name, description, signersAddresses, signersDescriptions, signersStakeKeys, numRequiredSigners, updateNewWallet]);
 
@@ -481,9 +620,10 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
         stakeCredentialHash: null,
-        scriptType: nativeScriptType,
+        scriptType: nativeScriptType || undefined,
       });
     }
 
@@ -515,6 +655,8 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     setSignerDescriptions,
     signersStakeKeys,
     setSignerStakeKeys,
+    signersDRepKeys,
+    setSignerDRepKeys,
     addSigner,
     removeSigner,
     
@@ -547,6 +689,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
     newWalletId,
     
     // Actions
+    createTemporaryWallet,
     createMigrationWallet,
     
     // Save callbacks
