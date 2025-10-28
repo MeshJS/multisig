@@ -425,10 +425,10 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             if (m?.matched && typeof m.signerIndex === "number") {
                 const idx = m.signerIndex;
                 const hex = (signerStakeKeys[idx] || "").toLowerCase();
-                return hex && /^[0-9a-f]{56}$/.test(hex) ? hex : (stakeSigKeyHashes[i] || "").toLowerCase();
+                return hex && /^[0-9a-f]{56}$/.test(hex) ? hex : "";
             }
-            // Fallback to stake script's key hash at same position, or empty string
-            return (stakeSigKeyHashes[i] || "").toLowerCase();
+            // Fallback to empty string when no aligned stake key is available
+            return "";
         });
         // Recompute stakeAddressesUsed to stay positionally aligned with the reordered stake keys
         stakeAddressesUsedFinal = signerStakeKeysOrdered.map((hex) => {
@@ -459,7 +459,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             // Fallback: use the keyHash itself where no stake key was provided
             return sig.toLowerCase();
         });
-        // Build stakeAddressesUsed positionally: reward addresses for matched keys, else raw key hash placeholders
+        // Build stakeAddressesUsed positionally: reward addresses for matched keys, else derive from script key hash
         stakeAddressesUsedFinal = stakeSigKeyHashes.map((sig) => {
             const m = lowerMatches.get(sig.toLowerCase());
             const providedStakeHex = m?.signerStakeKey;
@@ -481,8 +481,22 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
                 // If we couldn't build a valid reward address, fall back to the hex itself
                 return hex;
             }
-            // No match: use the script key hash in this position
-            return sig.toLowerCase();
+            // No match: attempt to build a reward address directly from the script key hash
+            const hex = sig.toLowerCase();
+            const tryNetworks: Array<0 | 1> = network === undefined ? [0, 1] : [network as 0 | 1];
+            for (const netId of tryNetworks) {
+                try {
+                    const addr = serializeRewardAddress(hex, false, netId);
+                    const resolved = stakeKeyHash(addr)?.toLowerCase();
+                    if (resolved === hex) {
+                        return addr;
+                    }
+                } catch {
+                    // continue to next
+                }
+            }
+            // If unable to derive, fall back to the raw key hash
+            return hex;
         });
     }
 
