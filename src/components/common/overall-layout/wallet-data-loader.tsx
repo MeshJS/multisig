@@ -20,7 +20,7 @@ export default function WalletDataLoader() {
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
-  const { fetchProxyBalance, fetchProxyDrepInfo, setProxies } = useProxyActions();
+  const { fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo, setProxies } = useProxyActions();
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -83,7 +83,7 @@ export default function WalletDataLoader() {
               network.toString()
             );
             
-            // Fetch DRep info
+            // Fetch DRep info with force refresh
             await fetchProxyDrepInfo(
               appWallet.id, 
               proxy.id, 
@@ -91,7 +91,20 @@ export default function WalletDataLoader() {
               proxy.authTokenId, 
               appWallet.scriptCbor, 
               network.toString(),
-              proxy.paramUtxo
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
+            );
+            
+            // Fetch delegators info with force refresh
+            await fetchProxyDelegatorsInfo(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              proxy.authTokenId, 
+              appWallet.scriptCbor, 
+              network.toString(),
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
             );
             
             console.log(`WalletDataLoader: Successfully fetched data for proxy ${proxy.id}`);

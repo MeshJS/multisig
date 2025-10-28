@@ -48,7 +48,7 @@ export default function WalletDataLoaderWrapper({
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
-  const { fetchProxyBalance, fetchProxyDrepInfo, setProxies } = useProxyActions();
+  const { fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
@@ -205,7 +205,7 @@ export default function WalletDataLoaderWrapper({
               network.toString()
             );
             
-            // Fetch DRep info
+            // Fetch DRep info with force refresh
             await fetchProxyDrepInfo(
               appWallet.id, 
               proxy.id, 
@@ -213,7 +213,20 @@ export default function WalletDataLoaderWrapper({
               proxy.authTokenId, 
               appWallet.scriptCbor, 
               network.toString(),
-              proxy.paramUtxo
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
+            );
+            
+            // Fetch delegators info with force refresh
+            await fetchProxyDelegatorsInfo(
+              appWallet.id, 
+              proxy.id, 
+              proxy.proxyAddress, 
+              proxy.authTokenId, 
+              appWallet.scriptCbor, 
+              network.toString(),
+              proxy.paramUtxo,
+              true // Force refresh to bypass cache
             );
             
           } catch (error) {

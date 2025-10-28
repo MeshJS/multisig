@@ -43,6 +43,12 @@ interface ProxyCardProps {
     balance?: Array<{ unit: string; quantity: string }>;
     drepId?: string;
     drepInfo?: any;
+    delegatorsInfo?: {
+      delegators: Array<{ address: string; amount: string }>;
+      totalDelegation: string;
+      totalDelegationADA: number;
+      count: number;
+    };
     lastUpdated?: number;
   };
   isSelected: boolean;
@@ -100,6 +106,7 @@ const ProxyCard = memo(function ProxyCard({
   const displayBalance = proxy.balance || [];
   const drepId = proxy.drepId;
   const drepInfo = proxy.drepInfo;
+  const delegatorsInfo = proxy.delegatorsInfo;
   const balanceLoading = false; // No loading state needed since data is already loaded
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -426,6 +433,64 @@ const ProxyCard = memo(function ProxyCard({
                     </div>
                   </div>
                 </div>
+
+                {/* Delegators Information */}
+                {delegatorsInfo && delegatorsInfo.count > 0 && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm font-medium">Delegations</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-3">
+                      {/* Total Delegation */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs font-medium">Total Delegation</span>
+                        </div>
+                        <div className="p-2 bg-muted/50 rounded text-xs">
+                          <div className="font-mono">
+                            {delegatorsInfo.totalDelegationADA.toLocaleString(undefined, { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 6 
+                            })} ₳
+                          </div>
+                          <div className="text-muted-foreground">
+                            {delegatorsInfo.count} delegator{delegatorsInfo.count !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top Delegators */}
+                      {delegatorsInfo.delegators.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs font-medium">Top Delegators</span>
+                          </div>
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {delegatorsInfo.delegators.slice(0, 5).map((delegator, index) => (
+                              <div key={delegator.address} className="flex justify-between items-center text-xs p-1 bg-muted/30 rounded">
+                                <span className="font-mono truncate flex-1 mr-2">
+                                  {delegator.address.slice(0, 20)}...
+                                </span>
+                                <span className="font-mono text-muted-foreground">
+                                  {(Number(delegator.amount) / 1000000).toFixed(2)} ₳
+                                </span>
+                              </div>
+                            ))}
+                            {delegatorsInfo.delegators.length > 5 && (
+                              <div className="text-xs text-muted-foreground text-center py-1">
+                                +{delegatorsInfo.delegators.length - 5} more
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

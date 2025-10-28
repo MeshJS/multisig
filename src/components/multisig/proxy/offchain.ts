@@ -637,12 +637,12 @@ export class MeshProxyContract extends MeshTxInitiator {
     return resolveScriptHashDRepId(proxyScriptHash);
   };
 
-  getDrepStatus = async () => {
+  getDrepStatus = async (forceRefresh = false) => {
     const drepId = this.getDrepId();
     
     // Check cache first
     const cached = drepStatusCache.get(drepId);
-    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    if (!forceRefresh && cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
       return cached.data;
     }
     
@@ -700,6 +700,63 @@ export class MeshProxyContract extends MeshTxInitiator {
       // For other errors, don't cache and re-throw
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.log(`Failed to fetch DRep status: ${errorMessage}`);
+    }
+  };
+
+  /**
+   * Get DRep delegators and their delegation amounts
+   * @param forceRefresh Whether to bypass cache
+   * @returns Array of delegators with addresses and amounts, plus total delegation
+   */
+  getDrepDelegators = async (forceRefresh = false) => {
+    const drepId = this.getDrepId();
+    
+    // Check cache first
+    const cacheKey = `${drepId}_delegators`;
+    const cached = drepStatusCache.get(cacheKey);
+    if (!forceRefresh && cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      return cached.data;
+    }
+    
+    if (!this.mesh.fetcher) {
+      throw new Error("Blockchain provider not found");
+    }
+    
+    try {
+      const delegators = await this.mesh.fetcher.get(
+        `/governance/dreps/${drepId}/delegators?count=100&page=1&order=asc`,
+      );
+      
+      // Calculate total delegation amount
+      const totalDelegation = delegators.reduce((sum: bigint, delegator: { amount: string }) => {
+        return sum + BigInt(delegator.amount);
+      }, BigInt(0));
+      
+      const result = {
+        delegators,
+        totalDelegation: totalDelegation.toString(),
+        totalDelegationADA: Number(totalDelegation) / 1000000, // Convert to ADA
+        count: delegators.length
+      };
+      
+      // Cache the successful result
+      drepStatusCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now()
+      });
+      
+      return result;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`Failed to fetch DRep delegators: ${errorMessage}`);
+      
+      // Return empty result for errors
+      return {
+        delegators: [],
+        totalDelegation: "0",
+        totalDelegationADA: 0,
+        count: 0
+      };
     }
   };
 

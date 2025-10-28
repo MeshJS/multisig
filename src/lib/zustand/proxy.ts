@@ -14,6 +14,18 @@ export interface ProxyDrepInfo {
   hash?: string;
 }
 
+export interface DelegatorInfo {
+  address: string;
+  amount: string;
+}
+
+export interface ProxyDelegatorsInfo {
+  delegators: DelegatorInfo[];
+  totalDelegation: string;
+  totalDelegationADA: number;
+  count: number;
+}
+
 export interface ProxyData {
   id: string;
   proxyAddress: string;
@@ -25,6 +37,7 @@ export interface ProxyData {
   balance?: Array<{ unit: string; quantity: string }>;
   drepId?: string;
   drepInfo?: ProxyDrepInfo;
+  delegatorsInfo?: ProxyDelegatorsInfo;
   lastUpdated?: number;
 }
 
@@ -59,7 +72,8 @@ interface ProxyState {
   
   // Data fetching actions
   fetchProxyBalance: (walletId: string, proxyId: string, proxyAddress: string, network: string) => Promise<void>;
-  fetchProxyDrepInfo: (walletId: string, proxyId: string, proxyAddress: string, authTokenId: string, scriptCbor: string, network: string, paramUtxo: string) => Promise<void>;
+  fetchProxyDrepInfo: (walletId: string, proxyId: string, proxyAddress: string, authTokenId: string, scriptCbor: string, network: string, paramUtxo: string, forceRefresh?: boolean) => Promise<void>;
+  fetchProxyDelegatorsInfo: (walletId: string, proxyId: string, proxyAddress: string, authTokenId: string, scriptCbor: string, network: string, paramUtxo: string, forceRefresh?: boolean) => Promise<void>;
   
   // Utility actions
   updateProxyData: (walletId: string, proxyId: string, updates: Partial<ProxyData>) => void;
@@ -149,7 +163,7 @@ export const useProxyStore = create<ProxyState>()(
       },
       
       // Fetch proxy DRep information
-      fetchProxyDrepInfo: async (walletId, proxyId, proxyAddress, authTokenId, scriptCbor, network, paramUtxo) => {
+      fetchProxyDrepInfo: async (walletId, proxyId, proxyAddress, authTokenId, scriptCbor, network, paramUtxo, forceRefresh = false) => {
         try {
           get().setDrepLoading(proxyId, true);
           get().setDrepError(proxyId, null);
@@ -172,7 +186,7 @@ export const useProxyStore = create<ProxyState>()(
           const drepId = proxyContract.getDrepId();
           
           // Get DRep status (now with caching and proper error handling)
-          const status = await proxyContract.getDrepStatus();
+          const status = await proxyContract.getDrepStatus(forceRefresh);
           const drepInfo: ProxyDrepInfo | undefined = status;
           
           // Update the specific proxy's DRep data
@@ -190,6 +204,48 @@ export const useProxyStore = create<ProxyState>()(
           }));
         } catch (error) {
           get().setDrepError(proxyId, `Failed to fetch DRep info for proxy ${proxyId}`);
+          get().setDrepLoading(proxyId, false);
+        }
+      },
+
+      // Fetch proxy delegators information
+      fetchProxyDelegatorsInfo: async (walletId, proxyId, proxyAddress, authTokenId, scriptCbor, network, paramUtxo, forceRefresh = false) => {
+        try {
+          get().setDrepLoading(proxyId, true);
+          get().setDrepError(proxyId, null);
+          
+          const txBuilder = getTxBuilder(parseInt(network));
+          const proxyContract = new MeshProxyContract(
+            {
+              mesh: txBuilder,
+              wallet: undefined,
+              networkId: parseInt(network),
+            },
+            {
+              paramUtxo: JSON.parse(paramUtxo || '{}'),
+            },
+            scriptCbor,
+          );
+          proxyContract.proxyAddress = proxyAddress;
+          
+          // Get delegators info
+          const delegatorsInfo = await proxyContract.getDrepDelegators(forceRefresh) as ProxyDelegatorsInfo;
+          
+          // Update the specific proxy's delegators data
+          const currentState = get();
+          const updatedProxies = currentState.proxies[walletId]?.map(proxy => 
+            proxy.id === proxyId 
+              ? { ...proxy, delegatorsInfo, lastUpdated: Date.now() }
+              : proxy
+          ) || [];
+          
+          set((state) => ({
+            proxies: { ...state.proxies, [walletId]: updatedProxies },
+            drepLoading: { ...state.drepLoading, [proxyId]: false },
+            drepErrors: { ...state.drepErrors, [proxyId]: null },
+          }));
+        } catch (error) {
+          get().setDrepError(proxyId, `Failed to fetch delegators info for proxy ${proxyId}`);
           get().setDrepLoading(proxyId, false);
         }
       },
@@ -267,6 +323,7 @@ export const useProxyActions = () => {
   const clearSelectedProxy = useProxyStore((state) => state.clearSelectedProxy);
   const fetchProxyBalance = useProxyStore((state) => state.fetchProxyBalance);
   const fetchProxyDrepInfo = useProxyStore((state) => state.fetchProxyDrepInfo);
+  const fetchProxyDelegatorsInfo = useProxyStore((state) => state.fetchProxyDelegatorsInfo);
   const updateProxyData = useProxyStore((state) => state.updateProxyData);
   const clearProxyData = useProxyStore((state) => state.clearProxyData);
   
@@ -278,6 +335,7 @@ export const useProxyActions = () => {
     clearSelectedProxy,
     fetchProxyBalance,
     fetchProxyDrepInfo,
+    fetchProxyDelegatorsInfo,
     updateProxyData,
     clearProxyData,
   };

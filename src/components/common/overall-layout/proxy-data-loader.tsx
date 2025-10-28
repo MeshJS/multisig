@@ -12,6 +12,7 @@ export default function ProxyDataLoader() {
     setProxies, 
     fetchProxyBalance, 
     fetchProxyDrepInfo,
+    fetchProxyDelegatorsInfo,
     clearProxyData 
   } = useProxyActions();
 
@@ -65,6 +66,17 @@ export default function ProxyDataLoader() {
                 appWallet.scriptCbor,
                 network.toString(),
                 proxy.paramUtxo,
+                true,
+              );
+              await fetchProxyDelegatorsInfo(
+                appWallet.id,
+                proxy.id,
+                proxy.proxyAddress,
+                proxy.authTokenId,
+                appWallet.scriptCbor,
+                network.toString(),
+                proxy.paramUtxo,
+                true,
               );
             } catch (error) {
               console.error(`Error fetching data for proxy ${proxy.id}:`, error);
@@ -73,7 +85,7 @@ export default function ProxyDataLoader() {
         }
       })();
     }
-  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network, fetchProxyBalance, fetchProxyDrepInfo]);
+  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network, fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo]);
 
   // Clear proxy data when wallet changes
   useEffect(() => {

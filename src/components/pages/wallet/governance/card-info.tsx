@@ -40,6 +40,12 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   const [proxyDrepId, setProxyDrepId] = useState<string | null>(null);
   const [loadingProxyDrep, setLoadingProxyDrep] = useState(false);
   const [proxyDrepError, setProxyDrepError] = useState<string | null>(null);
+  const [proxyDelegatorsInfo, setProxyDelegatorsInfo] = useState<{
+    delegators: Array<{ address: string; amount: string }>;
+    totalDelegation: string;
+    totalDelegationADA: number;
+    count: number;
+  } | null>(null);
   
   // Get DRep info for standard mode
   const currentDrepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
@@ -86,8 +92,22 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             setProxyDrepId(drepId);
             
             // Get DRep status (now with caching and proper error handling)
-            const status = await proxyContract.getDrepStatus();
+            const status = await proxyContract.getDrepStatus(true);
             setProxyDrepInfo(status);
+
+            // Get DRep delegators (force refresh on manual view)
+            try {
+              const delegators = await proxyContract.getDrepDelegators(true);
+              setProxyDelegatorsInfo(delegators as {
+                delegators: Array<{ address: string; amount: string }>;
+                totalDelegation: string;
+                totalDelegationADA: number;
+                count: number;
+              });
+            } catch {
+              // ignore, leave as null
+              setProxyDelegatorsInfo(null);
+            }
             
             clearTimeout(timeoutId);
           } else {
@@ -106,6 +126,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
         setProxyDrepId(null);
         setProxyDrepInfo(null);
         setProxyDrepError(null);
+        setProxyDelegatorsInfo(null);
       }
     };
     
@@ -382,12 +403,20 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Voting Power</span>
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                {displayDrepInfo?.deposit ? `${(parseInt(displayDrepInfo.deposit) / 1000000).toFixed(2)}` : 
-                 displayDrepInfo?.amount ? `${(parseInt(displayDrepInfo.amount) / 1000000).toFixed(2)}` : 
-                 "0.00"} ADA
+                {proxyDelegatorsInfo?.totalDelegationADA !== undefined
+                  ? proxyDelegatorsInfo.totalDelegationADA.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+                  : displayDrepInfo?.deposit
+                  ? (parseInt(displayDrepInfo.deposit) / 1000000).toFixed(2)
+                  : displayDrepInfo?.amount
+                  ? (parseInt(displayDrepInfo.amount) / 1000000).toFixed(2)
+                  : "0.00"} ADA
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                {loadingProxyDrep ? "Loading..." : "Deposit amount"}
+                {loadingProxyDrep
+                  ? "Loading..."
+                  : proxyDelegatorsInfo
+                  ? `${proxyDelegatorsInfo.count} delegator${proxyDelegatorsInfo.count !== 1 ? 's' : ''}`
+                  : "Deposit amount"}
               </div>
             </div>
           </div>
