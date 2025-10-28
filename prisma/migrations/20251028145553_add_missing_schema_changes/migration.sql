@@ -14,6 +14,7 @@ CREATE TABLE "Proxy" (
     CONSTRAINT "Proxy_pkey" PRIMARY KEY ("id")
 );
 
+
 -- CreateTable
 CREATE TABLE "Migration" (
     "id" TEXT NOT NULL,
