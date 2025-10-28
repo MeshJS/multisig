@@ -74,6 +74,7 @@ interface ProxyState {
   fetchProxyBalance: (walletId: string, proxyId: string, proxyAddress: string, network: string) => Promise<void>;
   fetchProxyDrepInfo: (walletId: string, proxyId: string, proxyAddress: string, authTokenId: string, scriptCbor: string, network: string, paramUtxo: string, forceRefresh?: boolean) => Promise<void>;
   fetchProxyDelegatorsInfo: (walletId: string, proxyId: string, proxyAddress: string, authTokenId: string, scriptCbor: string, network: string, paramUtxo: string, forceRefresh?: boolean) => Promise<void>;
+  fetchAllProxyData: (walletId: string, proxies: ProxyData[], scriptCbor: string, network: string, forceRefresh?: boolean) => Promise<void>;
   
   // Utility actions
   updateProxyData: (walletId: string, proxyId: string, updates: Partial<ProxyData>) => void;
@@ -249,6 +250,106 @@ export const useProxyStore = create<ProxyState>()(
           get().setDrepLoading(proxyId, false);
         }
       },
+
+      // Fetch all proxy data in parallel
+      fetchAllProxyData: async (walletId, proxies, scriptCbor, network, forceRefresh = false) => {
+        try {
+          // Prevent multiple simultaneous fetches for the same wallet
+          const currentState = get();
+          if (currentState.loading[walletId]) {
+            console.log(`Proxy data already loading for wallet ${walletId}, skipping...`);
+            return;
+          }
+          
+          // Check if data is fresh (less than 30 seconds old) and skip if not forcing refresh
+          if (!forceRefresh && currentState.proxies[walletId]) {
+            const oldestUpdate = Math.min(
+              ...currentState.proxies[walletId].map(p => p.lastUpdated || 0)
+            );
+            const isDataFresh = oldestUpdate > 0 && (Date.now() - oldestUpdate) < 30000; // 30 seconds
+            if (isDataFresh) {
+              console.log(`Proxy data is fresh (less than 30s old) for wallet ${walletId}, skipping...`);
+              return;
+            }
+          }
+          
+          get().setLoading(walletId, true);
+          get().setError(walletId, null);
+          
+          // Create a single txBuilder instance to reuse across all proxies
+          const txBuilder = getTxBuilder(parseInt(network));
+          
+          // Create all fetch promises in parallel
+          const fetchPromises = proxies.map(async (proxy) => {
+            try {
+              // Set loading state for this proxy
+              get().setDrepLoading(proxy.id, true);
+              get().setDrepError(proxy.id, null);
+              
+              // Reuse the same txBuilder instance for all proxies
+              const proxyContract = new MeshProxyContract(
+                {
+                  mesh: txBuilder,
+                  wallet: undefined,
+                  networkId: parseInt(network),
+                },
+                {
+                  paramUtxo: JSON.parse(proxy.paramUtxo || '{}'),
+                },
+                scriptCbor,
+              );
+              proxyContract.proxyAddress = proxy.proxyAddress;
+              
+              // Fetch all data for this proxy in parallel
+              const [balance, drepStatus, delegators] = await Promise.allSettled([
+                proxyContract.getProxyBalance(),
+                proxyContract.getDrepStatus(forceRefresh),
+                proxyContract.getDrepDelegators(forceRefresh),
+              ]);
+              
+              // Get DRep ID
+              const drepId = proxyContract.getDrepId();
+              
+              // Process results
+              const drepInfo: ProxyDrepInfo | undefined = drepStatus.status === 'fulfilled' ? drepStatus.value : undefined;
+              const delegatorsInfo: ProxyDelegatorsInfo | undefined = delegators.status === 'fulfilled' ? (delegators.value as ProxyDelegatorsInfo) : undefined;
+              
+              // Update the specific proxy's data
+              const currentState = get();
+              const updatedProxies = currentState.proxies[walletId]?.map(p => 
+                p.id === proxy.id 
+                  ? { 
+                      ...p, 
+                      balance: balance.status === 'fulfilled' ? balance.value : p.balance,
+                      drepId, 
+                      drepInfo, 
+                      delegatorsInfo,
+                      lastUpdated: Date.now() 
+                    }
+                  : p
+              ) || [];
+              
+              set((state) => ({
+                proxies: { ...state.proxies, [walletId]: updatedProxies },
+                drepLoading: { ...state.drepLoading, [proxy.id]: false },
+                drepErrors: { ...state.drepErrors, [proxy.id]: null },
+              }));
+              
+            } catch (error) {
+              get().setDrepError(proxy.id, `Failed to fetch data for proxy ${proxy.id}`);
+              get().setDrepLoading(proxy.id, false);
+            }
+          });
+          
+          // Wait for all proxy data to be fetched
+          await Promise.allSettled(fetchPromises);
+          
+          get().setLoading(walletId, false);
+        } catch (error) {
+          get().setError(walletId, `Failed to fetch proxy data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          get().setLoading(walletId, false);
+        }
+      },
       
       // Update specific proxy data
       updateProxyData: (walletId, proxyId, updates) =>
@@ -324,6 +425,7 @@ export const useProxyActions = () => {
   const fetchProxyBalance = useProxyStore((state) => state.fetchProxyBalance);
   const fetchProxyDrepInfo = useProxyStore((state) => state.fetchProxyDrepInfo);
   const fetchProxyDelegatorsInfo = useProxyStore((state) => state.fetchProxyDelegatorsInfo);
+  const fetchAllProxyData = useProxyStore((state) => state.fetchAllProxyData);
   const updateProxyData = useProxyStore((state) => state.updateProxyData);
   const clearProxyData = useProxyStore((state) => state.clearProxyData);
   
@@ -336,6 +438,7 @@ export const useProxyActions = () => {
     fetchProxyBalance,
     fetchProxyDrepInfo,
     fetchProxyDelegatorsInfo,
+    fetchAllProxyData,
     updateProxyData,
     clearProxyData,
   };

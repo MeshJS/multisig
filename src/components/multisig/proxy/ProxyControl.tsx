@@ -402,31 +402,12 @@ export default function ProxyControl() {
     }
   }, [network, wallet, appWallet?.scriptCbor]);
 
-  // Fetch all proxy balances for TVL calculation
+  // Fetch all proxy balances for TVL calculation (now handled globally)
   const fetchAllProxyBalances = useCallback(async () => {
-    if (!proxies || proxies.length === 0 || !proxyContract) return;
-
-    try {
-      setTvlLoading(true);
-      const balances: Record<string, Array<{ unit: string; quantity: string }>> = {};
-      
-      for (const proxy of proxies) {
-        try {
-          const balance = await getProxyBalance(proxy.proxyAddress);
-          balances[proxy.id] = balance;
-        } catch (error) {
-          console.error(`Failed to fetch balance for proxy ${proxy.id}:`, error);
-          balances[proxy.id] = [];
-        }
-      }
-      
-      // Balances handled elsewhere
-    } catch (error) {
-      console.error("Failed to fetch proxy balances:", error);
-    } finally {
-      setTvlLoading(false);
-    }
-  }, [proxies, proxyContract, getProxyBalance]);
+    // This function is now handled globally by WalletDataLoaderWrapper
+    // to avoid duplicate API calls. The proxy store already contains the balance data.
+    console.log("ProxyControl: fetchAllProxyBalances called but data is handled globally");
+  }, []);
 
   // Calculate Total Value Locked (TVL) across all proxies
   const calculateTVL = useCallback(() => {
@@ -456,37 +437,20 @@ export default function ProxyControl() {
 
   const { totalADA, totalAssets } = calculateTVL();
 
-  // Fetch all proxy balances when proxies change
-  useEffect(() => {
-    if (proxies && proxies.length > 0 && proxyContract) {
-      void fetchAllProxyBalances();
-    }
-  }, [proxies, proxyContract, fetchAllProxyBalances]);
-
-  // Refresh balances when component mounts or wallet changes
-  useEffect(() => {
-    if (proxies && proxies.length > 0 && proxyContract && connected) {
-      // Small delay to ensure everything is initialized
-      const timer = setTimeout(() => {
-        void fetchAllProxyBalances();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [connected, proxyContract, fetchAllProxyBalances, proxies]);
+  // Proxy balance data is now handled globally by WalletDataLoaderWrapper
+  // No need to fetch balances here as they're already in the proxy store
 
   // Manual TVL refresh function
   const refreshTVL = useCallback(async () => {
-    if (proxies && proxies.length > 0 && proxyContract) {
-      await fetchAllProxyBalances();
-    }
-  }, [proxies, proxyContract, fetchAllProxyBalances]);
+    // TVL is calculated from proxy store data, no need to fetch
+    console.log("ProxyControl: refreshTVL called - data comes from proxy store");
+  }, []);
 
-  // Global refresh function for all proxy balances (unused but kept for potential future use)
+  // Global refresh function for all proxy balances (now handled globally)
   const refreshAllBalances = useCallback(async () => {
-    if (proxies && proxies.length > 0 && proxyContract) {
-      void fetchAllProxyBalances();
-    }
-  }, [proxies, proxyContract, fetchAllProxyBalances]);
+    // Balance data is now handled globally by WalletDataLoaderWrapper
+    console.log("ProxyControl: refreshAllBalances called - data handled globally");
+  }, []);
 
   // Spend outputs management
   const handleSpendOutputsChange = useCallback((outputs: ProxyOutput[]) => {
