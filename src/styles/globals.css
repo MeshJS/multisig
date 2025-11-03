@@ -48,6 +48,27 @@
   animation: spin 1s linear infinite;
 }
 
+@keyframes aurora {
+  from {
+    background-position: 50% 50%;
+  }
+  to {
+    background-position: 350% 50%;
+  }
+}
+
+.animate-aurora {
+  /* 70s = Smoother, more subtle gradient movement (~15% slower) */
+  animation: aurora 70s linear infinite;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora {
+    animation-duration: 140s; /* Slower for accessibility */
+  }
+}
+
 /**
  * Glass Morphism Navigation Enhancements
  * Applied globally to sidebar and header elements
