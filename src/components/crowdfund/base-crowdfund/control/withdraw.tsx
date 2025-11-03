@@ -53,7 +53,7 @@ export function WithdrawFromCrowdfund({
   }
   
   const datumData = JSON.parse(crowdfund.datum);
-  const totalRaised = datumData.current_fundraised_amount;
+  const totalRaised = datumData.current_fundraised_amount / 1000000;
   const crowdfundName = crowdfund.name;
   const shareToken = datumData.share_token;
   const { connected, wallet } = useWallet();
@@ -222,7 +222,7 @@ export function WithdrawFromCrowdfund({
           Withdraw from {crowdfundName}
         </CardTitle>
         <CardDescription>
-          As the crowdfund owner, you can withdraw raised funds to your wallet.
+          Withdraw funds you previously contributed. Your maximum withdrawal is limited by your share tokens.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -235,9 +235,9 @@ export function WithdrawFromCrowdfund({
         </Alert>
 
         <div className="flex items-center justify-between rounded-lg bg-muted p-3">
-          <span className="text-sm font-medium">Total Raised:</span>
+          <span className="text-sm font-medium">Total Raised (campaign):</span>
           <Badge variant="secondary" className="text-lg">
-            {totalRaised} ADA
+            {totalRaised.toLocaleString()} ADA
           </Badge>
         </div>
 
@@ -259,7 +259,7 @@ export function WithdrawFromCrowdfund({
         </div>
 
         <div className="space-y-1 text-sm text-muted-foreground">
-          <p>• Maximum withdrawal: {withdrawableAmount / 1000000} ADA</p>
+          <p>• Your maximum withdrawal: {withdrawableAmount / 1000000} ADA</p>
           <p>• Transaction fees apply (~0.17 ADA)</p>
           <p>• Withdrawal will be sent to your connected wallet</p>
         </div>
@@ -279,7 +279,7 @@ export function WithdrawFromCrowdfund({
             isWithdrawing ||
             !amount ||
             parseFloat(amount) <= 0 ||
-            parseFloat(amount) > totalRaised
+            parseFloat(amount) > (withdrawableAmount / 1000000)
           }
           className="w-full"
           size="lg"

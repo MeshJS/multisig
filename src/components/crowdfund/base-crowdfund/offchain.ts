@@ -313,7 +313,38 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   };
 
   /**
-   *
+   * Withdraw funds from the crowdfund contract
+   * 
+   * Allows contributors to withdraw their previously contributed funds from the crowdfund.
+   * This operation:
+   * - Burns share tokens proportional to the withdrawal amount (negative mint)
+   * - Reduces the ADA amount at the crowdfund address
+   * - Updates the crowdfund datum with the new current_fundraised_amount
+   * - Sends the withdrawn ADA to the user's wallet
+   * 
+   * The transaction spends the UTxO containing the AuthToken at the crowdfund address,
+   * mints a negative amount of share tokens to burn them, and outputs the remaining
+   * funds back to the crowdfund address with an updated datum.
+   * 
+   * @param withdrawAmount - The amount of ADA (in lovelace) to withdraw from the crowdfund
+   * @param datum - The current crowdfund datum containing all crowdfund state information
+   * @returns An object containing the transaction hex string ready to be signed and submitted
+   * 
+   * @throws {Error} If no UTxOs are found in the wallet
+   * @throws {Error} If the crowdfund address is not set (requires setupCrowdfund first)
+   * @throws {Error} If the blockchain provider is not found
+   * @throws {Error} If no AuthToken is found at the crowdfund address
+   * @throws {Error} If multiple AuthTokens are found (should only be one)
+   * 
+   * @example
+   * ```typescript
+   * const { tx } = await contract.withdrawCrowdfund(
+   *   5000000, // Withdraw 5 ADA (5,000,000 lovelace)
+   *   currentDatum
+   * );
+   * const signedTx = await wallet.signTx(tx);
+   * const txHash = await wallet.submitTx(signedTx);
+   * ```
    */
   withdrawCrowdfund = async (
     withdrawAmount: number,
@@ -360,7 +391,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       throw new Error("No AuthToken amount found");
     }
 
-    //calculate the new amount of Ada at the crowdfundAddress (to keep all funds in one utxo)
+    // Calculate the new amount of ADA at the crowdfundAddress (to keep all funds in one UTxO)
+    // This subtracts the withdrawal amount from the current lovelace balance
     const newCrowdfundAmount = authTokenUtxoAmt.map((amt) =>
       amt.unit == "lovelace"
         ? {
@@ -372,13 +404,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         : amt,
     );
 
-    //prepare the new datum as Mesh Data type
+    // Prepare the new datum as Mesh Data type
+    // Updates the current_fundraised_amount by subtracting the withdrawal amount
     const mDatum = mConStr0([
       datum.completion_script,
       datum.share_token,
       mPubKeyAddress(datum.crowdfund_address),
       datum.fundraise_target,
-      datum.current_fundraised_amount - withdrawAmount,
+      datum.current_fundraised_amount - withdrawAmount, // Decrease by withdrawal amount
       mBool(datum.allow_over_subscription),
       datum.deadline,
       datum.expiry_buffer,
@@ -386,12 +419,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       datum.min_charge,
     ]);
 
-    //prepare shareToken mint
+    // Prepare shareToken mint policy for burning tokens
     const paramScript = this.getShareTokenCbor();
     const policyId = resolveScriptHash(paramScript, "V3");
     const tokenName = datum.completion_script;
 
-    //Set time-to-live (TTL) for the transaction.
+    // Set time-to-live (TTL) for the transaction (5 minutes from now)
     let minutes = 5; // add 5 minutes
     let nowDateTime = new Date();
     let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
@@ -400,8 +433,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       dateTimeAdd5Min.getTime(),
     );
 
-    // deposit Ada at crowdfundAddress
-    // mint ShareToken and send to walletAddress
+    // Build transaction: spend crowdfund UTxO, burn share tokens, update datum, return funds to user
 
     const txHex = await this.mesh
       .spendingPlutusScriptV3()
@@ -412,14 +444,15 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         authTokenUtxo.output.address,
       )
 
-      //Mint ShareToken with Redeemer
+      // Burn ShareToken (negative mint amount) with Redeemer
+      // A negative mint amount burns tokens, reducing the user's share token balance
       .mintPlutusScriptV3()
       .mint((-withdrawAmount).toString(), policyId, tokenName)
       .mintingScript(paramScript)
-      .mintRedeemerValue(mConStr1([]))
+      .mintRedeemerValue(mConStr1([])) // Redeemer constructor 1 for burning
 
-      //Add Script and Redeemer
-      .txInRedeemerValue(mConStr2([]))
+      // Add Script and Redeemer for spending the crowdfund UTxO
+      .txInRedeemerValue(mConStr2([])) // Redeemer constructor 2 for withdrawal action
       .txInScript(this.getCrowdfundCbor())
       .txInInlineDatumPresent()
 

@@ -86,4 +86,75 @@ export const crowdfundRouter = createTRPCRouter({
         where: { proposerKeyHashR0: input.proposerKeyHashR0 },
       });
     }),
+
+  // Contribute to a crowdfund: updates datum.current_fundraised_amount
+  contributeCrowdfund: publicProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        amount: z.number().positive(), // lovelace
+        txHash: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.crowdfund.findUnique({ where: { id: input.id } });
+      if (!existing) {
+        throw new Error("Crowdfund not found");
+      }
+      if (!existing.datum) {
+        throw new Error("Crowdfund datum missing");
+      }
+      let datum: any;
+      try {
+        datum = JSON.parse(existing.datum);
+      } catch {
+        throw new Error("Invalid crowdfund datum");
+      }
+      const current = Number(datum.current_fundraised_amount || 0);
+      const updated = current + input.amount;
+      datum.current_fundraised_amount = updated;
+
+      return ctx.db.crowdfund.update({
+        where: { id: input.id },
+        data: {
+          datum: JSON.stringify(datum),
+          // optionally we could store latest txHash in a field if present in schema
+        },
+      });
+    }),
+
+  // Withdraw from a crowdfund: decreases datum.current_fundraised_amount (not below 0)
+  withdrawCrowdfund: publicProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        amount: z.number().positive(), // lovelace
+        txHash: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.crowdfund.findUnique({ where: { id: input.id } });
+      if (!existing) {
+        throw new Error("Crowdfund not found");
+      }
+      if (!existing.datum) {
+        throw new Error("Crowdfund datum missing");
+      }
+      let datum: any;
+      try {
+        datum = JSON.parse(existing.datum);
+      } catch {
+        throw new Error("Invalid crowdfund datum");
+      }
+      const current = Number(datum.current_fundraised_amount || 0);
+      const updated = Math.max(0, current - input.amount);
+      datum.current_fundraised_amount = updated;
+
+      return ctx.db.crowdfund.update({
+        where: { id: input.id },
+        data: {
+          datum: JSON.stringify(datum),
+        },
+      });
+    }),
 });
