@@ -18,6 +18,7 @@ import {
 import { MeshTxInitiator, MeshTxInitiatorInput } from "../common";
 import blueprint from "./plutus.json";
 import { CrowdfundDatumTS } from "../crowdfund";
+import { MeshCrowdfundGovExtensionContract } from "../gov-extension/offchain";
 /**
  * Mesh Aiken Crowdfund contract class
  *
@@ -445,10 +446,90 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   /**
    *
    */
-  completeCrowdfund = async () => {};
+  completeCrowdfund = async (
+    crowdfundGovExtensionContract: MeshCrowdfundGovExtensionContract,
+  ) => {
+    const { collateral } = await this.getWalletInfoForTx();
+
+    if (this.crowdfundAddress === undefined) {
+      throw new Error(
+        "Crowdfund address not set. Please setupCrowdfund first.",
+      );
+    }
+    const cfGAddress = crowdfundGovExtensionContract.crowdfundGovAddress;
+    if (!cfGAddress) {
+      throw new Error("Crowdfund Gov address not set. Please setupCrowdfundGovExtension first.");
+    }
+
+    const authTokenUtxo = await this.findAuthTokenUtxo();
+    if (!authTokenUtxo) {
+      throw new Error("No AuthToken found");
+    }
+
+    const slot = this.getSlotAfterMinutes(5);
+
+    const txHex = this.mesh
+      .txInCollateral(
+        collateral.input.txHash,
+        collateral.input.outputIndex,
+        collateral.output.amount,
+        collateral.output.address,
+      )
+      .spendingPlutusScriptV3()
+      .txIn(
+        authTokenUtxo.input.txHash,
+        authTokenUtxo.input.outputIndex,
+        authTokenUtxo.output.amount,
+        authTokenUtxo.output.address,
+      )
+      .txInScript(this.getCrowdfundCbor())
+      .txInInlineDatumPresent()
+      .txInRedeemerValue(mConStr1([]))
+      .txOut(cfGAddress, authTokenUtxo.output.amount)
+      .invalidHereafter(Number(slot))
+      .complete();
+
+    return { tx: txHex };
+  };
 
   /**
    *
    */
   removeCrowdfund = async () => {};
+
+  private findAuthTokenUtxo = async (): Promise<UTxO> => {
+    if (!this.crowdfundAddress) {
+      throw new Error(
+        "Crowdfund address not set. Please setupCrowdfund first.",
+      );
+    }
+    const blockchainProvider = this.mesh.fetcher;
+    if (!blockchainProvider) {
+      throw new Error("Blockchain provider not found");
+    }
+    const authTokenUtxos = await blockchainProvider.fetchAddressUTxOs(
+      this.crowdfundAddress,
+      this.getAuthTokenPolicyId(),
+    );
+    if (!authTokenUtxos || authTokenUtxos.length === 0) {
+      throw new Error("No AuthToken found at crowdfund address");
+    }
+    if (authTokenUtxos.length > 1) {
+      throw new Error("Multiple AuthTokens found at crowdfund address.");
+    }
+    const authTokenUtxo = authTokenUtxos[0];
+    if (!authTokenUtxo) {
+      throw new Error("No AuthToken found");
+    }
+    return authTokenUtxo;
+  };
+
+  private getSlotAfterMinutes = (minutes: number): string => {
+    const nowDateTime = new Date();
+    const dateTimeAdd = new Date(nowDateTime.getTime() + minutes * 60000);
+    return resolveSlotNo(
+      this.networkId ? "mainnet" : "preprod",
+      dateTimeAdd.getTime(),
+    );
+  };
 }
