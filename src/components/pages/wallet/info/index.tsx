@@ -8,6 +8,8 @@ import { ArchiveWallet } from "./archive-wallet";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
 import { RegisterWallet } from "./register-wallet";
+import ProxyControlCard from "./proxy-control";
+import { UpgradeGovernanceWallet } from "./upgrade-governance-wallet";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -23,10 +25,12 @@ export default function WalletInfo() {
           <CardSigners appWallet={appWallet} />
           {(!multisigWallet || !multisigWallet.stakingEnabled()) && <InspectScript appWallet={appWallet} />}
           {multisigWallet && multisigWallet.stakingEnabled() && <InspectMultisigScript mWallet={multisigWallet} />}
-          {multisigWallet && <RegisterWallet mWallet={multisigWallet} appWallet={appWallet} />}
-          {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
-          <ArchiveWallet appWallet={appWallet} />
           <MigrateWallet appWallet={appWallet} />
+          {multisigWallet && <RegisterWallet mWallet={multisigWallet} appWallet={appWallet} />}
+          <ProxyControlCard />
+          {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
+          {multisigWallet && <UpgradeGovernanceWallet mWallet={multisigWallet} />}
+          <ArchiveWallet appWallet={appWallet} />
         </div>
       </main>
     </>

@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useEffect, useRef, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -10,6 +11,7 @@ import { Asset } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
+import { useProxyActions } from "@/lib/zustand/proxy";
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -21,6 +23,7 @@ export default function WalletDataLoaderWrapper({
   onAction 
 }: WalletDataLoaderWrapperProps) {
   const { appWallet } = useAppWallet();
+  const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
 
   const prevWalletIdRef = useRef<string | null>(null);
@@ -45,6 +48,7 @@ export default function WalletDataLoaderWrapper({
   const setWalletAssetMetadata = useWalletsStore(
     (state) => state.setWalletAssetMetadata,
   );
+  const { fetchAllProxyData, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
 
@@ -149,25 +153,60 @@ export default function WalletDataLoaderWrapper({
   }
 
   function dRepIds() {
-    const dRepId = appWallet?.dRepId;
-    if (!dRepId) throw new Error("No dRep ID found.");
+    // Use multisig wallet DRep ID if available, otherwise fallback to appWallet
+    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+    if (!dRepId) return null;
     return getDRepIds(dRepId);
   }
 
   async function getDRepInfo() {
     try {
-      const blockchainProvider = getProvider(network);
+      const drepids = dRepIds();
+      if (!drepids) {
+        setDrepInfo(undefined);
+        return;
+      }
 
-      const drepids = dRepIds()
-  
+      const blockchainProvider = getProvider(network);
       const drepInfo: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepids.cip105}`,
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
       setDrepInfo(drepInfo);
     } catch (err) {
+      // DRep not found (404) is expected if DRep hasn't been registered yet
+      // This is normal behavior - the DRep ID exists but isn't registered on-chain
       setDrepInfo(undefined);
-      // Handle error silently
+      console.log(`DRep not yet registered on-chain (this is normal before registration)`);
+    }
+  }
+
+  async function fetchProxyData() {
+    if (appWallet?.id && appWallet?.scriptCbor) {     
+      try {
+        // Get proxies from API
+        const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
+          walletId: appWallet.id,
+        });
+
+        // First, add proxies to the store
+        setProxies(appWallet.id, proxies);
+
+        // Fetch all proxy data in parallel using the new batch function
+        if (proxies.length > 0) {
+          console.log(`WalletDataLoaderWrapper: Fetching data for ${proxies.length} proxies in parallel`);
+          await fetchAllProxyData(
+            appWallet.id, 
+            proxies, 
+            appWallet.scriptCbor, 
+            network.toString(),
+            false // Use cache to avoid duplicate requests
+          );
+          console.log("WalletDataLoaderWrapper: Successfully fetched all proxy data");
+        }
+      } catch (error) {
+        console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);
+      }
     }
   }
 
@@ -180,8 +219,11 @@ export default function WalletDataLoaderWrapper({
     await getTransactionsOnChain();
     await getWalletAssets();
     await getDRepInfo();
+    await fetchProxyData(); // Fetch proxy data
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    // Also refresh proxy data
+    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
     setRandomState();
     setLoading(false);
     fetchingTransactions.current = false;

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import type { RawImportBodies } from "@/types/wallet";
+import { Prisma } from "@prisma/client";
 
 export const walletRouter = createTRPCRouter({
   getUserWallets: publicProcedure
@@ -36,26 +38,31 @@ export const walletRouter = createTRPCRouter({
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
         scriptCbor: z.string(),
         stakeCredentialHash: z.string().optional(),
         type: z.enum(["atLeast", "all", "any"]),
+        rawImportBodies: z.custom<RawImportBodies>().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.wallet.create({
-        data: {
-          name: input.name,
-          description: input.description,
-          signersAddresses: input.signersAddresses,
-          signersDescriptions: input.signersDescriptions,
-          signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
-          scriptCbor: input.scriptCbor,
-          stakeCredentialHash: input.stakeCredentialHash,
-          type: input.type,
-        },
-      });
+      const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
+      const data = {
+        name: input.name,
+        description: input.description,
+        signersAddresses: input.signersAddresses,
+        signersDescriptions: input.signersDescriptions,
+        signersStakeKeys: input.signersStakeKeys,
+        signersDRepKeys: input.signersDRepKeys,
+        numRequiredSigners: numRequired as any,
+        scriptCbor: input.scriptCbor,
+        stakeCredentialHash: input.stakeCredentialHash,
+        type: input.type,
+        rawImportBodies: input.rawImportBodies as Prisma.InputJsonValue,
+      } as unknown as Prisma.WalletCreateInput;
+
+      return ctx.db.wallet.create({ data });
     }),
 
   updateWalletVerifiedList: publicProcedure
@@ -103,6 +110,7 @@ export const walletRouter = createTRPCRouter({
       z.object({
         walletId: z.string(),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
       }),
     )
@@ -114,6 +122,7 @@ export const walletRouter = createTRPCRouter({
         data: {
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
+          signersDRepKeys: input.signersDRepKeys,
         },
       });
     }),
@@ -161,11 +170,15 @@ export const walletRouter = createTRPCRouter({
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
         ownerAddress: z.string(),
+        stakeCredentialHash: z.string().optional().nullable(),
+        scriptType: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.create({
         data: {
           name: input.name,
@@ -173,9 +186,12 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
+          signersDRepKeys: input.signersDRepKeys,
+          numRequiredSigners: numRequired as any,
           ownerAddress: input.ownerAddress,
-        },
+          stakeCredentialHash: input.stakeCredentialHash,
+          scriptType: input.scriptType,
+        } as any,
       });
     }),
 
@@ -188,10 +204,14 @@ export const walletRouter = createTRPCRouter({
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
         numRequiredSigners: z.number(),
+        stakeCredentialHash: z.string().optional().nullable(),
+        scriptType: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -202,8 +222,11 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
-          numRequiredSigners: input.numRequiredSigners,
-        },
+          signersDRepKeys: input.signersDRepKeys,
+          numRequiredSigners: numRequired as any,
+          stakeCredentialHash: input.stakeCredentialHash,
+          scriptType: input.scriptType,
+        } as any,
       });
     }),
 
@@ -214,6 +237,7 @@ export const walletRouter = createTRPCRouter({
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
+        signersDRepKeys: z.array(z.string()),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -225,6 +249,7 @@ export const walletRouter = createTRPCRouter({
           signersAddresses: input.signersAddresses,
           signersDescriptions: input.signersDescriptions,
           signersStakeKeys: input.signersStakeKeys,
+          signersDRepKeys: input.signersDRepKeys,
         },
       });
     }),
@@ -245,6 +270,39 @@ export const walletRouter = createTRPCRouter({
           signersDescriptions: input.signersDescriptions,
         },
       });
+    }),
+
+  updateNewWalletOwner: publicProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        ownerAddress: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Look up user's stake address for stake-key membership check
+      const user = await ctx.db.user.findUnique({ where: { address: input.ownerAddress } });
+      const stakeAddr = user?.stakeAddress || "";
+
+      // Atomic conditional claim: only if owner is currently "all" AND caller qualifies
+      const result = await ctx.db.newWallet.updateMany({
+        where: {
+          id: input.walletId,
+          ownerAddress: "all",
+          OR: [
+            { signersAddresses: { has: input.ownerAddress } },
+            stakeAddr ? { signersStakeKeys: { has: stakeAddr } } : { id: "__never__" },
+          ],
+        },
+        data: { ownerAddress: input.ownerAddress },
+      });
+
+      if (result.count === 0) {
+        // Either already claimed, not eligible, or wallet not found
+        return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
+      }
+
+      return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
     }),
 
   deleteNewWallet: publicProcedure
@@ -271,6 +329,99 @@ export const walletRouter = createTRPCRouter({
         },
         data: {
           clarityApiKey: input.clarityApiKey,
+        },
+      });
+    }),
+
+  setMigrationTarget: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      migrationTargetWalletId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: input.migrationTargetWalletId,
+        },
+      });
+    }),
+
+  clearMigrationTarget: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
+
+  abortMigration: publicProcedure
+    .input(z.object({ 
+      walletId: z.string(),
+      newWalletId: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Try to delete the new wallet if it exists (it might be a NewWallet or Wallet)
+      if (input.newWalletId) {
+        try {
+          // First check if it exists in NewWallet table
+          const newWallet = await ctx.db.newWallet.findUnique({
+            where: { id: input.newWalletId }
+          });
+          
+          if (newWallet) {
+            await ctx.db.newWallet.delete({
+              where: { id: input.newWalletId }
+            });
+            console.log("Deleted NewWallet:", input.newWalletId);
+          } else {
+            // Check if it exists in Wallet table
+            const wallet = await ctx.db.wallet.findUnique({
+              where: { id: input.newWalletId }
+            });
+            
+            if (wallet) {
+              await ctx.db.wallet.delete({
+                where: { id: input.newWalletId }
+              });
+              console.log("Deleted Wallet:", input.newWalletId);
+            } else {
+              console.log("No wallet found with ID:", input.newWalletId, "- migration might be in a different state");
+            }
+          }
+        } catch (error) {
+          console.error("Error deleting wallet during migration abort:", error);
+          // Continue with clearing migration target even if deletion fails
+        }
+      }
+
+      // Clear the migration target reference from the original wallet
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          migrationTargetWalletId: null,
+        },
+      });
+    }),
+
+  archiveWallet: publicProcedure
+    .input(z.object({ walletId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.wallet.update({
+        where: {
+          id: input.walletId,
+        },
+        data: {
+          isArchived: true,
         },
       });
     }),

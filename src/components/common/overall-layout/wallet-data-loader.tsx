@@ -7,6 +7,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
+import { useProxyActions } from "@/lib/zustand/proxy";
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -19,6 +20,7 @@ export default function WalletDataLoader() {
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
+  const { fetchAllProxyData, setProxies } = useProxyActions();
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -53,18 +55,64 @@ export default function WalletDataLoader() {
     }
   }
 
+  async function fetchProxyData() {
+    if (appWallet?.id && appWallet?.scriptCbor) {
+      console.log("WalletDataLoader: Fetching proxy data for wallet", appWallet.id);
+      
+      try {
+        // Get proxies from API
+        const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
+          walletId: appWallet.id,
+        });
+
+        console.log("WalletDataLoader: Found proxies", proxies);
+
+        // First, add proxies to the store
+        setProxies(appWallet.id, proxies);
+
+        // Fetch all proxy data in parallel using the new batch function
+        if (proxies.length > 0) {
+          console.log(`WalletDataLoader: Fetching data for ${proxies.length} proxies in parallel`);
+          await fetchAllProxyData(
+            appWallet.id, 
+            proxies, 
+            appWallet.scriptCbor, 
+            network.toString(),
+            false // Use cache to avoid duplicate requests
+          );
+          console.log("WalletDataLoader: Successfully fetched all proxy data");
+        }
+      } catch (error) {
+        console.error("WalletDataLoader: Error fetching proxy data:", error);
+      }
+    }
+  }
+
   async function refreshWallet() {
+    console.log("WalletDataLoader: refreshWallet called");
     setLoading(true);
     await fetchUtxos();
     await getTransactionsOnChain();
+    console.log("WalletDataLoader: About to fetch proxy data");
+    await fetchProxyData(); // Fetch proxy data
+    console.log("WalletDataLoader: Finished fetching proxy data");
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
+    // Also refresh proxy data
+    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
     setRandomState();
     setLoading(false);
   }
 
   useEffect(() => {
+    console.log("WalletDataLoader: useEffect triggered", {
+      hasAppWallet: !!appWallet,
+      walletId: appWallet?.id,
+      hasUtxos: appWallet?.id ? walletsUtxos[appWallet.id] !== undefined : false
+    });
+    
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
+      console.log("WalletDataLoader: Calling refreshWallet");
       refreshWallet();
     }
   }, [appWallet]);

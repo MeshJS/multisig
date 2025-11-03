@@ -84,7 +84,20 @@ export default function ReviewNativeScript({
   }, [appWallet, walletsUtxos]);
 
   if (!mWallet) return null;
-  const dSAddr = deserializeAddress(mWallet.getScript().address);
+  
+  let dSAddr;
+  try {
+    dSAddr = deserializeAddress(mWallet.getScript().address);
+  } catch (error) {
+    console.error("Failed to get script address:", error);
+    return (
+      <div className="p-4 border rounded-lg bg-red-50 border-red-200">
+        <p className="text-red-800 text-sm">
+          Unable to generate script address. Please check your wallet configuration.
+        </p>
+      </div>
+    );
+  }
 
   const menuItems = [
     { id: "basics", label: "Basics" },
@@ -92,6 +105,9 @@ export default function ReviewNativeScript({
     { id: "payment", label: "Payment Script" },
     ...(mWallet?.buildScript(2) !== undefined && mWallet.stakingEnabled() 
       ? [{ id: "stake", label: "Stake Script" }] 
+      : []),
+    ...(mWallet?.buildScript(3) !== undefined && mWallet.isGovernanceEnabled() 
+      ? [{ id: "drep", label: "DRep Script" }] 
       : []),
   ];
 
@@ -181,6 +197,22 @@ export default function ReviewNativeScript({
               label="CBOR"
               value={mWallet.getStakingScript()}
               copyString={mWallet.getStakingScript()}
+            />
+          </div>
+        );
+      
+      case "drep":
+        return (
+          <div className="space-y-4 min-h-[200px]">
+            <RowLabelInfo
+              label="DRep Script"
+              value={JSON.stringify(mWallet.buildScript(3), null, 2)}
+              copyString={JSON.stringify(mWallet.buildScript(3), null, 2)}
+            />
+            <RowLabelInfo
+              label="DRep Script CBOR"
+              value={mWallet.getDRepScript()}
+              copyString={mWallet.getDRepScript()}
             />
           </div>
         );

@@ -19,6 +19,10 @@ import { ToastAction } from "@/components/ui/toast";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { api } from "@/utils/api";
 import {useBallot} from "@/hooks/useBallot";
+import { useProxy } from "@/hooks/useProxy";
+import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import { useWallet } from "@meshsdk/react";
+import { useUserStore } from "@/lib/zustand/user";
 
 interface VoteButtonProps {
   appWallet: Wallet;
@@ -69,6 +73,119 @@ export default function VoteButton({
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
 
+  // Proxy state
+  const { isProxyEnabled, selectedProxyId } = useProxy();
+  const { wallet } = useWallet();
+  const userAddress = useUserStore((state) => state.userAddress);
+
+  // Get proxies for proxy mode
+  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+    { 
+      walletId: appWallet?.id || undefined,
+      userAddress: userAddress || undefined,
+    },
+    { enabled: !!(appWallet?.id || userAddress) }
+  );
+
+  async function voteProxy() {
+    if (!isProxyEnabled || !selectedProxyId) {
+      toast({
+        title: "Proxy Error",
+        description: "Proxy mode not enabled or no proxy selected",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Get the selected proxy
+      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
+      if (!proxy) {
+        toast({
+          title: "Proxy Error",
+          description: "Selected proxy not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create proxy contract instance
+      const txBuilder = getTxBuilder(network);
+      const proxyContract = new MeshProxyContract(
+        {
+          mesh: txBuilder,
+          wallet: wallet,
+          networkId: network,
+        },
+        {
+          paramUtxo: JSON.parse(proxy.paramUtxo),
+        },
+        appWallet.scriptCbor,
+      );
+      proxyContract.proxyAddress = proxy.proxyAddress;
+
+      // Prepare vote
+      const vote = {
+        proposalId,
+        voteKind: voteKind,
+      };
+
+      // Vote using proxy
+      const txBuilderResult = await proxyContract.voteProxyDrep([vote], utxos, multisigWallet?.getScript().address);
+
+      await newTransaction({
+        txBuilder: txBuilderResult,
+        description: `Proxy Vote: ${voteKind} - ${description}`,
+        metadataValue: metadata ? { label: "674", value: metadata } : undefined,
+      });
+
+      toast({
+        title: "Proxy Vote Successful",
+        description: `Your proxy vote (${voteKind}) has been recorded.`,
+        duration: 5000,
+      });
+
+      setAlert("Proxy vote transaction successfully created!");
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("User rejected transaction")
+      ) {
+        toast({
+          title: "Transaction Aborted",
+          description: "You canceled the proxy vote transaction.",
+          duration: 1000,
+        });
+      } else {
+        toast({
+          title: "Proxy Vote Failed",
+          description: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          duration: 10000,
+          action: (
+            <ToastAction
+              altText="Copy error"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(error));
+                toast({
+                  title: "Error Copied",
+                  description: "Error details copied to clipboard.",
+                  duration: 5000,
+                });
+              }}
+            >
+              Copy Error
+            </ToastAction>
+          ),
+          variant: "destructive",
+        });
+        console.error("Proxy vote transaction error:", error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function vote() {
     if (drepInfo === undefined) {
       setAlert("DRep not found");
@@ -92,7 +209,32 @@ export default function VoteButton({
       }
       if (!multisigWallet)
         throw new Error("Multisig Wallet could not be built.");
-      const dRepId = appWallet.dRepId;
+      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      if (!dRepId) {
+        setAlert("DRep not found");
+        toast({
+          title: "DRep not found",
+          description: `Please register as a DRep and retry.`,
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
+      const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
+      if (!scriptCbor) {
+        setAlert("Script not found");
+        return;
+      }
+      if (!drepCbor) {
+        setAlert("DRep script not found");
+        return;
+      }
+      const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
+      if (!changeAddress) {
+        setAlert("Change address not found");
+        return;
+      }
       const txBuilder = getTxBuilder(network);
 
       const assetMap = new Map<Unit, Quantity>();
@@ -107,7 +249,7 @@ export default function VoteButton({
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(appWallet.scriptCbor);
+          .txInScript(scriptCbor);
       }
       txBuilder
         .vote(
@@ -123,9 +265,8 @@ export default function VoteButton({
             voteKind: voteKind,
           },
         )
-        .voteScript(appWallet.scriptCbor)
-        .selectUtxosFrom(utxos)
-        .changeAddress(appWallet.address);
+        .voteScript(drepCbor)
+        .changeAddress(changeAddress);
         
       await newTransaction({
         txBuilder,
@@ -245,12 +386,23 @@ export default function VoteButton({
         </SelectContent>
       </Select>
 
+      {isProxyEnabled && !selectedProxyId && (
+        <div className="w-full p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+          <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
+            Proxy Mode Active - Select a proxy to continue
+          </p>
+          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+            Go to the Proxy Control panel above and select a proxy to enable voting.
+          </p>
+        </div>
+      )}
+
       <Button
-        onClick={vote}
-        disabled={loading || utxos.length === 0}
+        onClick={isProxyEnabled ? voteProxy : vote}
+        disabled={loading || utxos.length === 0 || (isProxyEnabled && !selectedProxyId)}
         className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
       >
-        {loading ? "Voting..." : utxos.length > 0 ? "Vote" : "No UTxOs Available"}
+        {loading ? "Voting..." : utxos.length > 0 ? `Vote${isProxyEnabled ? " (Proxy Mode)" : ""}` : "No UTxOs Available"}
       </Button>
 
       {selectedBallotId && (

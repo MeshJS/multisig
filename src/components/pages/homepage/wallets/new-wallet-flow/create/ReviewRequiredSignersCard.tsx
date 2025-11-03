@@ -166,6 +166,26 @@ const ReviewRequiredSignersCard: React.FC<ReviewRequiredSignersCardProps> = ({
                   })()}
                 </span>
               </div>
+              
+              {/* Info message for "all" and "any" script types */}
+              {(nativeScriptType === 'all' || nativeScriptType === 'any') && (
+                <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-xs text-blue-800 dark:text-blue-200">
+                    <p className="font-medium mb-1">
+                      {nativeScriptType === 'all' ? 'All Signers Required' : 'Any Signer Can Approve'}
+                    </p>
+                    <p>
+                      With "{nativeScriptType === 'all' ? 'All' : 'Any'}" script type, no specific number is stored. 
+                      {nativeScriptType === 'all' 
+                        ? ' Every signer must approve each transaction.' 
+                        : ' Any single signer can approve each transaction.'}
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* Edit button - only show for atLeast type */}
               {nativeScriptType === "atLeast" && (
                 <div className="pt-2">

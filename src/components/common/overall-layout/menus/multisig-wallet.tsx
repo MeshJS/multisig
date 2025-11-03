@@ -1,4 +1,4 @@
-import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing } from "lucide-react";
+import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2 } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -71,6 +71,15 @@ export default function MenuWallet() {
           <ChartNoAxesColumnIncreasing className="h-6 w-6" />
           Staking
         </MenuLink>}
+        <MenuLink
+          href={`${baseUrl}dapps`}
+          className={
+            router.pathname == "/wallets/[wallet]/dapps" ? "text-white" : ""
+          }
+        >
+          <FileCode2 className="h-5 w-5" />
+          <div className="flex items-center gap-2">Dapps</div>
+        </MenuLink>
         <MenuLink
           href={`${baseUrl}assets`}
           className={

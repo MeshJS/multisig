@@ -14,7 +14,7 @@ interface MobileActionsMenuProps {
 export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
   const [open, setOpen] = React.useState(false);
 
-  // Flatten children arrays and add props
+  // Flatten children arrays
   const flattenChildren = (children: React.ReactNode): React.ReactNode[] => {
     const result: React.ReactNode[] = [];
     
@@ -22,10 +22,7 @@ export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
       if (Array.isArray(child)) {
         result.push(...child);
       } else if (React.isValidElement(child)) {
-        const cloned = React.cloneElement(child as React.ReactElement<any>, {
-          onAction: () => setOpen(false),
-        });
-        result.push(cloned);
+        result.push(child);
       } else if (child) {
         result.push(child);
       }
@@ -58,7 +55,9 @@ export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
             if (React.isValidElement(child)) {
               // Check if this is a separator
               if (child.props.className?.includes('h-px')) {
-                return child;
+                return React.cloneElement(child, {
+                  key: `separator-${index}`,
+                });
               }
               
               // Check if child already has hover styling
@@ -66,23 +65,25 @@ export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
               
               // If it already has hover styling, don't wrap it
               if (hasHoverClass) {
-                return React.cloneElement(child as React.ReactElement<any>, {
-                  key: index,
-                  className: `${child.props.className} px-2 py-1.5 text-sm rounded-sm transition-colors`
+                return React.cloneElement(child, {
+                  key: `action-${index}`,
                 });
               }
               
               // Otherwise, wrap in consistent container
               return (
                 <div 
-                  key={index}
+                  key={`wrapped-${index}`}
                   className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
                   {child}
                 </div>
               );
             }
-            return child;
+            // For non-React elements, provide a fallback key
+            return React.cloneElement(child as React.ReactElement, {
+              key: `fallback-${index}`,
+            });
           })}
         </div>
       </DropdownMenuContent>

@@ -51,9 +51,25 @@ export default function UserDropDownWrapper({
   });
 
   async function unlinkDiscord(): Promise<void> {
-    const address = (await wallet.getUsedAddresses())[0];
-    unlinkDiscordMutation.mutate({ address: address ?? "" });
-    setOpen(false);
+    try {
+      const usedAddresses = await wallet.getUsedAddresses();
+      const address = usedAddresses[0];
+      unlinkDiscordMutation.mutate({ address: address ?? "" });
+      setOpen(false);
+    } catch (error) {
+      console.error("Error getting wallet address for Discord unlink:", error);
+      if (error instanceof Error && error.message.includes("account changed")) {
+        console.log("Account changed during Discord unlink, aborting");
+        return;
+      }
+      // Show error to user
+      toast({
+        title: "Error",
+        description: "Failed to get wallet address",
+        variant: "destructive",
+        duration: 3000,
+      });
+    }
   }
 
   const { data: discordData } = api.user.getUserDiscordId.useQuery({
@@ -61,18 +77,51 @@ export default function UserDropDownWrapper({
   });
 
   async function handleCopyAddress() {
-    let userAddress = (await wallet.getUsedAddresses())[0];
-    if (userAddress === undefined) {
-      userAddress = (await wallet.getUnusedAddresses())[0];
+    try {
+      let userAddress: string | undefined;
+      try {
+        const usedAddresses = await wallet.getUsedAddresses();
+        userAddress = usedAddresses[0];
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("account changed")) {
+          console.log("Account changed during address copy, aborting");
+          return;
+        }
+        throw error;
+      }
+      
+      if (userAddress === undefined) {
+        try {
+          const unusedAddresses = await wallet.getUnusedAddresses();
+          userAddress = unusedAddresses[0];
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("account changed")) {
+            console.log("Account changed during unused address retrieval, aborting");
+            return;
+          }
+          throw error;
+        }
+      }
+      
+      if (userAddress) {
+        navigator.clipboard.writeText(userAddress);
+        toast({
+          title: "Copied",
+          description: "Address copied to clipboard",
+          duration: 5000,
+        });
+        setOpen(false);
+        if (onAction) onAction();
+      }
+    } catch (error) {
+      console.error("Error copying wallet address:", error);
+      toast({
+        title: "Error",
+        description: "Failed to copy address",
+        variant: "destructive",
+        duration: 3000,
+      });
     }
-    navigator.clipboard.writeText(userAddress!);
-    toast({
-      title: "Copied",
-      description: "Address copied to clipboard",
-      duration: 5000,
-    });
-    setOpen(false);
-    if (onAction) onAction();
   }
 
   function handleLogout() {

@@ -6,4 +6,5 @@ export const publicRoutes = [
   "/features",
   "/api-docs",
   "/crowdfund",
+  "/dapps",
 ];

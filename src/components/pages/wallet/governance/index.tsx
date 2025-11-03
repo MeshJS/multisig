@@ -27,36 +27,43 @@ export default function PageGovernance() {
   if (appWallet === undefined) return <></>;
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <CardInfo appWallet={appWallet} />
-        <AllProposals
-          appWallet={appWallet}
-          utxos={manualUtxos}
-          selectedBallotId={selectedBallotId}
-          onSelectBallot={setSelectedBallotId}
-        />
+      {/* Info section */}
+      <CardInfo appWallet={appWallet} manualUtxos={manualUtxos} />
+      
+      {/* Proposals section right under info */}
+      <AllProposals
+        appWallet={appWallet}
+        utxos={manualUtxos}
+        selectedBallotId={selectedBallotId}
+        onSelectBallot={setSelectedBallotId}
+      />
+      
+      {/* Vote and Clarity cards */}
+      <div className="grid gap-4 md:grid-cols-2">
         <VoteCard appWallet={appWallet} utxos={manualUtxos} selectedBallotId={selectedBallotId} />
         <ClarityCard appWallet={appWallet} />
-        <div className="flex flex-col gap-4 col-span-2">
-          {appWallet && (
-            <UTxOSelector
-              appWallet={appWallet}
-              network={network}
-              onSelectionChange={(utxos, manual) => {
-                setManualUtxos(utxos);
-                setManualSelected(manual);
-              }}
-            />
-          )}
-          {false && (
-            <VoteCC
-              manualUtxos={manualUtxos}
-              manualSelected={manualSelected}
-              appWallet={appWallet}
-              network={network}
-            />
-          )}
-        </div>
+      </div>
+      
+      {/* Bottom section with UTxO selector */}
+      <div className="flex flex-col gap-4">
+        {appWallet && (
+          <UTxOSelector
+            appWallet={appWallet}
+            network={network}
+            onSelectionChange={(utxos, manual) => {
+              setManualUtxos(utxos);
+              setManualSelected(manual);
+            }}
+          />
+        )}
+        {false && (
+          <VoteCC
+            manualUtxos={manualUtxos}
+            manualSelected={manualSelected}
+            appWallet={appWallet}
+            network={network}
+          />
+        )}
       </div>
       {/* Floating Ballot Sidebar */}
       <FloatingBallotSidebar

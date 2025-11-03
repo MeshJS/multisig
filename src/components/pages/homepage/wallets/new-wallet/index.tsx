@@ -23,6 +23,7 @@ export default function PageNewWallet() {
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
+  const [signersDRepKeys, setSignerDRepKeys] = useState<string[]>([]);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -181,7 +182,8 @@ export default function PageNewWallet() {
   function addSigner() {
     setSignerAddresses([...signersAddresses, ""]);
     setSignerDescriptions([...signersDescriptions, ""]);
-    setSignerStakeKeys([...signersStakeKeys, ""]);
+    // Only add empty stake key if no external stake credential is set
+    setSignerStakeKeys([...signersStakeKeys, stakeKey ? "" : ""]);
   }
 
   async function createNativeScript() {
@@ -204,6 +206,7 @@ export default function PageNewWallet() {
       signersAddresses: signersAddresses,
       signersDescriptions: signersDescriptions,
       signersStakeKeys: signersStakeKeys,
+      signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
       scriptCbor: scriptCbor,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
@@ -220,8 +223,11 @@ export default function PageNewWallet() {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         ownerAddress: userAddress!,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }
@@ -236,7 +242,10 @@ export default function PageNewWallet() {
         signersAddresses: signersAddresses,
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
+        signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
+        stakeCredentialHash: stakeKey || undefined,
+        scriptType: nativeScriptType,
       });
     }
   }

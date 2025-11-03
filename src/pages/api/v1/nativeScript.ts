@@ -1,4 +1,4 @@
-import { cors } from "@/lib/cors";
+import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { NextApiRequest, NextApiResponse } from "next";
 import { Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
@@ -10,6 +10,9 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  // Add cache-busting headers for CORS
+  addCorsCacheBustingHeaders(res);
+  
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
