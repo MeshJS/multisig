@@ -6,13 +6,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Info, HelpCircle, FileText, Settings, AlertTriangle, HardDrive, DollarSign, Info as InfoIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Info, HelpCircle, FileText, Settings, AlertTriangle, HardDrive, DollarSign, Info as InfoIcon, Upload, CheckCircle2, Loader2, Target } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { generateGovActionMetadata, uploadMetadata, hashMetadata, generateBodyHashForWitness } from "@/utils/governanceMetadata";
+import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@meshsdk/react";
+import useUser from "@/hooks/useUser";
 
 interface GovAction {
   type: 'motion_no_confidence' | 'update_committee' | 'new_constitution' | 'hard_fork' | 'protocol_parameter_changes' | 'treasury_withdrawals' | 'info';
@@ -40,6 +45,11 @@ interface GovData {
   stake_register_deposit?: number;
   drep_register_deposit?: number;
   gov_deposit?: number;
+  govActionMetadataUrl?: string;
+  govActionMetadataHash?: string;
+  fundraiseTarget?: string; // Funding target in ADA (as string for form input)
+  minCharge?: string; // Minimum charge in ADA (as string for form input)
+  allowOverSubscription?: boolean; // Allow over-subscription flag
 }
 
 interface LaunchExtProps {
@@ -100,6 +110,9 @@ const GOVERNANCE_ACTION_TYPES = [
 ];
 
 export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
+  const { toast } = useToast();
+  const { wallet, connected } = useWallet();
+  const { user } = useUser();
   const [govData, setGovData] = useState<GovData>({
     gov_action_period: initialData?.gov_action_period || 1,
     delegate_pool_id: initialData?.delegate_pool_id || "",
@@ -117,7 +130,13 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     stake_register_deposit: initialData?.stake_register_deposit || 2000000,
     drep_register_deposit: initialData?.drep_register_deposit || 500000000,
     gov_deposit: initialData?.gov_deposit || 100000000000,
+    govActionMetadataUrl: initialData?.govActionMetadataUrl,
+    govActionMetadataHash: initialData?.govActionMetadataHash,
+    fundraiseTarget: initialData?.fundraiseTarget || "100", // Default to 100 ADA
+    minCharge: initialData?.minCharge || "2", // Default to 2 ADA
+    allowOverSubscription: initialData?.allowOverSubscription ?? true, // Always allow over-subscription by default
   });
+  const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
 
   useEffect(() => {
     onGovDataUpdate(govData);
@@ -146,15 +165,146 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     return Math.round(parseFloat(adaString) * 1000000);
   };
 
+  const handleUploadMetadata = async () => {
+    if (!govData.gov_action) {
+      toast({
+        title: "Missing governance action",
+        description: "Please fill in all governance action fields first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { title, abstract, motivation, rationale, references } = govData.gov_action;
+
+    if (!title || !abstract || !motivation || !rationale) {
+      toast({
+        title: "Incomplete fields",
+        description: "Please fill in all required governance action fields (title, abstract, motivation, rationale).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!connected || !wallet || !user?.address) {
+      toast({
+        title: "Wallet required",
+        description: "Please connect your wallet to sign the metadata.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingMetadata(true);
+    try {
+      // Build context and body for witness signing
+      const context = {
+        "@language": "en-us",
+        CIP100: "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
+        CIP108: "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0108/README.md#",
+        hashAlgorithm: "CIP100:hashAlgorithm",
+        body: {
+          "@id": "CIP108:body",
+          "@context": {
+            title: "CIP108:title",
+            abstract: "CIP108:abstract",
+            motivation: "CIP108:motivation",
+            rationale: "CIP108:rationale",
+            references: {
+              "@id": "CIP108:references",
+              "@container": "@set",
+              "@context": {
+                GovernanceMetadata: "CIP100:GovernanceMetadataReference",
+                Other: "CIP100:OtherReference",
+                label: "CIP100:reference-label",
+                uri: "CIP100:reference-uri",
+              },
+            },
+          },
+        },
+      };
+
+      const body: Record<string, unknown> = {
+        title,
+        abstract,
+        motivation,
+        rationale,
+      };
+
+      if (references && references.length > 0) {
+        body.references = references.map(ref => ({
+          "@type": (ref["@type"] === "GovernanceMetadata" || ref["@type"] === "Other") 
+            ? ref["@type"] 
+            : "Other" as "GovernanceMetadata" | "Other",
+          label: ref.label,
+          uri: ref.uri,
+        }));
+      }
+
+      // Generate body hash for witness signing
+      const bodyHash = await generateBodyHashForWitness(context, body);
+
+      // Sign the hash using wallet (CIP-0008 format)
+      const signatureResult = await wallet.signData(bodyHash, user.address);
+
+      if (!signatureResult?.signature || !signatureResult?.key) {
+        throw new Error("Failed to sign metadata");
+      }
+
+      // Generate CIP-108 compliant metadata with witness
+      const metadata = await generateGovActionMetadata({
+        title,
+        abstract,
+        motivation,
+        rationale,
+        references: references?.map(ref => ({
+          "@type": (ref["@type"] === "GovernanceMetadata" || ref["@type"] === "Other") 
+            ? ref["@type"] 
+            : "Other" as "GovernanceMetadata" | "Other",
+          label: ref.label,
+          uri: ref.uri,
+        })),
+        authorName: "Crowdfund Proposer",
+      }, {
+        witnessAlgorithm: "CIP-0008",
+        publicKey: signatureResult.key,
+        signature: signatureResult.signature,
+      });
+
+      // Calculate hash
+      const metadataHash = hashMetadata(metadata);
+
+      // Upload metadata
+      const timestamp = Date.now();
+      const pathname = `gov-actions/${timestamp}-${title.replace(/[^a-zA-Z0-9]/g, '-')}.jsonld`;
+      const metadataUrl = await uploadMetadata(pathname, JSON.stringify(metadata, null, 2));
+
+      // Update state
+      updateGovData({
+        govActionMetadataUrl: metadataUrl,
+        govActionMetadataHash: metadataHash,
+      });
+
+      toast({
+        title: "Metadata uploaded successfully",
+        description: "Governance action metadata has been uploaded and is ready for use.",
+      });
+    } catch (error) {
+      console.error("Failed to upload metadata:", error);
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload metadata. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingMetadata(false);
+    }
+  };
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <div className="text-center">
-          <h3 className="text-lg font-semibold mb-2">Governance Configuration</h3>
-          <p className="text-sm text-muted-foreground">
-            Configure governance parameters for your crowdfund
-          </p>
-        </div>
+
 
         {/* Governance Action Period */}
         <div className="space-y-2">
@@ -523,6 +673,98 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
             </div>
           </div>
         </div>
+
+        {/* Metadata Upload Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-500" />
+              Governance Action Metadata (CIP-108)
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Upload CIP-108 compliant metadata for your governance action</p>
+                </TooltipContent>
+              </Tooltip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800 mb-2">
+                <strong>Metadata Upload</strong>
+              </p>
+              <p className="text-sm text-blue-700">
+                Generate, sign with your wallet (CIP-0008), and upload CIP-108 compliant metadata for your governance action. This metadata will be attached to the governance action when it's submitted to the chain.
+              </p>
+            </div>
+
+            {govData.govActionMetadataUrl && govData.govActionMetadataHash ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                <div className="flex items-center gap-2 text-green-800">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-semibold">Metadata uploaded successfully</span>
+                </div>
+                <div className="text-sm space-y-1">
+                  <div>
+                    <span className="font-medium">URL:</span>{" "}
+                    <a
+                      href={govData.govActionMetadataUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline break-all"
+                    >
+                      {govData.govActionMetadataUrl}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="font-medium">Hash:</span>{" "}
+                    <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">
+                      {govData.govActionMetadataHash}
+                    </code>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadMetadata}
+                  disabled={isUploadingMetadata}
+                >
+                  {isUploadingMetadata ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Re-sign & Re-upload Metadata
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={handleUploadMetadata}
+                disabled={isUploadingMetadata || !connected || !wallet || !user?.address || !govData.gov_action?.title || !govData.gov_action?.abstract || !govData.gov_action?.motivation || !govData.gov_action?.rationale}
+                className="w-full"
+              >
+                {isUploadingMetadata ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading Metadata...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Sign & Upload Governance Action Metadata
+                  </>
+                )}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Information Panel */}
         <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">

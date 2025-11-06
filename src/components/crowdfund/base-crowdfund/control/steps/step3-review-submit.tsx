@@ -16,7 +16,14 @@ import { MeshCrowdfundContract } from "../../offchain";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { CrowdfundDatumTS } from "../../../crowdfund";
-import { CheckCircle, XCircle, Clock, Settings, Target, Calendar } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  Clock,
+  Settings,
+  Target,
+  Calendar,
+} from "lucide-react";
 import { MeshCrowdfundGovExtensionContract } from "../../../gov-extension/offchain";
 import { CrowdfundFormData } from "../launch-wizard";
 
@@ -25,7 +32,10 @@ interface Step3ReviewSubmitProps {
   onSuccess?: () => void;
 }
 
-export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProps) {
+export function Step3ReviewSubmit({
+  formData,
+  onSuccess,
+}: Step3ReviewSubmitProps) {
   const [proposerKeyHashR0, setProposerKeyHashR0] = useState("");
   const [created, setCreated] = useState("");
   const [networkId, setNetworkId] = useState<number | null>(null);
@@ -95,16 +105,62 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
   });
 
   const handleSubmit = async () => {
-    // Validate based on step2Type
-    const isFundingValid = formData.step2Type === 'funding' && formData.fundraiseTarget;
-    const isGovernanceValid = formData.step2Type === 'governance' && 
-                             formData.gov_action_period && formData.delegate_pool_id && 
-                             formData.gov_action?.title && formData.gov_action?.description && formData.gov_action?.rationale;
+    console.log("[handleSubmit] Starting submission", {
+      step2Type: formData.step2Type,
+      hasProposerKeyHash: !!proposerKeyHashR0,
+      hasDeadline: !!formData.deadline,
+      fundraiseTarget: formData.fundraiseTarget,
+      minCharge: formData.minCharge,
+      allowOverSubscription: formData.allowOverSubscription,
+      gov_deposit: formData.gov_deposit,
+      formData: {
+        gov_action_period: formData.gov_action_period,
+        delegate_pool_id: formData.delegate_pool_id,
+        gov_action: formData.gov_action,
+        govActionMetadataUrl: formData.govActionMetadataUrl,
+        govActionMetadataHash: formData.govActionMetadataHash,
+      },
+    });
     
-    if (!proposerKeyHashR0 || !formData.deadline || (!isFundingValid && !isGovernanceValid)) {
+    // Validate based on step2Type
+    const isFundingValid =
+      formData.step2Type === "funding" && formData.fundraiseTarget;
+    const isGovernanceValid =
+      formData.step2Type === "governance" &&
+      formData.gov_action_period &&
+      formData.delegate_pool_id &&
+      formData.gov_action?.title &&
+      formData.gov_action?.abstract &&
+      formData.gov_action?.motivation &&
+      formData.gov_action?.rationale;
+    
+    console.log("[handleSubmit] Validation", {
+      isFundingValid,
+      isGovernanceValid,
+    });
+
+    if (
+      !proposerKeyHashR0 ||
+      !formData.deadline ||
+      (!isFundingValid && !isGovernanceValid)
+    ) {
       toast({
         title: "Missing fields",
         description: "Please ensure all required fields are filled.",
+      });
+      return;
+    }
+
+    // Validate metadata for governance actions
+    if (
+      formData.step2Type === "governance" &&
+      (!formData.govActionMetadataUrl || !formData.govActionMetadataHash)
+    ) {
+      toast({
+        title: "Metadata required",
+        description:
+          "Please upload governance action metadata in Step 2 before submitting.",
+        variant: "destructive",
       });
       return;
     }
@@ -129,10 +185,13 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
 
     try {
       const deadlineDate = new Date(formData.deadline);
-      const deadlineSlot = resolveSlotNo(networkId ? "mainnet" : "preprod", deadlineDate.getTime());
+      const deadlineSlot = resolveSlotNo(
+        networkId ? "mainnet" : "preprod",
+        deadlineDate.getTime(),
+      );
 
       // Create the crowdfunding contract instance
-      const contract = new MeshCrowdfundContract(
+      let contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
           fetcher: provider,
@@ -145,7 +204,27 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
       );
 
       let govContract: MeshCrowdfundGovExtensionContract | undefined;
-      if (formData.step2Type === 'governance' && formData.gov_action_period && formData.delegate_pool_id && formData.gov_action?.title) {
+
+      if (
+        formData.step2Type === "governance" &&
+        formData.gov_action_period &&
+        formData.delegate_pool_id &&
+        formData.gov_action?.title
+      ) {
+
+        const utxos = await wallet.getUtxos();
+        if (utxos.length > 0) {
+          contract.setparamUtxo(utxos[0]!);
+        }
+        if (!formData.stake_register_deposit) {
+          formData.stake_register_deposit = 2000000;
+        }
+        if (!formData.drep_register_deposit) {
+          formData.drep_register_deposit = 500000000;
+        }
+        if (!formData.gov_deposit) {throw new Error("Governance deposit is required");
+        }
+
         // Create the Gov contract instance
         govContract = new MeshCrowdfundGovExtensionContract(
           {
@@ -159,32 +238,72 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
             authTokenPolicyId: contract.getAuthTokenPolicyId(),
             gov_action_period: formData.gov_action_period,
             delegate_pool_id: formData.delegate_pool_id,
-            gov_action: formData.gov_action,
+            gov_action: JSON.stringify(formData.gov_action),
             stake_register_deposit: formData.stake_register_deposit || 2000000,
             drep_register_deposit: formData.drep_register_deposit || 500000000,
-            gov_deposit: formData.gov_deposit || 100000000000,
+            gov_deposit: formData.gov_deposit,
           },
         );
       }
 
+      // Calculate base funding target
+      const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100") * 1000000; // Convert ADA to lovelace
+      
+      // For governance-extended crowdfunds, add the required protocol deposits to the funding target
+      // Note: gov_deposit is the same as base funding, not an additional deposit
+      // Only stake_register_deposit and drep_register_deposit are protocol deposits
+      let totalFundingTarget = baseFundingTarget;
+      if (formData.step2Type === "governance") {
+        const stakeDeposit = formData.stake_register_deposit || 2000000;
+        const drepDeposit = formData.drep_register_deposit || 500000000;
+        // gov_deposit is not added - it's the same as base funding
+        totalFundingTarget = baseFundingTarget + stakeDeposit + drepDeposit;
+        
+        console.log("[handleSubmit] Adding deposits to funding target", {
+          baseFundingTarget,
+          stakeDeposit,
+          drepDeposit,
+          totalFundingTarget,
+          totalInADA: totalFundingTarget / 1000000
+        });
+      }
+
       // Create the datum data as CrowdfundDatumTS
       const datumData: CrowdfundDatumTS = {
-        completion_script: govContract ? govContract.getCrowdfundStartCbor() : "", // Will be set by the contract
+        completion_script: govContract
+          ? govContract.getCrowdfundStartCbor()
+          : "", // Will be set by the contract
         share_token: "", // Will be set by the contract
         crowdfund_address: "", // Will be set by the contract
-        fundraise_target: formData.step2Type === 'funding' ? parseFloat(formData.fundraiseTarget) * 1000000 : 100000000000, // Default if governance
+        fundraise_target: totalFundingTarget,
         current_fundraised_amount: 0,
-        allow_over_subscription: formData.step2Type === 'funding' ? formData.allowOverSubscription : false,
+        allow_over_subscription: true, // Always allow over-subscription
         deadline: Number(deadlineDate),
         expiry_buffer: parseInt(formData.expiryBuffer),
         fee_address: formData.feeAddress,
-        min_charge: formData.step2Type === 'funding' ? parseFloat(formData.minCharge) * 1000000 : 1000000, // Default if governance
+        min_charge: parseFloat(formData.minCharge || "2") * 1000000, // Convert ADA to lovelace
       };
 
       // Setup the crowdfund
-      const { tx, paramUtxo, completion_scriptHash, share_token, crowdfund_address, authTokenId } = await contract.setupCrowdfund(
+      console.log("[handleSubmit] Calling setupCrowdfund", {
+        hasGovContract: !!govContract,
         datumData,
-      );
+      });
+      const {
+        tx,
+        paramUtxo,
+        completion_scriptHash,
+        share_token,
+        crowdfund_address,
+        authTokenId,
+      } = await contract.setupCrowdfund(datumData, govContract);
+      console.log("[handleSubmit] setupCrowdfund completed", {
+        hasTx: !!tx,
+        completion_scriptHash,
+        share_token,
+        crowdfund_address,
+        authTokenId,
+      });
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
@@ -204,17 +323,23 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
         min_charge: datumData.min_charge,
       };
 
-      // Prepare governance data if applicable
-      const govDatum = (formData.step2Type === 'governance' && govContract) ? JSON.stringify({
-        gov_action_period: formData.gov_action_period,
-        delegate_pool_id: formData.delegate_pool_id,
-        gov_action: formData.gov_action,
-        stake_register_deposit: formData.stake_register_deposit,
-        drep_register_deposit: formData.drep_register_deposit,
-        gov_deposit: formData.gov_deposit,
-      }) : null;
-
-      const govAddress = (formData.step2Type === 'governance' && govContract) ? govContract.crowdfundGovAddress : null;
+      // Prepare governance extension data if applicable
+      const govExtension =
+        formData.step2Type === "governance" && govContract
+          ? {
+              gov_action_period: formData.gov_action_period,
+              delegate_pool_id: formData.delegate_pool_id,
+              gov_action: formData.gov_action, // Will be stored as JSON in the database
+              stake_register_deposit: formData.stake_register_deposit,
+              drep_register_deposit: formData.drep_register_deposit,
+              gov_deposit: formData.gov_deposit,
+              govActionMetadataUrl: formData.govActionMetadataUrl,
+              govActionMetadataHash: formData.govActionMetadataHash,
+              drepMetadataUrl: formData.drepMetadataUrl,
+              drepMetadataHash: formData.drepMetadataHash,
+              govAddress: govContract.crowdfundGovAddress,
+            }
+          : undefined;
 
       // Create the crowdfund in the database
       createCrowdfund.mutate({
@@ -228,8 +353,7 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
         authTokenId: authTokenId,
         address: crowdfund_address,
         datum: JSON.stringify(updatedDatum),
-        govDatum,
-        govAddress,
+        govExtension: govExtension,
       });
 
       // Show success toast
@@ -252,6 +376,11 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
     return `${parseFloat(amount).toLocaleString()} ADA`;
   };
 
+  const formatLovelaceToADA = (lovelace: number | undefined, defaultValue: number) => {
+    const value = lovelace || defaultValue;
+    return formatADA((value / 1000000).toString());
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
@@ -266,9 +395,10 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-xl font-semibold mb-2">Review & Submit</h2>
+        <h2 className="mb-2 text-xl font-semibold">Review & Submit</h2>
         <p className="text-muted-foreground">
-          Review your crowdfund configuration before submitting to the blockchain
+          Review your crowdfund configuration before submitting to the
+          blockchain
         </p>
       </div>
 
@@ -281,21 +411,27 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Name</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                Name
+              </label>
               <p className="text-lg font-semibold">{formData.name}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Description</label>
-              <p className="text-sm">{formData.description || "No description provided"}</p>
+              <label className="text-sm font-medium text-muted-foreground">
+                Description
+              </label>
+              <p className="text-sm">
+                {formData.description || "No description provided"}
+              </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Step 2 Configuration Review */}
-      {formData.step2Type === 'funding' && (
+      {formData.step2Type === "funding" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -304,18 +440,32 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Funding Target</label>
-                <p className="text-lg font-semibold">{formatADA(formData.fundraiseTarget)}</p>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Funding Target
+                </label>
+                <p className="text-lg font-semibold">
+                  {formatADA(formData.fundraiseTarget)}
+                </p>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Minimum Contribution</label>
-                <p className="text-lg font-semibold">{formatADA(formData.minCharge)}</p>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Minimum Contribution
+                </label>
+                <p className="text-lg font-semibold">
+                  {formatADA(formData.minCharge)}
+                </p>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Over-subscription</label>
-                <Badge variant={formData.allowOverSubscription ? "default" : "secondary"}>
+                <label className="text-sm font-medium text-muted-foreground">
+                  Over-subscription
+                </label>
+                <Badge
+                  variant={
+                    formData.allowOverSubscription ? "default" : "secondary"
+                  }
+                >
                   {formData.allowOverSubscription ? "Allowed" : "Not Allowed"}
                 </Badge>
               </div>
@@ -333,21 +483,29 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Deadline</label>
-              <p className="text-lg font-semibold">{formatDate(formData.deadline)}</p>
+              <label className="text-sm font-medium text-muted-foreground">
+                Deadline
+              </label>
+              <p className="text-lg font-semibold">
+                {formatDate(formData.deadline)}
+              </p>
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Expiry Buffer</label>
-              <p className="text-lg font-semibold">{formatSeconds(formData.expiryBuffer)}</p>
+              <label className="text-sm font-medium text-muted-foreground">
+                Expiry Buffer
+              </label>
+              <p className="text-lg font-semibold">
+                {formatSeconds(formData.expiryBuffer)}
+              </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Governance Extension Review */}
-      {formData.step2Type === 'governance' && (
+      {formData.step2Type === "governance" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -357,37 +515,80 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Badge variant="default" className="mb-4">Enabled</Badge>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Governance Action Period</label>
-                  <p className="text-sm">{formData.gov_action_period} epochs</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Delegate Pool ID</label>
-                  <p className="text-sm font-mono text-xs">{formData.delegate_pool_id}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Governance Action Type</label>
-                  <p className="text-sm font-medium">{formData.gov_action?.type?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Action Title</label>
-                  <p className="text-sm">{formData.gov_action?.title}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Description</label>
-                  <p className="text-sm">{formData.gov_action?.description}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Rationale</label>
-                  <p className="text-sm">{formData.gov_action?.rationale}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Governance Deposit</label>
-                  <p className="text-sm">{formatADA((formData.gov_deposit || 100000000000).toString())}</p>
+              <Badge variant="default" className="mb-4">
+                Enabled
+              </Badge>
+              
+              {/* Deposit Settings */}
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                <h4 className="mb-3 text-sm font-semibold text-orange-900">
+                  Deposit Settings
+                </h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Stake Register Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold">
+                      {formatLovelaceToADA(formData.stake_register_deposit, 2000000)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      DRep Register Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold">
+                      {formatLovelaceToADA(formData.drep_register_deposit, 500000000)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Governance Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold">
+                      {formatLovelaceToADA(formData.gov_deposit, 100000000000)}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {/* Metadata Display */}
+              {formData.govActionMetadataUrl &&
+              formData.govActionMetadataHash ? (
+                <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-green-800">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="font-semibold">Metadata Uploaded</span>
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div>
+                      <span className="font-medium">Metadata URL:</span>{" "}
+                      <a
+                        href={formData.govActionMetadataUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all text-blue-600 hover:underline"
+                      >
+                        {formData.govActionMetadataUrl}
+                      </a>
+                    </div>
+                    <div>
+                      <span className="font-medium">Metadata Hash:</span>{" "}
+                      <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+                        {formData.govActionMetadataHash}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Warning:</strong> Governance action metadata has not
+                    been uploaded. Please go back to Step 2 and upload the
+                    metadata before submitting.
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -401,7 +602,10 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
             isSubmitting ||
             !proposerKeyHashR0 ||
             !formData.deadline ||
-            !formData.fundraiseTarget ||
+            (formData.step2Type === "funding" && !formData.fundraiseTarget) ||
+            (formData.step2Type === "governance" &&
+              (!formData.govActionMetadataUrl ||
+                !formData.govActionMetadataHash)) ||
             !connected
           }
           size="lg"
@@ -409,7 +613,7 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
         >
           {isSubmitting ? (
             <>
-              <Clock className="h-4 w-4 mr-2 animate-spin" />
+              <Clock className="mr-2 h-4 w-4 animate-spin" />
               Creating Crowdfund...
             </>
           ) : (
@@ -420,14 +624,18 @@ export function Step3ReviewSubmit({ formData, onSuccess }: Step3ReviewSubmitProp
 
       {/* Status Messages */}
       {!connected && (
-        <div className="text-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-yellow-800">Please connect your wallet to continue</p>
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-center">
+          <p className="text-yellow-800">
+            Please connect your wallet to continue
+          </p>
         </div>
       )}
 
       {created && (
-        <div className="text-center p-4 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-green-800">Crowdfund created successfully! ID: {created}</p>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+          <p className="text-green-800">
+            Crowdfund created successfully! ID: {created}
+          </p>
         </div>
       )}
     </div>

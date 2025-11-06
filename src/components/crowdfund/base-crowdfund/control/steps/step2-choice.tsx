@@ -42,9 +42,9 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
       // Auto-enable governance extension when governance card is selected
       updateFormData({
         useGovExtension: true,
-        fundraiseTarget: "100000",
+        fundraiseTarget: "100", // Default to 100 ADA (not 100,000)
         minCharge: "2",
-        allowOverSubscription: false,
+        allowOverSubscription: true, // Always allow over-subscription
       });
       setShowGovForm(true);
     }
@@ -57,13 +57,29 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
     gov_action?: {
       type: 'motion_no_confidence' | 'update_committee' | 'new_constitution' | 'hard_fork' | 'protocol_parameter_changes' | 'treasury_withdrawals' | 'info';
       title: string;
-      description: string;
+      abstract: string;
+      motivation: string;
       rationale: string;
+      references?: Array<{
+        "@type": string;
+        label: string;
+        uri: string;
+      }>;
+      comment?: string;
+      externalUpdates?: Array<{
+        title: string;
+        uri: string;
+      }>;
       metadata?: Record<string, any>;
     };
     stake_register_deposit?: number;
     drep_register_deposit?: number;
     gov_deposit?: number;
+    govActionMetadataUrl?: string;
+    govActionMetadataHash?: string;
+    fundraiseTarget?: string; // Add funding target to governance data updates
+    minCharge?: string; // Add min charge to governance data updates
+    allowOverSubscription?: boolean; // Add over subscription to governance data updates
   }) => {
     updateFormData(govData);
   };
@@ -214,22 +230,20 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="allowOverSubscription"
-                  checked={formData.allowOverSubscription}
-                  onCheckedChange={(checked) =>
-                    updateFormData({ allowOverSubscription: checked as boolean })
-                  }
+                  checked={true}
+                  disabled={true}
                 />
                 <Label
                   htmlFor="allowOverSubscription"
                   className="flex items-center gap-2"
                 >
-                  Allow over-subscription
+                  Allow over-subscription (always enabled)
                   <Tooltip>
                     <TooltipTrigger>
                       <Info className="h-3 w-3 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Allow contributions to exceed the funding target</p>
+                      <p>Contributions can exceed the funding target</p>
                     </TooltipContent>
                   </Tooltip>
                 </Label>
@@ -266,6 +280,9 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
                     stake_register_deposit: formData.stake_register_deposit,
                     drep_register_deposit: formData.drep_register_deposit,
                     gov_deposit: formData.gov_deposit,
+                    fundraiseTarget: formData.fundraiseTarget,
+                    minCharge: formData.minCharge,
+                    allowOverSubscription: formData.allowOverSubscription,
                   }}
                 />
               </div>

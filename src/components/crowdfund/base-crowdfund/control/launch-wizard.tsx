@@ -35,13 +35,20 @@ export interface CrowdfundFormData {
   gov_action?: {
     type: 'motion_no_confidence' | 'update_committee' | 'new_constitution' | 'hard_fork' | 'protocol_parameter_changes' | 'treasury_withdrawals' | 'info';
     title: string;
-    description: string;
+    abstract: string;
+    motivation: string;
     rationale: string;
     metadata?: Record<string, any>;
   };
   stake_register_deposit?: number;
   drep_register_deposit?: number;
   gov_deposit?: number;
+  // Governance metadata references (set in Step 2 when uploading CIP-108)
+  govActionMetadataUrl?: string;
+  govActionMetadataHash?: string;
+  // Optional DRep metadata (if used elsewhere in the flow)
+  drepMetadataUrl?: string;
+  drepMetadataHash?: string;
 }
 
 interface LaunchWizardProps {
@@ -83,7 +90,7 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
     step2Type: 'funding',
     fundraiseTarget: "100000",
     minCharge: "2",
-    allowOverSubscription: false,
+    allowOverSubscription: true, // Always allow over-subscription
     useGovExtension: false,
   });
 
@@ -106,7 +113,7 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
         step2Type: 'funding',
         fundraiseTarget: "100000",
         minCharge: "2",
-        allowOverSubscription: false,
+        allowOverSubscription: true, // Always allow over-subscription
         useGovExtension: false,
       };
 
@@ -126,42 +133,52 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
           loadedData.feeAddress = parsedDatum.fee_address || "";
           loadedData.fundraiseTarget = parsedDatum.fundraise_target ? (parsedDatum.fundraise_target / 1000000).toString() : "100000";
           loadedData.minCharge = parsedDatum.min_charge ? (parsedDatum.min_charge / 1000000).toString() : "2";
-          loadedData.allowOverSubscription = parsedDatum.allow_over_subscription || false;
+          loadedData.allowOverSubscription = true; // Always allow over-subscription
         } catch (e) {
           console.error("Failed to parse draft datum:", e);
         }
       }
 
-      // Parse additional governance data from govDatum field if it exists
-      if (draftData.govDatum) {
+      // Load governance data from govExtension relation (preferred) or fallback to govDatum for backward compatibility
+      const govExt = draftData.govExtension || (draftData.govDatum ? (() => {
         try {
-          const parsedGovDatum = JSON.parse(draftData.govDatum);
-          
-          // Check if there's governance data (has governance-specific fields)
-          const hasGovernanceData = parsedGovDatum.gov_action_period || 
-                                   parsedGovDatum.delegate_pool_id || 
-                                   parsedGovDatum.gov_action || 
-                                   parsedGovDatum.stake_register_deposit || 
-                                   parsedGovDatum.drep_register_deposit || 
-                                   parsedGovDatum.gov_deposit;
-          
-          if (hasGovernanceData) {
-            // This is a governance crowdfund
-            loadedData.step2Type = 'governance';
-            loadedData.useGovExtension = true;
-            loadedData.gov_action_period = parsedGovDatum.gov_action_period;
-            loadedData.delegate_pool_id = parsedGovDatum.delegate_pool_id;
-            loadedData.gov_action = parsedGovDatum.gov_action;
-            loadedData.stake_register_deposit = parsedGovDatum.stake_register_deposit;
-            loadedData.drep_register_deposit = parsedGovDatum.drep_register_deposit;
-            loadedData.gov_deposit = parsedGovDatum.gov_deposit;
-          } else {
-            // This is a funding-only crowdfund
-            loadedData.step2Type = 'funding';
-            loadedData.useGovExtension = false;
-          }
+          return JSON.parse(draftData.govDatum);
         } catch (e) {
           console.error("Failed to parse draft govDatum:", e);
+          return null;
+        }
+      })() : null);
+
+      if (govExt) {
+        // Check if there's governance data (has governance-specific fields)
+        const hasGovernanceData = govExt.gov_action_period || 
+                                 govExt.delegate_pool_id || 
+                                 govExt.gov_action || 
+                                 govExt.stake_register_deposit || 
+                                 govExt.drep_register_deposit || 
+                                 govExt.gov_deposit;
+        
+        if (hasGovernanceData) {
+          // This is a governance crowdfund
+          loadedData.step2Type = 'governance';
+          loadedData.useGovExtension = true;
+          loadedData.gov_action_period = govExt.gov_action_period;
+          loadedData.delegate_pool_id = govExt.delegate_pool_id;
+          // gov_action might be stored as JSON in the database, parse if needed
+          loadedData.gov_action = typeof govExt.gov_action === 'string' 
+            ? JSON.parse(govExt.gov_action) 
+            : govExt.gov_action;
+          loadedData.stake_register_deposit = govExt.stake_register_deposit;
+          loadedData.drep_register_deposit = govExt.drep_register_deposit;
+          loadedData.gov_deposit = govExt.gov_deposit;
+          loadedData.govActionMetadataUrl = govExt.govActionMetadataUrl;
+          loadedData.govActionMetadataHash = govExt.govActionMetadataHash;
+          loadedData.drepMetadataUrl = govExt.drepMetadataUrl;
+          loadedData.drepMetadataHash = govExt.drepMetadataHash;
+        } else {
+          // This is a funding-only crowdfund
+          loadedData.step2Type = 'funding';
+          loadedData.useGovExtension = false;
         }
       }
 
@@ -190,10 +207,11 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       return formData.fundraiseTarget;
     } else if (formData.step2Type === 'governance') {
       // Governance extension is automatically enabled when governance is selected
-      return formData.gov_action_period && 
-             formData.delegate_pool_id && 
+      return formData.gov_action_period &&
+             formData.delegate_pool_id &&
              formData.gov_action?.title &&
-             formData.gov_action?.description &&
+             formData.gov_action?.abstract &&
+             formData.gov_action?.motivation &&
              formData.gov_action?.rationale;
     }
     return false;

@@ -22,7 +22,7 @@ export function ContributeToCrowdfund({
   crowdfund, 
   onSuccess 
 }: ContributeToCrowdfundProps) {
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState<string>("");
   const [isContributing, setIsContributing] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const { toast } = useToast();
@@ -49,6 +49,49 @@ export function ContributeToCrowdfund({
   }
   
   const datumData = JSON.parse(crowdfund.datum);
+  
+  // For governance-extended crowdfunds, check if deposits need to be added to the target
+  const govExtension = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
+  
+  // Calculate remaining funding amount
+  const currentRaised = datumData.current_fundraised_amount || 0;
+  let fundingTarget = datumData.fundraise_target || 0;
+  
+  // For governance crowdfunds, if the target doesn't include deposits, add them
+  if (govExtension) {
+    const stakeDeposit = govExtension.stake_register_deposit || 0;
+    const drepDeposit = govExtension.drep_register_deposit || 0;
+    const totalDeposits = stakeDeposit + drepDeposit;
+    
+    // If the funding target is less than deposits, it means deposits weren't added yet
+    // Add deposits to get the total funding target
+    if (fundingTarget < totalDeposits) {
+      fundingTarget = fundingTarget + totalDeposits;
+    }
+  }
+  
+  const remainingFunding = Math.max(0, fundingTarget - currentRaised);
+  const remainingFundingADA = remainingFunding / 1000000;
+  
+  // Calculate max contribution (limited by remaining funding, wallet balance, and fees)
+  const estimatedFees = 200000; // 0.2 ADA in lovelace
+  const maxFromWallet = Math.max(0, walletBalance - estimatedFees);
+  const maxContribution = Math.max(
+    datumData.min_charge / 1000000,
+    Math.min(
+      remainingFundingADA,
+      maxFromWallet / 1000000,
+      walletBalance / 1000000
+    )
+  );
+  const minContribution = datumData.min_charge / 1000000;
+  
+  // Initialize amount with minimum if empty
+  useEffect(() => {
+    if (!amount && minContribution > 0 && maxContribution >= minContribution) {
+      setAmount(minContribution.toFixed(2));
+    }
+  }, [minContribution, maxContribution, amount]);
   
   // Add the updateCrowdfund mutation
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
@@ -148,6 +191,17 @@ export function ContributeToCrowdfund({
         return;
       }
 
+      const parsedParamUtxo = JSON.parse(crowdfund.paramUtxo);
+      console.log("[handleContribute] Creating contract", {
+        proposerKeyHash: crowdfund.proposerKeyHashR0,
+        paramUtxo: parsedParamUtxo,
+        paramUtxoType: typeof parsedParamUtxo,
+        hasInput: 'input' in parsedParamUtxo,
+        hasTxHash: 'txHash' in parsedParamUtxo,
+        storedAddress: crowdfund.address,
+        datumData,
+      });
+      
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -157,11 +211,42 @@ export function ContributeToCrowdfund({
         },
         {
           proposerKeyHash: crowdfund.proposerKeyHashR0,
-          paramUtxo: JSON.parse(crowdfund.paramUtxo),
+          paramUtxo: parsedParamUtxo,
         },
       );
 
+      // Validate that the computed address matches the stored address
+      const computedAddress = contract.crowdfundAddress;
+      console.log("[handleContribute] Address validation", {
+        computedAddress,
+        storedAddress: crowdfund.address,
+        addressesMatch: computedAddress === crowdfund.address,
+      });
+      
+      if (computedAddress && computedAddress !== crowdfund.address) {
+        console.warn("[handleContribute] Address mismatch! Using stored address.", {
+          computed: computedAddress,
+          stored: crowdfund.address,
+        });
+        // Override with stored address to ensure consistency
+        contract.crowdfundAddress = crowdfund.address;
+      } else if (!computedAddress && crowdfund.address) {
+        // If address wasn't computed but we have a stored one, use it
+        contract.crowdfundAddress = crowdfund.address;
+        console.log("[handleContribute] Using stored address as computed address was not set");
+      }
+
+      console.log("[handleContribute] Calling contributeCrowdfund", {
+        contributionAmount,
+        datumData,
+        crowdfundAddress: contract.crowdfundAddress,
+      });
+      
       const { tx } = await contract.contributeCrowdfund(contributionAmount, datumData);
+      
+      console.log("[handleContribute] Transaction built successfully", {
+        txLength: tx.length,
+      });
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
@@ -238,25 +323,120 @@ export function ContributeToCrowdfund({
           </AlertDescription>
         </Alert>
         
-        <div className="space-y-2">
-          <label htmlFor="amount" className="text-sm font-medium">
-            Contribution Amount (ADA)
-          </label>
-          <Input
-            id="amount"
-            type="number"
-            placeholder="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            min={datumData.min_charge / 1000000}
-            step="1"
-            className="text-lg"
-          />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="amount" className="text-sm font-medium">
+              Contribution Amount (ADA)
+            </label>
+            <div className="flex gap-3 items-center">
+              <input
+                id="amount"
+                type="range"
+                min={minContribution}
+                max={maxContribution}
+                step="0.1"
+                value={amount || minContribution.toString()}
+                onChange={(e) => setAmount(parseFloat(e.target.value).toFixed(2))}
+                disabled={maxContribution <= minContribution}
+                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:shadow-md"
+                style={{
+                  background: maxContribution > minContribution
+                    ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb 100%)`
+                    : '#3b82f6'
+                }}
+              />
+              <Input
+                type="number"
+                min={minContribution}
+                max={maxContribution}
+                step="0.1"
+                value={amount || ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "") {
+                    setAmount("");
+                    return;
+                  }
+                  const numValue = parseFloat(value);
+                  if (!isNaN(numValue)) {
+                    // Clamp value between min and max
+                    const clampedValue = Math.max(minContribution, Math.min(maxContribution, numValue));
+                    setAmount(clampedValue.toFixed(2));
+                  }
+                }}
+                onBlur={(e) => {
+                  // Ensure value is within bounds on blur
+                  const numValue = parseFloat(e.target.value);
+                  if (isNaN(numValue) || numValue < minContribution) {
+                    setAmount(minContribution.toFixed(2));
+                  } else if (numValue > maxContribution) {
+                    setAmount(maxContribution.toFixed(2));
+                  } else {
+                    setAmount(numValue.toFixed(2));
+                  }
+                }}
+                className="w-24 text-lg text-center"
+                placeholder={minContribution.toFixed(2)}
+              />
+              <span className="text-sm text-muted-foreground w-10">ADA</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{minContribution.toFixed(2)} ADA</span>
+              <span>{maxContribution.toFixed(2)} ADA max</span>
+            </div>
+          </div>
+          
+          {/* Quick amount buttons */}
+          {maxContribution > minContribution && (
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount(minContribution.toFixed(2))}
+              >
+                Min ({minContribution.toFixed(2)})
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((maxContribution / 4).toFixed(2))}
+              >
+                25%
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((maxContribution / 2).toFixed(2))}
+              >
+                50%
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((maxContribution * 0.75).toFixed(2))}
+              >
+                75%
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount(maxContribution.toFixed(2))}
+              >
+                Max
+              </Button>
+            </div>
+          )}
         </div>
 
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-muted-foreground space-y-1">
           <p>• Your wallet balance: {(walletBalance / 1000000).toFixed(2)} ADA</p>
-          <p>• Minimum contribution: {datumData.min_charge / 1000000} ADA</p>
+          <p>• Minimum contribution: {minContribution.toFixed(2)} ADA</p>
+          <p>• Remaining funding needed: {remainingFundingADA.toFixed(2)} ADA</p>
           <p>• You'll receive share tokens based on your contribution</p>
           <p>• Transaction fees apply (~0.17 ADA)</p>
         </div>
