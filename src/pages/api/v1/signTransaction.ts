@@ -5,6 +5,8 @@ import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { getProvider } from "@/utils/get-provider";
+import { paymentKeyHash } from "@/utils/multisigSDK";
+import { csl } from "@meshsdk/core-csl";
 
 const HEX_REGEX = /^[0-9a-fA-F]+$/;
 
@@ -119,6 +121,50 @@ export default async function handler(
       return res
         .status(409)
         .json({ error: "Address has rejected this transaction" });
+    }
+
+    let signerKeyHash: string;
+    try {
+      signerKeyHash = paymentKeyHash(address).toLowerCase();
+    } catch (deriveError) {
+      console.error("Failed to derive payment key hash", {
+        message: (deriveError as Error)?.message,
+      });
+      return res.status(400).json({ error: "Unable to derive signer key" });
+    }
+
+    let signerWitnessFound = false;
+    try {
+      const tx = csl.Transaction.from_hex(signedTx);
+      const vkeys = tx.witness_set()?.vkeys();
+
+      if (vkeys) {
+        for (let i = 0; i < vkeys.len(); i += 1) {
+          const witness = vkeys.get(i);
+          const witnessKeyHash = Buffer.from(
+            witness.vkey().public_key().hash().to_bytes(),
+          )
+            .toString("hex")
+            .toLowerCase();
+
+          if (witnessKeyHash === signerKeyHash) {
+            signerWitnessFound = true;
+            break;
+          }
+        }
+      }
+    } catch (decodeError) {
+      console.error("Failed to inspect transaction witnesses", {
+        message: (decodeError as Error)?.message,
+        stack: (decodeError as Error)?.stack,
+      });
+      return res.status(400).json({ error: "Invalid signedTx payload" });
+    }
+
+    if (!signerWitnessFound) {
+      return res.status(400).json({
+        error: "Signed transaction does not include caller signature",
+      });
     }
 
     const updatedSignedAddresses = [...transaction.signedAddresses, address];

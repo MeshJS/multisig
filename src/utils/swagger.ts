@@ -271,6 +271,69 @@ export const swaggerSpec = swaggerJSDoc({
           },
         },
       },
+      "/api/v1/pendingTransactions": {
+        get: {
+          tags: ["V1"],
+          summary: "Get pending transactions for a wallet",
+          description:
+            "Returns all pending multisig transactions awaiting signatures for the specified wallet and address.",
+          parameters: [
+            {
+              in: "query",
+              name: "walletId",
+              required: true,
+              schema: { type: "string" },
+              description: "ID of the multisig wallet",
+            },
+            {
+              in: "query",
+              name: "address",
+              required: true,
+              schema: { type: "string" },
+              description: "Address associated with the wallet (must match JWT)",
+            },
+          ],
+          responses: {
+            200: {
+              description: "A list of pending transactions",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        walletId: { type: "string" },
+                        txJson: { type: "string" },
+                        txCbor: { type: "string" },
+                        signedAddresses: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        rejectedAddresses: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        description: { type: "string" },
+                        state: { type: "number" },
+                        createdAt: { type: "string" },
+                        updatedAt: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid address or walletId parameter" },
+            401: { description: "Unauthorized or invalid token" },
+            403: { description: "Address mismatch" },
+            404: { description: "Wallet not found" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
       "/api/v1/submitDatum": {
         post: {
           tags: ["V1"],

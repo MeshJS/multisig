@@ -59,6 +59,20 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Updated transaction record with threshold status metadata; includes `txHash` when submission succeeds
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 409 (duplicate/rejected), 502 (submission failure), 500 (server)
 
+#### `pendingTransactions.ts` - GET `/api/v1/pendingTransactions`
+
+- **Purpose**: Retrieve all pending multisig transactions for a wallet
+- **Authentication**: Required (JWT Bearer token)
+- **Features**:
+  - Wallet ownership validation and JWT address enforcement
+  - Pending transaction listing with signature status metadata
+  - Supports multisig coordination for outstanding approvals
+- **Query Parameters**:
+  - `walletId`: Wallet identifier
+  - `address`: Requester address (must match JWT payload)
+- **Response**: Array of pending transaction objects with signature state details
+- **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 405 (method), 500 (server)
+
 #### `submitDatum.ts` - POST `/api/v1/submitDatum`
 
 - **Purpose**: Submit signable payloads for multisig signature collection
