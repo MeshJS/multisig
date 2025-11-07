@@ -5,18 +5,17 @@ import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { getProvider } from "@/utils/get-provider";
-import { paymentKeyHash } from "@/utils/multisigSDK";
-import { csl } from "@meshsdk/core-csl";
+import { addressToNetwork } from "@/utils/multisigSDK";
 
-const HEX_REGEX = /^[0-9a-fA-F]+$/;
-
-const isHexString = (value: unknown): value is string =>
-  typeof value === "string" && value.length > 0 && HEX_REGEX.test(value);
-
-const resolveNetworkFromAddress = (bech32Address: string): 0 | 1 =>
-  bech32Address.startsWith("addr_test") || bech32Address.startsWith("stake_test")
-    ? 0
-    : 1;
+function coerceBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return fallback;
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -34,7 +33,9 @@ export default async function handler(
   }
 
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : null;
 
   if (!token) {
     return res.status(401).json({ error: "Unauthorized - Missing token" });
@@ -50,35 +51,40 @@ export default async function handler(
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   } as const;
 
-  const caller = createCaller({ db, session });
+  type SignTransactionRequestBody = {
+    walletId?: unknown;
+    transactionId?: unknown;
+    address?: unknown;
+    txCbor?: unknown;
+    broadcast?: unknown;
+    txHash?: unknown;
+  };
 
-  const body =
-    typeof req.body === "object" && req.body !== null
-      ? (req.body as Record<string, unknown>)
-      : {};
+  const {
+    walletId,
+    transactionId,
+    address,
+    txCbor,
+    broadcast: rawBroadcast,
+    txHash: rawTxHash,
+  } = (req.body ?? {}) as SignTransactionRequestBody;
 
-  const { walletId, transactionId, address, signedTx } = body;
-
-  if (typeof walletId !== "string" || walletId.trim().length === 0) {
+  if (typeof walletId !== "string" || walletId.trim() === "") {
     return res.status(400).json({ error: "Missing or invalid walletId" });
   }
 
-  if (typeof transactionId !== "string" || transactionId.trim().length === 0) {
+  if (typeof transactionId !== "string" || transactionId.trim() === "") {
     return res
       .status(400)
       .json({ error: "Missing or invalid transactionId" });
   }
 
-  if (typeof address !== "string" || address.trim().length === 0) {
+  if (typeof address !== "string" || address.trim() === "") {
     return res.status(400).json({ error: "Missing or invalid address" });
   }
 
-  if (!isHexString(signedTx)) {
-    return res.status(400).json({ error: "Missing or invalid signedTx" });
-  }
-
-  if (signedTx.length % 2 !== 0) {
-    return res.status(400).json({ error: "Missing or invalid signedTx" });
+  if (typeof txCbor !== "string" || txCbor.trim() === "") {
+    return res.status(400).json({ error: "Missing or invalid txCbor" });
   }
 
   if (payload.address !== address) {
@@ -86,6 +92,8 @@ export default async function handler(
   }
 
   try {
+    const caller = createCaller({ db, session });
+
     const wallet = await caller.wallet.getWallet({ walletId, address });
     if (!wallet) {
       return res.status(404).json({ error: "Wallet not found" });
@@ -114,111 +122,91 @@ export default async function handler(
     if (transaction.signedAddresses.includes(address)) {
       return res
         .status(409)
-        .json({ error: "Address already signed this transaction" });
+        .json({ error: "Address has already signed this transaction" });
     }
 
     if (transaction.rejectedAddresses.includes(address)) {
       return res
         .status(409)
-        .json({ error: "Address has rejected this transaction" });
+        .json({ error: "Address has already rejected this transaction" });
     }
 
-    let signerKeyHash: string;
-    try {
-      signerKeyHash = paymentKeyHash(address).toLowerCase();
-    } catch (deriveError) {
-      console.error("Failed to derive payment key hash", {
-        message: (deriveError as Error)?.message,
-      });
-      return res.status(400).json({ error: "Unable to derive signer key" });
-    }
+    const updatedSignedAddresses = [
+      ...transaction.signedAddresses,
+      address,
+    ];
 
-    let signerWitnessFound = false;
-    try {
-      const tx = csl.Transaction.from_hex(signedTx);
-      const vkeys = tx.witness_set()?.vkeys();
+    const shouldAttemptBroadcast = coerceBoolean(rawBroadcast, true);
 
-      if (vkeys) {
-        for (let i = 0; i < vkeys.len(); i += 1) {
-          const witness = vkeys.get(i);
-          const witnessKeyHash = Buffer.from(
-            witness.vkey().public_key().hash().to_bytes(),
-          )
-            .toString("hex")
-            .toLowerCase();
-
-          if (witnessKeyHash === signerKeyHash) {
-            signerWitnessFound = true;
-            break;
-          }
-        }
+    const threshold = (() => {
+      switch (wallet.type) {
+        case "atLeast":
+          return wallet.numRequiredSigners ?? wallet.signersAddresses.length;
+        case "all":
+          return wallet.signersAddresses.length;
+        case "any":
+          return 1;
+        default:
+          return wallet.numRequiredSigners ?? 1;
       }
-    } catch (decodeError) {
-      console.error("Failed to inspect transaction witnesses", {
-        message: (decodeError as Error)?.message,
-        stack: (decodeError as Error)?.stack,
-      });
-      return res.status(400).json({ error: "Invalid signedTx payload" });
-    }
+    })();
 
-    if (!signerWitnessFound) {
-      return res.status(400).json({
-        error: "Signed transaction does not include caller signature",
-      });
-    }
+    const providedTxHash =
+      typeof rawTxHash === "string" && rawTxHash.trim() !== ""
+        ? rawTxHash.trim()
+        : undefined;
 
-    const updatedSignedAddresses = [...transaction.signedAddresses, address];
-    const updatedRejectedAddresses = [...transaction.rejectedAddresses];
+    let nextState = transaction.state;
+    let finalTxHash = providedTxHash ?? transaction.txHash ?? undefined;
+    let submissionError: string | undefined;
 
-    const totalSigners = wallet.signersAddresses.length;
-    const requiredSigners = wallet.numRequiredSigners ?? undefined;
-
-    let thresholdReached = false;
-    switch (wallet.type) {
-      case "any":
-        thresholdReached = true;
-        break;
-      case "all":
-        thresholdReached = updatedSignedAddresses.length >= totalSigners;
-        break;
-      case "atLeast":
-        thresholdReached =
-          typeof requiredSigners === "number" &&
-          updatedSignedAddresses.length >= requiredSigners;
-        break;
-      default:
-        thresholdReached = false;
-    }
-
-    let finalTxHash: string | undefined;
-    if (thresholdReached && !finalTxHash) {
+    if (
+      shouldAttemptBroadcast &&
+      threshold > 0 &&
+      updatedSignedAddresses.length >= threshold &&
+      !providedTxHash
+    ) {
       try {
-        const network = resolveNetworkFromAddress(address);
-        const blockchainProvider = getProvider(network);
-        finalTxHash = await blockchainProvider.submitTx(signedTx);
-      } catch (submitError) {
-        console.error("Failed to submit transaction", {
-          message: (submitError as Error)?.message,
-          stack: (submitError as Error)?.stack,
+        const networkSource = wallet.signersAddresses[0] ?? address;
+        const network = addressToNetwork(networkSource);
+        const provider = getProvider(network);
+        const submittedHash = await provider.submitTx(txCbor);
+        finalTxHash = submittedHash;
+        nextState = 1;
+      } catch (error) {
+        console.error("Error submitting signed transaction", {
+          transactionId,
+          error,
         });
-        return res.status(502).json({ error: "Failed to submit transaction" });
+        submissionError = (error as Error)?.message ?? "Failed to submit transaction";
       }
     }
 
-    const nextState = finalTxHash ? 1 : 0;
+    if (providedTxHash) {
+      nextState = 1;
+    }
+
+    // Ensure we do not downgrade a completed transaction back to pending
+    if (transaction.state === 1) {
+      nextState = 1;
+    } else if (nextState !== 1) {
+      nextState = 0;
+    }
 
     const updatedTransaction = await caller.transaction.updateTransaction({
       transactionId,
-      txCbor: signedTx,
+      txCbor,
       signedAddresses: updatedSignedAddresses,
-      rejectedAddresses: updatedRejectedAddresses,
+      rejectedAddresses: transaction.rejectedAddresses,
       state: nextState,
-      txHash: finalTxHash,
+      ...(finalTxHash ? { txHash: finalTxHash } : {}),
     });
 
     return res.status(200).json({
       transaction: updatedTransaction,
-      thresholdReached,
+      submitted: nextState === 1,
+      txHash: finalTxHash,
+      ...(submissionError ? { submissionError } : {}),
     });
   } catch (error) {
     console.error("Error in signTransaction handler", {
@@ -228,4 +216,3 @@ export default async function handler(
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
-
