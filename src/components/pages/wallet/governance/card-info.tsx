@@ -58,7 +58,11 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
     const fetchProxyDrepInfo = async () => {
       
       
-      if (isProxyEnabled && selectedProxyId && appWallet?.scriptCbor) {
+      // Only fetch proxy DRep info if proxy is enabled, has a selected proxy, proxies exist, and the selected proxy is found
+      const hasValidProxy = isProxyEnabled && selectedProxyId && proxies.length > 0;
+      const selectedProxy = hasValidProxy ? proxies.find(p => p.id === selectedProxyId) : null;
+      
+      if (hasValidProxy && selectedProxy && appWallet?.scriptCbor) {
         setLoadingProxyDrep(true);
         setProxyDrepError(null);
         
@@ -69,51 +73,44 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
         }, 10000); // 10 second timeout
         
         try {
-          const selectedProxy = proxies.find(p => p.id === selectedProxyId);
+          const txBuilder = getTxBuilder(network);
+          const proxyContract = new MeshProxyContract(
+            {
+              mesh: txBuilder,
+              wallet: undefined,
+              networkId: network,
+            },
+            {
+              paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
+            },
+            appWallet.scriptCbor,
+          );
+          proxyContract.proxyAddress = selectedProxy.proxyAddress;
           
-          if (selectedProxy) {
-            const txBuilder = getTxBuilder(network);
-            const proxyContract = new MeshProxyContract(
-              {
-                mesh: txBuilder,
-                wallet: undefined,
-                networkId: network,
-              },
-              {
-                paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
-              },
-              appWallet.scriptCbor,
-            );
-            proxyContract.proxyAddress = selectedProxy.proxyAddress;
-            
-            // Get DRep ID
-            const drepId = proxyContract.getDrepId();
-            
-            setProxyDrepId(drepId);
-            
-            // Get DRep status (now with caching and proper error handling)
-            const status = await proxyContract.getDrepStatus(true);
-            setProxyDrepInfo(status);
+          // Get DRep ID
+          const drepId = proxyContract.getDrepId();
+          
+          setProxyDrepId(drepId);
+          
+          // Get DRep status (now with caching and proper error handling)
+          const status = await proxyContract.getDrepStatus(true);
+          setProxyDrepInfo(status);
 
-            // Get DRep delegators (force refresh on manual view)
-            try {
-              const delegators = await proxyContract.getDrepDelegators(true);
-              setProxyDelegatorsInfo(delegators as {
-                delegators: Array<{ address: string; amount: string }>;
-                totalDelegation: string;
-                totalDelegationADA: number;
-                count: number;
-              });
-            } catch {
-              // ignore, leave as null
-              setProxyDelegatorsInfo(null);
-            }
-            
-            clearTimeout(timeoutId);
-          } else {
-            setProxyDrepError("Selected proxy not found");
-            clearTimeout(timeoutId);
+          // Get DRep delegators (force refresh on manual view)
+          try {
+            const delegators = await proxyContract.getDrepDelegators(true);
+            setProxyDelegatorsInfo(delegators as {
+              delegators: Array<{ address: string; amount: string }>;
+              totalDelegation: string;
+              totalDelegationADA: number;
+              count: number;
+            });
+          } catch {
+            // ignore, leave as null
+            setProxyDelegatorsInfo(null);
           }
+          
+          clearTimeout(timeoutId);
         } catch (error) {
           // Only log unexpected errors, not 404s which are handled in offchain
           console.error("Unexpected error in fetchProxyDrepInfo:", error);
@@ -123,6 +120,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
           setLoadingProxyDrep(false);
         }
       } else {
+        // Clear proxy state when no valid proxy is available - fall back to old logic
         setProxyDrepId(null);
         setProxyDrepInfo(null);
         setProxyDrepError(null);
@@ -133,9 +131,10 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
     fetchProxyDrepInfo();
   }, [isProxyEnabled, selectedProxyId, appWallet?.scriptCbor, network, proxies]);
   
-  // Use proxy DRep info if proxy is enabled, otherwise use standard DRep info
-  const displayDrepId = isProxyEnabled ? proxyDrepId : currentDrepId;
-  const displayDrepInfo = isProxyEnabled ? proxyDrepInfo : currentDrepInfo;
+  // Use proxy DRep info only if proxy is enabled AND we have valid proxy data, otherwise use standard DRep info
+  const hasValidProxyData = !!(isProxyEnabled && proxyDrepId && proxies.length > 0 && proxies.find(p => p.id === selectedProxyId));
+  const displayDrepId = hasValidProxyData ? proxyDrepId : currentDrepId;
+  const displayDrepInfo = hasValidProxyData ? proxyDrepInfo : currentDrepInfo;
   
   
   
@@ -151,7 +150,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                {isProxyEnabled ? "Proxy DRep Information" : "DRep Information"}
+                {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
@@ -181,7 +180,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 rounded-full bg-gray-400"></div>
               <p className="text-gray-600 dark:text-gray-400">
-                {isProxyEnabled ? "No proxy DRep information available" : "No DRep information available"}
+                {hasValidProxyData ? "No proxy DRep information available" : "No DRep information available"}
               </p>
             </div>
           )}
@@ -202,7 +201,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
           </div>
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {isProxyEnabled ? "Proxy DRep Information" : "DRep Information"}
+              {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
@@ -241,84 +240,86 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
               <Info className="h-5 w-5 text-gray-600 dark:text-gray-400" />
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {isProxyEnabled ? "Proxy DRep Management" : "DRep Information"}
+                  {hasValidProxyData ? "Proxy DRep Management" : "DRep Information"}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {isProxyEnabled ? "Using proxy for governance operations" : "Standard DRep governance mode"}
+                  {hasValidProxyData ? "Using proxy for governance operations" : "Standard DRep governance mode"}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* Global Proxy Toggle */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Proxy Mode:</span>
-                <button
-                  onClick={() => {
-                    if (isProxyEnabled) {
-                      clearSelectedProxy();
-                      toast({
-                        title: "Proxy Mode Disabled",
-                        description: "Proxy mode has been turned off.",
-                      });
-                    } else {
-                      toast({
-                        title: "Proxy Mode Enabled",
-                        description: "Select a proxy to use for governance operations.",
-                      });
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isProxyEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isProxyEnabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-              
-              {proxies.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Select value={selectedProxyId || undefined} onValueChange={(value) => {
-                    setSelectedProxy(value);
-                    toast({
-                      title: "Proxy Selected",
-                      description: "Proxy mode enabled for governance operations.",
-                    });
-                  }}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Select a proxy..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {proxies.map((proxy) => (
-                        <SelectItem key={proxy.id} value={proxy.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{proxy.description || `Proxy ${proxy.id.slice(-8)}`}</span>
-                            <span className="text-xs text-gray-500">{proxy.proxyAddress.slice(0, 20)}...</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedProxyId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
+              {/* Global Proxy Toggle - Only show when proxies exist */}
+              {proxies && proxies.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Proxy Mode:</span>
+                    <button
                       onClick={() => {
-                        clearSelectedProxy();
-                        toast({
-                          title: "Proxy Unselected",
-                          description: "Proxy mode has been disabled. Using standard DRep mode.",
-                        });
+                        if (isProxyEnabled) {
+                          clearSelectedProxy();
+                          toast({
+                            title: "Proxy Mode Disabled",
+                            description: "Proxy mode has been turned off.",
+                          });
+                        } else {
+                          toast({
+                            title: "Proxy Mode Enabled",
+                            description: "Select a proxy to use for governance operations.",
+                          });
+                        }
                       }}
-                      className="text-gray-600 hover:text-gray-700"
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        isProxyEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                      }`}
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isProxyEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedProxyId || undefined} onValueChange={(value) => {
+                      setSelectedProxy(value);
+                      toast({
+                        title: "Proxy Selected",
+                        description: "Proxy mode enabled for governance operations.",
+                      });
+                    }}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Select a proxy..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {proxies.map((proxy) => (
+                          <SelectItem key={proxy.id} value={proxy.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{proxy.description || `Proxy ${proxy.id.slice(-8)}`}</span>
+                              <span className="text-xs text-gray-500">{proxy.proxyAddress.slice(0, 20)}...</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedProxyId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          clearSelectedProxy();
+                          toast({
+                            title: "Proxy Unselected",
+                            description: "Proxy mode has been disabled. Using standard DRep mode.",
+                          });
+                        }}
+                        className="text-gray-600 hover:text-gray-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>

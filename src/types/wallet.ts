@@ -1,12 +1,6 @@
 import { NativeScript } from "@meshsdk/core";
 import { Wallet as DbWallet } from "@prisma/client";
 
-export type Wallet = DbWallet & {
-  nativeScript: NativeScript;
-  address: string;
-  dRepId: string;
-};
-
 export interface RawImportBodiesUser {
   ada_handle?: string;
   address_bech32?: string;
@@ -44,4 +38,15 @@ export interface RawImportBodies {
   users?: RawImportBodiesUser[];
   [key: string]: unknown;
 }
+
+export type DbWalletWithLegacy = DbWallet & {
+  rawImportBodies?: RawImportBodies | null;
+};
+
+export type Wallet = DbWalletWithLegacy & {
+  nativeScript: NativeScript;
+  address: string;
+  dRepId: string;
+  stakeScriptCbor?: string;
+};
 

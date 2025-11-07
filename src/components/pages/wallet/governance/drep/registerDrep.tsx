@@ -44,6 +44,9 @@ export default function RegisterDRep() {
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
+  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
+  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
     givenName: "",
@@ -171,8 +174,9 @@ export default function RegisterDRep() {
       throw new Error("Multisig wallet not connected");
     }
 
-    if (!selectedProxyId) {
-      throw new Error("Please select a proxy for registration");
+    if (!hasValidProxy) {
+      // Fall back to standard registration if no valid proxy
+      return registerDrep();
     }
 
     setLoading(true);
@@ -185,7 +189,8 @@ export default function RegisterDRep() {
       // Get the selected proxy
       const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
       if (!proxy) {
-        throw new Error("Selected proxy not found");
+        // Fall back to standard registration if proxy not found
+        return registerDrep();
       }
 
       // Create proxy contract instance with the selected proxy
@@ -226,22 +231,24 @@ export default function RegisterDRep() {
           Register DRep
         </h1>
         <div className="mt-4 space-y-3">
-          {/* Global Proxy Status */}
-          <div className="flex items-center space-x-2 p-3 rounded-lg border bg-muted/30">
-            <div className={`w-3 h-3 rounded-full ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className="text-sm font-medium">
-              {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {isProxyEnabled 
-                ? 'DRep will be registered using a proxy contract' 
-                : 'DRep will be registered directly'
-              }
-            </span>
-          </div>
+          {/* Global Proxy Status - Only show when proxies exist */}
+          {proxies && proxies.length > 0 && (
+            <div className="flex items-center space-x-2 p-3 rounded-lg border bg-muted/30">
+              <div className={`w-3 h-3 rounded-full ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <span className="text-sm font-medium">
+                {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isProxyEnabled 
+                  ? 'DRep will be registered using a proxy contract' 
+                  : 'DRep will be registered directly'
+                }
+              </span>
+            </div>
+          )}
 
-          {/* Proxy Configuration */}
-          {isProxyEnabled && (
+          {/* Proxy Configuration - Only show when proxies exist */}
+          {isProxyEnabled && proxies && proxies.length > 0 && (
             <div className="space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
               <p className="text-sm text-muted-foreground">
                 This will register the DRep using a proxy contract, allowing for more flexible governance control.
@@ -331,9 +338,9 @@ export default function RegisterDRep() {
             // This function is intentionally left empty.
           }}
           loading={loading}
-          onSubmit={isProxyEnabled ? registerProxyDrep : registerDrep}
+          onSubmit={hasValidProxy ? registerProxyDrep : registerDrep}
           mode="register"
-          isProxyMode={isProxyEnabled}
+          isProxyMode={hasValidProxy}
         />
       )}
     </div>

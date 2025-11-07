@@ -5,6 +5,7 @@ import { buildMultisigWallet } from "@/utils/common";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
+import { DbWalletWithLegacy } from "@/types/wallet";
 
 export default async function handler(
   req: NextApiRequest,
@@ -57,7 +58,7 @@ export default async function handler(
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
-    const mWallet = buildMultisigWallet(walletFetch);
+    const mWallet = buildMultisigWallet(walletFetch as DbWalletWithLegacy);
     if (!mWallet) {
       return res.status(500).json({ error: "Wallet could not be constructed" });
     }

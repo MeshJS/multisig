@@ -9,6 +9,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
+import type { RawImportBodies } from "@/types/wallet";
 
 import PageHeader from "@/components/common/page-header";
 import WalletInfoCard from "@/components/pages/homepage/wallets/new-wallet/nWInfoCard";
@@ -189,13 +190,34 @@ export default function PageNewWallet() {
   async function createNativeScript() {
     setLoading(true);
 
-    if (!multisigWallet) {
-      setLoading(false);
-      throw new Error("Multisig wallet could not be built.");
+    // Check for rawImportBodies from wallet invite
+    type WalletInviteExtras = {
+      paymentCbor?: string;
+      stakeCbor?: string | null;
+      rawImportBodies?: RawImportBodies | null;
+    };
+    const inviteExtras = (walletInvite as unknown as WalletInviteExtras) || {};
+    const importedPaymentCbor = inviteExtras.paymentCbor;
+    const hasRawImportBodies = !!inviteExtras.rawImportBodies?.multisig;
+    
+    let scriptCborToUse: string | undefined;
+
+    // For wallets with rawImportBodies, use stored payment script
+    if (hasRawImportBodies && inviteExtras.rawImportBodies?.multisig?.payment_script) {
+      scriptCborToUse = inviteExtras.rawImportBodies.multisig.payment_script;
+    } else if (importedPaymentCbor && importedPaymentCbor.length > 0) {
+      scriptCborToUse = importedPaymentCbor;
+    } else {
+      // For regular wallets, require multisigWallet to derive script
+      if (!multisigWallet) {
+        setLoading(false);
+        throw new Error("Multisig wallet could not be built.");
+      }
+      const { scriptCbor } = multisigWallet.getScript();
+      scriptCborToUse = scriptCbor;
     }
 
-    const { scriptCbor } = multisigWallet.getScript();
-    if (!scriptCbor) {
+    if (!scriptCborToUse) {
       setLoading(false);
       throw new Error("scriptCbor is undefined");
     }
@@ -208,7 +230,8 @@ export default function PageNewWallet() {
       signersStakeKeys: signersStakeKeys,
       signersDRepKeys: signersDRepKeys,
       numRequiredSigners: numRequiredSigners,
-      scriptCbor: scriptCbor,
+      scriptCbor: scriptCborToUse,
+      rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
     });

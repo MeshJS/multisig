@@ -80,6 +80,9 @@ export default function BallotCard({
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
+  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
+  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+
   // CreateBallot mutation
   const createBallot = api.ballot.create.useMutation();
   // Get ballots for wallet
@@ -122,13 +125,9 @@ export default function BallotCard({
       });
       return;
     }
-    if (!isProxyEnabled || !selectedProxyId) {
-      toast({
-        title: "Proxy Error",
-        description: "Proxy mode not enabled or no proxy selected",
-        variant: "destructive",
-      });
-      return;
+    if (!hasValidProxy) {
+      // Fall back to standard vote if no valid proxy
+      return handleSubmitVote();
     }
 
     setLoading(true);
@@ -136,12 +135,8 @@ export default function BallotCard({
       // Get the selected proxy
       const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
       if (!proxy) {
-        toast({
-          title: "Proxy Error",
-          description: "Selected proxy not found",
-          variant: "destructive",
-        });
-        return;
+        // Fall back to standard vote if proxy not found
+        return handleSubmitVote();
       }
 
       // Create proxy contract instance
@@ -486,7 +481,7 @@ export default function BallotCard({
           )}
           {selectedBallot && (
             <>
-              {isProxyEnabled && !selectedProxyId && (
+              {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
                 <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                   <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
                     Proxy Mode Active - Select a proxy to continue
@@ -499,10 +494,10 @@ export default function BallotCard({
               <Button
                 variant="default"
                 className="mt-4"
-                onClick={isProxyEnabled ? handleSubmitProxyVote : handleSubmitVote}
-                disabled={loading || (isProxyEnabled && !selectedProxyId)}
+                onClick={hasValidProxy ? handleSubmitProxyVote : handleSubmitVote}
+                disabled={loading}
               >
-                {loading ? "Loading..." : `Submit Ballot Vote${isProxyEnabled ? " (Proxy Mode)" : ""}`}
+                {loading ? "Loading..." : `Submit Ballot Vote${hasValidProxy ? " (Proxy Mode)" : ""}`}
               </Button>
               <Button
                 variant="destructive"

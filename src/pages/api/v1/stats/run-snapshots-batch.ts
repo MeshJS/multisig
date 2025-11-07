@@ -9,6 +9,7 @@ import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { Wallet as DbWallet } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
+import { DbWalletWithLegacy } from "@/types/wallet";
 
 interface WalletBalance {
   walletId: string;
@@ -305,7 +306,7 @@ export default async function handler(
             walletAddress = mWallet.getScript().address;
           } else {
             // Fallback: build the wallet without enforcing key ordering (legacy payment-script build)
-            const builtWallet = buildWallet(wallet, network);
+            const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
             walletAddress = builtWallet.address;
           }
         } catch (error) {
