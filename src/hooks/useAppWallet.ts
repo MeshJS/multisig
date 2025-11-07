@@ -4,6 +4,7 @@ import { buildWallet } from "./common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useRouter } from "next/router";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import { DbWalletWithLegacy } from "@/types/wallet";
 
 export default function useAppWallet() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function useAppWallet() {
   );
 
   if (wallet) {
-    return { appWallet: buildWallet(wallet, network, walletsUtxos[walletId]), isLoading };
+    return { appWallet: buildWallet(wallet as DbWalletWithLegacy, network, walletsUtxos[walletId]), isLoading };
   }
 
   return { appWallet: undefined, isLoading };

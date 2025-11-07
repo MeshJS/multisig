@@ -132,7 +132,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   }, [isProxyEnabled, selectedProxyId, appWallet?.scriptCbor, network, proxies]);
   
   // Use proxy DRep info only if proxy is enabled AND we have valid proxy data, otherwise use standard DRep info
-  const hasValidProxyData = isProxyEnabled && proxyDrepId && proxies.length > 0 && proxies.find(p => p.id === selectedProxyId);
+  const hasValidProxyData = !!(isProxyEnabled && proxyDrepId && proxies.length > 0 && proxies.find(p => p.id === selectedProxyId));
   const displayDrepId = hasValidProxyData ? proxyDrepId : currentDrepId;
   const displayDrepInfo = hasValidProxyData ? proxyDrepInfo : currentDrepInfo;
   

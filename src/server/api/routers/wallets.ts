@@ -60,7 +60,7 @@ export const walletRouter = createTRPCRouter({
         );
         
         // Ensure rawImportBodies is properly serialized if present
-        let rawImportBodiesValue: Prisma.InputJsonValue | null = null;
+        let rawImportBodiesValue: Prisma.InputJsonValue | undefined = undefined;
         if (input.rawImportBodies) {
           // If it's already a plain object, use it directly
           // Otherwise, serialize it to ensure it's JSON-compatible

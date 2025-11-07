@@ -88,7 +88,7 @@ export default function VoteButton({
   );
 
   // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
 
   async function voteProxy() {
     if (!hasValidProxy) {
@@ -120,14 +120,14 @@ export default function VoteButton({
       );
       proxyContract.proxyAddress = proxy.proxyAddress;
 
-      // Prepare vote
-      const vote = {
+      // Prepare vote data
+      const voteData = {
         proposalId,
         voteKind: voteKind,
       };
 
       // Vote using proxy
-      const txBuilderResult = await proxyContract.voteProxyDrep([vote], utxos, multisigWallet?.getScript().address);
+      const txBuilderResult = await proxyContract.voteProxyDrep([voteData], utxos, multisigWallet?.getScript().address);
 
       await newTransaction({
         txBuilder: txBuilderResult,

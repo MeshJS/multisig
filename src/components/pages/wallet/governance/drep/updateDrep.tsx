@@ -46,7 +46,7 @@ export default function UpdateDRep() {
   );
 
   // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {

@@ -45,7 +45,7 @@ export default function RegisterDRep() {
   );
 
   // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
 
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
