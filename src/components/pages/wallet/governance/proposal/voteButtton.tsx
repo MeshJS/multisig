@@ -87,14 +87,13 @@ export default function VoteButton({
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
+  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
+  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+
   async function voteProxy() {
-    if (!isProxyEnabled || !selectedProxyId) {
-      toast({
-        title: "Proxy Error",
-        description: "Proxy mode not enabled or no proxy selected",
-        variant: "destructive",
-      });
-      return;
+    if (!hasValidProxy) {
+      // Fall back to standard vote if no valid proxy
+      return vote();
     }
 
     setLoading(true);
@@ -102,12 +101,8 @@ export default function VoteButton({
       // Get the selected proxy
       const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
       if (!proxy) {
-        toast({
-          title: "Proxy Error",
-          description: "Selected proxy not found",
-          variant: "destructive",
-        });
-        return;
+        // Fall back to standard vote if proxy not found
+        return vote();
       }
 
       // Create proxy contract instance
@@ -386,7 +381,7 @@ export default function VoteButton({
         </SelectContent>
       </Select>
 
-      {isProxyEnabled && !selectedProxyId && (
+      {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
         <div className="w-full p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
           <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
             Proxy Mode Active - Select a proxy to continue
@@ -398,11 +393,11 @@ export default function VoteButton({
       )}
 
       <Button
-        onClick={isProxyEnabled ? voteProxy : vote}
-        disabled={loading || utxos.length === 0 || (isProxyEnabled && !selectedProxyId)}
+        onClick={hasValidProxy ? voteProxy : vote}
+        disabled={loading || utxos.length === 0}
         className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
       >
-        {loading ? "Voting..." : utxos.length > 0 ? `Vote${isProxyEnabled ? " (Proxy Mode)" : ""}` : "No UTxOs Available"}
+        {loading ? "Voting..." : utxos.length > 0 ? `Vote${hasValidProxy ? " (Proxy Mode)" : ""}` : "No UTxOs Available"}
       </Button>
 
       {selectedBallotId && (

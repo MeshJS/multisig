@@ -37,6 +37,9 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
+  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
+  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
     if (!multisigWallet?.getScript().address) {
@@ -57,13 +60,9 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       });
       return;
     }
-    if (!isProxyEnabled || !selectedProxyId) {
-      toast({
-        title: "Proxy Error",
-        description: "Proxy mode not enabled or no proxy selected",
-        variant: "destructive",
-      });
-      return;
+    if (!hasValidProxy) {
+      // Fall back to standard retire if no valid proxy
+      return retireDrep();
     }
 
     setLoading(true);
@@ -72,12 +71,8 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       // Get the selected proxy
       const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
       if (!proxy) {
-        toast({
-          title: "Proxy Error",
-          description: "Selected proxy not found",
-          variant: "destructive",
-        });
-        return;
+        // Fall back to standard retire if proxy not found
+        return retireDrep();
       }
 
       // Get multisig inputs
@@ -249,12 +244,12 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
     <div>
       
       <Button
-        onClick={() => isProxyEnabled ? retireProxyDrep() : retireDrep()}
-        disabled={loading || (!isProxyEnabled && !drepInfo?.active) || (isProxyEnabled && !selectedProxyId) || (manualUtxos.length === 0)}
+        onClick={() => hasValidProxy ? retireProxyDrep() : retireDrep()}
+        disabled={loading || (!hasValidProxy && !drepInfo?.active) || (manualUtxos.length === 0)}
       >
-        {loading ? "Loading..." : `Retire DRep${isProxyEnabled ? " (Proxy Mode)" : ""}`}
+        {loading ? "Loading..." : `Retire DRep${hasValidProxy ? " (Proxy Mode)" : ""}`}
       </Button>
-      {isProxyEnabled && !selectedProxyId && (
+      {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
         <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
           <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
             Proxy Mode Active - Select a proxy to continue

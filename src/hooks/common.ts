@@ -1,5 +1,4 @@
-import { Wallet as DbWallet } from "@prisma/client";
-import { Wallet } from "@/types/wallet";
+import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
 import {
   NativeScript,
   resolveNativeScriptHash,
@@ -14,9 +13,15 @@ import { Address, getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 
 export function buildMultisigWallet(
-  wallet: DbWallet,
+  wallet: DbWalletWithLegacy,
   network: number,
 ): MultisigWallet | undefined {
+  // For wallets with rawImportBodies, skip MultisigWallet building
+  // These wallets use a build process not supported by our SDK
+  if (wallet.rawImportBodies?.multisig) {
+    return undefined;
+  }
+
   const keys: MultisigKey[] = [];
   if (wallet.signersAddresses.length > 0) {
     wallet.signersAddresses.forEach((addr, i) => {
@@ -79,19 +84,64 @@ export function buildMultisigWallet(
 }
 
 export function buildWallet(
-  wallet: DbWallet,
+  wallet: DbWalletWithLegacy,
   network: number,
   utxos?: UTxO[],
 ): Wallet {
+  // For wallets with rawImportBodies, use stored values instead of deriving
+  if (wallet.rawImportBodies?.multisig) {
+    const multisig = wallet.rawImportBodies.multisig;
+    
+    // Always use stored address from rawImportBodies
+    const address = multisig.address;
+    if (!address) {
+      throw new Error("rawImportBodies.multisig.address is required");
+    }
+
+    // Always use stored payment script from rawImportBodies
+    const scriptCbor = multisig.payment_script;
+    if (!scriptCbor) {
+      throw new Error("rawImportBodies.multisig.payment_script is required");
+    }
+
+    // Extract stake script from rawImportBodies
+    const stakeScriptCbor = multisig.stake_script;
+
+    // For rawImportBodies wallets, we need a minimal nativeScript for type compatibility
+    // This won't be used for actual script derivation, but is required by the Wallet type
+    const scriptType = (wallet.type as "all" | "any" | "atLeast") ?? "atLeast";
+    const nativeScript: NativeScript = scriptType === "atLeast"
+      ? {
+          type: "atLeast",
+          required: wallet.numRequiredSigners ?? 1,
+          scripts: [],
+        }
+      : {
+          type: scriptType,
+          scripts: [],
+        };
+
+    // For rawImportBodies wallets, dRepId cannot be easily derived from stored CBOR
+    // Set to empty string - it can be derived later if needed from the actual script
+    const dRepId = "";
+
+    return {
+      ...wallet,
+      scriptCbor,
+      nativeScript,
+      address,
+      dRepId,
+      stakeScriptCbor,
+    } as Wallet;
+  }
+
+  // For wallets without rawImportBodies, use existing derivation logic
   const mWallet = buildMultisigWallet(wallet, network);
   if (!mWallet) {
     console.error("error when building Multisig Wallet!");
     throw new Error("Failed to build Multisig Wallet");
   }
 
-  //depricated -> only payment-script left in for compatibility
-  //uses unordered keys for payment script
-  //Remove later when refactoring
   const nativeScript = {
     type: wallet.type ? wallet.type : "atLeast",
     scripts: wallet.signersAddresses.map((addr) => ({
@@ -117,8 +167,7 @@ export function buildWallet(
   const paymentAddrEmpty =
     utxos?.filter((f) => f.output.address === paymentAddress).length === 0;
 
-  if (paymentAddrEmpty && mWallet.stakingEnabled()) address = stakeableAddress
-  
+  if (paymentAddrEmpty && mWallet.stakingEnabled()) address = stakeableAddress;
 
   const dRepIdCip105 = resolveScriptHashDRepId(
     resolveNativeScriptHash(nativeScript as NativeScript),

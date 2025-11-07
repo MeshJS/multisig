@@ -45,6 +45,9 @@ export default function UpdateDRep() {
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
+  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
+  const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId);
+
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
     if (!multisigWallet?.getScript().address) {
@@ -108,8 +111,9 @@ export default function UpdateDRep() {
     if (!connected || !userAddress || !multisigWallet || !appWallet) {
       throw new Error("Multisig wallet not connected");
     }
-    if (!isProxyEnabled || !selectedProxyId) {
-      throw new Error("Proxy mode not enabled or no proxy selected");
+    if (!hasValidProxy) {
+      // Fall back to standard update if no valid proxy
+      return updateDrep();
     }
 
     setLoading(true);
@@ -118,7 +122,8 @@ export default function UpdateDRep() {
       // Get the selected proxy
       const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
       if (!proxy) {
-        throw new Error("Selected proxy not found");
+        // Fall back to standard update if proxy not found
+        return updateDrep();
       }
 
       // Create anchor metadata
@@ -274,9 +279,9 @@ export default function UpdateDRep() {
             // This function is intentionally left empty.
           }}
           loading={loading}
-          onSubmit={isProxyEnabled ? updateProxyDrep : updateDrep}
+          onSubmit={hasValidProxy ? updateProxyDrep : updateDrep}
           mode="update"
-          isProxyMode={isProxyEnabled}
+          isProxyMode={hasValidProxy}
         />
       )}
     </div>
