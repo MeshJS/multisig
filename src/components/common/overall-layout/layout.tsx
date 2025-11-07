@@ -187,11 +187,12 @@ export default function RootLayout({
   const isLoggedIn = !!user;
 
   return (
-    <div className="grid h-screen w-screen overflow-hidden md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr]">
+    <div className={`grid h-screen w-screen overflow-hidden ${isLoggedIn ? 'md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr]' : ''}`}>
       {isLoading && <Loading />}
 
-      {/* Sidebar for larger screens */}
-      <aside className="hidden border-r border-gray-200/30 bg-muted/40 dark:border-white/[0.03] md:block">
+      {/* Sidebar for larger screens - shown when logged in */}
+      {isLoggedIn && (
+        <aside className="hidden border-r border-gray-200/30 bg-muted/40 dark:border-white/[0.03] md:block">
         <div className="flex h-full max-h-screen flex-col">
           <header
             className="flex h-14 items-center border-b border-gray-200/30 px-4 dark:border-white/[0.03] lg:h-16 lg:px-6"
@@ -212,6 +213,7 @@ export default function RootLayout({
           <div className="mt-auto p-4" />
         </div>
       </aside>
+      )}
 
       {/* Main content area */}
       <div className="flex h-screen flex-col">
@@ -220,11 +222,11 @@ export default function RootLayout({
           data-header="main"
         >
           <div className="flex h-14 items-center gap-4 lg:h-16">
-            {/* Mobile menu button */}
-            <MobileNavigation isWalletPath={isWalletPath} />
+            {/* Mobile menu button - only when logged in */}
+            {isLoggedIn && <MobileNavigation isWalletPath={isWalletPath} />}
 
-            {/* Logo in mobile header - centered */}
-            <div className="flex flex-1 justify-center md:hidden">
+            {/* Logo in header - left on landing page (all sizes), centered on mobile when logged in */}
+            <div className={`flex flex-1 ${!isLoggedIn ? 'justify-start' : 'justify-center md:hidden'}`}>
               <Link
                 href="/"
                 className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
