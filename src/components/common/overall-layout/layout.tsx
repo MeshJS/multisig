@@ -12,9 +12,8 @@ import useAppWallet from "@/hooks/useAppWallet";
 import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
 
-import MenuWallets from "@/components/common/overall-layout/menus/wallets";
+// import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
-import WalletDropDown from "@/components/common/overall-layout/wallet-drop-down";
 import {
   WalletDataLoaderWrapper,
   DialogReportWrapper,
@@ -27,13 +26,6 @@ import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 
 // Enhanced error boundary component for wallet errors
 class WalletErrorBoundary extends Component<
@@ -161,19 +153,6 @@ export default function RootLayout({
           return;
         }
         
-        // Handle connection errors with retry logic
-        if (error instanceof Error && (
-          error.message.includes("Could not establish connection") ||
-          error.message.includes("Receiving end does not exist") ||
-          error.message.includes("Cannot read properties of undefined")
-        )) {
-          console.log("Browser extension connection error detected, retrying in 2 seconds...");
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
-          return;
-        }
-        
         // For other errors, don't throw to prevent app crash
         // The user can retry by reconnecting their wallet
       }
@@ -187,106 +166,33 @@ export default function RootLayout({
   const isLoggedIn = !!user;
 
   return (
-    <div className={`grid h-screen w-screen overflow-hidden ${isLoggedIn ? 'md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr]' : ''}`}>
+    <div className="flex h-screen w-screen flex-col overflow-hidden">
       {isLoading && <Loading />}
 
-      {/* Sidebar for larger screens - shown when logged in */}
-      {isLoggedIn && (
-        <aside className="hidden border-r border-gray-200/30 bg-muted/40 dark:border-white/[0.03] md:block">
-        <div className="flex h-full max-h-screen flex-col">
-          <header
-            className="flex h-14 items-center border-b border-gray-200/30 px-4 dark:border-white/[0.03] lg:h-16 lg:px-6"
-            id="logo-header"
-            data-header="sidebar"
-          >
-            <Link href="/" className="flex items-center gap-3">
-              <Logo />
-              <span className="select-none text-sm font-medium tracking-[-0.01em] md:text-base lg:text-lg">
-                Multi-Sig Platform
-              </span>
-            </Link>
-          </header>
-          <nav className="flex-1 pt-2">
-            <MenuWallets />
-            {isWalletPath && <MenuWallet />}
-          </nav>
-          <div className="mt-auto p-4" />
-        </div>
-      </aside>
-      )}
-
-      {/* Main content area */}
-      <div className="flex h-screen flex-col">
-        <header
-          className="pointer-events-auto relative z-10 border-b border-gray-200/30 bg-muted/40 px-4 dark:border-white/[0.03] lg:px-6"
-          data-header="main"
-        >
+      {/* Header - full width, always on top */}
+      <header
+        className="pointer-events-auto relative z-[100] border-b border-gray-300/50 bg-muted/40 pl-2 pr-4 dark:border-white/[0.03] lg:pl-4 lg:pr-6"
+        data-header="main"
+      >
           <div className="flex h-14 items-center gap-4 lg:h-16">
-            {/* Mobile menu button - only when logged in */}
-            {isLoggedIn && <MobileNavigation isWalletPath={isWalletPath} />}
+            {/* Mobile menu button - only in wallet context */}
+            {isWalletPath && <MobileNavigation isWalletPath={isWalletPath} />}
 
-            {/* Logo in header - left on landing page (all sizes), centered on mobile when logged in */}
-            <div className={`flex flex-1 ${!isLoggedIn ? 'justify-start' : 'justify-center md:hidden'}`}>
+            {/* Logo - in fixed-width container matching sidebar width */}
+            <div className={`flex items-center md:w-[260px] lg:w-[280px] ${isWalletPath ? 'flex-1 justify-center md:flex-none md:justify-start' : ''}`}>
               <Link
                 href="/"
-                className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
+                className="flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 md:px-4"
               >
-                <svg
-                  className="h-7 w-7 flex-shrink-0 text-foreground"
-                  enableBackground="new 0 0 300 200"
-                  viewBox="0 0 300 200"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="currentColor"
-                >
-                  <path d="m289 127-45-60-45-60c-.9-1.3-2.4-2-4-2s-3.1.7-4 2l-37 49.3c-2 2.7-6 2.7-8 0l-37-49.3c-.9-1.3-2.4-2-4-2s-3.1.7-4 2l-45 60-45 60c-1.3 1.8-1.3 4.2 0 6l45 60c.9 1.3 2.4 2 4 2s3.1-.7 4-2l37-49.3c2-2.7 6-2.7 8 0l37 49.3c.9 1.3 2.4 2 4 2s3.1-.7 4-2l37-49.3c2-2.7 6-2.7 8 0l37 49.3c.9 1.3 2.4 2 4 2s3.1-.7 4-2l45-60c1.3-1.8 1.3-4.2 0-6zm-90-103.3 32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0l-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0zm-90 0 32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0l-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0zm-53 152.6-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0zm90 0-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0zm90 0-32.5-43.3c-1.3-1.8-1.3-4.2 0-6l32.5-43.3c2-2.7 6-2.7 8 0l32.5 43.3c1.3 1.8 1.3 4.2 0 6l-32.5 43.3c-2 2.7-6 2.7-8 0z" />
-                </svg>
-                <span className="whitespace-nowrap text-base font-medium text-foreground">
-                  Multi-Sig Platform
+                <Logo />
+                <span className="select-none font-medium tracking-[-0.01em]" style={{ fontSize: '17px' }}>
+                  Multisig Platform
                 </span>
               </Link>
             </div>
 
-            {/* Wallet selection + breadcrumb row on desktop */}
-            {isLoggedIn && (
-              <div className="hidden md:block">
-                <div className="mx-1 w-full py-2">
-                  <nav className="flex items-center">
-                    <WalletDropDown />
-
-                    {/* Right: Breadcrumb */}
-                    <div className="flex-shrink-0">
-                      {isWalletPath && appWallet ? (
-                        <Breadcrumb>
-                          <BreadcrumbList>
-                            {walletPageNames.map((name, index) => (
-                              <React.Fragment key={index}>
-                                <BreadcrumbSeparator />
-                                <BreadcrumbItem>
-                                  <BreadcrumbLink asChild>
-                                    <Link
-                                      href={`/wallets/${appWallet.id}/${walletPageNames
-                                        .slice(0, index + 1)
-                                        .join("/")}`}
-                                    >
-                                      {name.toUpperCase()}
-                                    </Link>
-                                  </BreadcrumbLink>
-                                </BreadcrumbItem>
-                              </React.Fragment>
-                            ))}
-                          </BreadcrumbList>
-                        </Breadcrumb>
-                      ) : (
-                        <div className="w-40" /> /* Placeholder to keep right side spacing */
-                      )}
-                    </div>
-                  </nav>
-                </div>
-              </div>
-            )}
-
             {/* Right: Control buttons */}
-            <div className="ml-auto flex items-center space-x-2">
+            <div className="ml-auto flex items-center gap-2">
               {!connected ? (
                 <ConnectWallet />
               ) : (
@@ -309,17 +215,31 @@ export default function RootLayout({
               )}
             </div>
           </div>
-        </header>
+      </header>
 
+      {/* Content area with sidebar + main */}
+      <div className={`flex flex-1 overflow-hidden ${isWalletPath ? '' : ''}`}>
+        {/* Sidebar for larger screens - only in wallet context */}
+        {isWalletPath && (
+          <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
+            <div className="flex h-full max-h-screen flex-col">
+              <nav className="flex-1 pt-2">
+                <MenuWallet />
+              </nav>
+              <div className="mt-auto p-4" />
+            </div>
+          </aside>
+        )}
 
+        {/* Main content */}
         <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
-          <WalletErrorBoundary 
+          <WalletErrorBoundary
             fallback={
               <div className="flex flex-col items-center justify-center h-full">
                 <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
                 <p className="text-gray-600 mb-4">Please try refreshing the page or reconnecting your wallet.</p>
-                <button 
-                  onClick={() => window.location.reload()} 
+                <button
+                  onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                 >
                   Refresh Page
