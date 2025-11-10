@@ -462,6 +462,12 @@ export function PageHomepage() {
             </a>
           </p>
           <div className="flex items-center gap-1.5">
+          <Link
+            href="/features"
+            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Resources
+          </Link>
           <a
             href="https://x.com/meshsdk/"
             target="_blank"

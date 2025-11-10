@@ -1,5 +1,5 @@
 import useUserWallets from "@/hooks/useUserWallets";
-import { House, Sparkle, Landmark, FolderCode, FileCode2 } from "lucide-react";
+import { Sparkle, Landmark, FolderCode } from "lucide-react";
 import MenuLink from "./menu-link";
 import { useRouter } from "next/router";
 
@@ -7,21 +7,17 @@ export default function MenuWallets() {
   const { wallets } = useUserWallets();
   const router = useRouter();
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
+  const isWalletPath = router.pathname.includes("/wallets/[wallet]");
 
   return (
-    <nav className="grid items-start px-2 text-sm font-medium lg:px-4 space-y-1">
-      <MenuLink
-        href={`/`}
-        className={
-          router.pathname == "/" || 
-          router.pathname.startsWith("/wallets") && !router.pathname.startsWith("/wallets/[wallet]")
-            ? "text-white" 
-            : ""
-        }
-      >
-        <House className="h-5 w-5" />
-        <div className="flex items-center gap-2">Home</div>
-      </MenuLink>
+    <div className="grid items-start px-2 font-medium lg:px-4">
+      <div className="grid items-start space-y-1">
+        {/* Section Header */}
+        <div className="mt-1 pt-1 space-y-1">
+          <div className="px-3 py-1 text-xs font-medium text-muted-foreground">
+            Resources
+          </div>
+        </div>
 
       <MenuLink
         href={`/features`}
@@ -39,45 +35,14 @@ export default function MenuWallets() {
         <div className="flex items-center gap-2">API Docs</div>
       </MenuLink>
 
-      {wallets && (
-        <div className="mt-6 pt-4 border-t border-gray-200/30 dark:border-white/[0.03]">
-          <MenuLink
-            href={`${baseUrl}`}
-            className={
-              router.pathname.startsWith("/wallets/[wallet]")
-                ? "text-white"
-                : ""
-            }
-          >
-            <p>
-              {wallets
-                .filter((wallet) => wallet.id === router.query.wallet)
-                .map((wallet) => wallet.name)}
-            </p>
-          </MenuLink>
-        </div>
-      )}
-      
-      {/* Global Governance - only when NOT in wallet context */}
-      {!router.pathname.startsWith("/wallets/[wallet]") && (
-        <div>
-          <MenuLink
-          href="/governance"
-          className={router.pathname.includes("governance") ? "text-white" : ""}
-        >
-          <Landmark className="h-5 w-5" />
-          Governance
-        </MenuLink>
-        <MenuLink
-          href="/dapps"
-          className={router.pathname.includes("dapps") ? "text-white" : ""}
-        >
-          <FileCode2 className="h-5 w-5" />
-          Dapps
-        </MenuLink>
-        </div>
-        
-      )}
-    </nav>
+      <MenuLink
+        href="/governance"
+        className={router.pathname.includes("/governance") && !isWalletPath ? "text-white" : ""}
+      >
+        <Landmark className="h-5 w-5" />
+        Governance
+      </MenuLink>
+      </div>
+    </div>
   );
 }

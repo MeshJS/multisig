@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { useRouter } from "next/router";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import {
   Sheet,
@@ -12,16 +14,23 @@ import {
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/common/overall-layout/logo";
 import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
-import useUser from "@/hooks/useUser";
+import MenuWallets from "@/components/common/overall-layout/menus/wallets";
+import WalletSelector from "@/components/common/overall-layout/wallet-selector";
 import { cn } from "@/lib/utils";
 
 interface MobileNavigationProps {
-  isWalletPath: boolean;
+  showWalletMenu: boolean;
+  isLoggedIn: boolean;
+  walletId?: string;
+  fallbackWalletName?: string | null;
+  onClearWallet?: () => void;
+  stakingEnabled?: boolean;
+  isWalletPath?: boolean;
 }
 
-export function MobileNavigation({ isWalletPath }: MobileNavigationProps) {
+export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbackWalletName, onClearWallet, stakingEnabled, isWalletPath }: MobileNavigationProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const { user } = useUser();
 
   return (
     <>
@@ -116,11 +125,51 @@ export function MobileNavigation({ isWalletPath }: MobileNavigationProps) {
           </SheetHeader>
           <nav className="flex-1 overflow-y-auto py-3">
             <div className="space-y-1">
-              {isWalletPath && (
-                <div onClick={() => setOpen(false)} className="mobile-menu-wrapper">
-                  <MenuWallet />
+              <div onClick={() => setOpen(false)} className="mobile-menu-wrapper">
+                {/* 1. Home Link - only when NOT logged in */}
+                {!isLoggedIn && (
+                  <div className="px-2 lg:px-4">
+                    <div className="space-y-1">
+                      <Link
+                        href="/"
+                        className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 ${
+                          router.pathname === "/"
+                            ? "text-white"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                        <span>Home</span>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Wallet Selector - only when logged in */}
+                {isLoggedIn && (
+                  <WalletSelector
+                    fallbackWalletName={fallbackWalletName}
+                    onClearWallet={onClearWallet}
+                  />
+                )}
+
+                {/* 3. Wallet Menu - shown when wallet is selected */}
+                {showWalletMenu && (
+                  <div className="mt-4">
+                    <MenuWallet
+                      walletId={walletId}
+                      stakingEnabled={isWalletPath ? undefined : stakingEnabled}
+                    />
+                  </div>
+                )}
+
+                {/* 4. Resources Menu - always visible */}
+                <div className="mt-4">
+                  <MenuWallets />
                 </div>
-              )}
+              </div>
             </div>
           </nav>
         </SheetPrimitive.Content>
