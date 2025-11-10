@@ -203,7 +203,7 @@ export default function RootLayout({
     }
   }, [isHomepage, lastVisitedWalletId, clearWalletContext]);
 
-  const showWalletMenu = isLoggedIn && (isWalletPath || lastVisitedWalletId);
+  const showWalletMenu = isLoggedIn && (isWalletPath || !!lastVisitedWalletId);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">
