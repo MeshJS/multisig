@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
+import useActiveWallet from "@/hooks/useActiveWallet";
 
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 import {
@@ -54,6 +55,7 @@ export default function TransactionCard({
   transaction: Transaction;
 }) {
   const { wallet, connected } = useWallet();
+  const { activeWallet, isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const txJson = JSON.parse(transaction.txJson);
@@ -167,14 +169,23 @@ export default function TransactionCard({
   }
 
   async function signTx() {
-    if (!connected) throw new Error("Wallet not connected");
-    if (!appWallet) throw new Error("Wallet not found");
-    if (!userAddress) throw new Error("User address not found");
+    if (!isAnyWalletConnected) {
+      throw new Error("Wallet not connected. Please connect a wallet first.");
+    }
+    if (!userAddress) {
+      throw new Error("User address not found. Please ensure your wallet is properly connected.");
+    }
+    if (!appWallet) {
+      throw new Error("Wallet not found. Please try reconnecting your wallet.");
+    }
+    if (!isWalletReady || !activeWallet) {
+      throw new Error("Wallet is not ready. Please wait for the wallet to initialize.");
+    }
 
     try {
       setLoading(true);
 
-      const signedTx = await wallet.signTx(transaction.txCbor, true);
+      const signedTx = await activeWallet.signTx(transaction.txCbor, true);
 
       // sanity check
       const tx = csl.Transaction.from_hex(signedTx);
@@ -212,8 +223,8 @@ export default function TransactionCard({
       }
 
       if (submitTx) {
-        //txHash = await blockchainProvider.submitTx(signedTx);
-        txHash = await wallet.submitTx(signedTx);
+        // Use BlockfrostProvider to submit transaction (works with both regular and UTXOS wallets)
+        txHash = await blockchainProvider.submitTx(signedTx);
       }
 
       updateTransaction({

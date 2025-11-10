@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useWallet } from "@meshsdk/react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { MeshProxyContract } from "./offchain";
-import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
@@ -16,6 +14,7 @@ import { getProvider } from "@/utils/get-provider";
 import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
+import useActiveWallet from "@/hooks/useActiveWallet";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,6 +22,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, ChevronDown, ChevronUp, Wallet, TrendingUp, Info } from "lucide-react";
+import useUTXOS from "@/hooks/useUTXOS";
 
 interface ProxyOutput {
   address: string;
@@ -38,8 +38,35 @@ interface ProxySetupResult {
 }
 
 export default function ProxyControl() {
-  const { wallet, connected } = useWallet();
-  const userAddress = useUserStore((state) => state.userAddress);
+  // Use centralized wallet hook for all wallet-related state and utilities
+  const {
+    activeWallet,
+    isAnyWalletConnected,
+    isWalletReady,
+    userAddress,
+    isUtxosEnabled,
+    connected,
+  } = useActiveWallet();
+  
+  // Only log when wallet state changes meaningfully (errors or connection status changes)
+  const prevWalletStateRef = useRef({ isAnyWalletConnected: false, isWalletReady: false });
+  
+  useEffect(() => {
+    const prev = prevWalletStateRef.current;
+    const current = { isAnyWalletConnected, isWalletReady };
+    
+    // Only log if state actually changed
+    if (prev.isAnyWalletConnected !== current.isAnyWalletConnected || 
+        prev.isWalletReady !== current.isWalletReady) {
+      if (current.isAnyWalletConnected) {
+        console.log("[ProxyControl] Wallet connected", current.isWalletReady ? "(ready)" : "(initializing)");
+      } else {
+        console.log("[ProxyControl] No wallet connected");
+      }
+      prevWalletStateRef.current = current;
+    }
+  }, [isAnyWalletConnected, isWalletReady]);
+  
   const setLoading = useSiteStore((state) => state.setLoading);
   const network = useSiteStore((state) => state.network);
   const { appWallet } = useAppWallet();
@@ -118,36 +145,47 @@ export default function ProxyControl() {
       throw new Error("No UTxOs found at multisig wallet address");
     }
     
-    console.log("utxos", utxos);
-    console.log("walletAddress", appWallet.address);
     return { utxos, walletAddress: appWallet.address };
   }, [appWallet?.address, network]);
 
   // Initialize proxy contract
+  const contractInitializedRef = useRef(false);
+  
   useEffect(() => {
-    if (connected && wallet && userAddress) {
-      try {
-        const txBuilder = getTxBuilder(network);
-        const contract = new MeshProxyContract(
-          {
-            mesh: txBuilder,
-            wallet: wallet,
-            networkId: network,
-          },
-          {},
-          appWallet?.scriptCbor ?? undefined,
-        );
-        setProxyContract(contract);
-      } catch (error) {
-        console.error("Failed to initialize proxy contract:", error);
-        toast({
-          title: "Error",
-          description: "Failed to initialize proxy contract",
-          variant: "destructive",
-        });
+    // Require BOTH active wallet AND user address for contract initialization
+    if (isWalletReady && activeWallet) {
+      // Only initialize once
+      if (!contractInitializedRef.current) {
+        try {
+          const txBuilder = getTxBuilder(network);
+          const contract = new MeshProxyContract(
+            {
+              mesh: txBuilder,
+              wallet: activeWallet,
+              networkId: network,
+            },
+            {},
+            appWallet?.scriptCbor ?? undefined,
+          );
+          setProxyContract(contract);
+          contractInitializedRef.current = true;
+        } catch (error) {
+          console.error("[ProxyContract] Failed to initialize:", error);
+          toast({
+            title: "Error",
+            description: "Failed to initialize proxy contract",
+            variant: "destructive",
+          });
+        }
+      }
+    } else {
+      // Clear contract if wallet is not ready
+      if (!isAnyWalletConnected) {
+        setProxyContract(null);
+        contractInitializedRef.current = false;
       }
     }
-  }, [connected, wallet, userAddress, network, appWallet?.scriptCbor]);
+  }, [isWalletReady, activeWallet, userAddress, network, appWallet?.scriptCbor, isAnyWalletConnected]);
 
   // Check if proxy is already set up
   const checkProxySetup = useCallback(async () => {
@@ -169,10 +207,37 @@ export default function ProxyControl() {
 
   // Step 1: Initialize proxy setup
   const handleInitializeSetup = useCallback(async (description?: string) => {
-    if (!proxyContract || !connected) {
+    if (!proxyContract) {
+      // Provide helpful error message based on wallet state
+      let errorMessage = "Proxy contract not initialized";
+      if (!isAnyWalletConnected) {
+        errorMessage = "Please connect a wallet (regular or UTXOS) to use proxy features";
+      } else if (!activeWallet) {
+        errorMessage = "Wallet connection issue. Please try reconnecting your wallet.";
+      } else if (!userAddress) {
+        errorMessage = "Waiting for wallet address. Please wait a moment and try again.";
+      }
+      
       toast({
         title: "Error",
-        description: "Wallet not connected or proxy contract not initialized",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!isWalletReady) {
+      // Provide helpful error message
+      let errorMessage = "Wallet not ready";
+      if (!activeWallet) {
+        errorMessage = "Wallet instance not available. Please try reconnecting your wallet.";
+      } else if (!userAddress) {
+        errorMessage = "Wallet address not set. Please wait a moment for the wallet to initialize.";
+      }
+      
+      toast({
+        title: "Error",
+        description: errorMessage,
         variant: "destructive",
       });
       return;
@@ -219,7 +284,7 @@ export default function ProxyControl() {
       setSetupLoading(false);
       setLocalLoading(false);
     }
-  }, [proxyContract, connected, getMsInputs, newTransaction]);
+  }, [proxyContract, isWalletReady, getMsInputs, newTransaction, toast]);
 
   // Step 2: Review and confirm setup
   const handleConfirmSetup = useCallback(async () => {
@@ -246,8 +311,11 @@ export default function ProxyControl() {
         });
       } else if (setupData.txHex) {
         // Sign and submit the transaction
-        const signedTx = await wallet.signTx(await setupData.txHex.complete(), true);
-        await wallet.submitTx(signedTx);
+        if (!activeWallet) {
+          throw new Error("No wallet available for signing");
+        }
+        const signedTx = await activeWallet.signTx(await setupData.txHex.complete(), true);
+        await activeWallet.submitTx(signedTx);
       } else {
         throw new Error("No transaction to submit");
       }
@@ -310,7 +378,7 @@ export default function ProxyControl() {
       setSetupLoading(false);
       setLocalLoading(false);
     }
-  }, [setupData, wallet, appWallet, createProxy, refetchProxies, getMsInputs, newTransaction]);
+  }, [setupData, activeWallet, appWallet, createProxy, refetchProxies, getMsInputs, newTransaction, userAddress, toast]);
 
   // Reset setup flow
   const handleResetSetup = useCallback(() => {
@@ -348,14 +416,14 @@ export default function ProxyControl() {
 
   // Get balance for a specific proxy
   const getProxyBalance = useCallback(async (proxyAddress: string) => {
-    if (!proxyContract) return [];
+    if (!proxyContract || !activeWallet) return [];
 
     try {
       // Create a temporary contract instance for this proxy
       const tempContract = new MeshProxyContract(
         {
           mesh: getTxBuilder(network),
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {}
@@ -368,18 +436,18 @@ export default function ProxyControl() {
       console.error("Get proxy balance error:", error);
       return [];
     }
-  }, [proxyContract, network, wallet]);
+  }, [proxyContract, network, activeWallet]);
 
   // Get DRep information for a specific proxy (unused but kept for potential future use)
   const getProxyDrepInfo = useCallback(async (proxy: { paramUtxo: string; proxyAddress: string }) => {
-    if (!proxy) return { drepId: "", status: null };
+    if (!proxy || !activeWallet) return { drepId: "", status: null };
 
     try {
       // Create a temporary contract instance for this proxy
       const tempContract = new MeshProxyContract(
         {
           mesh: getTxBuilder(network),
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
@@ -400,7 +468,7 @@ export default function ProxyControl() {
     } finally {
       // DRep loading handled elsewhere
     }
-  }, [network, wallet, appWallet?.scriptCbor]);
+  }, [network, activeWallet, appWallet?.scriptCbor]);
 
   // Fetch all proxy balances for TVL calculation (now handled globally)
   const fetchAllProxyBalances = useCallback(async () => {
@@ -479,10 +547,10 @@ export default function ProxyControl() {
 
   // Spend from proxy
   const handleSpendFromProxy = useCallback(async () => {
-    if (!proxyContract || !connected) {
+    if (!proxyContract || !isWalletReady) {
       toast({
         title: "Error",
-        description: "Wallet not connected or proxy contract not initialized",
+        description: "Wallet not ready or proxy contract not initialized",
         variant: "destructive",
       });
       return;
@@ -522,10 +590,14 @@ export default function ProxyControl() {
       }
 
       // Create a contract instance for the selected proxy
+      if (!activeWallet) {
+        throw new Error("No wallet available for proxy spend");
+      }
+      
       const selectedProxyContract = new MeshProxyContract(
         {
           mesh: getTxBuilder(network),
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
@@ -545,7 +617,10 @@ export default function ProxyControl() {
           toastMessage: "Proxy spend transaction created",
         });
       } else {
-        await wallet.submitTx(await txHex.complete());
+        if (!activeWallet) {
+          throw new Error("No wallet available for submitting transaction");
+        }
+        await activeWallet.submitTx(await txHex.complete());
       }
 
       // Refresh balance after successful spend
@@ -580,7 +655,7 @@ export default function ProxyControl() {
       setSpendLoading(false);
       setLocalLoading(false);
     }
-  }, [proxyContract, connected, spendOutputs, selectedProxyId, proxies, network, wallet, handleProxySelection, getMsInputs, newTransaction, appWallet?.scriptCbor]);
+  }, [proxyContract, isWalletReady, spendOutputs, selectedProxyId, proxies, network, activeWallet, handleProxySelection, getMsInputs, newTransaction, appWallet?.scriptCbor, toast]);
 
 
   // Copy to clipboard
@@ -594,7 +669,7 @@ export default function ProxyControl() {
   }, []);
 
 
-  if (!connected) {
+  if (!isAnyWalletConnected) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -785,16 +860,17 @@ export default function ProxyControl() {
           <DialogHeader>
             <DialogTitle>Setup New Proxy</DialogTitle>
           </DialogHeader>
-          <ProxySetup
-            setupStep={setupStep}
-            setupData={setupData}
-            setupLoading={setupLoading}
-            onInitializeSetup={handleInitializeSetup}
-            onConfirmSetup={handleConfirmSetup}
-            onResetSetup={handleResetSetup}
-            onCopyToClipboard={copyToClipboard}
-            onCloseSetup={handleCloseSetup}
-          />
+           <ProxySetup
+             setupStep={setupStep}
+             setupData={setupData}
+             setupLoading={setupLoading}
+             hasActiveWallet={isAnyWalletConnected || isUtxosEnabled || connected}
+             onInitializeSetup={handleInitializeSetup}
+             onConfirmSetup={handleConfirmSetup}
+             onResetSetup={handleResetSetup}
+             onCopyToClipboard={copyToClipboard}
+             onCloseSetup={handleCloseSetup}
+           />
         </DialogContent>
       </Dialog>
     </div>

@@ -8,6 +8,7 @@ import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
+import useUTXOS from "@/hooks/useUTXOS";
 
 import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
@@ -50,12 +51,26 @@ class WalletErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('Error caught by wallet boundary:', error, errorInfo);
+    console.error('[WalletErrorBoundary] Error caught:', error, errorInfo);
     
     // Handle specific wallet errors
     if (error.message.includes("account changed")) {
-      console.log("Wallet account changed error caught by boundary, reloading page...");
+      console.log("[WalletErrorBoundary] Wallet account changed, reloading page...");
       window.location.reload();
+      return;
+    }
+    
+    // Handle UTXOS-specific errors
+    if (error.message.includes("UTXOS") || error.message.includes("UTXOS_PROJECT_ID") || error.message.includes("Web3Wallet")) {
+      console.log("[WalletErrorBoundary] UTXOS wallet error detected:", error.message);
+      // Don't reload for UTXOS errors, let user retry
+      return;
+    }
+    
+    // Handle Blockfrost/API errors
+    if (error.message.includes("Blockfrost") || error.message.includes("blockfrost") || error.message.includes("429")) {
+      console.log("[WalletErrorBoundary] API error detected, may be rate limiting");
+      // Don't reload for API errors
       return;
     }
   }
@@ -91,9 +106,16 @@ export default function RootLayout({
       if (event.reason && typeof event.reason === 'object') {
         const error = event.reason as Error;
         if (error.message && error.message.includes("account changed")) {
-          console.log("Account changed error caught by global handler, reloading page...");
+          console.log("[GlobalHandler] Account changed error, reloading page...");
           event.preventDefault(); // Prevent the error from being logged to console
           window.location.reload();
+          return;
+        }
+        
+        // Handle UTXOS-specific errors
+        if (error.message && (error.message.includes("UTXOS") || error.message.includes("Web3Wallet"))) {
+          console.log("[GlobalHandler] UTXOS error caught:", error.message);
+          event.preventDefault(); // Prevent unhandled rejection log
           return;
         }
       }
@@ -185,6 +207,10 @@ export default function RootLayout({
   const walletPageNames = walletPageRoute ? walletPageRoute.split("/") : [];
   const pageIsPublic = publicRoutes.includes(router.pathname);
   const isLoggedIn = !!user;
+  // Check if any wallet is connected using useActiveWallet hook for consistency
+  // Note: We use userAddress as fallback since useActiveWallet may not be available in layout
+  // The actual wallet state checking should use useActiveWallet in child components
+  const isAnyWalletConnected = connected || !!userAddress;
 
   return (
     <div className={`grid h-screen w-screen overflow-hidden ${isLoggedIn ? 'md:grid-cols-[240px_1fr] lg:grid-cols-[260px_1fr]' : ''}`}>
@@ -195,7 +221,7 @@ export default function RootLayout({
         <aside className="hidden border-r border-gray-200/30 bg-muted/40 dark:border-white/[0.03] md:block">
         <div className="flex h-full max-h-screen flex-col">
           <header
-            className="flex h-14 items-center border-b border-gray-200/30 px-4 dark:border-white/[0.03] lg:h-16 lg:px-6"
+            className="flex h-14 items-center justify-between border-b border-gray-200/30 px-4 dark:border-white/[0.03] lg:h-16 lg:px-6"
             id="logo-header"
             data-header="sidebar"
           >
@@ -226,7 +252,7 @@ export default function RootLayout({
             {isLoggedIn && <MobileNavigation isWalletPath={isWalletPath} />}
 
             {/* Logo in header - left on landing page (all sizes), centered on mobile when logged in */}
-            <div className={`flex flex-1 ${!isLoggedIn ? 'justify-start' : 'justify-center md:hidden'}`}>
+            <div className={`flex flex-1 items-center gap-2 ${!isLoggedIn ? 'justify-start' : 'justify-center md:hidden'}`}>
               <Link
                 href="/"
                 className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-800/50"
@@ -287,8 +313,10 @@ export default function RootLayout({
 
             {/* Right: Control buttons */}
             <div className="ml-auto flex items-center space-x-2">
-              {!connected ? (
-                <ConnectWallet />
+              {!isAnyWalletConnected ? (
+                <div className="flex items-center gap-2">
+                  <ConnectWallet />
+                </div>
               ) : (
                 <>
                   {/* Desktop buttons */}

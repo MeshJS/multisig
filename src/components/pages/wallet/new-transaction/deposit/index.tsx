@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, type Quantity, type Unit } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
+import useActiveWallet from "@/hooks/useActiveWallet";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useUserStore } from "@/lib/zustand/user";
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 
 export default function PageNewTransaction() {
   const { connected, wallet } = useWallet();
+  const { isWalletReady } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
   const [metadata, setMetadata] = useState<string>("");
@@ -132,7 +134,7 @@ export default function PageNewTransaction() {
   }, [assetsWithAmounts]);
 
   async function createNewDeposit() {
-    if (!connected) throw new Error("Wallet not connected");
+    if (!isWalletReady) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
     const address = appWallet.address;

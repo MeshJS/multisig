@@ -19,10 +19,10 @@ export default function RowLabelInfo({
 }) {
   const { toast } = useToast();
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex max-w-full items-center justify-center gap-2">
+    <div className={`flex gap-4 ${allowOverflow ? 'flex-col sm:flex-row sm:items-start' : 'items-center'}`}>
+      <div className={`flex max-w-full ${allowOverflow ? 'flex-col gap-1 flex-1 min-w-0' : 'items-center justify-center gap-2'}`}>
         {label && (
-          <div className="text-nowrap text-sm font-medium leading-none min-w-20">
+          <div className={`text-sm font-medium leading-none ${allowOverflow ? '' : 'text-nowrap min-w-20'}`}>
             {label}
           </div>
         )}
@@ -37,7 +37,7 @@ export default function RowLabelInfo({
                 duration: 5000,
               });
             }}
-            className="m-0 h-auto max-w-full justify-start truncate p-0"
+            className={`m-0 h-auto max-w-full justify-start p-0 ${allowOverflow ? '' : 'truncate'}`}
           >
             <Value
               value={value}
@@ -67,10 +67,12 @@ function Value({
   className?: string;
   allowOverflow?: boolean;
 }) {
+  const defaultClassName = allowOverflow
+    ? "max-w-full break-all text-sm text-muted-foreground"
+    : "max-w-full overflow-hidden truncate whitespace-nowrap text-sm text-muted-foreground";
+  
   return (
-    <div
-      className={`${className ? className : `max-w-full ${allowOverflow ?? "overflow-hidden truncate whitespace-nowrap"} text-sm text-muted-foreground`}`}
-    >
+    <div className={className || defaultClassName}>
       {value}
     </div>
   );

@@ -25,6 +25,7 @@ interface ProxySetupProps {
     description?: string;
   };
   setupLoading: boolean;
+  hasActiveWallet?: boolean;
   onInitializeSetup: (description?: string) => void;
   onConfirmSetup: () => void;
   onResetSetup: () => void;
@@ -66,6 +67,7 @@ const ProxySetup = memo(function ProxySetup({
   setupStep,
   setupData,
   setupLoading,
+  hasActiveWallet = true,
   onInitializeSetup,
   onConfirmSetup,
   onResetSetup,
@@ -73,6 +75,7 @@ const ProxySetup = memo(function ProxySetup({
   onCloseSetup,
 }: ProxySetupProps) {
   const [description, setDescription] = React.useState("");
+  
   return (
     <div className="space-y-8">
       {/* Header Section */}
@@ -156,9 +159,18 @@ const ProxySetup = memo(function ProxySetup({
             </Alert>
           </div>
 
+          {!hasActiveWallet && (
+            <Alert className="mt-4 border-destructive/20 bg-destructive/5">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              <AlertDescription className="text-foreground">
+                <strong>Wallet Not Connected:</strong> Please connect a wallet (regular or UTXOS) before setting up a proxy contract.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Button
             onClick={() => onInitializeSetup(description.trim() || undefined)}
-            disabled={setupLoading}
+            disabled={setupLoading || !hasActiveWallet}
             className="w-full h-14 font-semibold text-lg"
             size="lg"
           >

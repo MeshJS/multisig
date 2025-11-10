@@ -1,4 +1,4 @@
-import { CircleUser, Copy, Unlink, LogOut } from "lucide-react";
+import { CircleUser, Copy, Unlink, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import { useRouter } from "next/router";
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
 import { useState } from "react";
+import useUTXOS from "@/hooks/useUTXOS";
 
 interface UserDropDownWrapperProps {
   mode: "button" | "menu-item";
@@ -23,10 +24,12 @@ export default function UserDropDownWrapper({
   mode, 
   onAction 
 }: UserDropDownWrapperProps) {
-  const { wallet, disconnect } = useWallet();
+  const { wallet, connected, disconnect } = useWallet();
+  const { wallet: utxosWallet, isEnabled: isUtxosEnabled, disable: disableUtxos } = useUTXOS();
   const { toast } = useToast();
   const router = useRouter();
   const setPastWallet = useUserStore((state) => state.setPastWallet);
+  const setPastUtxosEnabled = useUserStore((state) => state.setPastUtxosEnabled);
   const userAddress = useUserStore((state) => state.userAddress);
   const [open, setOpen] = useState(false);
 
@@ -52,10 +55,32 @@ export default function UserDropDownWrapper({
 
   async function unlinkDiscord(): Promise<void> {
     try {
-      const usedAddresses = await wallet.getUsedAddresses();
-      const address = usedAddresses[0];
-      unlinkDiscordMutation.mutate({ address: address ?? "" });
-      setOpen(false);
+      let address: string | undefined;
+      
+      // Use userAddress from store if available (works for both wallet types)
+      if (userAddress) {
+        address = userAddress;
+      } else if (connected && wallet) {
+        // Fallback to regular wallet if connected
+        const usedAddresses = await wallet.getUsedAddresses();
+        address = usedAddresses[0];
+      } else if (isUtxosEnabled && utxosWallet) {
+        // Fallback to UTXOS wallet if enabled
+        const addresses = await utxosWallet.cardano.getUsedAddresses();
+        address = addresses[0];
+      }
+      
+      if (address) {
+        unlinkDiscordMutation.mutate({ address });
+        setOpen(false);
+      } else {
+        toast({
+          title: "Error",
+          description: "No wallet address available",
+          variant: "destructive",
+          duration: 3000,
+        });
+      }
     } catch (error) {
       console.error("Error getting wallet address for Discord unlink:", error);
       if (error instanceof Error && error.message.includes("account changed")) {
@@ -78,33 +103,44 @@ export default function UserDropDownWrapper({
 
   async function handleCopyAddress() {
     try {
-      let userAddress: string | undefined;
-      try {
-        const usedAddresses = await wallet.getUsedAddresses();
-        userAddress = usedAddresses[0];
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("account changed")) {
-          console.log("Account changed during address copy, aborting");
-          return;
-        }
-        throw error;
-      }
+      let addressToCopy: string | undefined;
       
-      if (userAddress === undefined) {
+      // Use userAddress from store if available (works for both wallet types)
+      if (userAddress) {
+        addressToCopy = userAddress;
+      } else if (connected && wallet) {
+        // Fallback to regular wallet if connected
         try {
-          const unusedAddresses = await wallet.getUnusedAddresses();
-          userAddress = unusedAddresses[0];
+          const usedAddresses = await wallet.getUsedAddresses();
+          addressToCopy = usedAddresses[0];
+          if (!addressToCopy) {
+            const unusedAddresses = await wallet.getUnusedAddresses();
+            addressToCopy = unusedAddresses[0];
+          }
         } catch (error) {
           if (error instanceof Error && error.message.includes("account changed")) {
-            console.log("Account changed during unused address retrieval, aborting");
+            console.log("Account changed during address copy, aborting");
             return;
           }
           throw error;
         }
+      } else if (isUtxosEnabled && utxosWallet) {
+        // Fallback to UTXOS wallet if enabled
+        try {
+          const addresses = await utxosWallet.cardano.getUsedAddresses();
+          addressToCopy = addresses[0];
+          if (!addressToCopy) {
+            const unusedAddresses = await utxosWallet.cardano.getUnusedAddresses();
+            addressToCopy = unusedAddresses[0];
+          }
+        } catch (error) {
+          console.error("Error getting UTXOS wallet address:", error);
+          throw error;
+        }
       }
       
-      if (userAddress) {
-        navigator.clipboard.writeText(userAddress);
+      if (addressToCopy) {
+        navigator.clipboard.writeText(addressToCopy);
         toast({
           title: "Copied",
           description: "Address copied to clipboard",
@@ -112,6 +148,13 @@ export default function UserDropDownWrapper({
         });
         setOpen(false);
         if (onAction) onAction();
+      } else {
+        toast({
+          title: "Error",
+          description: "No wallet address available",
+          variant: "destructive",
+          duration: 3000,
+        });
       }
     } catch (error) {
       console.error("Error copying wallet address:", error);
@@ -124,8 +167,22 @@ export default function UserDropDownWrapper({
     }
   }
 
-  function handleLogout() {
-    disconnect();
+  async function handleLogout() {
+    // Disconnect regular wallet if connected
+    if (connected) {
+      disconnect();
+    }
+    
+    // Disconnect UTXOS wallet if enabled with cleanup
+    if (isUtxosEnabled) {
+      try {
+        await disableUtxos();
+        setPastUtxosEnabled(false);
+      } catch (error) {
+        console.error("[UserDropdown] Error disabling UTXOS wallet:", error);
+      }
+    }
+    
     setPastWallet(undefined);
     router.push("/");
     setTimeout(() => {
@@ -135,8 +192,18 @@ export default function UserDropDownWrapper({
     if (onAction) onAction();
   }
 
+  function handleUserProfile() {
+    router.push("/user");
+    setOpen(false);
+    if (onAction) onAction();
+  }
+
   const menuContent = (
     <>
+      <DropdownMenuItem onClick={handleUserProfile}>
+        <User className="h-4 w-4 mr-2" />
+        User Profile
+      </DropdownMenuItem>
       <DropdownMenuItem onClick={handleCopyAddress}>
         <Copy className="h-4 w-4 mr-2" />
         Copy my address
@@ -175,6 +242,13 @@ export default function UserDropDownWrapper({
   if (mode === "menu-item") {
     return (
       <>
+        <div 
+          className="flex items-center gap-2 cursor-pointer"
+          onClick={handleUserProfile}
+        >
+          <User className="h-4 w-4" />
+          <span>User Profile</span>
+        </div>
         <div 
           className="flex items-center gap-2 cursor-pointer"
           onClick={handleCopyAddress}

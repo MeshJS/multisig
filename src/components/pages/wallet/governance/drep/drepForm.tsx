@@ -37,7 +37,7 @@ interface DRepFormProps {
   setManualUtxos: (utxos: UTxO[]) => void;
   setManualSelected: (value: boolean) => void;
   loading: boolean;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   mode: "register" | "update";
   isProxyMode?: boolean;
 }
@@ -232,7 +232,15 @@ export default function DRepForm({
 
       <div className="space-y-2">
         <Button
-          onClick={onSubmit}
+          onClick={async () => {
+            try {
+              await onSubmit();
+            } catch (error) {
+              console.error("Error submitting DRep form:", error);
+              // Error is already logged, and the error message should be user-friendly
+              // The parent component's error handling will display it appropriately
+            }
+          }}
           disabled={
             loading ||
             !givenName ||

@@ -9,6 +9,7 @@ import {
   UTxO,
 } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
+import useActiveWallet from "@/hooks/useActiveWallet";
 
 import useTransaction from "@/hooks/useTransaction";
 import { toast, useToast } from "@/hooks/use-toast";
@@ -58,6 +59,7 @@ import RecipientCsv from "./RecipientCsv";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
+  const { isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
@@ -104,13 +106,22 @@ export default function PageNewTransaction() {
   }
 
   async function createNewTransaction() {
-    if (!connected) throw new Error("Wallet not connected");
-    if (!appWallet) throw new Error("Wallet not found");
-    if (!userAddress) throw new Error("User address not found");
     setLoading(true);
     setError(undefined);
 
     try {
+      if (!isAnyWalletConnected) {
+        throw new Error("Wallet not connected. Please connect a wallet first.");
+      }
+      if (!userAddress) {
+        throw new Error("User address not found. Please ensure your wallet is properly connected.");
+      }
+      if (!appWallet) {
+        throw new Error("Wallet not found. Please try reconnecting your wallet.");
+      }
+      if (!isWalletReady) {
+        throw new Error("Wallet is not ready. Please wait for the wallet to initialize.");
+      }
       // let totalAmount = 0;
       const outputs: { address: string; unit: string; amount: string }[] = [];
       const assetMap = new Map<Unit, Quantity>();

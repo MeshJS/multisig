@@ -19,6 +19,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/utils/api";
 import { useProxy } from "@/hooks/useProxy";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import useActiveWallet from "@/hooks/useActiveWallet";
 
 interface PutResponse {
   url: string;
@@ -27,6 +30,7 @@ interface PutResponse {
 export default function RegisterDRep() {
   const { appWallet } = useAppWallet();
   const { connected, wallet } = useWallet();
+  const { isAnyWalletConnected, isWalletReady } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
@@ -34,6 +38,7 @@ export default function RegisterDRep() {
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
   const { isProxyEnabled, selectedProxyId, setSelectedProxy } = useProxy();
+  const { toast } = useToast();
 
   // Get proxies for the current wallet
   const { data: proxies, isLoading: proxiesLoading } = api.proxy.getProxiesByUserOrWallet.useQuery(
@@ -77,10 +82,24 @@ export default function RegisterDRep() {
     anchorHash: string;
   }> {
     if (!appWallet) {
-      throw new Error("Wallet not connected");
+      const errorMessage = "Wallet not connected. Please ensure your wallet is connected and try again.";
+      toast({
+        title: "Wallet Not Connected",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+      throw new Error(errorMessage);
     }
     if (!multisigWallet) {
-      throw new Error("Multisig wallet not connected");
+      const errorMessage = "Multisig wallet not connected. Please ensure your multisig wallet is properly configured.";
+      toast({
+        title: "Multisig Wallet Not Connected",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+      throw new Error(errorMessage);
     }
     // Cast metadata to a known record type
     const drepMetadata = (await getDRepMetadata(
@@ -109,29 +128,65 @@ export default function RegisterDRep() {
   }
 
   async function registerDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet)
-      throw new Error("Multisig wallet not connected");
+    if (!isWalletReady || !userAddress || !multisigWallet || !appWallet) {
+      const errorMessage = "Multisig wallet not connected. Please ensure your wallet is connected and try again.";
+      toast({
+        title: "Wallet Not Connected",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+      throw new Error(errorMessage);
+    }
 
     setLoading(true);
-    const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
-      throw new Error("DRep not found");
-    }
-    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
-    if (!scriptCbor) {
-      throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
-    }
     try {
+      const txBuilder = getTxBuilder(network);
+      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      if (!dRepId) {
+        const errorMessage = "DRep ID not found. Please ensure your wallet is properly configured.";
+        toast({
+          title: "DRep Configuration Error",
+          description: errorMessage,
+          variant: "destructive",
+          duration: 5000,
+        });
+        throw new Error(errorMessage);
+      }
+      const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
+      const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
+      if (!scriptCbor) {
+        const errorMessage = "Script not found. Please ensure your wallet is properly configured.";
+        toast({
+          title: "Wallet Configuration Error",
+          description: errorMessage,
+          variant: "destructive",
+          duration: 5000,
+        });
+        throw new Error(errorMessage);
+      }
+      if (!drepCbor) {
+        const errorMessage = "DRep script not found. Please ensure your wallet is properly configured.";
+        toast({
+          title: "DRep Script Error",
+          description: errorMessage,
+          variant: "destructive",
+          duration: 5000,
+        });
+        throw new Error(errorMessage);
+      }
+
       const { anchorUrl, anchorHash } = await createAnchor();
 
       const selectedUtxos: UTxO[] = manualUtxos;
 
       if (selectedUtxos.length === 0) {
+        toast({
+          title: "No UTxOs Selected",
+          description: "Please select UTxOs to use for the DRep registration transaction.",
+          variant: "destructive",
+          duration: 5000,
+        });
         setLoading(false);
         return;
       }
@@ -155,23 +210,57 @@ export default function RegisterDRep() {
         .certificateScript(drepCbor)
         .changeAddress(multisigWallet.getScript().address);
 
-
-
       await newTransaction({
         txBuilder,
         description: "DRep registration",
         toastMessage: "DRep registration transaction has been created",
       });
+      
+      router.push(`/wallets/${appWallet.id}/governance`);
     } catch (e) {
-      console.error(e);
+      console.error("DRep registration error:", e);
+      // Only show toast if it's not already shown (i.e., not one of our custom errors)
+      if (e instanceof Error && !e.message.includes("Multisig wallet not connected") && 
+          !e.message.includes("DRep") && !e.message.includes("Script") && 
+          !e.message.includes("No UTxOs")) {
+        toast({
+          title: "Registration Failed",
+          description: e instanceof Error ? e.message : "An unexpected error occurred during DRep registration.",
+          variant: "destructive",
+          duration: 10000,
+          action: (
+            <ToastAction
+              altText="Copy error"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(e));
+                toast({
+                  title: "Error Copied",
+                  description: "Error details copied to clipboard.",
+                  duration: 5000,
+                });
+              }}
+            >
+              Copy Error
+            </ToastAction>
+          ),
+        });
+      }
+      throw e; // Re-throw to let the form handler know there was an error
+    } finally {
+      setLoading(false);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
-    setLoading(false);
   }
 
   async function registerProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet) {
-      throw new Error("Multisig wallet not connected");
+    if (!isWalletReady || !userAddress || !multisigWallet || !appWallet) {
+      const errorMessage = "Multisig wallet not connected. Please ensure your wallet is connected and try again.";
+      toast({
+        title: "Wallet Not Connected",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000,
+      });
+      throw new Error(errorMessage);
     }
 
     if (!hasValidProxy) {
@@ -216,11 +305,38 @@ export default function RegisterDRep() {
         description: "Proxy DRep registration",
         toastMessage: "Proxy DRep registration transaction has been created",
       });
+      
+      router.push(`/wallets/${appWallet.id}/governance`);
     } catch (e) {
-      console.error(e);
+      console.error("Proxy DRep registration error:", e);
+      // Only show toast if it's not already shown (i.e., not one of our custom errors)
+      if (e instanceof Error && !e.message.includes("Multisig wallet not connected")) {
+        toast({
+          title: "Proxy Registration Failed",
+          description: e instanceof Error ? e.message : "An unexpected error occurred during proxy DRep registration.",
+          variant: "destructive",
+          duration: 10000,
+          action: (
+            <ToastAction
+              altText="Copy error"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(e));
+                toast({
+                  title: "Error Copied",
+                  description: "Error details copied to clipboard.",
+                  duration: 5000,
+                });
+              }}
+            >
+              Copy Error
+            </ToastAction>
+          ),
+        });
+      }
+      throw e; // Re-throw to let the form handler know there was an error
+    } finally {
+      setLoading(false);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
-    setLoading(false);
   }
 
   return (
