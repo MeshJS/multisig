@@ -122,6 +122,16 @@ html.dark aside {
   -webkit-backdrop-filter: blur(16px) !important;
 }
 
+/* Hide scrollbar while maintaining scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;             /* Safari and Chrome */
+}
+
 /* Ensure content inside navigation remains visible */
 aside > div,
 header > div {

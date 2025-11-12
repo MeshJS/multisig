@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "public"."Crowdfund" ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
