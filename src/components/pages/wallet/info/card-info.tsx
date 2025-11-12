@@ -173,25 +173,36 @@ function EditInfo({
 
 function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   const { multisigWallet } = useMultisigWallet();
+
+  const address = multisigWallet?.getKeysByRole(2) ? multisigWallet?.getScript().address : appWallet.address;
   
   // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
   const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-  if (!dRepId) {
-    throw new Error("DRep not found");
-  }
+  
+  // For rawImportBodies wallets, dRepId may not be available
+  const hasRawImportBodies = !!appWallet.rawImportBodies?.multisig;
+  const showDRepId = dRepId && dRepId.length > 0;
   
   return (
     <>
       <RowLabelInfo
         label="Address"
-        value={appWallet.address}
-        copyString={appWallet.address}
+        value={address}
+        copyString={address}
       />
-      <RowLabelInfo
-        label="DRep ID"
-        value={dRepId}
-        copyString={dRepId}
-      />
+      {showDRepId ? (
+        <RowLabelInfo
+          label="DRep ID"
+          value={dRepId}
+          copyString={dRepId}
+        />
+      ) : hasRawImportBodies ? (
+        <RowLabelInfo
+          label="DRep ID"
+          value="Not available for imported wallets"
+          copyString=""
+        />
+      ) : null}
     </>
   );
 }

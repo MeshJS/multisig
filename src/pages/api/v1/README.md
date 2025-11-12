@@ -5,6 +5,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## Authentication & Security
 
 ### JWT-Based Authentication
+
 - **Bearer Token Authentication**: All endpoints require valid JWT tokens
 - **Address-Based Authorization**: Token payload contains user address for authorization
 - **Session Management**: 1-hour token expiration with automatic renewal
@@ -12,6 +13,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Address Validation**: Strict address matching between token and request parameters
 
 ### Security Features
+
 - **Input Validation**: Comprehensive parameter validation and sanitization
 - **Error Handling**: Detailed error responses without sensitive information exposure
 - **Rate Limiting**: Built-in protection against abuse (via CORS and validation)
@@ -22,6 +24,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ### Transaction Management
 
 #### `addTransaction.ts` - POST `/api/v1/addTransaction`
+
 - **Purpose**: Submit external transactions for multisig wallet processing
 - **Authentication**: Required (JWT Bearer token)
 - **Features**:
@@ -40,7 +43,24 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Transaction object with ID, state, and metadata
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 500 (server)
 
+#### `signTransaction.ts` - POST `/api/v1/signTransaction`
+
+- **Purpose**: Record a signature for a pending multisig transaction
+- **Authentication**: Required (JWT Bearer token)
+- **Features**:
+  - Signature tracking with duplicate and rejection safeguards
+  - Wallet membership validation and JWT address enforcement
+  - Threshold detection with automatic submission when the final signature is collected
+- **Request Body**:
+  - `walletId`: Wallet identifier
+  - `transactionId`: Pending transaction identifier
+  - `address`: Signer address
+  - `signedTx`: CBOR transaction payload after applying the signature
+- **Response**: Updated transaction record with threshold status metadata; includes `txHash` when submission succeeds
+- **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 409 (duplicate/rejected), 502 (submission failure), 500 (server)
+
 #### `submitDatum.ts` - POST `/api/v1/submitDatum`
+
 - **Purpose**: Submit signable payloads for multisig signature collection
 - **Authentication**: Required (JWT Bearer token)
 - **Features**:
@@ -63,6 +83,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ### Wallet Management
 
 #### `walletIds.ts` - GET `/api/v1/walletIds`
+
 - **Purpose**: Retrieve all wallet IDs and names for a user address
 - **Authentication**: Required (JWT Bearer token)
 - **Features**:
@@ -76,6 +97,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 500 (server)
 
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
+
 - **Purpose**: Generate native scripts for multisig wallet operations
 - **Authentication**: Required (JWT Bearer token)
 - **Features**:
@@ -90,6 +112,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 500 (server)
 
 #### `lookupMultisigWallet.ts` - GET `/api/v1/lookupMultisigWallet`
+
 - **Purpose**: Lookup multisig wallet metadata using public key hashes
 - **Authentication**: Not required (public endpoint)
 - **Features**:
@@ -106,6 +129,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ### UTxO Management
 
 #### `freeUtxos.ts` - GET `/api/v1/freeUtxos`
+
 - **Purpose**: Retrieve unblocked UTxOs for a multisig wallet
 - **Authentication**: Required (JWT Bearer token)
 - **Features**:
@@ -123,6 +147,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ### Authentication Endpoints
 
 #### `getNonce.ts` - GET `/api/v1/getNonce`
+
 - **Purpose**: Request authentication nonce for address-based signing
 - **Authentication**: Not required (public endpoint)
 - **Features**:
@@ -136,6 +161,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Error Handling**: 400 (validation), 404 (user not found), 500 (server)
 
 #### `authSigner.ts` - POST `/api/v1/authSigner`
+
 - **Purpose**: Verify signed nonce and return JWT bearer token
 - **Authentication**: Not required (public endpoint)
 - **Features**:
@@ -153,6 +179,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ### Utility Endpoints
 
 #### `og.ts` - GET `/api/v1/og`
+
 - **Purpose**: Extract Open Graph metadata from URLs
 - **Authentication**: Not required (public endpoint)
 - **Features**:
@@ -168,18 +195,21 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## API Architecture
 
 ### Request/Response Patterns
+
 - **RESTful Design**: Standard HTTP methods and status codes
 - **JSON Format**: All requests and responses use JSON
 - **Error Consistency**: Standardized error response format
 - **CORS Support**: Cross-origin requests enabled
 
 ### Authentication Flow
+
 1. **Nonce Request**: Client requests nonce for address
 2. **Signature Generation**: Client signs nonce with private key
 3. **Token Exchange**: Client exchanges signature for JWT token
 4. **API Access**: Client uses JWT token for authenticated requests
 
 ### Error Handling
+
 - **HTTP Status Codes**: Proper status code usage
 - **Error Messages**: Descriptive error messages
 - **Validation Errors**: Detailed parameter validation
@@ -187,6 +217,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Server Errors**: Internal server error handling
 
 ### Database Integration
+
 - **Prisma ORM**: Type-safe database operations
 - **Transaction Management**: Database transaction handling
 - **Data Validation**: Input validation and sanitization
@@ -195,18 +226,21 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## Security Considerations
 
 ### Input Validation
+
 - **Parameter Validation**: All input parameters validated
 - **Type Checking**: Strict type validation for all inputs
 - **Address Validation**: Cardano address format validation
 - **Signature Verification**: Cryptographic signature validation
 
 ### Authorization
+
 - **Address Matching**: Token address must match request address
 - **Wallet Access**: Users can only access their own wallets
 - **Resource Protection**: Sensitive operations require authentication
 - **Session Management**: Token expiration and renewal
 
 ### Data Protection
+
 - **Sensitive Data**: No sensitive data in error messages
 - **Logging**: Comprehensive logging without sensitive information
 - **CORS**: Proper cross-origin resource sharing configuration
@@ -215,6 +249,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## Dependencies
 
 ### Core Dependencies
+
 - **Next.js API Routes**: Server-side API implementation
 - **Prisma**: Database ORM and query builder
 - **jsonwebtoken**: JWT token generation and verification
@@ -222,6 +257,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **@meshsdk/core-cst**: Cryptographic signature verification
 
 ### Utility Dependencies
+
 - **crypto**: Node.js cryptographic functions
 - **cors**: Cross-origin resource sharing
 - **fetch**: HTTP client for external requests
@@ -229,11 +265,13 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## Environment Variables
 
 ### Required Variables
+
 - `JWT_SECRET`: Secret key for JWT token generation
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD`: Preprod network API key
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`: Mainnet network API key
 
 ### Database Configuration
+
 - Database connection via Prisma configuration
 - Environment-specific database URLs
 - Connection pooling and optimization
@@ -241,45 +279,51 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 ## Usage Examples
 
 ### Authentication Flow
+
 ```typescript
 // 1. Request nonce
-const nonceResponse = await fetch('/api/v1/getNonce?address=addr1...');
+const nonceResponse = await fetch("/api/v1/getNonce?address=addr1...");
 const { nonce } = await nonceResponse.json();
 
 // 2. Sign nonce and get token
 const signature = await wallet.signData(nonce, address);
-const tokenResponse = await fetch('/api/v1/authSigner', {
-  method: 'POST',
-  body: JSON.stringify({ address, signature, key: publicKey })
+const tokenResponse = await fetch("/api/v1/authSigner", {
+  method: "POST",
+  body: JSON.stringify({ address, signature, key: publicKey }),
 });
 const { token } = await tokenResponse.json();
 ```
 
 ### Transaction Submission
+
 ```typescript
-const response = await fetch('/api/v1/addTransaction', {
-  method: 'POST',
+const response = await fetch("/api/v1/addTransaction", {
+  method: "POST",
   headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    walletId: 'wallet-id',
-    address: 'addr1...',
-    txCbor: 'tx-cbor-data',
-    txJson: 'tx-json-data',
-    description: 'Transaction description'
-  })
+    walletId: "wallet-id",
+    address: "addr1...",
+    txCbor: "tx-cbor-data",
+    txJson: "tx-json-data",
+    description: "Transaction description",
+  }),
 });
 ```
 
 ### UTxO Retrieval
+
 ```typescript
-const response = await fetch('/api/v1/freeUtxos?walletId=wallet-id&address=addr1...', {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
+const response = await fetch(
+  "/api/v1/freeUtxos?walletId=wallet-id&address=addr1...",
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  },
+);
 const freeUtxos = await response.json();
 ```
 

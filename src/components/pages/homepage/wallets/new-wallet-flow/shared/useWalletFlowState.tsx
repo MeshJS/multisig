@@ -58,6 +58,11 @@ export interface WalletFlowState {
   isValidForSave: boolean;
   isValidForCreate: boolean;
   hasSignerHashInAddresses: boolean;
+  hasValidRawImportBodies: boolean;
+  
+  // Bypass options
+  allowCreateWithHashSigners: boolean;
+  setAllowCreateWithHashSigners: React.Dispatch<React.SetStateAction<boolean>>;
   
   // Router info
   router: ReturnType<typeof useRouter>;
@@ -107,6 +112,7 @@ export function useWalletFlowState(): WalletFlowState {
   const [loading, setLoading] = useState<boolean>(false);
   const [nativeScriptType, setNativeScriptType] = useState<"all" | "any" | "atLeast">("atLeast");
   const [stakeKey, setStakeKey] = useState<string>("");
+  const [allowCreateWithHashSigners, setAllowCreateWithHashSigners] = useState<boolean>(false);
   
   // Dependencies
   const userAddress = useUserStore((state) => state.userAddress);
@@ -394,11 +400,6 @@ export function useWalletFlowState(): WalletFlowState {
   function createNativeScript() {
     setLoading(true);
 
-    if (!multisigWallet) {
-      setLoading(false);
-      throw new Error("Multisig wallet could not be built.");
-    }
-
     // Prefer imported payment CBOR from walletInvite when available
     type WalletInviteExtras = {
       paymentCbor?: string;
@@ -407,11 +408,21 @@ export function useWalletFlowState(): WalletFlowState {
     };
     const inviteExtras = (walletInvite as unknown as WalletInviteExtras) || {};
     const importedPaymentCbor = inviteExtras.paymentCbor;
+    const hasRawImportBodies = !!inviteExtras.rawImportBodies?.multisig;
+    
     let scriptCborToUse: string | undefined;
 
-    if (importedPaymentCbor && importedPaymentCbor.length > 0) {
+    // For wallets with rawImportBodies, use stored payment script
+    if (hasRawImportBodies && inviteExtras.rawImportBodies?.multisig?.payment_script) {
+      scriptCborToUse = inviteExtras.rawImportBodies.multisig.payment_script;
+    } else if (importedPaymentCbor && importedPaymentCbor.length > 0) {
       scriptCborToUse = importedPaymentCbor;
     } else {
+      // For regular wallets, require multisigWallet to derive script
+      if (!multisigWallet) {
+        setLoading(false);
+        throw new Error("Multisig wallet could not be built.");
+      }
       const { scriptCbor } = multisigWallet.getScript();
       scriptCborToUse = scriptCbor;
     }
@@ -612,12 +623,21 @@ export function useWalletFlowState(): WalletFlowState {
     });
   }, [signersAddresses]);
 
+  // Check if we have rawImportBodies with required data
+  const hasValidRawImportBodies = useMemo(() => {
+    if (!walletInvite) return false;
+    const inviteExtras = (walletInvite as any) || {};
+    return !!inviteExtras.rawImportBodies?.multisig?.payment_script;
+  }, [walletInvite]);
+
   const isValidForCreate = signersAddresses.length > 0 &&
     !signersAddresses.some((signer) => !signer || signer.length === 0) &&
     (nativeScriptType !== "atLeast" || numRequiredSigners > 0) &&
     name.length > 0 &&
     !loading &&
-    !hasSignerHashInAddresses;
+    (!hasSignerHashInAddresses || allowCreateWithHashSigners) &&
+    // Allow creation if we have valid rawImportBodies, otherwise require multisigWallet
+    (hasValidRawImportBodies || !!multisigWallet);
 
   return {
     // Core wallet data
@@ -660,6 +680,11 @@ export function useWalletFlowState(): WalletFlowState {
     isValidForSave,
     isValidForCreate,
     hasSignerHashInAddresses,
+    hasValidRawImportBodies,
+    
+    // Bypass options
+    allowCreateWithHashSigners,
+    setAllowCreateWithHashSigners,
     
     // Router info
     router,

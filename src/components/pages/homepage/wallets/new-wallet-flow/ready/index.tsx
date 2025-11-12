@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import ProgressIndicator from "@/components/pages/homepage/wallets/new-wallet-flow/shared/ProgressIndicator";
 import WalletFlowPageLayout from "@/components/pages/homepage/wallets/new-wallet-flow/shared/WalletFlowPageLayout";
 import { buildMultisigWallet } from "@/utils/common";
+import { DbWalletWithLegacy } from "@/types/wallet";
 
 export default function PageSuccessWallet() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function PageSuccessWallet() {
   );
 
   // Build wallet with address and other computed fields
-  const wallet = walletData ? buildMultisigWallet(walletData, network) : null;
+  const wallet = walletData ? buildMultisigWallet(walletData as DbWalletWithLegacy, network) : null;
 
   const handleViewWallets = () => {
     setLoading(true);

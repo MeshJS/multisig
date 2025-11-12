@@ -90,6 +90,123 @@ A comprehensive, enterprise-grade multi-signature wallet solution built on Carda
 - **UTxO Management**: Advanced UTxO handling
 - **Transaction Building**: Comprehensive transaction construction
 
+## Documentation Graph
+
+This graph shows internal module relationships in this repository. Arrows mean "imports/depends on".
+
+```mermaid
+graph TD
+
+  pages["src/pages"]
+
+  components_common["src/components/common"]
+
+  components_multisig["src/components/multisig"]
+
+  components_ui["src/components/ui"]
+
+  hooks["src/hooks"]
+
+  lib["src/lib"]
+
+  utils["src/utils"]
+
+  types["src/types"]
+
+  data["src/data"]
+
+  config_wallet["src/config/wallet.ts"]
+
+  server_api["src/server/api"]
+
+  server_auth["src/server/auth.ts"]
+
+  server_db["src/server/db.ts"]
+
+  prisma["prisma/*"]
+
+
+  subgraph legend["Legend"]
+    l1["A --> B means A imports/depends on B"]
+    l2["Click nodes to open local paths"]
+  end
+
+
+  %% Frontend relationships
+  pages --> components_common
+  pages --> components_multisig
+  pages --> components_ui
+
+  components_common --> hooks
+  components_multisig --> hooks
+  components_ui --> hooks
+
+  components_common --> utils
+  components_multisig --> utils
+  components_ui --> utils
+
+  hooks --> lib
+  hooks --> types
+
+  %% Shared relationships
+  lib --> utils
+  lib --> types
+  data --> lib
+  data --> components_multisig
+  config_wallet --> lib
+
+  %% Backend relationships
+  server_api --> lib
+  server_api --> utils
+  server_api --> types
+  server_api --> server_db
+  server_auth --> server_db
+  server_auth --> utils
+  server_db --> types
+  prisma --> server_db
+
+
+  subgraph frontend
+    pages
+    components_common
+    components_multisig
+    components_ui
+    hooks
+  end
+
+  subgraph shared
+    lib
+    utils
+    types
+    config_wallet
+    data
+  end
+
+  subgraph backend
+    server_api
+    server_auth
+    server_db
+    prisma
+  end
+
+
+  %% Clickable links to local repository paths
+  click pages "./src/pages" _self
+  click components_common "./src/components/common" _self
+  click components_multisig "./src/components/multisig" _self
+  click components_ui "./src/components/ui" _self
+  click hooks "./src/hooks" _self
+  click lib "./src/lib" _self
+  click utils "./src/utils" _self
+  click types "./src/types" _self
+  click data "./src/data" _self
+  click config_wallet "./src/config/wallet.ts" _self
+  click server_api "./src/server/api" _self
+  click server_auth "./src/server/auth.ts" _self
+  click server_db "./src/server/db.ts" _self
+  click prisma "./prisma" _self
+```
+
 ### Database Schema
 ```prisma
 model User {

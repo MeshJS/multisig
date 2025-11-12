@@ -37,32 +37,55 @@ export const walletRouter = createTRPCRouter({
         description: z.string(),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
-        signersStakeKeys: z.array(z.string()),
-        signersDRepKeys: z.array(z.string()),
+        signersStakeKeys: z.array(z.string().nullable()).nullable(),
+        signersDRepKeys: z.array(z.string().optional()).nullable(),
         numRequiredSigners: z.number(),
         scriptCbor: z.string(),
         stakeCredentialHash: z.string().optional(),
         type: z.enum(["atLeast", "all", "any"]),
-        rawImportBodies: z.custom<RawImportBodies>().optional().nullable(),
+        rawImportBodies: z.any().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
-      const data = {
-        name: input.name,
-        description: input.description,
-        signersAddresses: input.signersAddresses,
-        signersDescriptions: input.signersDescriptions,
-        signersStakeKeys: input.signersStakeKeys,
-        signersDRepKeys: input.signersDRepKeys,
-        numRequiredSigners: numRequired as any,
-        scriptCbor: input.scriptCbor,
-        stakeCredentialHash: input.stakeCredentialHash,
-        type: input.type,
-        rawImportBodies: input.rawImportBodies as Prisma.InputJsonValue,
-      } as unknown as Prisma.WalletCreateInput;
+      try {
+        const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
+        
+        // Convert null/undefined values to empty strings to match Prisma schema
+        // Keep array length to match signersAddresses
+        const signersStakeKeys = (input.signersStakeKeys || []).map(key => 
+          key === null || key === undefined ? "" : key
+        );
+        const signersDRepKeys = (input.signersDRepKeys || []).map(key => 
+          key === null || key === undefined ? "" : key
+        );
+        
+        // Ensure rawImportBodies is properly serialized if present
+        let rawImportBodiesValue: Prisma.InputJsonValue | undefined = undefined;
+        if (input.rawImportBodies) {
+          // If it's already a plain object, use it directly
+          // Otherwise, serialize it to ensure it's JSON-compatible
+          rawImportBodiesValue = JSON.parse(JSON.stringify(input.rawImportBodies)) as Prisma.InputJsonValue;
+        }
+        
+        const data: Prisma.WalletCreateInput = {
+          name: input.name,
+          description: input.description,
+          signersAddresses: input.signersAddresses,
+          signersDescriptions: input.signersDescriptions,
+          signersStakeKeys: signersStakeKeys,
+          signersDRepKeys: signersDRepKeys,
+          numRequiredSigners: numRequired as any,
+          scriptCbor: input.scriptCbor,
+          stakeCredentialHash: input.stakeCredentialHash,
+          type: input.type,
+          rawImportBodies: rawImportBodiesValue,
+        };
 
-      return ctx.db.wallet.create({ data });
+        return ctx.db.wallet.create({ data });
+      } catch (error) {
+        console.error("Error creating wallet:", error);
+        throw error;
+      }
     }),
 
   updateWalletVerifiedList: publicProcedure

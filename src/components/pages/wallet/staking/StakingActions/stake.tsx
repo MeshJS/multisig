@@ -38,7 +38,9 @@ export default function StakeButton({
       const rewardAddress = mWallet.getStakeAddress();
       if (!rewardAddress) throw new Error("Reward Address could not be built.");
 
-      const stakingScript = mWallet.getStakingScript();
+      // For wallets with rawImportBodies, use stored stake script
+      // Otherwise, derive from MultisigWallet
+      const stakingScript = appWallet.stakeScriptCbor || mWallet.getStakingScript();
       if (!stakingScript) throw new Error("Staking Script could not be built.");
 
       const txBuilder = getTxBuilder(network);
