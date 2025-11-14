@@ -129,12 +129,12 @@ export class MeshProxyContract extends MeshTxInitiator {
     }
     const paramUtxo = utxos?.find((utxo) =>
       utxo.output.amount.some(
-        (asset) => asset.unit === "lovelace" && Number(asset.quantity) >= 20000000,
+        (asset) => asset.unit === "lovelace" && Number(asset.quantity) >= 60000000,
       ),
     );
     if (!paramUtxo) {
       throw new Error(
-        "Insufficicient balance. Create one utxo holding at Least 20 ADA.",
+        "Insufficicient balance. Create one utxo holding at Least 60 ADA.",
       );
     }
     this.paramUtxo = paramUtxo.input;
@@ -147,36 +147,168 @@ export class MeshProxyContract extends MeshTxInitiator {
 
     //prepare AuthToken mint
     const policyId = this.getAuthTokenPolicyId();
-    const tokenName = "";
+    const tokenName = "Mesh Auth Token";
+    const authTokenAssetMetadata = {
+      name: "Mesh Auth Token",
+      image: "ipfs://bafkreiconugeo6srwezgerkiff5uslpiqnnray43zn6jgwrobofaiuxb5u",
+      mediaType: "image/jpg",
+    };
+    const metadata = { [policyId]: { [tokenName]: { ...authTokenAssetMetadata } } };
 
-    // Try completing the transaction step by step
+    console.log("collateral", collateral);
+    console.log("paramUtxo", paramUtxo);
+
+
+    //Todo: Get the output count from inputsettings
+    const ouputCount = 1;
+    
+    // Calculate required outputs and fees
+    // Output: 1 ADA to proxy address + 1 token to wallet
+    // Fees: estimated ~0.5-1 ADA for Plutus minting transaction
+    // Buffer: add extra to ensure SDK doesn't need to do coin selection from user's wallet
+    const outputLovelace = BigInt(1000000); // 1 ADA to proxy address
+    const estimatedFee = BigInt(1000000); // Estimated fee buffer (~1 ADA for Plutus tx)
+    const safetyBuffer = BigInt(5000000); // 5 ADA safety buffer
+    const targetLovelace = outputLovelace + estimatedFee + safetyBuffer;
+    
+    // Get lovelace amount from paramUtxo
+    const paramUtxoLovelace = BigInt(
+      paramUtxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+    );
+    
+    // Start building transaction with paramUtxo
     const tx = this.mesh.txIn(
       paramUtxo.input.txHash,
       paramUtxo.input.outputIndex,
       paramUtxo.output.amount,
       paramUtxo.output.address,
     );
+    
     // Add the multisig script cbor if it exists
     if (this.msCbor) {
       tx.txInScript(this.msCbor);
+    }
+    
+    // Track total lovelace from manually added inputs
+    let totalInputLovelace = paramUtxoLovelace;
+    
+    // Always ensure we have enough multisig UTxOs manually added so SDK doesn't
+    // try to do coin selection from user's wallet. The SDK may still attempt coin
+    // selection even when inputs are manually added, so we ensure we have sufficient
+    // multisig UTxOs added manually to prevent it from looking at the user's wallet.
+    // This prevents the "UTxO Balance Insufficient" error when SDK looks at wrong wallet.
+    if (totalInputLovelace < targetLovelace) {
+      // Add additional multisig UTxOs to ensure sufficient funds
+      const remainingUtxos = utxos.filter(
+        (utxo) =>
+          utxo.input.txHash !== paramUtxo.input.txHash ||
+          utxo.input.outputIndex !== paramUtxo.input.outputIndex,
+      );
+      
+      // Sort by lovelace amount (descending) to prioritize larger UTxOs
+      const sortedUtxos = remainingUtxos.sort((a, b) => {
+        const aLovelace = BigInt(
+          a.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+        );
+        const bLovelace = BigInt(
+          b.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+        );
+        return Number(bLovelace - aLovelace);
+      });
+      
+      // Add UTxOs until we reach the target amount
+      for (const utxo of sortedUtxos) {
+        if (totalInputLovelace >= targetLovelace) {
+          break;
+        }
+        
+        const utxoLovelace = BigInt(
+          utxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+        );
+        
+        if (utxoLovelace > BigInt(0)) {
+          tx.txIn(
+            utxo.input.txHash,
+            utxo.input.outputIndex,
+            utxo.output.amount,
+            utxo.output.address,
+          );
+          
+          // Add the multisig script cbor if it exists
+          if (this.msCbor) {
+            tx.txInScript(this.msCbor);
+          }
+          
+          totalInputLovelace += utxoLovelace;
+        }
+      }
+    }
+    
+    // Even if paramUtxo alone is sufficient, if we have additional multisig UTxOs available,
+    // add at least one more to ensure the SDK has enough inputs and doesn't try to
+    // do coin selection from the user's wallet. This is a defensive measure.
+    if (totalInputLovelace >= targetLovelace && utxos.length > 1) {
+      const remainingUtxos = utxos.filter(
+        (utxo) =>
+          utxo.input.txHash !== paramUtxo.input.txHash ||
+          utxo.input.outputIndex !== paramUtxo.input.outputIndex,
+      );
+      
+      // Add one additional UTxO if available (prefer larger ones) as a safety buffer
+      if (remainingUtxos.length > 0) {
+        const sortedUtxos = remainingUtxos.sort((a, b) => {
+          const aLovelace = BigInt(
+            a.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+          );
+          const bLovelace = BigInt(
+            b.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+          );
+          return Number(bLovelace - aLovelace);
+        });
+        
+        const additionalUtxo = sortedUtxos[0];
+        if (additionalUtxo) {
+          const utxoLovelace = BigInt(
+            additionalUtxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0"
+          );
+          
+          // Only add if it has a reasonable amount (at least 1 ADA) to avoid dust
+          if (utxoLovelace >= BigInt(1000000)) {
+            tx.txIn(
+              additionalUtxo.input.txHash,
+              additionalUtxo.input.outputIndex,
+              additionalUtxo.output.amount,
+              additionalUtxo.output.address,
+            );
+            
+            // Add the multisig script cbor if it exists
+            if (this.msCbor) {
+              tx.txInScript(this.msCbor);
+            }
+          }
+        }
+      }
     }
 
     tx.mintPlutusScriptV3()
       .mint("10", policyId, tokenName)
       .mintingScript(this.getAuthTokenCbor())
       .mintRedeemerValue(mConStr0([]))
+      .metadataValue(721, metadata)
       .txOut(proxyAddress, [{ unit: "lovelace", quantity: "1000000" }]);
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < ouputCount; i++) {
       tx.txOut(walletAddress, [{ unit: policyId, quantity: "1" }]);
     }
 
-    tx.txInCollateral(
+    tx
+    .txInCollateral(
       collateral.input.txHash,
       collateral.input.outputIndex,
       collateral.output.amount,
       collateral.output.address,
-    ).changeAddress(walletAddress);
+    )
+    .changeAddress(walletAddress);
 
     const txHex = tx;
 

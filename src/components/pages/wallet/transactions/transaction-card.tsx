@@ -45,6 +45,8 @@ import {
 import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
+import SankeyDiagram from "@/components/common/SankeyDiagram";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 export default function TransactionCard({
   walletId,
@@ -58,6 +60,7 @@ export default function TransactionCard({
   const userAddress = useUserStore((state) => state.userAddress);
   const txJson = JSON.parse(transaction.txJson);
   const [loading, setLoading] = useState<boolean>(false);
+  const [showSankey, setShowSankey] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -544,6 +547,41 @@ export default function TransactionCard({
               );
             })}
           </ul>
+          
+          <Separator className="my-2" />
+          
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Transaction Flow</div>
+            <ShadcnButton
+              size="sm"
+              variant="outline"
+              onClick={() => setShowSankey(!showSankey)}
+              className="h-8 gap-1"
+            >
+              {showSankey ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Hide Diagram
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Show Diagram
+                </>
+              )}
+            </ShadcnButton>
+          </div>
+          
+          {showSankey && (
+            <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+              <SankeyDiagram
+                transactionJson={transaction.txJson}
+                width={800}
+                height={600}
+                graphId={transaction.id}
+              />
+            </div>
+          )}
         </div>
       </CardContent>
 

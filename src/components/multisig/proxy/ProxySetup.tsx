@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,12 @@ import {
   Settings,
   ChevronLeft,
   Play,
-  Check
+  Check,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { MeshTxBuilder } from "@meshsdk/core";
+import SankeyDiagram from "@/components/common/SankeyDiagram";
 
 interface ProxySetupProps {
   setupStep: number;
@@ -73,6 +76,33 @@ const ProxySetup = memo(function ProxySetup({
   onCloseSetup,
 }: ProxySetupProps) {
   const [description, setDescription] = React.useState("");
+  const [showSankey, setShowSankey] = React.useState<boolean>(false);
+  
+  // Extract transaction JSON from MeshTxBuilder for Sankey diagram
+  const txJsonString = useMemo(() => {
+    if (!setupData.txHex) {
+      return null;
+    }
+    
+    try {
+      // Access meshTxBuilderBody from the MeshTxBuilder
+      // This contains the transaction structure before coin selection
+      const txBody = (setupData.txHex as any).meshTxBuilderBody;
+      if (txBody) {
+        return JSON.stringify(txBody);
+      }
+      
+      // Fallback: try to access it as a property
+      if ('meshTxBuilderBody' in setupData.txHex) {
+        return JSON.stringify((setupData.txHex as any).meshTxBuilderBody);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error("Error extracting transaction JSON for Sankey diagram:", error);
+      return null;
+    }
+  }, [setupData.txHex]);
   return (
     <div className="space-y-8">
       {/* Header Section */}
@@ -236,6 +266,47 @@ const ProxySetup = memo(function ProxySetup({
               </div>
             </div>
           </div>
+
+          {/* Transaction Flow Preview */}
+          {txJsonString && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Transaction Flow Preview</Label>
+                  <span className="text-xs text-muted-foreground">(Before confirmation)</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSankey(!showSankey)}
+                  className="h-8 gap-1"
+                >
+                  {showSankey ? (
+                    <>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                      Hide Diagram
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      Show Diagram
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {showSankey && (
+                <div className="rounded-lg border bg-muted/20 p-4 overflow-auto">
+                  <SankeyDiagram
+                    transactionJson={txJsonString}
+                    width={800}
+                    height={500}
+                    graphId={`setup-preview-${setupData.proxyAddress?.slice(0, 10) || 'preview'}`}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Button

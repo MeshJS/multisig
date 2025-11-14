@@ -13,6 +13,7 @@ export const env = createEnv({
       .default("development"),
     BLOB_READ_WRITE_TOKEN: z.string(),
     GITHUB_TOKEN: z.string(),
+    PINATA_JWT: z.string(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -55,6 +56,7 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    PINATA_JWT: process.env.PINATA_JWT,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

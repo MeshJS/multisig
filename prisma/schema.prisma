@@ -144,3 +144,18 @@ model Migration {
   @@index([status])
   @@index([createdAt])
 }
+
+model IpfsHash {
+  id          String   @id @default(cuid())
+  contentHash String // SHA-256 hash of the content
+  ipfsCid     String // IPFS CID (Content Identifier)
+  userAddress String? // Optional: User's Cardano address
+  walletId    String? // Optional: Wallet ID
+  pathname    String? // Optional: Original pathname from request
+  createdAt   DateTime @default(now())
+
+  @@index([contentHash])
+  @@index([userAddress])
+  @@index([walletId])
+  @@index([ipfsCid])
+}

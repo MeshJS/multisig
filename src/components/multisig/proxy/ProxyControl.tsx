@@ -18,7 +18,7 @@ import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -764,6 +764,9 @@ export default function ProxyControl() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Spend from Proxy</DialogTitle>
+            <DialogDescription>
+              Send assets from your proxy contract to specified addresses.
+            </DialogDescription>
           </DialogHeader>
           <ProxySpend
             proxies={proxies}
@@ -784,6 +787,9 @@ export default function ProxyControl() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Setup New Proxy</DialogTitle>
+            <DialogDescription>
+              Create a new proxy contract for automated transaction management.
+            </DialogDescription>
           </DialogHeader>
           <ProxySetup
             setupStep={setupStep}

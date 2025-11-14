@@ -88,7 +88,7 @@ export default function RegisterDRep() {
       appWallet,
     )) as Record<string, unknown>;
     console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
+    const rawResponse = await fetch("/api/ipfs/put", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -97,6 +97,8 @@ export default function RegisterDRep() {
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
         value: JSON.stringify(drepMetadata),
+        userAddress: userAddress || undefined,
+        walletId: appWallet?.id || undefined,
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;

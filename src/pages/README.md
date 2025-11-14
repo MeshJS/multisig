@@ -267,9 +267,9 @@ A comprehensive Next.js pages directory containing all application routes, API e
 
 ### Storage API
 
-#### `api/vercel-storage/put.ts`
-- **Purpose**: Store data in Vercel storage
-- **Features**: File and data storage operations
+#### `api/ipfs/put.ts`
+- **Purpose**: Store data in IPFS via Pinata
+- **Features**: JSON data storage with duplicate detection, user/wallet tracking
 
 #### `api/vercel-storage/image/put.ts`
 - **Purpose**: Store images in Vercel storage
