@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Wallet } from "@/types/wallet";
 import {
   Table,
@@ -17,13 +17,15 @@ import { cn } from "@/lib/utils";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Info } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface UTxOSelectorProps {
   appWallet: Wallet;
@@ -325,6 +327,43 @@ export default function UTxOSelector({
     handlePageChange(currentPage + 1);
   };
 
+  // Calculate available balance from all loaded UTXOs (excluding blocked ones)
+  const availableBalance = useMemo(() => {
+    const balance: { [unit: string]: number } = {};
+    
+    utxos.forEach((utxo) => {
+      // Skip blocked UTXOs
+      const isBlocked = blockedUtxos.some(
+        (bU) =>
+          bU.hash === utxo.input.txHash &&
+          bU.index === utxo.input.outputIndex,
+      );
+      
+      if (isBlocked) return;
+      
+      utxo.output.amount.forEach((asset: any) => {
+        const unit = asset.unit;
+        const quantity = parseFloat(asset.quantity);
+        
+        if (!balance[unit]) {
+          balance[unit] = 0;
+        }
+        balance[unit] += quantity;
+      });
+    });
+    
+    // Separate ADA from other assets
+    const adaBalance = balance["lovelace"] || 0;
+    const otherAssets = Object.entries(balance)
+      .filter(([unit]) => unit !== "lovelace")
+      .map(([unit, quantity]) => ({ unit, quantity }));
+    
+    return { adaBalance, otherAssets };
+  }, [utxos, blockedUtxos]);
+
+  // Check if not all pages are loaded
+  const hasMorePages = currentPage < totalPages;
+
   return (
     <div>
       <Toggle
@@ -338,6 +377,66 @@ export default function UTxOSelector({
 
       {manualSelected && (
         <div>
+        {/* Available Balance Section */}
+        <div className="mt-4 mb-4 p-4 bg-muted/30 border rounded-lg">
+          <h4 className="text-sm font-semibold mb-3">Available Balance</h4>
+          
+          {/* ADA Summary */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">ADA</span>
+              <span className="text-lg font-bold">
+                {(availableBalance.adaBalance / 1000000).toFixed(6)} ₳
+              </span>
+            </div>
+          </div>
+          
+          {/* Other Assets Collapsible */}
+          {availableBalance.otherAssets.length > 0 && (
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center justify-between w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <span>Other Assets ({availableBalance.otherAssets.length})</span>
+                <ChevronDown className="h-4 w-4 transition-transform duration-200 data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-2">
+                {availableBalance.otherAssets.map(({ unit, quantity }) => {
+                  const assetMetadata = walletAssetMetadata[unit];
+                  const decimals = assetMetadata?.decimals ?? 0;
+                  const assetName = assetMetadata?.ticker
+                    ? `$${assetMetadata.ticker}`
+                    : assetMetadata?.assetName || unit;
+                  
+                  return (
+                    <div key={unit} className="flex items-center justify-between text-sm py-1 border-b border-border/40 last:border-0">
+                      <span className="font-medium">{assetName}</span>
+                      <span className="font-mono text-xs text-muted-foreground mr-2 truncate max-w-[200px]">
+                        {unit}
+                      </span>
+                      <span className="font-semibold">
+                        {(quantity / Math.pow(10, decimals)).toFixed(6)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+          
+          {availableBalance.otherAssets.length === 0 && (
+            <p className="text-xs text-muted-foreground">No other assets</p>
+          )}
+        </div>
+
+        {/* Pagination Warning */}
+        {hasMorePages && (
+          <Alert className="mb-4 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              Not all UTXOs are currently loaded. You can navigate to other pages to view more UTXOs.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Table>
           <TableHeader>
             <TableRow>

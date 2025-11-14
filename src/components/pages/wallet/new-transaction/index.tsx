@@ -267,6 +267,26 @@ export default function PageNewTransaction() {
           title="Recipients" 
           description="Specify the recipients and amounts for your transaction"
           cardClassName="w-full"
+          headerDom={
+            <HoverCard>
+              <HoverCardTrigger className="flex-shrink-0 cursor-help">
+                <QuestionMarkCircledIcon className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </HoverCardTrigger>
+              <HoverCardContent className="w-80 max-w-[calc(100vw-2rem)]">
+                <div className="space-y-2">
+                  <h4 className="font-semibold">How to Use Recipients</h4>
+                  <div className="text-sm space-y-2">
+                    <p>
+                      Each recipient row you add will translate into a UTXO (Unspent Transaction Output) in the transaction.
+                    </p>
+                    <p>
+                      When sending native tokens or NFTs, lovelace (ADA) will be automatically added in coin selection to cover transaction fees and minimum ADA requirements.
+                    </p>
+                  </div>
+                </div>
+              </HoverCardContent>
+            </HoverCard>
+          }
         >
           <div className="space-y-4">
             <RecipientCsv
