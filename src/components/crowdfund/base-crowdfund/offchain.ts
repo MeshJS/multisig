@@ -38,29 +38,36 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
   getAuthTokenCbor = () => {
     console.log("[getAuthTokenCbor] paramUtxo:", this.paramUtxo);
-    
+
     if (!this.paramUtxo) {
       throw new Error("paramUtxo is not set");
     }
-    
+
     // Handle both full UTxO structure and just the input part
     let txHash: string;
     let outputIndex: number;
-    
-    if ('input' in this.paramUtxo && this.paramUtxo.input) {
+
+    if ("input" in this.paramUtxo && this.paramUtxo.input) {
       // Full UTxO structure: { input: { txHash, outputIndex }, output: {...} }
       txHash = this.paramUtxo.input.txHash;
       outputIndex = this.paramUtxo.input.outputIndex;
-    } else if ('txHash' in this.paramUtxo && 'outputIndex' in this.paramUtxo) {
+    } else if ("txHash" in this.paramUtxo && "outputIndex" in this.paramUtxo) {
       // Just the input part: { txHash, outputIndex }
       txHash = this.paramUtxo.txHash;
       outputIndex = this.paramUtxo.outputIndex;
     } else {
-      throw new Error(`Invalid paramUtxo structure: ${JSON.stringify(this.paramUtxo)}`);
+      throw new Error(
+        `Invalid paramUtxo structure: ${JSON.stringify(this.paramUtxo)}`,
+      );
     }
-    
-    console.log("[getAuthTokenCbor] Using txHash:", txHash, "outputIndex:", outputIndex);
-    
+
+    console.log(
+      "[getAuthTokenCbor] Using txHash:",
+      txHash,
+      "outputIndex:",
+      outputIndex,
+    );
+
     return applyParamsToScript(blueprint.validators[0]!.compiledCode, [
       mOutputReference(txHash, outputIndex),
     ]);
@@ -107,8 +114,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   };
 
   // Type guard to check if paramUtxo is a full UTxO
-  private isFullUTxO(utxo: UTxO | { txHash: string; outputIndex: number } | undefined): utxo is UTxO {
-    return utxo !== undefined && 'input' in utxo && 'output' in utxo;
+  private isFullUTxO(
+    utxo: UTxO | { txHash: string; outputIndex: number } | undefined,
+  ): utxo is UTxO {
+    return utxo !== undefined && "input" in utxo && "output" in utxo;
   }
 
   constructor(
@@ -125,23 +134,30 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     // Set the crowdfundAddress if paramUtxo is provided
     if (contract.paramUtxo) {
       // Normalize paramUtxo - handle both full UTxO and just input part
-      if ('input' in contract.paramUtxo && contract.paramUtxo.input) {
+      if ("input" in contract.paramUtxo && contract.paramUtxo.input) {
         // Already a full UTxO
         this.paramUtxo = contract.paramUtxo as UTxO;
-      } else if ('txHash' in contract.paramUtxo && 'outputIndex' in contract.paramUtxo) {
+      } else if (
+        "txHash" in contract.paramUtxo &&
+        "outputIndex" in contract.paramUtxo
+      ) {
         // Just the input part - store as-is (getAuthTokenCbor will handle it)
         this.paramUtxo = contract.paramUtxo as any;
       } else {
-        throw new Error(`Invalid paramUtxo structure: ${JSON.stringify(contract.paramUtxo)}`);
+        throw new Error(
+          `Invalid paramUtxo structure: ${JSON.stringify(contract.paramUtxo)}`,
+        );
       }
-      console.log("[MeshCrowdfundContract constructor] Setting paramUtxo and crowdfundAddress", {
-        paramUtxo: this.paramUtxo,
-      });
+      console.log(
+        "[MeshCrowdfundContract constructor] Setting paramUtxo and crowdfundAddress",
+        {
+          paramUtxo: this.paramUtxo,
+        },
+      );
       this.setCrowdfundAddress();
     }
   }
 
-  
   /**
    * Setup the crowdfund contract
    * Mints a one time AuthToken and deposits it at the crowdfundAddress, which is parameterized by the AuthToken and the proposerKeyHash
@@ -152,7 +168,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
    * const { tx, paramUtxo } = await contract.setupCrowdfund();
    * ```
    */
-  setupCrowdfund = async (datum: CrowdfundDatumTS, crowdfundGovExtensionContract?: MeshCrowdfundGovExtensionContract) => {
+  setupCrowdfund = async (
+    datum: CrowdfundDatumTS,
+    crowdfundGovExtensionContract?: MeshCrowdfundGovExtensionContract,
+  ) => {
     const { utxos, collateral, walletAddress } =
       await this.getWalletInfoForTx();
 
@@ -175,28 +194,30 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     //ToDo add default MeshCrowdfund image to authtoken add param to pass custom image path.
     const policyId = this.getAuthTokenPolicyId();
     const tokenName = "";
-    
+
     console.log("[setupCrowdfund] Starting setup", {
       hasGovExtension: !!crowdfundGovExtensionContract,
       paramUtxo: this.paramUtxo,
       crowdfundAddress,
       policyId,
     });
-    
+
     // Compute completion script and its hash
-    const completionScriptCbor = crowdfundGovExtensionContract?.getCrowdfundStartCbor() || "";
-    const completion_scriptHash = completionScriptCbor 
+    const completionScriptCbor =
+      crowdfundGovExtensionContract?.getCrowdfundStartCbor() || "";
+    const completion_scriptHash = completionScriptCbor
       ? resolveScriptHash(completionScriptCbor, "V3")
       : "";
-    
+
     console.log("[setupCrowdfund] Completion script", {
       hasCompletionScript: !!completionScriptCbor,
       completionScriptCborLength: completionScriptCbor.length,
       completion_scriptHash,
     });
-    
+
     if (crowdfundGovExtensionContract) {
-      const crowdfundGovSpendCbor = crowdfundGovExtensionContract.getCrowdfundSpendCbor();
+      const crowdfundGovSpendCbor =
+        crowdfundGovExtensionContract.getCrowdfundSpendCbor();
       const policyIdGov = resolveScriptHash(crowdfundGovSpendCbor, "V3");
       console.log("[setupCrowdfund] Gov extension", {
         hasGovSpendCbor: !!crowdfundGovSpendCbor,
@@ -207,7 +228,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     //prepare ShareToken policy for the datum
     const paramScriptST = this.getShareTokenCbor();
     const policyIdST = resolveScriptHash(paramScriptST, "V3");
-    
+
     console.log("[setupCrowdfund] Share token", {
       hasShareTokenCbor: !!paramScriptST,
       policyIdST,
@@ -227,7 +248,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       mPubKeyAddress(datum.fee_address), // fee_address
       datum.min_charge || 2000000, // min_charge - add fallback
     ]);
-    
+
     console.log("[setupCrowdfund] Datum prepared", {
       fundraise_target: datum.fundraise_target,
       deadline: datum.deadline,
@@ -240,12 +261,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       throw new Error("paramUtxo must be a full UTxO in setupCrowdfund");
     }
     const paramUtxoFull = this.paramUtxo; // TypeScript now knows it's a full UTxO
-    
+
     console.log("[setupCrowdfund] Building transaction", {
       paramUtxoInput: paramUtxoFull.input,
       collateralInput: collateral?.input,
     });
-    
+
     const tx = this.mesh
       .txIn(
         paramUtxoFull.input.txHash,
@@ -276,10 +297,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     // Extract paramUtxo input for return - should always be a full UTxO at this point
     if (!this.isFullUTxO(paramUtxoFull)) {
-      throw new Error("paramUtxo must be a full UTxO when returning from setupCrowdfund");
+      throw new Error(
+        "paramUtxo must be a full UTxO when returning from setupCrowdfund",
+      );
     }
     const paramUtxoInput = paramUtxoFull.input;
-    
+
     const result = {
       tx: txHex,
       paramUtxo: paramUtxoInput,
@@ -288,7 +311,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       share_token: policyIdST,
       crowdfund_address: crowdfundAddress,
     };
-    
+
     console.log("[setupCrowdfund] Returning result", {
       hasParamUtxo: !!result.paramUtxo,
       authTokenId: result.authTokenId,
@@ -312,7 +335,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       crowdfundAddress: this.crowdfundAddress,
       datum,
     });
-    
+
     const { utxos, collateral, walletAddress } =
       await this.getWalletInfoForTx();
 
@@ -373,7 +396,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     );
 
     //prepare the new datum as Mesh Data type
-    const newCrowdfundAmount = datum.current_fundraised_amount + contributionAmount;
+    const newCrowdfundAmount =
+      datum.current_fundraised_amount + contributionAmount;
     console.log("[contributeCrowdfund] Preparing datum", {
       completion_script: datum.completion_script,
       share_token: datum.share_token,
@@ -388,7 +412,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       fee_address: datum.fee_address,
       min_charge: datum.min_charge,
     });
-    
+
     const mDatum = mConStr0([
       datum.completion_script,
       datum.share_token,
@@ -401,7 +425,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       mPubKeyAddress(datum.fee_address),
       datum.min_charge,
     ]);
-    
+
     console.log("[contributeCrowdfund] Datum prepared", {
       mDatumLength: JSON.stringify(mDatum).length,
     });
@@ -410,7 +434,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const paramScript = this.getShareTokenCbor();
     const policyId = resolveScriptHash(paramScript, "V3");
     const tokenName = datum.completion_script;
-    
+
     console.log("[contributeCrowdfund] Share token", {
       policyId,
       tokenName,
@@ -418,14 +442,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     });
 
     //Set time-to-live (TTL) for the transaction.
-    let minutes = 5; // add 5 minutes
-    let nowDateTime = new Date();
-    let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
+    const minutes = 5; // add 5 minutes
+    const nowDateTime = new Date();
+    const dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
     const slot = resolveSlotNo(
       this.networkId ? "mainnet" : "preprod",
       dateTimeAdd5Min.getTime(),
     );
-    
+
     console.log("[contributeCrowdfund] Transaction parameters", {
       slot,
       networkId: this.networkId,
@@ -435,9 +459,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     // deposit Ada at crowdfundAddress
     // mint ShareToken and send to walletAddress
-    
-    console.log("[contributeCrowdfund] Building transaction...");
 
+    console.log("[contributeCrowdfund] Building transaction...");
     const txHex = await this.mesh
       .spendingPlutusScriptV3()
       .txIn(
@@ -474,7 +497,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .selectUtxosFrom(utxos)
       .invalidHereafter(Number(slot))
       .complete();
-
+    console.log(txHex);
     return { tx: txHex };
   };
 
@@ -591,9 +614,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const tokenName = datum.completion_script;
 
     // Set time-to-live (TTL) for the transaction (5 minutes from now)
-    let minutes = 5; // add 5 minutes
-    let nowDateTime = new Date();
-    let dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
+    const minutes = 5; // add 5 minutes
+    const nowDateTime = new Date();
+    const dateTimeAdd5Min = new Date(nowDateTime.getTime() + minutes * 60000);
     const slot = resolveSlotNo(
       this.networkId ? "mainnet" : "preprod",
       dateTimeAdd5Min.getTime(),
@@ -648,7 +671,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   completeCrowdfund = async (
     crowdfundGovExtensionContract: MeshCrowdfundGovExtensionContract,
   ) => {
-    const { collateral, walletAddress, utxos } = await this.getWalletInfoForTx();
+    const { collateral, walletAddress, utxos } =
+      await this.getWalletInfoForTx();
 
     if (this.crowdfundAddress === undefined) {
       throw new Error(
@@ -672,12 +696,17 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     const slot = this.getSlotAfterMinutes(5);
 
-    const fundsControlled = authTokenUtxo.output.amount.find((amt) => amt.unit === "lovelace")?.quantity || "0";
+    const fundsControlled =
+      authTokenUtxo.output.amount.find((amt) => amt.unit === "lovelace")
+        ?.quantity || "0";
     if (!fundsControlled) {
       throw new Error("No funds controlled found");
     }
     const initDatum = mConStr0([
-      resolveScriptHash(crowdfundGovExtensionContract.getCrowdfundStartCbor(), "V3"),
+      resolveScriptHash(
+        crowdfundGovExtensionContract.getCrowdfundStartCbor(),
+        "V3",
+      ),
       resolveScriptHash(this.getShareTokenCbor(), "V3"),
       BigInt(fundsControlled),
       BigInt(slot),
@@ -717,7 +746,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   /**
    *
    */
-  removeCrowdfund = async () => {};
+  // removeCrowdfund = async () => {};
 
   private findAuthTokenUtxo = async (): Promise<UTxO> => {
     if (!this.crowdfundAddress) {

@@ -9,6 +9,8 @@ import {
   keepRelevant,
   RewardAddress,
   GovernanceAction,
+  conStr,
+  mConStr,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -57,7 +59,7 @@ export class MeshCrowdfundGovExtensionContract extends MeshTxInitiator {
   getCrowdfundSpendCbor = () => {
     return applyParamsToScript(blueprint.validators[0]!.compiledCode, [
       stringToHex(this.delegate_pool_id),
-      mConStr(6,[]),
+      mConStr(6, []), // placeholder for info action
       stringToHex(this.proposerKeyHash),
       this.stake_register_deposit,
       this.drep_register_deposit,
@@ -128,7 +130,7 @@ export class MeshCrowdfundGovExtensionContract extends MeshTxInitiator {
     }
 
     const walletInfo = await this.getWalletInfoForTx();
-    let { utxos, walletAddress } = walletInfo;
+    const { utxos, walletAddress } = walletInfo;
     const { collateral } = walletInfo;
 
     // find auth token UTxO at crowdfund address
@@ -217,13 +219,13 @@ export class MeshCrowdfundGovExtensionContract extends MeshTxInitiator {
     );
   };
 
-  deregisterCerts = () => {};
+  // deregisterCerts = () => {};
 
-  voteOnGovAction = () => {};
+  // voteOnGovAction = () => {};
 
-  contributorWithdrawal = () => {};
+  // contributorWithdrawal = () => {};
 
-  removeEmptyInstance = () => {};
+  // removeEmptyInstance = () => {};
 
   getDrepId = () => {
     return resolveScriptHashDRepId(

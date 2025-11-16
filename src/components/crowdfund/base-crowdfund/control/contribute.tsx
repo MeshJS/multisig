@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Coins, Send, AlertCircle, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { LargestFirstInputSelector, MeshTxBuilder } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../../crowdfund";
 import { api } from "@/utils/api";
@@ -18,9 +24,9 @@ interface ContributeToCrowdfundProps {
   onSuccess?: () => void;
 }
 
-export function ContributeToCrowdfund({ 
-  crowdfund, 
-  onSuccess 
+export function ContributeToCrowdfund({
+  crowdfund,
+  onSuccess,
 }: ContributeToCrowdfundProps) {
   const [amount, setAmount] = useState<string>("");
   const [isContributing, setIsContributing] = useState(false);
@@ -28,51 +34,54 @@ export function ContributeToCrowdfund({
   const { toast } = useToast();
   const { connected, wallet } = useWallet();
   const network = useSiteStore((state) => state.network);
-  
+
   // Check if this is a draft crowdfund
   const isDraft = !crowdfund.authTokenId;
-  
+
   if (isDraft) {
     return (
       <div className="p-6 text-center">
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center justify-center gap-2 text-yellow-800 mb-2">
-            <Clock className="w-5 h-5" />
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div className="mb-2 flex items-center justify-center gap-2 text-yellow-800">
+            <Clock className="h-5 w-5" />
             <span className="font-medium">Draft Crowdfund</span>
           </div>
           <p className="text-sm text-yellow-700">
-            This crowdfund is still in draft mode and cannot accept contributions yet.
+            This crowdfund is still in draft mode and cannot accept
+            contributions yet.
           </p>
         </div>
       </div>
     );
   }
-  
+
   const datumData = JSON.parse(crowdfund.datum);
-  
+
   // For governance-extended crowdfunds, check if deposits need to be added to the target
-  const govExtension = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
-  
+  const govExtension =
+    crowdfund.govExtension ||
+    (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
+
   // Calculate remaining funding amount
   const currentRaised = datumData.current_fundraised_amount || 0;
   let fundingTarget = datumData.fundraise_target || 0;
-  
+
   // For governance crowdfunds, if the target doesn't include deposits, add them
   if (govExtension) {
     const stakeDeposit = govExtension.stake_register_deposit || 0;
     const drepDeposit = govExtension.drep_register_deposit || 0;
     const totalDeposits = stakeDeposit + drepDeposit;
-    
+
     // If the funding target is less than deposits, it means deposits weren't added yet
     // Add deposits to get the total funding target
     if (fundingTarget < totalDeposits) {
       fundingTarget = fundingTarget + totalDeposits;
     }
   }
-  
+
   const remainingFunding = Math.max(0, fundingTarget - currentRaised);
   const remainingFundingADA = remainingFunding / 1000000;
-  
+
   // Calculate max contribution (limited by remaining funding, wallet balance, and fees)
   const estimatedFees = 200000; // 0.2 ADA in lovelace
   const maxFromWallet = Math.max(0, walletBalance - estimatedFees);
@@ -81,24 +90,25 @@ export function ContributeToCrowdfund({
     Math.min(
       remainingFundingADA,
       maxFromWallet / 1000000,
-      walletBalance / 1000000
-    )
+      walletBalance / 1000000,
+    ),
   );
   const minContribution = datumData.min_charge / 1000000;
-  
+
   // Initialize amount with minimum if empty
   useEffect(() => {
     if (!amount && minContribution > 0 && maxContribution >= minContribution) {
       setAmount(minContribution.toFixed(2));
     }
   }, [minContribution, maxContribution, amount]);
-  
+
   // Add the updateCrowdfund mutation
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
     onSuccess: () => {
       toast({
         title: "Crowdfund updated successfully",
-        description: "The crowdfund data has been updated with your contribution.",
+        description:
+          "The crowdfund data has been updated with your contribution.",
       });
     },
     onError: (error) => {
@@ -120,7 +130,7 @@ export function ContributeToCrowdfund({
         if (!cancelled) {
           const totalLovelace = utxos.reduce((total, utxo) => {
             const lovelaceAmount = utxo.output.amount.find(
-              (a: any) => a.unit === "lovelace"
+              (a: any) => a.unit === "lovelace",
             )?.quantity;
             return total + (lovelaceAmount ? Number(lovelaceAmount) : 0);
           }, 0);
@@ -144,6 +154,7 @@ export function ContributeToCrowdfund({
     return new MeshTxBuilder({
       fetcher: provider,
       submitter: provider,
+      selector: new LargestFirstInputSelector(),
       verbose: true,
     });
   }, [provider]);
@@ -175,7 +186,7 @@ export function ContributeToCrowdfund({
     }
 
     setIsContributing(true);
-    
+
     try {
       // Check wallet balance before attempting transaction
       const contributionAmount = Number(amount) * 1000000;
@@ -196,12 +207,12 @@ export function ContributeToCrowdfund({
         proposerKeyHash: crowdfund.proposerKeyHashR0,
         paramUtxo: parsedParamUtxo,
         paramUtxoType: typeof parsedParamUtxo,
-        hasInput: 'input' in parsedParamUtxo,
-        hasTxHash: 'txHash' in parsedParamUtxo,
+        hasInput: "input" in parsedParamUtxo,
+        hasTxHash: "txHash" in parsedParamUtxo,
         storedAddress: crowdfund.address,
         datumData,
       });
-      
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -222,18 +233,23 @@ export function ContributeToCrowdfund({
         storedAddress: crowdfund.address,
         addressesMatch: computedAddress === crowdfund.address,
       });
-      
+
       if (computedAddress && computedAddress !== crowdfund.address) {
-        console.warn("[handleContribute] Address mismatch! Using stored address.", {
-          computed: computedAddress,
-          stored: crowdfund.address,
-        });
+        console.warn(
+          "[handleContribute] Address mismatch! Using stored address.",
+          {
+            computed: computedAddress,
+            stored: crowdfund.address,
+          },
+        );
         // Override with stored address to ensure consistency
         contract.crowdfundAddress = crowdfund.address;
       } else if (!computedAddress && crowdfund.address) {
         // If address wasn't computed but we have a stored one, use it
         contract.crowdfundAddress = crowdfund.address;
-        console.log("[handleContribute] Using stored address as computed address was not set");
+        console.log(
+          "[handleContribute] Using stored address as computed address was not set",
+        );
       }
 
       console.log("[handleContribute] Calling contributeCrowdfund", {
@@ -241,17 +257,19 @@ export function ContributeToCrowdfund({
         datumData,
         crowdfundAddress: contract.crowdfundAddress,
       });
-      
-      const { tx } = await contract.contributeCrowdfund(contributionAmount, datumData);
-      
+
+      const { tx } = await contract.contributeCrowdfund(
+        contributionAmount,
+        datumData,
+      );
+
       console.log("[handleContribute] Transaction built successfully", {
         txLength: tx.length,
       });
 
       // Sign and submit the transaction
-      const signedTx = await wallet.signTx(tx);
+      const signedTx = await wallet.signTx(tx, true);
       const txHash = await wallet.submitTx(signedTx);
-
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
@@ -259,7 +277,8 @@ export function ContributeToCrowdfund({
         share_token: datumData.share_token,
         crowdfund_address: datumData.crowdfund_address,
         fundraise_target: datumData.fundraise_target,
-        current_fundraised_amount: datumData.current_fundraised_amount + contributionAmount,
+        current_fundraised_amount:
+          datumData.current_fundraised_amount + contributionAmount,
         allow_over_subscription: datumData.allow_over_subscription,
         deadline: datumData.deadline,
         expiry_buffer: datumData.expiry_buffer,
@@ -272,28 +291,31 @@ export function ContributeToCrowdfund({
         id: crowdfund.id,
         datum: JSON.stringify(updatedDatum),
       });
-      
+
       toast({
         title: "Contribution successful!",
         description: `You've contributed ${amount} ADA to ${crowdfund.name} (txHash: ${txHash})`,
       });
-      
+
       setAmount("");
       onSuccess?.();
     } catch (error: any) {
       console.log("error", error);
-      
+
       // Handle specific error types
-      let errorMessage = "There was an error processing your contribution. Please try again.";
-      
+      let errorMessage =
+        "There was an error processing your contribution. Please try again.";
+
       if (error.message?.includes("Insufficient funds")) {
         errorMessage = error.message;
       } else if (error.message?.includes("Not enough funds")) {
-        errorMessage = "Insufficient funds to complete the transaction. Please ensure you have enough ADA for the contribution plus transaction fees (~0.2 ADA).";
+        errorMessage =
+          "Insufficient funds to complete the transaction. Please ensure you have enough ADA for the contribution plus transaction fees (~0.2 ADA).";
       } else if (error.message?.includes("No UTXOs")) {
-        errorMessage = "No UTXOs found in your wallet. Please ensure your wallet has ADA.";
+        errorMessage =
+          "No UTXOs found in your wallet. Please ensure your wallet has ADA.";
       }
-      
+
       toast({
         title: "Contribution failed",
         description: errorMessage,
@@ -308,27 +330,29 @@ export function ContributeToCrowdfund({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Coins className="w-5 h-5" />
+          <Coins className="h-5 w-5" />
           Contribute to {crowdfund.name}
         </CardTitle>
         <CardDescription>
-          Support this crowdfunding campaign by contributing ADA. You'll receive share tokens proportional to your contribution.
+          Support this crowdfunding campaign by contributing ADA. You'll receive
+          share tokens proportional to your contribution.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Contributions are processed on the Cardano blockchain. Make sure you have sufficient ADA in your wallet.
+            Contributions are processed on the Cardano blockchain. Make sure you
+            have sufficient ADA in your wallet.
           </AlertDescription>
         </Alert>
-        
+
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="amount" className="text-sm font-medium">
               Contribution Amount (ADA)
             </label>
-            <div className="flex gap-3 items-center">
+            <div className="flex items-center gap-3">
               <input
                 id="amount"
                 type="range"
@@ -336,13 +360,16 @@ export function ContributeToCrowdfund({
                 max={maxContribution}
                 step="0.1"
                 value={amount || minContribution.toString()}
-                onChange={(e) => setAmount(parseFloat(e.target.value).toFixed(2))}
+                onChange={(e) =>
+                  setAmount(parseFloat(e.target.value).toFixed(2))
+                }
                 disabled={maxContribution <= minContribution}
-                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:shadow-md"
+                className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:shadow-md [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-md"
                 style={{
-                  background: maxContribution > minContribution
-                    ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb 100%)`
-                    : '#3b82f6'
+                  background:
+                    maxContribution > minContribution
+                      ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb 100%)`
+                      : "#3b82f6",
                 }}
               />
               <Input
@@ -360,7 +387,10 @@ export function ContributeToCrowdfund({
                   const numValue = parseFloat(value);
                   if (!isNaN(numValue)) {
                     // Clamp value between min and max
-                    const clampedValue = Math.max(minContribution, Math.min(maxContribution, numValue));
+                    const clampedValue = Math.max(
+                      minContribution,
+                      Math.min(maxContribution, numValue),
+                    );
                     setAmount(clampedValue.toFixed(2));
                   }
                 }}
@@ -375,20 +405,20 @@ export function ContributeToCrowdfund({
                     setAmount(numValue.toFixed(2));
                   }
                 }}
-                className="w-24 text-lg text-center"
+                className="w-24 text-center text-lg"
                 placeholder={minContribution.toFixed(2)}
               />
-              <span className="text-sm text-muted-foreground w-10">ADA</span>
+              <span className="w-10 text-sm text-muted-foreground">ADA</span>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{minContribution.toFixed(2)} ADA</span>
               <span>{maxContribution.toFixed(2)} ADA max</span>
             </div>
           </div>
-          
+
           {/* Quick amount buttons */}
           {maxContribution > minContribution && (
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -433,15 +463,19 @@ export function ContributeToCrowdfund({
           )}
         </div>
 
-        <div className="text-sm text-muted-foreground space-y-1">
-          <p>• Your wallet balance: {(walletBalance / 1000000).toFixed(2)} ADA</p>
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            • Your wallet balance: {(walletBalance / 1000000).toFixed(2)} ADA
+          </p>
           <p>• Minimum contribution: {minContribution.toFixed(2)} ADA</p>
-          <p>• Remaining funding needed: {remainingFundingADA.toFixed(2)} ADA</p>
+          <p>
+            • Remaining funding needed: {remainingFundingADA.toFixed(2)} ADA
+          </p>
           <p>• You'll receive share tokens based on your contribution</p>
           <p>• Transaction fees apply (~0.17 ADA)</p>
         </div>
 
-        <Button 
+        <Button
           onClick={handleContribute}
           disabled={isContributing || !amount || parseFloat(amount) <= 0}
           className="w-full"
@@ -449,13 +483,13 @@ export function ContributeToCrowdfund({
         >
           {isContributing ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
               Processing...
             </>
           ) : (
             <>
-              <Send className="w-4 h-4 mr-2" />
-              Contribute {amount ? `${amount} ADA` : ''}
+              <Send className="mr-2 h-4 w-4" />
+              Contribute {amount ? `${amount} ADA` : ""}
             </>
           )}
         </Button>

@@ -121,7 +121,7 @@ export function Step3ReviewSubmit({
         govActionMetadataHash: formData.govActionMetadataHash,
       },
     });
-    
+
     // Validate based on step2Type
     const isFundingValid =
       formData.step2Type === "funding" && formData.fundraiseTarget;
@@ -132,7 +132,7 @@ export function Step3ReviewSubmit({
       formData.gov_action?.abstract &&
       formData.gov_action?.motivation &&
       formData.gov_action?.rationale;
-    
+
     console.log("[handleSubmit] Validation", {
       isFundingValid,
       isGovernanceValid,
@@ -190,7 +190,7 @@ export function Step3ReviewSubmit({
       );
 
       // Create the crowdfunding contract instance
-      let contract = new MeshCrowdfundContract(
+      const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
           fetcher: provider,
@@ -209,7 +209,6 @@ export function Step3ReviewSubmit({
         formData.delegate_pool_id &&
         formData.gov_action?.title
       ) {
-
         const utxos = await wallet.getUtxos();
         if (utxos.length > 0) {
           contract.setparamUtxo(utxos[0]!);
@@ -220,7 +219,8 @@ export function Step3ReviewSubmit({
         if (!formData.drep_register_deposit) {
           formData.drep_register_deposit = 500000000;
         }
-        if (!formData.gov_deposit) {throw new Error("Governance deposit is required");
+        if (!formData.gov_deposit) {
+          throw new Error("Governance deposit is required");
         }
         // Set default gov_action_period to 6 if not provided
         const govActionPeriod = 6;
@@ -248,8 +248,9 @@ export function Step3ReviewSubmit({
       console.log(formData.fundraiseTarget);
 
       // Calculate base funding target
-      const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
-      
+      const baseFundingTarget =
+        parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
+
       // For governance-extended crowdfunds, add the required protocol deposits to the funding target
       // Note: gov_deposit is the same as base funding, not an additional deposit
       // Only stake_register_deposit and drep_register_deposit are protocol deposits
@@ -259,13 +260,13 @@ export function Step3ReviewSubmit({
         const drepDeposit = formData.drep_register_deposit || 500000000;
         // gov_deposit is not added - it's the same as base funding
         totalFundingTarget = baseFundingTarget + stakeDeposit + drepDeposit;
-        
+
         console.log("[handleSubmit] Adding deposits to funding target", {
           baseFundingTarget,
           stakeDeposit,
           drepDeposit,
           totalFundingTarget,
-          totalInADA: totalFundingTarget / 1000000
+          totalInADA: totalFundingTarget / 1000000,
         });
       }
 
@@ -307,7 +308,7 @@ export function Step3ReviewSubmit({
       });
 
       // Sign and submit the transaction
-      const signedTx = await wallet.signTx(tx);
+      const signedTx = await wallet.signTx(tx, true);
       const txHash = await wallet.submitTx(signedTx);
 
       // Update the datum with the new values
@@ -377,7 +378,10 @@ export function Step3ReviewSubmit({
     return `${parseFloat(amount).toLocaleString()} ADA`;
   };
 
-  const formatLovelaceToADA = (lovelace: number | undefined, defaultValue: number) => {
+  const formatLovelaceToADA = (
+    lovelace: number | undefined,
+    defaultValue: number,
+  ) => {
     const value = lovelace || defaultValue;
     return formatADA((value / 1000000).toString());
   };
@@ -519,7 +523,7 @@ export function Step3ReviewSubmit({
               <Badge variant="default" className="mb-4">
                 Enabled
               </Badge>
-              
+
               {/* Deposit Settings */}
               <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
                 <h4 className="mb-3 text-sm font-semibold text-orange-900">
@@ -531,7 +535,10 @@ export function Step3ReviewSubmit({
                       Stake Register Deposit (ADA)
                     </label>
                     <p className="text-lg font-semibold">
-                      {formatLovelaceToADA(formData.stake_register_deposit, 2000000)}
+                      {formatLovelaceToADA(
+                        formData.stake_register_deposit,
+                        2000000,
+                      )}
                     </p>
                   </div>
                   <div>
@@ -539,7 +546,10 @@ export function Step3ReviewSubmit({
                       DRep Register Deposit (ADA)
                     </label>
                     <p className="text-lg font-semibold">
-                      {formatLovelaceToADA(formData.drep_register_deposit, 500000000)}
+                      {formatLovelaceToADA(
+                        formData.drep_register_deposit,
+                        500000000,
+                      )}
                     </p>
                   </div>
                   <div>
