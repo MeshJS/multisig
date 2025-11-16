@@ -207,8 +207,8 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       return formData.fundraiseTarget;
     } else if (formData.step2Type === 'governance') {
       // Governance extension is automatically enabled when governance is selected
-      return formData.gov_action_period &&
-             formData.delegate_pool_id &&
+      // gov_action_period defaults to 6, so we don't need to validate it
+      return formData.delegate_pool_id &&
              formData.gov_action?.title &&
              formData.gov_action?.abstract &&
              formData.gov_action?.motivation &&

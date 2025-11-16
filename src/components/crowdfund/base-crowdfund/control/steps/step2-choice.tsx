@@ -42,7 +42,6 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
       // Auto-enable governance extension when governance card is selected
       updateFormData({
         useGovExtension: true,
-        fundraiseTarget: "100", // Default to 100 ADA (not 100,000)
         minCharge: "2",
         allowOverSubscription: true, // Always allow over-subscription
       });

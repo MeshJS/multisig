@@ -127,7 +127,6 @@ export function Step3ReviewSubmit({
       formData.step2Type === "funding" && formData.fundraiseTarget;
     const isGovernanceValid =
       formData.step2Type === "governance" &&
-      formData.gov_action_period &&
       formData.delegate_pool_id &&
       formData.gov_action?.title &&
       formData.gov_action?.abstract &&
@@ -207,7 +206,6 @@ export function Step3ReviewSubmit({
 
       if (
         formData.step2Type === "governance" &&
-        formData.gov_action_period &&
         formData.delegate_pool_id &&
         formData.gov_action?.title
       ) {
@@ -224,6 +222,8 @@ export function Step3ReviewSubmit({
         }
         if (!formData.gov_deposit) {throw new Error("Governance deposit is required");
         }
+        // Set default gov_action_period to 6 if not provided
+        const govActionPeriod = 6;
 
         // Create the Gov contract instance
         govContract = new MeshCrowdfundGovExtensionContract(
@@ -236,7 +236,7 @@ export function Step3ReviewSubmit({
           {
             proposerKeyHash: proposerKeyHashR0,
             authTokenPolicyId: contract.getAuthTokenPolicyId(),
-            gov_action_period: formData.gov_action_period,
+            gov_action_period: govActionPeriod,
             delegate_pool_id: formData.delegate_pool_id,
             gov_action: JSON.stringify(formData.gov_action),
             stake_register_deposit: formData.stake_register_deposit || 2000000,
@@ -245,9 +245,10 @@ export function Step3ReviewSubmit({
           },
         );
       }
+      console.log(formData.fundraiseTarget);
 
       // Calculate base funding target
-      const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100") * 1000000; // Convert ADA to lovelace
+      const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
       
       // For governance-extended crowdfunds, add the required protocol deposits to the funding target
       // Note: gov_deposit is the same as base funding, not an additional deposit
@@ -327,7 +328,7 @@ export function Step3ReviewSubmit({
       const govExtension =
         formData.step2Type === "governance" && govContract
           ? {
-              gov_action_period: formData.gov_action_period,
+              gov_action_period: formData.gov_action_period || 6,
               delegate_pool_id: formData.delegate_pool_id,
               gov_action: formData.gov_action, // Will be stored as JSON in the database
               stake_register_deposit: formData.stake_register_deposit,

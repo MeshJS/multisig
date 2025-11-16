@@ -4,10 +4,9 @@ import {
   mPubKeyAddress,
   stringToHex,
   mBool,
-  mConStr1,
+  mConStr,
   resolveSlotNo,
   keepRelevant,
-  mConStr2,
   RewardAddress,
   GovernanceAction,
 } from "@meshsdk/common";
@@ -58,7 +57,7 @@ export class MeshCrowdfundGovExtensionContract extends MeshTxInitiator {
   getCrowdfundSpendCbor = () => {
     return applyParamsToScript(blueprint.validators[0]!.compiledCode, [
       stringToHex(this.delegate_pool_id),
-      stringToHex(this.gov_action),
+      mConStr(6,[]),
       stringToHex(this.proposerKeyHash),
       this.stake_register_deposit,
       this.drep_register_deposit,
@@ -140,7 +139,6 @@ export class MeshCrowdfundGovExtensionContract extends MeshTxInitiator {
       kind: "InfoAction",
       action: {},
     };
-
     const anchorGovAction = {
       anchorUrl: anchorUrlGovAction,
       anchorDataHash: anchorHashGovAction,

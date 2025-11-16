@@ -19,6 +19,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@meshsdk/react";
 import useUser from "@/hooks/useUser";
 
+// Static deposit values (in lovelace)
+const STAKE_REGISTER_DEPOSIT = 2000000; // 2 ADA
+const DREP_REGISTER_DEPOSIT = 500000000; // 500 ADA
+
 interface GovAction {
   type: 'motion_no_confidence' | 'update_committee' | 'new_constitution' | 'hard_fork' | 'protocol_parameter_changes' | 'treasury_withdrawals' | 'info';
   title: string;
@@ -114,7 +118,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
   const { wallet, connected } = useWallet();
   const { user } = useUser();
   const [govData, setGovData] = useState<GovData>({
-    gov_action_period: initialData?.gov_action_period || 1,
+    gov_action_period: initialData?.gov_action_period || 6,
     delegate_pool_id: initialData?.delegate_pool_id || "",
     gov_action: initialData?.gov_action || {
       type: 'info',
@@ -127,16 +131,26 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
       externalUpdates: undefined,
       metadata: {}
     },
-    stake_register_deposit: initialData?.stake_register_deposit || 2000000,
-    drep_register_deposit: initialData?.drep_register_deposit || 500000000,
-    gov_deposit: initialData?.gov_deposit || 100000000000,
+    stake_register_deposit: STAKE_REGISTER_DEPOSIT,
+    drep_register_deposit: DREP_REGISTER_DEPOSIT,
+    gov_deposit: initialData?.gov_deposit || (initialData?.fundraiseTarget ? Math.round(parseFloat(initialData.fundraiseTarget) * 1000000) : undefined),
     govActionMetadataUrl: initialData?.govActionMetadataUrl,
     govActionMetadataHash: initialData?.govActionMetadataHash,
-    fundraiseTarget: initialData?.fundraiseTarget || "100", // Default to 100 ADA
+    fundraiseTarget: initialData?.fundraiseTarget,
     minCharge: initialData?.minCharge || "2", // Default to 2 ADA
     allowOverSubscription: initialData?.allowOverSubscription ?? true, // Always allow over-subscription by default
   });
   const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
+
+  // Sync gov_deposit with fundraiseTarget (they should be the same for governance)
+  useEffect(() => {
+    if (govData.fundraiseTarget) {
+      const govDepositLovelace = Math.round(parseFloat(govData.fundraiseTarget) * 1000000);
+      if (govData.gov_deposit !== govDepositLovelace) {
+        setGovData(prev => ({ ...prev, gov_deposit: govDepositLovelace }));
+      }
+    }
+  }, [govData.fundraiseTarget]);
 
   useEffect(() => {
     onGovDataUpdate(govData);
@@ -153,17 +167,6 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     }));
   };
 
-  const formatADA = (lovelace: number) => {
-    return (lovelace / 1000000).toLocaleString();
-  };
-
-  const formatADAForInput = (lovelace: number) => {
-    return (lovelace / 1000000).toString();
-  };
-
-  const parseADA = (adaString: string) => {
-    return Math.round(parseFloat(adaString) * 1000000);
-  };
 
   const handleUploadMetadata = async () => {
     if (!govData.gov_action) {
@@ -304,30 +307,6 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-
-
-        {/* Governance Action Period */}
-        <div className="space-y-2">
-          <Label htmlFor="gov_action_period" className="flex items-center gap-2">
-            Governance Action Period (epochs) *
-            <Tooltip>
-              <TooltipTrigger>
-                <Info className="h-3 w-3 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Number of epochs for the governance action to be active</p>
-              </TooltipContent>
-            </Tooltip>
-          </Label>
-          <Input
-            id="gov_action_period"
-            type="number"
-            min="1"
-            value={govData.gov_action_period || ""}
-            onChange={(e) => updateGovData({ gov_action_period: parseInt(e.target.value) || 1 })}
-            placeholder="1"
-          />
-        </div>
 
         {/* Delegate Pool ID */}
         <div className="space-y-2">
@@ -585,94 +564,6 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
           </CardContent>
         </Card>
 
-        {/* Deposit Settings */}
-        <div className="space-y-4">
-          <h4 className="text-md font-semibold flex items-center gap-2">
-            Deposit Settings
-            <Tooltip>
-              <TooltipTrigger>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Configure deposit amounts for governance operations</p>
-              </TooltipContent>
-            </Tooltip>
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Stake Register Deposit */}
-            <div className="space-y-2">
-              <Label htmlFor="stake_register_deposit" className="flex items-center gap-2">
-                Stake Register Deposit (ADA)
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="h-3 w-3 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Deposit required for stake registration</p>
-                  </TooltipContent>
-                </Tooltip>
-              </Label>
-              <Input
-                id="stake_register_deposit"
-                type="number"
-                min="0"
-                step="0.1"
-                value={formatADAForInput(govData.stake_register_deposit || 2000000)}
-                onChange={(e) => updateGovData({ stake_register_deposit: parseADA(e.target.value) })}
-                placeholder="2"
-              />
-            </div>
-
-            {/* DRep Register Deposit */}
-            <div className="space-y-2">
-              <Label htmlFor="drep_register_deposit" className="flex items-center gap-2">
-                DRep Register Deposit (ADA)
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="h-3 w-3 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Deposit required for DRep registration</p>
-                  </TooltipContent>
-                </Tooltip>
-              </Label>
-              <Input
-                id="drep_register_deposit"
-                type="number"
-                min="0"
-                step="0.1"
-                value={formatADAForInput(govData.drep_register_deposit || 500000000)}
-                onChange={(e) => updateGovData({ drep_register_deposit: parseADA(e.target.value) })}
-                placeholder="500"
-              />
-            </div>
-
-            {/* Governance Deposit */}
-            <div className="space-y-2">
-              <Label htmlFor="gov_deposit" className="flex items-center gap-2">
-                Governance Deposit (ADA)
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="h-3 w-3 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Deposit required for governance actions</p>
-                  </TooltipContent>
-                </Tooltip>
-              </Label>
-              <Input
-                id="gov_deposit"
-                type="number"
-                min="0"
-                step="0.1"
-                value={formatADAForInput(govData.gov_deposit || 100000000000)}
-                onChange={(e) => updateGovData({ gov_deposit: parseADA(e.target.value) })}
-                placeholder="100000"
-              />
-            </div>
-          </div>
-        </div>
 
         {/* Metadata Upload Section */}
         <Card>
