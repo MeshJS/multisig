@@ -68,8 +68,8 @@ export function ContributeToCrowdfund({
 
   // For governance crowdfunds, if the target doesn't include deposits, add them
   if (govExtension) {
-    const stakeDeposit = govExtension.stake_register_deposit || 0;
-    const drepDeposit = govExtension.drep_register_deposit || 0;
+    const stakeDeposit = govExtension.stake_register_deposit ? Number(govExtension.stake_register_deposit) : 0;
+    const drepDeposit = govExtension.drep_register_deposit ? Number(govExtension.drep_register_deposit) : 0;
     const totalDeposits = stakeDeposit + drepDeposit;
 
     // If the funding target is less than deposits, it means deposits weren't added yet

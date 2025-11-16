@@ -87,11 +87,11 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
     deadline: "",
     expiryBuffer: "86400",
     feeAddress: "",
-    step2Type: 'funding',
+    step2Type: 'governance',
     fundraiseTarget: "100000",
-    minCharge: "2",
+    minCharge: "0",
     allowOverSubscription: true, // Always allow over-subscription
-    useGovExtension: false,
+    useGovExtension: true,
   });
 
   const totalSteps = 3;
@@ -110,11 +110,11 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
         deadline: "",
         expiryBuffer: "86400",
         feeAddress: "",
-        step2Type: 'funding',
+        step2Type: 'governance',
         fundraiseTarget: "100000",
-        minCharge: "2",
+        minCharge: "0",
         allowOverSubscription: true, // Always allow over-subscription
-        useGovExtension: false,
+        useGovExtension: true,
       };
 
       // Parse CrowdfundDatumTS from datum field if it exists
@@ -132,7 +132,7 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
           loadedData.expiryBuffer = parsedDatum.expiry_buffer?.toString() || "86400";
           loadedData.feeAddress = parsedDatum.fee_address || "";
           loadedData.fundraiseTarget = parsedDatum.fundraise_target ? (parsedDatum.fundraise_target / 1000000).toString() : "100000";
-          loadedData.minCharge = parsedDatum.min_charge ? (parsedDatum.min_charge / 1000000).toString() : "2";
+          loadedData.minCharge = parsedDatum.min_charge ? (parsedDatum.min_charge / 1000000).toString() : "0";
           loadedData.allowOverSubscription = true; // Always allow over-subscription
         } catch (e) {
           console.error("Failed to parse draft datum:", e);
@@ -176,9 +176,9 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
           loadedData.drepMetadataUrl = govExt.drepMetadataUrl;
           loadedData.drepMetadataHash = govExt.drepMetadataHash;
         } else {
-          // This is a funding-only crowdfund
-          loadedData.step2Type = 'funding';
-          loadedData.useGovExtension = false;
+          // Default to governance mode for backward compatibility
+          loadedData.step2Type = 'governance';
+          loadedData.useGovExtension = true;
         }
       }
 
@@ -203,18 +203,13 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
   };
 
   const isStep2Valid = () => {
-    if (formData.step2Type === 'funding') {
-      return formData.fundraiseTarget;
-    } else if (formData.step2Type === 'governance') {
-      // Governance extension is automatically enabled when governance is selected
-      // gov_action_period defaults to 6, so we don't need to validate it
-      return formData.delegate_pool_id &&
-             formData.gov_action?.title &&
-             formData.gov_action?.abstract &&
-             formData.gov_action?.motivation &&
-             formData.gov_action?.rationale;
-    }
-    return false;
+    // Always validate governance fields
+    // gov_action_period defaults to 6, so we don't need to validate it
+    return formData.delegate_pool_id &&
+           formData.gov_action?.title &&
+           formData.gov_action?.abstract &&
+           formData.gov_action?.motivation &&
+           formData.gov_action?.rationale;
   };
 
   const canProceed = () => {
@@ -287,17 +282,15 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
 
     draftPayload.datum = JSON.stringify(crowdfundDatum);
 
-    // Store additional form data in govDatum
-    if (formData.step2Type === 'governance' && formData.useGovExtension) {
-      draftPayload.govDatum = JSON.stringify({
-        gov_action_period: formData.gov_action_period,
-        delegate_pool_id: formData.delegate_pool_id,
-        gov_action: formData.gov_action,
-        stake_register_deposit: formData.stake_register_deposit,
-        drep_register_deposit: formData.drep_register_deposit,
-        gov_deposit: formData.gov_deposit,
-      });
-    }
+    // Always store governance form data in govDatum
+    draftPayload.govDatum = JSON.stringify({
+      gov_action_period: formData.gov_action_period,
+      delegate_pool_id: formData.delegate_pool_id,
+      gov_action: formData.gov_action,
+      stake_register_deposit: formData.stake_register_deposit,
+      drep_register_deposit: formData.drep_register_deposit,
+      gov_deposit: formData.gov_deposit,
+    });
 
     // govAddress will be undefined for drafts - will be set when actually created
 

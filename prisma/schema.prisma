@@ -123,9 +123,9 @@ model CrowdfundGovExtension {
   gov_action_period      Int?
   delegate_pool_id       String?
   gov_action             Json? // Stores the full gov_action object with type, title, abstract, motivation, rationale, etc.
-  stake_register_deposit Int?
-  drep_register_deposit  Int?
-  gov_deposit            Int?
+  stake_register_deposit BigInt?
+  drep_register_deposit  BigInt?
+  gov_deposit            BigInt?
   govActionMetadataUrl   String?
   govActionMetadataHash  String?
   drepMetadataUrl        String?

@@ -21,7 +21,6 @@ import {
   XCircle,
   Clock,
   Settings,
-  Target,
   Calendar,
 } from "lucide-react";
 import { MeshCrowdfundGovExtensionContract } from "../../../gov-extension/offchain";
@@ -121,12 +120,9 @@ export function Step3ReviewSubmit({
         govActionMetadataHash: formData.govActionMetadataHash,
       },
     });
-
-    // Validate based on step2Type
-    const isFundingValid =
-      formData.step2Type === "funding" && formData.fundraiseTarget;
+    
+    // Always validate governance fields
     const isGovernanceValid =
-      formData.step2Type === "governance" &&
       formData.delegate_pool_id &&
       formData.gov_action?.title &&
       formData.gov_action?.abstract &&
@@ -134,14 +130,13 @@ export function Step3ReviewSubmit({
       formData.gov_action?.rationale;
 
     console.log("[handleSubmit] Validation", {
-      isFundingValid,
       isGovernanceValid,
     });
 
     if (
       !proposerKeyHashR0 ||
       !formData.deadline ||
-      (!isFundingValid && !isGovernanceValid)
+      !isGovernanceValid
     ) {
       toast({
         title: "Missing fields",
@@ -151,10 +146,7 @@ export function Step3ReviewSubmit({
     }
 
     // Validate metadata for governance actions
-    if (
-      formData.step2Type === "governance" &&
-      (!formData.govActionMetadataUrl || !formData.govActionMetadataHash)
-    ) {
+    if (!formData.govActionMetadataUrl || !formData.govActionMetadataHash) {
       toast({
         title: "Metadata required",
         description:
@@ -202,79 +194,66 @@ export function Step3ReviewSubmit({
         },
       );
 
-      let govContract: MeshCrowdfundGovExtensionContract | undefined;
-
-      if (
-        formData.step2Type === "governance" &&
-        formData.delegate_pool_id &&
-        formData.gov_action?.title
-      ) {
-        const utxos = await wallet.getUtxos();
-        if (utxos.length > 0) {
-          contract.setparamUtxo(utxos[0]!);
-        }
-        if (!formData.stake_register_deposit) {
-          formData.stake_register_deposit = 2000000;
-        }
-        if (!formData.drep_register_deposit) {
-          formData.drep_register_deposit = 500000000;
-        }
-        if (!formData.gov_deposit) {
-          throw new Error("Governance deposit is required");
-        }
-        // Set default gov_action_period to 6 if not provided
-        const govActionPeriod = 6;
-
-        // Create the Gov contract instance
-        govContract = new MeshCrowdfundGovExtensionContract(
-          {
-            mesh: meshTxBuilder,
-            fetcher: provider,
-            wallet: wallet,
-            networkId: networkId,
-          },
-          {
-            proposerKeyHash: proposerKeyHashR0,
-            authTokenPolicyId: contract.getAuthTokenPolicyId(),
-            gov_action_period: govActionPeriod,
-            delegate_pool_id: formData.delegate_pool_id,
-            gov_action: JSON.stringify(formData.gov_action),
-            stake_register_deposit: formData.stake_register_deposit || 2000000,
-            drep_register_deposit: formData.drep_register_deposit || 500000000,
-            gov_deposit: formData.gov_deposit,
-          },
-        );
+      // Always create governance contract
+      const utxos = await wallet.getUtxos();
+      if (utxos.length > 0) {
+        contract.setparamUtxo(utxos[0]!);
       }
+      if (!formData.stake_register_deposit) {
+        formData.stake_register_deposit = 2000000;
+      }
+      if (!formData.drep_register_deposit) {
+        formData.drep_register_deposit = 500000000;
+      }
+      if (!formData.gov_deposit) {
+        throw new Error("Governance deposit is required");
+      }
+      // Set default gov_action_period to 6 if not provided
+      const govActionPeriod = 6;
+
+      // Create the Gov contract instance
+      const govContract = new MeshCrowdfundGovExtensionContract(
+        {
+          mesh: meshTxBuilder,
+          fetcher: provider,
+          wallet: wallet,
+          networkId: networkId,
+        },
+        {
+          proposerKeyHash: proposerKeyHashR0,
+          authTokenPolicyId: contract.getAuthTokenPolicyId(),
+          gov_action_period: govActionPeriod,
+          delegate_pool_id: formData.delegate_pool_id!,
+          gov_action: JSON.stringify(formData.gov_action),
+          stake_register_deposit: formData.stake_register_deposit || 2000000,
+          drep_register_deposit: formData.drep_register_deposit || 500000000,
+          gov_deposit: formData.gov_deposit,
+        },
+      );
       console.log(formData.fundraiseTarget);
 
       // Calculate base funding target
-      const baseFundingTarget =
-        parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
-
-      // For governance-extended crowdfunds, add the required protocol deposits to the funding target
+      const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
+      
+      // Always add the required protocol deposits to the funding target for governance crowdfunds
       // Note: gov_deposit is the same as base funding, not an additional deposit
       // Only stake_register_deposit and drep_register_deposit are protocol deposits
-      let totalFundingTarget = baseFundingTarget;
-      if (formData.step2Type === "governance") {
-        const stakeDeposit = formData.stake_register_deposit || 2000000;
-        const drepDeposit = formData.drep_register_deposit || 500000000;
-        // gov_deposit is not added - it's the same as base funding
-        totalFundingTarget = baseFundingTarget + stakeDeposit + drepDeposit;
-
-        console.log("[handleSubmit] Adding deposits to funding target", {
-          baseFundingTarget,
-          stakeDeposit,
-          drepDeposit,
-          totalFundingTarget,
-          totalInADA: totalFundingTarget / 1000000,
-        });
-      }
+      const stakeDeposit = formData.stake_register_deposit || 2000000;
+      const drepDeposit = formData.drep_register_deposit || 500000000;
+      // gov_deposit is not added - it's the same as base funding
+      const totalFundingTarget = baseFundingTarget + stakeDeposit + drepDeposit;
+      
+      console.log("[handleSubmit] Adding deposits to funding target", {
+        baseFundingTarget,
+        stakeDeposit,
+        drepDeposit,
+        totalFundingTarget,
+        totalInADA: totalFundingTarget / 1000000
+      });
 
       // Create the datum data as CrowdfundDatumTS
       const datumData: CrowdfundDatumTS = {
-        completion_script: govContract
-          ? govContract.getCrowdfundStartCbor()
-          : "", // Will be set by the contract
+        completion_script: govContract.getCrowdfundStartCbor(),
         share_token: "", // Will be set by the contract
         crowdfund_address: "", // Will be set by the contract
         fundraise_target: totalFundingTarget,
@@ -283,12 +262,12 @@ export function Step3ReviewSubmit({
         deadline: Number(deadlineDate),
         expiry_buffer: parseInt(formData.expiryBuffer),
         fee_address: formData.feeAddress,
-        min_charge: parseFloat(formData.minCharge || "2") * 1000000, // Convert ADA to lovelace
+        min_charge: parseFloat(formData.minCharge || "0") * 1000000, // Convert ADA to lovelace
       };
 
       // Setup the crowdfund
       console.log("[handleSubmit] Calling setupCrowdfund", {
-        hasGovContract: !!govContract,
+        hasGovContract: true,
         datumData,
       });
       const {
@@ -325,23 +304,20 @@ export function Step3ReviewSubmit({
         min_charge: datumData.min_charge,
       };
 
-      // Prepare governance extension data if applicable
-      const govExtension =
-        formData.step2Type === "governance" && govContract
-          ? {
-              gov_action_period: formData.gov_action_period || 6,
-              delegate_pool_id: formData.delegate_pool_id,
-              gov_action: formData.gov_action, // Will be stored as JSON in the database
-              stake_register_deposit: formData.stake_register_deposit,
-              drep_register_deposit: formData.drep_register_deposit,
-              gov_deposit: formData.gov_deposit,
-              govActionMetadataUrl: formData.govActionMetadataUrl,
-              govActionMetadataHash: formData.govActionMetadataHash,
-              drepMetadataUrl: formData.drepMetadataUrl,
-              drepMetadataHash: formData.drepMetadataHash,
-              govAddress: govContract.crowdfundGovAddress,
-            }
-          : undefined;
+      // Always prepare governance extension data
+      const govExtension = {
+        gov_action_period: formData.gov_action_period || 6,
+        delegate_pool_id: formData.delegate_pool_id!,
+        gov_action: formData.gov_action, // Will be stored as JSON in the database
+        stake_register_deposit: formData.stake_register_deposit,
+        drep_register_deposit: formData.drep_register_deposit,
+        gov_deposit: formData.gov_deposit,
+        govActionMetadataUrl: formData.govActionMetadataUrl,
+        govActionMetadataHash: formData.govActionMetadataHash,
+        drepMetadataUrl: formData.drepMetadataUrl,
+        drepMetadataHash: formData.drepMetadataHash,
+        govAddress: govContract.crowdfundGovAddress,
+      };
 
       // Create the crowdfund in the database
       createCrowdfund.mutate({
@@ -435,49 +411,6 @@ export function Step3ReviewSubmit({
         </CardContent>
       </Card>
 
-      {/* Step 2 Configuration Review */}
-      {formData.step2Type === "funding" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-blue-500" />
-              Funding Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Funding Target
-                </label>
-                <p className="text-lg font-semibold">
-                  {formatADA(formData.fundraiseTarget)}
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Minimum Contribution
-                </label>
-                <p className="text-lg font-semibold">
-                  {formatADA(formData.minCharge)}
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Over-subscription
-                </label>
-                <Badge
-                  variant={
-                    formData.allowOverSubscription ? "default" : "secondary"
-                  }
-                >
-                  {formData.allowOverSubscription ? "Allowed" : "Not Allowed"}
-                </Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Timeline Review */}
       <Card>
@@ -510,100 +443,92 @@ export function Step3ReviewSubmit({
       </Card>
 
       {/* Governance Extension Review */}
-      {formData.step2Type === "governance" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5 text-orange-500" />
-              Governance Extension
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Badge variant="default" className="mb-4">
-                Enabled
-              </Badge>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5 text-orange-500" />
+            Governance Extension
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <Badge variant="default" className="mb-4">
+              Enabled
+            </Badge>
+            
+            {/* Deposit Settings */}
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+              <h4 className="mb-3 text-sm font-semibold text-orange-900">
+                Deposit Settings
+              </h4>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Stake Register Deposit (ADA)
+                  </label>
+                  <p className="text-lg font-semibold">
+                    {formatLovelaceToADA(formData.stake_register_deposit, 2000000)}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    DRep Register Deposit (ADA)
+                  </label>
+                  <p className="text-lg font-semibold">
+                    {formatLovelaceToADA(formData.drep_register_deposit, 500000000)}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Governance Deposit (ADA)
+                  </label>
+                  <p className="text-lg font-semibold">
+                    {formatLovelaceToADA(formData.gov_deposit, 100000000000)}
+                  </p>
+                </div>
+              </div>
+            </div>
 
-              {/* Deposit Settings */}
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-orange-900">
-                  Deposit Settings
-                </h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Metadata Display */}
+            {formData.govActionMetadataUrl &&
+            formData.govActionMetadataHash ? (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                <div className="mb-2 flex items-center gap-2 text-green-800">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-semibold">Metadata Uploaded</span>
+                </div>
+                <div className="space-y-1 text-sm">
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">
-                      Stake Register Deposit (ADA)
-                    </label>
-                    <p className="text-lg font-semibold">
-                      {formatLovelaceToADA(
-                        formData.stake_register_deposit,
-                        2000000,
-                      )}
-                    </p>
+                    <span className="font-medium">Metadata URL:</span>{" "}
+                    <a
+                      href={formData.govActionMetadataUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-blue-600 hover:underline"
+                    >
+                      {formData.govActionMetadataUrl}
+                    </a>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">
-                      DRep Register Deposit (ADA)
-                    </label>
-                    <p className="text-lg font-semibold">
-                      {formatLovelaceToADA(
-                        formData.drep_register_deposit,
-                        500000000,
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">
-                      Governance Deposit (ADA)
-                    </label>
-                    <p className="text-lg font-semibold">
-                      {formatLovelaceToADA(formData.gov_deposit, 100000000000)}
-                    </p>
+                    <span className="font-medium">Metadata Hash:</span>{" "}
+                    <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+                      {formData.govActionMetadataHash}
+                    </code>
                   </div>
                 </div>
               </div>
-
-              {/* Metadata Display */}
-              {formData.govActionMetadataUrl &&
-              formData.govActionMetadataHash ? (
-                <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
-                  <div className="mb-2 flex items-center gap-2 text-green-800">
-                    <CheckCircle className="h-5 w-5" />
-                    <span className="font-semibold">Metadata Uploaded</span>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    <div>
-                      <span className="font-medium">Metadata URL:</span>{" "}
-                      <a
-                        href={formData.govActionMetadataUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="break-all text-blue-600 hover:underline"
-                      >
-                        {formData.govActionMetadataUrl}
-                      </a>
-                    </div>
-                    <div>
-                      <span className="font-medium">Metadata Hash:</span>{" "}
-                      <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
-                        {formData.govActionMetadataHash}
-                      </code>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Warning:</strong> Governance action metadata has not
-                    been uploaded. Please go back to Step 2 and upload the
-                    metadata before submitting.
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            ) : (
+              <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Warning:</strong> Governance action metadata has not
+                  been uploaded. Please go back to Step 2 and upload the
+                  metadata before submitting.
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Submit Button */}
       <div className="flex justify-center">
@@ -613,10 +538,8 @@ export function Step3ReviewSubmit({
             isSubmitting ||
             !proposerKeyHashR0 ||
             !formData.deadline ||
-            (formData.step2Type === "funding" && !formData.fundraiseTarget) ||
-            (formData.step2Type === "governance" &&
-              (!formData.govActionMetadataUrl ||
-                !formData.govActionMetadataHash)) ||
+            (!formData.govActionMetadataUrl ||
+              !formData.govActionMetadataHash) ||
             !connected
           }
           size="lg"

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import SectionTitle from "@/components/ui/section-title";
 import CardUI from "@/components/ui/card-content";
 import Button from "@/components/common/button";
@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
 import { useSiteStore } from "@/lib/zustand/site";
+import { getProvider } from "@/utils/get-provider";
 
 export default function PageCrowdfund() {
   const { connected, wallet } = useWallet();
@@ -305,31 +306,206 @@ function CrowdfundCard({
   onEditDraft?: (crowdfund: any) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [contributions, setContributions] = useState<Array<{
+    address: string;
+    amount: number;
+    timestamp: Date;
+    txHash: string;
+  }>>([]);
   
   // Check if this is a draft (no authTokenId means it's a draft)
   const isDraft = !crowdfund.authTokenId;
   
+  // Parse datum if available (memoized to avoid re-parsing on every render)
+  const datum: CrowdfundDatumTS | null = useMemo(() => {
+    return (!isDraft && crowdfund.datum) 
+      ? JSON.parse(crowdfund.datum) 
+      : null;
+  }, [isDraft, crowdfund.datum]);
+  
   // For drafts, we don't have actual crowdfund datum data yet (only form data in govDatum)
-  let datum: CrowdfundDatumTS | null = null;
   let mockData: any = null;
   let progressPercentage = 0;
   
-  if (!isDraft && crowdfund.datum) {
-    datum = JSON.parse(crowdfund.datum);
-    const secondsLeft = datum!.deadline / 1000 - Math.floor(Date.now() / 1000);
+  if (!isDraft && datum) {
+    const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);
     const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
     
-    // Mock data for demonstration - in real implementation, this would come from the blockchain
+    // Count unique contributors from contributions list if available
+    const uniqueContributors = new Set(contributions.map(c => c.address)).size;
+    const contributorCount = contributions.length > 0 
+      ? uniqueContributors.toString() 
+      : (datum.current_fundraised_amount > 0 ? "N/A" : "0");
+    
     mockData = {
-      totalRaised: datum!.current_fundraised_amount / 1000000,
-      fundingGoal: datum!.fundraise_target / 1000000,
-      contributors: "TODO count",
+      totalRaised: datum.current_fundraised_amount / 1000000,
+      fundingGoal: datum.fundraise_target / 1000000,
+      contributors: contributorCount,
       daysLeft: daysLeft,
       status: daysLeft > 0 ? "active" : "expired" as const
     };
 
     progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;
   }
+  
+  // Fetch contributions from blockchain
+  useEffect(() => {
+    const fetchContributions = async () => {
+      if (!crowdfund.address || isDraft || !datum?.share_token) return;
+      
+      try {
+        const blockchainProvider = getProvider(networkId);
+        
+        // Get share token policy ID from datum.share_token (script hash = policy ID)
+        const shareTokenPolicyId = datum.share_token.toLowerCase();
+        
+        // Fetch transactions for the crowdfund address
+        const transactions: any[] = await blockchainProvider.get(
+          `/addresses/${crowdfund.address}/transactions?page=1&count=50&order=desc`
+        );
+
+        const contributionList: Array<{
+          address: string;
+          amount: number;
+          timestamp: Date;
+          txHash: string;
+        }> = [];
+
+        // Process each transaction to find contributions that minted share tokens
+        for (const tx of transactions.slice(0, 20)) { // Limit to 20 most recent
+          try {
+            // Get full transaction details including mint information
+            const txDetails = await blockchainProvider.get(`/txs/${tx.tx_hash}`);
+            const txUtxos = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
+            
+            // Check if this transaction minted share tokens
+            const mint = txDetails.mint || txDetails.mint_tx || txDetails.asset_mints || [];
+            
+            // Also check outputs for share tokens (they might be in outputs after minting)
+            const outputs = txUtxos.outputs || [];
+            const hasShareTokenInOutputs = outputs.some((output: any) => {
+              if (output.amount && Array.isArray(output.amount)) {
+                return output.amount.some((amt: any) => {
+                  const unit = (amt.unit || "").toLowerCase();
+                  if (unit.length >= 56) {
+                    const policyId = unit.substring(0, 56);
+                    return policyId === shareTokenPolicyId && Number(amt.quantity || 0) > 0;
+                  }
+                  return false;
+                });
+              }
+              return false;
+            });
+            
+            let hasShareTokenMint = false;
+            
+            if (mint && Array.isArray(mint) && mint.length > 0) {
+              hasShareTokenMint = mint.some((mintItem: any) => {
+                const unit = (mintItem.unit || mintItem.asset || "").toLowerCase();
+                if (unit.length >= 56) {
+                  const policyId = unit.substring(0, 56);
+                  const quantity = Number(mintItem.quantity || mintItem.amount || 0);
+                  return policyId === shareTokenPolicyId && quantity > 0;
+                }
+                return false;
+              });
+            } else if (mint && typeof mint === 'object' && !Array.isArray(mint)) {
+              const mintUnits = Object.keys(mint);
+              hasShareTokenMint = mintUnits.some((unit: string) => {
+                const unitLower = unit.toLowerCase();
+                if (unitLower.length >= 56) {
+                  const policyId = unitLower.substring(0, 56);
+                  const quantity = Number(mint[unit] || 0);
+                  return policyId === shareTokenPolicyId && quantity > 0;
+                }
+                return false;
+              });
+            }
+            
+            // If mint info is empty but we found share tokens in outputs, it's a contribution
+            if (!hasShareTokenMint && hasShareTokenInOutputs) {
+              hasShareTokenMint = true;
+            }
+            
+            // ONLY process transactions that minted share tokens
+            if (!hasShareTokenMint) {
+              continue;
+            }
+            
+            // Check if this is a withdrawal (burns share tokens with negative quantity)
+            const isWithdrawal = mint && Array.isArray(mint) && mint.some((mintItem: any) => {
+              const unit = (mintItem.unit || mintItem.asset || "").toLowerCase();
+              if (unit.length >= 56) {
+                const policyId = unit.substring(0, 56);
+                const quantity = Number(mintItem.quantity || mintItem.amount || 0);
+                return policyId === shareTokenPolicyId && quantity < 0;
+              }
+              return false;
+            });
+            
+            // Skip withdrawals - we only want contributions
+            if (isWithdrawal) {
+              continue;
+            }
+            
+            // Find the crowdfund input (the UTxO being spent from the crowdfund)
+            const crowdfundInput = txUtxos.inputs?.find((input: any) => 
+              input.address === crowdfund.address
+            );
+            
+            // Find outputs that went to the crowdfund address (the new UTxO)
+            const crowdfundOutputs = outputs.filter((output: any) => 
+              output.address === crowdfund.address
+            );
+
+            // Calculate the contribution amount as the difference between output and input
+            let contributionAmount = 0;
+            
+            if (crowdfundOutputs.length > 0 && crowdfundInput) {
+              const outputLovelace = crowdfundOutputs.reduce((sum: number, output: any) => {
+                const lovelace = output.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity || 0;
+                return sum + Number(lovelace);
+              }, 0);
+              
+              const inputLovelace = crowdfundInput.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity || 0;
+              
+              contributionAmount = outputLovelace - Number(inputLovelace);
+            } else if (crowdfundOutputs.length > 0) {
+              const lovelaceAmount = crowdfundOutputs[0]?.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity;
+              contributionAmount = Number(lovelaceAmount || 0);
+            }
+            
+            // Only process if there's a positive contribution amount
+            if (contributionAmount > 0) {
+              const inputs = txUtxos.inputs || [];
+              const contributorInput = inputs.find((input: any) => 
+                input.address && input.address !== crowdfund.address
+              );
+              
+              if (contributorInput) {
+                contributionList.push({
+                  address: contributorInput.address || "Unknown",
+                  amount: contributionAmount / 1000000,
+                  timestamp: new Date(tx.block_time * 1000),
+                  txHash: tx.tx_hash,
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`Error processing transaction ${tx.tx_hash}:`, err);
+          }
+        }
+
+        // Sort by timestamp (most recent first) and limit to 10
+        contributionList.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        setContributions(contributionList.slice(0, 10));
+      } catch (error) {
+        console.error("Error fetching contributions:", error);
+      }
+    };
+
+    fetchContributions();
+  }, [crowdfund.address, networkId, isDraft, datum?.share_token]);
   
   return (
     <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={(e) => {

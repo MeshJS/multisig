@@ -118,10 +118,10 @@ export function CrowdfundInfo({
     // Only use actual values, don't use defaults
     // Note: gov_deposit is the same as base funding, not an additional deposit
     const stakeDeposit = govExtension.stake_register_deposit 
-      ? govExtension.stake_register_deposit / 1000000 
+      ? Number(govExtension.stake_register_deposit) / 1000000 
       : 0;
     const drepDeposit = govExtension.drep_register_deposit 
-      ? govExtension.drep_register_deposit / 1000000 
+      ? Number(govExtension.drep_register_deposit) / 1000000 
       : 0;
     // gov_deposit is not counted as a separate deposit - it's the same as base funding
     // Only stake and drep deposits are protocol deposits
@@ -530,9 +530,9 @@ export function CrowdfundInfo({
           gov_action: typeof govExtension.gov_action === 'string' 
             ? govExtension.gov_action 
             : JSON.stringify(govExtension.gov_action),
-          stake_register_deposit: govExtension.stake_register_deposit || 2000000,
-          drep_register_deposit: govExtension.drep_register_deposit || 500000000,
-          gov_deposit: govExtension.gov_deposit || 100000000000,
+          stake_register_deposit: govExtension.stake_register_deposit ? Number(govExtension.stake_register_deposit) : 2000000,
+          drep_register_deposit: govExtension.drep_register_deposit ? Number(govExtension.drep_register_deposit) : 500000000,
+          gov_deposit: govExtension.gov_deposit ? Number(govExtension.gov_deposit) : 100000000000,
         },
       );
 
@@ -948,19 +948,19 @@ export function CrowdfundInfo({
                       {govExt.stake_register_deposit !== undefined && govExt.stake_register_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Stake Register Deposit</span>
-                          <p className="text-sm font-semibold">{(govExt.stake_register_deposit / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExt.stake_register_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
                       {govExt.drep_register_deposit !== undefined && govExt.drep_register_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">DRep Register Deposit</span>
-                          <p className="text-sm font-semibold">{(govExt.drep_register_deposit / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExt.drep_register_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
                       {govExt.gov_deposit !== undefined && govExt.gov_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Governance Deposit</span>
-                          <p className="text-sm font-semibold">{(govExt.gov_deposit / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExt.gov_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
                     </div>
