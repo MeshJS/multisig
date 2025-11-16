@@ -4,7 +4,6 @@ import {
   mPubKeyAddress,
   stringToHex,
   mBool,
-  mConStr,
   resolveSlotNo,
   keepRelevant,
   RewardAddress,
