@@ -266,7 +266,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       paramUtxoInput: paramUtxoFull.input,
       collateralInput: collateral?.input,
     });
-
+    this.mesh.reset(); // Reset Mesh instance to clear any previous state
     const tx = this.mesh
       .txIn(
         paramUtxoFull.input.txHash,
@@ -281,10 +281,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txOut(crowdfundAddress, [{ unit: policyId, quantity: "1" }])
       .txOutInlineDatumValue(mDatum, "Mesh")
       .txInCollateral(
-        collateral.input.txHash,
-        collateral.input.outputIndex,
-        collateral.output.amount,
-        collateral.output.address,
+        "0cc83336343f873e04467849ae747bb4b12d5ece72d0f348bbd55ddaa001f946",
+        0,
+        [{ unit: "lovelace", quantity: "5000000" }],
+        "addr_test1qp29f5n5m63f7999w3vwxe9gxfxljc7qzgfzc5f7lff5c4xeax8zlcrh4xn2z797m6z4zet2wd884799d97ge4g2mptsclvkey",
       )
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos);
@@ -292,7 +292,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     console.log("[setupCrowdfund] Completing transaction...");
     const txHex = await tx.complete();
     console.log("[setupCrowdfund] Transaction completed", {
-      txHexLength: txHex.length,
+      tx: txHex,
     });
 
     // Extract paramUtxo input for return - should always be a full UTxO at this point
@@ -461,6 +461,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     // mint ShareToken and send to walletAddress
 
     console.log("[contributeCrowdfund] Building transaction...");
+    this.mesh.reset();
     const txHex = await this.mesh
       .spendingPlutusScriptV3()
       .txIn(
@@ -623,7 +624,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     );
 
     // Build transaction: spend crowdfund UTxO, burn share tokens, update datum, return funds to user
-
+    this.mesh.reset();
     const txHex = await this.mesh
       .spendingPlutusScriptV3()
       .txIn(
@@ -716,6 +717,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       initDatum,
     });
 
+    this.mesh.reset();
     const txHex = this.mesh
       .txInCollateral(
         collateral.input.txHash,
