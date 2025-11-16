@@ -5,9 +5,16 @@ import { useEffect, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
-import { OnChainTransaction, TxInfo } from "@/types/transaction";
+import type { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useProxyActions } from "@/lib/zustand/proxy";
+import type { ProxyData } from "@/lib/zustand/proxy";
+import type { UTXO } from "@/types/transaction";
+
+interface TxUtxosResponse {
+  inputs: UTXO[];
+  outputs: UTXO[];
+}
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -37,12 +44,13 @@ export default function WalletDataLoader() {
     if (appWallet) {
       const _transactions: OnChainTransaction[] = [];
       const blockchainProvider = getProvider(network);
-      let transactions: TxInfo[] = await blockchainProvider.get(
+      const transactionsResponse = await blockchainProvider.get(
         `/addresses/${appWallet.address}/transactions`,
-      );
+      ) as TxInfo[];
+      let transactions = transactionsResponse;
       transactions = transactions.reverse().splice(0, 10);
       for (const tx of transactions) {
-        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
+        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`) as TxUtxosResponse;
         _transactions.push({
           hash: tx.tx_hash,
           tx: tx,
@@ -63,7 +71,7 @@ export default function WalletDataLoader() {
         // Get proxies from API
         const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
           walletId: appWallet.id,
-        });
+        }) as ProxyData[];
 
         console.log("WalletDataLoader: Found proxies", proxies);
 
@@ -113,16 +121,22 @@ export default function WalletDataLoader() {
     
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
       console.log("WalletDataLoader: Calling refreshWallet");
-      refreshWallet();
+      void refreshWallet().catch((error) => {
+        console.error("WalletDataLoader: Error in refreshWallet:", error);
+      });
     }
-  }, [appWallet]);
+  }, [appWallet, walletsUtxos]);
 
   return (
     <Button
       variant="secondary"
       size="icon"
       className="rounded-full"
-      onClick={() => refreshWallet()}
+      onClick={() => {
+        void refreshWallet().catch((error) => {
+          console.error("WalletDataLoader: Error in refreshWallet:", error);
+        });
+      }}
       disabled={loading}
     >
       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

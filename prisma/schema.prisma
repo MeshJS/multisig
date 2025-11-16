@@ -101,6 +101,40 @@ model Ballot {
   createdAt        DateTime @default(now())
 }
 
+model Crowdfund {
+  id                String                 @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+  paramUtxo         String? // JSON string containing { txHash: string, outputIndex: number }
+  govDatum          String? // Deprecated: kept for backward compatibility during migration
+  govAddress        String? // Deprecated: kept for backward compatibility during migration
+  createdAt         DateTime               @default(now())
+  govExtension      CrowdfundGovExtension?
+}
+
+model CrowdfundGovExtension {
+  id                     String    @id @default(cuid())
+  crowdfundId            String    @unique
+  crowdfund              Crowdfund @relation(fields: [crowdfundId], references: [id], onDelete: Cascade)
+  gov_action_period      Int?
+  delegate_pool_id       String?
+  gov_action             Json? // Stores the full gov_action object with type, title, abstract, motivation, rationale, etc.
+  stake_register_deposit BigInt?
+  drep_register_deposit  BigInt?
+  gov_deposit            BigInt?
+  govActionMetadataUrl   String?
+  govActionMetadataHash  String?
+  drepMetadataUrl        String?
+  drepMetadataHash       String?
+  govAddress             String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+}
+
 model Proxy {
   id           String   @id @default(cuid())
   walletId     String?
