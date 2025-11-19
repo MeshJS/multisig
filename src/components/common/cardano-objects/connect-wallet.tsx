@@ -102,9 +102,42 @@ function ConnectWalletContent({
   
   // Track wallet detection state
   const [detectingWallets, setDetectingWallets] = useState(true);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const walletsRef = useRef(wallets);
   const hasInitializedPersist = useRef(false);
   const hasAttemptedAutoConnect = useRef(false);
+
+  // Check if any Sheet/Dialog is open to prevent dropdown from opening
+  const checkIfSheetOpen = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const sheets = document.querySelectorAll('[data-radix-dialog-content], [data-radix-sheet-content]');
+    return Array.from(sheets).some(
+      (sheet) => sheet.getAttribute('data-state') === 'open'
+    );
+  }, []);
+
+  // Close dropdown when a Sheet/Dialog opens to prevent aria-hidden conflicts
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const checkForOpenSheets = () => {
+      if (checkIfSheetOpen()) {
+        setDropdownOpen(false);
+      }
+    };
+
+    // Check periodically when dropdown is open
+    const interval = setInterval(checkForOpenSheets, 100);
+    return () => clearInterval(interval);
+  }, [dropdownOpen, checkIfSheetOpen]);
+
+  // Prevent dropdown from opening if Sheet is already open
+  const handleDropdownOpenChange = useCallback((open: boolean) => {
+    if (open && checkIfSheetOpen()) {
+      return; // Don't open if Sheet is open
+    }
+    setDropdownOpen(open);
+  }, [checkIfSheetOpen]);
 
 
 
@@ -317,7 +350,7 @@ function ConnectWalletContent({
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={dropdownOpen} onOpenChange={handleDropdownOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="secondary"
