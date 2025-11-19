@@ -1,4 +1,4 @@
-import React, { useEffect, Component, ReactNode } from "react";
+import React, { useEffect, useRef, Component, ReactNode } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
@@ -76,6 +76,9 @@ export default function RootLayout({
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
+  const ctx = api.useUtils();
+  const initializingWalletRef = useRef(false);
+  const lastInitializedWalletRef = useRef<string | null>(null);
 
   // Global error handler for unhandled promise rejections
   useEffect(() => {
@@ -102,10 +105,23 @@ export default function RootLayout({
   }, []);
 
   const { mutate: createUser } = api.user.createUser.useMutation({
-    onError: (e) => console.error(e),
+    onSuccess: (_, variables) => {
+      console.log("User created/updated successfully, invalidating user query");
+      // Invalidate the user query so it refetches the newly created user
+      void ctx.user.getUserByAddress.invalidate({ address: variables.address });
+    },
+    onError: (e) => {
+      console.error("Error creating user:", e);
+    },
   });
   const { mutate: updateUser } = api.user.updateUser.useMutation({
-    onError: (e) => console.error(e),
+    onSuccess: (_, variables) => {
+      console.log("User updated successfully, invalidating user query");
+      void ctx.user.getUserByAddress.invalidate({ address: variables.address });
+    },
+    onError: (e) => {
+      console.error("Error updating user:", e);
+    },
   });
 
   // Single effect for address + user creation
@@ -113,16 +129,57 @@ export default function RootLayout({
     (async () => {
       if (!connected || !wallet) return;
 
+      // Don't run if user is already loaded (to avoid unnecessary re-runs)
+      if (user) return;
+
+      // Prevent multiple simultaneous initializations
+      if (initializingWalletRef.current) {
+        console.log("Layout: Wallet initialization already in progress, skipping...");
+        return;
+      }
+
+      // Skip if we've already initialized this wallet and have userAddress
+      if (userAddress && lastInitializedWalletRef.current === userAddress) {
+        console.log("Layout: Wallet already initialized, skipping");
+        return;
+      }
+
+      initializingWalletRef.current = true;
+
       try {
+        console.log("Layout: Starting wallet initialization");
+        
         // 1) Set user address in store
-        let address = (await wallet.getUsedAddresses())[0];
-        if (!address) address = (await wallet.getUnusedAddresses())[0];
-        if (address) setUserAddress(address);
+        let address: string | undefined;
+        try {
+          const usedAddresses = await wallet.getUsedAddresses();
+          address = usedAddresses[0];
+        } catch (e) {
+          // If used addresses fail, try unused addresses
+          try {
+            const unusedAddresses = await wallet.getUnusedAddresses();
+            address = unusedAddresses[0];
+          } catch (e2) {
+            console.error("Layout: Could not get addresses:", e2);
+            initializingWalletRef.current = false;
+            return;
+          }
+        }
+
+        if (address) {
+          console.log("Layout: Setting user address:", address);
+          setUserAddress(address);
+          lastInitializedWalletRef.current = address;
+        } else {
+          console.error("Layout: No address found from wallet");
+          initializingWalletRef.current = false;
+          return;
+        }
 
         // 2) Get stake address
         const stakeAddress = (await wallet.getRewardAddresses())[0];
         if (!stakeAddress || !address) {
-          console.error("No stake address or payment address found");
+          console.error("Layout: No stake address or payment address found");
           return;
         }
 
@@ -134,33 +191,49 @@ export default function RootLayout({
             drepKeyHash = dRepKey.publicKeyHash;
           }
         } catch (error) {
+          // DRep key is optional, so we can ignore errors
         }
 
         // 4) Create or update user (upsert pattern handles both cases)
-        if (!isLoading) {
-          const nostrKey = generateNsec();
-          createUser({
-            address,
-            stakeAddress,
-            drepKeyHash,
-            nostrKey: JSON.stringify(nostrKey),
-          });
-        }
+        // Remove the isLoading check - we should create user regardless
+        console.log("Layout: Creating/updating user");
+        const nostrKey = generateNsec();
+        createUser({
+          address,
+          stakeAddress,
+          drepKeyHash,
+          nostrKey: JSON.stringify(nostrKey),
+        });
+        console.log("Layout: Wallet initialization completed successfully");
       } catch (error) {
-        console.error("Error in wallet initialization effect:", error);
+        console.error("Layout: Error in wallet initialization effect:", error);
         
         // If we get an "account changed" error, reload the page
         if (error instanceof Error && error.message.includes("account changed")) {
-          console.log("Account changed detected, reloading page...");
+          console.log("Layout: Account changed detected, reloading page...");
           window.location.reload();
           return;
         }
+
+        // If rate limited, wait before allowing retry
+        if (error instanceof Error && error.message.includes("too many requests")) {
+          console.warn("Layout: Rate limit hit, will retry after delay");
+          setTimeout(() => {
+            initializingWalletRef.current = false;
+          }, 5000);
+          return;
+        }
         
-        // For other errors, don't throw to prevent app crash
-        // The user can retry by reconnecting their wallet
+        // For other errors, reset so we can retry
+        initializingWalletRef.current = false;
+      } finally {
+        // Reset if not rate limited (rate limit errors return early)
+        if (initializingWalletRef.current) {
+          initializingWalletRef.current = false;
+        }
       }
     })();
-  }, [connected, wallet, user, isLoading, createUser, generateNsec, setUserAddress]);
+  }, [connected, wallet, user, userAddress, createUser, generateNsec, setUserAddress]);
 
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
