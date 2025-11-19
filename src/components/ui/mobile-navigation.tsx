@@ -133,9 +133,11 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
             }
             // Focus the first focusable element in the sheet content
             e.preventDefault();
-            const firstFocusable = e.currentTarget.querySelector('a, button, [tabindex]:not([tabindex="-1"])');
-            if (firstFocusable && firstFocusable instanceof HTMLElement) {
-              firstFocusable.focus();
+            if (e.currentTarget && e.currentTarget instanceof Element) {
+              const firstFocusable = e.currentTarget.querySelector('a, button, [tabindex]:not([tabindex="-1"])');
+              if (firstFocusable && firstFocusable instanceof HTMLElement) {
+                firstFocusable.focus();
+              }
             }
           }}
           onInteractOutside={(e) => {
