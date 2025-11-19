@@ -24,10 +24,16 @@ import {
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
-import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
+import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
+
+// Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
+const ConnectWallet = dynamic(
+  () => import("@/components/common/cardano-objects/connect-wallet"),
+  { ssr: false }
+);
 
 // Enhanced error boundary component for wallet errors
 class WalletErrorBoundary extends Component<
