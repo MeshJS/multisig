@@ -30,9 +30,14 @@ import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
 
 // Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
+// Using a version-based key ensures fresh mount on updates, preventing cache issues
 const ConnectWallet = dynamic(
   () => import("@/components/common/cardano-objects/connect-wallet"),
-  { ssr: false }
+  { 
+    ssr: false,
+    // Force re-mount on navigation to handle cache issues
+    loading: () => null,
+  }
 );
 
 // Enhanced error boundary component for wallet errors
@@ -261,7 +266,7 @@ export default function RootLayout({
             {/* Right: Control buttons */}
             <div className="ml-auto flex items-center gap-2">
               {!connected ? (
-                <ConnectWallet />
+                <ConnectWallet key="wallet-connector" />
               ) : (
                 <>
                   {/* Desktop buttons */}

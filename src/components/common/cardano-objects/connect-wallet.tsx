@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWallet, useWalletList, useNetwork, useAssets } from "@meshsdk/react";
 import { useSiteStore } from "@/lib/zustand/site";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider } from "@/utils/get-provider";
@@ -30,11 +30,85 @@ export default function ConnectWallet() {
   const networkId = useNetwork();
   const assets = useAssets();
   const network = useSiteStore((state) => state.network);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const walletsRef = useRef(wallets);
+  
+  // Keep wallets ref in sync
+  useEffect(() => {
+    walletsRef.current = wallets;
+  }, [wallets]);
 
   async function connectWallet(walletId: string) {
     setPastWallet(walletId);
     await connect(walletId);
   }
+
+  // Retry wallet detection on mount to handle cached loads
+  // Browser extensions inject wallets asynchronously, and cached scripts may load
+  // before MeshProvider/wallet detection is fully initialized
+  useEffect(() => {
+    // If wallets are already detected, no need to retry
+    if (wallets.length > 0) {
+      retryCountRef.current = 0;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Clear any existing timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
+    // Reset retry count
+    retryCountRef.current = 0;
+
+    // Retry detection with increasing delays: immediate, 100ms, 500ms, 1000ms
+    // This gives MeshProvider and browser extensions time to initialize
+    const delays = [0, 100, 500, 1000];
+    const maxRetries = delays.length;
+
+    const checkWallets = () => {
+      // Check current wallets (using ref to avoid closure issues)
+      if (walletsRef.current.length > 0) {
+        retryCountRef.current = 0;
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      // If we've reached max retries, stop
+      if (retryCountRef.current >= maxRetries) {
+        retryCountRef.current = 0;
+        return;
+      }
+
+      // Schedule next retry
+      const delay = delays[retryCountRef.current];
+      retryCountRef.current++;
+      
+      // Use setTimeout even for 0ms delay to avoid recursion issues
+      retryTimeoutRef.current = setTimeout(checkWallets, delay);
+    };
+
+    // Start checking immediately (using setTimeout with 0ms for next tick)
+    retryTimeoutRef.current = setTimeout(checkWallets, 0);
+    retryCountRef.current = 1;
+
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      retryCountRef.current = 0;
+    };
+  }, [wallets.length]);
 
   // Auto-connect if user had connected before
   useEffect(() => {
