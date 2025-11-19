@@ -8,6 +8,7 @@ import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
+import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 
 import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
@@ -76,7 +77,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { connected, wallet } = useWallet();
+  const { wallet } = useWallet();
+  const { state: walletState, connectedWalletInstance } = useWalletContext();
   const address = useAddress();
   const { user, isLoading } = useUser();
   const router = useRouter();
@@ -86,6 +88,13 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const ctx = api.useUtils();
+  
+  // Use WalletState for connection check
+  const connected = String(walletState) === String(WalletState.CONNECTED);
+  // Use connectedWalletInstance if available, otherwise fall back to wallet
+  const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0 
+    ? connectedWalletInstance 
+    : wallet;
 
   // Global error handler for unhandled promise rejections
   useEffect(() => {
@@ -140,21 +149,21 @@ export default function RootLayout({
 
   // Initialize wallet and create user when connected
   useEffect(() => {
-    if (!connected || !wallet || user || !address) return;
+    if (!connected || !activeWallet || user || !address) return;
 
     async function initializeWallet() {
       if (!address) return;
       
       try {
         // Get stake address
-        const stakeAddresses = await wallet.getRewardAddresses();
+        const stakeAddresses = await activeWallet.getRewardAddresses();
         const stakeAddress = stakeAddresses[0];
         if (!stakeAddress) return;
 
         // Get DRep key hash (optional)
         let drepKeyHash = "";
         try {
-          const dRepKey = await wallet.getDRep();
+          const dRepKey = await activeWallet.getDRep();
           if (dRepKey?.publicKeyHash) {
             drepKeyHash = dRepKey.publicKeyHash;
           }
@@ -179,7 +188,7 @@ export default function RootLayout({
     }
 
     initializeWallet();
-  }, [connected, wallet, user, address, createUser, generateNsec]);
+  }, [connected, activeWallet, user, address, createUser, generateNsec]);
 
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
