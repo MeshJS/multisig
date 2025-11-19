@@ -32,6 +32,20 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
+  // Close any open dropdowns when sheet opens to prevent aria-hidden conflicts
+  React.useEffect(() => {
+    if (open) {
+      // Close any open Radix dropdown menus
+      const dropdownTriggers = document.querySelectorAll('[data-radix-dropdown-menu-trigger]');
+      dropdownTriggers.forEach((trigger) => {
+        const button = trigger as HTMLElement;
+        if (button.getAttribute('data-state') === 'open') {
+          button.click();
+        }
+      });
+    }
+  }, [open]);
+
   return (
     <>
       {/* Custom overlay - rendered outside of Sheet via Portal */}
@@ -108,6 +122,24 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
             "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
           )}
           style={{ top: '56px', height: 'calc(100vh - 56px)' }}
+          onOpenAutoFocus={(e) => {
+            // Blur any focused elements in the header to prevent aria-hidden conflicts
+            const header = document.querySelector('[data-header="main"]');
+            if (header) {
+              const focusedElement = header.querySelector(':focus');
+              if (focusedElement && focusedElement instanceof HTMLElement) {
+                focusedElement.blur();
+              }
+            }
+            // Focus the first focusable element in the sheet content
+            e.preventDefault();
+            if (e.currentTarget && e.currentTarget instanceof Element) {
+              const firstFocusable = e.currentTarget.querySelector('a, button, [tabindex]:not([tabindex="-1"])');
+              if (firstFocusable && firstFocusable instanceof HTMLElement) {
+                firstFocusable.focus();
+              }
+            }
+          }}
           onInteractOutside={(e) => {
             // Check if click was in header
             const header = document.querySelector('[data-header="main"]');
