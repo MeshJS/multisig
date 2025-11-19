@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, Component, ReactNode } from "react";
+import React, { useEffect, Component, ReactNode } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
-import { useWallet } from "@meshsdk/react";
+import { useWallet, useAddress } from "@meshsdk/react";
 import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
@@ -72,6 +72,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const { connected, wallet } = useWallet();
+  const address = useAddress();
   const { user, isLoading } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
@@ -80,8 +81,6 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const ctx = api.useUtils();
-  const initializingWalletRef = useRef(false);
-  const lastInitializedWalletRef = useRef<string | null>(null);
 
   // Global error handler for unhandled promise rejections
   useEffect(() => {
@@ -127,79 +126,38 @@ export default function RootLayout({
     },
   });
 
-  // Single effect for address + user creation
+  // Sync address from hook to store
   useEffect(() => {
-    (async () => {
-      if (!connected || !wallet) return;
+    if (address) {
+      setUserAddress(address);
+    }
+  }, [address, setUserAddress]);
 
-      // Don't run if user is already loaded (to avoid unnecessary re-runs)
-      if (user) return;
+  // Initialize wallet and create user when connected
+  useEffect(() => {
+    if (!connected || !wallet || user || !address) return;
 
-      // Prevent multiple simultaneous initializations
-      if (initializingWalletRef.current) {
-        console.log("Layout: Wallet initialization already in progress, skipping...");
-        return;
-      }
-
-      // Skip if we've already initialized this wallet and have userAddress
-      if (userAddress && lastInitializedWalletRef.current === userAddress) {
-        console.log("Layout: Wallet already initialized, skipping");
-        return;
-      }
-
-      initializingWalletRef.current = true;
-
+    async function initializeWallet() {
+      if (!address) return;
+      
       try {
-        console.log("Layout: Starting wallet initialization");
-        
-        // 1) Set user address in store
-        let address: string | undefined;
-        try {
-          const usedAddresses = await wallet.getUsedAddresses();
-          address = usedAddresses[0];
-        } catch (e) {
-          // If used addresses fail, try unused addresses
-          try {
-            const unusedAddresses = await wallet.getUnusedAddresses();
-            address = unusedAddresses[0];
-          } catch (e2) {
-            console.error("Layout: Could not get addresses:", e2);
-            initializingWalletRef.current = false;
-            return;
-          }
-        }
+        // Get stake address
+        const stakeAddresses = await wallet.getRewardAddresses();
+        const stakeAddress = stakeAddresses[0];
+        if (!stakeAddress) return;
 
-        if (address) {
-          console.log("Layout: Setting user address:", address);
-          setUserAddress(address);
-          lastInitializedWalletRef.current = address;
-        } else {
-          console.error("Layout: No address found from wallet");
-          initializingWalletRef.current = false;
-          return;
-        }
-
-        // 2) Get stake address
-        const stakeAddress = (await wallet.getRewardAddresses())[0];
-        if (!stakeAddress || !address) {
-          console.error("Layout: No stake address or payment address found");
-          return;
-        }
-
-        // 3) Get DRep key hash (optional)
+        // Get DRep key hash (optional)
         let drepKeyHash = "";
         try {
           const dRepKey = await wallet.getDRep();
-          if (dRepKey && dRepKey.publicKeyHash) {
+          if (dRepKey?.publicKeyHash) {
             drepKeyHash = dRepKey.publicKeyHash;
           }
-        } catch (error) {
-          // DRep key is optional, so we can ignore errors
+        } catch {
+          // DRep key is optional
         }
 
-        // 4) Create or update user (upsert pattern handles both cases)
-        // Remove the isLoading check - we should create user regardless
-        console.log("Layout: Creating/updating user");
+        // Create or update user
         const nostrKey = generateNsec();
         createUser({
           address,
@@ -207,36 +165,16 @@ export default function RootLayout({
           drepKeyHash,
           nostrKey: JSON.stringify(nostrKey),
         });
-        console.log("Layout: Wallet initialization completed successfully");
       } catch (error) {
-        console.error("Layout: Error in wallet initialization effect:", error);
-        
-        // If we get an "account changed" error, reload the page
+        console.error("Error initializing wallet:", error);
         if (error instanceof Error && error.message.includes("account changed")) {
-          console.log("Layout: Account changed detected, reloading page...");
           window.location.reload();
-          return;
-        }
-
-        // If rate limited, wait before allowing retry
-        if (error instanceof Error && error.message.includes("too many requests")) {
-          console.warn("Layout: Rate limit hit, will retry after delay");
-          setTimeout(() => {
-            initializingWalletRef.current = false;
-          }, 5000);
-          return;
-        }
-        
-        // For other errors, reset so we can retry
-        initializingWalletRef.current = false;
-      } finally {
-        // Reset if not rate limited (rate limit errors return early)
-        if (initializingWalletRef.current) {
-          initializingWalletRef.current = false;
         }
       }
-    })();
-  }, [connected, wallet, user, userAddress, createUser, generateNsec, setUserAddress]);
+    }
+
+    initializeWallet();
+  }, [connected, wallet, user, address, createUser, generateNsec]);
 
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");
   const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
