@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWallet, useWalletList } from "@meshsdk/react";
 import { useSiteStore } from "@/lib/zustand/site";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider } from "@/utils/get-provider";
@@ -35,21 +35,87 @@ export default function ConnectWallet() {
   const fetchingNetworkRef = useRef(false);
   const lastNetworkWalletRef = useRef<string | null>(null);
   const userAssets = useUserStore((state) => state.userAssets);
+  const [walletsLoading, setWalletsLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+  const walletsRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Ensure component only runs on client side (important for SSR/production)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   async function connectWallet(walletId: string) {
     setPastWallet(walletId);
     await connect(walletId);
   }
 
+  // Monitor wallet list loading state and retry if empty
+  useEffect(() => {
+    // Only run on client side
+    if (!isMounted) return;
+
+    if (wallets.length > 0) {
+      setWalletsLoading(false);
+      // Clear any pending retry timeout
+      if (walletsRetryTimeoutRef.current) {
+        clearTimeout(walletsRetryTimeoutRef.current);
+        walletsRetryTimeoutRef.current = null;
+      }
+    } else if (!connected) {
+      // Only show loading state if not connected (wallets might load after connection)
+      // If wallets are empty, wait a bit and check again
+      // This handles cases where wallet extensions load asynchronously
+      if (walletsRetryTimeoutRef.current === null) {
+        setWalletsLoading(true);
+        let retryCount = 0;
+        const maxRetries = 10; // Try for up to 10 seconds in production (longer timeout)
+        
+        const checkWallets = () => {
+          retryCount++;
+          // Re-check wallets array length (it might have updated)
+          if (wallets.length > 0) {
+            setWalletsLoading(false);
+            walletsRetryTimeoutRef.current = null;
+            return;
+          }
+          
+          if (retryCount < maxRetries) {
+            walletsRetryTimeoutRef.current = setTimeout(checkWallets, 1000); // Check every second
+          } else {
+            console.warn("Wallet list still empty after retries, wallets may not be available");
+            setWalletsLoading(false); // Stop showing loading state
+            walletsRetryTimeoutRef.current = null;
+          }
+        };
+        
+        walletsRetryTimeoutRef.current = setTimeout(checkWallets, 1000);
+      }
+    } else {
+      // If connected but no wallets, they're probably not needed
+      setWalletsLoading(false);
+    }
+
+    return () => {
+      if (walletsRetryTimeoutRef.current) {
+        clearTimeout(walletsRetryTimeoutRef.current);
+        walletsRetryTimeoutRef.current = null;
+      }
+    };
+  }, [wallets, connected, isMounted]);
+
   /**
    * Try to connect the wallet when the user loads the application, if user had connected before,
    * but only if:
-   * 1. The wallet list has been loaded (wallets.length > 0)
-   * 2. The pastWallet exists in the available wallets
-   * 3. We're not already connected
-   * 4. We're not already attempting to connect
+   * 1. Component is mounted (client-side only)
+   * 2. The wallet list has been loaded (wallets.length > 0)
+   * 3. The pastWallet exists in the available wallets
+   * 4. We're not already connected
+   * 5. We're not already attempting to connect
    */
   useEffect(() => {
+    // Only run on client side
+    if (!isMounted) return;
+
     async function handleAutoWalletConnect() {
       // Don't attempt if already connected or already connecting
       if (connected || connectingRef.current) {
@@ -65,6 +131,7 @@ export default function ConnectWallet() {
       // If wallets array is empty, wallets might still be loading
       // The effect will re-run when wallets become available
       if (wallets.length === 0) {
+        console.log("Waiting for wallets to load...");
         return;
       }
 
@@ -96,7 +163,7 @@ export default function ConnectWallet() {
     }
 
     handleAutoWalletConnect();
-  }, [pastWallet, connected, wallets, connect, setPastWallet]);
+  }, [pastWallet, connected, wallets, connect, setPastWallet, isMounted]);
 
   useEffect(() => {
     async function lookupWalletAssets() {
@@ -226,12 +293,12 @@ export default function ConnectWallet() {
       }
     }
 
-    // Only run if wallet and connected state are available
-    if (wallet && connected) {
+    // Only run if wallet and connected state are available, and component is mounted
+    if (isMounted && wallet && connected) {
       handleNetworkChange();
       getWalletAssets();
     }
-  }, [connected, wallet, name, setNetwork, setUserAssets, setUserAssetMetadata]);
+  }, [connected, wallet, name, setNetwork, setUserAssets, setUserAssetMetadata, isMounted]);
 
   return (
     <DropdownMenu>
@@ -246,13 +313,25 @@ export default function ConnectWallet() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>Select Wallet</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {wallets.map((wallet, i) => {
-          return (
-            <DropdownMenuItem key={i} onClick={() => connectWallet(wallet.id)}>
-              {wallet.name}
-            </DropdownMenuItem>
-          );
-        })}
+        {walletsLoading && wallets.length === 0 ? (
+          <DropdownMenuItem disabled>
+            <span className="text-muted-foreground">Loading wallets...</span>
+          </DropdownMenuItem>
+        ) : wallets.length === 0 ? (
+          <DropdownMenuItem disabled>
+            <span className="text-muted-foreground">
+              No wallets available. Please install a Cardano wallet extension.
+            </span>
+          </DropdownMenuItem>
+        ) : (
+          wallets.map((wallet, i) => {
+            return (
+              <DropdownMenuItem key={i} onClick={() => connectWallet(wallet.id)}>
+                {wallet.name}
+              </DropdownMenuItem>
+            );
+          })
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
