@@ -5,10 +5,10 @@ import Button from "@/components/common/button";
 import Link from "next/link";
 import { useWallet } from "@meshsdk/react";
 import ConnectWallet from "../common/cardano-objects/connect-wallet";
-import { LaunchCrowdfund } from "./base-crowdfund/control/launch";
-import { ContributeToCrowdfund } from "./base-crowdfund/control/contribute";
-import { WithdrawFromCrowdfund } from "./base-crowdfund/control/withdraw";
-import { CrowdfundInfo } from "./base-crowdfund/control/crowdfundInfo";
+import { LaunchCrowdfund } from "./UI/launch";
+import { ContributeToCrowdfund } from "./UI/contribute";
+import { WithdrawFromCrowdfund } from "./UI/withdraw";
+import { CrowdfundInfo } from "./UI/crowdfundInfo";
 import useUser from "@/hooks/useUser";
 import { deserializeAddress, SLOT_CONFIG_NETWORK, slotToBeginUnixTime } from "@meshsdk/core";
 import { api } from "@/utils/api";
@@ -20,6 +20,7 @@ import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide
 import { CrowdfundDatumTS } from "./crowdfund";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
+import { parseGovDatum } from "./UI/utils";
 
 export default function PageCrowdfund() {
   const { connected, wallet } = useWallet();
@@ -322,6 +323,13 @@ function CrowdfundCard({
       ? JSON.parse(crowdfund.datum) 
       : null;
   }, [isDraft, crowdfund.datum]);
+
+  const govDetails = useMemo(() => {
+    if (crowdfund.govExtension) {
+      return crowdfund.govExtension;
+    }
+    return parseGovDatum(crowdfund.govDatum);
+  }, [crowdfund.govExtension, crowdfund.govDatum]);
   
   // For drafts, we don't have actual crowdfund datum data yet (only form data in govDatum)
   let mockData: any = null;
@@ -536,7 +544,7 @@ function CrowdfundCard({
               >
                 {isDraft ? "Draft" : mockData?.status}
               </Badge>
-              {(crowdfund.govExtension || crowdfund.govDatum) && (
+              {govDetails && (
                 <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                   <Settings className="w-3 h-3 mr-1" />
                   Governance
@@ -561,7 +569,7 @@ function CrowdfundCard({
               </p>
             </div>
             
-            {(crowdfund.govExtension || crowdfund.govDatum) && (
+            {govDetails && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-center gap-2 text-blue-800">
                   <Settings className="w-4 h-4" />
@@ -569,12 +577,11 @@ function CrowdfundCard({
                 </div>
                 <p className="text-xs text-blue-700 mt-1">
                   {(() => {
-                    const govExt = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
-                    const govAction = govExt?.gov_action 
-                      ? (typeof govExt.gov_action === 'string' ? JSON.parse(govExt.gov_action) : govExt.gov_action)
+                    const govAction = govDetails?.gov_action 
+                      ? (typeof govDetails.gov_action === 'string' ? JSON.parse(govDetails.gov_action) : govDetails.gov_action)
                       : null;
                     return govAction?.type 
-                      ? `Type: ${govAction.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`
+                      ? `Type: ${govAction.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`
                       : "Configured with governance features";
                   })()}
                 </p>
@@ -684,7 +691,7 @@ function CrowdfundCard({
                 </div>
               </div>
             )}
-            {(crowdfund.govExtension || crowdfund.govDatum) && (
+            {govDetails && (
               <div className="text-sm">
                 <span className="font-medium flex items-center gap-2">
                   <Settings className="w-4 h-4" />
@@ -692,23 +699,22 @@ function CrowdfundCard({
                 </span>
                 <div className="text-xs text-muted-foreground mt-1 space-y-1">
                   {(() => {
-                    const govExt = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
-                    const govAction = govExt?.gov_action 
-                      ? (typeof govExt.gov_action === 'string' ? JSON.parse(govExt.gov_action) : govExt.gov_action)
+                    const govAction = govDetails?.gov_action 
+                      ? (typeof govDetails.gov_action === 'string' ? JSON.parse(govDetails.gov_action) : govDetails.gov_action)
                       : null;
                     return (
                       <>
                         {govAction?.type && (
-                          <div>Type: {govAction.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+                          <div>Type: {govAction.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</div>
                         )}
                         {govAction?.title && (
                           <div>Title: {govAction.title}</div>
                         )}
-                        {govExt?.gov_action_period && (
-                          <div>Action Period: {govExt.gov_action_period} epochs</div>
+                        {govDetails?.gov_action_period && (
+                          <div>Action Period: {govDetails.gov_action_period} epochs</div>
                         )}
-                        {govExt?.delegate_pool_id && (
-                          <div>Pool ID: {govExt.delegate_pool_id.slice(0, 16)}...</div>
+                        {govDetails?.delegate_pool_id && (
+                          <div>Pool ID: {govDetails.delegate_pool_id.slice(0, 16)}...</div>
                         )}
                       </>
                     );

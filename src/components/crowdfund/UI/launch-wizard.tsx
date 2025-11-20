@@ -18,18 +18,13 @@ export interface CrowdfundFormData {
   description: string;
   deadline: string;
   expiryBuffer: string;
-  feeAddress: string;
-  
-  // Step 2: Either Funding Details OR Governance Extension
-  step2Type: 'funding' | 'governance';
-  
-  // Funding Details (if step2Type is 'funding')
+
+  // Funding Details for governance crowdfund
   fundraiseTarget: string;
   minCharge: string;
   allowOverSubscription: boolean;
-  
-  // Governance Extension (if step2Type is 'governance')
-  useGovExtension: boolean;
+
+  // Governance Extension
   gov_action_period?: number;
   delegate_pool_id?: string;
   gov_action?: {
@@ -86,12 +81,9 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
     description: "",
     deadline: "",
     expiryBuffer: "86400",
-    feeAddress: "",
-    step2Type: 'governance',
     fundraiseTarget: "100000",
     minCharge: "0",
     allowOverSubscription: true, // Always allow over-subscription
-    useGovExtension: true,
   });
 
   const totalSteps = 3;
@@ -109,12 +101,9 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
         description: draftData.description || "",
         deadline: "",
         expiryBuffer: "86400",
-        feeAddress: "",
-        step2Type: 'governance',
         fundraiseTarget: "100000",
         minCharge: "0",
         allowOverSubscription: true, // Always allow over-subscription
-        useGovExtension: true,
       };
 
       // Parse CrowdfundDatumTS from datum field if it exists
@@ -130,7 +119,6 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
           }
           
           loadedData.expiryBuffer = parsedDatum.expiry_buffer?.toString() || "86400";
-          loadedData.feeAddress = parsedDatum.fee_address || "";
           loadedData.fundraiseTarget = parsedDatum.fundraise_target ? (parsedDatum.fundraise_target / 1000000).toString() : "100000";
           loadedData.minCharge = parsedDatum.min_charge ? (parsedDatum.min_charge / 1000000).toString() : "0";
           loadedData.allowOverSubscription = true; // Always allow over-subscription
@@ -150,36 +138,19 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       })() : null);
 
       if (govExt) {
-        // Check if there's governance data (has governance-specific fields)
-        const hasGovernanceData = govExt.gov_action_period || 
-                                 govExt.delegate_pool_id || 
-                                 govExt.gov_action || 
-                                 govExt.stake_register_deposit || 
-                                 govExt.drep_register_deposit || 
-                                 govExt.gov_deposit;
-        
-        if (hasGovernanceData) {
-          // This is a governance crowdfund
-          loadedData.step2Type = 'governance';
-          loadedData.useGovExtension = true;
-          loadedData.gov_action_period = govExt.gov_action_period;
-          loadedData.delegate_pool_id = govExt.delegate_pool_id;
-          // gov_action might be stored as JSON in the database, parse if needed
-          loadedData.gov_action = typeof govExt.gov_action === 'string' 
-            ? JSON.parse(govExt.gov_action) 
-            : govExt.gov_action;
-          loadedData.stake_register_deposit = govExt.stake_register_deposit;
-          loadedData.drep_register_deposit = govExt.drep_register_deposit;
-          loadedData.gov_deposit = govExt.gov_deposit;
-          loadedData.govActionMetadataUrl = govExt.govActionMetadataUrl;
-          loadedData.govActionMetadataHash = govExt.govActionMetadataHash;
-          loadedData.drepMetadataUrl = govExt.drepMetadataUrl;
-          loadedData.drepMetadataHash = govExt.drepMetadataHash;
-        } else {
-          // Default to governance mode for backward compatibility
-          loadedData.step2Type = 'governance';
-          loadedData.useGovExtension = true;
-        }
+        loadedData.gov_action_period = govExt.gov_action_period;
+        loadedData.delegate_pool_id = govExt.delegate_pool_id;
+        // gov_action might be stored as JSON in the database, parse if needed
+        loadedData.gov_action = typeof govExt.gov_action === 'string' 
+          ? JSON.parse(govExt.gov_action) 
+          : govExt.gov_action;
+        loadedData.stake_register_deposit = govExt.stake_register_deposit;
+        loadedData.drep_register_deposit = govExt.drep_register_deposit;
+        loadedData.gov_deposit = govExt.gov_deposit;
+        loadedData.govActionMetadataUrl = govExt.govActionMetadataUrl;
+        loadedData.govActionMetadataHash = govExt.govActionMetadataHash;
+        loadedData.drepMetadataUrl = govExt.drepMetadataUrl;
+        loadedData.drepMetadataHash = govExt.drepMetadataHash;
       }
 
       setFormData(prev => ({ ...prev, ...loadedData }));
@@ -268,7 +239,7 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
 
     // Create CrowdfundDatumTS structure for datum field
     const crowdfundDatum: any = {
-      completion_script: "", // Will be set when deployed
+      stake_script: "", // Will be set when deployed
       share_token: "", // Will be set when deployed
       crowdfund_address: "", // Will be set when deployed
       fundraise_target: parseInt(formData.fundraiseTarget) * 1000000, // Convert ADA to lovelace
@@ -276,7 +247,6 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       allow_over_subscription: formData.allowOverSubscription,
       deadline: formData.deadline ? new Date(formData.deadline).getTime() : 0, // Convert to timestamp
       expiry_buffer: parseInt(formData.expiryBuffer),
-      fee_address: formData.feeAddress,
       min_charge: parseInt(formData.minCharge) * 1000000, // Convert ADA to lovelace
     };
 

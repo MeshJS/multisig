@@ -17,8 +17,9 @@ import { Asset, MeshTxBuilder, UTxO } from "@meshsdk/core";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { MeshCrowdfundContract } from "../offchain";
-import { CrowdfundDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";
+import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 
 interface WithdrawFromCrowdfundProps {
   crowdfund: any;
@@ -53,6 +54,8 @@ export function WithdrawFromCrowdfund({
   }
   
   const datumData = JSON.parse(crowdfund.datum);
+  const govExtension =
+    crowdfund.govExtension ?? parseGovDatum(crowdfund.govDatum);
   const totalRaised = datumData.current_fundraised_amount / 1000000;
   const crowdfundName = crowdfund.name;
   const shareToken = datumData.share_token;
@@ -149,6 +152,12 @@ export function WithdrawFromCrowdfund({
     setIsWithdrawing(true);
 
     try {
+      if (!govExtension) {
+        throw new Error("Governance extension data not found for this crowdfund.");
+      }
+
+      const governanceConfig = mapGovExtensionToConfig(govExtension);
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -159,6 +168,7 @@ export function WithdrawFromCrowdfund({
         {
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: JSON.parse(crowdfund.paramUtxo),
+          governance: governanceConfig,
         },
       );
 
@@ -174,7 +184,7 @@ export function WithdrawFromCrowdfund({
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
-        completion_script: datumData.completion_script,
+        stake_script: datumData.stake_script,
         share_token: datumData.share_token,
         crowdfund_address: datumData.crowdfund_address,
         fundraise_target: datumData.fundraise_target,
@@ -183,7 +193,6 @@ export function WithdrawFromCrowdfund({
         allow_over_subscription: datumData.allow_over_subscription,
         deadline: datumData.deadline,
         expiry_buffer: datumData.expiry_buffer,
-        fee_address: datumData.fee_address,
         min_charge: datumData.min_charge,
       };
 

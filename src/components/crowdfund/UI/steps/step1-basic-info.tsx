@@ -1,11 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import useUser from "@/hooks/useUser";
-import { deserializeAddress } from "@meshsdk/core";
 import { Info, HelpCircle } from "lucide-react";
 import {
   Tooltip,
@@ -21,22 +17,6 @@ interface Step1BasicInfoProps {
 }
 
 export function Step1BasicInfo({ formData, updateFormData }: Step1BasicInfoProps) {
-  const { user } = useUser();
-
-  // Pre-fill fee address from logged-in user's address when available
-  useEffect(() => {
-    if (user?.address && !formData.feeAddress) {
-      try {
-        const pubKeyHash = deserializeAddress(user.address).pubKeyHash;
-        if (pubKeyHash) {
-          updateFormData({ feeAddress: user.address });
-        }
-      } catch (e) {
-        console.error("Failed to deserialize address:", e);
-      }
-    }
-  }, [user?.address, formData.feeAddress, updateFormData]);
-
   return (
     <TooltipProvider>
       <div className="space-y-8">
@@ -166,42 +146,7 @@ export function Step1BasicInfo({ formData, updateFormData }: Step1BasicInfoProps
           </div>
         </div>
 
-        {/* Advanced Settings */}
-        <div className="space-y-4">
-          <h3 className="flex items-center gap-2 text-lg font-semibold">
-            Advanced Settings
-            <Tooltip>
-              <TooltipTrigger>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Advanced configuration options for your crowdfund</p>
-              </TooltipContent>
-            </Tooltip>
-          </h3>
-
-          <div className="space-y-2">
-            <Label htmlFor="feeAddress" className="flex items-center gap-2">
-              Fee Address
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    Address where fees will be sent (defaults to your address)
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </Label>
-            <Input
-              id="feeAddress"
-              placeholder="Enter fee address"
-              value={formData.feeAddress}
-              onChange={(e) => updateFormData({ feeAddress: e.target.value })}
-            />
-          </div>
-        </div>
+        {/* Advanced Settings placeholder */}
       </div>
     </TooltipProvider>
   );

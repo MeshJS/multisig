@@ -15,9 +15,10 @@ import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { LargestFirstInputSelector, MeshTxBuilder } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
-import { CrowdfundDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
+import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 
 interface ContributeToCrowdfundProps {
   crowdfund: any;
@@ -59,8 +60,7 @@ export function ContributeToCrowdfund({
 
   // For governance-extended crowdfunds, check if deposits need to be added to the target
   const govExtension =
-    crowdfund.govExtension ||
-    (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
+    crowdfund.govExtension ?? parseGovDatum(crowdfund.govDatum);
 
   // Calculate remaining funding amount
   const currentRaised = datumData.current_fundraised_amount || 0;
@@ -203,6 +203,10 @@ export function ContributeToCrowdfund({
       }
 
       const parsedParamUtxo = JSON.parse(crowdfund.paramUtxo);
+      if (!govExtension) {
+        throw new Error("Governance extension data not found for this crowdfund.");
+      }
+      const governanceConfig = mapGovExtensionToConfig(govExtension);
       console.log("[handleContribute] Creating contract", {
         proposerKeyHash: crowdfund.proposerKeyHashR0,
         paramUtxo: parsedParamUtxo,
@@ -223,6 +227,7 @@ export function ContributeToCrowdfund({
         {
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
+          governance: governanceConfig,
         },
       );
 
@@ -269,11 +274,12 @@ export function ContributeToCrowdfund({
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx, true);
-      const txHash = await wallet.submitTx(signedTx);
+  const txHash = await provider.submitTx(signedTx);
+      //const txHash = await wallet.submitTx(signedTx);
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
-        completion_script: datumData.completion_script,
+        stake_script: datumData.stake_script,
         share_token: datumData.share_token,
         crowdfund_address: datumData.crowdfund_address,
         fundraise_target: datumData.fundraise_target,
@@ -282,7 +288,6 @@ export function ContributeToCrowdfund({
         allow_over_subscription: datumData.allow_over_subscription,
         deadline: datumData.deadline,
         expiry_buffer: datumData.expiry_buffer,
-        fee_address: datumData.fee_address,
         min_charge: datumData.min_charge,
       };
 

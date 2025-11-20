@@ -8,7 +8,7 @@ const mockCrowdfund = {
   name: 'Test Crowdfund',
   proposerKeyHashR0: 'test-proposer-hash',
   datum: JSON.stringify({
-    completion_script: 'completion-script-hash',
+    stake_script: 'stake-script-hash',
     share_token: 'share-token-policy-id',
     crowdfund_address: 'addr_test1...',
     fundraise_target: 100000000000, // 100000 ADA
@@ -16,7 +16,6 @@ const mockCrowdfund = {
     allow_over_subscription: false,
     deadline: Date.now() + 30 * 24 * 60 * 60 * 1000,
     expiry_buffer: 86400,
-    fee_address: 'addr_test1...',
     min_charge: 2000000, // 2 ADA
   }),
   authTokenId: 'test-auth-token-id',
@@ -226,7 +225,7 @@ describe('Crowdfund Withdraw API', () => {
       const existingCrowdfund = {
         ...mockCrowdfund,
         datum: JSON.stringify({
-          completion_script: 'completion-script-hash',
+          stake_script: 'stake-script-hash',
           share_token: 'share-token-policy-id',
           crowdfund_address: 'addr_test1...',
           fundraise_target: 100000000000,
@@ -234,7 +233,6 @@ describe('Crowdfund Withdraw API', () => {
           allow_over_subscription: false,
           deadline: Date.now() + 30 * 24 * 60 * 60 * 1000,
           expiry_buffer: 86400,
-          fee_address: 'addr_test1...',
           min_charge: 2000000,
         }),
       };

@@ -17,12 +17,12 @@ import {
   Settings
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { CrowdfundDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../crowdfund";
 import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, MeshTxBuilder, deserializeAddress } from "@meshsdk/core";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";
-import { MeshCrowdfundGovExtensionContract } from "../../gov-extension/offchain";
+import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 import { useSiteStore } from "@/lib/zustand/site";
 
 interface CrowdfundInfoProps {
@@ -52,6 +52,7 @@ export function CrowdfundInfo({
   const { toast } = useToast();
   const { wallet, connected } = useWallet();
   const network = useSiteStore((state) => state.network);
+  const govExtension = crowdfund.govExtension ?? parseGovDatum(crowdfund.govDatum);
   
   // Check if this is a draft crowdfund (no authTokenId)
   const isDraft = !crowdfund.authTokenId;
@@ -70,7 +71,7 @@ export function CrowdfundInfo({
             </p>
           </div>
           
-          {(crowdfund.govExtension || crowdfund.govDatum) && (
+          {govExtension && (
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center justify-center gap-2 text-blue-800">
                 <Settings className="w-4 h-4" />
@@ -110,7 +111,6 @@ export function CrowdfundInfo({
   let fundingGoalADA = Number(datum.fundraise_target || 0) / 1000000;
   
   // For governance-extended crowdfunds, calculate base funding and deposits breakdown
-  const govExtension = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
   let depositsBreakdown = null;
   
   if (govExtension) {
@@ -439,7 +439,7 @@ export function CrowdfundInfo({
   const isFull = crowdfundData.totalRaised >= crowdfundData.fundingGoal;
   
   // Check if this is a governance-extended crowdfund
-  const hasGovExtension = !!(crowdfund.govExtension || (crowdfund.govDatum && JSON.parse(crowdfund.govDatum)));
+  const hasGovExtension = !!govExtension;
 
   // Handler for completing the crowdfund
   const handleCompleteCrowdfund = async () => {
@@ -492,6 +492,11 @@ export function CrowdfundInfo({
       const parsedParamUtxo = JSON.parse(crowdfund.paramUtxo);
       
       // Create the base crowdfund contract
+      if (!govExtension) {
+        throw new Error("Governance extension data not found");
+      }
+      const governanceConfig = mapGovExtensionToConfig(govExtension);
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -502,42 +507,18 @@ export function CrowdfundInfo({
         {
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
+          governance: governanceConfig,
         },
       );
 
       // Set the crowdfund address
       contract.crowdfundAddress = crowdfund.address;
 
-      // Get governance extension data
-      const govExtension = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
-      if (!govExtension) {
-        throw new Error("Governance extension data not found");
-      }
-
-      // Create the governance extension contract
-      const govContract = new MeshCrowdfundGovExtensionContract(
-        {
-          mesh: meshTxBuilder,
-          fetcher: provider,
-          wallet: wallet,
-          networkId: network,
-        },
-        {
-          proposerKeyHash: crowdfund.proposerKeyHashR0,
-          authTokenPolicyId: contract.getAuthTokenPolicyId(),
-          gov_action_period: govExtension.gov_action_period,
-          delegate_pool_id: govExtension.delegate_pool_id,
-          gov_action: typeof govExtension.gov_action === 'string' 
-            ? govExtension.gov_action 
-            : JSON.stringify(govExtension.gov_action),
-          stake_register_deposit: govExtension.stake_register_deposit ? Number(govExtension.stake_register_deposit) : 2000000,
-          drep_register_deposit: govExtension.drep_register_deposit ? Number(govExtension.drep_register_deposit) : 500000000,
-          gov_deposit: govExtension.gov_deposit ? Number(govExtension.gov_deposit) : 100000000000,
-        },
-      );
-
-      // Call completeCrowdfund
-      const result = await contract.completeCrowdfund(govContract);
+      const result = await contract.registerGovAction({
+        datum,
+        anchorGovAction: governanceConfig.anchorGovAction,
+        anchorDrep: governanceConfig.anchorDrep,
+      });
       const tx = await Promise.resolve(result.tx);
 
       // Sign and submit the transaction
@@ -814,7 +795,7 @@ export function CrowdfundInfo({
       </div>
 
       {/* Governance Extension Details */}
-      {(crowdfund.govExtension || (crowdfund.govDatum && JSON.parse(crowdfund.govDatum))) && (
+      {govExtension && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -824,12 +805,9 @@ export function CrowdfundInfo({
           </CardHeader>
           <CardContent className="space-y-4">
             {(() => {
-              const govExt = crowdfund.govExtension || (crowdfund.govDatum ? JSON.parse(crowdfund.govDatum) : null);
-              if (!govExt) return null;
-
-              const govAction = typeof govExt.gov_action === 'string' 
-                ? JSON.parse(govExt.gov_action) 
-                : govExt.gov_action;
+              const govAction = typeof govExtension.gov_action === 'string' 
+                ? JSON.parse(govExtension.gov_action) 
+                : govExtension.gov_action;
 
               return (
                 <>
@@ -933,94 +911,94 @@ export function CrowdfundInfo({
                   <div className="pt-2 border-t">
                     <span className="text-sm font-semibold text-foreground block mb-3">Governance Parameters</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {govExt.gov_action_period !== undefined && govExt.gov_action_period !== null && (
+                      {govExtension.gov_action_period !== undefined && govExtension.gov_action_period !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Action Period</span>
-                          <p className="text-sm font-semibold">{govExt.gov_action_period} epochs</p>
+                          <p className="text-sm font-semibold">{govExtension.gov_action_period} epochs</p>
                         </div>
                       )}
-                      {govExt.delegate_pool_id && (
+                      {govExtension.delegate_pool_id && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Delegate Pool ID</span>
-                          <div className="text-xs font-mono break-all">{govExt.delegate_pool_id}</div>
+                          <div className="text-xs font-mono break-all">{govExtension.delegate_pool_id}</div>
                         </div>
                       )}
-                      {govExt.stake_register_deposit !== undefined && govExt.stake_register_deposit !== null && (
+                      {govExtension.stake_register_deposit !== undefined && govExtension.stake_register_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Stake Register Deposit</span>
-                          <p className="text-sm font-semibold">{(Number(govExt.stake_register_deposit) / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExtension.stake_register_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
-                      {govExt.drep_register_deposit !== undefined && govExt.drep_register_deposit !== null && (
+                      {govExtension.drep_register_deposit !== undefined && govExtension.drep_register_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">DRep Register Deposit</span>
-                          <p className="text-sm font-semibold">{(Number(govExt.drep_register_deposit) / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExtension.drep_register_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
-                      {govExt.gov_deposit !== undefined && govExt.gov_deposit !== null && (
+                      {govExtension.gov_deposit !== undefined && govExtension.gov_deposit !== null && (
                         <div className="p-3 bg-muted rounded-lg">
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Governance Deposit</span>
-                          <p className="text-sm font-semibold">{(Number(govExt.gov_deposit) / 1000000).toLocaleString()} ADA</p>
+                          <p className="text-sm font-semibold">{(Number(govExtension.gov_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Metadata Information */}
-                  {(govExt.govActionMetadataUrl || govExt.govActionMetadataHash || govExt.drepMetadataUrl || govExt.drepMetadataHash) && (
+                  {(govExtension.govActionMetadataUrl || govExtension.govActionMetadataHash || govExtension.drepMetadataUrl || govExtension.drepMetadataHash) && (
                     <div className="pt-2 border-t space-y-4">
                       <span className="text-sm font-semibold text-foreground block">Metadata</span>
                       
-                      {(govExt.govActionMetadataUrl || govExt.govActionMetadataHash) && (
+                      {(govExtension.govActionMetadataUrl || govExtension.govActionMetadataHash) && (
                         <div className="p-3 bg-muted rounded-lg space-y-2">
                           <span className="text-xs font-medium text-muted-foreground block">Governance Action Metadata</span>
-                          {govExt.govActionMetadataUrl && (
+                          {govExtension.govActionMetadataUrl && (
                             <div>
                               <span className="text-xs text-muted-foreground block mb-1">URL</span>
                               <a 
-                                href={govExt.govActionMetadataUrl} 
+                                href={govExtension.govActionMetadataUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="text-xs text-blue-600 hover:underline break-all flex items-center gap-1"
                               >
-                                {govExt.govActionMetadataUrl}
+                                {govExtension.govActionMetadataUrl}
                                 <ExternalLink className="w-3 h-3" />
                               </a>
                             </div>
                           )}
-                          {govExt.govActionMetadataHash && (
+                          {govExtension.govActionMetadataHash && (
                             <div>
                               <span className="text-xs text-muted-foreground block mb-1">Hash</span>
                               <div className="text-xs font-mono bg-background p-2 rounded break-all">
-                                {govExt.govActionMetadataHash}
+                                {govExtension.govActionMetadataHash}
                               </div>
                             </div>
                           )}
                         </div>
                       )}
 
-                      {(govExt.drepMetadataUrl || govExt.drepMetadataHash) && (
+                      {(govExtension.drepMetadataUrl || govExtension.drepMetadataHash) && (
                         <div className="p-3 bg-muted rounded-lg space-y-2">
                           <span className="text-xs font-medium text-muted-foreground block">DRep Metadata</span>
-                          {govExt.drepMetadataUrl && (
+                          {govExtension.drepMetadataUrl && (
                             <div>
                               <span className="text-xs text-muted-foreground block mb-1">URL</span>
                               <a 
-                                href={govExt.drepMetadataUrl} 
+                                href={govExtension.drepMetadataUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="text-xs text-blue-600 hover:underline break-all flex items-center gap-1"
                               >
-                                {govExt.drepMetadataUrl}
+                                {govExtension.drepMetadataUrl}
                                 <ExternalLink className="w-3 h-3" />
                               </a>
                             </div>
                           )}
-                          {govExt.drepMetadataHash && (
+                          {govExtension.drepMetadataHash && (
                             <div>
                               <span className="text-xs text-muted-foreground block mb-1">Hash</span>
                               <div className="text-xs font-mono bg-background p-2 rounded break-all">
-                                {govExt.drepMetadataHash}
+                                {govExtension.drepMetadataHash}
                               </div>
                             </div>
                           )}
@@ -1030,16 +1008,16 @@ export function CrowdfundInfo({
                   )}
 
                   {/* Governance Address */}
-                  {govExt.govAddress && (
+                  {govExtension.govAddress && (
                     <div className="pt-2 border-t">
                       <span className="text-sm font-semibold text-foreground block mb-2">Governance Contract Address</span>
                       <div className="p-3 bg-muted rounded-lg">
-                        <div className="text-xs font-mono break-all">{govExt.govAddress}</div>
+                        <div className="text-xs font-mono break-all">{govExtension.govAddress}</div>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="mt-2 h-7 text-xs"
-                          onClick={() => copyToClipboard(govExt.govAddress)}
+                          onClick={() => copyToClipboard(govExtension.govAddress)}
                         >
                           {copied ? (
                             <>

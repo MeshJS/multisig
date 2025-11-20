@@ -3,20 +3,6 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 
-const govExtensionInput = z.object({
-  gov_action_period: z.number().optional(),
-  delegate_pool_id: z.string().optional(),
-  gov_action: z.any().optional(), // JSON object
-  stake_register_deposit: z.number().optional(),
-  drep_register_deposit: z.number().optional(),
-  gov_deposit: z.number().optional(),
-  govActionMetadataUrl: z.string().optional(),
-  govActionMetadataHash: z.string().optional(),
-  drepMetadataUrl: z.string().optional(),
-  drepMetadataHash: z.string().optional(),
-  govAddress: z.string().optional(),
-});
-
 export const crowdfundRouter = createTRPCRouter({
   createCrowdfund: publicProcedure
     .input(
@@ -28,34 +14,13 @@ export const crowdfundRouter = createTRPCRouter({
         datum: z.string().optional(),
         address: z.string().optional(),
         paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
-        govDatum: z.string().optional(), // Deprecated: kept for backward compatibility
-        govAddress: z.string().optional(), // Deprecated: kept for backward compatibility
-        govExtension: govExtensionInput.optional(), // New: structured governance extension data
+        govDatum: z.string().optional(), // Stores governance configuration JSON
+        govAddress: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { govExtension, ...crowdfundData } = input;
-      
-      // Create crowdfund
-      const crowdfund = await ctx.db.crowdfund.create({ 
-        data: crowdfundData,
-        include: { govExtension: true },
-      });
-
-      // Create gov extension if provided
-      if (govExtension) {
-        await ctx.db.crowdfundGovExtension.create({
-          data: {
-            crowdfundId: crowdfund.id,
-            ...govExtension,
-          },
-        });
-      }
-
-      // Return with gov extension
-      return ctx.db.crowdfund.findUnique({
-        where: { id: crowdfund.id },
-        include: { govExtension: true },
+      return ctx.db.crowdfund.create({ 
+        data: input,
       });
     }),
 
@@ -75,51 +40,25 @@ export const crowdfundRouter = createTRPCRouter({
         datum: z.string().optional(),
         address: z.string().optional(),
         paramUtxo: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
-        govDatum: z.string().optional(), // Deprecated: kept for backward compatibility
-        govAddress: z.string().optional(), // Deprecated: kept for backward compatibility
-        govExtension: govExtensionInput.optional(), // New: structured governance extension data
+        govDatum: z.string().optional(),
+        govAddress: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, govExtension, ...crowdfundData } = input;
-      
+      const { id, ...crowdfundData } = input;
       // Update crowdfund
       await ctx.db.crowdfund.update({
         where: { id },
         data: crowdfundData,
       });
 
-      // Update or create gov extension if provided
-      if (govExtension !== undefined) {
-        const existing = await ctx.db.crowdfundGovExtension.findUnique({
-          where: { crowdfundId: id },
-        });
-
-        if (existing) {
-          await ctx.db.crowdfundGovExtension.update({
-            where: { crowdfundId: id },
-            data: govExtension,
-          });
-        } else if (govExtension !== null) {
-          await ctx.db.crowdfundGovExtension.create({
-            data: {
-              crowdfundId: id,
-              ...govExtension,
-            },
-          });
-        }
-      }
-
-      // Return with gov extension
       return ctx.db.crowdfund.findUnique({
         where: { id },
-        include: { govExtension: true },
       });
     }),
 
   getAllCrowdfunds: publicProcedure.query(async ({ ctx }) => {
     return ctx.db.crowdfund.findMany({
-      include: { govExtension: true },
     });
   }),
 
@@ -130,7 +69,6 @@ export const crowdfundRouter = createTRPCRouter({
           not: null, // Only return crowdfunds that have been deployed (have authTokenId)
         },
       },
-      include: { govExtension: true },
       orderBy: {
         createdAt: 'desc',
       },
@@ -142,7 +80,6 @@ export const crowdfundRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return ctx.db.crowdfund.findUnique({ 
         where: { id: input.id },
-        include: { govExtension: true },
       });
     }),
 
@@ -151,7 +88,6 @@ export const crowdfundRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return ctx.db.crowdfund.findFirst({ 
         where: { name: input.name },
-        include: { govExtension: true },
       });
     }),
 
@@ -160,44 +96,7 @@ export const crowdfundRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return ctx.db.crowdfund.findMany({
         where: { proposerKeyHashR0: input.proposerKeyHashR0 },
-        include: { govExtension: true },
       });
-    }),
-
-  getCrowdfundWithGovExtension: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.db.crowdfund.findUnique({
-        where: { id: input.id },
-        include: { govExtension: true },
-      });
-    }),
-
-  updateGovExtension: publicProcedure
-    .input(
-      z.object({
-        crowdfundId: z.string(),
-        govExtension: govExtensionInput,
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const existing = await ctx.db.crowdfundGovExtension.findUnique({
-        where: { crowdfundId: input.crowdfundId },
-      });
-
-      if (existing) {
-        return ctx.db.crowdfundGovExtension.update({
-          where: { crowdfundId: input.crowdfundId },
-          data: input.govExtension,
-        });
-      } else {
-        return ctx.db.crowdfundGovExtension.create({
-          data: {
-            crowdfundId: input.crowdfundId,
-            ...input.govExtension,
-          },
-        });
-      }
     }),
 
   // Contribute to a crowdfund: updates datum.current_fundraised_amount

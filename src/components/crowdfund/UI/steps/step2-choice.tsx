@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CrowdfundFormData } from "../launch-wizard";
-import { LaunchExt } from "../../../gov-extension/control/launch-ext";
+import { LaunchExt } from "../../gov-extension/control/launch-ext";
 
 interface Step2ChoiceProps {
   formData: CrowdfundFormData;
@@ -13,21 +12,6 @@ interface Step2ChoiceProps {
 }
 
 export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
-  const hasInitialized = useRef(false);
-  
-  // Auto-set governance defaults on mount
-  useEffect(() => {
-    if (!hasInitialized.current) {
-      updateFormData({
-        step2Type: 'governance',
-        useGovExtension: true,
-        minCharge: "0",
-        allowOverSubscription: true,
-      });
-      hasInitialized.current = true;
-    }
-  }, [updateFormData]);
-
   const handleGovDataUpdate = (govData: {
     gov_action_period?: number;
     delegate_pool_id?: string;

@@ -64,6 +64,14 @@ const mockFetcher = {
   fetchAddressUTxOs: jest.fn(),
 };
 
+const mockGovernanceConfig = {
+  delegatePoolId: "pool1testmock",
+  govActionPeriod: 6,
+  stakeRegisterDeposit: 2_000_000,
+  drepRegisterDeposit: 500_000_000,
+  govDeposit: 100_000_000,
+};
+
 const createMockUTxO = (lovelace: string, address: string): UTxO => ({
   input: {
     txHash: 'mock-tx-hash',
@@ -87,7 +95,7 @@ const createMockUTxO = (lovelace: string, address: string): UTxO => ({
 });
 
 const createMockDatum = (): CrowdfundDatumTS => ({
-  completion_script: 'completion-script-hash',
+  stake_script: 'stake-script-hash',
   share_token: 'share-token-policy-id',
   crowdfund_address: 'addr_test1qzk3k4...',
   fundraise_target: 100000000000, // 100000 ADA
@@ -95,7 +103,6 @@ const createMockDatum = (): CrowdfundDatumTS => ({
   allow_over_subscription: false,
   deadline: Date.now() + 30 * 24 * 60 * 60 * 1000,
   expiry_buffer: 86400,
-  fee_address: 'addr_test1qzk3k4...',
   min_charge: 2000000, // 2 ADA
 });
 
@@ -149,6 +156,7 @@ describe('MeshCrowdfundContract withdrawCrowdfund', () => {
       {
         proposerKeyHash: 'test-proposer-hash',
         paramUtxo: { txHash: 'mock-tx-hash', outputIndex: 0 },
+        governance: mockGovernanceConfig,
       },
     );
 

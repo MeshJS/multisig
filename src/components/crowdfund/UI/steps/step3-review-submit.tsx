@@ -13,9 +13,10 @@ import {
   resolveSlotNo,
 } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../../offchain";
+import { mapGovExtensionToConfig } from "../utils";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { CrowdfundDatumTS } from "../../../crowdfund";
+import { CrowdfundDatumTS } from "../../crowdfund";
 import {
   CheckCircle,
   XCircle,
@@ -23,7 +24,6 @@ import {
   Settings,
   Calendar,
 } from "lucide-react";
-import { MeshCrowdfundGovExtensionContract } from "../../../gov-extension/offchain";
 import { CrowdfundFormData } from "../launch-wizard";
 
 interface Step3ReviewSubmitProps {
@@ -105,7 +105,6 @@ export function Step3ReviewSubmit({
 
   const handleSubmit = async () => {
     console.log("[handleSubmit] Starting submission", {
-      step2Type: formData.step2Type,
       hasProposerKeyHash: !!proposerKeyHashR0,
       hasDeadline: !!formData.deadline,
       fundraiseTarget: formData.fundraiseTarget,
@@ -181,6 +180,18 @@ export function Step3ReviewSubmit({
         deadlineDate.getTime(),
       );
 
+      const governanceConfig = mapGovExtensionToConfig({
+        delegate_pool_id: formData.delegate_pool_id,
+        gov_action_period: formData.gov_action_period,
+        stake_register_deposit: formData.stake_register_deposit,
+        drep_register_deposit: formData.drep_register_deposit,
+        gov_deposit: formData.gov_deposit,
+        govActionMetadataUrl: formData.govActionMetadataUrl,
+        govActionMetadataHash: formData.govActionMetadataHash,
+        drepMetadataUrl: formData.drepMetadataUrl,
+        drepMetadataHash: formData.drepMetadataHash,
+      });
+
       // Create the crowdfunding contract instance
       const contract = new MeshCrowdfundContract(
         {
@@ -191,10 +202,11 @@ export function Step3ReviewSubmit({
         },
         {
           proposerKeyHash: proposerKeyHashR0,
+          governance: governanceConfig,
         },
       );
 
-      // Always create governance contract
+      // Always ensure we have a param UTxO
       const utxos = await wallet.getUtxos();
       if (utxos.length > 0) {
         contract.setparamUtxo(utxos[0]!);
@@ -208,30 +220,6 @@ export function Step3ReviewSubmit({
       if (!formData.gov_deposit) {
         throw new Error("Governance deposit is required");
       }
-      // Set default gov_action_period to 6 if not provided
-      const govActionPeriod = 6;
-
-      // Create the Gov contract instance
-      const govContract = new MeshCrowdfundGovExtensionContract(
-        {
-          mesh: meshTxBuilder,
-          fetcher: provider,
-          wallet: wallet,
-          networkId: networkId,
-        },
-        {
-          proposerKeyHash: proposerKeyHashR0,
-          authTokenPolicyId: contract.getAuthTokenPolicyId(),
-          gov_action_period: govActionPeriod,
-          delegate_pool_id: formData.delegate_pool_id!,
-          gov_action: JSON.stringify(formData.gov_action),
-          stake_register_deposit: formData.stake_register_deposit || 2000000,
-          drep_register_deposit: formData.drep_register_deposit || 500000000,
-          gov_deposit: formData.gov_deposit,
-        },
-      );
-      console.log(formData.fundraiseTarget);
-
       // Calculate base funding target
       const baseFundingTarget = parseFloat(formData.fundraiseTarget || "100000000") * 1000000; // Convert ADA to lovelace
       
@@ -253,15 +241,14 @@ export function Step3ReviewSubmit({
 
       // Create the datum data as CrowdfundDatumTS
       const datumData: CrowdfundDatumTS = {
-        completion_script: govContract.getCrowdfundStartCbor(),
-        share_token: "", // Will be set by the contract
-        crowdfund_address: "", // Will be set by the contract
+        stake_script: "",
+        share_token: "",
+        crowdfund_address: "",
         fundraise_target: totalFundingTarget,
         current_fundraised_amount: 0,
         allow_over_subscription: true, // Always allow over-subscription
         deadline: Number(deadlineDate),
         expiry_buffer: parseInt(formData.expiryBuffer),
-        fee_address: formData.feeAddress,
         min_charge: parseFloat(formData.minCharge || "0") * 1000000, // Convert ADA to lovelace
       };
 
@@ -273,14 +260,14 @@ export function Step3ReviewSubmit({
       const {
         tx,
         paramUtxo,
-        completion_scriptHash,
+        stake_script_hash,
         share_token,
         crowdfund_address,
         authTokenId,
-      } = await contract.setupCrowdfund(datumData, govContract);
+      } = await contract.setupCrowdfund(datumData);
       console.log("[handleSubmit] setupCrowdfund completed", {
         hasTx: !!tx,
-        completion_scriptHash,
+        stake_script_hash,
         share_token,
         crowdfund_address,
         authTokenId,
@@ -292,7 +279,7 @@ export function Step3ReviewSubmit({
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
-        completion_script: completion_scriptHash,
+        stake_script: stake_script_hash,
         share_token: share_token,
         crowdfund_address: crowdfund_address,
         fundraise_target: datumData.fundraise_target,
@@ -300,7 +287,6 @@ export function Step3ReviewSubmit({
         allow_over_subscription: datumData.allow_over_subscription,
         deadline: datumData.deadline,
         expiry_buffer: datumData.expiry_buffer,
-        fee_address: datumData.fee_address,
         min_charge: datumData.min_charge,
       };
 
@@ -316,7 +302,6 @@ export function Step3ReviewSubmit({
         govActionMetadataHash: formData.govActionMetadataHash,
         drepMetadataUrl: formData.drepMetadataUrl,
         drepMetadataHash: formData.drepMetadataHash,
-        govAddress: govContract.crowdfundGovAddress,
       };
 
       // Create the crowdfund in the database
@@ -331,7 +316,7 @@ export function Step3ReviewSubmit({
         authTokenId: authTokenId,
         address: crowdfund_address,
         datum: JSON.stringify(updatedDatum),
-        govExtension: govExtension,
+        govDatum: JSON.stringify(govExtension),
       });
 
       // Show success toast
