@@ -274,8 +274,8 @@ export function ContributeToCrowdfund({
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx, true);
-  const txHash = await provider.submitTx(signedTx);
-      //const txHash = await wallet.submitTx(signedTx);
+  //const txHash = await provider.submitTx(signedTx);
+      const txHash = await wallet.submitTx(signedTx);
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {

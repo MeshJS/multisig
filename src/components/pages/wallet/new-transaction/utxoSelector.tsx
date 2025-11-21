@@ -81,24 +81,31 @@ export default function UTxOSelector({
       const shouldFetchTwoPages = count > 100;
       const nextPage = page + 1;
       
-      // Fetch UTxOs (conditionally two pages)
-      const utxoPromises = [
-        blockchainProvider.get(`/addresses/${address}/utxos?page=${page}&count=${Math.min(count, 100)}&order=desc`)
-      ];
+      // Use standardized IFetcher method - fetch all UTxOs and simulate pagination
+      const allUtxos = await blockchainProvider.fetchAddressUTxOs(address);
       
-      if (shouldFetchTwoPages) {
-        // For page sizes > 100, we need to split into two requests of 100 each
-        const remainingCount = count - 100;
-        utxoPromises.push(
-          blockchainProvider.get(`/addresses/${address}/utxos?page=${nextPage}&count=${Math.min(remainingCount, 100)}&order=desc`).catch(() => [])
-        );
+      // Simulate pagination by slicing the results
+      const startIndex = (page - 1) * count;
+      const endIndex = startIndex + count;
+      const paginatedUtxos = allUtxos.slice(startIndex, endIndex);
+      const utxoResponses = [paginatedUtxos];
+      
+      // Calculate totals from UTxOs
+      let totalResponse: any = null;
+      try {
+        // Calculate total amounts from all UTxOs
+        const assetTotals = new Map<string, string>();
+        for (const utxo of allUtxos) {
+          for (const amount of utxo.output.amount) {
+            const current = assetTotals.get(amount.unit) || "0";
+            const newTotal = (BigInt(current) + BigInt(amount.quantity)).toString();
+            assetTotals.set(amount.unit, newTotal);
+          }
+        }
+        totalResponse = Object.fromEntries(assetTotals);
+      } catch (error) {
+        console.warn("Failed to calculate address totals:", error);
       }
-      
-      // Fetch total information in parallel
-      const [utxoResponses, totalResponse] = await Promise.all([
-        Promise.all(utxoPromises),
-        blockchainProvider.get(`/addresses/${address}/total`).catch(() => null)
-      ]);
       
       // Process UTxO responses
       let rawUtxos1: any[] = [];

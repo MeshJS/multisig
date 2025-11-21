@@ -37,6 +37,8 @@ export const env = createEnv({
     NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string(),
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
     NEXT_PUBLIC_GOV_TESTNET: z.string().optional(),
+    NEXT_PUBLIC_SANCHO_API_URL: z.string().optional(),
+    NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: z.string().optional(),
   },
 
   /**
@@ -55,6 +57,8 @@ export const env = createEnv({
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
     NEXT_PUBLIC_GOV_TESTNET: process.env.NEXT_PUBLIC_GOV_TESTNET,
+    NEXT_PUBLIC_SANCHO_API_URL: process.env.NEXT_PUBLIC_SANCHO_API_URL,
+    NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: process.env.NEXT_PUBLIC_CUSTOM_SLOT_CONFIG,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   },

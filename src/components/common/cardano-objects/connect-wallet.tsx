@@ -65,14 +65,25 @@ export default function ConnectWallet() {
               quantity: asset.quantity,
             });
             if (asset.unit === "lovelace") continue;
-            const assetInfo = await provider.get(`/assets/${asset.unit}`);
-            setUserAssetMetadata(
-              asset.unit,
-              assetInfo?.metadata?.name ||
-                assetInfo?.onchain_metadata?.name ||
+            
+            try {
+              const assetInfo = await provider.get(`/assets/${asset.unit}`);
+              setUserAssetMetadata(
                 asset.unit,
-              assetInfo?.metadata?.decimals || 0,
-            );
+                assetInfo?.metadata?.name ||
+                  assetInfo?.onchain_metadata?.name ||
+                  asset.unit,
+                assetInfo?.metadata?.decimals || 0,
+              );
+            } catch (assetError) {
+              // Asset not found in Koios database, use fallback metadata
+              console.warn(`Asset ${asset.unit} not found in Koios database, using fallback metadata`);
+              setUserAssetMetadata(
+                asset.unit,
+                asset.unit, // Use unit as fallback name
+                0, // Default decimals
+              );
+            }
           }
           setUserAssets(userAssets);
         }

@@ -71,18 +71,40 @@ export default function WalletDataLoaderWrapper({
         const blockchainProvider = getProvider(network);
 
         for (let i = 1; i <= maxPage; i++) {
-          const transactions: TxInfo[] = await blockchainProvider.get(
-            `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
-          );
+          // Use standardized IFetcher method
+          console.log(`Fetching transactions for ${appWallet.address}, page ${i}`);
+          const txResponse = await blockchainProvider.fetchAddressTxs(appWallet.address, { 
+            page: i, 
+            order: 'desc' 
+          });
+          console.log(`Received ${txResponse.length} transactions for page ${i}`);
+          
+          // Convert TransactionInfo[] to TxInfo[] format for compatibility
+          const transactions: TxInfo[] = txResponse.map((tx: any) => ({
+            tx_hash: tx.hash || tx.tx_hash,
+            block_height: tx.block || 0,
+            block_time: tx.slot || 0,
+            tx_index: tx.index || 0
+          }));
 
           if (transactions.length === 0) {
             break;
           }
 
           for (const tx of transactions) {
-            const txData = await blockchainProvider.get(
-              `/txs/${tx.tx_hash}/utxos`,
-            );
+            // Use standardized IFetcher method
+            const utxos = await blockchainProvider.fetchUTxOs(tx.tx_hash);
+            // Convert UTxO[] to UTXO[] format for compatibility
+            const outputs = utxos.map((utxo: any) => ({
+              address: utxo.output.address,
+              amount: utxo.output.amount,
+              output_index: utxo.input.outputIndex,
+              tx_hash: utxo.input.txHash,
+              data_hash: utxo.output.dataHash,
+              inline_datum: utxo.output.plutusData,
+              reference_script_hash: utxo.output.scriptHash,
+            }));
+            const txData = { inputs: [], outputs };
             _transactions.push({
               hash: tx.tx_hash,
               tx: tx,
@@ -109,46 +131,56 @@ export default function WalletDataLoaderWrapper({
 
   async function getWalletAssets() {
     try {
-      const blockchainProvider = getProvider(network);
-      const assets = await blockchainProvider.get(
-        `/addresses/${appWallet?.address}/`,
-      );
-      const walletAssets: Asset[] = [];
-      if (assets.amount) {
-        for (const asset of assets.amount) {
-          walletAssets.push({
-            unit: asset.unit,
-            quantity: asset.quantity,
-          });
-          if (asset.unit === "lovelace") continue;
-          const assetInfo = await blockchainProvider.get(
-            `/assets/${asset.unit}`,
-          );
-          setWalletAssetMetadata(
-            asset.unit,
-            assetInfo?.metadata?.name ||
-              assetInfo?.onchain_metadata?.name ||
-              assetInfo?.policyId ||
-              asset.unit,
-            assetInfo?.metadata?.decimals || 0,
-            assetInfo?.metadata?.logo ||
-              assetInfo?.onchain_metadata?.image ||
-              "",
-            assetInfo?.metadata?.ticker ||
-              assetInfo?.metadata?.name ||
-              assetInfo?.onchain_metadata?.name ||
-              assetInfo?.policyId ||
-              asset.unit,
-            assetInfo?.policy_id || "",
-          );
-        }
-        setWalletAssets(walletAssets);
-      } else {
-        setWalletAssets([]);
+      if (!appWallet?.address) {
+        return;
       }
+
+      const blockchainProvider = getProvider(network);
+      
+      // Use standardized IFetcher method - fetchAddressUTxOs to get assets
+      console.log(`Fetching UTxOs for ${appWallet.address}`);
+      const utxos = await blockchainProvider.fetchAddressUTxOs(appWallet.address);
+      console.log(`Received ${utxos.length} UTxOs`);
+      
+      // Extract unique assets from UTxOs
+      const assetMap = new Map<string, string>();
+      
+      for (const utxo of utxos) {
+        for (const amount of utxo.output.amount) {
+          const currentQuantity = assetMap.get(amount.unit) || "0";
+          const newQuantity = (BigInt(currentQuantity) + BigInt(amount.quantity)).toString();
+          assetMap.set(amount.unit, newQuantity);
+        }
+      }
+
+      const walletAssets: Asset[] = [];
+      
+      // Convert asset map to Asset array
+      for (const [unit, quantity] of assetMap.entries()) {
+        walletAssets.push({ unit, quantity });
+        
+        if (unit === "lovelace") continue;
+        
+        // Fetch asset metadata using standardized IFetcher method
+        try {
+          const assetInfo = await blockchainProvider.fetchAssetMetadata(unit);
+          setWalletAssetMetadata(
+            unit,
+            assetInfo?.name || unit,
+            assetInfo?.decimals || 0,
+            assetInfo?.image || "",
+            assetInfo?.ticker || assetInfo?.name || unit,
+            assetInfo?.policyId || "",
+          );
+        } catch (error) {
+          console.warn(`Failed to fetch metadata for asset ${unit}:`, error);
+        }
+      }
+      
+      setWalletAssets(walletAssets);
     } catch (error) {
+      console.error("Error fetching wallet assets:", error);
       setWalletAssets([]);
-      setWalletAssetMetadata("", "", 0, "", "", "");
     }
   }
 
@@ -211,22 +243,33 @@ export default function WalletDataLoaderWrapper({
   }
 
   async function refreshWallet() {
-    if (fetchingTransactions.current) return;
+    if (fetchingTransactions.current) {
+      console.log("WalletDataLoaderWrapper: Already fetching, skipping refresh");
+      return;
+    }
 
+    console.log("WalletDataLoaderWrapper: Starting wallet refresh");
     fetchingTransactions.current = true;
     setLoading(true);
-    await fetchUtxos();
-    await getTransactionsOnChain();
-    await getWalletAssets();
-    await getDRepInfo();
-    await fetchProxyData(); // Fetch proxy data
-    void ctx.transaction.getPendingTransactions.invalidate();
-    void ctx.transaction.getAllTransactions.invalidate();
-    // Also refresh proxy data
-    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
-    setRandomState();
-    setLoading(false);
-    fetchingTransactions.current = false;
+    
+    try {
+      await fetchUtxos();
+      await getTransactionsOnChain();
+      await getWalletAssets();
+      await getDRepInfo();
+      await fetchProxyData(); // Fetch proxy data
+      void ctx.transaction.getPendingTransactions.invalidate();
+      void ctx.transaction.getAllTransactions.invalidate();
+      // Also refresh proxy data
+      void ctx.proxy.getProxiesByUserOrWallet.invalidate();
+      setRandomState();
+      console.log("WalletDataLoaderWrapper: Wallet refresh completed successfully");
+    } catch (error) {
+      console.error("WalletDataLoaderWrapper: Error during wallet refresh:", error);
+    } finally {
+      setLoading(false);
+      fetchingTransactions.current = false;
+    }
     
     // Call the optional callback after action completes
     if (onAction) {
@@ -235,7 +278,10 @@ export default function WalletDataLoaderWrapper({
   }
 
   useEffect(() => {
+    // WalletDataLoaderWrapper useEffect triggered
+    
     if (appWallet && prevWalletIdRef.current !== appWallet.id) {
+      console.log("WalletDataLoaderWrapper: Calling refreshWallet for wallet change");
       refreshWallet();
       prevWalletIdRef.current = appWallet.id;
     }
@@ -249,6 +295,7 @@ export default function WalletDataLoaderWrapper({
         className="rounded-full"
         onClick={() => refreshWallet()}
         disabled={loading}
+        title="Refresh wallet data"
       >
         <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
       </Button>
@@ -260,6 +307,7 @@ export default function WalletDataLoaderWrapper({
     <div
       className="flex items-center gap-2 cursor-pointer"
       onClick={() => refreshWallet()}
+      title="Refresh wallet data"
     >
       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
       <span>Refresh Wallet</span>

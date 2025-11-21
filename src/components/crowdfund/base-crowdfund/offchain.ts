@@ -8,6 +8,9 @@ import {
   resolveSlotNo,
   keepRelevant,
   mConStr2,
+  SlotConfig,
+  unixTimeToEnclosingSlot,
+  SLOT_CONFIG_NETWORK,
 } from "@meshsdk/common";
 import {
   resolveScriptHash,
@@ -19,6 +22,10 @@ import { MeshTxInitiator, MeshTxInitiatorInput } from "../common";
 import blueprint from "./plutus.json";
 import { CrowdfundDatumTS } from "../crowdfund";
 import { MeshCrowdfundGovExtensionContract } from "../gov-extension/offchain";
+
+// Import Sancho slot resolver
+import { resolveSlotNoSancho } from "../test_sancho_utils";
+
 /**
  * Mesh Aiken Crowdfund contract class
  *
@@ -157,6 +164,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       this.setCrowdfundAddress();
     }
   }
+
 
   /**
    * Setup the crowdfund contract
@@ -780,9 +788,23 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   private getSlotAfterMinutes = (minutes: number): string => {
     const nowDateTime = new Date();
     const dateTimeAdd = new Date(nowDateTime.getTime() + minutes * 60000);
+    
+    // Use normal MeshJS resolver
     return resolveSlotNo(
       this.networkId ? "mainnet" : "preprod",
       dateTimeAdd.getTime(),
+    );
+  };
+
+  private getSlotAfterMinutesAsync = async (minutes: number): Promise<string> => {
+    const nowDateTime = new Date();
+    const dateTimeAdd = new Date(nowDateTime.getTime() + minutes * 60000);
+    
+    // Check if we should use Sancho resolver (you can add env var check here if needed)
+    // For now, just use normal resolver
+    return resolveSlotNo(
+      this.networkId ? "mainnet" : "preprod", 
+      dateTimeAdd.getTime()
     );
   };
 }

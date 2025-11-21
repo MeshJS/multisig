@@ -179,7 +179,6 @@ export function WithdrawFromCrowdfund({
 
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx);
-      console.log(await provider.submitTx(signedTx));
       const txHash = await wallet.submitTx(signedTx);
 
       // Update the datum with the new values

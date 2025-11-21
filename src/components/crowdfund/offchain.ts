@@ -30,6 +30,10 @@ import {
   GovernanceActionIdTS,
 } from "./crowdfund";
 import { MeshTxInitiator, MeshTxInitiatorInput } from "./common";
+import { env } from "@/env";
+
+// Import Sancho slot resolver
+import { resolveSlotNoSancho } from "./test_sancho_utils";
 
 type Amount = { unit: string; quantity: string };
 
@@ -278,7 +282,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
   private ensureCrowdfundAddress() {
     if (!this.cachedCrowdfundAddress) {
-      const stakeScriptHash = resolveScriptHash(this.getStakePublishCbor(), "V3");
+      const stakeScriptHash = resolveScriptHash(
+        this.getStakePublishCbor(),
+        "V3",
+      );
       const { address } = serializePlutusScript(
         { code: this.getCrowdfundSpendCbor(), version: "V3" },
         stakeScriptHash,
@@ -318,10 +325,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     ]);
   }
 
-  private buildProposedDatum(
-    datum: CrowdfundDatumTS,
-    fundsControlled: bigint,
-  ) {
+  private buildProposedDatum(datum: CrowdfundDatumTS, fundsControlled: bigint) {
     return mConStr1([
       datum.stake_script || this.getStakePublishHash(),
       datum.share_token || this.getShareTokenPolicyId(),
@@ -387,10 +391,57 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     return utxos[0]!;
   }
 
-  private getSlotAfterMinutes(minutes: number) {
+  private getSlotAfterMinutes(minutes: number): string {
     const now = Date.now();
     const future = now + minutes * 60_000;
-    return resolveSlotNo(this.networkId ? "mainnet" : "preprod", future);
+
+    console.log(
+      `[getSlotAfterMinutes] SYNC method called with ${minutes} minutes`,
+    );
+    console.log(
+      `[getSlotAfterMinutes] NEXT_PUBLIC_GOV_TESTNET: ${env.NEXT_PUBLIC_GOV_TESTNET}`,
+    );
+
+    if (env.NEXT_PUBLIC_GOV_TESTNET) {
+      console.warn(
+        "[getSlotAfterMinutes] WARNING: Sancho resolver requires async but sync method called!",
+      );
+      console.warn(
+        "[getSlotAfterMinutes] Consider using async transaction building methods when NEXT_PUBLIC_GOV_TESTNET=true",
+      );
+    }
+
+    // Use normal MeshJS resolver (sync)
+    const slot = resolveSlotNo(this.networkId ? "mainnet" : "preprod", future);
+    console.log(`[getSlotAfterMinutes] Sync resolver returned slot: ${slot}`);
+    return slot;
+  }
+
+  private async getSlotAfterMinutesAsync(minutes: number): Promise<string> {
+    const now = Date.now();
+    const future = now + minutes * 60_000;
+
+    // Switch between normal resolveSlotNo and Sancho resolver based on env var
+    if (env.NEXT_PUBLIC_GOV_TESTNET) {
+      try {
+        const sanchoSlot = await resolveSlotNoSancho("sancho", future);
+        return sanchoSlot;
+      } catch (error) {
+        // Fallback to normal resolver if Sancho fails
+        const fallbackSlot = resolveSlotNo(
+          this.networkId ? "mainnet" : "preprod",
+          future,
+        );
+        return fallbackSlot;
+      }
+    } else {
+      // Use normal MeshJS resolver
+      const normalSlot = resolveSlotNo(
+        this.networkId ? "mainnet" : "preprod",
+        future,
+      );
+      return normalSlot;
+    }
   }
 
   private ensureWalletInfo = async () => {
@@ -485,7 +536,13 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       datum.stake_script || this.getStakePublishHash(),
     );
 
-    const slot = this.getSlotAfterMinutes(5);
+    const slot = env.NEXT_PUBLIC_GOV_TESTNET
+      ? await this.getSlotAfterMinutesAsync(5)
+      : this.getSlotAfterMinutes(5);
+
+    console.log(
+      `[contributeCrowdfund] Using slot: ${slot} for transaction validity`,
+    );
 
     this.mesh.reset();
     const tx = await this.mesh
@@ -547,7 +604,13 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       datum.share_token || this.getShareTokenPolicyId(),
       datum.stake_script || this.getStakePublishHash(),
     );
-    const slot = this.getSlotAfterMinutes(5);
+    const slot = env.NEXT_PUBLIC_GOV_TESTNET
+      ? await this.getSlotAfterMinutesAsync(5)
+      : this.getSlotAfterMinutes(5);
+
+    console.log(
+      `[withdrawCrowdfund] Using slot: ${slot} for transaction validity`,
+    );
 
     this.mesh.reset();
     const tx = await this.mesh
@@ -624,8 +687,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       anchorDrep,
       this.governance.anchorDrep,
     );
-    const proposalAction =
-      governanceAction || this.governance.governanceAction || {
+    const proposalAction = governanceAction ||
+      this.governance.governanceAction || {
         kind: "InfoAction",
         action: {},
       };
@@ -682,16 +745,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .complete();
 
     return { tx };
-  };
-
-  /**
-   * Temporary alias for backwards compatibility.
-   */
-  completeCrowdfund = async (args: RegisterGovActionArgs) => {
-    console.warn(
-      "[MeshCrowdfundContract] completeCrowdfund() is deprecated. Please use registerGovAction() instead.",
-    );
-    return this.registerGovAction(args);
   };
 
   voteOnGovAction = async ({ datum, voteKind }: VoteOnGovActionArgs) => {
@@ -832,7 +885,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
     const authTokenUtxo = await this.fetchCrowdfundUtxo();
 
-    const newValue = adjustLovelace(authTokenUtxo.output.amount, -withdrawBigInt);
+    const newValue = adjustLovelace(
+      authTokenUtxo.output.amount,
+      -withdrawBigInt,
+    );
 
     const updatedDatum = this.buildRefundableDatum(
       datum.stake_script,
@@ -885,4 +941,3 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     return { tx };
   };
 }
-

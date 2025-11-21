@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { MeshCrowdfundContract } from '@/components/crowdfund/base-crowdfund/offchain';
+import { MeshCrowdfundContract } from '../components/crowdfund/base-crowdfund/offchain';
 import { MeshTxBuilder, UTxO } from '@meshsdk/core';
-import { CrowdfundDatumTS } from '@/components/crowdfund/crowdfund';
+import { CrowdfundDatumTS } from '../components/crowdfund/crowdfund';
+import { mockSlotConfig, createSlotConfigFromTime, testSanchoSlotResolver } from './testUtils';
 
 // Mock MeshTxBuilder
 jest.mock('@meshsdk/core', () => {
@@ -372,5 +373,9 @@ describe('MeshCrowdfundContract withdrawCrowdfund', () => {
       expect(meshTxBuilder.txInCollateral).toHaveBeenCalled();
     });
   });
+
+  // Note: Custom slot configuration tests removed as the implementation 
+  // has been simplified to use environment variable switching between
+  // normal MeshJS resolvers and Sancho resolver
 });
 

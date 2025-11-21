@@ -10,12 +10,12 @@ import { ContributeToCrowdfund } from "./UI/contribute";
 import { WithdrawFromCrowdfund } from "./UI/withdraw";
 import { CrowdfundInfo } from "./UI/crowdfundInfo";
 import useUser from "@/hooks/useUser";
-import { deserializeAddress, SLOT_CONFIG_NETWORK, slotToBeginUnixTime } from "@meshsdk/core";
+import { deserializeAddress } from "@meshsdk/core";
 import { api } from "@/utils/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -155,7 +155,7 @@ export default function PageCrowdfund() {
             
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600"></div>
                 <span className="ml-2">Loading your crowdfunds...</span>
               </div>
             ) : crowdfunds && crowdfunds.length > 0 ? (
@@ -200,19 +200,17 @@ export default function PageCrowdfund() {
               Discover Crowdfunding Campaigns
             </h2>
             
-            {publicCrowdfunds && publicCrowdfunds.length > 0 ? (
+            {publicCrowdfunds && publicCrowdfunds.filter((fund: any) => fund.proposerKeyHashR0 !== proposerKeyHashR0).length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {publicCrowdfunds.map( (fund: any) => (
+                {publicCrowdfunds
+                  .filter((fund: any) => fund.proposerKeyHashR0 !== proposerKeyHashR0)
+                  .map( (fund: any) => (
                   <CrowdfundCard 
                     key={fund.id} 
                     crowdfund={fund} 
                     networkId={networkId}
-                    isOwner={fund.proposerKeyHashR0 === proposerKeyHashR0}
+                    isOwner={false}
                     onClick={() => handleCrowdfundClick(fund)}
-                    onEditDraft={fund.proposerKeyHashR0 === proposerKeyHashR0 ? (crowdfund) => {
-                      setEditingDraft(crowdfund);
-                      setShowCreateForm(true);
-                    } : undefined}
                   />
                 ))}
               </div>
@@ -257,6 +255,11 @@ export default function PageCrowdfund() {
               {modalView === 'contribute' && `Contribute to ${selectedCrowdfund?.name}`}
               {modalView === 'withdraw' && `Withdraw from ${selectedCrowdfund?.name}`}
             </DialogTitle>
+            <DialogDescription>
+              {modalView === 'info' && 'View crowdfund details, progress, and contribution history'}
+              {modalView === 'contribute' && 'Make a contribution to this crowdfund campaign'}
+              {modalView === 'withdraw' && 'Withdraw your contribution from this crowdfund'}
+            </DialogDescription>
           </DialogHeader>
           
           {selectedCrowdfund && (
@@ -343,7 +346,7 @@ function CrowdfundCard({
     const uniqueContributors = new Set(contributions.map(c => c.address)).size;
     const contributorCount = contributions.length > 0 
       ? uniqueContributors.toString() 
-      : (datum.current_fundraised_amount > 0 ? "N/A" : "0");
+      : (datum.current_fundraised_amount > 0 ? "1+" : "0");
     
     mockData = {
       totalRaised: datum.current_fundraised_amount / 1000000,
@@ -368,9 +371,14 @@ function CrowdfundCard({
         const shareTokenPolicyId = datum.share_token.toLowerCase();
         
         // Fetch transactions for the crowdfund address
-        const transactions: any[] = await blockchainProvider.get(
-          `/addresses/${crowdfund.address}/transactions?page=1&count=50&order=desc`
-        );
+        // Use standardized IFetcher method
+        // Fetching crowdfund transactions
+        const transactions = await blockchainProvider.fetchAddressTxs(crowdfund.address, { 
+          page: 1, 
+          count: 50, 
+          order: 'desc' 
+        });
+        // Processing crowdfund transactions
 
         const contributionList: Array<{
           address: string;
@@ -382,9 +390,9 @@ function CrowdfundCard({
         // Process each transaction to find contributions that minted share tokens
         for (const tx of transactions.slice(0, 20)) { // Limit to 20 most recent
           try {
-            // Get full transaction details including mint information
-            const txDetails = await blockchainProvider.get(`/txs/${tx.tx_hash}`);
-            const txUtxos = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
+            // Use standardized IFetcher methods
+            const txDetails = await blockchainProvider.fetchTxInfo(tx.tx_hash || tx.hash);
+            const txUtxos = await blockchainProvider.fetchUTxOs(tx.tx_hash || tx.hash);
             
             // Check if this transaction minted share tokens
             const mint = txDetails.mint || txDetails.mint_tx || txDetails.asset_mints || [];

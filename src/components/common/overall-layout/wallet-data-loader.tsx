@@ -44,13 +44,31 @@ export default function WalletDataLoader() {
     if (appWallet) {
       const _transactions: OnChainTransaction[] = [];
       const blockchainProvider = getProvider(network);
-      const transactionsResponse = await blockchainProvider.get(
-        `/addresses/${appWallet.address}/transactions`,
-      ) as TxInfo[];
+      // Use standardized IFetcher method
+      const txResponse = await blockchainProvider.fetchAddressTxs(appWallet.address);
+      // Convert TransactionInfo[] to TxInfo[] format for compatibility
+      const transactionsResponse: TxInfo[] = txResponse.map((tx: any) => ({
+        tx_hash: tx.hash || tx.tx_hash,
+        block_height: tx.block || 0,
+        block_time: tx.slot || 0,
+        tx_index: tx.index || 0
+      }));
       let transactions = transactionsResponse;
       transactions = transactions.reverse().splice(0, 10);
       for (const tx of transactions) {
-        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`) as TxUtxosResponse;
+        // Use standardized IFetcher method
+        const utxos = await blockchainProvider.fetchUTxOs(tx.tx_hash);
+        // Convert UTxO[] to UTXO[] format for compatibility
+        const outputs = utxos.map((utxo: any) => ({
+          address: utxo.output.address,
+          amount: utxo.output.amount,
+          output_index: utxo.input.outputIndex,
+          tx_hash: utxo.input.txHash,
+          data_hash: utxo.output.dataHash,
+          inline_datum: utxo.output.plutusData,
+          reference_script_hash: utxo.output.scriptHash,
+        }));
+        const txData: TxUtxosResponse = { inputs: [], outputs };
         _transactions.push({
           hash: tx.tx_hash,
           tx: tx,
@@ -113,11 +131,7 @@ export default function WalletDataLoader() {
   }
 
   useEffect(() => {
-    console.log("WalletDataLoader: useEffect triggered", {
-      hasAppWallet: !!appWallet,
-      walletId: appWallet?.id,
-      hasUtxos: appWallet?.id ? walletsUtxos[appWallet.id] !== undefined : false
-    });
+    // WalletDataLoader useEffect triggered
     
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
       console.log("WalletDataLoader: Calling refreshWallet");
