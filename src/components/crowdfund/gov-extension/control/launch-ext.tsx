@@ -317,7 +317,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                 <Info className="h-3 w-3 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent>
-                <p>Pool ID to delegate voting power to</p>
+                <p>Pool ID to delegate voting power to (56 characters, starts with "pool")</p>
               </TooltipContent>
             </Tooltip>
           </Label>
@@ -325,8 +325,13 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
             id="delegate_pool_id"
             value={govData.delegate_pool_id || ""}
             onChange={(e) => updateGovData({ delegate_pool_id: e.target.value })}
-            placeholder="Enter pool ID"
+            placeholder="pool1abcd... (56 characters)"
           />
+          {govData.delegate_pool_id && govData.delegate_pool_id.length > 0 && govData.delegate_pool_id.length < 56 && (
+            <p className="text-sm text-red-500">
+              Pool ID must be 56 characters long. Current length: {govData.delegate_pool_id.length}
+            </p>
+          )}
         </div>
 
         {/* Governance Action Type */}

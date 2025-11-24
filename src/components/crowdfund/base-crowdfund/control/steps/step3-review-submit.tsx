@@ -13,10 +13,10 @@ import {
   resolveSlotNo,
 } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../../offchain";
-import { mapGovExtensionToConfig } from "../utils";
+import { mapGovExtensionToConfig } from "../../utils";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { CrowdfundDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../../../crowdfund";
 import {
   CheckCircle,
   XCircle,
@@ -105,6 +105,7 @@ export function Step3ReviewSubmit({
 
   const handleSubmit = async () => {
     console.log("[handleSubmit] Starting submission", {
+      step2Type: formData.step2Type,
       hasProposerKeyHash: !!proposerKeyHashR0,
       hasDeadline: !!formData.deadline,
       fundraiseTarget: formData.fundraiseTarget,
@@ -241,7 +242,7 @@ export function Step3ReviewSubmit({
 
       // Create the datum data as CrowdfundDatumTS
       const datumData: CrowdfundDatumTS = {
-        stake_script: "",
+        completion_script: "",
         share_token: "",
         crowdfund_address: "",
         fundraise_target: totalFundingTarget,
@@ -249,6 +250,7 @@ export function Step3ReviewSubmit({
         allow_over_subscription: true, // Always allow over-subscription
         deadline: Number(deadlineDate),
         expiry_buffer: parseInt(formData.expiryBuffer),
+        fee_address: formData.feeAddress,
         min_charge: parseFloat(formData.minCharge || "0") * 1000000, // Convert ADA to lovelace
       };
 
@@ -260,14 +262,14 @@ export function Step3ReviewSubmit({
       const {
         tx,
         paramUtxo,
-        stake_script_hash,
+        completion_scriptHash,
         share_token,
         crowdfund_address,
         authTokenId,
       } = await contract.setupCrowdfund(datumData);
       console.log("[handleSubmit] setupCrowdfund completed", {
         hasTx: !!tx,
-        stake_script_hash,
+        completion_scriptHash,
         share_token,
         crowdfund_address,
         authTokenId,
@@ -276,11 +278,10 @@ export function Step3ReviewSubmit({
       // Sign and submit the transaction
       const signedTx = await wallet.signTx(tx, true);
       const txHash = await wallet.submitTx(signedTx);
-      
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
-        stake_script: stake_script_hash,
+        completion_script: completion_scriptHash,
         share_token: share_token,
         crowdfund_address: crowdfund_address,
         fundraise_target: datumData.fundraise_target,
@@ -288,6 +289,7 @@ export function Step3ReviewSubmit({
         allow_over_subscription: datumData.allow_over_subscription,
         deadline: datumData.deadline,
         expiry_buffer: datumData.expiry_buffer,
+        fee_address: datumData.fee_address,
         min_charge: datumData.min_charge,
       };
 
@@ -317,7 +319,7 @@ export function Step3ReviewSubmit({
         authTokenId: authTokenId,
         address: crowdfund_address,
         datum: JSON.stringify(updatedDatum),
-        govDatum: JSON.stringify(govExtension),
+        govExtension: govExtension,
       });
 
       // Show success toast

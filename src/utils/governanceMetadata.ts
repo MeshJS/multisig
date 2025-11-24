@@ -40,7 +40,7 @@ export interface DRepMetadataInput {
 }
 
 /**
- * Upload metadata to Vercel blob storage
+ * Upload metadata to Vercel blob storage with automatic URL shortening for governance anchors
  */
 export async function uploadMetadata(
   pathname: string,
@@ -63,7 +63,69 @@ export async function uploadMetadata(
   }
 
   const result = (await response.json()) as { url: string };
-  return result.url;
+  let finalUrl = result.url;
+
+  // Check if URL needs shortening (Cardano governance anchor URLs must be ≤64 chars)
+  if (finalUrl.length > 64) {
+    console.log(`Governance anchor URL too long (${finalUrl.length} chars), shortening...`);
+    
+    const shortenResponse = await fetch("/api/shorten-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: finalUrl }),
+    });
+
+    if (!shortenResponse.ok) {
+      throw new Error("Failed to shorten governance anchor URL");
+    }
+
+    const shortenResult = await shortenResponse.json();
+    // Handle localhost vs production URLs
+    const shortUrl = shortenResult.shortUrl;
+    if (shortUrl.startsWith('localhost:')) {
+      finalUrl = `http://${shortUrl}`;
+    } else {
+      finalUrl = `https://${shortUrl}`;
+    }
+    console.log(`Governance anchor URL shortened from ${result.url.length} to ${finalUrl.length} chars`);
+  }
+
+  return finalUrl;
+}
+
+/**
+ * Shorten a URL if it exceeds Cardano's 64-character limit for governance anchors
+ */
+export async function shortenUrlIfNeeded(url: string): Promise<string> {
+  if (url.length <= 64) {
+    return url;
+  }
+
+  console.log(`URL too long (${url.length} chars), shortening...`);
+  
+  const response = await fetch("/api/shorten-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to shorten URL");
+  }
+
+  const result = await response.json();
+  // Handle localhost vs production URLs
+  const apiShortUrl = result.shortUrl;
+  const shortUrl = apiShortUrl.startsWith('localhost:') 
+    ? `http://${apiShortUrl}` 
+    : `https://${apiShortUrl}`;
+  console.log(`URL shortened from ${url.length} to ${shortUrl.length} chars`);
+  
+  return shortUrl;
 }
 
 /**

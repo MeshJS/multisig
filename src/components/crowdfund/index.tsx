@@ -10,7 +10,7 @@ import { ContributeToCrowdfund } from "./UI/contribute";
 import { WithdrawFromCrowdfund } from "./UI/withdraw";
 import { CrowdfundInfo } from "./UI/crowdfundInfo";
 import useUser from "@/hooks/useUser";
-import { deserializeAddress } from "@meshsdk/core";
+import { deserializeAddress, SLOT_CONFIG_NETWORK, slotToBeginUnixTime } from "@meshsdk/core";
 import { api } from "@/utils/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
+import { dateToFormatted } from "@/utils/strings";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { parseGovDatum } from "./UI/utils";
@@ -391,17 +392,17 @@ function CrowdfundCard({
         for (const tx of transactions.slice(0, 20)) { // Limit to 20 most recent
           try {
             // Use standardized IFetcher methods
-            const txDetails = await blockchainProvider.fetchTxInfo(tx.tx_hash || tx.hash);
-            const txUtxos = await blockchainProvider.fetchUTxOs(tx.tx_hash || tx.hash);
+            const txDetails = await blockchainProvider.fetchTxInfo(tx.hash);
+            const txUtxos = await blockchainProvider.fetchUTxOs(tx.hash);
             
             // Check if this transaction minted share tokens
-            const mint = txDetails.mint || txDetails.mint_tx || txDetails.asset_mints || [];
+            const mint = (txDetails as any).assetsMinted || (txDetails as any).mint || [];
             
             // Also check outputs for share tokens (they might be in outputs after minting)
-            const outputs = txUtxos.outputs || [];
+            const outputs = txUtxos || [];
             const hasShareTokenInOutputs = outputs.some((output: any) => {
-              if (output.amount && Array.isArray(output.amount)) {
-                return output.amount.some((amt: any) => {
+              if (output.output?.amount && Array.isArray(output.output.amount)) {
+                return output.output.amount.some((amt: any) => {
                   const unit = (amt.unit || "").toLowerCase();
                   if (unit.length >= 56) {
                     const policyId = unit.substring(0, 56);
@@ -449,24 +450,34 @@ function CrowdfundCard({
             }
             
             // Check if this is a withdrawal (burns share tokens with negative quantity)
-            const isWithdrawal = mint && Array.isArray(mint) && mint.some((mintItem: any) => {
-              const unit = (mintItem.unit || mintItem.asset || "").toLowerCase();
-              if (unit.length >= 56) {
-                const policyId = unit.substring(0, 56);
-                const quantity = Number(mintItem.quantity || mintItem.amount || 0);
-                return policyId === shareTokenPolicyId && quantity < 0;
-              }
-              return false;
-            });
+            let isWithdrawal = false;
+            let shareTokenMintAmount = 0;
             
-            // Skip withdrawals - we only want contributions
+            if (mint && Array.isArray(mint)) {
+              mint.forEach((mintItem: any) => {
+                const unit = (mintItem.unit || mintItem.asset || "").toLowerCase();
+                if (unit.length >= 56) {
+                  const policyId = unit.substring(0, 56);
+                  if (policyId === shareTokenPolicyId) {
+                    const quantity = Number(mintItem.quantity || mintItem.amount || 0);
+                    shareTokenMintAmount += quantity;
+                    if (quantity < 0) {
+                      isWithdrawal = true;
+                    }
+                  }
+                }
+              });
+            }
+            
+            // For now, skip withdrawals in the card view - we only want contributions
+            // TODO: In the future, we might want to show withdrawals with different styling
             if (isWithdrawal) {
               continue;
             }
             
             // Find the crowdfund input (the UTxO being spent from the crowdfund)
-            const crowdfundInput = txUtxos.inputs?.find((input: any) => 
-              input.address === crowdfund.address
+            const crowdfundInput = txUtxos.find((utxo: any) => 
+              utxo.output.address === crowdfund.address
             );
             
             // Find outputs that went to the crowdfund address (the new UTxO)
@@ -483,32 +494,47 @@ function CrowdfundCard({
                 return sum + Number(lovelace);
               }, 0);
               
-              const inputLovelace = crowdfundInput.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity || 0;
+              const inputLovelace = crowdfundInput.output?.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity || 0;
               
               contributionAmount = outputLovelace - Number(inputLovelace);
             } else if (crowdfundOutputs.length > 0) {
-              const lovelaceAmount = crowdfundOutputs[0]?.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity;
+              const lovelaceAmount = crowdfundOutputs[0]?.output?.amount?.find((amt: any) => amt.unit === "lovelace")?.quantity;
               contributionAmount = Number(lovelaceAmount || 0);
             }
             
             // Only process if there's a positive contribution amount
             if (contributionAmount > 0) {
-              const inputs = txUtxos.inputs || [];
-              const contributorInput = inputs.find((input: any) => 
-                input.address && input.address !== crowdfund.address
+              const contributorInput = txUtxos.find((utxo: any) => 
+                utxo.output.address && utxo.output.address !== crowdfund.address
               );
               
               if (contributorInput) {
+                // Get proper timestamp from transaction
+                const slot = (tx as any).slot || (tx as any).block || 0;
+                const blockTime = (tx as any).blockTime || (tx as any).block_time;
+                
+                let timestamp: Date;
+                if (blockTime && !isNaN(Number(blockTime))) {
+                  timestamp = new Date(Number(blockTime) * 1000);
+                } else if (slot && !isNaN(Number(slot))) {
+                  const networkKey = networkId === 0 ? 'testnet' : 'mainnet';
+                  const unixTime = slotToBeginUnixTime(Number(slot), SLOT_CONFIG_NETWORK[networkKey]);
+                  timestamp = new Date(unixTime);
+                } else {
+                  timestamp = new Date();
+                  console.warn(`No valid timestamp found for transaction ${tx.hash}, using current time`);
+                }
+
                 contributionList.push({
-                  address: contributorInput.address || "Unknown",
+                  address: contributorInput.output.address || "Unknown",
                   amount: contributionAmount / 1000000,
-                  timestamp: new Date(tx.block_time * 1000),
-                  txHash: tx.tx_hash,
+                  timestamp: timestamp,
+                  txHash: tx.hash,
                 });
               }
             }
           } catch (err) {
-            console.error(`Error processing transaction ${tx.tx_hash}:`, err);
+            console.error(`Error processing transaction ${tx.hash}:`, err);
           }
         }
 
@@ -683,7 +709,7 @@ function CrowdfundCard({
         {isExpanded && (
           <div className="pt-4 border-t space-y-3">
             <div className="text-sm">
-              <span className="font-medium">Created:</span> {new Date(crowdfund.createdAt).toLocaleDateString()}
+              <span className="font-medium">Created:</span> {dateToFormatted(new Date(crowdfund.createdAt))}
             </div>
             <div className="text-sm">
               <span className="font-medium">Proposer Key Hash:</span> 

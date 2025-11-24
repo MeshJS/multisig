@@ -158,3 +158,11 @@ model Migration {
   @@index([status])
   @@index([createdAt])
 }
+
+model UrlShortener {
+  id          String   @id @default(cuid())
+  shortId     String   @unique
+  originalUrl String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

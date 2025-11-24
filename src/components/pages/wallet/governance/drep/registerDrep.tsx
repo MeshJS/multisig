@@ -100,9 +100,14 @@ export default function RegisterDRep() {
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
-    const anchorUrl = res.url;
+    let anchorUrl = res.url;
+    
+    // Shorten URL if needed for governance anchor (64 char limit)
+    const { shortenUrlIfNeeded } = await import("@/utils/governanceMetadata");
+    anchorUrl = await shortenUrlIfNeeded(anchorUrl);
+    
     // Await file retrieval
-    const fileContent = getFile(anchorUrl);
+    const fileContent = getFile(res.url); // Use original URL for file content
     const anchorObj = JSON.parse(fileContent);
     const anchorHash = hashDrepAnchor(anchorObj);
     return { anchorUrl, anchorHash };

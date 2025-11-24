@@ -27,7 +27,7 @@ validator gCf_stake(
     when redeemer is {
       // Register: Validate spend validator is registering certificates
       Register -> {
-        let redeemer_check = only_input_redeemer == RegisterCerts
+        let redeemer_check = only_input_redeemer == RegisterCerts 
 
         redeemer_check?
       }

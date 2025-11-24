@@ -15,7 +15,9 @@ import {
   AlertCircle,
   TrendingUp,
   Settings,
-  BarChart3
+  BarChart3,
+  ToggleLeft,
+  ToggleRight
 } from "lucide-react";
 import { 
   LineChart, 
@@ -39,6 +41,9 @@ import { MeshCrowdfundContract } from "../offchain";
 import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 import { useSiteStore } from "@/lib/zustand/site";
 import { unique } from "next/dist/build/utils";
+import { dateToFormatted } from "@/utils/strings";
+import DRepSetupForm from "./DRepSetupForm";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface CrowdfundInfoProps {
   crowdfund: any;
@@ -73,7 +78,11 @@ export function CrowdfundInfo({
     daysFromStart: number;
     daysRemaining: number;
   }>>([]);
+  const [showTimeChart, setShowTimeChart] = useState(false);
+  const [timeRangeMode, setTimeRangeMode] = useState<'oneHour' | 'deadline'>('deadline');
   const [isCompleting, setIsCompleting] = useState(false);
+  const [showDRepSetup, setShowDRepSetup] = useState(false);
+  const [drepAnchor, setDrepAnchor] = useState<{ url: string; hash: string } | null>(null);
   const { toast } = useToast();
   const { wallet, connected } = useWallet();
   const network = useSiteStore((state) => state.network);
@@ -181,6 +190,66 @@ export function CrowdfundInfo({
   // Funding goal conversion completed
 
   // Generate chart data from contributions with setup/deadline bounds
+  // Analyze transaction flow to detect withdrawals based on share token decreases
+  const analyzeTransactionFlow = (transactions: Array<{
+    address: string;
+    amount: number;
+    timestamp: Date;
+    txHash: string;
+    type: 'contribution' | 'withdrawal';
+  }>) => {
+    if (transactions.length === 0) return transactions;
+    
+    // Sort chronologically (oldest first)
+    const sortedTxs = [...transactions].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    
+    // Track running balance for each address (what they currently hold)
+    const addressBalances = new Map<string, number>();
+    
+    const analyzedTxs = sortedTxs.map((tx, index) => {
+      const previousBalance = addressBalances.get(tx.address) || 0;
+      
+      // For the first transaction from an address, it's always a contribution
+      if (index === 0 || previousBalance === 0) {
+        addressBalances.set(tx.address, tx.amount);
+        return { ...tx, type: 'contribution' as const };
+      }
+      
+      // Compare current transaction amount with previous balance
+      // If current amount < previous balance, it's a withdrawal
+      // If current amount > previous balance, it's a contribution
+      
+      if (tx.amount < previousBalance) {
+        // This is a withdrawal - calculate how much was withdrawn
+        const withdrawalAmount = previousBalance - tx.amount;
+        addressBalances.set(tx.address, tx.amount);
+        
+        
+        return { 
+          ...tx, 
+          type: 'withdrawal' as const,
+          amount: withdrawalAmount
+        };
+      } else if (tx.amount > previousBalance) {
+        // This is a contribution - calculate how much was added
+        const contributionAmount = tx.amount - previousBalance;
+        addressBalances.set(tx.address, tx.amount);
+        
+        
+        return { 
+          ...tx, 
+          type: 'contribution' as const,
+          amount: contributionAmount
+        };
+      } else {
+        // Same amount - shouldn't happen but treat as contribution
+        return { ...tx, type: 'contribution' as const };
+      }
+    });
+    
+    return analyzedTxs;
+  };
+
   const generateChartData = (contributionList: Array<{
     address: string;
     amount: number;
@@ -267,6 +336,88 @@ export function CrowdfundInfo({
     setChartData(chartDataArray);
   };
 
+  const generateTimeBasedChartData = (contributionList: Array<{
+    address: string;
+    amount: number;
+    timestamp: Date;
+    txHash: string;
+    type: 'contribution' | 'withdrawal';
+  }>) => {
+    const startDate = new Date(crowdfund.createdAt);
+    const deadlineMs = typeof datum.deadline === 'number' ? datum.deadline : new Date(datum.deadline).getTime();
+    const endDate = new Date(deadlineMs);
+    const now = new Date();
+    
+    // Determine end time based on mode
+    const endTime = timeRangeMode === 'oneHour' 
+      ? new Date(now.getTime() + 60 * 60 * 1000) // 1 hour from now
+      : endDate; // deadline
+    
+    // Filter contributions within the time range
+    const filteredContributions = contributionList.filter(contribution => 
+      contribution.timestamp >= startDate && contribution.timestamp <= endTime
+    );
+    
+    // Sort contributions by timestamp (oldest first)
+    const sortedContributions = [...filteredContributions].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    
+    // Create initial data point at start (0 raised)
+    const chartDataArray = [{
+      date: dateToFormatted(startDate),
+      timestamp: startDate.getTime(),
+      totalRaised: 0,
+      goalPercent: 0,
+      progressPercent: 0,
+      daysFromStart: 0,
+      daysRemaining: Math.ceil((endTime.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+    }];
+
+    // Calculate running total and add data points for each contribution
+    let runningTotal = 0;
+    sortedContributions.forEach(contribution => {
+      if (contribution.type === 'contribution') {
+        runningTotal += contribution.amount;
+      } else {
+        runningTotal -= contribution.amount;
+      }
+
+      const timeFromStart = contribution.timestamp.getTime() - startDate.getTime();
+      const totalDuration = endTime.getTime() - startDate.getTime();
+      const progressPercent = Math.min((timeFromStart / totalDuration) * 100, 100);
+      const goalPercent = crowdfundData.fundingGoal > 0 ? (runningTotal / crowdfundData.fundingGoal) * 100 : 0;
+      const daysFromStart = timeFromStart / (1000 * 60 * 60 * 24);
+      const timeRemaining = endTime.getTime() - contribution.timestamp.getTime();
+      const daysRemaining = Math.max(0, timeRemaining / (1000 * 60 * 60 * 24));
+
+      chartDataArray.push({
+        date: dateToFormatted(contribution.timestamp),
+        timestamp: contribution.timestamp.getTime(),
+        totalRaised: runningTotal,
+        goalPercent: goalPercent,
+        progressPercent: progressPercent,
+        daysFromStart: daysFromStart,
+        daysRemaining: daysRemaining,
+      });
+    });
+
+    // Add final data point at end time (if not already there)
+    const lastContribution = sortedContributions[sortedContributions.length - 1];
+    if (!lastContribution || lastContribution.timestamp.getTime() < endTime.getTime()) {
+      const finalGoalPercent = crowdfundData.fundingGoal > 0 ? (runningTotal / crowdfundData.fundingGoal) * 100 : 0;
+      chartDataArray.push({
+        date: dateToFormatted(endTime),
+        timestamp: endTime.getTime(),
+        totalRaised: runningTotal,
+        goalPercent: finalGoalPercent,
+        progressPercent: 100,
+        daysFromStart: (endTime.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        daysRemaining: 0,
+      });
+    }
+
+    setChartData(chartDataArray);
+  };
+
   // Fetch contributions from blockchain
   useEffect(() => {
     const fetchContributions = async () => {
@@ -334,12 +485,53 @@ export function CrowdfundInfo({
               continue;
             }
             
+            // Analyze UTxO inputs and outputs to detect share token changes
+            const outputs = Array.isArray(txUtxos) ? txUtxos : ((txUtxos as any)?.outputs || []);
+            const inputs = (txUtxos as any)?.inputs || [];
+            
+            // Calculate share tokens in outputs vs inputs to determine mint/burn
+            let shareTokensInOutputs = 0;
+            let shareTokensInInputs = 0;
+            
+            // Count share tokens in outputs
+            outputs.forEach((output: any) => {
+              const amounts = output.amount || output.output?.amount || [];
+              if (Array.isArray(amounts)) {
+                amounts.forEach((amt: any) => {
+                  const unit = (amt.unit || "").toLowerCase();
+                  if (unit.length >= 56) {
+                    const policyId = unit.substring(0, 56);
+                    if (policyId === shareTokenPolicyId) {
+                      shareTokensInOutputs += Number(amt.quantity || 0);
+                    }
+                  }
+                });
+              }
+            });
+            
+            // Count share tokens in inputs
+            inputs.forEach((input: any) => {
+              const amounts = input.amount || input.output?.amount || [];
+              if (Array.isArray(amounts)) {
+                amounts.forEach((amt: any) => {
+                  const unit = (amt.unit || "").toLowerCase();
+                  if (unit.length >= 56) {
+                    const policyId = unit.substring(0, 56);
+                    if (policyId === shareTokenPolicyId) {
+                      shareTokensInInputs += Number(amt.quantity || 0);
+                    }
+                  }
+                });
+              }
+            });
+            
+            // Calculate net share token difference (positive = minted, negative = burned)
+            const shareTokenDifference = shareTokensInOutputs - shareTokensInInputs;
+            
+            
             // Check if this transaction has share tokens in outputs
             // Since we're using fetchUTxOs, we'll focus on checking outputs for share tokens
             let hasShareTokenMint = false;
-            
-            // Check outputs for share tokens (they are created when minting)
-            const outputs = Array.isArray(txUtxos) ? txUtxos : ((txUtxos as any)?.outputs || []);
             
             const hasShareTokenInOutputs = outputs.some((output: any) => {
               const amounts = output.amount || output.output?.amount || [];
@@ -356,97 +548,126 @@ export function CrowdfundInfo({
               return false;
             });
             
-            // Determine if this is a contribution transaction by checking for share tokens in outputs
-            hasShareTokenMint = hasShareTokenInOutputs;
+            // Determine transaction type based on share token difference
+            let transactionType: 'contribution' | 'withdrawal' = 'contribution';
             
-            // ONLY process transactions that minted share tokens
-            // Skip all others (including setup transaction and transactions without mint info)
+            if (shareTokenDifference > 0) {
+              transactionType = 'contribution';
+              hasShareTokenMint = true;
+            } else if (shareTokenDifference < 0) {
+              transactionType = 'withdrawal';
+              hasShareTokenMint = true;
+            } else if (shareTokensInOutputs > 0) {
+              // Fallback: if we see share tokens but no net difference, assume contribution
+              transactionType = 'contribution';
+              hasShareTokenMint = true;
+            }
+            
+            // ONLY process transactions that have share token activity
             if (!hasShareTokenMint) {
               continue;
             }
             
-            // Determine if this is a contribution or withdrawal
-            // Contributions: share tokens go to contributor address
-            // Withdrawals: share tokens come from contributor address (burned)
-            let transactionType: 'contribution' | 'withdrawal' = 'contribution';
+            // Calculate ADA amounts by analyzing crowdfund address UTxO changes
+            let transactionAmount = 0;
+            let participantAddress = "Unknown";
             
-            // Simple heuristic: if the crowdfund address is receiving ADA, it's likely a contribution
-            // If the crowdfund address is sending ADA, it's likely a withdrawal
-            const crowdfundTxOutputs = outputs.filter((output: any) => 
-              output.address === crowdfund.address || output.output?.address === crowdfund.address
-            );
-            const crowdfundTxInputs = outputs.filter((output: any) => 
-              output.address !== crowdfund.address && output.output?.address !== crowdfund.address
-            );
-            
-            // If there are more outputs to crowdfund than from it, likely a contribution
-            if (crowdfundTxOutputs.length > 0 && crowdfundTxInputs.length > 0) {
-              // More sophisticated logic could be added here
-              transactionType = 'contribution';
-            }
-            
-            // With fetchUTxOs, we get the UTxOs for this transaction
-            // Find outputs that went to the crowdfund address
-            const crowdfundOutputs = outputs.filter((output: any) => 
-              output.address === crowdfund.address || output.output?.address === crowdfund.address
-            );
-
-            // For contribution calculation, we'll use a simplified approach
-            // since we don't have easy access to input amounts with fetchUTxOs
-            let contributionAmount = 0;
-            let contributorAddress = "Unknown";
-            
-            // Find the share token in the outputs
-            const shareTokenOutput = outputs.find((output: any) => {
-              const amounts = output.amount || output.output?.amount || [];
-              return amounts.some((amt: any) => {
-                const unit = (amt.unit || "").toLowerCase();
-                if (unit.length >= 56) {
-                  const policyId = unit.substring(0, 56);
-                  return policyId === shareTokenPolicyId;
-                }
-                return false;
-              });
+            // Find crowdfund UTxOs in inputs and outputs
+            const crowdfundInputs = inputs.filter((input: any) => {
+              const addr = input.address || input.output?.address;
+              return addr === crowdfund.address;
             });
             
-            if (shareTokenOutput) {
-              const amounts = shareTokenOutput.amount || shareTokenOutput.output?.amount || [];
-              const shareTokenAmount = amounts.find((amt: any) => {
-                const unit = (amt.unit || "").toLowerCase();
-                if (unit.length >= 56) {
-                  const policyId = unit.substring(0, 56);
-                  return policyId === shareTokenPolicyId;
-                }
-                return false;
+            const crowdfundTxOutputs = outputs.filter((output: any) => {
+              const addr = output.address || output.output?.address;
+              return addr === crowdfund.address;
+            });
+            
+            // Calculate ADA amounts in crowdfund UTxOs
+            const getLovelaceAmount = (utxos: any[]) => {
+              return utxos.reduce((total, utxo) => {
+                const amounts = utxo.amount || utxo.output?.amount || [];
+                const lovelaceAmt = amounts.find((amt: any) => amt.unit === "lovelace" || amt.unit === "");
+                return total + Number(lovelaceAmt?.quantity || 0);
+              }, 0);
+            };
+            
+            const inputLovelace = getLovelaceAmount(crowdfundInputs);
+            const outputLovelace = getLovelaceAmount(crowdfundTxOutputs);
+            
+            // Determine transaction type and amount based on ADA flow
+            const adaDifference = outputLovelace - inputLovelace;
+            
+            if (adaDifference > 0) {
+              // More ADA in outputs than inputs = contribution
+              transactionType = 'contribution';
+              transactionAmount = adaDifference;
+              
+              // Find contributor address (where share tokens went)
+              const shareTokenOutput = outputs.find((output: any) => {
+                const addr = output.address || output.output?.address;
+                if (addr === crowdfund.address) return false; // Skip crowdfund address
+                
+                const amounts = output.amount || output.output?.amount || [];
+                return amounts.some((amt: any) => {
+                  const unit = (amt.unit || "").toLowerCase();
+                  if (unit.length >= 56) {
+                    const policyId = unit.substring(0, 56);
+                    return policyId === shareTokenPolicyId && Number(amt.quantity || 0) > 0;
+                  }
+                  return false;
+                });
               });
               
-              // Share tokens are typically minted 1:1 with ADA contribution
-              contributionAmount = Number(shareTokenAmount?.quantity || 0);
+              participantAddress = shareTokenOutput?.address || shareTokenOutput?.output?.address || "Unknown";
               
-              // Get contributor address from where the share tokens went
-              contributorAddress = shareTokenOutput.address || shareTokenOutput.output?.address || "Unknown";
+            } else if (adaDifference < 0) {
+              // Less ADA in outputs than inputs = withdrawal
+              transactionType = 'withdrawal';
+              transactionAmount = Math.abs(adaDifference);
+              
+              // Find withdrawal recipient (non-crowdfund address that received ADA)
+              const withdrawalOutput = outputs.find((output: any) => {
+                const addr = output.address || output.output?.address;
+                return addr && addr !== crowdfund.address;
+              });
+              
+              participantAddress = withdrawalOutput?.address || withdrawalOutput?.output?.address || "Unknown";
+              
             } else {
-              // Fallback: use a default contribution amount if we can't determine it
-              contributionAmount = 1000000; // 1 ADA as default
+              // No net ADA change - skip this transaction
+              continue;
             }
             
-            // Only process if there's a positive contribution amount
-            if (contributionAmount > 0) {
+            // Only process if there's a positive transaction amount
+            if (transactionAmount > 0) {
               
-              if (contributorAddress && contributorAddress !== "Unknown") {
+              if (participantAddress && participantAddress !== "Unknown") {
                 // Get timestamp from available fields
-                const blockTime = tx.blockTime || (tx as any).block_time || (tx as any).slot || (tx as any).timestamp;
+                // Raw transaction from fetchAddressTxs has different structure than processed transactions
+                const slot = (tx as any).slot || (tx as any).block || 0;
+                const blockTime = (tx as any).blockTime || (tx as any).block_time;
                 
-                // Create a valid timestamp - use current time as fallback
+                // Create a valid timestamp
                 let timestamp: Date;
                 if (blockTime && !isNaN(Number(blockTime))) {
+                  // If we have block_time, use it (already in Unix timestamp format)
                   timestamp = new Date(Number(blockTime) * 1000);
+                } else if (slot && !isNaN(Number(slot))) {
+                  // Convert slot to Unix timestamp using Cardano slot configuration
+                  const networkKey = networkId === 0 ? 'testnet' : 'mainnet';
+                  const unixTime = slotToBeginUnixTime(Number(slot), SLOT_CONFIG_NETWORK[networkKey]);
+                  timestamp = new Date(unixTime);
                 } else {
-                  timestamp = new Date(); // Fallback to current time
+                  // Fallback to current time (this should rarely happen)
+                  timestamp = new Date();
+                  console.warn(`No valid timestamp found for transaction ${txHash}, using current time`);
                 }
+                
+                
                 contributionList.push({
-                  address: contributorAddress,
-                  amount: contributionAmount / 1000000, // Convert to ADA
+                  address: participantAddress,
+                  amount: transactionAmount / 1000000, // Convert lovelace to ADA
                   timestamp: timestamp,
                   txHash: txHash,
                   type: transactionType,
@@ -458,12 +679,21 @@ export function CrowdfundInfo({
           }
         }
 
-        // Sort by timestamp (most recent first) and limit to 10
-        contributionList.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        setContributions(contributionList.slice(0, 10));
+        // Analyze transactions chronologically to detect withdrawals
+        const analyzedList = analyzeTransactionFlow(contributionList);
         
-        // Generate chart data
-        generateChartData(contributionList);
+        // Sort by timestamp (most recent first) and limit to 10
+        analyzedList.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        setContributions(analyzedList.slice(0, 10));
+        
+        // Generate chart data (use chronological order)
+        const chronologicalList = [...analyzedList].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        // Generate chart data from contributions
+        if (showTimeChart) {
+          generateTimeBasedChartData(chronologicalList);
+        } else {
+          generateChartData(chronologicalList);
+        }
       } catch (error) {
         console.error("Error fetching contributions:", error);
         toast({
@@ -478,6 +708,17 @@ export function CrowdfundInfo({
 
     fetchContributions();
   }, [crowdfund.address, networkId, isDraft, toast, datum.share_token]);
+
+  // Regenerate chart data when time range mode or chart type changes
+  useEffect(() => {
+    if (contributions.length > 0) {
+      if (showTimeChart) {
+        generateTimeBasedChartData(contributions);
+      } else {
+        generateChartData(contributions);
+      }
+    }
+  }, [timeRangeMode, showTimeChart, contributions.length]);
 
   // Use the actual balance from the datum (current_fundraised_amount)
   // This is the source of truth for the crowdfund balance
@@ -517,6 +758,21 @@ export function CrowdfundInfo({
   
   // Check if this is a governance-extended crowdfund
   const hasGovExtension = !!govExtension;
+
+  // Handler for DRep anchor creation
+  const handleDRepAnchorCreated = (anchorUrl: string, anchorHash: string) => {
+    setDrepAnchor({ url: anchorUrl, hash: anchorHash });
+    setShowDRepSetup(false);
+    toast({
+      title: "DRep metadata created",
+      description: "Your DRep metadata has been uploaded to IPFS. You can now complete the crowdfund.",
+    });
+  };
+
+  // Handler for opening DRep setup
+  const handleOpenDRepSetup = () => {
+    setShowDRepSetup(true);
+  };
 
   // Handler for completing the crowdfund
   const handleCompleteCrowdfund = async () => {
@@ -594,7 +850,7 @@ export function CrowdfundInfo({
       const result = await contract.registerGovAction({
         datum,
         anchorGovAction: governanceConfig.anchorGovAction,
-        anchorDrep: governanceConfig.anchorDrep,
+        anchorDrep: drepAnchor || governanceConfig.anchorDrep,
       });
       const tx = await Promise.resolve(result.tx);
 
@@ -761,25 +1017,52 @@ export function CrowdfundInfo({
             )}
 
             {isOwner && isFull && hasGovExtension && (
-              <Button 
-                onClick={handleCompleteCrowdfund}
-                disabled={isCompleting || !connected}
-                className="w-full" 
-                size="lg"
-                variant="default"
-              >
-                {isCompleting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Completing...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Complete Crowdfund
-                  </>
+              <div className="space-y-3">
+                {!drepAnchor && (
+                  <Button 
+                    onClick={handleOpenDRepSetup}
+                    disabled={isCompleting || !connected}
+                    className="w-full" 
+                    size="lg"
+                    variant="outline"
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Setup DRep Metadata
+                  </Button>
                 )}
-              </Button>
+                
+                {drepAnchor && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-800 mb-1">
+                      <CheckCircle className="w-4 h-4" />
+                      <span className="font-medium text-sm">DRep Metadata Ready</span>
+                    </div>
+                    <p className="text-xs text-green-700">
+                      Metadata uploaded to IPFS: {drepAnchor.url.slice(0, 50)}...
+                    </p>
+                  </div>
+                )}
+                
+                <Button 
+                  onClick={handleCompleteCrowdfund}
+                  disabled={isCompleting || !connected}
+                  className="w-full" 
+                  size="lg"
+                  variant="default"
+                >
+                  {isCompleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Completing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Complete Crowdfund {drepAnchor ? "(with DRep)" : ""}
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
 
             {crowdfund.address && (
@@ -1123,38 +1406,111 @@ export function CrowdfundInfo({
               Goal Progress Timeline
             </CardTitle>
             <CardDescription>
-              Progress toward the 100,502 ADA goal over the campaign duration
+              Progress toward the {crowdfundData.fundingGoal.toLocaleString()} ADA goal over the campaign duration
             </CardDescription>
+            
+            {/* Chart Type Toggle */}
+            <div className="flex items-center gap-4 mt-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={!showTimeChart ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowTimeChart(false)}
+                >
+                  Progress View
+                </Button>
+                <Button
+                  variant={showTimeChart ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowTimeChart(true)}
+                >
+                  Time View
+                </Button>
+              </div>
+              
+              {/* Time Range Toggle (only show when in time view) */}
+              {showTimeChart && (
+                <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                  <span className="text-sm text-muted-foreground">Range:</span>
+                  <Button
+                    variant={timeRangeMode === 'deadline' ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTimeRangeMode('deadline')}
+                  >
+                    Till Deadline
+                  </Button>
+                  <Button
+                    variant={timeRangeMode === 'oneHour' ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTimeRangeMode('oneHour')}
+                  >
+                    Next Hour
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="progressPercent"
-                    type="number"
-                    domain={[0, 100]}
-                    tick={{ fontSize: 12 }}
-                    tickFormatter={(value) => `${value.toFixed(0)}%`}
-                    label={{ value: 'Campaign Progress (%)', position: 'insideBottom', offset: -5 }}
-                  />
+                  {showTimeChart ? (
+                    <XAxis 
+                      dataKey="timestamp"
+                      type="number"
+                      scale="time"
+                      domain={['dataMin', 'dataMax']}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return timeRangeMode === 'oneHour' 
+                          ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }}
+                      label={{ 
+                        value: timeRangeMode === 'oneHour' ? 'Time (Next Hour)' : 'Date (Till Deadline)', 
+                        position: 'insideBottom', 
+                        offset: -5 
+                      }}
+                    />
+                  ) : (
+                    <XAxis 
+                      dataKey="progressPercent"
+                      type="number"
+                      domain={[0, 100]}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => `${value.toFixed(0)}%`}
+                      label={{ value: 'Campaign Progress (%)', position: 'insideBottom', offset: -5 }}
+                    />
+                  )}
                   <YAxis 
                     tick={{ fontSize: 12 }}
                     tickFormatter={(value) => `${value.toFixed(0)}%`}
-                    label={{ value: 'Goal Progress (% of 100,502 ADA)', angle: -90, position: 'insideLeft' }}
+                    label={{ 
+                      value: `Goal Progress (% of ${crowdfundData.fundingGoal.toLocaleString()} ADA)`, 
+                      angle: -90, 
+                      position: 'insideLeft' 
+                    }}
                     domain={[0, Math.max(120, Math.ceil(Math.max(...chartData.map(d => d.goalPercent)) / 10) * 10)]}
                   />
                   <Tooltip 
                     formatter={(value: number, name: string) => [
-                      name === 'goalPercent' ? `${value.toFixed(1)}% of goal (${(value * 1005.02).toFixed(0)} ADA)` : value,
+                      name === 'goalPercent' 
+                        ? `${value.toFixed(1)}% of goal (${(value * crowdfundData.fundingGoal / 100).toFixed(0)} ADA)` 
+                        : value,
                       'Goal Progress'
                     ]}
                     labelFormatter={(value) => {
-                      const dataPoint = chartData.find(d => d.progressPercent === value);
-                      return dataPoint ? 
-                        `${dataPoint.date} (Day ${dataPoint.daysFromStart}, ${dataPoint.daysRemaining} days left)` : 
-                        `${value}% Campaign Progress`;
+                      if (showTimeChart) {
+                        const dataPoint = chartData.find(d => d.timestamp === value);
+                        return dataPoint ? dataPoint.date : new Date(value).toLocaleString();
+                      } else {
+                        const dataPoint = chartData.find(d => d.progressPercent === value);
+                        return dataPoint ? 
+                          `${dataPoint.date} (Day ${dataPoint.daysFromStart.toFixed(1)}, ${dataPoint.daysRemaining.toFixed(1)} days left)` : 
+                          `${value}% Campaign Progress`;
+                      }
                     }}
                   />
                   
@@ -1164,7 +1520,11 @@ export function CrowdfundInfo({
                     stroke="#22c55e" 
                     strokeDasharray="5 5" 
                     strokeWidth={2}
-                    label={{ value: "100% Goal (100,502 ADA)", position: "top", fill: "#22c55e" }}
+                    label={{ 
+                      value: `100% Goal (${crowdfundData.fundingGoal.toLocaleString()} ADA)`, 
+                      position: "top", 
+                      fill: "#22c55e" 
+                    }}
                   />
                   
                   <Area
@@ -1187,12 +1547,25 @@ export function CrowdfundInfo({
               <div className="flex flex-wrap gap-6 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-[#8884d8] rounded-full"></div>
-                  <span>Goal Progress (% of 100,502 ADA)</span>
+                  <span>Goal Progress (% of {crowdfundData.fundingGoal.toLocaleString()} ADA)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-0.5 bg-[#22c55e] border-dashed border-t-2 border-[#22c55e]"></div>
                   <span>100% Goal Target</span>
                 </div>
+              </div>
+              
+              {/* Chart Mode Info */}
+              <div className="text-xs text-muted-foreground">
+                {showTimeChart ? (
+                  timeRangeMode === 'oneHour' ? (
+                    <span>📊 Showing contributions over the next hour from now</span>
+                  ) : (
+                    <span>📊 Showing contributions from start till deadline</span>
+                  )
+                ) : (
+                  <span>📊 Showing goal progress vs campaign timeline progress</span>
+                )}
               </div>
               
               {/* Goal breakdown */}
@@ -1209,10 +1582,10 @@ export function CrowdfundInfo({
               {/* Timeline bounds */}
               <div className="flex justify-between items-center text-xs text-muted-foreground bg-muted/50 rounded p-2">
                 <div>
-                  <span className="font-medium">Start:</span> {new Date(crowdfund.createdAt).toLocaleDateString()}
+                  <span className="font-medium">Start:</span> {dateToFormatted(new Date(crowdfund.createdAt))}
                 </div>
                 <div>
-                  <span className="font-medium">Deadline:</span> {new Date(typeof datum.deadline === 'number' ? datum.deadline : new Date(datum.deadline)).toLocaleDateString()}
+                  <span className="font-medium">Deadline:</span> {dateToFormatted(new Date(typeof datum.deadline === 'number' ? datum.deadline : new Date(datum.deadline)))}
                 </div>
                 <div>
                   <span className="font-medium">Duration:</span> {Math.ceil((new Date(typeof datum.deadline === 'number' ? datum.deadline : new Date(datum.deadline)).getTime() - new Date(crowdfund.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days
@@ -1223,10 +1596,10 @@ export function CrowdfundInfo({
         </Card>
       )}
 
-      {/* Recent Contributions */}
+      {/* Recent Transactions */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Contributions</CardTitle>
+          <CardTitle>Recent Transactions</CardTitle>
         </CardHeader>
         <CardContent>
           {loadingContributions ? (
@@ -1248,33 +1621,43 @@ export function CrowdfundInfo({
                     <div className="text-xs text-muted-foreground">
                       Total raised from {crowdfundData.contributors} {crowdfundData.contributors === "1" ? 'contributor' : 'contributors'}
                       {contributions.length > uniqueContributors && (
-                        <span className="ml-1">({contributions.length} {contributions.length === 1 ? 'contribution' : 'contributions'})</span>
+                        <span className="ml-1">({contributions.length} {contributions.length === 1 ? 'transaction' : 'transactions'})</span>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
               <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">Recent Contributions</span>
-                {contributions.map((contribution, index) => (
+                <span className="text-sm font-medium text-muted-foreground">Recent Transactions</span>
+                {contributions.map((transaction, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                        <Coins className="w-4 h-4 text-primary-foreground" />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        transaction.type === 'contribution' 
+                          ? 'bg-green-500' 
+                          : 'bg-red-500'
+                      }`}>
+                        <Coins className="w-4 h-4 text-white" />
                       </div>
                       <div>
-                        <div className="text-sm font-medium">{contribution.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ADA</div>
+                        <div className="text-sm font-medium">
+                          {transaction.type === 'contribution' ? '+' : '-'}{transaction.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ADA
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          {contribution.address.slice(0, 8)}...{contribution.address.slice(-6)}
+                          {transaction.address.slice(0, 8)}...{transaction.address.slice(-6)}
+                        </div>
+                        <div className={`text-xs font-medium capitalize ${
+                          transaction.type === 'contribution' 
+                            ? 'text-green-600' 
+                            : 'text-red-600'
+                        }`}>
+                          {transaction.type}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-xs text-muted-foreground">
-                        {contribution.timestamp.toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {contribution.timestamp.toLocaleTimeString()}
+                        {dateToFormatted(transaction.timestamp)}
                       </div>
                     </div>
                   </div>
@@ -1284,12 +1667,49 @@ export function CrowdfundInfo({
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-              <p>No contributions yet</p>
+              <p>No transactions yet</p>
               <p className="text-xs mt-1">Be the first to contribute to this crowdfund!</p>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* DRep Setup Dialog */}
+      <Dialog open={showDRepSetup} onOpenChange={setShowDRepSetup}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Setup DRep Metadata</DialogTitle>
+          </DialogHeader>
+          {wallet && (
+            <DRepSetupForm
+              appWallet={{
+                id: "current-wallet",
+                type: "multisig",
+                name: "Current Wallet",
+                description: null,
+                signersAddresses: [],
+                signersStakeKeys: [],
+                signersDRepKeys: [],
+                signersDescriptions: [],
+                numRequiredSigners: null,
+                verified: [],
+                scriptCbor: "",
+                stakeCredentialHash: null,
+                isArchived: false,
+                clarityApiKey: null,
+                rawImportBodies: null,
+                migrationTargetWalletId: null,
+                nativeScript: { type: "all", scripts: [] },
+                address: "",
+                dRepId: "",
+                stakeScriptCbor: undefined,
+              }}
+              onAnchorCreated={handleDRepAnchorCreated}
+              loading={isCompleting}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
