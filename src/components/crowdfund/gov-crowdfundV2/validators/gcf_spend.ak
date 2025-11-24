@@ -13,8 +13,8 @@ use types.{
   AfterCompleteContributorWithdrawal, AfterCompleteRemoveEmptyInstance,
   CompleteCrowdfund, ContributeFund, Crowdfund, CrowdfundGovDatum,
   CrowdfundGovRedeemer, DeregisterCerts, PreMatureContributorWithdrawal,
-  PreMatureRemoveEmptyInstance, Proposed, Refundable, RegisterCerts,
-  VoteOnGovAction, Voted,
+  PreMatureRemoveEmptyInstance, ProposeGovAction, Proposed, Refundable,
+  RegisterCerts, RegisteredCerts, VoteOnGovAction, Voted,
 }
 use utils.{
   check_fundraise_target, check_lovelace_diff, check_proposal_procedure,
@@ -218,7 +218,7 @@ validator gCf_spend(
           _ -> False
         }
 
-      // Governance: Register certificates, delegate, submit proposal (Crowdfund → Proposed)
+      // Governance: Register certificates (Crowdfund → Registered)
       RegisterCerts ->
         when auth_input_datum is {
           Crowdfund {
@@ -243,12 +243,12 @@ validator gCf_spend(
               check_lovelace_diff(
                 only_input,
                 only_output,
-                -(stake_register_deposit + drep_register_deposit + gov_deposit),
+                -(stake_register_deposit + drep_register_deposit),
               )
             expect only_output_datum: CrowdfundGovDatum =
               output_inline_datum(only_output)
             let output_datum_check =
-              only_output_datum == Proposed {
+              only_output_datum == RegisteredCerts {
                 stake_hash,
                 share_token,
                 funds_controlled: current_fundraised_amount,
@@ -283,6 +283,41 @@ validator gCf_spend(
                 delegate_pool_id,
                 Registered(current_credential),
               )
+            lovelace_check? && output_datum_check? && is_only_output_value_clean? && reg_stake_cert_check? && reg_drep_cert_check? && delegate_check?
+          }
+          _ -> False
+        }
+
+      // Governance: Submit governance proposal (Registered → Proposed)
+      ProposeGovAction ->
+        when auth_input_datum is {
+          RegisteredCerts {
+            stake_hash,
+            share_token,
+            funds_controlled,
+            deadline
+          } -> {
+            // check only 1 input with token from current address
+            expect [only_input] =
+              inputs_at_with(inputs, current_address, auth_token, "")
+
+            expect [only_output] =
+              outputs_at_with(outputs, current_address, auth_token, "")
+
+            let lovelace_check =
+              check_lovelace_diff(only_input, only_output, -gov_deposit)
+            expect only_output_datum: CrowdfundGovDatum =
+              output_inline_datum(only_output)
+            let output_datum_check =
+              only_output_datum == Proposed {
+                stake_hash,
+                share_token,
+                funds_controlled,
+                deadline,
+              }
+
+            let is_only_output_value_clean =
+              value_length(only_output.value) == 2
 
             let proposal_check =
               check_proposal_procedure(
@@ -291,7 +326,7 @@ validator gCf_spend(
                 Script(stake_hash),
                 gov_action,
               )
-            lovelace_check? && output_datum_check? && is_only_output_value_clean? && reg_stake_cert_check? && reg_drep_cert_check? && delegate_check? && proposal_check?
+            lovelace_check? && output_datum_check? && is_only_output_value_clean? && proposal_check?
           }
           _ -> False
         }
@@ -333,6 +368,7 @@ validator gCf_spend(
           }
           _ -> False
         }
+
       // Governance: Deregister certificates after governance period (Voted → Refundable)
       DeregisterCerts ->
         when auth_input_datum is {

@@ -23,6 +23,13 @@ export interface GovernanceActionIdTS {
   proposal_procedure: number;
 }
 
+export interface RegisteredCertsDatumTS {
+  stake_script: string;
+  share_token: string;
+  funds_controlled: number;
+  deadline: number;
+}
+
 export interface ProposedDatumTS {
   stake_script: string;
   share_token: string;

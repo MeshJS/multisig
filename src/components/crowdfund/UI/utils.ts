@@ -64,3 +64,40 @@ export const mapGovExtensionToConfig = (
   };
 };
 
+/**
+ * Determine governance state from datum
+ * Returns: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
+ */
+export const getGovStateFromDatum = (datum: any): number => {
+  if (!datum) return 0;
+
+  // Check if datum has gov_tx_id (Voted state = 3)
+  if ("gov_tx_id" in datum && datum.gov_tx_id) {
+    return 3;
+  }
+
+  // Check if datum has funds_controlled but no current_fundraised_amount
+  if ("funds_controlled" in datum && !("current_fundraised_amount" in datum)) {
+    // If it has deadline but no gov_tx_id, check if it's Proposed (2) or RegisteredCerts (1)
+    if ("deadline" in datum && !("gov_tx_id" in datum)) {
+      // If we can't distinguish, default to Proposed (2) as it's more advanced
+      // In practice, you'd check the on-chain state to be sure
+      return 2; // Proposed
+    }
+    // If it has funds_controlled but no deadline, it's Refundable (4)
+    if (!("deadline" in datum)) {
+      return 4; // Refundable
+    }
+    // Otherwise RegisteredCerts (1)
+    return 1; // RegisteredCerts
+  }
+
+  // If it has current_fundraised_amount, it's Crowdfund (0)
+  if ("current_fundraised_amount" in datum) {
+    return 0; // Crowdfund
+  }
+
+  // Default to Crowdfund
+  return 0;
+};
+

@@ -38,7 +38,9 @@ import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, MeshTxBuilder, deserializeAdd
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";
-import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
+import { mapGovExtensionToConfig, parseGovDatum, getGovStateFromDatum } from "./utils";
+import { GovActionLifecycleWizard } from "./governance-lifecycle";
+import { RegisteredCertsDatumTS, ProposedDatumTS, VotedDatumTS } from "../crowdfund";
 import { useSiteStore } from "@/lib/zustand/site";
 import { env } from "@/env";
 import { api } from "@/utils/api";
@@ -138,6 +140,11 @@ export function CrowdfundInfo({
   }
   
   const datum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
+  
+  // Determine governance state from datum (fallback to stored value if available)
+  const govState = crowdfund.govState !== undefined && crowdfund.govState !== null 
+    ? crowdfund.govState 
+    : getGovStateFromDatum(datum);
 
   // Calculate time-based values dynamically
   const now = Date.now();
@@ -786,6 +793,55 @@ export function CrowdfundInfo({
     setShowDRepSetup(true);
   };
 
+  // Helper function to create contract instance
+  const createContract = (): MeshCrowdfundContract | null => {
+    if (!crowdfund.address || !govExtension || !wallet) return null;
+    
+    try {
+      const provider = network != null ? getProvider(network) : null;
+      if (!provider) return null;
+
+      const meshTxBuilder = new MeshTxBuilder({
+        fetcher: provider,
+        submitter: provider,
+        verbose: true,
+      });
+
+      const governanceConfig = mapGovExtensionToConfig(govExtension);
+      const paramUtxo = crowdfund.paramUtxo 
+        ? JSON.parse(crowdfund.paramUtxo) 
+        : undefined;
+      const spendRefScript = crowdfund.spendRefScript
+        ? JSON.parse(crowdfund.spendRefScript)
+        : undefined;
+      const stakeRefScript = crowdfund.stakeRefScript
+        ? JSON.parse(crowdfund.stakeRefScript)
+        : undefined;
+
+      const contract = new MeshCrowdfundContract(
+        {
+          mesh: meshTxBuilder,
+          fetcher: provider,
+          wallet: wallet,
+          networkId: network,
+        },
+        {
+          proposerKeyHash: crowdfund.proposerKeyHashR0,
+          governance: governanceConfig,
+          paramUtxo,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
+        },
+      );
+      contract.crowdfundAddress = crowdfund.address;
+      return contract;
+    } catch (error) {
+      console.error("[createContract] Error creating contract:", error);
+      return null;
+    }
+  };
+
   // Handler for completing the crowdfund
   const handleCompleteCrowdfund = async () => {
     if (!connected || !wallet) {
@@ -1029,6 +1085,41 @@ export function CrowdfundInfo({
         </CardHeader>
       </Card>
 
+      {/* Governance Lifecycle Wizard - Full Width (Owner Only) */}
+      {hasGovExtension && isOwner && (() => {
+        const contract = createContract();
+        if (!contract) return null;
+        
+        // Calculate funding target and current raised
+        const fundingTargetLovelace = datum.fundraise_target || 0;
+        const currentRaisedLovelace = datum.current_fundraised_amount || 0;
+        
+        return (
+          <div className="mb-8">
+            <GovActionLifecycleWizard
+              contract={contract}
+              datum={datum as any}
+              fundingTarget={fundingTargetLovelace}
+              currentRaised={currentRaisedLovelace}
+              crowdfundId={crowdfund.id}
+              anchorGovAction={govExtension?.govActionMetadataUrl && govExtension?.govActionMetadataHash ? {
+                url: govExtension.govActionMetadataUrl,
+                hash: govExtension.govActionMetadataHash,
+              } : undefined}
+              anchorDrep={govExtension?.drepMetadataUrl && govExtension?.drepMetadataHash ? {
+                url: govExtension.drepMetadataUrl,
+                hash: govExtension.drepMetadataHash,
+              } : undefined}
+              governanceAction={govExtension?.gov_action ? (
+                typeof govExtension.gov_action === 'string' 
+                  ? JSON.parse(govExtension.gov_action) 
+                  : govExtension.gov_action
+              ) : undefined}
+            />
+          </div>
+        );
+      })()}
+
       {/* Progress and Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Progress Card */}
@@ -1093,14 +1184,82 @@ export function CrowdfundInfo({
             <CardTitle>Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!isOwner  && crowdfundData.totalRaised < crowdfundData.fundingGoal &&(
-              <Button onClick={onContribute} className="w-full" size="lg">
-                <Coins className="w-4 h-4 mr-2" />
-                Contribute
-              </Button>
+
+            {/* Crowdfund phase actions */}
+            {govState === 0 && (
+              <>
+                {!isOwner && crowdfundData.totalRaised < crowdfundData.fundingGoal && (
+                  <Button onClick={onContribute} className="w-full" size="lg">
+                    <Coins className="w-4 h-4 mr-2" />
+                    Contribute
+                  </Button>
+                )}
+                
+                {!isOwner && crowdfundData.totalRaised > 0 && (
+                  <Button 
+                    onClick={onWithdraw} 
+                    variant="outline" 
+                    className="w-full" 
+                    size="lg"
+                  >
+                    <Target className="w-4 h-4 mr-2" />
+                    Withdraw Funds
+                  </Button>
+                )}
+
+                {isOwner && isFull && hasGovExtension && (
+                  <div className="space-y-3">
+                    {!drepAnchor && (
+                      <Button 
+                        onClick={handleOpenDRepSetup}
+                        disabled={isCompleting || !connected}
+                        className="w-full" 
+                        size="lg"
+                        variant="outline"
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Setup DRep Metadata
+                      </Button>
+                    )}
+                    
+                    {drepAnchor && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-800 mb-1">
+                          <CheckCircle className="w-4 h-4" />
+                          <span className="font-medium text-sm">DRep Metadata Ready</span>
+                        </div>
+                        <p className="text-xs text-green-700">
+                          Metadata uploaded to IPFS: {drepAnchor.url.slice(0, 50)}...
+                        </p>
+                      </div>
+                    )}
+                    
+                    <Button 
+                      onClick={handleCompleteCrowdfund}
+                      disabled={isCompleting || !connected}
+                      className="w-full" 
+                      size="lg"
+                      variant="default"
+                    >
+                      {isCompleting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Completing...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Complete Crowdfund {drepAnchor ? "(with DRep)" : ""}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
-            
-            {!isOwner && crowdfundData.totalRaised > 0 && (
+
+            {/* Refundable phase - show withdrawal option */}
+            {govState === 4 && !isOwner && (
               <Button 
                 onClick={onWithdraw} 
                 variant="outline" 
@@ -1108,57 +1267,8 @@ export function CrowdfundInfo({
                 size="lg"
               >
                 <Target className="w-4 h-4 mr-2" />
-                Withdraw Funds
+                Withdraw Funds (Post-Governance)
               </Button>
-            )}
-
-            {isOwner && isFull && hasGovExtension && (
-              <div className="space-y-3">
-                {!drepAnchor && (
-                  <Button 
-                    onClick={handleOpenDRepSetup}
-                    disabled={isCompleting || !connected}
-                    className="w-full" 
-                    size="lg"
-                    variant="outline"
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Setup DRep Metadata
-                  </Button>
-                )}
-                
-                {drepAnchor && (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-green-800 mb-1">
-                      <CheckCircle className="w-4 h-4" />
-                      <span className="font-medium text-sm">DRep Metadata Ready</span>
-                    </div>
-                    <p className="text-xs text-green-700">
-                      Metadata uploaded to IPFS: {drepAnchor.url.slice(0, 50)}...
-                    </p>
-                  </div>
-                )}
-                
-                <Button 
-                  onClick={handleCompleteCrowdfund}
-                  disabled={isCompleting || !connected}
-                  className="w-full" 
-                  size="lg"
-                  variant="default"
-                >
-                  {isCompleting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Completing...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Complete Crowdfund {drepAnchor ? "(with DRep)" : ""}
-                    </>
-                  )}
-                </Button>
-              </div>
             )}
 
             {crowdfund.address && (

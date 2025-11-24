@@ -7,6 +7,7 @@ pub type CrowdfundGovRedeemer {
   PreMatureContributorWithdrawal
   PreMatureRemoveEmptyInstance
   RegisterCerts
+  ProposeGovAction
   VoteOnGovAction
   DeregisterCerts
   AfterCompleteContributorWithdrawal
@@ -24,6 +25,12 @@ pub type CrowdfundGovDatum {
   deadline: Int,
   expiry_buffer: Int,
   min_charge: Int
+  }
+  RegisteredCerts {
+    stake_hash: ByteArray,
+    share_token: ByteArray,
+    funds_controlled: Int,
+    deadline: Int,
   }
   Proposed {
     stake_hash: ByteArray,

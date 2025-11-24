@@ -25,6 +25,7 @@ import { resolveTxHash, scriptHashToRewardAddress } from "@meshsdk/core-cst";
 import blueprint from "./gov-crowdfundV2/plutus.json";
 import {
   CrowdfundDatumTS,
+  RegisteredCertsDatumTS,
   ProposedDatumTS,
   VotedDatumTS,
   RefundableDatumTS,
@@ -75,6 +76,17 @@ export interface MeshCrowdfundContractConfig {
   refAddress?: string; // Address where reference scripts are stored
 }
 
+interface RegisterCertsArgs {
+  datum: CrowdfundDatumTS;
+  anchorDrep?: GovernanceAnchor;
+}
+
+interface ProposeGovActionArgs {
+  datum: RegisteredCertsDatumTS;
+  anchorGovAction?: GovernanceAnchor;
+  governanceAction?: GovernanceAction;
+}
+
 interface VoteOnGovActionArgs {
   datum: ProposedDatumTS;
   voteKind: VoteKind;
@@ -95,10 +107,11 @@ enum CrowdfundGovRedeemerTag {
   PreMatureContributorWithdrawal = 2,
   PreMatureRemoveEmptyInstance = 3,
   RegisterCerts = 4,
-  VoteOnGovAction = 5,
-  DeregisterCerts = 6,
-  AfterCompleteContributorWithdrawal = 7,
-  AfterCompleteRemoveEmptyInstance = 8,
+  ProposeGovAction = 5,
+  VoteOnGovAction = 6,
+  DeregisterCerts = 7,
+  AfterCompleteContributorWithdrawal = 8,
+  AfterCompleteRemoveEmptyInstance = 9,
 }
 
 enum MintPolarityTag {
@@ -435,7 +448,22 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     ]);
   }
 
-  private buildProposedDatum(datum: CrowdfundDatumTS, fundsControlled: bigint) {
+  private buildRegisteredCertsDatum(
+    datum: CrowdfundDatumTS,
+    fundsControlled: bigint,
+  ) {
+    return mConStr1([
+      datum.stake_script || this.getStakePublishHash(),
+      datum.share_token || this.getShareTokenPolicyId(),
+      fundsControlled,
+      datum.deadline ?? 0,
+    ]);
+  }
+
+  private buildProposedDatum(
+    datum: RegisteredCertsDatumTS,
+    fundsControlled: bigint,
+  ) {
     return mConStr1([
       datum.stake_script || this.getStakePublishHash(),
       datum.share_token || this.getShareTokenPolicyId(),
@@ -742,7 +770,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txOutInlineDatumValue(datumValue, "Mesh")
       // Reference script for spend validator attached to output 1
       // After transaction submission, store txHash with setRefSpendTxHash(txHash, 1)
-      .txOut(refAddress, [{ unit: "lovelace", quantity: "50000000" }])
+      .txOut(refAddress, [{ unit: "lovelace", quantity: "60000000" }])
       .txOutReferenceScript(this.getCrowdfundSpendCbor(), "V3")
       .txInCollateral(
         collateral.input.txHash,
@@ -781,7 +809,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     this.mesh.reset();
     const tx = await this.mesh
-      .txOut(refAddress, [{ unit: "lovelace", quantity: "60000000" }])
+      .txOut(refAddress, [{ unit: "lovelace", quantity: "70000000" }])
       .txOutReferenceScript(this.getStakePublishCbor(), "V3")
       .txInCollateral(
         collateral.input.txHash,
@@ -968,21 +996,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   };
 
   /**
-   * Execute the RegisterCerts flow to lock deposits, register stake/dRep
-   * certificates, delegate, and submit the governance proposal.
+   * Register certificates: Transition from Crowdfund → RegisteredCerts
+   * Locks stake_register_deposit + drep_register_deposit
    */
-  registerGovAction = async ({
-    datum,
-    anchorGovAction,
-    anchorDrep,
-    governanceAction,
-  }: RegisterGovActionArgs) => {
-    console.log("[registerGovAction] Starting governance action registration");
-    console.log("[registerGovAction] Input parameters:", {
+  registerCerts = async ({ datum, anchorDrep }: RegisterCertsArgs) => {
+    console.log("[registerCerts] Starting certificate registration");
+    console.log("[registerCerts] Input parameters:", {
       datum: datum ? "present" : "missing",
-      anchorGovAction: anchorGovAction ? "present" : "missing",
       anchorDrep: anchorDrep ? "present" : "missing",
-      governanceAction: governanceAction ? "present" : "missing",
     });
 
     const {
@@ -996,7 +1017,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const requiredAda = BigInt(
       this.governance.stakeRegisterDeposit +
         this.governance.drepRegisterDeposit +
-        this.governance.govDeposit +
         10_000_000, // ~10 ADA for fees
     );
 
@@ -1027,7 +1047,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       }
     }
 
-    console.log("[registerGovAction] UTxO optimization:", {
+    console.log("[registerCerts] UTxO optimization:", {
       totalUtxos: allUtxos.length,
       selectedUtxos: selectedUtxos.length,
       totalAda: totalAda.toString(),
@@ -1041,18 +1061,18 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     if (totalAda < requiredAda) {
       console.warn(
-        `[registerGovAction] Warning: Selected UTxOs may not have enough ADA. Required: ${requiredAda.toString()}, Available: ${totalAda.toString()}`,
+        `[registerCerts] Warning: Selected UTxOs may not have enough ADA. Required: ${requiredAda.toString()}, Available: ${totalAda.toString()}`,
       );
     }
 
     const utxos = selectedUtxos;
-    console.log("[registerGovAction] Wallet info:", {
+    console.log("[registerCerts] Wallet info:", {
       utxosCount: utxos.length,
       collateralPresent: !!collateral,
     });
 
     const authTokenUtxo = await this.fetchCrowdfundUtxo();
-    console.log("[registerGovAction] Auth token UTXO:", {
+    console.log("[registerCerts] Auth token UTXO:", {
       txHash: authTokenUtxo.input.txHash,
       outputIndex: authTokenUtxo.input.outputIndex,
       lovelaceAmount: lovelaceOf(authTokenUtxo.output.amount),
@@ -1060,12 +1080,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     const depositTotal =
       this.governance.stakeRegisterDeposit +
-      this.governance.drepRegisterDeposit +
-      this.governance.govDeposit;
-    console.log("[registerGovAction] Deposit calculations:", {
+      this.governance.drepRegisterDeposit;
+    console.log("[registerCerts] Deposit calculations:", {
       stakeRegisterDeposit: this.governance.stakeRegisterDeposit,
       drepRegisterDeposit: this.governance.drepRegisterDeposit,
-      govDeposit: this.governance.govDeposit,
       depositTotal,
     });
 
@@ -1079,7 +1097,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       );
     }
 
-    console.log("[registerGovAction] Crowdfund funding verification:", {
+    console.log("[registerCerts] Crowdfund funding verification:", {
       available: crowdfundLovelace.toString(),
       required: requiredLovelace.toString(),
       sufficient: crowdfundLovelace >= requiredLovelace,
@@ -1090,7 +1108,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       -BigInt(depositTotal),
     );
     const fundsControlled = lovelaceOf(authTokenUtxo.output.amount);
-    const proposedDatum = this.buildProposedDatum(datum, fundsControlled);
+    const registeredCertsDatum = this.buildRegisteredCertsDatum(
+      datum,
+      fundsControlled,
+    );
     const slot = this.getSlotAfterMinutes(10);
     const drepId = this.getDrepId();
     const rewardAddress = this.getGovernanceRewardAddress();
@@ -1105,7 +1126,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       );
     }
 
-    console.log("[registerGovAction] Generated values:", {
+    console.log("[registerCerts] Generated values:", {
       slot,
       drepId,
       rewardAddress,
@@ -1114,34 +1135,13 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       delegatePoolIdLength: this.governance.delegatePoolId?.length,
     });
 
-    let govAnchor = ensureAnchor(
-      "governance",
-      anchorGovAction,
-      this.governance.anchorGovAction,
-    );
-    console.log(
-      "[registerGovAction] Governance anchor (before shortening):",
-      govAnchor,
-    );
-
-    // Shorten governance anchor URL if needed
-    govAnchor = {
-      ...govAnchor,
-      url: await this.shortenUrlIfNeeded(
-        govAnchor.url,
-        "registerGovAction:governance",
-      ),
-    };
-
-    console.log("[registerGovAction] Final governance anchor:", govAnchor);
-
     let drepAnchorResolved = ensureAnchorOptional(
       "drep",
       anchorDrep,
       this.governance.anchorDrep,
     );
     console.log(
-      "[registerGovAction] DRep anchor resolved (before shortening):",
+      "[registerCerts] DRep anchor resolved (before shortening):",
       drepAnchorResolved ? "present" : "missing",
     );
 
@@ -1151,20 +1151,16 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         ...drepAnchorResolved,
         url: await this.shortenUrlIfNeeded(
           drepAnchorResolved.url,
-          "registerGovAction:drep",
+          "registerCerts:drep",
         ),
       };
     }
 
     console.log(
-      "[registerGovAction] Final DRep anchor:",
+      "[registerCerts] Final DRep anchor:",
       drepAnchorResolved ? "present" : "missing",
     );
-    const proposalAction = governanceAction ||
-      this.governance.governanceAction || {
-        kind: "InfoAction",
-        action: {},
-      };
+
     // Validate spend reference script is set
     const refSpendUtxo = this.ref_spend_txhash;
     const refSpendOutputIndex = this.ref_spend_outputIndex;
@@ -1184,6 +1180,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
           `Call setupStakeRefScript first to create the stake reference script transaction.`,
       );
     }
+
+    console.log(this.getCrowdfundSpendCbor());
+    console.log(this.getStakePublishCbor());
+
 
     const refSpendCborLength = (
       this.getCrowdfundSpendCbor().length / 2
@@ -1208,9 +1208,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         this.buildSpendRedeemer(CrowdfundGovRedeemerTag.RegisterCerts),
       )
       .txOut(this.ensureCrowdfundAddress(), updatedValue)
-      .txOutInlineDatumValue(proposedDatum, "Mesh");
+      .txOutInlineDatumValue(registeredCertsDatum, "Mesh");
 
-    //    Conditionally add DRep registration certificate only if anchor is provided
+    // Conditionally add DRep registration certificate only if anchor is provided
     if (
       drepAnchorResolved &&
       drepAnchorResolved.url &&
@@ -1273,6 +1273,150 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .certificateRedeemerValue(
         mConStr(CrowdfundGovRedeemerTag.RegisterCerts, []),
       )
+      .txInCollateral(
+        collateral.input.txHash,
+        collateral.input.outputIndex,
+        collateral.output.amount,
+        collateral.output.address,
+      )
+      .selectUtxosFrom(utxos)
+      .changeAddress(walletAddress)
+      .invalidHereafter(Number(slot))
+      .complete();
+
+    console.log("[registerCerts] Transaction built successfully");
+
+    return { tx };
+  };
+
+  /**
+   * Propose governance action: Transition from RegisteredCerts → Proposed
+   * Locks gov_deposit
+   */
+  proposeGovAction = async ({
+    datum,
+    anchorGovAction,
+    governanceAction,
+  }: ProposeGovActionArgs) => {
+    console.log("[proposeGovAction] Starting governance proposal");
+    console.log("[proposeGovAction] Input parameters:", {
+      datum: datum ? "present" : "missing",
+      anchorGovAction: anchorGovAction ? "present" : "missing",
+      governanceAction: governanceAction ? "present" : "missing",
+    });
+
+    const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
+
+    const authTokenUtxo = await this.fetchCrowdfundUtxo();
+    console.log("[proposeGovAction] Auth token UTXO:", {
+      txHash: authTokenUtxo.input.txHash,
+      outputIndex: authTokenUtxo.input.outputIndex,
+      lovelaceAmount: lovelaceOf(authTokenUtxo.output.amount),
+    });
+
+    const govDeposit = this.governance.govDeposit;
+    console.log("[proposeGovAction] Deposit calculations:", {
+      govDeposit,
+    });
+
+    // Verify crowdfund has sufficient funds for deposit
+    const crowdfundLovelace = lovelaceOf(authTokenUtxo.output.amount);
+    const requiredLovelace = BigInt(govDeposit);
+
+    if (crowdfundLovelace < requiredLovelace) {
+      throw new Error(
+        `Insufficient crowdfund balance. Required: ${requiredLovelace.toString()}, Available: ${crowdfundLovelace.toString()}`,
+      );
+    }
+
+    console.log("[proposeGovAction] Crowdfund funding verification:", {
+      available: crowdfundLovelace.toString(),
+      required: requiredLovelace.toString(),
+      sufficient: crowdfundLovelace >= requiredLovelace,
+    });
+
+    const updatedValue = adjustLovelace(
+      authTokenUtxo.output.amount,
+      -BigInt(govDeposit),
+    );
+    const fundsControlled = lovelaceOf(authTokenUtxo.output.amount);
+    const proposedDatum = this.buildProposedDatum(datum, fundsControlled);
+    const slot = this.getSlotAfterMinutes(10);
+    const rewardAddress = this.getGovernanceRewardAddress();
+
+    console.log("[proposeGovAction] Generated values:", {
+      slot,
+      rewardAddress,
+      fundsControlled,
+    });
+
+    let govAnchor = ensureAnchor(
+      "governance",
+      anchorGovAction,
+      this.governance.anchorGovAction,
+    );
+    console.log(
+      "[proposeGovAction] Governance anchor (before shortening):",
+      govAnchor,
+    );
+
+    // Shorten governance anchor URL if needed
+    govAnchor = {
+      ...govAnchor,
+      url: await this.shortenUrlIfNeeded(
+        govAnchor.url,
+        "proposeGovAction:governance",
+      ),
+    };
+
+    console.log("[proposeGovAction] Final governance anchor:", govAnchor);
+
+    const proposalAction = governanceAction ||
+      this.governance.governanceAction || {
+        kind: "InfoAction",
+        action: {},
+      };
+
+    // Validate spend reference script is set
+    const refSpendUtxo = this.ref_spend_txhash;
+    const refSpendOutputIndex = this.ref_spend_outputIndex;
+    if (!refSpendUtxo || refSpendOutputIndex === undefined) {
+      throw new Error(
+        `Spend reference script not set. ref_spend_txhash: ${refSpendUtxo || "undefined"}, ref_spend_outputIndex: ${refSpendOutputIndex === undefined ? "undefined" : refSpendOutputIndex}. ` +
+          `Make sure the crowdfund has spendRefScript set in the database and it's passed to the constructor.`,
+      );
+    }
+
+    // Validate stake reference script is set
+    const refStakeUtxo = this.ref_stake_txhash;
+    const refStakeOutputIndex = this.ref_stake_outputIndex;
+    if (!refStakeUtxo || refStakeOutputIndex === undefined) {
+      throw new Error(
+        `Stake reference script not set. ref_stake_txhash: ${refStakeUtxo || "undefined"}, ref_stake_outputIndex: ${refStakeOutputIndex === undefined ? "undefined" : refStakeOutputIndex}. ` +
+          `Call setupStakeRefScript first to create the stake reference script transaction.`,
+      );
+    }
+
+    const refStakeCborLength = (
+      this.getStakePublishCbor().length / 2
+    ).toString();
+
+    this.mesh.reset();
+    const tx = await this.mesh
+      .spendingPlutusScriptV3()
+      .txIn(
+        authTokenUtxo.input.txHash,
+        authTokenUtxo.input.outputIndex,
+        authTokenUtxo.output.amount,
+        authTokenUtxo.output.address,
+      )
+      .txInInlineDatumPresent()
+      .spendingTxInReference(refSpendUtxo, refSpendOutputIndex)
+      .txInRedeemerValue(
+        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ProposeGovAction),
+      )
+      .txOut(this.ensureCrowdfundAddress(), updatedValue)
+      .txOutInlineDatumValue(proposedDatum, "Mesh")
       //adds governance proposal to the transaction
       .proposal(
         proposalAction,
@@ -1289,8 +1433,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         this.getStakePublishHash(),
         "V3",
       )
-      .proposalRedeemerValue(mConStr(CrowdfundGovRedeemerTag.RegisterCerts, []))
-
+      .proposalRedeemerValue(
+        mConStr(CrowdfundGovRedeemerTag.ProposeGovAction, []),
+      )
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
@@ -1300,12 +1445,30 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .selectUtxosFrom(utxos)
       .changeAddress(walletAddress)
       .invalidHereafter(Number(slot))
-      .selectUtxosFrom(utxos) // Use optimized UTxO selection for fee calculation
       .complete();
 
-    console.log("[registerGovAction] Transaction built successfully");
+    console.log("[proposeGovAction] Transaction built successfully");
 
     return { tx };
+  };
+
+  /**
+   * @deprecated Use registerCerts + proposeGovAction instead
+   * This method is kept for backward compatibility but should be split into separate calls.
+   * Note: This method only builds the transaction for registerCerts. You must call proposeGovAction
+   * separately after submitting the registerCerts transaction.
+   */
+  registerGovAction = async ({
+    datum,
+    anchorGovAction,
+    anchorDrep,
+    governanceAction,
+  }: RegisterGovActionArgs) => {
+    console.warn(
+      "[registerGovAction] DEPRECATED: This method only builds registerCerts transaction. Use registerCerts + proposeGovAction separately.",
+    );
+    // Only return registerCerts transaction - user must call proposeGovAction separately
+    return await this.registerCerts({ datum, anchorDrep });
   };
 
   voteOnGovAction = async ({ datum, voteKind }: VoteOnGovActionArgs) => {

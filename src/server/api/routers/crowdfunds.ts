@@ -48,6 +48,7 @@ export const crowdfundRouter = createTRPCRouter({
         spendRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         stakeRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         refAddress: z.string().optional(), // Address where reference scripts are stored
+        govState: z.number().optional(), // Governance state: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
       }),
     )
     .mutation(async ({ ctx, input }) => {
