@@ -40,6 +40,8 @@ import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";
 import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 import { useSiteStore } from "@/lib/zustand/site";
+import { env } from "@/env";
+import { api } from "@/utils/api";
 import { unique } from "next/dist/build/utils";
 import { dateToFormatted } from "@/utils/strings";
 import DRepSetupForm from "./DRepSetupForm";
@@ -84,6 +86,16 @@ export function CrowdfundInfo({
   const [showDRepSetup, setShowDRepSetup] = useState(false);
   const [drepAnchor, setDrepAnchor] = useState<{ url: string; hash: string } | null>(null);
   const { toast } = useToast();
+
+  // Add the updateCrowdfund mutation hook at component level
+  const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
+    onSuccess: () => {
+      console.log("[handleCompleteCrowdfund] Crowdfund updated with stake reference script");
+    },
+    onError: (err) => {
+      console.error("[handleCompleteCrowdfund] Error updating crowdfund:", err);
+    },
+  });
   const { wallet, connected } = useWallet();
   const network = useSiteStore((state) => state.network);
   const govExtension = crowdfund.govExtension ?? parseGovDatum(crowdfund.govDatum);
@@ -830,6 +842,32 @@ export function CrowdfundInfo({
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
 
+      // Parse reference scripts if available
+      let spendRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      let stakeRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      
+      if (crowdfund.spendRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.spendRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            spendRefScript = parsed;
+          }
+        } catch (e) {
+          console.error("[handleCompleteCrowdfund] Failed to parse spendRefScript:", e);
+        }
+      }
+      
+      if (crowdfund.stakeRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.stakeRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            stakeRefScript = parsed;
+          }
+        } catch (e) {
+          console.error("[handleCompleteCrowdfund] Failed to parse stakeRefScript:", e);
+        }
+      }
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -841,25 +879,83 @@ export function CrowdfundInfo({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 
       // Set the crowdfund address
       contract.crowdfundAddress = crowdfund.address;
 
-      const result = await contract.registerGovAction({
+      // Check if stake reference script needs to be set up first
+      if (!stakeRefScript) {
+        console.log("[handleCompleteCrowdfund] Stake reference script not found, setting it up...");
+        const { tx: stakeRefTx } = await contract.setupStakeRefScript();
+        
+        if (!wallet) {
+          throw new Error("Wallet not available");
+        }
+        
+        // Sign and submit the stake reference script transaction
+        const signedStakeRefTx = await wallet.signTx(stakeRefTx, true);
+        let stakeRefTxHash: string;
+        try {
+          stakeRefTxHash = await wallet.submitTx(signedStakeRefTx);
+          console.log("[handleCompleteCrowdfund] Stake reference script transaction submitted:", stakeRefTxHash);
+        } catch (submitError) {
+          console.error("[handleCompleteCrowdfund] Failed to submit stake reference script transaction:", submitError);
+          throw submitError;
+        }
+        
+        // Update the crowdfund in the database with the stake reference script
+        // Stake reference script is attached to output 0 in setupStakeRefScript
+        if (crowdfund?.id && stakeRefTxHash) {
+          console.log("[handleCompleteCrowdfund] Updating crowdfund with stake reference script");
+          try {
+            await updateCrowdfund.mutateAsync({
+              id: crowdfund.id,
+              stakeRefScript: JSON.stringify({
+                txHash: stakeRefTxHash,
+                outputIndex: 0,
+              }),
+            });
+            console.log("[handleCompleteCrowdfund] Crowdfund updated with stake reference script");
+          } catch (updateError) {
+            console.error("[handleCompleteCrowdfund] Failed to update crowdfund with stake reference script:", updateError);
+            // Don't throw here - the transaction was submitted successfully
+            // The database update can be retried later if needed
+            toast({
+              title: "Warning",
+              description: "Stake reference script transaction submitted but database update failed. You may need to manually update the crowdfund.",
+              variant: "destructive",
+            });
+          }
+        }
+        
+        // Update the contract instance with the new stake reference script
+        contract.setRefStakeTxHash(stakeRefTxHash, 0);
+        
+        // Update stakeRefScript for use below
+        stakeRefScript = { txHash: stakeRefTxHash, outputIndex: 0 };
+        
+        // Wait a bit for the transaction to be confirmed
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+
+      // Now proceed with registerGovAction
+      const { tx } = await contract.registerGovAction({
         datum,
         anchorGovAction: governanceConfig.anchorGovAction,
         anchorDrep: drepAnchor || governanceConfig.anchorDrep,
       });
-      const tx = await Promise.resolve(result.tx);
 
-      // Sign and submit the transaction
+      // Sign and submit the governance action transaction
       if (!wallet) {
         throw new Error("Wallet not available");
       }
-      const signedTx: string = await wallet.signTx(tx);
-      const txHash: string = await wallet.submitTx(signedTx);
+      const signedTx = await wallet.signTx(tx, true);
+      const txHash = await wallet.submitTx(signedTx);
 
       toast({
         title: "Crowdfund completed successfully!",

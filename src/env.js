@@ -45,6 +45,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SANCHO_API_URL: z.string().optional(),
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: z.string().optional(),
     NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
+    NEXT_PUBLIC_REF_ADDR: z.string().optional(),
   },
 
   /**
@@ -66,6 +67,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SANCHO_API_URL: process.env.NEXT_PUBLIC_SANCHO_API_URL,
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: process.env.NEXT_PUBLIC_CUSTOM_SLOT_CONFIG,
     NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
+    NEXT_PUBLIC_REF_ADDR: process.env.NEXT_PUBLIC_REF_ADDR,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     PINATA_API_KEY: process.env.PINATA_API_KEY,

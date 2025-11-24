@@ -112,6 +112,9 @@ model Crowdfund {
   paramUtxo         String? // JSON string containing { txHash: string, outputIndex: number }
   govDatum          String? // Stores governance configuration JSON for gov-crowdfund v2
   govAddress        String? // Optional governance-specific address metadata
+  spendRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
+  stakeRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
+  refAddress        String? // Address where reference scripts are stored
   createdAt         DateTime @default(now())
 }
 

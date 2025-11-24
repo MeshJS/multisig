@@ -20,6 +20,7 @@ import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";
 import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
+import { env } from "@/env";
 
 interface WithdrawFromCrowdfundProps {
   crowdfund: any;
@@ -158,6 +159,43 @@ export function WithdrawFromCrowdfund({
 
       const governanceConfig = mapGovExtensionToConfig(govExtension);
 
+      // Parse reference scripts if available
+      let spendRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      let stakeRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      
+      if (crowdfund.spendRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.spendRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            spendRefScript = parsed;
+            console.log("[handleWithdraw] Successfully parsed spendRefScript from DB:", spendRefScript);
+          } else {
+            console.warn("[handleWithdraw] Invalid spendRefScript format:", parsed);
+          }
+        } catch (e) {
+          console.error("[handleWithdraw] Failed to parse spendRefScript:", e);
+        }
+      } else {
+        console.error("[handleWithdraw] No spendRefScript found in database for crowdfund:", crowdfund.id);
+        throw new Error(
+          `Crowdfund ${crowdfund.id} does not have a spendRefScript set in the database. ` +
+          `The reference script must be set during crowdfund setup.`
+        );
+      }
+      
+      if (crowdfund.stakeRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.stakeRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            stakeRefScript = parsed;
+          } else {
+            console.warn("[handleWithdraw] Invalid stakeRefScript format:", parsed);
+          }
+        } catch (e) {
+          console.error("[handleWithdraw] Failed to parse stakeRefScript:", e);
+        }
+      }
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -169,6 +207,9 @@ export function WithdrawFromCrowdfund({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: JSON.parse(crowdfund.paramUtxo),
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 

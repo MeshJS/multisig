@@ -19,6 +19,7 @@ import { CrowdfundDatumTS } from "../../crowdfund";
 import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
 import { mapGovExtensionToConfig } from "../../utils";
+import { env } from "@/env";
 
 interface ContributeToCrowdfundProps {
   crowdfund: any;
@@ -208,6 +209,15 @@ export function ContributeToCrowdfund({
         throw new Error("Governance extension data not found for this crowdfund.");
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
+      
+      // Parse reference scripts if available
+      const spendRefScript = crowdfund.spendRefScript 
+        ? JSON.parse(crowdfund.spendRefScript) 
+        : undefined;
+      const stakeRefScript = crowdfund.stakeRefScript 
+        ? JSON.parse(crowdfund.stakeRefScript) 
+        : undefined;
+      
       console.log("[handleContribute] Creating contract", {
         proposerKeyHash: crowdfund.proposerKeyHashR0,
         paramUtxo: parsedParamUtxo,
@@ -216,6 +226,8 @@ export function ContributeToCrowdfund({
         hasTxHash: "txHash" in parsedParamUtxo,
         storedAddress: crowdfund.address,
         datumData,
+        spendRefScript,
+        stakeRefScript,
       });
 
       const contract = new MeshCrowdfundContract(
@@ -229,6 +241,9 @@ export function ContributeToCrowdfund({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 

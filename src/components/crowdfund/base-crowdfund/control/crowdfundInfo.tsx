@@ -24,6 +24,7 @@ import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";
 import { mapGovExtensionToConfig } from "../utils";
 import { useSiteStore } from "@/lib/zustand/site";
+import { env } from "@/env";
 import { dateToFormatted } from "@/utils/strings";
 
 interface CrowdfundInfoProps {
@@ -514,6 +515,14 @@ export function CrowdfundInfo({
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
 
+      // Parse reference scripts if available
+      const spendRefScript = crowdfund.spendRefScript 
+        ? JSON.parse(crowdfund.spendRefScript) 
+        : undefined;
+      const stakeRefScript = crowdfund.stakeRefScript 
+        ? JSON.parse(crowdfund.stakeRefScript) 
+        : undefined;
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -525,6 +534,9 @@ export function CrowdfundInfo({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 

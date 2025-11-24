@@ -20,6 +20,7 @@ import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../../crowdfund";
 import { api } from "@/utils/api";
 import { mapGovExtensionToConfig } from "../../utils";
+import { env } from "@/env";
 
 interface WithdrawFromCrowdfundProps {
   crowdfund: any;
@@ -159,6 +160,14 @@ export function WithdrawFromCrowdfund({
 
       const governanceConfig = mapGovExtensionToConfig(govExtension);
 
+      // Parse reference scripts if available
+      const spendRefScript = crowdfund.spendRefScript 
+        ? JSON.parse(crowdfund.spendRefScript) 
+        : undefined;
+      const stakeRefScript = crowdfund.stakeRefScript 
+        ? JSON.parse(crowdfund.stakeRefScript) 
+        : undefined;
+
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
@@ -170,6 +179,9 @@ export function WithdrawFromCrowdfund({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: JSON.parse(crowdfund.paramUtxo),
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 

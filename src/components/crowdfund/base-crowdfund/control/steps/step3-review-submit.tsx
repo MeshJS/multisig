@@ -17,6 +17,7 @@ import { mapGovExtensionToConfig } from "../../utils";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { CrowdfundDatumTS } from "../../../crowdfund";
+import { env } from "@/env";
 import {
   CheckCircle,
   XCircle,
@@ -204,6 +205,7 @@ export function Step3ReviewSubmit({
         {
           proposerKeyHash: proposerKeyHashR0,
           governance: governanceConfig,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 

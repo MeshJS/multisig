@@ -19,6 +19,7 @@ import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
 import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
+import { env } from "@/env";
 
 interface ContributeToCrowdfundProps {
   crowdfund: any;
@@ -207,6 +208,44 @@ export function ContributeToCrowdfund({
         throw new Error("Governance extension data not found for this crowdfund.");
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
+      
+      // Parse reference scripts if available
+      let spendRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      let stakeRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
+      
+      if (crowdfund.spendRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.spendRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            spendRefScript = parsed;
+            console.log("[handleContribute] Successfully parsed spendRefScript from DB:", spendRefScript);
+          } else {
+            console.warn("[handleContribute] Invalid spendRefScript format:", parsed);
+          }
+        } catch (e) {
+          console.error("[handleContribute] Failed to parse spendRefScript:", e);
+        }
+      } else {
+        console.error("[handleContribute] No spendRefScript found in database for crowdfund:", crowdfund.id);
+        throw new Error(
+          `Crowdfund ${crowdfund.id} does not have a spendRefScript set in the database. ` +
+          `The reference script must be set during crowdfund setup.`
+        );
+      }
+      
+      if (crowdfund.stakeRefScript) {
+        try {
+          const parsed = JSON.parse(crowdfund.stakeRefScript);
+          if (parsed && parsed.txHash && typeof parsed.outputIndex === 'number') {
+            stakeRefScript = parsed;
+          } else {
+            console.warn("[handleContribute] Invalid stakeRefScript format:", parsed);
+          }
+        } catch (e) {
+          console.error("[handleContribute] Failed to parse stakeRefScript:", e);
+        }
+      }
+      
       console.log("[handleContribute] Creating contract", {
         proposerKeyHash: crowdfund.proposerKeyHashR0,
         paramUtxo: parsedParamUtxo,
@@ -215,6 +254,10 @@ export function ContributeToCrowdfund({
         hasTxHash: "txHash" in parsedParamUtxo,
         storedAddress: crowdfund.address,
         datumData,
+        spendRefScript,
+        stakeRefScript,
+        hasSpendRefScript: !!spendRefScript,
+        hasStakeRefScript: !!stakeRefScript,
       });
 
       const contract = new MeshCrowdfundContract(
@@ -228,6 +271,9 @@ export function ContributeToCrowdfund({
           proposerKeyHash: crowdfund.proposerKeyHashR0,
           paramUtxo: parsedParamUtxo,
           governance: governanceConfig,
+          spendRefScript,
+          stakeRefScript,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 
@@ -261,8 +307,11 @@ export function ContributeToCrowdfund({
         contributionAmount,
         datumData,
         crowdfundAddress: contract.crowdfundAddress,
+        spendRefScript,
+        hasSpendRefScript: !!spendRefScript,
       });
 
+      console.log("[handleContribute] Building transaction...");
       const { tx } = await contract.contributeCrowdfund(
         contributionAmount,
         datumData,

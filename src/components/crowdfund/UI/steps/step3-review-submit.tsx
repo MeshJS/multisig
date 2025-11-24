@@ -17,6 +17,7 @@ import { mapGovExtensionToConfig } from "../utils";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { CrowdfundDatumTS } from "../../crowdfund";
+import { env } from "@/env";
 import {
   CheckCircle,
   XCircle,
@@ -100,6 +101,34 @@ export function Step3ReviewSubmit({
     },
     onError: (err) => {
       toast({ title: "Error setting up crowdfund", description: err.message });
+    },
+  });
+
+  const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
+    onSuccess: () => {
+      console.log("[handleSubmit] Crowdfund updated with transaction hash");
+    },
+    onError: (err) => {
+      console.error("[handleSubmit] Error updating crowdfund:", err);
+      toast({ 
+        title: "Warning", 
+        description: "Crowdfund created but failed to update transaction hash. Please update manually.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCrowdfund = api.crowdfund.deleteCrowdfund.useMutation({
+    onSuccess: () => {
+      console.log("[handleSubmit] Crowdfund deleted from database after transaction failure");
+    },
+    onError: (err) => {
+      console.error("[handleSubmit] Error deleting crowdfund:", err);
+      toast({
+        title: "Warning",
+        description: "Transaction failed and crowdfund could not be removed from database. Please delete manually.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -203,6 +232,7 @@ export function Step3ReviewSubmit({
         {
           proposerKeyHash: proposerKeyHashR0,
           governance: governanceConfig,
+          refAddress: env.NEXT_PUBLIC_REF_ADDR,
         },
       );
 
@@ -273,10 +303,10 @@ export function Step3ReviewSubmit({
         authTokenId,
       });
 
-      // Sign and submit the transaction
+      // Sign the transaction (but don't submit yet)
       const signedTx = await wallet.signTx(tx, true);
-      const txHash = await wallet.submitTx(signedTx);
       
+      console.log("[handleSubmit] Transaction signed, saving to database before submission...");
 
       // Update the datum with the new values
       const updatedDatum: CrowdfundDatumTS = {
@@ -305,8 +335,9 @@ export function Step3ReviewSubmit({
         drepMetadataHash: formData.drepMetadataHash,
       };
 
-      // Create the crowdfund in the database
-      createCrowdfund.mutate({
+      // Create the crowdfund in the database BEFORE submission
+      // This ensures we have the data even if submission fails
+      const crowdfundRecord = await createCrowdfund.mutateAsync({
         name: formData.name,
         description: formData.description,
         proposerKeyHashR0,
@@ -318,19 +349,84 @@ export function Step3ReviewSubmit({
         address: crowdfund_address,
         datum: JSON.stringify(updatedDatum),
         govDatum: JSON.stringify(govExtension),
+        // Spend reference script will be set after successful submission
+        // (We save to DB first to ensure data safety even if submission fails)
       });
+
+      console.log("[handleSubmit] Crowdfund saved to database, submitting transaction...");
+
+      // Now submit the transaction - await completion before continuing
+      let submittedTxHash: string;
+      try {
+        // Await submission to ensure it completes (or fails) before proceeding
+        submittedTxHash = await wallet.submitTx(signedTx);
+        console.log("[handleSubmit] Transaction submitted successfully:", submittedTxHash);
+      } catch (submitError) {
+        // Transaction submission failed - remove crowdfund from database
+        console.error("[handleSubmit] Transaction submission failed:", submitError);
+        
+        // Ensure we await the deletion before continuing
+        if (crowdfundRecord?.id) {
+          console.log("[handleSubmit] Deleting crowdfund from database due to transaction failure");
+          try {
+            await deleteCrowdfund.mutateAsync({ id: crowdfundRecord.id });
+            console.log("[handleSubmit] Crowdfund successfully deleted from database");
+            toast({
+              title: "Transaction failed",
+              description: "Crowdfund removed from database. Please fix the issue and try again.",
+              variant: "destructive",
+            });
+          } catch (deleteError) {
+            console.error("[handleSubmit] Failed to delete crowdfund:", deleteError);
+            toast({
+              title: "Transaction failed",
+              description: "Transaction submission failed. Please manually delete the crowdfund from the database.",
+              variant: "destructive",
+            });
+          }
+        }
+        
+        // Re-throw the error to be caught by outer catch block
+        throw submitError;
+      }
+
+      // Only proceed with update after successful submission
+      // Update the crowdfund with the spend reference script after successful submission
+      // Spend reference script is attached to output 1 in setupCrowdfund
+      if (crowdfundRecord?.id && submittedTxHash) {
+        console.log("[handleSubmit] Updating crowdfund with spend reference script");
+        await updateCrowdfund.mutateAsync({
+          id: crowdfundRecord.id,
+          spendRefScript: JSON.stringify({
+            txHash: submittedTxHash,
+            outputIndex: 1,
+          }),
+        });
+        console.log("[handleSubmit] Crowdfund updated with spend reference script");
+      }
 
       // Show success toast
       toast({
         title: "Crowdfund setup successful",
-        description: `Transaction hash: ${txHash}`,
+        description: `Transaction hash: ${submittedTxHash}`,
       });
     } catch (e) {
-      toast({
-        title: "On-chain setup failed",
-        description: e instanceof Error ? e.message : String(e),
-      });
-      console.log(e);
+      // This catch handles errors from transaction building or other steps
+      // If the error is from submission, it's already handled above
+      // But we still need to handle other errors (like transaction building failures)
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      
+      // Only show error toast if we haven't already shown one (for submission errors)
+      if (!errorMessage.includes("insufficientlyFundedOutputs") && 
+          !errorMessage.includes("TxSendError")) {
+        toast({
+          title: "On-chain setup failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+      
+      console.error("[handleSubmit] Setup failed:", e);
     } finally {
       setIsSubmitting(false);
     }
