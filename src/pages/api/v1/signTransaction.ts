@@ -76,7 +76,6 @@ export default async function handler(
     signature?: unknown;
     key?: unknown;
     broadcast?: unknown;
-    txHash?: unknown;
   };
 
   const {
@@ -86,7 +85,6 @@ export default async function handler(
     signature,
     key,
     broadcast: rawBroadcast,
-    txHash: rawTxHash,
   } = (req.body ?? {}) as SignTransactionRequestBody;
 
   if (typeof walletId !== "string" || walletId.trim() === "") {
@@ -289,66 +287,44 @@ export default async function handler(
       }
     })();
 
-    const providedTxHash =
-      typeof rawTxHash === "string" && rawTxHash.trim() !== ""
-        ? rawTxHash.trim()
-        : undefined;
-
-    let normalizedProvidedTxHash: string | undefined;
-    if (providedTxHash) {
-      try {
-        normalizedProvidedTxHash = normalizeHex(providedTxHash, "txHash");
-      } catch (error: unknown) {
-        console.error("Invalid txHash payload", toError(error));
-        return res.status(400).json({ error: "Invalid txHash format" });
-      }
-
-      if (normalizedProvidedTxHash.length !== 64) {
-        return res.status(400).json({ error: "Invalid txHash length" });
-      }
-
-      if (normalizedProvidedTxHash !== txHashHex) {
-        return res
-          .status(400)
-          .json({ error: "Provided txHash does not match transaction body" });
-      }
-    }
-
     let nextState = transaction.state;
-    let finalTxHash = normalizedProvidedTxHash ?? transaction.txHash ?? undefined;
+    let finalTxHash = transaction.txHash ?? undefined;
     let submissionError: string | undefined;
 
-    const resolveNetworkId = async (): Promise<number> => {
-      const primarySignerAddress = wallet.signersAddresses.find(
-        (candidate) => typeof candidate === "string" && candidate.trim() !== "",
-      );
-      if (primarySignerAddress) {
-        return addressToNetwork(primarySignerAddress);
+    const resolveNetworkId = (): number => {
+      const candidateAddresses = Array.isArray(wallet.signersAddresses)
+        ? wallet.signersAddresses
+        : [];
+
+      for (const candidate of candidateAddresses) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (!trimmed) {
+          continue;
+        }
+        try {
+          return addressToNetwork(trimmed);
+        } catch (error: unknown) {
+          console.warn("Unable to resolve network from wallet signer address", {
+            walletId,
+            candidate: trimmed,
+            error: toError(error),
+          });
+        }
       }
 
-      const walletRecord = await db.wallet.findUnique({
-        where: { id: walletId },
-        select: { signersAddresses: true },
-      });
-
-      const fallbackAddress = walletRecord?.signersAddresses?.find(
-        (candidate) => typeof candidate === "string" && candidate.trim() !== "",
-      );
-      if (fallbackAddress) {
-        return addressToNetwork(fallbackAddress);
-      }
-
-      return addressToNetwork(address);
+      throw new Error("Unable to determine network from wallet data");
     };
 
     if (
       shouldAttemptBroadcast &&
       threshold > 0 &&
-      updatedSignedAddresses.length >= threshold &&
-      !normalizedProvidedTxHash
+      updatedSignedAddresses.length >= threshold
     ) {
       try {
-        const network = await resolveNetworkId();
+        const network = resolveNetworkId();
         const provider = getProvider(network);
         const submittedHash = await provider.submitTx(txHexForUpdate);
         finalTxHash = submittedHash;
@@ -361,11 +337,6 @@ export default async function handler(
         });
         submissionError = err.message ?? "Failed to submit transaction";
       }
-    }
-
-    if (normalizedProvidedTxHash) {
-      finalTxHash = txHashHex;
-      nextState = 1;
     }
 
     if (transaction.state === 1) {
