@@ -221,7 +221,7 @@ export default async function handler(
         .json({ error: "Signature public key does not match address" });
     }
 
-    const txHashHex = calculateTxHash(parsedStoredTx.to_hex());
+    const txHashHex = calculateTxHash(parsedStoredTx.to_hex()).toLowerCase();
     const txHashBytes = Buffer.from(txHashHex, "hex");
     const isSignatureValid = witnessPublicKey.verify(txHashBytes, witnessSignature);
 
@@ -254,6 +254,26 @@ export default async function handler(
     }
     const txHexForUpdate = updatedTx.to_hex();
 
+    const witnessSummaries: {
+      keyHashHex: string;
+      publicKeyBech32: string;
+      signatureHex: string;
+    }[] = [];
+    const witnessSetForExport = csl.Vkeywitnesses.from_bytes(
+      vkeyWitnesses.to_bytes(),
+    );
+    const witnessCountForExport = witnessSetForExport.len();
+    for (let i = 0; i < witnessCountForExport; i++) {
+      const witness = witnessSetForExport.get(i);
+      witnessSummaries.push({
+        keyHashHex: toHex(
+          witness.vkey().public_key().hash().to_bytes(),
+        ).toLowerCase(),
+        publicKeyBech32: witness.vkey().public_key().to_bech32(),
+        signatureHex: toHex(witness.signature().to_bytes()).toLowerCase(),
+      });
+    }
+
     const shouldAttemptBroadcast = coerceBoolean(rawBroadcast, true);
 
     const threshold = (() => {
@@ -274,19 +294,61 @@ export default async function handler(
         ? rawTxHash.trim()
         : undefined;
 
+    let normalizedProvidedTxHash: string | undefined;
+    if (providedTxHash) {
+      try {
+        normalizedProvidedTxHash = normalizeHex(providedTxHash, "txHash");
+      } catch (error: unknown) {
+        console.error("Invalid txHash payload", toError(error));
+        return res.status(400).json({ error: "Invalid txHash format" });
+      }
+
+      if (normalizedProvidedTxHash.length !== 64) {
+        return res.status(400).json({ error: "Invalid txHash length" });
+      }
+
+      if (normalizedProvidedTxHash !== txHashHex) {
+        return res
+          .status(400)
+          .json({ error: "Provided txHash does not match transaction body" });
+      }
+    }
+
     let nextState = transaction.state;
-    let finalTxHash = providedTxHash ?? transaction.txHash ?? undefined;
+    let finalTxHash = normalizedProvidedTxHash ?? transaction.txHash ?? undefined;
     let submissionError: string | undefined;
+
+    const resolveNetworkId = async (): Promise<number> => {
+      const primarySignerAddress = wallet.signersAddresses.find(
+        (candidate) => typeof candidate === "string" && candidate.trim() !== "",
+      );
+      if (primarySignerAddress) {
+        return addressToNetwork(primarySignerAddress);
+      }
+
+      const walletRecord = await db.wallet.findUnique({
+        where: { id: walletId },
+        select: { signersAddresses: true },
+      });
+
+      const fallbackAddress = walletRecord?.signersAddresses?.find(
+        (candidate) => typeof candidate === "string" && candidate.trim() !== "",
+      );
+      if (fallbackAddress) {
+        return addressToNetwork(fallbackAddress);
+      }
+
+      return addressToNetwork(address);
+    };
 
     if (
       shouldAttemptBroadcast &&
       threshold > 0 &&
       updatedSignedAddresses.length >= threshold &&
-      !providedTxHash
+      !normalizedProvidedTxHash
     ) {
       try {
-        const networkSource = wallet.signersAddresses[0] ?? address;
-        const network = addressToNetwork(networkSource);
+        const network = await resolveNetworkId();
         const provider = getProvider(network);
         const submittedHash = await provider.submitTx(txHexForUpdate);
         finalTxHash = submittedHash;
@@ -301,7 +363,8 @@ export default async function handler(
       }
     }
 
-    if (providedTxHash) {
+    if (normalizedProvidedTxHash) {
+      finalTxHash = txHashHex;
       nextState = 1;
     }
 
@@ -311,20 +374,96 @@ export default async function handler(
       nextState = 0;
     }
 
-    const updatedTransaction = await caller.transaction.updateTransaction({
-      transactionId,
+    let txJsonForUpdate = transaction.txJson;
+    try {
+      const parsedTxJson = JSON.parse(
+        transaction.txJson,
+      ) as Record<string, unknown>;
+      const enrichedTxJson = {
+        ...parsedTxJson,
+        multisig: {
+          state: nextState,
+          submitted: nextState === 1,
+          signedAddresses: updatedSignedAddresses,
+          rejectedAddresses: transaction.rejectedAddresses,
+          witnesses: witnessSummaries,
+          txHash: (finalTxHash ?? txHashHex).toLowerCase(),
+          bodyHash: txHashHex,
+          submissionError: submissionError ?? null,
+        },
+      };
+      txJsonForUpdate = JSON.stringify(enrichedTxJson);
+    } catch (error: unknown) {
+      const err = toError(error);
+      console.warn("Unable to update txJson snapshot", {
+        transactionId,
+        error: err,
+      });
+    }
+
+    const updateData: {
+      signedAddresses: { set: string[] };
+      rejectedAddresses: { set: string[] };
+      txCbor: string;
+      txJson: string;
+      state: number;
+      txHash?: string;
+    } = {
+      signedAddresses: { set: updatedSignedAddresses },
+      rejectedAddresses: { set: transaction.rejectedAddresses },
       txCbor: txHexForUpdate,
-      signedAddresses: updatedSignedAddresses,
-      rejectedAddresses: transaction.rejectedAddresses,
+      txJson: txJsonForUpdate,
       state: nextState,
-      ...(finalTxHash ? { txHash: finalTxHash } : {}),
+    };
+
+    if (finalTxHash) {
+      updateData.txHash = finalTxHash;
+    }
+
+    const updateResult = await db.transaction.updateMany({
+      where: {
+        id: transactionId,
+        signedAddresses: { equals: transaction.signedAddresses },
+        rejectedAddresses: { equals: transaction.rejectedAddresses },
+        txCbor: transaction.txCbor ?? "",
+        txJson: transaction.txJson,
+      },
+      data: updateData,
     });
+
+    if (updateResult.count === 0) {
+      const latest = await db.transaction.findUnique({
+        where: { id: transactionId },
+      });
+
+      return res.status(409).json({
+        error: "Transaction was updated by another signer. Please refresh and try again.",
+        ...(latest ? { transaction: latest } : {}),
+      });
+    }
+
+    const updatedTransaction = await db.transaction.findUnique({
+      where: { id: transactionId },
+    });
+
+    if (!updatedTransaction) {
+      return res.status(500).json({ error: "Failed to load updated transaction state" });
+    }
+
+    if (submissionError) {
+      return res.status(502).json({
+        error: "Transaction witness recorded, but submission to network failed",
+        transaction: updatedTransaction,
+        submitted: false,
+        txHash: finalTxHash,
+        submissionError,
+      });
+    }
 
     return res.status(200).json({
       transaction: updatedTransaction,
       submitted: nextState === 1,
       txHash: finalTxHash,
-      ...(submissionError ? { submissionError } : {}),
     });
   } catch (error: unknown) {
     const err = toError(error);
