@@ -37,10 +37,17 @@ jest.mock(
 );
 
 const dbTransactionFindUniqueMock = jest.fn<(args: unknown) => Promise<unknown>>();
+const dbTransactionUpdateManyMock = jest.fn<
+  (args: {
+    where: unknown;
+    data: unknown;
+  }) => Promise<{ count: number }>
+>();
 
 const dbMock = {
   transaction: {
     findUnique: dbTransactionFindUniqueMock,
+    updateMany: dbTransactionUpdateManyMock,
   },
 };
 
@@ -94,6 +101,10 @@ class MockEd25519Signature {
   static from_hex(hex: string) {
     return new MockEd25519Signature(hex);
   }
+
+  to_bytes() {
+    return Buffer.from(this.hex, 'hex');
+  }
 }
 
 class MockPublicKey {
@@ -111,6 +122,10 @@ class MockPublicKey {
 
   verify() {
     return true;
+  }
+
+  to_bech32() {
+    return `mock_bech32_${this.hex.slice(0, 8)}`;
   }
 }
 
@@ -138,6 +153,10 @@ class MockVkeywitness {
 
   vkey() {
     return this.vkeyInstance;
+  }
+
+  signature() {
+    return this.signatureInstance;
   }
 }
 
@@ -284,6 +303,13 @@ jest.mock(
   { virtual: true },
 );
 
+const consoleErrorSpy = jest
+  .spyOn(console, 'error')
+  .mockImplementation(() => undefined);
+const consoleWarnSpy = jest
+  .spyOn(console, 'warn')
+  .mockImplementation(() => undefined);
+
 type ResponseMock = NextApiResponse & { statusCode?: number };
 
 function createMockResponse(): ResponseMock {
@@ -306,7 +332,6 @@ function createMockResponse(): ResponseMock {
 }
 
 const walletGetWalletMock = jest.fn<(args: unknown) => Promise<unknown>>();
-const transactionUpdateMock = jest.fn<(args: unknown) => Promise<unknown>>();
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
@@ -319,8 +344,8 @@ beforeEach(() => {
   MockVkeywitnesses.reset();
 
   walletGetWalletMock.mockReset();
-  transactionUpdateMock.mockReset();
   dbTransactionFindUniqueMock.mockReset();
+  dbTransactionUpdateManyMock.mockReset();
   getProviderMock.mockReset();
   addressToNetworkMock.mockReset();
   resolvePaymentKeyHashMock.mockReset();
@@ -340,8 +365,17 @@ beforeEach(() => {
 
   createCallerMock.mockReturnValue({
     wallet: { getWallet: walletGetWalletMock },
-    transaction: { updateTransaction: transactionUpdateMock },
   });
+});
+
+afterEach(() => {
+  consoleErrorSpy.mockClear();
+  consoleWarnSpy.mockClear();
+});
+
+afterAll(() => {
+  consoleErrorSpy.mockRestore();
+  consoleWarnSpy.mockRestore();
 });
 
 describe('signTransaction API route', () => {
@@ -369,9 +403,8 @@ describe('signTransaction API route', () => {
       rejectedAddresses: [] as string[],
       txCbor: 'stored-tx-hex',
       txHash: null as string | null,
+      txJson: '{}',
     };
-
-    dbTransactionFindUniqueMock.mockResolvedValue(transactionRecord);
 
     const updatedTransaction = {
       ...transactionRecord,
@@ -379,9 +412,18 @@ describe('signTransaction API route', () => {
       txCbor: 'updated-tx-hex',
       state: 1,
       txHash: 'provided-hash',
+      txJson: '{"multisig":{"state":1}}',
     };
 
-    transactionUpdateMock.mockResolvedValue(updatedTransaction);
+    dbTransactionFindUniqueMock
+      .mockResolvedValueOnce(transactionRecord)
+      .mockResolvedValueOnce(updatedTransaction);
+
+    dbTransactionUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const submitTxMock = jest.fn<(txHex: string) => Promise<string>>();
+    submitTxMock.mockResolvedValue('provided-hash');
+    getProviderMock.mockReturnValue({ submitTx: submitTxMock });
 
     const req = {
       method: 'POST',
@@ -411,17 +453,33 @@ describe('signTransaction API route', () => {
       }),
     });
     expect(walletGetWalletMock).toHaveBeenCalledWith({ walletId, address });
-    expect(dbTransactionFindUniqueMock).toHaveBeenCalledWith({ where: { id: transactionId } });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(getProviderMock).not.toHaveBeenCalled();
-    expect(transactionUpdateMock).toHaveBeenCalledWith({
-      transactionId,
-      txCbor: 'updated-tx-hex',
-      signedAddresses: [address],
-      rejectedAddresses: [],
-      state: 1,
-      txHash: 'provided-hash',
+    expect(dbTransactionFindUniqueMock).toHaveBeenNthCalledWith(1, {
+      where: { id: transactionId },
     });
+    expect(getProviderMock).toHaveBeenCalledWith(0);
+    expect(submitTxMock).toHaveBeenCalledWith('updated-tx-hex');
+    expect(dbTransactionUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: transactionId,
+        signedAddresses: { equals: [] },
+        rejectedAddresses: { equals: [] },
+        txCbor: 'stored-tx-hex',
+        txJson: '{}',
+      },
+      data: expect.objectContaining({
+        signedAddresses: { set: [address] },
+        rejectedAddresses: { set: [] },
+        txCbor: 'updated-tx-hex',
+        state: 1,
+        txHash: 'provided-hash',
+        txJson: expect.any(String),
+      }),
+    });
+    expect(dbTransactionFindUniqueMock).toHaveBeenNthCalledWith(2, {
+      where: { id: transactionId },
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       transaction: updatedTransaction,
       submitted: true,
@@ -587,7 +645,7 @@ describe('signTransaction API route', () => {
     expect(res.json).toHaveBeenCalledWith({
       error: 'Address has already signed this transaction',
     });
-    expect(transactionUpdateMock).not.toHaveBeenCalled();
+    expect(dbTransactionUpdateManyMock).not.toHaveBeenCalled();
     expect(getProviderMock).not.toHaveBeenCalled();
   });
 
@@ -633,7 +691,7 @@ describe('signTransaction API route', () => {
     expect(res.json).toHaveBeenCalledWith({
       error: 'Stored transaction is missing txCbor',
     });
-    expect(transactionUpdateMock).not.toHaveBeenCalled();
+    expect(dbTransactionUpdateManyMock).not.toHaveBeenCalled();
   });
 
 });
