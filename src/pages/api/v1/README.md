@@ -78,6 +78,25 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Signable object with ID, signatures, and state
 - **Error Handling**: 400 (validation), 401 (auth/signature), 403 (authorization), 500 (server)
 
+#### `signTransaction.ts` - POST `/api/v1/signTransaction`
+
+- **Purpose**: Record a signer witness for a pending multisig transaction and optionally submit it to the network
+- **Authentication**: Required (JWT Bearer token)
+- **Features**:
+  - Wallet ownership validation and enforcement of unique signer participation
+  - Native signature and public key verification against the transaction hash
+  - Witness aggregation with snapshot updates for CBOR and JSON representations
+  - Automatic network submission when the multisig threshold is met, with failure capture
+- **Request Body**:
+  - `walletId`: Wallet identifier
+  - `transactionId`: Transaction identifier
+  - `address`: Signer address (must match JWT payload)
+  - `signature`: Witness signature in hex format
+  - `key`: Public key in hex format
+  - `broadcast`: Optional boolean to control automatic submission (defaults to true)
+- **Response**: Updated transaction object with witness metadata, submission state, and transaction hash
+- **Error Handling**: 400 (validation), 401 (signature), 403 (authorization), 404 (not found), 409 (state conflict), 502 (broadcast failure), 500 (server)
+
 ### Wallet Management
 
 #### `walletIds.ts` - GET `/api/v1/walletIds`
