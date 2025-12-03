@@ -11,7 +11,7 @@ import { UTxO } from "@meshsdk/core";
 import BallotCard from "./ballot/ballot";
 import { useState, useEffect, useMemo } from "react";
 import { useBallot } from "@/hooks/useBallot";
-import { Vote } from "lucide-react";
+import { Vote, Minimize2 } from "lucide-react";
 
 export default function PageGovernance() {
   const { appWallet } = useAppWallet();
@@ -186,9 +186,27 @@ function FloatingBallotSidebar({
         <button
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Collapse Ballots" : "Expand Ballots"}
-          className={open ? "absolute -left-12 top-8 p-1.5 rounded-full bg-white/80 shadow hover:bg-gray-100 border" : "absolute top-0 right-0 p-1"}
+          title={open ? "Click to minimise ballot panel" : "Click to open ballot panel"}
+          className={
+            open
+              ? "absolute -left-12 top-8 p-1.5 rounded-full bg-white/40 shadow border group text-gray-800 dark:text-white hover:bg-black hover:text-white"
+              : "absolute top-0 right-0 p-1 group text-gray-800 dark:text-white"
+          }
         >
-          <Vote size={40} />
+          {open ? (
+            <>
+              <Vote
+                size={32}
+                className="block group-hover:hidden transition-colors"
+              />
+              <Minimize2
+                size={32}
+                className="hidden group-hover:block transition-colors"
+              />
+            </>
+          ) : (
+            <Vote size={40} />
+          )}
           {(ballotCount > 0 || totalProposalCount > 0 || proposalCount > 0) && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center h-4 w-4 rounded-full bg-red-600 text-white text-xs font-bold">
                 {open

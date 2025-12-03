@@ -429,7 +429,7 @@ export default function BallotCard({
     <CardUI
       title="Ballots"
       description="Submit a new governance ballot for your wallet."
-      cardClassName="w-full bg-white/40 dark:bg-slate-900/40 border border-white/30 dark:border-slate-700/50 backdrop-blur-md"
+      cardClassName="w-full bg-white/90 dark:bg-slate-900/90 border border-white/60 dark:border-slate-700/80 backdrop-blur-md"
     >
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-300 pb-2 mb-4 dark:border-gray-600">
@@ -438,16 +438,24 @@ export default function BallotCard({
               key={b.id}
               className={`px-3 py-1 rounded-t-md font-medium transition ${
                 b.id === selectedBallotId
-                  ? "bg-white text-blue-600 border border-b-0 border-blue-400 dark:bg-gray-900 dark:text-blue-400"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                  ? "bg-white text-gray-900 border border-b-0 border-gray-300 shadow-sm dark:bg-slate-900 dark:text-gray-100 dark:border-slate-700"
+                  : "bg-white/70 text-gray-700 hover:bg-white dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 border border-transparent"
               }`}
               onClick={() => onSelectBallot && onSelectBallot(b.id)}
             >
-              {b.description || "Untitled"}
+              <span
+                className={
+                  b.id === selectedBallotId
+                    ? "drop-shadow-[0_0_6px_rgba(255,255,255,0.8)] dark:drop-shadow-[0_0_8px_rgba(148,163,184,0.9)]"
+                    : "text-xs"
+                }
+              >
+                {b.description || "Untitled"}
+              </span>
             </button>
           ))}
           <button
-            className="ml-auto px-3 py-1 rounded-t-md bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300 dark:hover:bg-green-800"
+            className="ml-auto px-3 py-1 rounded-t-md bg-white text-gray-700 hover:bg-gray-100 border border-gray-300 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-600"
             onClick={() => {
               if (creating) {
                 // Hide the create-input row and clear any pending text
@@ -475,7 +483,7 @@ export default function BallotCard({
             <button
               onClick={handleSubmit}
               disabled={submitting || !description.trim()}
-              className="px-3 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+              className="px-3 py-1 rounded bg-white/80 text-gray-800 hover:bg-white shadow-sm disabled:opacity-50 border border-gray-200 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-700"
             >
               Add
             </button>
@@ -520,15 +528,15 @@ export default function BallotCard({
               )}
               <Button
                 variant="default"
-                className="mt-4"
+                className="mt-4 ml-2 px-6 py-2 rounded-full bg-white/95 text-gray-900 text-sm md:text-base font-semibold shadow-lg ring-1 ring-white/70 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 hover:ring-2 hover:ring-white transition-transform transition-shadow dark:bg-slate-900 dark:text-gray-50 dark:hover:bg-slate-800 dark:ring-slate-400/60"
                 onClick={hasValidProxy ? handleSubmitProxyVote : handleSubmitVote}
                 disabled={loading}
               >
                 {loading ? "Loading..." : `Submit Ballot Vote${hasValidProxy ? " (Proxy Mode)" : ""}`}
               </Button>
               <Button
-                variant="destructive"
-                className="mt-4"
+                variant="outline"
+                className="mt-4 ml-3 bg-white/80 text-gray-700 hover:bg-white dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10"
                 onClick={async (e: React.MouseEvent) => {
                   try {
                     await deleteBallot.mutateAsync({ ballotId: selectedBallot.id });
@@ -592,7 +600,7 @@ function BallotOverviewTable({
           <tr className="border-b border-white/10">
             <th className="px-4 py-2 text-left font-semibold">#</th>
             <th className="px-4 py-2 text-left font-semibold">Title</th>
-            <th className="px-4 py-2 text-left font-semibold">Choice / Delete</th>
+            <th className="px-4 py-2 text-right font-semibold">Choice / Delete</th>
           </tr>
         </thead>
         <tbody>
@@ -609,8 +617,8 @@ function BallotOverviewTable({
                   <span className="text-gray-400">-</span>
                 )}
               </td>
-              <td className="px-4 py-2">
-                <div className="flex flex-col gap-1">
+              <td className="px-2 py-2 text-right">
+                <div className="inline-flex flex-col gap-1 items-end">
                   <Select
                     value={ballot.choices?.[idx] ?? "Abstain"}
                     onValueChange={async (newValue: string) => {
@@ -628,7 +636,10 @@ function BallotOverviewTable({
                     }}
                     disabled={updatingIdx === idx}
                   >
-                    <SelectTrigger className="w-28" disabled={updatingIdx === idx}>
+                    <SelectTrigger
+                      className="w-28 bg-white/5 hover:bg-white/10 border border-white/10 dark:bg-white/5 dark:hover:bg-white/10 text-center justify-center"
+                      disabled={updatingIdx === idx}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -644,7 +655,8 @@ function BallotOverviewTable({
 
                   <Button
                     size="sm"
-                    variant="destructive"
+                    variant="outline"
+                    className="w-28 bg-white/80 text-gray-700 hover:bg-white dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10"
                     disabled={removingIdx === idx || updateChoiceMutation.isPending}
                     onClick={() => handleDelete(idx)}
                   >
