@@ -23,6 +23,11 @@ export default function PageGovernance() {
   const { refresh, ballots } = useBallot(appWallet?.id);
   const selected = ballots?.find((b) => b.id === selectedBallotId);
   const proposalCount = selected?.items?.length ?? 0;
+  const totalProposalCount =
+    ballots?.reduce(
+      (sum, b) => sum + (Array.isArray(b.items) ? b.items.length : 0),
+      0,
+    ) ?? 0;
 
   if (appWallet === undefined) return <></>;
   return (
@@ -71,6 +76,7 @@ export default function PageGovernance() {
         selectedBallotId={selectedBallotId}
         onSelectBallot={setSelectedBallotId}
         ballotCount={ballots?.length ?? 0}
+        totalProposalCount={totalProposalCount}
         proposalCount={proposalCount}
         manualUtxos={manualUtxos}
       />
@@ -84,6 +90,7 @@ interface FloatingBallotSidebarProps {
   selectedBallotId?: string;
   onSelectBallot: (id: string) => void;
   ballotCount: number;
+  totalProposalCount: number;
   proposalCount: number;
   manualUtxos: UTxO[];
 }
@@ -93,6 +100,7 @@ function FloatingBallotSidebar({
   selectedBallotId,
   onSelectBallot,
   ballotCount,
+  totalProposalCount,
   proposalCount,
   manualUtxos
 }: FloatingBallotSidebarProps) {
@@ -118,9 +126,15 @@ function FloatingBallotSidebar({
         >
           <div className="relative">
             <Vote size={32} className="text-gray-800 dark:text-white" />
-            {(ballotCount > 0 || proposalCount > 0) && (
+            {(ballotCount > 0 || totalProposalCount > 0 || proposalCount > 0) && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center h-4 w-4 rounded-full bg-red-600 text-white text-xs font-bold">
-                {proposalCount > 0 ? proposalCount : ""}
+                {open
+                  ? proposalCount > 0
+                    ? proposalCount
+                    : ""
+                  : totalProposalCount > 0
+                    ? totalProposalCount
+                    : ""}
               </span>
             )}
           </div>
@@ -175,9 +189,15 @@ function FloatingBallotSidebar({
           className={open ? "absolute -left-12 top-8 p-1.5 rounded-full bg-white/80 shadow hover:bg-gray-100 border" : "absolute top-0 right-0 p-1"}
         >
           <Vote size={40} />
-          {(ballotCount > 0 || proposalCount > 0) && (
+          {(ballotCount > 0 || totalProposalCount > 0 || proposalCount > 0) && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center h-4 w-4 rounded-full bg-red-600 text-white text-xs font-bold">
-                {proposalCount > 0 ? proposalCount : ''}
+                {open
+                  ? proposalCount > 0
+                    ? proposalCount
+                    : ""
+                  : totalProposalCount > 0
+                    ? totalProposalCount
+                    : ""}
               </span>
             )}
         </button>

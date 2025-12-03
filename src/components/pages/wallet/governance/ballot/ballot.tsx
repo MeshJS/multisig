@@ -94,17 +94,35 @@ export default function BallotCard({
   // Delete ballot mutation
   const deleteBallot = api.ballot.delete.useMutation();
 
-  // Refresh ballots after submit or on load
+  // Refresh ballots after submit or on load and ensure a sensible default is selected
   React.useEffect(() => {
-    if (getBallots.data) {
-      // Sort newest first
-      const sorted = [...getBallots.data].sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-      setBallots(sorted);
+    if (!getBallots.data) return;
+
+    // Sort newest first
+    const sorted = [...getBallots.data].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    setBallots(sorted);
+
+    // If nothing is selected yet (or the selection no longer exists),
+    // automatically select the first ballot, preferring one that already has proposals.
+    if (!onSelectBallot) return;
+
+    const hasSelected =
+      selectedBallotId && sorted.some((b) => b.id === selectedBallotId);
+
+    if (!hasSelected) {
+      const ballotWithProposals =
+        sorted.find(
+          (b) => Array.isArray(b.items) && b.items.length > 0,
+        ) ?? sorted[0];
+
+      if (!ballotWithProposals) return;
+
+      onSelectBallot(ballotWithProposals.id);
     }
-  }, [getBallots.data]);
+  }, [getBallots.data, onSelectBallot, selectedBallotId]);
 
 
   // Proxy ballot vote submission logic
@@ -411,7 +429,7 @@ export default function BallotCard({
     <CardUI
       title="Ballots"
       description="Submit a new governance ballot for your wallet."
-      cardClassName="max-w-md w-full flex flex-col gap-6 px-2 py-4 bg-white/30 dark:bg-gray-900/30 border border-white/20 dark:border-gray-600 backdrop-blur-md shadow-lg rounded-3xl"
+      cardClassName="w-full bg-white/40 dark:bg-slate-900/40 border border-white/30 dark:border-slate-700/50 backdrop-blur-md"
     >
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-300 pb-2 mb-4 dark:border-gray-600">
@@ -430,9 +448,18 @@ export default function BallotCard({
           ))}
           <button
             className="ml-auto px-3 py-1 rounded-t-md bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300 dark:hover:bg-green-800"
-            onClick={() => setCreating(true)}
+            onClick={() => {
+              if (creating) {
+                // Hide the create-input row and clear any pending text
+                setCreating(false);
+                setDescription("");
+              } else {
+                // Show the create-input row
+                setCreating(true);
+              }
+            }}
           >
-            +
+            {creating ? "−" : "+"}
           </button>
         </div>
         {creating && (
@@ -560,9 +587,9 @@ function BallotOverviewTable({
 
   return (
     <div className="overflow-x-auto rounded-lg shadow">
-      <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+      <table className="min-w-full text-sm text-gray-100">
         <thead>
-          <tr className="bg-gray-100 dark:bg-gray-800">
+          <tr className="border-b border-white/10">
             <th className="px-4 py-2 text-left font-semibold">#</th>
             <th className="px-4 py-2 text-left font-semibold">Title</th>
             <th className="px-4 py-2 text-left font-semibold">Choice / Delete</th>
@@ -572,11 +599,9 @@ function BallotOverviewTable({
           {ballot.items.map((item: string, idx: number) => (
             <tr
               key={item + (ballot.choices?.[idx] ?? "") + idx}
-              className={
-                idx % 2 === 0
-                  ? "bg-white dark:bg-gray-900"
-                  : "bg-gray-50 dark:bg-gray-800 even:bg-gray-50 dark:even:bg-gray-800"
-              }
+              className={`border-b border-white/5 transition-colors ${
+                idx % 2 === 1 ? "bg-black/20" : "bg-transparent"
+              } hover:bg-white/10`}
             >
               <td className="px-4 py-2">{idx + 1}</td>
               <td className="px-4 py-2">

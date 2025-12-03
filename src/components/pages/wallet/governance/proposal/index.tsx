@@ -113,8 +113,9 @@ export default function WalletGovernanceProposal({
       {appWallet && (
         <BallotCard
           appWallet={appWallet}
+          selectedBallotId={selectedBallotId}
+          onSelectBallot={setSelectedBallotId}
           utxos={manualUtxos}
-          onSelectBallot={(ballotId) => setSelectedBallotId(ballotId)}
         />
       )}
       {appWallet && (
