@@ -6,7 +6,7 @@ pub type CrowdfundGovRedeemer {
   PreMatureContributorWithdrawal
   PreMatureRemoveEmptyInstance
   RegisterCerts
-  ProposeGovAction 
+  ProposeGovAction
   // {
   //   gov_action_type: Int,
   //   // 0: ProtocolParameters, 1: HardFork,  2: TreasuryWithdrawal, 3: NoConfidence, 4: ConstitutionalCommittee, 5: NewConstitution, 6: NicePoll (InfoAction)

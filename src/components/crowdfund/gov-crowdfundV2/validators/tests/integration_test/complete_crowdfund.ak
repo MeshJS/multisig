@@ -2,20 +2,20 @@ use cardano/assets.{add, from_lovelace}
 use cardano/transaction.{OutputReference, Spend, Transaction}
 use gcf_spend as gcf_spend_validator
 use mocktail.{
-  add_redeemer, complete, mint, mock_policy_id, mock_tx_hash,
-  mock_utxo_ref, mocktail_tx, script_withdrawal, tx_in, tx_in_inline_datum,
-  tx_out, tx_out_inline_datum,
+  add_redeemer, complete, mint, mock_policy_id, mock_tx_hash, mock_utxo_ref,
+  mocktail_tx, script_withdrawal, tx_in, tx_in_inline_datum, tx_out,
+  tx_out_inline_datum,
 }
 use share_token/mint as share_token_mint
 use tests/test_utils.{
   mock_auth_token, mock_completion_script, mock_crowdfund_address,
-  mock_crowdfund_datum, mock_current_fundraised_amount,
-  mock_delegate_pool_id, mock_drep_register_deposit, mock_fee_address,
-  mock_fundraise_target, mock_gov_action, mock_gov_deposit,
-  mock_gov_address, mock_min_charge, mock_proposer_key_hash, mock_share_token,
-  mock_stake_hash, mock_stake_register_deposit,
+  mock_crowdfund_datum, mock_current_fundraised_amount, mock_delegate_pool_id,
+  mock_drep_register_deposit, mock_fee_address, mock_fundraise_target,
+  mock_gov_action, mock_gov_address, mock_gov_deposit, mock_min_charge,
+  mock_proposer_key_hash, mock_share_token, mock_stake_hash,
+  mock_stake_register_deposit,
 }
-use types.{CrowdfundGovRedeemer, RegisterCerts, RMint}
+use types.{CrowdfundGovRedeemer, RMint, RegisterCerts}
 
 // Note: CompleteCrowdfund has been removed from V2
 // This test file is kept for reference but tests are commented out
@@ -126,7 +126,7 @@ fn check_all_scripts(
     gcf_spend_validator.gCf_spend.spend(
       mock_auth_token,
       mock_proposer_key_hash,
-      mock_gov_action,
+      mock_gov_action(),
       mock_delegate_pool_id,
       mock_stake_register_deposit,
       mock_drep_register_deposit,
@@ -195,4 +195,3 @@ test complete_crowdfund_fail_with_input_wrong_redeemer() {
     mock_stake_hash,
   )
 }
-

@@ -880,7 +880,7 @@ export function CrowdfundInfo({
 
       const meshTxBuilder = new MeshTxBuilder({
         fetcher: provider,
-        evaluator: provider,
+        //evaluator: provider,
         submitter: provider,
         verbose: true,
       });
@@ -906,7 +906,7 @@ export function CrowdfundInfo({
         {
           mesh: meshTxBuilder,
           fetcher: provider,
-          evaluator: provider,
+          //evaluator: provider,
           wallet: wallet,
           networkId: network,
         },
@@ -1013,7 +1013,7 @@ export function CrowdfundInfo({
         {
           mesh: meshTxBuilder,
           fetcher: provider,
-          evaluator: provider,
+          //evaluator: provider,
           wallet: wallet,
           networkId: network,
         },

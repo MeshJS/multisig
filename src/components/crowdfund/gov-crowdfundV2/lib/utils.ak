@@ -10,12 +10,10 @@ use cardano/certificate.{
   UnregisterDelegateRepresentative,
 }
 use cardano/governance.{
-  GovernanceAction, GovernanceActionId, NicePoll, ProposalProcedure, Vote, Voter,
-  Yes,
+  GovernanceAction, GovernanceActionId, ProposalProcedure, Vote, Voter, Yes,
 }
 use cardano/transaction.{Input, Output, Redeemer, ScriptPurpose, Spend}
 use cocktail.{inputs_at, inputs_with_policy}
-use gov.{VGovernanceAction, VNicePoll}
 use types.{CrowdfundGovRedeemer}
 
 pub fn check_fundraise_target(
@@ -250,26 +248,16 @@ pub fn check_auth_token_input_redeemer(
   only_input_redeemer == redeemer
 }
 
-pub fn compare_gov_action(agov: GovernanceAction, vgov: VGovernanceAction) {
-  when agov is {
-    NicePoll ->
-      when vgov is {
-        VNicePoll -> True
-        _ -> False
-      }
-    _ -> {
-      let se_agov = cbor.serialise(agov)
-      let se_vgov = cbor.serialise(vgov)
-      se_agov == se_vgov
-    }
-  }
+pub fn compare_gov_action(agov: GovernanceAction, vgov: ByteArray) {
+  let se_agov = cbor.serialise(agov)
+  se_agov == vgov
 }
 
 pub fn check_proposal_procedure(
   proposal_procedures: List<ProposalProcedure>,
   deposit: Lovelace,
   return_address: Credential,
-  vgovernance_action: VGovernanceAction,
+  vgovernance_action: ByteArray,
 ) {
   list.count(
     proposal_procedures,

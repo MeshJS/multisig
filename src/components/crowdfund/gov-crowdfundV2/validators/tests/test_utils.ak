@@ -1,8 +1,9 @@
+use aiken/cbor
 use aiken/collection/list
 use cardano/address.{Address, Inline, Script, from_script}
 use cardano/governance.{GovernanceActionId, ProposalProcedure, Vote, Voter}
 use cardano/transaction.{Transaction}
-use gov.{VNicePoll, VGovernanceAction}
+use gov.{VGovernanceAction, VNicePoll}
 use mocktail.{
   mock_policy_id, mock_pub_key_hash, mock_script_hash,
   mock_script_stake_key_hash, mock_tx_hash,
@@ -74,7 +75,11 @@ pub const mock_gov_action_period = 3600
 
 pub const mock_delegate_pool_id = mock_script_hash(3)
 
-pub const mock_gov_action: VGovernanceAction = VNicePoll
+pub const mock_gov_action_vgov: VGovernanceAction = VNicePoll
+
+pub fn mock_gov_action() -> ByteArray {
+  cbor.serialise(mock_gov_action_vgov)
+}
 
 pub const mock_proposer_key_hash = mock_pub_key_hash(0)
 

@@ -198,7 +198,7 @@ test s1_spend_success_reg_cert() {
   gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -238,7 +238,7 @@ test s1_spend_fail_reg_cert_with_not_crowdfund_state() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -283,7 +283,7 @@ test s1_spend_fail_reg_cert_with_more_than_one_input() fail {
   gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -331,7 +331,7 @@ test s1_spend_fail_reg_cert_with_more_than_one_output() fail {
   gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -365,7 +365,7 @@ test s1_spend_fail_reg_cert_with_incorrect_output_datum() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -399,7 +399,7 @@ test s1_spend_fail_reg_cert_with_output_value_not_clean() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -433,7 +433,7 @@ test s1_spend_fail_reg_cert_with_incorrect_output_value() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -467,7 +467,7 @@ test s1_spend_fail_reg_cert_with_stake_cert_not_reg() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -501,7 +501,7 @@ test s1_spend_fail_reg_cert_with_drep_cert_not_reg() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -535,7 +535,7 @@ test s1_spend_fail_reg_cert_with_drep_deposit_incorrect() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -569,7 +569,7 @@ test s1_spend_fail_reg_cert_with_stake_not_delegated() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -603,7 +603,7 @@ test s1_spend_fail_reg_cert_with_vote_not_delegated() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -637,7 +637,7 @@ test s1_spend_fail_reg_cert_with_gov_not_proposed() {
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
-    mock_gov_action,
+    mock_gov_action(),
     mock_delegate_pool_id,
     mock_stake_register_deposit,
     mock_drep_register_deposit,
@@ -648,4 +648,3 @@ test s1_spend_fail_reg_cert_with_gov_not_proposed() {
     tx,
   )
 }
-

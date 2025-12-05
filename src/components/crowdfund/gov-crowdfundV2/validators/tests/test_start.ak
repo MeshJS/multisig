@@ -1,18 +1,13 @@
 use cardano/assets.{add, from_lovelace}
 use cardano/transaction.{OutputReference, Spend, Transaction}
 use gcf_stake as gcf_stake_validator
-use mocktail.{
-  add_redeemer, complete, mock_tx_hash, mocktail_tx,
-  tx_in,
-}
+use mocktail.{add_redeemer, complete, mock_tx_hash, mocktail_tx, tx_in}
 use tests/test_utils.{
-  mock_auth_token, mock_crowdfund_gov_address,
-  mock_fundraise_target, mock_stake_hash,
+  mock_auth_token, mock_crowdfund_gov_address, mock_fundraise_target,
+  mock_stake_hash,
 }
-use types.{
-  Deregister, DeregisterCerts, Register, RegisterCerts,
-  VoteOnGovAction,
-}
+use types.{Deregister,
+  DeregisterCerts, Register, RegisterCerts, VoteOnGovAction}
 
 type StartTestCase {
   is_only_one_spend_inputed: Bool,
@@ -56,12 +51,7 @@ test s2_success_publish_with_reg() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.publish(
-    mock_auth_token,
-    Register,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.publish(mock_auth_token, Register, None, tx)
 }
 
 test s2_success_publish_with_dereg() {
@@ -72,12 +62,7 @@ test s2_success_publish_with_dereg() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.publish(
-    mock_auth_token,
-    Deregister,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.publish(mock_auth_token, Deregister, None, tx)
 }
 
 test s2_fail_publish_with_reg_but_deregister_cert() {
@@ -88,12 +73,7 @@ test s2_fail_publish_with_reg_but_deregister_cert() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  !gcf_stake_validator.gCf_stake.publish(
-    mock_auth_token,
-    Register,
-    None,
-    tx,
-  )
+  !gcf_stake_validator.gCf_stake.publish(mock_auth_token, Register, None, tx)
 }
 
 test s2_fail_publish_with_dereg_but_register_cert() {
@@ -104,12 +84,7 @@ test s2_fail_publish_with_dereg_but_register_cert() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  !gcf_stake_validator.gCf_stake.publish(
-    mock_auth_token,
-    Deregister,
-    None,
-    tx,
-  )
+  !gcf_stake_validator.gCf_stake.publish(mock_auth_token, Deregister, None, tx)
 }
 
 test s2_fail_publish_with_more_than_one_input_from_hash() fail {
@@ -120,12 +95,7 @@ test s2_fail_publish_with_more_than_one_input_from_hash() fail {
       StartTestCase { is_only_one_spend_inputed: False },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.publish(
-    mock_auth_token,
-    Register,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.publish(mock_auth_token, Register, None, tx)
 }
 
 test s2_success_propose() {
@@ -136,12 +106,7 @@ test s2_success_propose() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.propose(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.propose(mock_auth_token, None, None, tx)
 }
 
 test s2_fail_propose_with_wrong_redeemer() {
@@ -152,12 +117,7 @@ test s2_fail_propose_with_wrong_redeemer() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  !gcf_stake_validator.gCf_stake.propose(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  !gcf_stake_validator.gCf_stake.propose(mock_auth_token, None, None, tx)
 }
 
 test s2_fail_propose_with_more_than_one_inputed() fail {
@@ -168,12 +128,7 @@ test s2_fail_propose_with_more_than_one_inputed() fail {
       StartTestCase { is_only_one_spend_inputed: False },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.propose(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.propose(mock_auth_token, None, None, tx)
 }
 
 test s2_success_vote() {
@@ -184,12 +139,7 @@ test s2_success_vote() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.vote(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.vote(mock_auth_token, None, None, tx)
 }
 
 test s2_fail_vote_with_wrong_redeemer() {
@@ -200,12 +150,7 @@ test s2_fail_vote_with_wrong_redeemer() {
       StartTestCase { is_only_one_spend_inputed: True },
       only_input_redeemer,
     )
-  !gcf_stake_validator.gCf_stake.vote(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  !gcf_stake_validator.gCf_stake.vote(mock_auth_token, None, None, tx)
 }
 
 test s2_fail_vote_with_more_than_one_inputed() fail {
@@ -216,11 +161,5 @@ test s2_fail_vote_with_more_than_one_inputed() fail {
       StartTestCase { is_only_one_spend_inputed: False },
       only_input_redeemer,
     )
-  gcf_stake_validator.gCf_stake.vote(
-    mock_auth_token,
-    None,
-    None,
-    tx,
-  )
+  gcf_stake_validator.gCf_stake.vote(mock_auth_token, None, None, tx)
 }
-

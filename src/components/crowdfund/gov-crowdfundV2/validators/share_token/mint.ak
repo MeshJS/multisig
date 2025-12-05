@@ -19,7 +19,8 @@ validator share_token(auth_token: PolicyId) {
         expect Some(auth_token_redeemer_data) =
           redeemer_with_input(redeemers, auth_token_input)
 
-        expect auth_token_redeemer: CrowdfundGovRedeemer = auth_token_redeemer_data
+        expect auth_token_redeemer: CrowdfundGovRedeemer =
+          auth_token_redeemer_data
 
         let redeemer_check = auth_token_redeemer == ContributeFund
 

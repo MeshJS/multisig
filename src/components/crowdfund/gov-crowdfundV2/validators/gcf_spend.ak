@@ -8,7 +8,6 @@ use cocktail.{
   output_inline_datum, outputs_at_with, outputs_at_with_policy,
   policy_only_minted_token, valid_after, valid_before, value_length,
 }
-use gov.{VGovernanceAction}
 use types.{
   AfterCompleteContributorWithdrawal, AfterCompleteRemoveEmptyInstance,
   ContributeFund, Crowdfund, CrowdfundGovDatum, CrowdfundGovRedeemer,
@@ -27,7 +26,7 @@ use utils.{
 validator gCf_spend(
   auth_token: PolicyId,
   proposer_key_hash: ByteArray,
-  gov_action: VGovernanceAction,
+  gov_action: ByteArray,
   delegate_pool_id: ByteArray,
   // dynamic deposit parameters to avoid hardcoding values
   stake_register_deposit: Lovelace,
@@ -240,8 +239,7 @@ validator gCf_spend(
                 -(stake_register_deposit + drep_register_deposit),
               )
             trace @"lovelace check passed"
-            let output_datum_check: CrowdfundGovDatum =
-              only_output_datum == auth_input_datum
+            let output_datum_check = only_output_datum == auth_input_datum
             trace @"output datum check passed"
             let is_only_output_value_clean =
               value_length(only_output.value) == 2

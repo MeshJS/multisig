@@ -6,13 +6,12 @@ use cardano/certificate.{
 }
 use cardano/transaction.{Transaction}
 use mocktail.{
-  add_certificate, complete, mock_pub_key_address,
-  mock_tx_hash, mocktail_tx, MocktailTx, tx_in,
-  tx_in_inline_datum, tx_out, tx_out_inline_datum,
+  MocktailTx, add_certificate, complete, mock_pub_key_address, mock_tx_hash,
+  mocktail_tx, tx_in, tx_in_inline_datum, tx_out, tx_out_inline_datum,
 }
 use tests/test_utils.{
-  mock_auth_token, mock_deadline, mock_delegate_pool_id,
-  mock_fundraise_target, mock_gov_address, mock_share_token, mock_stake_hash,
+  mock_auth_token, mock_deadline, mock_delegate_pool_id, mock_fundraise_target,
+  mock_gov_address, mock_share_token, mock_stake_hash,
 }
 use types.{Crowdfund, CrowdfundGovDatum, Proposed}
 
@@ -24,32 +23,186 @@ fn add_wallet_inputs(tx: MocktailTx, count: Int) -> MocktailTx {
     tx
   } else if count == 1 {
     let wallet_value = from_lovelace(10_000_000)
-    tx |> tx_in(True, mock_tx_hash(100), 0, wallet_value, mock_pub_key_address(0, None))
+    tx
+      |> tx_in(
+          True,
+          mock_tx_hash(100),
+          0,
+          wallet_value,
+          mock_pub_key_address(0, None),
+        )
   } else if count == 2 {
-    let tx1 = tx |> tx_in(True, mock_tx_hash(100), 0, from_lovelace(10_000_000), mock_pub_key_address(0, None))
-    tx1 |> tx_in(True, mock_tx_hash(101), 1, from_lovelace(15_000_000), mock_pub_key_address(1, None))
+    let tx1 =
+      tx
+        |> tx_in(
+            True,
+            mock_tx_hash(100),
+            0,
+            from_lovelace(10_000_000),
+            mock_pub_key_address(0, None),
+          )
+    tx1
+      |> tx_in(
+          True,
+          mock_tx_hash(101),
+          1,
+          from_lovelace(15_000_000),
+          mock_pub_key_address(1, None),
+        )
   } else if count == 3 {
-    let tx1 = tx |> tx_in(True, mock_tx_hash(100), 0, from_lovelace(10_000_000), mock_pub_key_address(0, None))
-    let tx2 = tx1 |> tx_in(True, mock_tx_hash(101), 1, from_lovelace(15_000_000), mock_pub_key_address(1, None))
-    tx2 |> tx_in(True, mock_tx_hash(102), 2, from_lovelace(20_000_000), mock_pub_key_address(2, None))
+    let tx1 =
+      tx
+        |> tx_in(
+            True,
+            mock_tx_hash(100),
+            0,
+            from_lovelace(10_000_000),
+            mock_pub_key_address(0, None),
+          )
+    let tx2 =
+      tx1
+        |> tx_in(
+            True,
+            mock_tx_hash(101),
+            1,
+            from_lovelace(15_000_000),
+            mock_pub_key_address(1, None),
+          )
+    tx2
+      |> tx_in(
+          True,
+          mock_tx_hash(102),
+          2,
+          from_lovelace(20_000_000),
+          mock_pub_key_address(2, None),
+        )
   } else if count == 4 {
-    let tx1 = tx |> tx_in(True, mock_tx_hash(100), 0, from_lovelace(10_000_000), mock_pub_key_address(0, None))
-    let tx2 = tx1 |> tx_in(True, mock_tx_hash(101), 1, from_lovelace(15_000_000), mock_pub_key_address(1, None))
-    let tx3 = tx2 |> tx_in(True, mock_tx_hash(102), 2, from_lovelace(20_000_000), mock_pub_key_address(2, None))
-    tx3 |> tx_in(True, mock_tx_hash(103), 3, from_lovelace(25_000_000), mock_pub_key_address(3, None))
+    let tx1 =
+      tx
+        |> tx_in(
+            True,
+            mock_tx_hash(100),
+            0,
+            from_lovelace(10_000_000),
+            mock_pub_key_address(0, None),
+          )
+    let tx2 =
+      tx1
+        |> tx_in(
+            True,
+            mock_tx_hash(101),
+            1,
+            from_lovelace(15_000_000),
+            mock_pub_key_address(1, None),
+          )
+    let tx3 =
+      tx2
+        |> tx_in(
+            True,
+            mock_tx_hash(102),
+            2,
+            from_lovelace(20_000_000),
+            mock_pub_key_address(2, None),
+          )
+    tx3
+      |> tx_in(
+          True,
+          mock_tx_hash(103),
+          3,
+          from_lovelace(25_000_000),
+          mock_pub_key_address(3, None),
+        )
   } else if count == 5 {
-    let tx1 = tx |> tx_in(True, mock_tx_hash(100), 0, from_lovelace(10_000_000), mock_pub_key_address(0, None))
-    let tx2 = tx1 |> tx_in(True, mock_tx_hash(101), 1, from_lovelace(15_000_000), mock_pub_key_address(1, None))
-    let tx3 = tx2 |> tx_in(True, mock_tx_hash(102), 2, from_lovelace(20_000_000), mock_pub_key_address(2, None))
-    let tx4 = tx3 |> tx_in(True, mock_tx_hash(103), 3, from_lovelace(25_000_000), mock_pub_key_address(3, None))
-    tx4 |> tx_in(True, mock_tx_hash(104), 4, from_lovelace(30_000_000), mock_pub_key_address(4, None))
+    let tx1 =
+      tx
+        |> tx_in(
+            True,
+            mock_tx_hash(100),
+            0,
+            from_lovelace(10_000_000),
+            mock_pub_key_address(0, None),
+          )
+    let tx2 =
+      tx1
+        |> tx_in(
+            True,
+            mock_tx_hash(101),
+            1,
+            from_lovelace(15_000_000),
+            mock_pub_key_address(1, None),
+          )
+    let tx3 =
+      tx2
+        |> tx_in(
+            True,
+            mock_tx_hash(102),
+            2,
+            from_lovelace(20_000_000),
+            mock_pub_key_address(2, None),
+          )
+    let tx4 =
+      tx3
+        |> tx_in(
+            True,
+            mock_tx_hash(103),
+            3,
+            from_lovelace(25_000_000),
+            mock_pub_key_address(3, None),
+          )
+    tx4
+      |> tx_in(
+          True,
+          mock_tx_hash(104),
+          4,
+          from_lovelace(30_000_000),
+          mock_pub_key_address(4, None),
+        )
   } else {
     // For counts > 5, just add 5 inputs
-    let tx1 = tx |> tx_in(True, mock_tx_hash(100), 0, from_lovelace(10_000_000), mock_pub_key_address(0, None))
-    let tx2 = tx1 |> tx_in(True, mock_tx_hash(101), 1, from_lovelace(15_000_000), mock_pub_key_address(1, None))
-    let tx3 = tx2 |> tx_in(True, mock_tx_hash(102), 2, from_lovelace(20_000_000), mock_pub_key_address(2, None))
-    let tx4 = tx3 |> tx_in(True, mock_tx_hash(103), 3, from_lovelace(25_000_000), mock_pub_key_address(3, None))
-    tx4 |> tx_in(True, mock_tx_hash(104), 4, from_lovelace(30_000_000), mock_pub_key_address(4, None))
+    let tx1 =
+      tx
+        |> tx_in(
+            True,
+            mock_tx_hash(100),
+            0,
+            from_lovelace(10_000_000),
+            mock_pub_key_address(0, None),
+          )
+    let tx2 =
+      tx1
+        |> tx_in(
+            True,
+            mock_tx_hash(101),
+            1,
+            from_lovelace(15_000_000),
+            mock_pub_key_address(1, None),
+          )
+    let tx3 =
+      tx2
+        |> tx_in(
+            True,
+            mock_tx_hash(102),
+            2,
+            from_lovelace(20_000_000),
+            mock_pub_key_address(2, None),
+          )
+    let tx4 =
+      tx3
+        |> tx_in(
+            True,
+            mock_tx_hash(103),
+            3,
+            from_lovelace(25_000_000),
+            mock_pub_key_address(3, None),
+          )
+    tx4
+      |> tx_in(
+          True,
+          mock_tx_hash(104),
+          4,
+          from_lovelace(30_000_000),
+          mock_pub_key_address(4, None),
+        )
   }
 }
 
@@ -59,32 +212,146 @@ fn add_change_outputs(tx: MocktailTx, count: Int) -> MocktailTx {
   if count <= 0 {
     tx
   } else if count == 1 {
-    tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
+    tx
+      |> tx_out(
+          True,
+          mock_pub_key_address(1000, None),
+          from_lovelace(5_000_000),
+        )
   } else if count == 2 {
-    let tx1 = tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
-    tx1 |> tx_out(True, mock_pub_key_address(1001, None), from_lovelace(7_000_000))
+    let tx1 =
+      tx
+        |> tx_out(
+            True,
+            mock_pub_key_address(1000, None),
+            from_lovelace(5_000_000),
+          )
+    tx1
+      |> tx_out(
+          True,
+          mock_pub_key_address(1001, None),
+          from_lovelace(7_000_000),
+        )
   } else if count == 3 {
-    let tx1 = tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
-    let tx2 = tx1 |> tx_out(True, mock_pub_key_address(1001, None), from_lovelace(7_000_000))
-    tx2 |> tx_out(True, mock_pub_key_address(1002, None), from_lovelace(9_000_000))
+    let tx1 =
+      tx
+        |> tx_out(
+            True,
+            mock_pub_key_address(1000, None),
+            from_lovelace(5_000_000),
+          )
+    let tx2 =
+      tx1
+        |> tx_out(
+            True,
+            mock_pub_key_address(1001, None),
+            from_lovelace(7_000_000),
+          )
+    tx2
+      |> tx_out(
+          True,
+          mock_pub_key_address(1002, None),
+          from_lovelace(9_000_000),
+        )
   } else if count == 4 {
-    let tx1 = tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
-    let tx2 = tx1 |> tx_out(True, mock_pub_key_address(1001, None), from_lovelace(7_000_000))
-    let tx3 = tx2 |> tx_out(True, mock_pub_key_address(1002, None), from_lovelace(9_000_000))
-    tx3 |> tx_out(True, mock_pub_key_address(1003, None), from_lovelace(11_000_000))
+    let tx1 =
+      tx
+        |> tx_out(
+            True,
+            mock_pub_key_address(1000, None),
+            from_lovelace(5_000_000),
+          )
+    let tx2 =
+      tx1
+        |> tx_out(
+            True,
+            mock_pub_key_address(1001, None),
+            from_lovelace(7_000_000),
+          )
+    let tx3 =
+      tx2
+        |> tx_out(
+            True,
+            mock_pub_key_address(1002, None),
+            from_lovelace(9_000_000),
+          )
+    tx3
+      |> tx_out(
+          True,
+          mock_pub_key_address(1003, None),
+          from_lovelace(11_000_000),
+        )
   } else if count == 5 {
-    let tx1 = tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
-    let tx2 = tx1 |> tx_out(True, mock_pub_key_address(1001, None), from_lovelace(7_000_000))
-    let tx3 = tx2 |> tx_out(True, mock_pub_key_address(1002, None), from_lovelace(9_000_000))
-    let tx4 = tx3 |> tx_out(True, mock_pub_key_address(1003, None), from_lovelace(11_000_000))
-    tx4 |> tx_out(True, mock_pub_key_address(1004, None), from_lovelace(13_000_000))
+    let tx1 =
+      tx
+        |> tx_out(
+            True,
+            mock_pub_key_address(1000, None),
+            from_lovelace(5_000_000),
+          )
+    let tx2 =
+      tx1
+        |> tx_out(
+            True,
+            mock_pub_key_address(1001, None),
+            from_lovelace(7_000_000),
+          )
+    let tx3 =
+      tx2
+        |> tx_out(
+            True,
+            mock_pub_key_address(1002, None),
+            from_lovelace(9_000_000),
+          )
+    let tx4 =
+      tx3
+        |> tx_out(
+            True,
+            mock_pub_key_address(1003, None),
+            from_lovelace(11_000_000),
+          )
+    tx4
+      |> tx_out(
+          True,
+          mock_pub_key_address(1004, None),
+          from_lovelace(13_000_000),
+        )
   } else {
     // For counts > 5, just add 5 outputs
-    let tx1 = tx |> tx_out(True, mock_pub_key_address(1000, None), from_lovelace(5_000_000))
-    let tx2 = tx1 |> tx_out(True, mock_pub_key_address(1001, None), from_lovelace(7_000_000))
-    let tx3 = tx2 |> tx_out(True, mock_pub_key_address(1002, None), from_lovelace(9_000_000))
-    let tx4 = tx3 |> tx_out(True, mock_pub_key_address(1003, None), from_lovelace(11_000_000))
-    tx4 |> tx_out(True, mock_pub_key_address(1004, None), from_lovelace(13_000_000))
+    let tx1 =
+      tx
+        |> tx_out(
+            True,
+            mock_pub_key_address(1000, None),
+            from_lovelace(5_000_000),
+          )
+    let tx2 =
+      tx1
+        |> tx_out(
+            True,
+            mock_pub_key_address(1001, None),
+            from_lovelace(7_000_000),
+          )
+    let tx3 =
+      tx2
+        |> tx_out(
+            True,
+            mock_pub_key_address(1002, None),
+            from_lovelace(9_000_000),
+          )
+    let tx4 =
+      tx3
+        |> tx_out(
+            True,
+            mock_pub_key_address(1003, None),
+            from_lovelace(11_000_000),
+          )
+    tx4
+      |> tx_out(
+          True,
+          mock_pub_key_address(1004, None),
+          from_lovelace(13_000_000),
+        )
   }
 }
 
@@ -117,7 +384,6 @@ pub fn create_wallet_input(
       )
 }
 
-
 // Build realistic RegisterStake transaction with multiple inputs/outputs
 pub fn build_realistic_register_stake_tx(
   config: RealisticTxConfig,
@@ -146,18 +412,14 @@ pub fn build_realistic_register_stake_tx(
   let output_datum: CrowdfundGovDatum =
     when input_datum is {
       Crowdfund { stake_hash, share_token, deadline, .. } ->
+        Proposed { stake_hash, share_token, funds_controlled, deadline }
+      _ ->
         Proposed {
-          stake_hash,
-          share_token,
+          stake_hash: mock_stake_hash,
+          share_token: mock_share_token,
           funds_controlled,
-          deadline,
+          deadline: mock_deadline,
         }
-      _ -> Proposed {
-        stake_hash: mock_stake_hash,
-        share_token: mock_share_token,
-        funds_controlled,
-        deadline: mock_deadline,
-      }
     }
 
   // Start with auth token input/output
@@ -243,18 +505,14 @@ pub fn build_realistic_register_drep_tx(
   let output_datum: CrowdfundGovDatum =
     when input_datum is {
       Proposed { stake_hash, share_token, deadline, .. } ->
+        Proposed { stake_hash, share_token, funds_controlled, deadline }
+      _ ->
         Proposed {
-          stake_hash,
-          share_token,
+          stake_hash: mock_stake_hash,
+          share_token: mock_share_token,
           funds_controlled,
-          deadline,
+          deadline: mock_deadline,
         }
-      _ -> Proposed {
-        stake_hash: mock_stake_hash,
-        share_token: mock_share_token,
-        funds_controlled,
-        deadline: mock_deadline,
-      }
     }
 
   // Start with auth token input/output
@@ -338,4 +596,3 @@ pub fn create_realistic_proposed_datum(
     deadline: mock_deadline,
   }
 }
-

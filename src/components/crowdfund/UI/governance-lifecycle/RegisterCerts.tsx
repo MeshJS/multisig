@@ -22,7 +22,6 @@ type GovernanceAnchor = {
   hash: string;
 };
 import { api } from "@/utils/api";
-import { IEvaluator } from "@meshsdk/core";
 import DRepSetupForm from "../DRepSetupForm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";

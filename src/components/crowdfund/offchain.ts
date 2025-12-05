@@ -20,6 +20,7 @@ import {
   applyParamsToScript,
   resolveScriptHash,
   resolveScriptHashDRepId,
+  serializeData,
   serializePlutusScript,
 } from "@meshsdk/core";
 import { resolveTxHash, scriptHashToRewardAddress } from "@meshsdk/core-cst";
@@ -322,12 +323,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
    * 3=NoConfidence, 4=ConstitutionalCommittee, 5=NewConstitution, 6=NicePoll
    */
   private getGovActionParam() {
-    if (!this.cachedGovActionParam) {
       // NicePoll is constructor 6 with no fields (empty array)
       // This must match the governanceAction passed to proposeGovAction()
-      this.cachedGovActionParam = mConStr(6, []);
-    }
-    return this.cachedGovActionParam;
+    return serializeData(mConStr(6, []));
   }
 
   private getAuthTokenCbor() {
