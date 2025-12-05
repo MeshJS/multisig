@@ -61,6 +61,17 @@ export default function VoteButton({
   // Use the custom hook for ballots (still used for proxy / context where needed)
   const { ballots } = useBallot(appWallet?.id);
 
+  // Determine if this proposal already exists on any ballot
+  const isOnAnyBallot = useMemo(
+    () =>
+      !!proposalId &&
+      Array.isArray(ballots) &&
+      ballots.some(
+        (b: BallotType) => Array.isArray(b.items) && b.items.includes(proposalId),
+      ),
+    [ballots, proposalId],
+  );
+
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
   const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain">("Abstain");
@@ -360,7 +371,7 @@ export default function VoteButton({
           onClick={onOpenBallotSidebar}
           className="w-full rounded-md bg-green-600 hover:bg-green-700 px-6 py-2 font-semibold text-white shadow"
         >
-          Add proposal to ballot
+          {isOnAnyBallot ? "Manage proposal on ballots" : "Add proposal to ballot"}
         </Button>
       )}
     </div>
