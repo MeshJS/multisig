@@ -21,6 +21,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/utils/api";
 import { ToastAction } from "@/components/ui/toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 
@@ -44,17 +51,33 @@ export default function BallotCard({
   selectedBallotId,
   onBallotChanged,
   utxos,
+  currentProposalId,
+  currentProposalTitle,
 }: {
   appWallet: any;
   onSelectBallot?: (id: string) => void;
   selectedBallotId?: string;
   onBallotChanged?: () => void;
   utxos: UTxO[];
+  /**
+   * Optional current proposal context from the proposal page.
+   * When provided, the ballot card can render an "Add to ballot"
+   * button and highlight that proposal in the table.
+   */
+  currentProposalId?: string;
+  currentProposalTitle?: string;
 }) {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [ballots, setBallots] = useState<BallotType[]>([]);
   const [creating, setCreating] = useState(false);
+
+  // State for adding the current proposal to a ballot (including move flow)
+  const [moveModal, setMoveModal] = useState<{
+    targetBallotId: string;
+    conflictBallots: BallotType[];
+  } | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
 
   const { toast } = useToast();
 
@@ -94,6 +117,11 @@ export default function BallotCard({
   // Delete ballot mutation
   const deleteBallot = api.ballot.delete.useMutation();
 
+  // Add / remove proposal mutations for managing ballot contents
+  const addProposalMutation = api.ballot.addProposalToBallot.useMutation();
+  const moveRemoveProposalMutation =
+    api.ballot.removeProposalFromBallot.useMutation();
+
   // Refresh ballots after submit or on load and ensure a sensible default is selected
   React.useEffect(() => {
     if (!getBallots.data) return;
@@ -106,23 +134,36 @@ export default function BallotCard({
     setBallots(sorted);
 
     // If nothing is selected yet (or the selection no longer exists),
-    // automatically select the first ballot, preferring one that already has proposals.
+    // automatically select a sensible default:
+    // 1. Prefer the ballot that already contains the current proposal (when on a proposal page)
+    // 2. Otherwise, prefer the newest ballot that already has proposals
+    // 3. Fallback to the newest ballot
     if (!onSelectBallot) return;
 
     const hasSelected =
       selectedBallotId && sorted.some((b) => b.id === selectedBallotId);
 
     if (!hasSelected) {
-      const ballotWithProposals =
-        sorted.find(
-          (b) => Array.isArray(b.items) && b.items.length > 0,
-        ) ?? sorted[0];
+      let ballotToSelect: BallotType | undefined;
 
-      if (!ballotWithProposals) return;
+      if (currentProposalId) {
+        ballotToSelect = sorted.find(
+          (b) => Array.isArray(b.items) && b.items.includes(currentProposalId),
+        );
+      }
 
-      onSelectBallot(ballotWithProposals.id);
+      if (!ballotToSelect) {
+        ballotToSelect =
+          sorted.find(
+            (b) => Array.isArray(b.items) && b.items.length > 0,
+          ) ?? sorted[0];
+      }
+
+      if (!ballotToSelect) return;
+
+      onSelectBallot(ballotToSelect.id);
     }
-  }, [getBallots.data, onSelectBallot, selectedBallotId]);
+  }, [getBallots.data, onSelectBallot, selectedBallotId, currentProposalId]);
 
 
   // Proxy ballot vote submission logic
@@ -425,6 +466,90 @@ export default function BallotCard({
     ? ballots.find((b) => b.id === selectedBallotId)
     : undefined;
 
+  const currentProposalAlreadyInSelected =
+    !!currentProposalId &&
+    !!selectedBallot &&
+    Array.isArray(selectedBallot.items) &&
+    selectedBallot.items.includes(currentProposalId);
+
+  async function performAddCurrentProposal(targetBallotId: string) {
+    if (!currentProposalId) return;
+    await addProposalMutation.mutateAsync({
+      ballotId: targetBallotId,
+      itemDescription:
+        currentProposalTitle ??
+        (selectedBallot?.description ?? "Untitled proposal"),
+      item: currentProposalId,
+      // Default to Abstain; user can fine-tune per-proposal choice in the table.
+      choice: "Abstain",
+    });
+  }
+
+  async function handleAddCurrentProposalToSelectedBallot() {
+    if (!currentProposalId || !selectedBallotId || !getBallots.data) return;
+
+    // Ensure a proposal can only exist on a single ballot at a time.
+    const ballotsWithProposal =
+      getBallots.data.filter(
+        (b) =>
+          b.id !== selectedBallotId &&
+          Array.isArray(b.items) &&
+          b.items.includes(currentProposalId),
+      ) ?? [];
+
+    if (ballotsWithProposal.length > 0) {
+      setMoveModal({
+        targetBallotId: selectedBallotId,
+        conflictBallots: ballotsWithProposal,
+      });
+      return;
+    }
+
+    await performAddCurrentProposal(selectedBallotId);
+    toast({
+      title: "Added to Ballot",
+      description: "Proposal successfully added to the ballot.",
+      duration: 800,
+    });
+    await getBallots.refetch();
+    onBallotChanged?.();
+  }
+
+  async function confirmMoveCurrentProposal() {
+    if (!moveModal || !currentProposalId) return;
+
+    try {
+      setMoveLoading(true);
+
+      // Remove proposal from all other ballots before adding to the selected one
+      for (const b of moveModal.conflictBallots) {
+        const index = b.items.findIndex(
+          (item: string) => item === currentProposalId,
+        );
+        if (index >= 0) {
+          await moveRemoveProposalMutation.mutateAsync({
+            ballotId: b.id,
+            index,
+          });
+        }
+      }
+
+      await performAddCurrentProposal(moveModal.targetBallotId);
+
+      toast({
+        title: "Proposal moved",
+        description:
+          "Proposal was moved from the other ballot to the selected ballot.",
+        duration: 1500,
+      });
+      await getBallots.refetch();
+      onBallotChanged?.();
+    } finally {
+      setMoveLoading(false);
+      setMoveModal(null);
+    }
+  }
+
   return (
     <CardUI
       title="Ballots"
@@ -438,8 +563,8 @@ export default function BallotCard({
               key={b.id}
               className={`px-3 py-1 rounded-t-md font-medium transition ${
                 b.id === selectedBallotId
-                  ? "bg-white text-gray-900 border border-b-0 border-gray-300 shadow-sm dark:bg-slate-900 dark:text-gray-100 dark:border-slate-700"
-                  : "bg-white/70 text-gray-700 hover:bg-white dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 border border-transparent"
+                  ? "bg-white text-gray-900 border border-b-0 border-gray-300 shadow-sm dark:bg-slate-900 dark:text-gray-100 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-500"
+                  : "bg-white/70 text-gray-700 hover:bg-white dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 border border-transparent hover:border-gray-400 dark:hover:border-slate-500"
               }`}
               onClick={() => onSelectBallot && onSelectBallot(b.id)}
             >
@@ -453,10 +578,10 @@ export default function BallotCard({
                 {b.description || "Untitled"}
               </span>
             </button>
-          ))}
-          <button
-            className="ml-auto px-3 py-1 rounded-t-md bg-white text-gray-700 hover:bg-gray-100 border border-gray-300 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-600"
-            onClick={() => {
+        ))}
+        <button
+          className="ml-auto px-3 py-1 rounded-t-md bg-white text-gray-700 hover:bg-gray-100 border border-gray-300 hover:border-gray-400 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-600 dark:hover:border-slate-500"
+          onClick={() => {
               if (creating) {
                 // Hide the create-input row and clear any pending text
                 setCreating(false);
@@ -483,7 +608,7 @@ export default function BallotCard({
             <button
               onClick={handleSubmit}
               disabled={submitting || !description.trim()}
-              className="px-3 py-1 rounded bg-white/80 text-gray-800 hover:bg-white shadow-sm disabled:opacity-50 border border-gray-200 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-700"
+              className="px-3 py-1 rounded bg-white/80 text-gray-800 hover:bg-white shadow-sm disabled:opacity-50 border border-gray-200 hover:border-gray-300 dark:bg-slate-900 dark:text-gray-100 dark:hover:bg-slate-800 dark:border-slate-700 dark:hover:border-slate-500"
             >
               Add
             </button>
@@ -497,8 +622,30 @@ export default function BallotCard({
           ) : null}
         </div>
         {/* Ballot overview table for selected ballot */}
-        <div className="mt-8 flex-1 overflow-auto">
-        
+        <div className="mt-2 flex-1 overflow-auto">
+          {/* Contextual 'Add to ballot' button only on proposal pages
+              (i.e. when currentProposalId is provided).
+              - If not on this ballot yet: show Add button
+              - If already on this ballot: show an informational message */}
+          {selectedBallot && currentProposalId && (
+            <div className="mb-1 flex justify-end">
+                {!currentProposalAlreadyInSelected ? (
+                  <Button
+                    size="sm"
+                    className="h-6 px-3 rounded-full bg-gray-100 hover:!bg-gray-900 text-gray-900 hover:!text-white text-xs font-medium shadow-none border border-gray-300 hover:border-gray-500 transition-colors"
+                    disabled={moveLoading}
+                    onClick={handleAddCurrentProposalToSelectedBallot}
+                  >
+                    Add current proposal to this ballot
+                  </Button>
+                ) : (
+                <span className="h-6 inline-flex items-center px-3 rounded-full text-xs font-medium text-emerald-500 bg-emerald-500/10 border border-emerald-500/30">
+                  Proposal is on this ballot
+                </span>
+              )}
+            </div>
+          )}
+
           {selectedBallot ? (
             Array.isArray(selectedBallot.items) &&
             selectedBallot.items.length > 0 ? (
@@ -507,6 +654,7 @@ export default function BallotCard({
                 ballotId={selectedBallot.id}
                 refetchBallots={getBallots.refetch}
                 onBallotChanged={onBallotChanged}
+                currentProposalId={currentProposalId}
               />
             ) : (
               <div className="text-sm text-gray-500">No proposals added yet.</div>
@@ -528,7 +676,7 @@ export default function BallotCard({
               )}
               <Button
                 variant="default"
-                className="mt-4 ml-2 px-6 py-2 rounded-full bg-white/95 text-gray-900 text-sm md:text-base font-semibold shadow-lg ring-1 ring-white/70 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 hover:ring-2 hover:ring-white transition-transform transition-shadow dark:bg-slate-900 dark:text-gray-50 dark:hover:bg-slate-800 dark:ring-slate-400/60"
+                className="mt-4 mb-4 ml-2 px-6 py-2 rounded-full bg-white/95 text-gray-900 text-sm md:text-base font-semibold shadow-lg ring-1 ring-white/70 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 hover:ring-2 hover:ring-white border border-transparent hover:border-gray-400 transition-transform transition-shadow dark:bg-slate-900 dark:text-gray-50 dark:hover:bg-slate-800 dark:ring-slate-400/60 dark:hover:border-slate-400"
                 onClick={hasValidProxy ? handleSubmitProxyVote : handleSubmitVote}
                 disabled={loading}
               >
@@ -536,8 +684,8 @@ export default function BallotCard({
               </Button>
               <Button
                 variant="outline"
-                className="mt-4 ml-3 bg-white/80 text-gray-700 hover:bg-white dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10"
-                onClick={async (e: React.MouseEvent) => {
+                className="mt-4 mb-4 ml-3 bg-white/80 text-gray-700 hover:bg-white hover:text-red-600 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-red-400 border border-gray-200 hover:border-red-400 dark:border-white/10 dark:hover:border-red-500"
+                onClick={async () => {
                   try {
                     await deleteBallot.mutateAsync({ ballotId: selectedBallot.id });
                     await getBallots.refetch();
@@ -559,6 +707,48 @@ export default function BallotCard({
           )}
         </div>
       </div>
+      {/* Modal to confirm moving proposal between ballots when adding from a proposal page */}
+      <Dialog
+        open={!!moveModal}
+        onOpenChange={(open) => {
+          if (!open) setMoveModal(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move proposal to selected ballot?</DialogTitle>
+            <DialogDescription>
+              {moveModal && (
+                <span>
+                  This proposal is already on ballot{" "}
+                  {moveModal.conflictBallots
+                    .map((b) => b.description || "Untitled ballot")
+                    .join(", ")}
+                  . If you continue, it will be removed from that ballot and
+                  added to the currently selected ballot.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              className="border border-gray-300 hover:border-gray-400 dark:border-slate-600 dark:hover:border-slate-400"
+              onClick={() => setMoveModal(null)}
+              disabled={moveLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmMoveCurrentProposal}
+              disabled={moveLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 hover:border-blue-300"
+            >
+              {moveLoading ? "Moving..." : "Move proposal"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </CardUI>
   );
 }
@@ -569,11 +759,13 @@ function BallotOverviewTable({
   ballotId,
   refetchBallots,
   onBallotChanged,
+  currentProposalId,
 }: {
   ballot: BallotType;
   ballotId: string;
   refetchBallots: () => Promise<any>;
   onBallotChanged?: () => void;
+  currentProposalId?: string;
 }) {
   // Add state for updating and the update mutation
   const updateChoiceMutation = api.ballot.updateChoice.useMutation();
@@ -604,68 +796,75 @@ function BallotOverviewTable({
           </tr>
         </thead>
         <tbody>
-          {ballot.items.map((item: string, idx: number) => (
-            <tr
-              key={item + (ballot.choices?.[idx] ?? "") + idx}
-              className={`border-b border-white/5 transition-colors ${
-                idx % 2 === 1 ? "bg-black/20" : "bg-transparent"
-              } hover:bg-white/10`}
-            >
-              <td className="px-4 py-2">{idx + 1}</td>
-              <td className="px-4 py-2">
-                {ballot.itemDescriptions?.[idx] || (
-                  <span className="text-gray-400">-</span>
-                )}
-              </td>
-              <td className="px-2 py-2 text-right">
-                <div className="inline-flex flex-col gap-1 items-end">
-                  <Select
-                    value={ballot.choices?.[idx] ?? "Abstain"}
-                    onValueChange={async (newValue: string) => {
-                      setUpdatingIdx(idx);
-                      try {
-                        await updateChoiceMutation.mutateAsync({
-                          ballotId,
-                          index: idx,
-                          choice: newValue,
-                        });
-                        await refetchBallots();
-                        onBallotChanged?.();
-                      } catch (error: unknown) {}
-                      setUpdatingIdx(null);
-                    }}
-                    disabled={updatingIdx === idx}
-                  >
-                    <SelectTrigger
-                      className="w-28 bg-white/5 hover:bg-white/10 border border-white/10 dark:bg-white/5 dark:hover:bg-white/10 text-center justify-center"
+          {ballot.items.map((item: string, idx: number) => {
+            const isCurrent = !!currentProposalId && item === currentProposalId;
+            return (
+              <tr
+                key={item + (ballot.choices?.[idx] ?? "") + idx}
+                className={`border-b border-white/5 transition-colors ${
+                  isCurrent
+                    ? "bg-blue-900/60 hover:bg-blue-800/70 ring-1 ring-blue-400"
+                    : idx % 2 === 1
+                      ? "bg-black/20 hover:bg-white/10"
+                      : "bg-transparent hover:bg-white/10"
+                }`}
+              >
+                <td className="px-4 py-2">{idx + 1}</td>
+                <td className="px-4 py-2">
+                  {ballot.itemDescriptions?.[idx] || (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-right">
+                  <div className="inline-flex flex-col gap-1 items-end">
+                    <Select
+                      value={ballot.choices?.[idx] ?? "Abstain"}
+                      onValueChange={async (newValue: string) => {
+                        setUpdatingIdx(idx);
+                        try {
+                          await updateChoiceMutation.mutateAsync({
+                            ballotId,
+                            index: idx,
+                            choice: newValue,
+                          });
+                          await refetchBallots();
+                          onBallotChanged?.();
+                        } catch (error: unknown) {}
+                        setUpdatingIdx(null);
+                      }}
                       disabled={updatingIdx === idx}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="Yes">Yes</SelectItem>
-                        <SelectItem value="No">No</SelectItem>
-                        <SelectItem value="Abstain">Abstain</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                    <SelectTrigger
+                      className="w-28 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/40 dark:bg-white/5 dark:hover:bg-white/10 dark:hover:border-white/40 text-center justify-center"
+                      disabled={updatingIdx === idx}
+                    >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="Yes">Yes</SelectItem>
+                          <SelectItem value="No">No</SelectItem>
+                          <SelectItem value="Abstain">Abstain</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
 
-                  
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-28 bg-white/80 text-gray-700 hover:bg-white dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10"
-                    disabled={removingIdx === idx || updateChoiceMutation.isPending}
-                    onClick={() => handleDelete(idx)}
-                  >
-                    {removingIdx === idx ? "..." : "Delete"}
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ))}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-28 bg-white/80 text-gray-700 hover:bg-white hover:text-red-600 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-red-400 border border-gray-200 hover:border-red-400 dark:border-white/10 dark:hover:border-red-500"
+                      disabled={
+                        removingIdx === idx || updateChoiceMutation.isPending
+                      }
+                      onClick={() => handleDelete(idx)}
+                    >
+                      {removingIdx === idx ? "..." : "Delete"}
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

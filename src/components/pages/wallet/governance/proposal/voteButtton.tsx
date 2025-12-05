@@ -40,6 +40,12 @@ interface VoteButtonProps {
   utxos: UTxO[];
   selectedBallotId?: string;
   proposalTitle?: string;
+  /**
+   * Optional handler from the proposal page to open the ballot sidebar.
+   * When provided, the \"Add proposal to ballot\" button will simply
+   * open the ballot card instead of mutating ballots directly.
+   */
+  onOpenBallotSidebar?: () => void;
 }
 
 export default function VoteButton({
@@ -50,36 +56,14 @@ export default function VoteButton({
   utxos,
   selectedBallotId,
   proposalTitle,
+  onOpenBallotSidebar,
 }: VoteButtonProps) {
-  // Use the custom hook for ballots
-  const { ballots, refresh } = useBallot(appWallet?.id);
-  const selectedBallot = useMemo(() => {
-    return ballots?.find((b) => b.id === selectedBallotId);
-  }, [ballots, selectedBallotId]);
-
-  const proposalIndex = selectedBallot?.items.findIndex((item) => item === proposalId);
-  const isInBallot = proposalIndex !== undefined && proposalIndex >= 0;
-
-  const addProposalMutation = api.ballot.addProposalToBallot.useMutation({
-    onSuccess: () => {
-      refresh();
-    },
-  });
-
-  const removeProposalMutation = api.ballot.removeProposalFromBallot.useMutation({
-    onSuccess: () => {
-      refresh();
-    },
-  });
+  // Use the custom hook for ballots (still used for proxy / context where needed)
+  const { ballots } = useBallot(appWallet?.id);
 
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
   const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain">("Abstain");
-  const [moveModal, setMoveModal] = useState<{
-    targetBallotId: string;
-    conflictBallots: BallotType[];
-  } | null>(null);
-  const [moveLoading, setMoveLoading] = useState(false);
   const { toast } = useToast();
   const setAlert = useSiteStore((state) => state.setAlert);
   const network = useSiteStore((state) => state.network);
@@ -328,112 +312,6 @@ export default function VoteButton({
     }
   }
 
-  async function performAddToBallot(targetBallotId: string) {
-    await addProposalMutation.mutateAsync({
-      ballotId: targetBallotId,
-      itemDescription: proposalTitle ?? description,
-      item: proposalId,
-      choice: voteKind,
-    });
-  }
-
-  async function addProposalToBallot() {
-    if (!selectedBallotId) return;
-    try {
-      // Ensure a proposal can only exist on a single ballot at a time.
-      // If it already exists on a different ballot, open a modal to confirm moving it.
-      const ballotsWithProposal =
-        ballots?.filter(
-          (b) =>
-            b.id !== selectedBallotId &&
-            Array.isArray(b.items) &&
-            b.items.includes(proposalId),
-        ) ?? [];
-
-      if (ballotsWithProposal.length > 0) {
-        setMoveModal({
-          targetBallotId: selectedBallotId,
-          conflictBallots: ballotsWithProposal,
-        });
-        return;
-      }
-
-      await performAddToBallot(selectedBallotId);
-      toast({
-        title: "Added to Ballot",
-        description: "Proposal successfully added to the ballot.",
-        duration: 500,
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to Add to Ballot",
-        description: `Error: ${error}`,
-        duration: 10000,
-        variant: "destructive",
-      });
-    }
-  }
-
-  async function confirmMoveProposal() {
-    if (!moveModal) return;
-
-    try {
-      setMoveLoading(true);
-
-      // Remove proposal from all other ballots before adding to the selected one
-      for (const b of moveModal.conflictBallots) {
-        const index = b.items.findIndex((item: string) => item === proposalId);
-        if (index >= 0) {
-          await removeProposalMutation.mutateAsync({
-            ballotId: b.id,
-            index,
-          });
-        }
-      }
-
-      await performAddToBallot(moveModal.targetBallotId);
-
-      toast({
-        title: "Proposal moved",
-        description:
-          "Proposal was moved from the other ballot to the selected ballot.",
-        duration: 1500,
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to Move Proposal",
-        description: `Error: ${error}`,
-        duration: 10000,
-        variant: "destructive",
-      });
-    } finally {
-      setMoveLoading(false);
-      setMoveModal(null);
-    }
-  }
-
-  async function removeProposalFromBallot() {
-    if (!selectedBallotId || proposalIndex === undefined || proposalIndex < 0) return;
-    try {
-      await removeProposalMutation.mutateAsync({
-        ballotId: selectedBallotId,
-        index: proposalIndex,
-      });
-      toast({
-        title: "Removed from Ballot",
-        description: "Proposal successfully removed from the ballot.",
-        duration: 500,
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to Remove from Ballot",
-        description: `Error: ${error}`,
-        duration: 10000,
-        variant: "destructive",
-      });
-    }
-  }
-
   return (
     <div className="flex w-full max-w-sm flex-col items-center justify-center space-y-2">
       <Select
@@ -477,62 +355,14 @@ export default function VoteButton({
             : "No UTxOs Available"}
       </Button>
 
-      {selectedBallotId && (
+      {onOpenBallotSidebar && (
         <Button
-          onClick={isInBallot ? removeProposalFromBallot : addProposalToBallot}
-          className={`w-full rounded-md ${
-            isInBallot
-              ? "bg-red-600 hover:bg-red-700"
-              : "bg-green-600 hover:bg-green-700"
-          } px-6 py-2 font-semibold text-white shadow`}
+          onClick={onOpenBallotSidebar}
+          className="w-full rounded-md bg-green-600 hover:bg-green-700 px-6 py-2 font-semibold text-white shadow"
         >
-          {isInBallot
-            ? "Remove proposal from ballot"
-            : "Add proposal to ballot"}
+          Add proposal to ballot
         </Button>
       )}
-
-      {/* Modal to confirm moving proposal between ballots */}
-      <Dialog
-        open={!!moveModal}
-        onOpenChange={(open) => {
-          if (!open) setMoveModal(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Move proposal to selected ballot?</DialogTitle>
-            <DialogDescription>
-              {moveModal && (
-                <span>
-                  This proposal is already on ballot{" "}
-                  {moveModal.conflictBallots
-                    .map((b) => b.description || "Untitled ballot")
-                    .join(", ")}
-                  . If you continue, it will be removed from that ballot and
-                  added to the currently selected ballot.
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setMoveModal(null)}
-              disabled={moveLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmMoveProposal}
-              disabled={moveLoading}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {moveLoading ? "Moving..." : "Move proposal"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

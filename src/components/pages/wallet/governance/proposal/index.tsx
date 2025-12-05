@@ -2,47 +2,52 @@ import CardUI from "@/components/ui/card-content";
 import { getProvider } from "@/utils/get-provider";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { useSiteStore } from "@/lib/zustand/site";
-import { ProposalMetadata } from "@/types/governance";
+import type { ProposalMetadata } from "@/types/governance";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Button from "@/components/common/button";
-import { useWalletsStore } from "@/lib/zustand/wallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import VoteCard from "../vote-card";
-import { UTxO } from "@meshsdk/core";
+import type { UTxO } from "@meshsdk/core";
 import UTxOSelector from "../../new-transaction/utxoSelector";
-import BallotCard from "../ballot/ballot";
+import FloatingBallotSidebar from "../ballot/FloatingBallotSidebar";
+import { useBallot } from "@/hooks/useBallot";
 
-export default function WalletGovernanceProposal({
-  id,
-}: {
-  id: string;
-}) {
+export default function WalletGovernanceProposal({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
   const [proposalMetadata, setProposalMetadata] = useState<
     ProposalMetadata | undefined
   >(undefined);
-  const drepInfo = useWalletsStore((state) => state.drepInfo);
   const { appWallet } = useAppWallet();
-  const loading = useSiteStore((state) => state.loading);
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
-  const [manualSelected, setManualSelected] = useState(false);
-  const [selectedBallotId, setSelectedBallotId] = useState<string | undefined>(undefined);
+  const [selectedBallotId, setSelectedBallotId] = useState<string | undefined>(
+    undefined,
+  );
+  const [isBallotSidebarOpen, setIsBallotSidebarOpen] = useState(false);
+
+  const { ballots } = useBallot(appWallet?.id);
+  const selected = ballots?.find((b) => b.id === selectedBallotId);
+  const proposalCount = selected?.items?.length ?? 0;
+  const totalProposalCount =
+    ballots?.reduce(
+      (sum, b) => sum + (Array.isArray(b.items) ? b.items.length : 0),
+      0,
+    ) ?? 0;
 
   useEffect(() => {
     const blockchainProvider = getProvider(network);
     async function get() {
       const [txHash, certIndex] = id.split(":");
-      const proposalData = await blockchainProvider.get(
+      const proposalData = (await blockchainProvider.get(
         `/governance/proposals/${txHash}/${certIndex}/metadata`,
-      );
+      )) as ProposalMetadata;
 
       if (proposalData) {
         setProposalMetadata(proposalData);
       }
     }
-    get();
-  }, []);
+    void get();
+  }, [id, network]);
 
   if (!proposalMetadata) return <></>;
 
@@ -76,8 +81,8 @@ export default function WalletGovernanceProposal({
       >
         <RowLabelInfo
           label="Authors"
-          value={proposalMetadata.json_metadata.authors
-            .map((author: any) => author.name)
+          value={(proposalMetadata.json_metadata.authors as { name: string }[])
+            .map((author) => author.name)
             .join(", ")}
           allowOverflow={true}
         />
@@ -104,18 +109,9 @@ export default function WalletGovernanceProposal({
         <UTxOSelector
           appWallet={appWallet}
           network={network}
-          onSelectionChange={(utxos, manual) => {
-            setManualUtxos(utxos);
-            setManualSelected(manual);
-          }}
-        />
-      )}
-      {appWallet && (
-        <BallotCard
-          appWallet={appWallet}
-          selectedBallotId={selectedBallotId}
-          onSelectBallot={setSelectedBallotId}
-          utxos={manualUtxos}
+            onSelectionChange={(utxos) => {
+              setManualUtxos(utxos);
+            }}
         />
       )}
       {appWallet && (
@@ -125,6 +121,22 @@ export default function WalletGovernanceProposal({
           proposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
           selectedBallotId={selectedBallotId}
           proposalTitle={proposalMetadata.json_metadata.body.title}
+          onOpenBallotSidebar={() => setIsBallotSidebarOpen(true)}
+        />
+      )}
+      {appWallet && (
+        <FloatingBallotSidebar
+          appWallet={appWallet}
+          selectedBallotId={selectedBallotId}
+          onSelectBallot={setSelectedBallotId}
+          ballotCount={ballots?.length ?? 0}
+          totalProposalCount={totalProposalCount}
+          proposalCount={proposalCount}
+          manualUtxos={manualUtxos}
+          open={isBallotSidebarOpen}
+          onOpenChange={setIsBallotSidebarOpen}
+          currentProposalId={`${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`}
+          currentProposalTitle={proposalMetadata.json_metadata.body.title}
         />
       )}
     </main>
