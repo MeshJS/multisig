@@ -24,10 +24,21 @@ export function SetupStakeRefScript({
   const { toast } = useToast();
   const { wallet } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
+  const utils = api.useUtils();
 
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       console.log("[SetupStakeRefScript] Crowdfund updated with stake reference script");
+      
+      // Invalidate all crowdfund-related queries to trigger refetch
+      if (crowdfundId) {
+        await utils.crowdfund.getCrowdfundById.invalidate({ id: crowdfundId });
+      }
+      await utils.crowdfund.getCrowdfundsByProposerKeyHash.invalidate();
+      await utils.crowdfund.getAllCrowdfunds.invalidate();
+      await utils.crowdfund.getPublicCrowdfunds.invalidate();
+      
+      console.log("[SetupStakeRefScript] Invalidated crowdfund queries to refresh UI");
     },
     onError: (err) => {
       console.error("[SetupStakeRefScript] Error updating crowdfund:", err);
@@ -99,16 +110,16 @@ export function SetupStakeRefScript({
   };
 
   return (
-    <Card className="border-2 border-orange-200 bg-orange-50/50">
+    <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/30">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Settings2 className="h-5 w-5 text-orange-600" />
+          <Settings2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
           Setup Required: Stake Reference Script
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert className="border-orange-200 bg-orange-50">
-          <AlertTriangle className="h-4 w-4 text-orange-600" />
+        <Alert className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30">
+          <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
           <AlertDescription className="text-sm">
             Before proceeding with governance actions, you need to set up the stake reference script. 
             This is a one-time setup that attaches the stake validator script to a transaction output.
@@ -127,7 +138,7 @@ export function SetupStakeRefScript({
         <Button
           onClick={handleSetupStakeRefScript}
           disabled={isLoading}
-          className="w-full bg-orange-600 hover:bg-orange-700"
+          className="w-full bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600"
           size="lg"
         >
           {isLoading ? (

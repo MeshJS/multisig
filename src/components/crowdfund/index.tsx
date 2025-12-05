@@ -15,6 +15,7 @@ import { api } from "@/utils/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
@@ -47,6 +48,8 @@ export default function PageCrowdfund() {
   }, [user?.address]);
   
 
+  const utils = api.useUtils();
+
   const { data: crowdfunds, isLoading, refetch } = api.crowdfund.getCrowdfundsByProposerKeyHash.useQuery(
     { proposerKeyHashR0 },
     { enabled: !!proposerKeyHashR0 }
@@ -54,6 +57,31 @@ export default function PageCrowdfund() {
 
   const { data: allCrowdfunds } = api.crowdfund.getAllCrowdfunds.useQuery();
   const { data: publicCrowdfunds } = api.crowdfund.getPublicCrowdfunds.useQuery();
+
+  // Fetch latest crowdfund data when modal opens
+  const { data: latestCrowdfundData, refetch: refetchCrowdfundById } = api.crowdfund.getCrowdfundById.useQuery(
+    { id: selectedCrowdfund?.id ?? "" },
+    { 
+      enabled: !!selectedCrowdfund?.id && showDetailModal,
+      // Refetch when modal opens to get latest stakeRefScript
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  // Refetch crowdfund data when modal opens to ensure we have latest stakeRefScript
+  useEffect(() => {
+    if (showDetailModal && selectedCrowdfund?.id) {
+      void refetchCrowdfundById();
+    }
+  }, [showDetailModal, selectedCrowdfund?.id, refetchCrowdfundById]);
+
+  // Update selectedCrowdfund with latest data when it's fetched
+  useEffect(() => {
+    if (latestCrowdfundData && showDetailModal) {
+      setSelectedCrowdfund(latestCrowdfundData);
+    }
+  }, [latestCrowdfundData, showDetailModal]);
 
   const handleCrowdfundClick = (crowdfund: any) => {
     setSelectedCrowdfund(crowdfund);
@@ -75,8 +103,14 @@ export default function PageCrowdfund() {
     setModalView('info');
   };
 
-  const handleSuccess = () => {
-    refetch();
+  const handleSuccess = async () => {
+    // Invalidate all crowdfund queries to refresh overview cards
+    await Promise.all([
+      refetch(),
+      utils.crowdfund.getAllCrowdfunds.invalidate(),
+      utils.crowdfund.getPublicCrowdfunds.invalidate(),
+      utils.crowdfund.getCrowdfundById.invalidate({ id: selectedCrowdfund?.id ?? "" }),
+    ]);
     handleModalClose();
   };
   
@@ -547,7 +581,7 @@ function CrowdfundCard({
     };
 
     fetchContributions();
-  }, [crowdfund.address, networkId, isDraft, datum?.share_token]);
+  }, [crowdfund.address, networkId, isDraft, datum?.share_token, datum?.current_fundraised_amount]);
   
   return (
     <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={(e) => {
@@ -579,7 +613,7 @@ function CrowdfundCard({
                 {isDraft ? "Draft" : mockData?.status}
               </Badge>
               {govDetails && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border-blue-500/50 dark:border-blue-500/30">
                   <Settings className="w-3 h-3 mr-1" />
                   Governance
                 </Badge>
@@ -593,33 +627,37 @@ function CrowdfundCard({
         {isDraft ? (
           /* Draft Content */
           <div className="space-y-4">
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-center gap-2 text-yellow-800">
-                <Clock className="w-4 h-4" />
-                <span className="font-medium">Draft Status</span>
-              </div>
-              <p className="text-sm text-yellow-700 mt-1">
-                This crowdfund is saved as a draft. Complete the setup to launch it.
-              </p>
-            </div>
+            <Alert className="border-yellow-500/50 bg-yellow-500/10 dark:border-yellow-500/30 dark:bg-yellow-500/20">
+              <Clock className="h-4 w-4 text-yellow-700 dark:text-yellow-300" />
+              <AlertDescription>
+                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                  <span className="font-medium">Draft Status</span>
+                </div>
+                <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                  This crowdfund is saved as a draft. Complete the setup to launch it.
+                </p>
+              </AlertDescription>
+            </Alert>
             
             {govDetails && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-800">
-                  <Settings className="w-4 h-4" />
-                  <span className="font-medium text-sm">Governance Extension</span>
-                </div>
-                <p className="text-xs text-blue-700 mt-1">
-                  {(() => {
-                    const govAction = govDetails?.gov_action 
-                      ? (typeof govDetails.gov_action === 'string' ? JSON.parse(govDetails.gov_action) : govDetails.gov_action)
-                      : null;
-                    return govAction?.type 
-                      ? `Type: ${govAction.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`
-                      : "Configured with governance features";
-                  })()}
-                </p>
-              </div>
+              <Alert className="border-blue-500/50 bg-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/20">
+                <Settings className="h-4 w-4 text-blue-700 dark:text-blue-300" />
+                <AlertDescription>
+                  <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                    <span className="font-medium text-sm">Governance Extension</span>
+                  </div>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    {(() => {
+                      const govAction = govDetails?.gov_action 
+                        ? (typeof govDetails.gov_action === 'string' ? JSON.parse(govDetails.gov_action) : govDetails.gov_action)
+                        : null;
+                      return govAction?.type 
+                        ? `Type: ${govAction.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`
+                        : "Configured with governance features";
+                    })()}
+                  </p>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         ) : (

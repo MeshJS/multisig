@@ -1,5 +1,6 @@
 import {
   BrowserWallet,
+  IEvaluator,
   IFetcher,
   IWallet,
   LanguageVersion,
@@ -14,6 +15,7 @@ import { OfflineEvaluator } from "@meshsdk/core-csl";
 export type MeshTxInitiatorInput = {
   mesh: MeshTxBuilder;
   fetcher?: IFetcher;
+  evaluator?: IEvaluator;
   wallet?: IWallet;
   networkId?: number;
   stakeCredential?: string;
@@ -23,6 +25,7 @@ export type MeshTxInitiatorInput = {
 export class MeshTxInitiator {
   mesh: MeshTxBuilder;
   fetcher?: IFetcher;
+  evaluator?: IEvaluator;
   wallet?: IWallet;
   stakeCredential?: string;
   networkId = 0;

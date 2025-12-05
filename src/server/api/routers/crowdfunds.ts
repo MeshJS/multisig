@@ -19,6 +19,8 @@ export const crowdfundRouter = createTRPCRouter({
         spendRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         stakeRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         refAddress: z.string().optional(), // Address where reference scripts are stored
+        drepAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
+        govActionAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -48,6 +50,8 @@ export const crowdfundRouter = createTRPCRouter({
         spendRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         stakeRefScript: z.string().optional(), // JSON string containing { txHash: string, outputIndex: number }
         refAddress: z.string().optional(), // Address where reference scripts are stored
+        drepAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
+        govActionAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
         govState: z.number().optional(), // Governance state: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
       }),
     )

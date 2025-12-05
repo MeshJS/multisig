@@ -11,10 +11,9 @@ use cocktail.{
 use gov.{VGovernanceAction}
 use types.{
   AfterCompleteContributorWithdrawal, AfterCompleteRemoveEmptyInstance,
-  CompleteCrowdfund, ContributeFund, Crowdfund, CrowdfundGovDatum,
-  CrowdfundGovRedeemer, DeregisterCerts, PreMatureContributorWithdrawal,
-  PreMatureRemoveEmptyInstance, ProposeGovAction, Proposed, Refundable,
-  RegisterCerts, RegisteredCerts, VoteOnGovAction, Voted,
+  ContributeFund, Crowdfund, CrowdfundGovDatum, CrowdfundGovRedeemer,
+  DeregisterCerts, PreMatureContributorWithdrawal, PreMatureRemoveEmptyInstance,
+  ProposeGovAction, Proposed, Refundable, RegisterCerts, VoteOnGovAction, Voted,
 }
 use utils.{
   check_fundraise_target, check_lovelace_diff, check_proposal_procedure,
@@ -218,26 +217,21 @@ validator gCf_spend(
           _ -> False
         }
 
-      // Governance: Register certificates (Crowdfund → Registered)
+      // Governance: Register certificates and propose (Crowdfund → Crowdfund) - combines RegisterStake, RegisterDrep, and ProposeGovAction
       RegisterCerts ->
         when auth_input_datum is {
-          Crowdfund {
-            stake_hash,
-            share_token,
-            current_fundraised_amount,
-            deadline,
-            ..
-          } -> {
+          Crowdfund { .. } -> {
             // check only 1 input with token from current address
             expect [only_input] =
               inputs_at_with(inputs, current_address, auth_token, "")
-            expect Some(current_stake_credential) =
-              current_address.stake_credential
-
-            expect Inline(current_credential) = current_stake_credential
-
             expect [only_output] =
               outputs_at_with(outputs, current_address, auth_token, "")
+            expect only_output_datum: CrowdfundGovDatum =
+              output_inline_datum(only_output)
+            expect Some(current_stake_credential) =
+              current_address.stake_credential
+            expect Inline(current_credential) = current_stake_credential
+            trace @"Init"
 
             let lovelace_check =
               check_lovelace_diff(
@@ -245,21 +239,18 @@ validator gCf_spend(
                 only_output,
                 -(stake_register_deposit + drep_register_deposit),
               )
-            expect only_output_datum: CrowdfundGovDatum =
-              output_inline_datum(only_output)
-            let output_datum_check =
-              only_output_datum == RegisteredCerts {
-                stake_hash,
-                share_token,
-                funds_controlled: current_fundraised_amount,
-                deadline,
-              }
-
+            trace @"lovelace check passed"
+            let output_datum_check: CrowdfundGovDatum =
+              only_output_datum == auth_input_datum
+            trace @"output datum check passed"
             let is_only_output_value_clean =
               value_length(only_output.value) == 2
+            trace @"output value clean check passed"
 
             let reg_stake_cert_check =
               register_stake_certificate(certificates, current_credential)
+
+            trace @"stake registration check passed"
 
             let reg_drep_cert_check =
               register_drep_certificate(
@@ -267,6 +258,7 @@ validator gCf_spend(
                 current_credential,
                 drep_register_deposit,
               )
+            trace @"drep registration check passed"
 
             let delegate_check =
               delegate_vote_certificate(
@@ -283,19 +275,22 @@ validator gCf_spend(
                 delegate_pool_id,
                 Registered(current_credential),
               )
+            trace @"delegate check passed"
+
             lovelace_check? && output_datum_check? && is_only_output_value_clean? && reg_stake_cert_check? && reg_drep_cert_check? && delegate_check?
           }
           _ -> False
         }
 
-      // Governance: Submit governance proposal (Registered → Proposed)
+      // Governance: Submit governance proposal (Crowdfund → Proposed)
       ProposeGovAction ->
         when auth_input_datum is {
-          RegisteredCerts {
+          Crowdfund {
             stake_hash,
             share_token,
-            funds_controlled,
-            deadline
+            current_fundraised_amount,
+            deadline,
+            ..
           } -> {
             // check only 1 input with token from current address
             expect [only_input] =
@@ -312,7 +307,7 @@ validator gCf_spend(
               only_output_datum == Proposed {
                 stake_hash,
                 share_token,
-                funds_controlled,
+                funds_controlled: current_fundraised_amount,
                 deadline,
               }
 
@@ -457,9 +452,6 @@ validator gCf_spend(
           }
           _ -> False
         }
-
-      // CompleteCrowdfund - Not implemented in gov-crowdfundV2 (uses governance flow instead)
-      CompleteCrowdfund -> False
 
       // Post-governance: Remove empty instance after all funds withdrawn
       AfterCompleteRemoveEmptyInstance ->

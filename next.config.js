@@ -26,6 +26,10 @@ const config = {
         protocol: "https",
         hostname: "ipfs.io",
       },
+      {
+        protocol: "https",
+        hostname: "*.mypinata.cloud",
+      },
     ],
   },
   webpack: function (config, options) {

@@ -2,7 +2,7 @@ use aiken/collection/list
 use cardano/address.{Address, Inline, Script, from_script}
 use cardano/governance.{GovernanceActionId, ProposalProcedure, Vote, Voter}
 use cardano/transaction.{Transaction}
-use gov.{NoConfidence}
+use gov.{VNicePoll, VGovernanceAction}
 use mocktail.{
   mock_policy_id, mock_pub_key_hash, mock_script_hash,
   mock_script_stake_key_hash, mock_tx_hash,
@@ -74,7 +74,7 @@ pub const mock_gov_action_period = 3600
 
 pub const mock_delegate_pool_id = mock_script_hash(3)
 
-pub const mock_gov_action = NoConfidence { ancestor: None }
+pub const mock_gov_action: VGovernanceAction = VNicePoll
 
 pub const mock_proposer_key_hash = mock_pub_key_hash(0)
 

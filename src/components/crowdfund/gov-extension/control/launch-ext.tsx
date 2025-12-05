@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, HelpCircle, FileText, Settings, AlertTriangle, HardDrive, DollarSign, Info as InfoIcon, Upload, CheckCircle2, Loader2, Target } from "lucide-react";
 import {
   Tooltip,
@@ -61,57 +62,70 @@ interface LaunchExtProps {
   initialData?: GovData;
 }
 
-const GOVERNANCE_ACTION_TYPES = [
+// All governance action types (for future use)
+const ALL_GOVERNANCE_ACTION_TYPES = [
   { 
     value: 'motion_no_confidence', 
     label: 'Motion of No-Confidence', 
     description: 'A motion to create a state of no-confidence in the current constitutional committee',
     icon: AlertTriangle,
-    color: 'text-red-500'
+    color: 'text-red-500 dark:text-red-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'update_committee', 
     label: 'Update Committee', 
     description: 'Changes to the members of the constitutional committee and/or to its signature threshold and/or terms',
     icon: Settings,
-    color: 'text-blue-500'
+    color: 'text-blue-500 dark:text-blue-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'new_constitution', 
     label: 'New Constitution or Guardrails Script', 
     description: 'A modification to the Constitution or Guardrails Script, recorded as on-chain hashes',
     icon: FileText,
-    color: 'text-purple-500'
+    color: 'text-purple-500 dark:text-purple-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'hard_fork', 
     label: 'Hard-Fork Initiation', 
     description: 'Triggers a non-backwards compatible upgrade of the network; requires a prior software upgrade',
     icon: HardDrive,
-    color: 'text-orange-500'
+    color: 'text-orange-500 dark:text-orange-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'protocol_parameter_changes', 
     label: 'Protocol Parameter Changes', 
     description: 'Any change to one or more updatable protocol parameters, excluding changes to major protocol versions',
     icon: Settings,
-    color: 'text-green-500'
+    color: 'text-green-500 dark:text-green-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'treasury_withdrawals', 
     label: 'Treasury Withdrawals', 
     description: 'Withdrawals from the treasury',
     icon: DollarSign,
-    color: 'text-yellow-500'
+    color: 'text-yellow-500 dark:text-yellow-400',
+    disabled: true // Not yet supported
   },
   { 
     value: 'info', 
     label: 'Info', 
     description: 'An action that has no effect on-chain, other than an on-chain record',
     icon: InfoIcon,
-    color: 'text-gray-500'
+    color: 'text-gray-500 dark:text-gray-400',
+    disabled: false // Currently supported
   }
 ];
+
+// Only show supported governance action types (currently only 'info')
+const GOVERNANCE_ACTION_TYPES = ALL_GOVERNANCE_ACTION_TYPES.filter(
+  type => !type.disabled
+);
 
 export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
   const { toast } = useToast();
@@ -151,6 +165,20 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
       }
     }
   }, [govData.fundraiseTarget]);
+
+  // Ensure governance action type is always 'info' (only supported type)
+  useEffect(() => {
+    if (govData.gov_action?.type && govData.gov_action.type !== 'info') {
+      console.warn(
+        `[LaunchExt] Only 'info' governance action type is supported. ` +
+        `Received '${govData.gov_action.type}', forcing to 'info'.`
+      );
+      setGovData(prev => ({
+        ...prev,
+        gov_action: { ...prev.gov_action!, type: 'info' }
+      }));
+    }
+  }, [govData.gov_action?.type]);
 
   useEffect(() => {
     onGovDataUpdate(govData);
@@ -247,7 +275,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
       // Generate body hash for witness signing
       const bodyHash = await generateBodyHashForWitness(context, body);
 
-      // Sign the hash using wallet (CIP-0008 format)
+      // Sign the hash using wallet (CIP-0008 signing protocol, but algorithm is ed25519 per CIP-100)
       const signatureResult = await wallet.signData(bodyHash, user.address);
 
       if (!signatureResult?.signature || !signatureResult?.key) {
@@ -255,6 +283,8 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
       }
 
       // Generate CIP-108 compliant metadata with witness
+      // Note: witnessAlgorithm must be "ed25519" per CIP-100, not "CIP-0008"
+      // CIP-0008 is the signing protocol, but the algorithm itself is ed25519
       const metadata = await generateGovActionMetadata({
         title,
         abstract,
@@ -269,13 +299,13 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
         })),
         authorName: "Crowdfund Proposer",
       }, {
-        witnessAlgorithm: "CIP-0008",
+        witnessAlgorithm: "ed25519",
         publicKey: signatureResult.key,
         signature: signatureResult.signature,
       });
 
-      // Calculate hash
-      const metadataHash = hashMetadata(metadata);
+      // Calculate hash (must be async per CIP-100/CIP-108)
+      const metadataHash = await hashMetadata(metadata);
 
       // Upload metadata
       const timestamp = Date.now();
@@ -328,7 +358,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
             placeholder="pool1abcd... (56 characters)"
           />
           {govData.delegate_pool_id && govData.delegate_pool_id.length > 0 && govData.delegate_pool_id.length < 56 && (
-            <p className="text-sm text-red-500">
+            <p className="text-sm text-red-500 dark:text-red-400">
               Pool ID must be 56 characters long. Current length: {govData.delegate_pool_id.length}
             </p>
           )}
@@ -347,18 +377,39 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
               </TooltipContent>
             </Tooltip>
           </Label>
+          
+          <Alert className="bg-blue-50 border-blue-200">
+            <InfoIcon className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Currently only Info Action (NicePoll) is supported.</strong> Other governance action types 
+              will be added step by step. The validator is parameterized with NicePoll (VGovernanceAction constructor 6).
+            </AlertDescription>
+          </Alert>
+
           <Select
             value={govData.gov_action?.type || 'info'}
-            onValueChange={(value) => updateGovAction({ type: value as any })}
+            onValueChange={(value) => {
+              // Force 'info' type - other types not yet supported
+              if (value !== 'info') {
+                updateGovAction({ type: 'info' });
+              } else {
+                updateGovAction({ type: value as any });
+              }
+            }}
+            disabled={true}
           >
-            <SelectTrigger>
+            <SelectTrigger className="bg-muted">
               <SelectValue placeholder="Select governance action type" />
             </SelectTrigger>
             <SelectContent>
               {GOVERNANCE_ACTION_TYPES.map((actionType) => {
                 const IconComponent = actionType.icon;
                 return (
-                  <SelectItem key={actionType.value} value={actionType.value}>
+                  <SelectItem 
+                    key={actionType.value} 
+                    value={actionType.value}
+                    disabled={actionType.disabled}
+                  >
                     <div className="flex items-center gap-2">
                       <IconComponent className={`h-4 w-4 ${actionType.color}`} />
                       <div>
@@ -382,7 +433,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                 const IconComponent = actionType?.icon || InfoIcon;
                 return (
                   <>
-                    <IconComponent className={`h-5 w-5 ${actionType?.color || 'text-gray-500'}`} />
+                    <IconComponent className={`h-5 w-5 ${actionType?.color || 'text-gray-500 dark:text-gray-400'}`} />
                     {actionType?.label || 'Governance Action'} Details
                   </>
                 );
@@ -574,7 +625,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-500" />
+              <FileText className="h-5 w-5 text-blue-500 dark:text-blue-400" />
               Governance Action Metadata (CIP-108)
               <Tooltip>
                 <TooltipTrigger>
@@ -587,45 +638,51 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800 mb-2">
-                <strong>Metadata Upload</strong>
-              </p>
-              <p className="text-sm text-blue-700">
-                Generate, sign with your wallet (CIP-0008), and upload CIP-108 compliant metadata for your governance action. This metadata will be attached to the governance action when it's submitted to the chain.
-              </p>
-            </div>
+            <Alert className="border-blue-500/50 bg-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/20">
+              <Info className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+              <AlertDescription>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                  <strong>Metadata Upload</strong>
+                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Generate, sign with your wallet (CIP-0008), and upload CIP-108 compliant metadata for your governance action. This metadata will be attached to the governance action when it's submitted to the chain.
+                </p>
+              </AlertDescription>
+            </Alert>
 
             {govData.govActionMetadataUrl && govData.govActionMetadataHash ? (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
-                <div className="flex items-center gap-2 text-green-800">
+              <Alert className="border-green-500/50 bg-green-500/10 dark:border-green-500/30 dark:bg-green-500/20 space-y-2">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-semibold">Metadata uploaded successfully</span>
                 </div>
-                <div className="text-sm space-y-1">
-                  <div>
-                    <span className="font-medium">URL:</span>{" "}
-                    <a
-                      href={govData.govActionMetadataUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline break-all"
-                    >
-                      {govData.govActionMetadataUrl}
-                    </a>
+                <AlertDescription>
+                  <div className="text-sm space-y-1">
+                    <div>
+                      <span className="font-medium">URL:</span>{" "}
+                      <a
+                        href={govData.govActionMetadataUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline break-all dark:text-blue-400"
+                      >
+                        {govData.govActionMetadataUrl}
+                      </a>
+                    </div>
+                    <div>
+                      <span className="font-medium">Hash:</span>{" "}
+                      <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                        {govData.govActionMetadataHash}
+                      </code>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-medium">Hash:</span>{" "}
-                    <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">
-                      {govData.govActionMetadataHash}
-                    </code>
-                  </div>
-                </div>
+                </AlertDescription>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleUploadMetadata}
                   disabled={isUploadingMetadata}
+                  className="mt-2"
                 >
                   {isUploadingMetadata ? (
                     <>
@@ -639,7 +696,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                     </>
                   )}
                 </Button>
-              </div>
+              </Alert>
             ) : (
               <Button
                 onClick={handleUploadMetadata}
@@ -663,15 +720,18 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
         </Card>
 
         {/* Information Panel */}
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h4 className="font-semibold text-blue-900 mb-2">Governance Extension Information</h4>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• This extension enables your crowdfund to participate in Cardano governance</li>
-            <li>• Voting power will be delegated to the specified stake pool</li>
-            <li>• Governance actions can be proposed and voted on</li>
-            <li>• Deposits are required for various governance operations</li>
-          </ul>
-        </div>
+        <Alert className="border-blue-500/50 bg-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/20">
+          <Info className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+          <AlertDescription>
+            <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-2">Governance Extension Information</h4>
+            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <li>• This extension enables your crowdfund to participate in Cardano governance</li>
+              <li>• Voting power will be delegated to the specified stake pool</li>
+              <li>• Governance actions can be proposed and voted on</li>
+              <li>• Deposits are required for various governance operations</li>
+            </ul>
+          </AlertDescription>
+        </Alert>
       </div>
     </TooltipProvider>
   );

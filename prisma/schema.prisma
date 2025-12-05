@@ -115,6 +115,8 @@ model Crowdfund {
   spendRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
   stakeRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
   refAddress        String? // Address where reference scripts are stored
+  drepAnchor        String? // JSON string containing { url: string, hash: string }
+  govActionAnchor   String? // JSON string containing { url: string, hash: string }
   govState          Int      @default(0) // Governance state: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
   createdAt         DateTime @default(now())
 }

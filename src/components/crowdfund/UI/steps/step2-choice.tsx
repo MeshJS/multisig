@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Settings } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CrowdfundFormData } from "../launch-wizard";
@@ -58,20 +59,23 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5 text-orange-500" />
+              <Settings className="h-5 w-5 text-orange-500 dark:text-orange-400" />
               Governance Configuration
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                <p className="text-sm text-orange-800 mb-2">
-                  <strong>Governance Extension Enabled</strong>
-                </p>
-                <p className="text-sm text-orange-700">
-                  Your crowdfund will be able to participate in Cardano governance voting and actions.
-                </p>
-              </div>
+              <Alert className="border-orange-500/50 bg-orange-500/10 dark:border-orange-500/30 dark:bg-orange-500/20">
+                <Settings className="h-5 w-5 text-orange-700 dark:text-orange-300" />
+                <AlertDescription>
+                  <p className="text-sm text-orange-700 dark:text-orange-300 mb-2">
+                    <strong>Governance Extension Enabled</strong>
+                  </p>
+                  <p className="text-sm text-orange-700 dark:text-orange-300">
+                    Your crowdfund will be able to participate in Cardano governance voting and actions.
+                  </p>
+                </AlertDescription>
+              </Alert>
 
               <LaunchExt
                 onGovDataUpdate={handleGovDataUpdate}

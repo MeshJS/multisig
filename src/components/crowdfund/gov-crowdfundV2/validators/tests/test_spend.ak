@@ -4,7 +4,7 @@ use cardano/certificate.{
   DelegateBlockProduction, DelegateCredential, DelegateVote, RegisterCredential,
   RegisterDelegateRepresentative, Registered,
 }
-use cardano/governance.{NoConfidence, ProposalProcedure}
+use cardano/governance.{NicePoll, ProposalProcedure}
 use cardano/transaction.{Transaction}
 use gcf_spend as gcf_spend_validator
 use mocktail.{
@@ -160,7 +160,7 @@ fn mock_register_cert_tx(test_case: RegisterCertsTestCase) -> Transaction {
         ProposalProcedure {
           deposit: mock_gov_deposit,
           return_address: Script(mock_stake_hash),
-          governance_action: NoConfidence { ancestor: None },
+          governance_action: NicePoll,
         },
       )
 }
@@ -648,3 +648,4 @@ test s1_spend_fail_reg_cert_with_gov_not_proposed() {
     tx,
   )
 }
+

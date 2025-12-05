@@ -188,6 +188,7 @@ export function Step3ReviewSubmit({
         stake_register_deposit: formData.stake_register_deposit,
         drep_register_deposit: formData.drep_register_deposit,
         gov_deposit: formData.gov_deposit,
+        gov_action: formData.gov_action, // Will be converted to proper MeshJS GovernanceAction type
         govActionMetadataUrl: formData.govActionMetadataUrl,
         govActionMetadataHash: formData.govActionMetadataHash,
         drepMetadataUrl: formData.drepMetadataUrl,
@@ -277,11 +278,7 @@ export function Step3ReviewSubmit({
         authTokenId,
       });
 
-      // Sign and submit the transaction
-      const signedTx = await wallet.signTx(tx, true);
-      const txHash = await wallet.submitTx(signedTx);
-
-      // Update the datum with the new values
+      // Prepare data for database entry (but don't create it yet)
       const updatedDatum: CrowdfundDatumTS = {
         completion_script: completion_scriptHash,
         share_token: share_token,
@@ -309,8 +306,30 @@ export function Step3ReviewSubmit({
         drepMetadataHash: formData.drepMetadataHash,
       };
 
-      // Create the crowdfund in the database
-      createCrowdfund.mutate({
+      console.log("[handleSubmit] Submitting transaction...");
+
+      // Submit the transaction first - only create DB entry after successful submission
+      let txHash: string;
+      try {
+        // Sign and submit the transaction
+        const signedTx = await wallet.signTx(tx, true);
+        txHash = await wallet.submitTx(signedTx);
+        console.log("[handleSubmit] Transaction submitted successfully:", txHash);
+      } catch (submitError) {
+        // Transaction submission failed - don't create database entry
+        console.error("[handleSubmit] Transaction submission failed:", submitError);
+        toast({
+          title: "Transaction failed",
+          description: "Transaction submission failed. Please fix the issue and try again.",
+          variant: "destructive",
+        });
+        // Re-throw the error to be caught by outer catch block
+        throw submitError;
+      }
+
+      // Only create the crowdfund in the database AFTER successful submission
+      console.log("[handleSubmit] Creating crowdfund in database after successful submission...");
+      await createCrowdfund.mutateAsync({
         name: formData.name,
         description: formData.description,
         proposerKeyHashR0,
@@ -323,6 +342,7 @@ export function Step3ReviewSubmit({
         datum: JSON.stringify(updatedDatum),
         govExtension: govExtension,
       });
+      console.log("[handleSubmit] Crowdfund created in database successfully");
 
       // Show success toast
       toast({
@@ -501,7 +521,7 @@ export function Step3ReviewSubmit({
                   </div>
                   <div>
                     <span className="font-medium">Metadata Hash:</span>{" "}
-                    <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
                       {formData.govActionMetadataHash}
                     </code>
                   </div>

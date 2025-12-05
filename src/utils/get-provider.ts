@@ -1,6 +1,5 @@
 import { env } from "@/env";
 import { BlockfrostProvider, KoiosProvider } from "@meshsdk/core";
-import { B } from "node_modules/@vercel/blob/dist/helpers-BfcvAwfQ";
 
 export function getProvider(network: number) {
   if (!env.NEXT_PUBLIC_GOV_TESTNET) {

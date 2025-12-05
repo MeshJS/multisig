@@ -15,10 +15,10 @@ use tests/test_utils.{
   mock_gov_address, mock_min_charge, mock_proposer_key_hash, mock_share_token,
   mock_stake_hash, mock_stake_register_deposit,
 }
-use types.{CompleteCrowdfund, CrowdfundGovRedeemer, RegisterCerts, RMint}
+use types.{CrowdfundGovRedeemer, RegisterCerts, RMint}
 
-// Note: CompleteCrowdfund is not implemented in V2 (returns False)
-// This test file is kept for reference but tests will fail as expected
+// Note: CompleteCrowdfund has been removed from V2
+// This test file is kept for reference but tests are commented out
 // The actual completion flow uses RegisterCerts instead
 
 type CompleteCrowdfundTestCase {
@@ -149,30 +149,30 @@ fn check_all_scripts(
   check_auth_spend? && check_token_mint?
 }
 
-// These tests will fail as CompleteCrowdfund returns False in V2
+// These tests are commented out as CompleteCrowdfund has been removed from V2
 // They are kept for reference/documentation purposes
 
-test complete_crowdfund_fail_not_implemented() {
-  let test_case =
-    CompleteCrowdfundTestCase {
-      is_only_one_auth_inputed: True,
-      is_output_to_fee_address_correct: True,
-      is_auth_burnt: True,
-      is_completion_script_executed: True,
-      is_fundraise_target_sent: True,
-      is_fundraise_target_amount_correct: True,
-      is_fundraise_output_datum_correct: True,
-      is_token_minted: True,
-    }
-
-  // CompleteCrowdfund is not implemented in V2
-  !check_all_scripts(
-    test_case,
-    mock_current_fundraised_amount,
-    CompleteCrowdfund,
-    mock_stake_hash,
-  )
-}
+// test complete_crowdfund_fail_not_implemented() {
+//   let test_case =
+//     CompleteCrowdfundTestCase {
+//       is_only_one_auth_inputed: True,
+//       is_output_to_fee_address_correct: True,
+//       is_auth_burnt: True,
+//       is_completion_script_executed: True,
+//       is_fundraise_target_sent: True,
+//       is_fundraise_target_amount_correct: True,
+//       is_fundraise_output_datum_correct: True,
+//       is_token_minted: True,
+//     }
+//
+//   // CompleteCrowdfund has been removed from V2
+//   !check_all_scripts(
+//     test_case,
+//     mock_current_fundraised_amount,
+//     CompleteCrowdfund,
+//     mock_stake_hash,
+//   )
+// }
 
 test complete_crowdfund_fail_with_input_wrong_redeemer() {
   let test_case =

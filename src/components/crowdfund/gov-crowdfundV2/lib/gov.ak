@@ -30,7 +30,7 @@ pub type VGovernanceAction {
     /// It must pass for the new protocol parameters to be deemed valid.
     guardrails: Option<ScriptHash>,
   }
-  HardFork {
+  VHardFork {
     /// The last governance action of type `HardFork`. They must all
     /// form a chain.
     ancestor: Option<GovernanceActionId>,
@@ -42,7 +42,7 @@ pub type VGovernanceAction {
     /// - Neither `minor` nor `major` can be decremented.
     new_version: ProtocolVersion,
   }
-  TreasuryWithdrawal {
+  VTreasuryWithdrawal {
     /// A collection of beneficiaries, which can be plain verification key
     /// hashes or script hashes (e.g. DAO).
     beneficiaries: Pairs<Credential, Lovelace>,
@@ -52,12 +52,12 @@ pub type VGovernanceAction {
     /// It must pass for the withdrawals to be authorized.
     guardrails: Option<ScriptHash>,
   }
-  NoConfidence {
+  VNoConfidence {
     /// The last governance action of type `NoConfidence` or
     /// `ConstitutionalCommittee`. They must all / form a chain.
     ancestor: Option<GovernanceActionId>,
   }
-  ConstitutionalCommittee {
+  VConstitutionalCommittee {
     /// The last governance action of type `NoConfidence` or
     /// `ConstitutionalCommittee`. They must all / form a chain.
     ancestor: Option<GovernanceActionId>,
@@ -70,12 +70,12 @@ pub type VGovernanceAction {
     /// constitutional committee to accept a proposal procedure.
     quorum: VRational,
   }
-  NewConstitution {
+  VNewConstitution {
     /// The last governance action of type `Constitution` or
     /// `ConstitutionalCommittee`. They must all / form a chain.
     ancestor: Option<GovernanceActionId>,
     /// The new proposed constitution.
     constitution: Constitution,
   }
-  NicePoll
+  VNicePoll
 }

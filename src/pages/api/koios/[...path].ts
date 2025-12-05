@@ -1,12 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { cors } from "@/lib/cors";
+import { buffer } from "micro";
 
-// Disable body parsing for binary content types (CBOR)
+// Disable automatic body parsing so we can handle raw CBOR and JSON bodies ourselves
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: "10mb",
-    },
+    bodyParser: false,
   },
 };
 
@@ -57,9 +56,9 @@ export default async function handler(
   const targetUrl = `${KOIOS_BASE_URL}/${apiPath}${queryString ? `?${queryString}` : ""}`;
   console.log(`Proxying to: ${targetUrl}`);
   
-  // Log request body for POST requests
-  if (req.method === "POST" && req.body) {
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
+  // Log basic info for POST requests (body is read as raw buffer later)
+  if (req.method === "POST") {
+    console.log("Incoming POST to Koios proxy (body will be read as raw buffer)");
   }
 
   try {
@@ -84,25 +83,34 @@ export default async function handler(
       headers,
     };
 
-    // For POST requests, include the body
+    // For POST requests, include the raw body
     if (req.method === "POST") {
-      // Handle different content types
-      const contentType = req.headers["content-type"];
-      if (contentType?.includes("application/cbor")) {
-        // For CBOR, req.body is already a Buffer (body parser disabled for this content type)
-        // If it's a string, it might be hex-encoded
-        if (Buffer.isBuffer(req.body)) {
-          fetchOptions.body = req.body as any; // Buffer is compatible with BodyInit
-        } else if (typeof req.body === "string") {
-          // Try to parse as hex string
-          fetchOptions.body = Buffer.from(req.body, "hex") as any;
-        } else if (req.body) {
-          // Fallback: convert to buffer
-          fetchOptions.body = Buffer.from(req.body as any) as any;
-        }
+      const contentType = req.headers["content-type"] || "";
+
+      // Read the raw body once
+      const rawBody = await buffer(req);
+
+      if (contentType.includes("application/cbor")) {
+        // Forward raw CBOR bytes as-is
+        fetchOptions.body = rawBody as any;
+        headers["Content-Type"] = "application/cbor";
+        console.log(
+          "Forwarding CBOR body to Koios:",
+          `size=${rawBody.byteLength} bytes`,
+        );
       } else {
-        // For JSON, send as JSON string
-        fetchOptions.body = JSON.stringify(req.body);
+        // For JSON or other text-based content, forward the body unchanged
+        fetchOptions.body = rawBody as any;
+        if (contentType) {
+          headers["Content-Type"] = contentType;
+        } else {
+          headers["Content-Type"] = "application/json";
+        }
+        console.log(
+          "Forwarding non-CBOR body to Koios:",
+          `size=${rawBody.byteLength} bytes`,
+          `content-type=${headers["Content-Type"]}`,
+        );
       }
     }
 

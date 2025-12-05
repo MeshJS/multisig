@@ -94,7 +94,7 @@ export default function DRepSetupForm({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          content: JSON.stringify(drepMetadata),
+          content: JSON.stringify(drepMetadata, null, 2),
           filename: `drep-${formState.givenName}-metadata.jsonld`,
         }),
       });
@@ -104,8 +104,8 @@ export default function DRepSetupForm({
       if (!response.ok) {
         const errorData = await response.json();
         
-        // If Pinata is not configured, fallback to Vercel Blob
-        if (errorData.error === "Pinata configuration not available") {
+        // If Pinata is not configured (503) or unavailable, fallback to Vercel Blob
+        if (errorData.error === "Pinata configuration not available" || response.status === 503) {
           console.log("Pinata not configured, falling back to Vercel Blob storage");
           
           response = await fetch("/api/vercel-storage/put", {
@@ -115,7 +115,7 @@ export default function DRepSetupForm({
             },
             body: JSON.stringify({
               pathname: `drep/${formState.givenName}-${Date.now()}.jsonld`,
-              value: JSON.stringify(drepMetadata),
+              value: JSON.stringify(drepMetadata, null, 2),
             }),
           });
 
@@ -130,17 +130,15 @@ export default function DRepSetupForm({
         }
       } else {
         const uploadResult = (await response.json()) as PinataUploadResponse;
-        anchorUrl = uploadResult.url;
+        // Use public IPFS gateway instead of custom gateway
+        // Format: https://ipfs.io/ipfs/{cid}
+        anchorUrl = `https://ipfs.io/ipfs/${uploadResult.hash}`;
       }
 
       // Generate anchor hash
       const anchorHash = hashDrepAnchor(drepMetadata);
 
-      // Shorten URL if needed for governance anchor (64 char limit)
-      const { shortenUrlIfNeeded } = await import("@/utils/governanceMetadata");
-      const finalAnchorUrl = await shortenUrlIfNeeded(anchorUrl);
-
-      return { anchorUrl: finalAnchorUrl, anchorHash };
+      return { anchorUrl, anchorHash };
     } finally {
       setIsCreatingAnchor(false);
     }

@@ -97,10 +97,10 @@ export function ContributeToCrowdfund({
   );
   const minContribution = datumData.min_charge / 1000000;
 
-  // Initialize amount with minimum if empty
+  // Initialize amount with minimum if empty (rounded to whole number)
   useEffect(() => {
     if (!amount && minContribution > 0 && maxContribution >= minContribution) {
-      setAmount(minContribution.toFixed(2));
+      setAmount(Math.ceil(minContribution).toString());
     }
   }, [minContribution, maxContribution, amount]);
 
@@ -377,27 +377,28 @@ export function ContributeToCrowdfund({
               <input
                 id="amount"
                 type="range"
-                min={minContribution}
-                max={maxContribution}
-                step="0.1"
-                value={amount || minContribution.toString()}
-                onChange={(e) =>
-                  setAmount(parseFloat(e.target.value).toFixed(2))
-                }
+                min={Math.ceil(minContribution)}
+                max={Math.floor(maxContribution)}
+                step="1"
+                value={amount || Math.ceil(minContribution).toString()}
+                onChange={(e) => {
+                  const intValue = Math.round(parseFloat(e.target.value));
+                  setAmount(intValue.toString());
+                }}
                 disabled={maxContribution <= minContribution}
                 className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:shadow-md [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-md"
                 style={{
                   background:
                     maxContribution > minContribution
-                      ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb ${((parseFloat(amount || minContribution.toString()) - minContribution) / (maxContribution - minContribution)) * 100}%, #e5e7eb 100%)`
+                      ? `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseFloat(amount || Math.ceil(minContribution).toString()) - Math.ceil(minContribution)) / (Math.floor(maxContribution) - Math.ceil(minContribution))) * 100}%, #e5e7eb ${((parseFloat(amount || Math.ceil(minContribution).toString()) - Math.ceil(minContribution)) / (Math.floor(maxContribution) - Math.ceil(minContribution))) * 100}%, #e5e7eb 100%)`
                       : "#3b82f6",
                 }}
               />
               <Input
                 type="number"
-                min={minContribution}
-                max={maxContribution}
-                step="0.1"
+                min={Math.ceil(minContribution)}
+                max={Math.floor(maxContribution)}
+                step="1"
                 value={amount || ""}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -405,35 +406,35 @@ export function ContributeToCrowdfund({
                     setAmount("");
                     return;
                   }
-                  const numValue = parseFloat(value);
+                  const numValue = parseInt(value, 10);
                   if (!isNaN(numValue)) {
-                    // Clamp value between min and max
+                    // Clamp value between min and max, ensuring whole number
                     const clampedValue = Math.max(
-                      minContribution,
-                      Math.min(maxContribution, numValue),
+                      Math.ceil(minContribution),
+                      Math.min(Math.floor(maxContribution), numValue),
                     );
-                    setAmount(clampedValue.toFixed(2));
+                    setAmount(clampedValue.toString());
                   }
                 }}
                 onBlur={(e) => {
-                  // Ensure value is within bounds on blur
-                  const numValue = parseFloat(e.target.value);
-                  if (isNaN(numValue) || numValue < minContribution) {
-                    setAmount(minContribution.toFixed(2));
-                  } else if (numValue > maxContribution) {
-                    setAmount(maxContribution.toFixed(2));
+                  // Ensure value is within bounds on blur and is a whole number
+                  const numValue = parseInt(e.target.value, 10);
+                  if (isNaN(numValue) || numValue < Math.ceil(minContribution)) {
+                    setAmount(Math.ceil(minContribution).toString());
+                  } else if (numValue > Math.floor(maxContribution)) {
+                    setAmount(Math.floor(maxContribution).toString());
                   } else {
-                    setAmount(numValue.toFixed(2));
+                    setAmount(numValue.toString());
                   }
                 }}
                 className="w-24 text-center text-lg"
-                placeholder={minContribution.toFixed(2)}
+                placeholder={Math.ceil(minContribution).toString()}
               />
               <span className="w-10 text-sm text-muted-foreground">ADA</span>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{minContribution.toFixed(2)} ADA</span>
-              <span>{maxContribution.toFixed(2)} ADA max</span>
+              <span>{Math.ceil(minContribution)} ADA</span>
+              <span>{Math.floor(maxContribution)} ADA max</span>
             </div>
           </div>
 
@@ -444,15 +445,15 @@ export function ContributeToCrowdfund({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAmount(minContribution.toFixed(2))}
+                onClick={() => setAmount(Math.ceil(minContribution).toString())}
               >
-                Min ({minContribution.toFixed(2)})
+                Min ({Math.ceil(minContribution)})
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAmount((maxContribution / 4).toFixed(2))}
+                onClick={() => setAmount(Math.round(maxContribution / 4).toString())}
               >
                 25%
               </Button>
@@ -460,7 +461,7 @@ export function ContributeToCrowdfund({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAmount((maxContribution / 2).toFixed(2))}
+                onClick={() => setAmount(Math.round(maxContribution / 2).toString())}
               >
                 50%
               </Button>
@@ -468,7 +469,7 @@ export function ContributeToCrowdfund({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAmount((maxContribution * 0.75).toFixed(2))}
+                onClick={() => setAmount(Math.round(maxContribution * 0.75).toString())}
               >
                 75%
               </Button>
@@ -476,7 +477,7 @@ export function ContributeToCrowdfund({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setAmount(maxContribution.toFixed(2))}
+                onClick={() => setAmount(Math.floor(maxContribution).toString())}
               >
                 Max
               </Button>

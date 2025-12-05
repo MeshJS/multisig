@@ -58,8 +58,8 @@ export default function PinataImgDragAndDrop({ onImageUpload }: PinataImgDragAnd
       if (!response.ok) {
         const errorData = (await response.json()) as ErrorResponse;
         
-        // If Pinata is not configured, fallback to Vercel Blob
-        if (errorData.error === "Pinata configuration not available") {
+        // If Pinata is not configured (503) or unavailable, fallback to Vercel Blob
+        if (errorData.error === "Pinata configuration not available" || response.status === 503) {
           console.log("Pinata not configured, falling back to Vercel Blob storage for image");
           
           // Use existing Vercel Blob image upload

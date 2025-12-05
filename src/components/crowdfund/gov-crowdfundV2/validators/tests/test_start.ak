@@ -7,8 +7,7 @@ use mocktail.{
 }
 use tests/test_utils.{
   mock_auth_token, mock_crowdfund_gov_address,
-  mock_fundraise_target, mock_gov_action_period,
-  mock_spend_script_hash, mock_stake_hash,
+  mock_fundraise_target, mock_stake_hash,
 }
 use types.{
   Deregister, DeregisterCerts, Register, RegisterCerts,
@@ -59,8 +58,6 @@ test s2_success_publish_with_reg() {
     )
   gcf_stake_validator.gCf_stake.publish(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     Register,
     None,
     tx,
@@ -77,8 +74,6 @@ test s2_success_publish_with_dereg() {
     )
   gcf_stake_validator.gCf_stake.publish(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     Deregister,
     None,
     tx,
@@ -95,8 +90,6 @@ test s2_fail_publish_with_reg_but_deregister_cert() {
     )
   !gcf_stake_validator.gCf_stake.publish(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     Register,
     None,
     tx,
@@ -113,8 +106,6 @@ test s2_fail_publish_with_dereg_but_register_cert() {
     )
   !gcf_stake_validator.gCf_stake.publish(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     Deregister,
     None,
     tx,
@@ -131,8 +122,6 @@ test s2_fail_publish_with_more_than_one_input_from_hash() fail {
     )
   gcf_stake_validator.gCf_stake.publish(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     Register,
     None,
     tx,
@@ -149,8 +138,6 @@ test s2_success_propose() {
     )
   gcf_stake_validator.gCf_stake.propose(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,
@@ -167,8 +154,6 @@ test s2_fail_propose_with_wrong_redeemer() {
     )
   !gcf_stake_validator.gCf_stake.propose(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,
@@ -185,8 +170,6 @@ test s2_fail_propose_with_more_than_one_inputed() fail {
     )
   gcf_stake_validator.gCf_stake.propose(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,
@@ -203,8 +186,6 @@ test s2_success_vote() {
     )
   gcf_stake_validator.gCf_stake.vote(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,
@@ -221,8 +202,6 @@ test s2_fail_vote_with_wrong_redeemer() {
     )
   !gcf_stake_validator.gCf_stake.vote(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,
@@ -239,8 +218,6 @@ test s2_fail_vote_with_more_than_one_inputed() fail {
     )
   gcf_stake_validator.gCf_stake.vote(
     mock_auth_token,
-    mock_spend_script_hash,
-    mock_gov_action_period,
     None,
     None,
     tx,

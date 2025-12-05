@@ -15,6 +15,7 @@ export const env = createEnv({
     GITHUB_TOKEN: z.string(),
     PINATA_API_KEY: z.string().optional(),
     PINATA_SECRET_API_KEY: z.string().optional(),
+    PINATA_JWT: z.string().optional(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -72,6 +73,7 @@ export const env = createEnv({
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     PINATA_API_KEY: process.env.PINATA_API_KEY,
     PINATA_SECRET_API_KEY: process.env.PINATA_SECRET_API_KEY,
+    PINATA_JWT: process.env.PINATA_JWT,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

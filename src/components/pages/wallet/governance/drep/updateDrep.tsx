@@ -95,15 +95,11 @@ export default function UpdateDRep() {
       },
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata),
+        value: JSON.stringify(drepMetadata, null, 2),
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
-    let anchorUrl = res.url;
-    
-    // Shorten URL if needed for governance anchor (64 char limit)
-    const { shortenUrlIfNeeded } = await import("@/utils/governanceMetadata");
-    anchorUrl = await shortenUrlIfNeeded(anchorUrl);
+    const anchorUrl = res.url;
     
     // Await file retrieval
     const fileContent = getFile(res.url); // Use original URL for file content

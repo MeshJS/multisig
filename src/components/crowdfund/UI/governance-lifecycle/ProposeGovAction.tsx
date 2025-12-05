@@ -4,12 +4,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, FileText, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../../offchain";
-import { RegisteredCertsDatumTS } from "../../crowdfund";
+import { CrowdfundDatumTS } from "../../crowdfund";
 import type { GovernanceAction } from "@meshsdk/common";
+import { api } from "@/utils/api";
 
 type GovernanceAnchor = {
   url: string;
@@ -18,9 +19,10 @@ type GovernanceAnchor = {
 
 interface ProposeGovActionProps {
   contract: MeshCrowdfundContract;
-  datum: RegisteredCertsDatumTS;
+  datum: CrowdfundDatumTS;
   anchorGovAction?: GovernanceAnchor;
   governanceAction?: GovernanceAction;
+  crowdfundId?: string;
   onSuccess?: () => void;
 }
 
@@ -29,12 +31,22 @@ export function ProposeGovAction({
   datum,
   anchorGovAction,
   governanceAction,
+  crowdfundId,
   onSuccess,
 }: ProposeGovActionProps) {
   const { toast } = useToast();
   const { wallet } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  
+  const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
+    onSuccess: () => {
+      console.log("[ProposeGovAction] GovAction anchor saved to database");
+    },
+    onError: (err) => {
+      console.error("[ProposeGovAction] Error saving govAction anchor:", err);
+    },
+  });
 
   const validate = async () => {
     const errors: string[] = [];
@@ -94,13 +106,57 @@ export function ProposeGovAction({
         return;
       }
 
+      // Get the final anchor that will be used (may be shortened)
+      const govAnchor =
+        anchorGovAction || contract.governance.anchorGovAction;
+      
+      if (!govAnchor?.url || !govAnchor?.hash) {
+        throw new Error("Governance anchor is required");
+      }
+
+      // Ensure only InfoAction (NicePoll) is used - the validator is parameterized with NicePoll
+      // If a different governanceAction is provided, normalize it to InfoAction
+      const normalizedGovAction: GovernanceAction = {
+        kind: "InfoAction",
+        action: {},
+      };
+
+      // Warn if a different action type was provided
+      if (governanceAction && governanceAction.kind !== "InfoAction") {
+        console.warn(
+          `[ProposeGovAction] Only InfoAction (NicePoll) is supported. ` +
+          `Received ${governanceAction.kind}, using InfoAction instead.`
+        );
+      }
+
       const { tx } = await contract.proposeGovAction({
         datum,
         anchorGovAction,
-        governanceAction,
+        governanceAction: normalizedGovAction,
       });
+      console.log(tx)
       const signedTx = await wallet.signTx(tx);
       const txHash = await wallet.submitTx(signedTx);
+
+      // Save the anchor to the database if crowdfundId is provided
+      if (crowdfundId && govAnchor) {
+        try {
+          await updateCrowdfund.mutateAsync({
+            id: crowdfundId,
+            govActionAnchor: JSON.stringify({
+              url: govAnchor.url,
+              hash: govAnchor.hash,
+            }),
+          });
+        } catch (error) {
+          console.error("[ProposeGovAction] Failed to save govAction anchor:", error);
+          toast({
+            title: "Warning",
+            description: "Governance action proposed but anchor failed to save to database. Please refresh the page.",
+            variant: "destructive",
+          });
+        }
+      }
 
       toast({
         title: "Governance action proposed successfully",
@@ -133,7 +189,16 @@ export function ProposeGovAction({
           <AlertDescription>
             This step submits a governance proposal and locks the governance
             deposit. The crowdfund will transition from{" "}
-            <strong>RegisteredCerts</strong> to <strong>Proposed</strong> state.
+            <strong>Crowdfund</strong> to <strong>Proposed</strong> state.
+          </AlertDescription>
+        </Alert>
+
+        <Alert className="bg-blue-50 border-blue-200">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            <strong>Note:</strong> Currently only <strong>Info Action (NicePoll)</strong> is supported.
+            This is a governance action that has no effect on-chain, other than an on-chain record.
+            The validator is parameterized with NicePoll (VGovernanceAction constructor 6).
           </AlertDescription>
         </Alert>
 

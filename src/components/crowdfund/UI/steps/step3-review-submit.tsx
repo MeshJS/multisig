@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { api } from "@/utils/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
 import {
@@ -40,10 +41,23 @@ export function Step3ReviewSubmit({
   const [created, setCreated] = useState("");
   const [networkId, setNetworkId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const createButtonRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
   const { user } = useUser();
   const { connected, wallet } = useWallet();
+
+  // Scroll to create button when component mounts (when navigating to step 3)
+  useEffect(() => {
+    // Small delay to ensure DOM is rendered
+    const timer = setTimeout(() => {
+      createButtonRef.current?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+      });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Resolve network id from the wallet on client after mount
   useEffect(() => {
@@ -215,6 +229,7 @@ export function Step3ReviewSubmit({
         stake_register_deposit: formData.stake_register_deposit,
         drep_register_deposit: formData.drep_register_deposit,
         gov_deposit: formData.gov_deposit,
+        gov_action: formData.gov_action, // Will be converted to proper MeshJS GovernanceAction type
         govActionMetadataUrl: formData.govActionMetadataUrl,
         govActionMetadataHash: formData.govActionMetadataHash,
         drepMetadataUrl: formData.drepMetadataUrl,
@@ -287,6 +302,8 @@ export function Step3ReviewSubmit({
         hasGovContract: true,
         datumData,
       });
+
+      console.log("cachedGovActionParam:", contract.cachedGovActionParam);
       const {
         tx,
         paramUtxo,
@@ -308,7 +325,7 @@ export function Step3ReviewSubmit({
       
       console.log("[handleSubmit] Transaction signed, saving to database before submission...");
 
-      // Update the datum with the new values
+      // Prepare data for database entry (but don't create it yet)
       const updatedDatum: CrowdfundDatumTS = {
         stake_script: stake_script_hash,
         share_token: share_token,
@@ -335,8 +352,28 @@ export function Step3ReviewSubmit({
         drepMetadataHash: formData.drepMetadataHash,
       };
 
-      // Create the crowdfund in the database BEFORE submission
-      // This ensures we have the data even if submission fails
+      console.log("[handleSubmit] Submitting transaction...");
+
+      // Submit the transaction first - only create DB entry after successful submission
+      let submittedTxHash: string;
+      try {
+        // Await submission to ensure it completes (or fails) before proceeding
+        submittedTxHash = await wallet.submitTx(signedTx);
+        console.log("[handleSubmit] Transaction submitted successfully:", submittedTxHash);
+      } catch (submitError) {
+        // Transaction submission failed - don't create database entry
+        console.error("[handleSubmit] Transaction submission failed:", submitError);
+        toast({
+          title: "Transaction failed",
+          description: "Transaction submission failed. Please fix the issue and try again.",
+          variant: "destructive",
+        });
+        // Re-throw the error to be caught by outer catch block
+        throw submitError;
+      }
+
+      // Only create the crowdfund in the database AFTER successful submission
+      console.log("[handleSubmit] Creating crowdfund in database after successful submission...");
       const crowdfundRecord = await createCrowdfund.mutateAsync({
         name: formData.name,
         description: formData.description,
@@ -349,61 +386,13 @@ export function Step3ReviewSubmit({
         address: crowdfund_address,
         datum: JSON.stringify(updatedDatum),
         govDatum: JSON.stringify(govExtension),
-        // Spend reference script will be set after successful submission
-        // (We save to DB first to ensure data safety even if submission fails)
+        // Include the spend reference script since submission was successful
+        spendRefScript: JSON.stringify({
+          txHash: submittedTxHash,
+          outputIndex: 1,
+        }),
       });
-
-      console.log("[handleSubmit] Crowdfund saved to database, submitting transaction...");
-
-      // Now submit the transaction - await completion before continuing
-      let submittedTxHash: string;
-      try {
-        // Await submission to ensure it completes (or fails) before proceeding
-        submittedTxHash = await wallet.submitTx(signedTx);
-        console.log("[handleSubmit] Transaction submitted successfully:", submittedTxHash);
-      } catch (submitError) {
-        // Transaction submission failed - remove crowdfund from database
-        console.error("[handleSubmit] Transaction submission failed:", submitError);
-        
-        // Ensure we await the deletion before continuing
-        if (crowdfundRecord?.id) {
-          console.log("[handleSubmit] Deleting crowdfund from database due to transaction failure");
-          try {
-            await deleteCrowdfund.mutateAsync({ id: crowdfundRecord.id });
-            console.log("[handleSubmit] Crowdfund successfully deleted from database");
-            toast({
-              title: "Transaction failed",
-              description: "Crowdfund removed from database. Please fix the issue and try again.",
-              variant: "destructive",
-            });
-          } catch (deleteError) {
-            console.error("[handleSubmit] Failed to delete crowdfund:", deleteError);
-            toast({
-              title: "Transaction failed",
-              description: "Transaction submission failed. Please manually delete the crowdfund from the database.",
-              variant: "destructive",
-            });
-          }
-        }
-        
-        // Re-throw the error to be caught by outer catch block
-        throw submitError;
-      }
-
-      // Only proceed with update after successful submission
-      // Update the crowdfund with the spend reference script after successful submission
-      // Spend reference script is attached to output 1 in setupCrowdfund
-      if (crowdfundRecord?.id && submittedTxHash) {
-        console.log("[handleSubmit] Updating crowdfund with spend reference script");
-        await updateCrowdfund.mutateAsync({
-          id: crowdfundRecord.id,
-          spendRefScript: JSON.stringify({
-            txHash: submittedTxHash,
-            outputIndex: 1,
-          }),
-        });
-        console.log("[handleSubmit] Crowdfund updated with spend reference script");
-      }
+      console.log("[handleSubmit] Crowdfund created in database successfully");
 
       // Show success toast
       toast({
@@ -469,7 +458,7 @@ export function Step3ReviewSubmit({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-500" />
+            <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             Basic Information
           </CardTitle>
         </CardHeader>
@@ -498,7 +487,7 @@ export function Step3ReviewSubmit({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-purple-500" />
+            <Calendar className="h-5 w-5 text-purple-500 dark:text-purple-400" />
             Timeline
           </CardTitle>
         </CardHeader>
@@ -528,92 +517,98 @@ export function Step3ReviewSubmit({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-orange-500" />
+            <Settings className="h-5 w-5 text-orange-500 dark:text-orange-400" />
             Governance Extension
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <Badge variant="default" className="mb-4">
+            <Badge variant="default" className="mb-4 bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-300 border-green-500/50 dark:border-green-500/30">
               Enabled
             </Badge>
             
             {/* Deposit Settings */}
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-              <h4 className="mb-3 text-sm font-semibold text-orange-900">
-                Deposit Settings
-              </h4>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Stake Register Deposit (ADA)
-                  </label>
-                  <p className="text-lg font-semibold">
-                    {formatLovelaceToADA(formData.stake_register_deposit, 2000000)}
-                  </p>
+            <Alert className="border-orange-500/50 bg-orange-500/10 dark:border-orange-500/30 dark:bg-orange-500/20">
+              <Settings className="h-5 w-5 text-orange-700 dark:text-orange-300" />
+              <AlertDescription>
+                <h4 className="mb-3 text-sm font-semibold text-orange-700 dark:text-orange-300">
+                  Deposit Settings
+                </h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Stake Register Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold text-foreground">
+                      {formatLovelaceToADA(formData.stake_register_deposit, 2000000)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      DRep Register Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold text-foreground">
+                      {formatLovelaceToADA(formData.drep_register_deposit, 500000000)}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Governance Deposit (ADA)
+                    </label>
+                    <p className="text-lg font-semibold text-foreground">
+                      {formatLovelaceToADA(formData.gov_deposit, 100000000000)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    DRep Register Deposit (ADA)
-                  </label>
-                  <p className="text-lg font-semibold">
-                    {formatLovelaceToADA(formData.drep_register_deposit, 500000000)}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Governance Deposit (ADA)
-                  </label>
-                  <p className="text-lg font-semibold">
-                    {formatLovelaceToADA(formData.gov_deposit, 100000000000)}
-                  </p>
-                </div>
-              </div>
-            </div>
+              </AlertDescription>
+            </Alert>
 
             {/* Metadata Display */}
             {formData.govActionMetadataUrl &&
             formData.govActionMetadataHash ? (
-              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
-                <div className="mb-2 flex items-center gap-2 text-green-800">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-semibold">Metadata Uploaded</span>
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div>
-                    <span className="font-medium">Metadata URL:</span>{" "}
-                    <a
-                      href={formData.govActionMetadataUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="break-all text-blue-600 hover:underline"
-                    >
-                      {formData.govActionMetadataUrl}
-                    </a>
+              <Alert className="mt-4 border-green-500/50 bg-green-500/10 dark:border-green-500/30 dark:bg-green-500/20">
+                <CheckCircle className="h-5 w-5 text-green-700 dark:text-green-300" />
+                <AlertDescription>
+                  <div className="mb-2 flex items-center gap-2 text-green-700 dark:text-green-300">
+                    <span className="font-semibold">Metadata Uploaded</span>
                   </div>
-                  <div>
-                    <span className="font-medium">Metadata Hash:</span>{" "}
-                    <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
-                      {formData.govActionMetadataHash}
-                    </code>
+                  <div className="space-y-1 text-sm">
+                    <div>
+                      <span className="font-medium">Metadata URL:</span>{" "}
+                      <a
+                        href={formData.govActionMetadataUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        {formData.govActionMetadataUrl}
+                      </a>
+                    </div>
+                    <div>
+                      <span className="font-medium">Metadata Hash:</span>{" "}
+                      <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                        {formData.govActionMetadataHash}
+                      </code>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </AlertDescription>
+              </Alert>
             ) : (
-              <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                <p className="text-sm text-yellow-800">
+              <Alert className="mt-4 border-yellow-500/50 bg-yellow-500/10 dark:border-yellow-500/30 dark:bg-yellow-500/20">
+                <XCircle className="h-5 w-5 text-yellow-700 dark:text-yellow-300" />
+                <AlertDescription className="text-yellow-700 dark:text-yellow-300">
                   <strong>Warning:</strong> Governance action metadata has not
                   been uploaded. Please go back to Step 2 and upload the
                   metadata before submitting.
-                </p>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         </CardContent>
       </Card>
 
       {/* Submit Button */}
-      <div className="flex justify-center">
+      <div ref={createButtonRef} className="flex justify-center">
         <Button
           onClick={handleSubmit}
           disabled={
@@ -640,19 +635,21 @@ export function Step3ReviewSubmit({
 
       {/* Status Messages */}
       {!connected && (
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-center">
-          <p className="text-yellow-800">
+        <Alert className="border-yellow-500/50 bg-yellow-500/10 dark:border-yellow-500/30 dark:bg-yellow-500/20">
+          <XCircle className="h-5 w-5 text-yellow-700 dark:text-yellow-300" />
+          <AlertDescription className="text-center text-yellow-700 dark:text-yellow-300">
             Please connect your wallet to continue
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {created && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
-          <p className="text-green-800">
+        <Alert className="border-green-500/50 bg-green-500/10 dark:border-green-500/30 dark:bg-green-500/20">
+          <CheckCircle className="h-5 w-5 text-green-700 dark:text-green-300" />
+          <AlertDescription className="text-center text-green-700 dark:text-green-300">
             Crowdfund created successfully! ID: {created}
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

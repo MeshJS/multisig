@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Info, HelpCircle } from "lucide-react";
+import { Info, HelpCircle, Calendar } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -112,12 +112,18 @@ export function Step1BasicInfo({ formData, updateFormData }: Step1BasicInfoProps
                   </TooltipContent>
                 </Tooltip>
               </Label>
-              <Input
-                id="deadline"
-                type="date"
-                value={formData.deadline}
-                onChange={(e) => updateFormData({ deadline: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="deadline"
+                  type="date"
+                  value={formData.deadline}
+                  onChange={(e) => updateFormData({ deadline: e.target.value })}
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                  className="cursor-pointer pr-10 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-moz-calendar-picker-indicator]:opacity-0"
+                />
+                <Calendar className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
 
             <div className="space-y-2">
