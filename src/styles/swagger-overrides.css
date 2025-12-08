@@ -1,38 +1,2400 @@
-
+/* Base styles - Light mode defaults */
 .swagger-ui .scheme-container,
 .swagger-ui .opblock-tag,
 .swagger-ui .opblock-summary-description,
 .swagger-ui .opblock-summary-path,
 .swagger-ui .response-col_status {
-  color: #ffffff !important;
+  color: #3b4151 !important;
 }
 
+/* Form inputs and fields - Light mode */
 .swagger-ui input,
-.swagger-ui .auth-wrapper input {
+.swagger-ui .auth-wrapper input,
+.swagger-ui textarea,
+.swagger-ui select {
   color: #000 !important;
   background-color: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+}
+
+.swagger-ui input:focus,
+.swagger-ui textarea:focus,
+.swagger-ui select:focus {
+  border-color: rgba(0, 0, 0, 0.4) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui input::placeholder,
+.swagger-ui textarea::placeholder {
+  color: rgba(0, 0, 0, 0.5) !important;
 }
 
 .swagger-ui .auth-wrapper {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Authorization modal/popup - Light mode */
+.swagger-ui .modal-ux,
+.swagger-ui .modal-ux-backdrop {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.swagger-ui .modal-ux-content {
+  background-color: #ffffff !important;
+  color: #3b4151 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.swagger-ui .modal-ux-header {
+  background-color: #ffffff !important;
+  color: #3b4151 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+  padding: 16px 20px !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+
+.swagger-ui .modal-ux-header h3,
+.swagger-ui .modal-ux-header h4,
+.swagger-ui .modal-ux-header div {
+  color: #3b4151 !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.swagger-ui .modal-ux-header .close-modal {
+  background-color: transparent !important;
+  border: none !important;
+  color: #3b4151 !important;
+  cursor: pointer !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  transition: background-color 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.swagger-ui .modal-ux-header .close-modal:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.swagger-ui .modal-ux-content .auth-container {
+  color: #3b4151 !important;
+  padding: 20px !important;
+  background-color: #ffffff !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+.swagger-ui .modal-ux-content > div:not(.modal-ux-header) {
+  padding: 20px !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+.swagger-ui .modal-ux-content .auth-container .auth-wrapper {
+  border-radius: 0 !important;
+  background-color: transparent !important;
+}
+
+.swagger-ui .modal-ux-content .auth-container input,
+.swagger-ui .modal-ux-content .auth-container textarea {
+  border-radius: 4px !important;
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+}
+
+.swagger-ui .modal-ux-content .auth-container .btn-done,
+.swagger-ui .modal-ux-content .auth-container .btn-cancel {
+  border-radius: 4px !important;
+}
+
+.swagger-ui .modal-ux-content p,
+.swagger-ui .modal-ux-content div,
+.swagger-ui .modal-ux-content span {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .modal-ux-content h1,
+.swagger-ui .modal-ux-content h2,
+.swagger-ui .modal-ux-content h3,
+.swagger-ui .modal-ux-content h4 {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .modal-ux-content code {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+  color: #3b4151 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .modal-ux-content pre {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #3b4151 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .modal-ux-content ul,
+.swagger-ui .modal-ux-content ol {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .modal-ux-content li {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .modal-ux-content strong {
+  color: #1a1d29 !important;
+}
+
+.swagger-ui .modal-ux-content .btn-done,
+.swagger-ui .modal-ux-content .btn-cancel {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .modal-ux-content .btn-done:hover,
+.swagger-ui .modal-ux-content .btn-cancel:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
 }
 
 .swagger-ui .opblock .opblock-section-header {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Header section styling - Light mode */
+.swagger-ui .info {
+  margin: 20px 0;
+}
+
+.swagger-ui .info .title,
+.swagger-ui .topbar .topbar-wrapper span,
+.swagger-ui .info h1 {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .info .title {
+  font-size: 36px !important;
+  font-weight: 600 !important;
+  margin-bottom: 8px !important;
+  color: #3b4151 !important;
+  line-height: 1.2 !important;
+}
+
+.swagger-ui .info .title small {
+  font-size: 18px !important;
+  font-weight: 400 !important;
+  color: rgba(59, 65, 81, 0.8) !important;
+  margin-left: 12px !important;
+}
+
+.swagger-ui .info .title small pre {
+  background: transparent !important;
+  color: rgba(59, 65, 81, 0.8) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 18px !important;
+}
+
+.swagger-ui .info .description,
+.swagger-ui .info p {
+  color: #3b4151 !important;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+.swagger-ui .info .description {
+  margin-top: 12px !important;
+  margin-bottom: 20px !important;
+}
+
+/* Topbar styling - Light mode */
+.swagger-ui .topbar {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .topbar .topbar-wrapper {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .topbar .topbar-wrapper span {
+  color: #3b4151 !important;
+}
+
+/* Authorize button styling - Light mode */
+.swagger-ui .btn.authorize {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .btn.authorize:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  border-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+.swagger-ui .scheme-container {
+  background: rgba(0, 0, 0, 0.03) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.1);
+  padding: 16px !important;
+  margin: 20px 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+/* Auth info text next to authorize button - Light mode */
+.swagger-ui .scheme-container .auth-info-text {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  color: #3b4151 !important;
+  margin-top: 8px !important;
+}
+
+/* Token generator tooltip button - Light mode */
+.swagger-ui .token-generator-tooltip {
+  display: inline-block !important;
+  margin-left: 12px !important;
+}
+
+.swagger-ui .token-generator-btn {
+  padding: 6px 12px !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+  border-radius: 6px !important;
+  color: #3b82f6 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.swagger-ui .token-generator-btn:hover {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+.swagger-ui .token-generator-btn:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+/* Wallet connect hint - Light mode */
+.swagger-ui .wallet-connect-hint {
+  display: inline-block !important;
+  margin-left: 12px !important;
+}
+
+.swagger-ui .wallet-connect-hint-text {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 12px !important;
+  background-color: rgba(251, 191, 36, 0.1) !important;
+  border: 1px solid rgba(251, 191, 36, 0.3) !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  color: #92400e !important;
+}
+
+.swagger-ui .wallet-connect-hint-text .wallet-hint-icon {
+  font-size: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.swagger-ui .wallet-connect-hint-text .wallet-hint-content {
+  flex: 1 !important;
+  line-height: 1.4 !important;
+}
+
+.swagger-ui .scheme-container .auth-info-text .auth-info-icon {
+  font-size: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.swagger-ui .scheme-container .auth-info-text .auth-info-content {
+  flex: 1 !important;
+  line-height: 1.4 !important;
+}
+
+.swagger-ui .scheme-container .auth-info-text code {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+  color: #3b4151 !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+  font-size: 12px !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .info .base-url {
+  color: rgba(59, 65, 81, 0.7) !important;
+  font-size: 14px !important;
+}
+
+/* Code blocks in description - Light mode */
+.swagger-ui .info pre {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #3b4151 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px !important;
+  padding: 8px !important;
+}
+
+/* Links - Light mode */
+.swagger-ui .info a {
+  color: #3b4151 !important;
+  text-decoration: underline !important;
+}
+
+.swagger-ui .info a:hover {
+  color: #1a1d29 !important;
+}
+
+/* API Docs wrapper container - Light mode */
+.api-docs-wrapper {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .api-docs-wrapper {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3) !important;
+  }
+}
+
+html.dark .api-docs-wrapper {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Overall Swagger UI container */
+.swagger-ui {
+  background: transparent !important;
+}
+
+.swagger-ui .wrapper {
+  padding: 0 !important;
+}
+
+/* Markdown content in description - Light mode */
+.swagger-ui .info .description {
+  max-width: 100% !important;
+}
+
+.swagger-ui .info .description h1,
+.swagger-ui .info .description h2,
+.swagger-ui .info .description h3,
+.swagger-ui .info .description h4 {
+  color: #3b4151 !important;
+  font-weight: 600 !important;
+  margin-top: 24px !important;
+  margin-bottom: 12px !important;
+  line-height: 1.3 !important;
+}
+
+.swagger-ui .info .description h1 {
+  font-size: 28px !important;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.1) !important;
+  padding-bottom: 8px !important;
+}
+
+.swagger-ui .info .description h2 {
+  font-size: 24px !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+  padding-bottom: 6px !important;
+}
+
+.swagger-ui .info .description h3 {
+  font-size: 20px !important;
+}
+
+.swagger-ui .info .description h4 {
+  font-size: 18px !important;
+}
+
+.swagger-ui .info .description p {
+  margin: 12px 0 !important;
+  line-height: 1.7 !important;
+}
+
+.swagger-ui .info .description ul,
+.swagger-ui .info .description ol {
+  margin: 12px 0 !important;
+  padding-left: 24px !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .info .description li {
+  margin: 6px 0 !important;
+  color: #3b4151 !important;
+  line-height: 1.7 !important;
+}
+
+.swagger-ui .info .description li::marker {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .info .description strong {
+  color: #1a1d29 !important;
+  font-weight: 600 !important;
+}
+
+.swagger-ui .info .description code {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+  color: #3b4151 !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .info .description pre {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  overflow-x: auto !important;
+}
+
+/* Code blocks and syntax highlighting - Light mode */
+.swagger-ui pre,
+.swagger-ui .example,
+.swagger-ui .microlight,
+.swagger-ui pre.example,
+.swagger-ui pre.microlight {
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.swagger-ui .info .description pre code {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+  .swagger-ui .scheme-container,
+  .swagger-ui .opblock-tag,
+  .swagger-ui .opblock-summary-description,
+  .swagger-ui .opblock-summary-path,
+  .swagger-ui .response-col_status {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .opblock .opblock-section-header {
+    background: hsla(270, 2%, 19%, 0.3);
+  }
+
+  .swagger-ui .info .title,
+  .swagger-ui .topbar .topbar-wrapper span,
+  .swagger-ui .info h1 {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .info .title {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .info .title small {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  .swagger-ui .info .title small pre {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  .swagger-ui .info .description,
+  .swagger-ui .info p {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .topbar {
+    background-color: rgba(0, 0, 0, 0.2) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .topbar .topbar-wrapper {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .topbar .topbar-wrapper span {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .btn.authorize {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .btn.authorize:hover {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+  }
+
+  .swagger-ui .scheme-container {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 16px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Auth info text - Dark mode */
+  .swagger-ui .scheme-container .auth-info-text {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Token generator tooltip button - Dark mode */
+  .swagger-ui .token-generator-btn {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+    color: #60a5fa !important;
+  }
+
+  .swagger-ui .token-generator-btn:hover {
+    background-color: rgba(59, 130, 246, 0.25) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+  }
+
+  /* Wallet connect hint - Dark mode */
+  .swagger-ui .wallet-connect-hint-text {
+    background-color: rgba(251, 191, 36, 0.15) !important;
+    border-color: rgba(251, 191, 36, 0.3) !important;
+    color: #fbbf24 !important;
+  }
+
+  .swagger-ui .scheme-container .auth-info-text code {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .info .base-url {
+    color: rgba(255, 255, 255, 0.7) !important;
+  }
+
+  .swagger-ui .info pre {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .info a {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .info a:hover {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .auth-wrapper {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Authorization modal/popup - Dark mode */
+  .swagger-ui .modal-ux,
+  .swagger-ui .modal-ux-backdrop {
+    background-color: rgba(0, 0, 0, 0.7) !important;
+  }
+
+  .swagger-ui .modal-ux-content {
+    background-color: rgba(30, 30, 30, 0.95) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .swagger-ui .modal-ux-header {
+    background-color: rgba(30, 30, 30, 0.95) !important;
+    color: #ffffff !important;
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .modal-ux-header h3,
+  .swagger-ui .modal-ux-header h4,
+  .swagger-ui .modal-ux-header div {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .modal-ux-header .close-modal {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .modal-ux-header .close-modal:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .modal-ux-content .auth-container {
+    color: rgba(255, 255, 255, 0.9) !important;
+    padding: 20px !important;
+    background-color: rgba(30, 30, 30, 0.95) !important;
+    border-radius: 0 0 8px 8px !important;
+  }
+
+  .swagger-ui .modal-ux-content > div:not(.modal-ux-header) {
+    padding: 20px !important;
+    border-radius: 0 0 8px 8px !important;
+  }
+
+  .swagger-ui .modal-ux-content .auth-container .auth-wrapper {
+    border-radius: 0 !important;
+    background-color: transparent !important;
+  }
+
+  .swagger-ui .modal-ux-content .auth-container input,
+  .swagger-ui .modal-ux-content .auth-container textarea {
+    border-radius: 4px !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .modal-ux-content .auth-container .btn-done,
+  .swagger-ui .modal-ux-content .auth-container .btn-cancel {
+    border-radius: 4px !important;
+  }
+
+  .swagger-ui .modal-ux-content p,
+  .swagger-ui .modal-ux-content div,
+  .swagger-ui .modal-ux-content span {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .modal-ux-content h1,
+  .swagger-ui .modal-ux-content h2,
+  .swagger-ui .modal-ux-content h3,
+  .swagger-ui .modal-ux-content h4 {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .modal-ux-content h1 {
+    border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .swagger-ui .modal-ux-content h2 {
+    border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .swagger-ui .modal-ux-content code {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .modal-ux-content pre {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .modal-ux-content pre code {
+    background-color: transparent !important;
+    border: none !important;
+  }
+
+  .swagger-ui .modal-ux-content ul,
+  .swagger-ui .modal-ux-content ol {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .modal-ux-content li {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .modal-ux-content li::marker {
+    color: rgba(255, 255, 255, 0.7) !important;
+  }
+
+  .swagger-ui .modal-ux-content strong {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .modal-ux-content .btn-done,
+  .swagger-ui .modal-ux-content .btn-cancel {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .modal-ux-content .btn-done:hover,
+  .swagger-ui .modal-ux-content .btn-cancel:hover {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+  }
+
+  /* Form inputs and fields - Dark mode */
+  .swagger-ui input,
+  .swagger-ui .auth-wrapper input,
+  .swagger-ui textarea,
+  .swagger-ui select {
+    color: #ffffff !important;
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .swagger-ui input:focus,
+  .swagger-ui textarea:focus,
+  .swagger-ui select:focus {
+    border-color: rgba(255, 255, 255, 0.4) !important;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui input::placeholder,
+  .swagger-ui textarea::placeholder {
+    color: rgba(255, 255, 255, 0.5) !important;
+  }
+
+  /* Labels and form labels - Dark mode */
+  .swagger-ui label,
+  .swagger-ui .parameter__extension,
+  .swagger-ui .parameter__deprecated {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Section headers - Dark mode */
+  .swagger-ui .opblock-section-header h4,
+  .swagger-ui .opblock-section-header label,
+  .swagger-ui h4,
+  .swagger-ui .parameters-container h4,
+  .swagger-ui .responses-inner h4,
+  .swagger-ui .opblock-section-header span,
+  .swagger-ui .opblock-section-header .opblock-section-header-title {
+    color: #ffffff !important;
+  }
+
+  /* Parameters section specifically - Dark mode */
+  .swagger-ui .parameters-container > h4,
+  .swagger-ui .parameters-container > label,
+  .swagger-ui .parameters-container > span,
+  .swagger-ui .parameters-container h4 span {
+    color: #ffffff !important;
+  }
+
+  /* Buttons - Dark mode */
+  .swagger-ui .btn,
+  .swagger-ui button,
+  .swagger-ui .execute,
+  .swagger-ui .btn-cancel,
+  .swagger-ui .btn-done,
+  .swagger-ui .btn-clear {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .btn:hover,
+  .swagger-ui button:hover,
+  .swagger-ui .execute:hover {
+    background-color: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+  }
+
+  .swagger-ui .btn.execute {
+    background-color: #3b82f6 !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .btn.execute:hover {
+    background-color: #2563eb !important;
+  }
+
+  /* Checkboxes and radio buttons - Dark mode */
+  .swagger-ui input[type="checkbox"],
+  .swagger-ui input[type="radio"] {
+    accent-color: #3b82f6 !important;
+  }
+
+  /* Select dropdowns - Dark mode */
+  .swagger-ui select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E") !important;
+  }
+
+  /* Parameter sections - Dark mode */
+  .swagger-ui .parameters-container,
+  .swagger-ui .parameters-col_description {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .parameter__required {
+    color: #f87171 !important;
+  }
+
+  /* Response sections - Dark mode */
+  .swagger-ui .response {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Markdown content in description - Dark mode */
+  .swagger-ui .info .description h1,
+  .swagger-ui .info .description h2,
+  .swagger-ui .info .description h3,
+  .swagger-ui .info .description h4 {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .info .description h1 {
+    border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .swagger-ui .info .description h2 {
+    border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .swagger-ui .info .description ul,
+  .swagger-ui .info .description ol {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .info .description li {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .info .description li::marker {
+    color: rgba(255, 255, 255, 0.7) !important;
+  }
+
+  .swagger-ui .info .description strong {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .info .description code {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 6px !important;
+  }
+
+  .swagger-ui .info .description pre {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .info .description pre code {
+    background-color: transparent !important;
+    border: none !important;
+  }
+
+  /* Code blocks and syntax highlighting - Dark mode */
+  .swagger-ui pre,
+  .swagger-ui .example,
+  .swagger-ui .microlight,
+  .swagger-ui pre.example,
+  .swagger-ui pre.microlight {
+    border-radius: 8px !important;
+    overflow: hidden !important;
+  }
+}
+
+/* Support for .dark class selector (used by Tailwind) */
+html.dark .swagger-ui .scheme-container,
+html.dark .swagger-ui .opblock-tag,
+html.dark .swagger-ui .opblock-summary-description,
+html.dark .swagger-ui .opblock-summary-path,
+html.dark .swagger-ui .response-col_status {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .opblock .opblock-section-header {
   background: hsla(270, 2%, 19%, 0.3);
 }
 
-/* Improve visibility of Swagger UI title, version, and description */
-.swagger-ui .info .title,
-.swagger-ui .topbar .topbar-wrapper span,
-.swagger-ui .info h1,
-.swagger-ui .info p {
+html.dark .swagger-ui .info .title,
+html.dark .swagger-ui .topbar .topbar-wrapper span,
+html.dark .swagger-ui .info h1 {
   color: #ffffff !important;
 }
-.swagger-ui .scheme-container {
+
+html.dark .swagger-ui .info .title {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .info .title small {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+html.dark .swagger-ui .info .title small pre {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+html.dark .swagger-ui .info .description,
+html.dark .swagger-ui .info p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .topbar {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .topbar .topbar-wrapper {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .topbar .topbar-wrapper span {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .btn.authorize {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .btn.authorize:hover {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+html.dark .swagger-ui .scheme-container {
   background: rgba(255, 255, 255, 0.05) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
   box-shadow: 0 0 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Auth info text - Dark class selector */
+html.dark .swagger-ui .scheme-container .auth-info-text {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Token generator tooltip button - Dark class selector */
+html.dark .swagger-ui .token-generator-btn {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: #60a5fa !important;
+}
+
+html.dark .swagger-ui .token-generator-btn:hover {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Wallet connect hint - Dark class selector */
+html.dark .swagger-ui .wallet-connect-hint-text {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+  border-color: rgba(251, 191, 36, 0.3) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .swagger-ui .scheme-container .auth-info-text code {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .info .base-url {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+html.dark .swagger-ui .info pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .info a {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .info a:hover {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .auth-wrapper {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Authorization modal/popup - Dark class selector */
+html.dark .swagger-ui .modal-ux,
+html.dark .swagger-ui .modal-ux-backdrop {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content {
+  background-color: rgba(30, 30, 30, 0.95) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+html.dark .swagger-ui .modal-ux-header {
+  background-color: rgba(30, 30, 30, 0.95) !important;
+  color: #ffffff !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .modal-ux-header h3,
+html.dark .swagger-ui .modal-ux-header h4,
+html.dark .swagger-ui .modal-ux-header div {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .modal-ux-header .close-modal {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .modal-ux-header .close-modal:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .auth-container {
+  color: rgba(255, 255, 255, 0.9) !important;
+  padding: 20px !important;
+  background-color: rgba(30, 30, 30, 0.95) !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+html.dark .swagger-ui .modal-ux-content > div:not(.modal-ux-header) {
+  padding: 20px !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .auth-container .auth-wrapper {
+  border-radius: 0 !important;
+  background-color: transparent !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .auth-container input,
+html.dark .swagger-ui .modal-ux-content .auth-container textarea {
+  border-radius: 4px !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .auth-container .btn-done,
+html.dark .swagger-ui .modal-ux-content .auth-container .btn-cancel {
+  border-radius: 4px !important;
+}
+
+html.dark .swagger-ui .modal-ux-content p,
+html.dark .swagger-ui .modal-ux-content div,
+html.dark .swagger-ui .modal-ux-content span {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content h1,
+html.dark .swagger-ui .modal-ux-content h2,
+html.dark .swagger-ui .modal-ux-content h3,
+html.dark .swagger-ui .modal-ux-content h4 {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .modal-ux-content h1 {
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content h2 {
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content code {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content pre code {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+html.dark .swagger-ui .modal-ux-content ul,
+html.dark .swagger-ui .modal-ux-content ol {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content li {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content li::marker {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+html.dark .swagger-ui .modal-ux-content strong {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .btn-done,
+html.dark .swagger-ui .modal-ux-content .btn-cancel {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .modal-ux-content .btn-done:hover,
+html.dark .swagger-ui .modal-ux-content .btn-cancel:hover {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Form inputs and fields - Dark class selector */
+html.dark .swagger-ui input,
+html.dark .swagger-ui .auth-wrapper input,
+html.dark .swagger-ui textarea,
+html.dark .swagger-ui select {
+  color: #ffffff !important;
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .swagger-ui input:focus,
+html.dark .swagger-ui textarea:focus,
+html.dark .swagger-ui select:focus {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui input::placeholder,
+html.dark .swagger-ui textarea::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Labels and form labels - Dark class selector */
+html.dark .swagger-ui label,
+html.dark .swagger-ui .parameter__extension,
+html.dark .swagger-ui .parameter__deprecated {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Section headers - Dark class selector */
+html.dark .swagger-ui .opblock-section-header h4,
+html.dark .swagger-ui .opblock-section-header label,
+html.dark .swagger-ui h4,
+html.dark .swagger-ui .parameters-container h4,
+html.dark .swagger-ui .responses-inner h4,
+html.dark .swagger-ui .opblock-section-header span,
+html.dark .swagger-ui .opblock-section-header .opblock-section-header-title {
+  color: #ffffff !important;
+}
+
+/* Parameters section specifically - Dark class selector */
+html.dark .swagger-ui .parameters-container > h4,
+html.dark .swagger-ui .parameters-container > label,
+html.dark .swagger-ui .parameters-container > span,
+html.dark .swagger-ui .parameters-container h4 span {
+  color: #ffffff !important;
+}
+
+/* Buttons - Dark class selector */
+html.dark .swagger-ui .btn,
+html.dark .swagger-ui button,
+html.dark .swagger-ui .execute,
+html.dark .swagger-ui .btn-cancel,
+html.dark .swagger-ui .btn-done,
+html.dark .swagger-ui .btn-clear {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .btn:hover,
+html.dark .swagger-ui button:hover,
+html.dark .swagger-ui .execute:hover {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+html.dark .swagger-ui .btn.execute {
+  background-color: #3b82f6 !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .btn.execute:hover {
+  background-color: #2563eb !important;
+}
+
+/* Checkboxes and radio buttons - Dark class selector */
+html.dark .swagger-ui input[type="checkbox"],
+html.dark .swagger-ui input[type="radio"] {
+  accent-color: #3b82f6 !important;
+}
+
+/* Select dropdowns - Dark class selector */
+html.dark .swagger-ui select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E") !important;
+}
+
+/* Parameter sections - Dark class selector */
+html.dark .swagger-ui .parameters-container,
+html.dark .swagger-ui .parameters-col_description {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .parameter__required {
+  color: #f87171 !important;
+}
+
+/* Response sections - Dark class selector */
+html.dark .swagger-ui .response {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Markdown content in description - Dark class selector */
+html.dark .swagger-ui .info .description h1,
+html.dark .swagger-ui .info .description h2,
+html.dark .swagger-ui .info .description h3,
+html.dark .swagger-ui .info .description h4 {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .info .description h1 {
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .swagger-ui .info .description h2 {
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .swagger-ui .info .description ul,
+html.dark .swagger-ui .info .description ol {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .info .description li {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .info .description li::marker {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+html.dark .swagger-ui .info .description strong {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .info .description code {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+}
+
+html.dark .swagger-ui .info .description pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .info .description pre code {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* Code blocks and syntax highlighting - Dark class selector */
+html.dark .swagger-ui pre,
+html.dark .swagger-ui .example,
+html.dark .swagger-ui .microlight,
+html.dark .swagger-ui pre.example,
+html.dark .swagger-ui pre.microlight {
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+/* Ensure proper spacing and visibility for all info elements */
+.swagger-ui .info .main {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Labels and form labels - Light mode */
+.swagger-ui label,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__extension,
+.swagger-ui .parameter__in,
+.swagger-ui .parameter__type,
+.swagger-ui .response-col_status,
+.swagger-ui .response-col_description,
+.swagger-ui .prop-name,
+.swagger-ui .prop-type,
+.swagger-ui .prop-format,
+.swagger-ui .prop-enum,
+.swagger-ui .model-title,
+.swagger-ui .model-box-control,
+.swagger-ui .opblock-summary-path,
+.swagger-ui .opblock-summary-description {
+  color: #3b4151 !important;
+}
+
+/* Section headers - Light mode */
+.swagger-ui .opblock-section-header h4,
+.swagger-ui .opblock-section-header label,
+.swagger-ui h4,
+.swagger-ui .parameters-container h4,
+.swagger-ui .responses-inner h4,
+.swagger-ui .opblock-section-header span,
+.swagger-ui .opblock-section-header .opblock-section-header-title {
+  color: #3b4151 !important;
+}
+
+/* Parameters section specifically */
+.swagger-ui .parameters-container > h4,
+.swagger-ui .parameters-container > label,
+.swagger-ui .parameters-container > span {
+  color: #3b4151 !important;
+}
+
+/* Buttons - Light mode */
+.swagger-ui .btn,
+.swagger-ui button,
+.swagger-ui .execute,
+.swagger-ui .btn-cancel,
+.swagger-ui .btn-done,
+.swagger-ui .btn-clear {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .btn:hover,
+.swagger-ui button:hover,
+.swagger-ui .execute:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  border-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+.swagger-ui .btn.execute {
+  background-color: #3b82f6 !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.swagger-ui .btn.execute:hover {
+  background-color: #2563eb !important;
+}
+
+/* Checkboxes and radio buttons - Light mode */
+.swagger-ui input[type="checkbox"],
+.swagger-ui input[type="radio"] {
+  accent-color: #3b82f6 !important;
+}
+
+/* Select dropdowns - Light mode */
+.swagger-ui select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233b4151' d='M6 9L1 4h10z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  padding-right: 30px !important;
+}
+
+/* Parameter sections - Light mode */
+.swagger-ui .parameters-container,
+.swagger-ui .parameters-col_description,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__extension,
+.swagger-ui .parameter__in,
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__deprecated {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .parameter__required {
+  color: #dc2626 !important;
+}
+
+/* Response sections - Light mode */
+.swagger-ui .response,
+.swagger-ui .response-col_status,
+.swagger-ui .response-col_description,
+.swagger-ui .response-col_links {
+  color: #3b4151 !important;
+}
+
+/* Operation block controls and icons - Light mode */
+.swagger-ui .opblock-summary-control {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary-control svg,
+.swagger-ui .opblock-summary-control .opblock-summary-control-icon {
+  fill: #3b4151 !important;
+  color: #3b4151 !important;
+}
+
+/* Chevron/wedge icons - Light mode */
+.swagger-ui .opblock-summary-control-btn,
+.swagger-ui .opblock-summary button[class*="control"],
+.swagger-ui .opblock-tag-section button,
+.swagger-ui button[aria-label*="expand"],
+.swagger-ui button[aria-label*="collapse"],
+.swagger-ui .opblock-summary .opblock-summary-control {
+  background-color: transparent !important;
+  border: none !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary-control-btn svg,
+.swagger-ui .opblock-summary button[class*="control"] svg,
+.swagger-ui .opblock-tag-section button svg,
+.swagger-ui button[aria-label*="expand"] svg,
+.swagger-ui button[aria-label*="collapse"] svg,
+.swagger-ui .opblock-summary .opblock-summary-control svg {
+  fill: #3b4151 !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary-control-btn:hover,
+.swagger-ui .opblock-summary button[class*="control"]:hover,
+.swagger-ui .opblock-tag-section button:hover,
+.swagger-ui button[aria-label*="expand"]:hover,
+.swagger-ui button[aria-label*="collapse"]:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Tag section buttons (like V1 header) - Light mode */
+.swagger-ui .opblock-tag-section button,
+.swagger-ui .opblock-tag button {
+  background-color: transparent !important;
+  border: none !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-tag-section button svg,
+.swagger-ui .opblock-tag button svg {
+  fill: #3b4151 !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-tag-section button:hover,
+.swagger-ui .opblock-tag button:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Lock/unlock icons on endpoints - Light mode */
+.swagger-ui .opblock-summary .view-line-link,
+.swagger-ui .opblock-summary .authorization__btn,
+.swagger-ui .opblock-summary .opblock-summary-control-btn,
+.swagger-ui .opblock-summary button[class*="authorization"],
+.swagger-ui .opblock-summary [class*="lock"],
+.swagger-ui .opblock-summary [class*="unlock"] {
+  background-color: transparent !important;
+  border: none !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary .view-line-link svg,
+.swagger-ui .opblock-summary .authorization__btn svg,
+.swagger-ui .opblock-summary .opblock-summary-control-btn svg,
+.swagger-ui .opblock-summary button[class*="authorization"] svg,
+.swagger-ui .opblock-summary [class*="lock"] svg,
+.swagger-ui .opblock-summary [class*="unlock"] svg {
+  fill: #3b4151 !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary .view-line-link:hover,
+.swagger-ui .opblock-summary .authorization__btn:hover,
+.swagger-ui .opblock-summary .opblock-summary-control-btn:hover,
+.swagger-ui .opblock-summary button[class*="authorization"]:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Additional Swagger UI elements - Light mode */
+.swagger-ui table thead tr td,
+.swagger-ui table thead tr th {
+  color: #3b4151 !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+.swagger-ui table tbody tr td,
+.swagger-ui table tbody tr th {
+  color: #3b4151 !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__in,
+.swagger-ui .response-col_links {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .model-box,
+.swagger-ui .model-title {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .model-box-control {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-summary {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .opblock-description-wrapper,
+.swagger-ui .opblock-description {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .response-col_description,
+.swagger-ui .response-col_links {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .prop-name,
+.swagger-ui .prop-type {
+  color: #3b4151 !important;
+}
+
+.swagger-ui code {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  color: #3b4151 !important;
+}
+
+.swagger-ui .highlight-code {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.swagger-ui .microlight {
+  color: #3b4151 !important;
+}
+
+/* Try it out sections - Light mode */
+.swagger-ui .opblock.opblock-post,
+.swagger-ui .opblock.opblock-get,
+.swagger-ui .opblock.opblock-put,
+.swagger-ui .opblock.opblock-delete,
+.swagger-ui .opblock.opblock-patch {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Response examples and code - Light mode */
+.swagger-ui .response-content-type,
+.swagger-ui .response-content-type select {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .highlight-code .microlight {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Schema definitions - Light mode */
+.swagger-ui .model-toggle,
+.swagger-ui .model-jump-to-path {
+  color: #3b4151 !important;
+}
+
+.swagger-ui .model-toggle:hover,
+.swagger-ui .model-jump-to-path:hover {
+  color: #1a1d29 !important;
+}
+
+/* Loading and status indicators - Light mode */
+.swagger-ui .loading-container .loading {
+  color: #3b4151 !important;
+}
+
+/* Error messages - Light mode */
+.swagger-ui .errors-wrapper {
+  background-color: rgba(220, 38, 38, 0.1) !important;
+  border-color: rgba(220, 38, 38, 0.3) !important;
+  color: #dc2626 !important;
+}
+
+/* Dark mode - Additional elements */
+@media (prefers-color-scheme: dark) {
+  .swagger-ui table thead tr td,
+  .swagger-ui table thead tr th {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui table tbody tr td,
+  .swagger-ui table tbody tr th {
+    color: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .swagger-ui .parameter__name,
+  .swagger-ui .parameter__type,
+  .swagger-ui .parameter__in,
+  .swagger-ui .response-col_links {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .model-box,
+  .swagger-ui .model-title {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .model-box-control {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .opblock-summary {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .opblock-description-wrapper p,
+  .swagger-ui .opblock-description-wrapper,
+  .swagger-ui .opblock-description {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .response-col_description,
+  .swagger-ui .response-col_links {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .prop-name,
+  .swagger-ui .prop-type {
+    color: #ffffff !important;
+  }
+
+  .swagger-ui code {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    color: #ffffff !important;
+  }
+
+  .swagger-ui .highlight-code {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .swagger-ui .microlight {
+    color: #ffffff !important;
+  }
+
+  /* Operation block controls and icons - Dark mode */
+  .swagger-ui .opblock-summary-control {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-summary-control svg,
+  .swagger-ui .opblock-summary-control .opblock-summary-control-icon {
+    fill: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Chevron/wedge icons - Dark mode */
+  .swagger-ui .opblock-summary-control-btn,
+  .swagger-ui .opblock-summary button[class*="control"],
+  .swagger-ui .opblock-tag-section button,
+  .swagger-ui button[aria-label*="expand"],
+  .swagger-ui button[aria-label*="collapse"],
+  .swagger-ui .opblock-summary .opblock-summary-control {
+    background-color: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-summary-control-btn svg,
+  .swagger-ui .opblock-summary button[class*="control"] svg,
+  .swagger-ui .opblock-tag-section button svg,
+  .swagger-ui button[aria-label*="expand"] svg,
+  .swagger-ui button[aria-label*="collapse"] svg,
+  .swagger-ui .opblock-summary .opblock-summary-control svg {
+    fill: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-summary-control-btn:hover,
+  .swagger-ui .opblock-summary button[class*="control"]:hover,
+  .swagger-ui .opblock-tag-section button:hover,
+  .swagger-ui button[aria-label*="expand"]:hover,
+  .swagger-ui button[aria-label*="collapse"]:hover {
+    background-color: transparent !important;
+    opacity: 0.7 !important;
+  }
+
+  /* Tag section buttons (like V1 header) - Dark mode */
+  .swagger-ui .opblock-tag-section button,
+  .swagger-ui .opblock-tag button {
+    background-color: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-tag-section button svg,
+  .swagger-ui .opblock-tag button svg {
+    fill: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-tag-section button:hover,
+  .swagger-ui .opblock-tag button:hover {
+    background-color: transparent !important;
+    opacity: 0.7 !important;
+  }
+
+  /* Lock/unlock icons on endpoints - Dark mode */
+  .swagger-ui .opblock-summary .view-line-link,
+  .swagger-ui .opblock-summary .authorization__btn,
+  .swagger-ui .opblock-summary .opblock-summary-control-btn,
+  .swagger-ui .opblock-summary button[class*="authorization"],
+  .swagger-ui .opblock-summary [class*="lock"],
+  .swagger-ui .opblock-summary [class*="unlock"] {
+    background-color: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-summary .view-line-link svg,
+  .swagger-ui .opblock-summary .authorization__btn svg,
+  .swagger-ui .opblock-summary .opblock-summary-control-btn svg,
+  .swagger-ui .opblock-summary button[class*="authorization"] svg,
+  .swagger-ui .opblock-summary [class*="lock"] svg,
+  .swagger-ui .opblock-summary [class*="unlock"] svg {
+    fill: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .opblock-summary .view-line-link:hover,
+  .swagger-ui .opblock-summary .authorization__btn:hover,
+  .swagger-ui .opblock-summary .opblock-summary-control-btn:hover,
+  .swagger-ui .opblock-summary button[class*="authorization"]:hover {
+    background-color: transparent !important;
+    opacity: 0.7 !important;
+  }
+
+  /* Try it out sections - Dark mode */
+  .swagger-ui .opblock.opblock-post,
+  .swagger-ui .opblock.opblock-get,
+  .swagger-ui .opblock.opblock-put,
+  .swagger-ui .opblock.opblock-delete,
+  .swagger-ui .opblock.opblock-patch {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .opblock.opblock-post .opblock-summary {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .swagger-ui .opblock.opblock-get .opblock-summary {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  /* Response examples and code - Dark mode */
+  .swagger-ui .response-content-type,
+  .swagger-ui .response-content-type select {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .highlight-code .microlight {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+  }
+
+  /* Schema definitions - Dark mode */
+  .swagger-ui .model-toggle,
+  .swagger-ui .model-jump-to-path {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .swagger-ui .model-toggle:hover,
+  .swagger-ui .model-jump-to-path:hover {
+    color: #ffffff !important;
+  }
+
+  /* Loading and status indicators - Dark mode */
+  .swagger-ui .loading-container .loading {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* Error messages - Dark mode */
+  .swagger-ui .errors-wrapper {
+    background-color: rgba(220, 38, 38, 0.2) !important;
+    border-color: rgba(220, 38, 38, 0.4) !important;
+    color: #f87171 !important;
+  }
+}
+
+/* Dark class selector - Additional elements */
+html.dark .swagger-ui table thead tr td,
+html.dark .swagger-ui table thead tr th {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui table tbody tr td,
+html.dark .swagger-ui table tbody tr th {
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+html.dark .swagger-ui .parameter__name,
+html.dark .swagger-ui .parameter__type,
+html.dark .swagger-ui .parameter__in,
+html.dark .swagger-ui .response-col_links {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .model-box,
+html.dark .swagger-ui .model-title {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .model-box-control {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .opblock-summary {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .opblock-description-wrapper p,
+html.dark .swagger-ui .opblock-description-wrapper,
+html.dark .swagger-ui .opblock-description {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .response-col_description,
+html.dark .swagger-ui .response-col_links {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .prop-name,
+html.dark .swagger-ui .prop-type {
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui code {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+}
+
+html.dark .swagger-ui .highlight-code {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .swagger-ui .microlight {
+  color: #ffffff !important;
+}
+
+/* Operation block controls and icons - Dark class selector */
+html.dark .swagger-ui .opblock-summary-control {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-summary-control svg,
+html.dark .swagger-ui .opblock-summary-control .opblock-summary-control-icon {
+  fill: rgba(255, 255, 255, 0.9) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Chevron/wedge icons - Dark class selector */
+html.dark .swagger-ui .opblock-summary-control-btn,
+html.dark .swagger-ui .opblock-summary button[class*="control"],
+html.dark .swagger-ui .opblock-tag-section button,
+html.dark .swagger-ui button[aria-label*="expand"],
+html.dark .swagger-ui button[aria-label*="collapse"],
+html.dark .swagger-ui .opblock-summary .opblock-summary-control {
+  background-color: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-summary-control-btn svg,
+html.dark .swagger-ui .opblock-summary button[class*="control"] svg,
+html.dark .swagger-ui .opblock-tag-section button svg,
+html.dark .swagger-ui button[aria-label*="expand"] svg,
+html.dark .swagger-ui button[aria-label*="collapse"] svg,
+html.dark .swagger-ui .opblock-summary .opblock-summary-control svg {
+  fill: rgba(255, 255, 255, 0.9) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-summary-control-btn:hover,
+html.dark .swagger-ui .opblock-summary button[class*="control"]:hover,
+html.dark .swagger-ui .opblock-tag-section button:hover,
+html.dark .swagger-ui button[aria-label*="expand"]:hover,
+html.dark .swagger-ui button[aria-label*="collapse"]:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Tag section buttons (like V1 header) - Dark class selector */
+html.dark .swagger-ui .opblock-tag-section button,
+html.dark .swagger-ui .opblock-tag button {
+  background-color: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-tag-section button svg,
+html.dark .swagger-ui .opblock-tag button svg {
+  fill: rgba(255, 255, 255, 0.9) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-tag-section button:hover,
+html.dark .swagger-ui .opblock-tag button:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Lock/unlock icons on endpoints - Dark class selector */
+html.dark .swagger-ui .opblock-summary .view-line-link,
+html.dark .swagger-ui .opblock-summary .authorization__btn,
+html.dark .swagger-ui .opblock-summary .opblock-summary-control-btn,
+html.dark .swagger-ui .opblock-summary button[class*="authorization"],
+html.dark .swagger-ui .opblock-summary [class*="lock"],
+html.dark .swagger-ui .opblock-summary [class*="unlock"] {
+  background-color: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-summary .view-line-link svg,
+html.dark .swagger-ui .opblock-summary .authorization__btn svg,
+html.dark .swagger-ui .opblock-summary .opblock-summary-control-btn svg,
+html.dark .swagger-ui .opblock-summary button[class*="authorization"] svg,
+html.dark .swagger-ui .opblock-summary [class*="lock"] svg,
+html.dark .swagger-ui .opblock-summary [class*="unlock"] svg {
+  fill: rgba(255, 255, 255, 0.9) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .opblock-summary .view-line-link:hover,
+html.dark .swagger-ui .opblock-summary .authorization__btn:hover,
+html.dark .swagger-ui .opblock-summary .opblock-summary-control-btn:hover,
+html.dark .swagger-ui .opblock-summary button[class*="authorization"]:hover {
+  background-color: transparent !important;
+  opacity: 0.7 !important;
+}
+
+/* Try it out sections - Dark class selector */
+html.dark .swagger-ui .opblock.opblock-post,
+html.dark .swagger-ui .opblock.opblock-get,
+html.dark .swagger-ui .opblock.opblock-put,
+html.dark .swagger-ui .opblock.opblock-delete,
+html.dark .swagger-ui .opblock.opblock-patch {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .opblock.opblock-post .opblock-summary {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .swagger-ui .opblock.opblock-get .opblock-summary {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Response examples and code - Dark class selector */
+html.dark .swagger-ui .response-content-type,
+html.dark .swagger-ui .response-content-type select {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .highlight-code .microlight {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Schema definitions - Dark class selector */
+html.dark .swagger-ui .model-toggle,
+html.dark .swagger-ui .model-jump-to-path {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.dark .swagger-ui .model-toggle:hover,
+html.dark .swagger-ui .model-jump-to-path:hover {
+  color: #ffffff !important;
+}
+
+/* Loading and status indicators - Dark class selector */
+html.dark .swagger-ui .loading-container .loading {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Error messages - Dark class selector */
+html.dark .swagger-ui .errors-wrapper {
+  background-color: rgba(220, 38, 38, 0.2) !important;
+  border-color: rgba(220, 38, 38, 0.4) !important;
+  color: #f87171 !important;
+}
+
+/* Globe background container styling */
+.globe-background-container {
+  opacity: 0.9;
+  transition: opacity 0.3s ease;
+}
+
+.globe-background-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .globe-background-container {
+    opacity: 1;
+  }
+}
+
+html.dark .globe-background-container {
+  opacity: 1;
+}
+
+/* Floating token generator - Light mode */
+.floating-token-generator {
+  position: fixed !important;
+  top: 80px !important;
+  right: 24px !important;
+  z-index: 1000 !important;
+  max-width: calc(100vw - 48px) !important;
+}
+
+.floating-token-generator-content {
+  display: flex !important;
+  flex-direction: column-reverse !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+}
+
+.floating-token-generator-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 12px 16px !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+  border-radius: 12px !important;
+  color: #3b82f6 !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  min-width: 48px !important;
+  width: 48px !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+.floating-token-generator-btn:hover {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2) !important;
+  width: auto !important;
+  min-width: auto !important;
+  padding: 12px 20px !important;
+}
+
+.floating-token-generator-btn:hover .floating-token-generator-text {
+  display: inline !important;
+  opacity: 1 !important;
+  margin-left: 0 !important;
+}
+
+.floating-token-generator-btn:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+.floating-token-generator-icon {
+  width: 18px !important;
+  height: 18px !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: inherit !important;
+}
+
+.floating-token-generator-text {
+  white-space: nowrap !important;
+  display: none !important;
+  opacity: 0 !important;
+  transition: opacity 0.3s ease, margin-left 0.3s ease !important;
+  margin-left: -8px !important;
+}
+
+.floating-token-generator-hint {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 10px 16px !important;
+  background-color: rgba(251, 191, 36, 0.1) !important;
+  border: 1px solid rgba(251, 191, 36, 0.3) !important;
+  border-radius: 12px !important;
+  font-size: 13px !important;
+  color: #92400e !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  width: auto !important;
+  min-width: auto !important;
+  transition: all 0.3s ease !important;
+}
+
+.floating-hint-icon {
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: inherit !important;
+}
+
+.floating-hint-text {
+  white-space: nowrap !important;
+  display: inline !important;
+  opacity: 1 !important;
+}
+
+/* Token display after successful generation */
+.floating-token-display {
+  margin-top: 0.75rem !important;
+  padding: 12px !important;
+  background-color: rgba(34, 197, 94, 0.1) !important;
+  border: 1px solid rgba(34, 197, 94, 0.3) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  min-width: 300px !important;
+  max-width: 400px !important;
+  animation: slideDown 0.3s ease-out !important;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0 !important;
+    transform: translateY(-10px) !important;
+  }
+  to {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+  }
+}
+
+.floating-token-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #166534 !important;
+  margin-bottom: 8px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.floating-token-input-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.floating-token-input {
+  flex: 1 !important;
+  padding: 8px 12px !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(34, 197, 94, 0.3) !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-family: monospace !important;
+  color: #166534 !important;
+  cursor: text !important;
+  transition: all 0.2s ease !important;
+}
+
+.floating-token-input:focus {
+  outline: none !important;
+  border-color: rgba(34, 197, 94, 0.6) !important;
+  background-color: rgba(255, 255, 255, 1) !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1) !important;
+}
+
+.floating-token-copy-btn {
+  padding: 8px 12px !important;
+  background-color: rgba(34, 197, 94, 0.2) !important;
+  border: 1px solid rgba(34, 197, 94, 0.3) !important;
+  border-radius: 8px !important;
+  color: #166534 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  flex-shrink: 0 !important;
+}
+
+.floating-token-copy-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+  color: inherit !important;
+}
+
+.floating-token-copy-btn:hover {
+  background-color: rgba(34, 197, 94, 0.3) !important;
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  transform: scale(1.05) !important;
+}
+
+.floating-token-copy-btn:active {
+  transform: scale(0.95) !important;
+}
+
+/* Floating token generator - Dark mode */
+@media (prefers-color-scheme: dark) {
+  .floating-token-generator-btn {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+    color: #60a5fa !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .floating-token-generator-btn:hover {
+    background-color: rgba(59, 130, 246, 0.25) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .floating-token-generator-hint {
+    background-color: rgba(251, 191, 36, 0.15) !important;
+    border-color: rgba(251, 191, 36, 0.3) !important;
+    color: #fbbf24 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .floating-token-display {
+    background-color: rgba(34, 197, 94, 0.15) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+  }
+
+  .floating-token-label {
+    color: #4ade80 !important;
+  }
+
+  .floating-token-input {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+    color: #4ade80 !important;
+  }
+
+  .floating-token-input:focus {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(34, 197, 94, 0.5) !important;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2) !important;
+  }
+
+  .floating-token-copy-btn {
+    background-color: rgba(34, 197, 94, 0.2) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+    color: #4ade80 !important;
+  }
+
+  .floating-token-copy-btn:hover {
+    background-color: rgba(34, 197, 94, 0.3) !important;
+    border-color: rgba(34, 197, 94, 0.5) !important;
+  }
+}
+
+/* Floating token generator - Dark class selector */
+html.dark .floating-token-generator-btn {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: #60a5fa !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .floating-token-generator-btn:hover {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+html.dark .floating-token-generator-hint {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+  border-color: rgba(251, 191, 36, 0.3) !important;
+  color: #fbbf24 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .floating-token-display {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+html.dark .floating-token-label {
+  color: #4ade80 !important;
+}
+
+html.dark .floating-token-input {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+  color: #4ade80 !important;
+}
+
+html.dark .floating-token-input:focus {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2) !important;
+}
+
+html.dark .floating-token-copy-btn {
+  background-color: rgba(34, 197, 94, 0.2) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+  color: #4ade80 !important;
+}
+
+html.dark .floating-token-copy-btn:hover {
+  background-color: rgba(34, 197, 94, 0.3) !important;
+  border-color: rgba(34, 197, 94, 0.5) !important;
 }
