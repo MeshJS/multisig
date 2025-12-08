@@ -15,6 +15,7 @@ export default function ApiDocs() {
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const generateTokenRef = React.useRef<(() => Promise<void>) | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const swaggerSystemRef = useRef<any>(null);
   const tokenInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,15 +33,19 @@ export default function ApiDocs() {
       // Step 1: Get nonce
       const nonceResponse = await fetch(`/api/v1/getNonce?address=${address}`);
       if (!nonceResponse.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorData = await nonceResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to get nonce");
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/prefer-nullish-coalescing
+        throw new Error((errorData as { error?: string }).error || "Failed to get nonce");
       }
-      const { nonce } = await nonceResponse.json();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const { nonce } = await nonceResponse.json() as { nonce: string };
 
       // Step 2: Sign the nonce
-      let signature;
+      let signature: { signature: string; key: string } | undefined;
       try {
-        signature = await wallet.signData(nonce, address);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument
+        signature = await wallet.signData(nonce, address) as { signature: string; key: string };
       } catch (error) {
         // User declined to sign or signing was cancelled
         if (error instanceof Error) {
@@ -52,7 +57,7 @@ export default function ApiDocs() {
         throw new Error("Failed to sign nonce. Please try again.");
       }
 
-      if (!signature || !signature.signature || !signature.key) {
+      if (!signature?.signature || !signature?.key) {
         throw new Error("Invalid signature received from wallet.");
       }
 
@@ -70,24 +75,29 @@ export default function ApiDocs() {
       });
 
       if (!tokenResponse.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorData = await tokenResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to generate token");
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/prefer-nullish-coalescing
+        throw new Error((errorData as { error?: string }).error || "Failed to generate token");
       }
 
-      const { token } = await tokenResponse.json();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const { token } = await tokenResponse.json() as { token: string };
       
       // Store the token for display
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       setGeneratedToken(token);
 
       // Step 4: Set authorization using Swagger UI's programmatic API
       if (swaggerSystemRef.current) {
         try {
           // Use Swagger UI's internal API to set authorization
-          const system = swaggerSystemRef.current;
-          const authActions = system.getSystem().authActions;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          const authActions = (swaggerSystemRef.current as { getSystem: () => { authActions: { authorize: (config: { BearerAuth: { value: string } }) => void } } }).getSystem().authActions;
           
           // Set the authorization for BearerAuth scheme
           // Swagger UI expects the token value directly for bearer tokens
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           authActions.authorize({
             BearerAuth: {
               value: token,
@@ -118,6 +128,7 @@ export default function ApiDocs() {
                 "value"
               )?.set;
               if (nativeInputValueSetter) {
+                // eslint-disable-next-line @typescript-eslint/unbound-method
                 nativeInputValueSetter.call(tokenInput, token);
               } else {
                 tokenInput.value = token;
@@ -141,7 +152,7 @@ export default function ApiDocs() {
               setTimeout(() => {
                 const authorizeBtn = document.querySelector(
                   ".swagger-ui .auth-container .btn-done, .swagger-ui .auth-container .authorize"
-                ) as HTMLElement;
+                ) as HTMLElement | null;
                 if (authorizeBtn) {
                   authorizeBtn.click();
                 }
@@ -177,7 +188,7 @@ export default function ApiDocs() {
       await navigator.clipboard.writeText(generatedToken);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
+    } catch {
       // Fallback for older browsers
       if (tokenInputRef.current) {
         tokenInputRef.current.select();
@@ -211,10 +222,10 @@ export default function ApiDocs() {
 
     // Update floating button state
     const updateFloatingButton = () => {
-      const floatingBtn = document.querySelector(".floating-token-generator-btn") as HTMLButtonElement;
+      const floatingBtn = document.querySelector(".floating-token-generator-btn")!;
       const floatingText = document.querySelector(".floating-token-generator-text");
       if (floatingBtn) {
-        floatingBtn.disabled = isGeneratingToken;
+        (floatingBtn as HTMLButtonElement).disabled = isGeneratingToken;
         if (floatingText) {
           floatingText.textContent = isGeneratingToken ? "Generating..." : "Generate Token";
         }
@@ -292,6 +303,7 @@ export default function ApiDocs() {
           deepLinking={true}
           onComplete={(system) => {
             // Store the Swagger UI system instance for programmatic access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             swaggerSystemRef.current = system;
           }}
         />
