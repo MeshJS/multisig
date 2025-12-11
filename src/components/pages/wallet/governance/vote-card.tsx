@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import VoteButton from "./proposal/voteButtton";
-import { UTxO } from "@meshsdk/core";
+import type { UTxO } from "@meshsdk/core";
 
 interface VoteCardProps {
   appWallet: Wallet;
@@ -14,9 +14,17 @@ interface VoteCardProps {
   proposalId?: string; // Optional proposalId
   selectedBallotId?: string;
   proposalTitle?: string;
+  onOpenBallotSidebar?: () => void;
 }
 
-export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotId, proposalTitle }: VoteCardProps) {
+export default function VoteCard({
+  appWallet,
+  utxos,
+  proposalId,
+  selectedBallotId,
+  proposalTitle,
+  onOpenBallotSidebar,
+}: VoteCardProps) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [localProposalId, setLocalProposalId] = useState<string>(proposalId ?? "");
   const [description, setDescription] = useState<string>("");
@@ -76,6 +84,7 @@ export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotI
             utxos={utxos}
             selectedBallotId={selectedBallotId}
             proposalTitle={proposalTitle}
+            onOpenBallotSidebar={onOpenBallotSidebar}
           />
         </div>
       </fieldset>
