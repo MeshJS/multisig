@@ -5,16 +5,35 @@ import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { getProvider } from "@/utils/get-provider";
+import { addressToNetwork } from "@/utils/multisigSDK";
+import { resolvePaymentKeyHash } from "@meshsdk/core";
+import { csl, calculateTxHash } from "@meshsdk/core-csl";
 
-const HEX_REGEX = /^[0-9a-fA-F]+$/;
+function coerceBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return fallback;
+}
 
-const isHexString = (value: unknown): value is string =>
-  typeof value === "string" && value.length > 0 && HEX_REGEX.test(value);
+function normalizeHex(value: string, context: string): string {
+  const trimmed = value.trim().toLowerCase().replace(/^0x/, "");
+  if (trimmed.length === 0 || trimmed.length % 2 !== 0 || !/^[0-9a-f]+$/.test(trimmed)) {
+    throw new Error(`Invalid ${context} hex string`);
+  }
+  return trimmed;
+}
 
-const resolveNetworkFromAddress = (bech32Address: string): 0 | 1 =>
-  bech32Address.startsWith("addr_test") || bech32Address.startsWith("stake_test")
-    ? 0
-    : 1;
+function toHex(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("hex");
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -32,7 +51,9 @@ export default async function handler(
   }
 
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : null;
 
   if (!token) {
     return res.status(401).json({ error: "Unauthorized - Missing token" });
@@ -48,35 +69,44 @@ export default async function handler(
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   } as const;
 
-  const caller = createCaller({ db, session });
+  type SignTransactionRequestBody = {
+    walletId?: unknown;
+    transactionId?: unknown;
+    address?: unknown;
+    signature?: unknown;
+    key?: unknown;
+    broadcast?: unknown;
+  };
 
-  const body =
-    typeof req.body === "object" && req.body !== null
-      ? (req.body as Record<string, unknown>)
-      : {};
+  const {
+    walletId,
+    transactionId,
+    address,
+    signature,
+    key,
+    broadcast: rawBroadcast,
+  } = (req.body ?? {}) as SignTransactionRequestBody;
 
-  const { walletId, transactionId, address, signedTx } = body;
-
-  if (typeof walletId !== "string" || walletId.trim().length === 0) {
+  if (typeof walletId !== "string" || walletId.trim() === "") {
     return res.status(400).json({ error: "Missing or invalid walletId" });
   }
 
-  if (typeof transactionId !== "string" || transactionId.trim().length === 0) {
+  if (typeof transactionId !== "string" || transactionId.trim() === "") {
     return res
       .status(400)
       .json({ error: "Missing or invalid transactionId" });
   }
 
-  if (typeof address !== "string" || address.trim().length === 0) {
+  if (typeof address !== "string" || address.trim() === "") {
     return res.status(400).json({ error: "Missing or invalid address" });
   }
 
-  if (!isHexString(signedTx)) {
-    return res.status(400).json({ error: "Missing or invalid signedTx" });
+  if (typeof signature !== "string" || signature.trim() === "") {
+    return res.status(400).json({ error: "Missing or invalid signature" });
   }
 
-  if (signedTx.length % 2 !== 0) {
-    return res.status(400).json({ error: "Missing or invalid signedTx" });
+  if (typeof key !== "string" || key.trim() === "") {
+    return res.status(400).json({ error: "Missing or invalid key" });
   }
 
   if (payload.address !== address) {
@@ -84,6 +114,8 @@ export default async function handler(
   }
 
   try {
+    const caller = createCaller({ db, session });
+
     const wallet = await caller.wallet.getWallet({ walletId, address });
     if (!wallet) {
       return res.status(404).json({ error: "Wallet not found" });
@@ -112,74 +144,304 @@ export default async function handler(
     if (transaction.signedAddresses.includes(address)) {
       return res
         .status(409)
-        .json({ error: "Address already signed this transaction" });
+        .json({ error: "Address has already signed this transaction" });
     }
 
     if (transaction.rejectedAddresses.includes(address)) {
       return res
         .status(409)
-        .json({ error: "Address has rejected this transaction" });
+        .json({ error: "Address has already rejected this transaction" });
     }
 
-    const updatedSignedAddresses = [...transaction.signedAddresses, address];
-    const updatedRejectedAddresses = [...transaction.rejectedAddresses];
+    const updatedSignedAddresses = Array.from(
+      new Set([...transaction.signedAddresses, address]),
+    );
 
-    const totalSigners = wallet.signersAddresses.length;
-    const requiredSigners = wallet.numRequiredSigners ?? undefined;
-
-    let thresholdReached = false;
-    switch (wallet.type) {
-      case "any":
-        thresholdReached = true;
-        break;
-      case "all":
-        thresholdReached = updatedSignedAddresses.length >= totalSigners;
-        break;
-      case "atLeast":
-        thresholdReached =
-          typeof requiredSigners === "number" &&
-          updatedSignedAddresses.length >= requiredSigners;
-        break;
-      default:
-        thresholdReached = false;
+    const storedTxHex = transaction.txCbor?.trim();
+    if (!storedTxHex) {
+      return res.status(500).json({ error: "Stored transaction is missing txCbor" });
     }
 
-    let finalTxHash: string | undefined;
-    if (thresholdReached && !finalTxHash) {
-      try {
-        const network = resolveNetworkFromAddress(address);
-        const blockchainProvider = getProvider(network);
-        finalTxHash = await blockchainProvider.submitTx(signedTx);
-      } catch (submitError) {
-        console.error("Failed to submit transaction", {
-          message: (submitError as Error)?.message,
-          stack: (submitError as Error)?.stack,
-        });
-        return res.status(502).json({ error: "Failed to submit transaction" });
+    let parsedStoredTx: ReturnType<typeof csl.Transaction.from_hex>;
+    try {
+      parsedStoredTx = csl.Transaction.from_hex(storedTxHex);
+    } catch (error: unknown) {
+      console.error("Failed to parse stored transaction", toError(error));
+      return res.status(500).json({ error: "Invalid stored transaction data" });
+    }
+
+    const txBodyClone = csl.TransactionBody.from_bytes(
+      parsedStoredTx.body().to_bytes(),
+    );
+    const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
+      parsedStoredTx.witness_set().to_bytes(),
+    );
+
+    let vkeyWitnesses = witnessSetClone.vkeys();
+    if (!vkeyWitnesses) {
+      vkeyWitnesses = csl.Vkeywitnesses.new();
+      witnessSetClone.set_vkeys(vkeyWitnesses);
+    } else {
+      vkeyWitnesses = csl.Vkeywitnesses.from_bytes(vkeyWitnesses.to_bytes());
+      witnessSetClone.set_vkeys(vkeyWitnesses);
+    }
+
+    const signatureHex = normalizeHex(signature, "signature");
+    const keyHex = normalizeHex(key, "key");
+
+    let witnessPublicKey: csl.PublicKey;
+    let witnessSignature: csl.Ed25519Signature;
+    let witnessToAdd: csl.Vkeywitness;
+
+    try {
+      witnessPublicKey = csl.PublicKey.from_hex(keyHex);
+      witnessSignature = csl.Ed25519Signature.from_hex(signatureHex);
+      const vkey = csl.Vkey.new(witnessPublicKey);
+      witnessToAdd = csl.Vkeywitness.new(vkey, witnessSignature);
+    } catch (error: unknown) {
+      console.error("Invalid signature payload", toError(error));
+      return res.status(400).json({ error: "Invalid signature payload" });
+    }
+
+    const witnessKeyHash = toHex(witnessPublicKey.hash().to_bytes()).toLowerCase();
+
+    let addressKeyHash: string;
+    try {
+      addressKeyHash = resolvePaymentKeyHash(address).toLowerCase();
+    } catch (error: unknown) {
+      console.error("Unable to resolve payment key hash", toError(error));
+      return res.status(400).json({ error: "Invalid address format" });
+    }
+
+    if (addressKeyHash !== witnessKeyHash) {
+      return res
+        .status(403)
+        .json({ error: "Signature public key does not match address" });
+    }
+
+    const txHashHex = calculateTxHash(parsedStoredTx.to_hex()).toLowerCase();
+    const txHashBytes = Buffer.from(txHashHex, "hex");
+    const isSignatureValid = witnessPublicKey.verify(txHashBytes, witnessSignature);
+
+    if (!isSignatureValid) {
+      return res.status(401).json({ error: "Invalid signature for transaction" });
+    }
+
+    const existingWitnessCount = vkeyWitnesses.len();
+    for (let i = 0; i < existingWitnessCount; i++) {
+      const existingWitness = vkeyWitnesses.get(i);
+      const existingKeyHash = toHex(
+        existingWitness.vkey().public_key().hash().to_bytes(),
+      ).toLowerCase();
+      if (existingKeyHash === witnessKeyHash) {
+        return res
+          .status(409)
+          .json({ error: "Witness for this address already exists" });
       }
     }
 
-    const nextState = finalTxHash ? 1 : 0;
+    vkeyWitnesses.add(witnessToAdd);
 
-    const updatedTransaction = await caller.transaction.updateTransaction({
-      transactionId,
-      txCbor: signedTx,
-      signedAddresses: updatedSignedAddresses,
-      rejectedAddresses: updatedRejectedAddresses,
+    const updatedTx = csl.Transaction.new(
+      txBodyClone,
+      witnessSetClone,
+      parsedStoredTx.auxiliary_data(),
+    );
+    if (!parsedStoredTx.is_valid()) {
+      updatedTx.set_is_valid(false);
+    }
+    const txHexForUpdate = updatedTx.to_hex();
+
+    const witnessSummaries: {
+      keyHashHex: string;
+      publicKeyBech32: string;
+      signatureHex: string;
+    }[] = [];
+    const witnessSetForExport = csl.Vkeywitnesses.from_bytes(
+      vkeyWitnesses.to_bytes(),
+    );
+    const witnessCountForExport = witnessSetForExport.len();
+    for (let i = 0; i < witnessCountForExport; i++) {
+      const witness = witnessSetForExport.get(i);
+      witnessSummaries.push({
+        keyHashHex: toHex(
+          witness.vkey().public_key().hash().to_bytes(),
+        ).toLowerCase(),
+        publicKeyBech32: witness.vkey().public_key().to_bech32(),
+        signatureHex: toHex(witness.signature().to_bytes()).toLowerCase(),
+      });
+    }
+
+    const shouldAttemptBroadcast = coerceBoolean(rawBroadcast, true);
+
+    const threshold = (() => {
+      switch (wallet.type) {
+        case "atLeast":
+          return wallet.numRequiredSigners ?? wallet.signersAddresses.length;
+        case "all":
+          return wallet.signersAddresses.length;
+        case "any":
+          return 1;
+        default:
+          return wallet.numRequiredSigners ?? 1;
+      }
+    })();
+
+    let nextState = transaction.state;
+    let finalTxHash = transaction.txHash ?? undefined;
+    let submissionError: string | undefined;
+
+    const resolveNetworkId = (): number => {
+      const candidateAddresses = Array.isArray(wallet.signersAddresses)
+        ? wallet.signersAddresses
+        : [];
+
+      for (const candidate of candidateAddresses) {
+        if (typeof candidate !== "string") {
+          continue;
+        }
+        const trimmed = candidate.trim();
+        if (!trimmed) {
+          continue;
+        }
+        try {
+          return addressToNetwork(trimmed);
+        } catch (error: unknown) {
+          console.warn("Unable to resolve network from wallet signer address", {
+            walletId,
+            candidate: trimmed,
+            error: toError(error),
+          });
+        }
+      }
+
+      throw new Error("Unable to determine network from wallet data");
+    };
+
+    if (
+      shouldAttemptBroadcast &&
+      threshold > 0 &&
+      updatedSignedAddresses.length >= threshold
+    ) {
+      try {
+        const network = resolveNetworkId();
+        const provider = getProvider(network);
+        const submittedHash = await provider.submitTx(txHexForUpdate);
+        finalTxHash = submittedHash;
+        nextState = 1;
+      } catch (error: unknown) {
+        const err = toError(error);
+        console.error("Error submitting signed transaction", {
+          transactionId,
+          error: err,
+        });
+        submissionError = err.message ?? "Failed to submit transaction";
+      }
+    }
+
+    if (transaction.state === 1) {
+      nextState = 1;
+    } else if (nextState !== 1) {
+      nextState = 0;
+    }
+
+    let txJsonForUpdate = transaction.txJson;
+    try {
+      const parsedTxJson = JSON.parse(
+        transaction.txJson,
+      ) as Record<string, unknown>;
+      const enrichedTxJson = {
+        ...parsedTxJson,
+        multisig: {
+          state: nextState,
+          submitted: nextState === 1,
+          signedAddresses: updatedSignedAddresses,
+          rejectedAddresses: transaction.rejectedAddresses,
+          witnesses: witnessSummaries,
+          txHash: (finalTxHash ?? txHashHex).toLowerCase(),
+          bodyHash: txHashHex,
+          submissionError: submissionError ?? null,
+        },
+      };
+      txJsonForUpdate = JSON.stringify(enrichedTxJson);
+    } catch (error: unknown) {
+      const err = toError(error);
+      console.warn("Unable to update txJson snapshot", {
+        transactionId,
+        error: err,
+      });
+    }
+
+    const updateData: {
+      signedAddresses: { set: string[] };
+      rejectedAddresses: { set: string[] };
+      txCbor: string;
+      txJson: string;
+      state: number;
+      txHash?: string;
+    } = {
+      signedAddresses: { set: updatedSignedAddresses },
+      rejectedAddresses: { set: transaction.rejectedAddresses },
+      txCbor: txHexForUpdate,
+      txJson: txJsonForUpdate,
       state: nextState,
-      txHash: finalTxHash,
+    };
+
+    if (finalTxHash) {
+      updateData.txHash = finalTxHash;
+    }
+
+    const updateResult = await db.transaction.updateMany({
+      where: {
+        id: transactionId,
+        signedAddresses: { equals: transaction.signedAddresses },
+        rejectedAddresses: { equals: transaction.rejectedAddresses },
+        txCbor: transaction.txCbor ?? "",
+        txJson: transaction.txJson,
+      },
+      data: updateData,
     });
+
+    if (updateResult.count === 0) {
+      const latest = await db.transaction.findUnique({
+        where: { id: transactionId },
+      });
+
+      return res.status(409).json({
+        error: "Transaction was updated by another signer. Please refresh and try again.",
+        ...(latest ? { transaction: latest } : {}),
+      });
+    }
+
+    const updatedTransaction = await db.transaction.findUnique({
+      where: { id: transactionId },
+    });
+
+    if (!updatedTransaction) {
+      return res.status(500).json({ error: "Failed to load updated transaction state" });
+    }
+
+    if (submissionError) {
+      return res.status(502).json({
+        error: "Transaction witness recorded, but submission to network failed",
+        transaction: updatedTransaction,
+        submitted: false,
+        txHash: finalTxHash,
+        submissionError,
+      });
+    }
 
     return res.status(200).json({
       transaction: updatedTransaction,
-      thresholdReached,
+      submitted: nextState === 1,
+      txHash: finalTxHash,
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = toError(error);
     console.error("Error in signTransaction handler", {
-      message: (error as Error)?.message,
-      stack: (error as Error)?.stack,
+      message: err.message,
+      stack: err.stack,
     });
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
-
