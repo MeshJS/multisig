@@ -405,7 +405,7 @@ This project is licensed under the Apache License - see the [LICENSE.md](LICENSE
 
 - **Documentation**: Check our documentation
 - **Issues**: Report bugs and request features on GitHub Issues
-- **Discord**: Join our Discord community for support at [https://discord.gg/jQZVcMbdKU](https://discord.gg/jQZVcMbdKU)
+- **Discord**: Join our Discord community for support at [https://discord.gg/eyTT9k2KZq](https://discord.gg/eyTT9k2KZq) look for ask multisig platform.
 
 
 ---

@@ -21,13 +21,13 @@
     "test:ci": "jest --ci --coverage --watchAll=false"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^1.6.0",
+    "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^3.9.0",
     "@jinglescode/nostr-chat-plugin": "^0.0.11",
-    "@meshsdk/core": "^1.9.0-beta.77",
-    "@meshsdk/core-csl": "^1.9.0-beta.77",
-    "@meshsdk/core-cst": "^1.9.0-beta.77",
-    "@meshsdk/react": "^1.9.0-beta.77",
+    "@meshsdk/core": "^1.9.0-beta.87",
+    "@meshsdk/core-csl": "^1.9.0-beta.87",
+    "@meshsdk/core-cst": "^1.9.0-beta.87",
+    "@meshsdk/react": "^1.9.0-beta.87",
     "@octokit/core": "^6.1.2",
     "@prisma/client": "^6.17.1",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -89,6 +89,8 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@eslint/compat": "^2.0.0",
+    "@eslint/eslintrc": "^3.3.3",
     "@jest/globals": "^30.1.2",
     "@types/busboy": "^1.5.4",
     "@types/cors": "^2.8.18",
@@ -105,8 +107,8 @@
     "@types/swagger-ui-react": "^5.18.0",
     "@typescript-eslint/eslint-plugin": "^8.1.0",
     "@typescript-eslint/parser": "^8.1.0",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.4",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^15.5.7",
     "jest": "^30.1.3",
     "postcss": "^8.4.39",
     "prettier": "^3.3.2",
@@ -119,5 +121,14 @@
   "ct3aMetadata": {
     "initVersion": "7.37.0"
   },
-  "packageManager": "npm@10.7.0"
+  "packageManager": "npm@10.7.0",
+  "overrides": {
+    "ip": "^2.0.1",
+    "rimraf": "^6.1.2",
+    "glob": "^11.0.0",
+    "three-mesh-bvh": "^0.9.3",
+    "node-domexception": "^2.0.2",
+    "lodash.get": "^4.4.2",
+    "lodash.isequal": "^4.5.0"
+  }
 }
