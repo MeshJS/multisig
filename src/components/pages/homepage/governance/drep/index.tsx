@@ -13,7 +13,7 @@ import ScriptIndicator from "./scriptIndicator";
 
 export default function DrepOverviewPage() {
   const [drepList, setDrepList] = useState<
-    Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata }>
+    Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata | null }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { wallet, connected } = useWallet();
@@ -54,7 +54,7 @@ export default function DrepOverviewPage() {
         if (response) {
           const initialList = response.map((drep: BlockfrostDrepInfo) => ({
             details: { ...drep },
-            metadata: {},
+            metadata: null,
           }));
   
           setDrepList(initialList);
@@ -101,7 +101,7 @@ export default function DrepOverviewPage() {
 
       setDrepList((prevList) =>
         prevList.map((drep) =>
-          drep.details.drep_id === drepId ? { details, metadata: metadata || {} } : drep,
+          drep.details.drep_id === drepId ? { details, metadata: metadata || null } : drep,
         ),
       );
     } catch (error: any) {
