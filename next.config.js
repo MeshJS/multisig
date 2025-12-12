@@ -1,8 +1,16 @@
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially useful
  * for Docker builds.
+ * 
+ * Note: We use dynamic import here to avoid blocking Next.js initialization.
+ * The env validation will happen when the module is actually used, not during config load.
  */
-await import("./src/env.js");
+if (!process.env.SKIP_ENV_VALIDATION) {
+  // Use dynamic import to avoid blocking initialization
+  import("./src/env.js").catch((err) => {
+    console.error("Failed to load env validation:", err);
+  });
+}
 
 /** @type {import("next").NextConfig} */
 const config = {

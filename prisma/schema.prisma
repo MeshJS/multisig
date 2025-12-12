@@ -5,6 +5,14 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // For Supabase + Vercel serverless optimization:
+  // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
+  //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
+  // - DIRECT_URL: Use Supabase's direct connection URL (for migrations)
+  //   Example: postgresql://user:pass@host:5432/db
+  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL
+  //   This separation improves performance and prevents connection pool exhaustion
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
