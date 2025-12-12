@@ -97,8 +97,8 @@ model Ballot {
   items            String[]
   itemDescriptions String[]
   choices          String[]
-  anchorUrls       String[]  @default([])
-  anchorHashes     String[]  @default([])
+  anchorUrls       String[] @default([])
+  anchorHashes     String[] @default([])
   type             Int
   createdAt        DateTime @default(now())
 }
