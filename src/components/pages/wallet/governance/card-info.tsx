@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Info, ExternalLink, Copy, X, UserCheck, CheckCircle, Hash, Activity, TrendingUp } from "lucide-react";
+import { MoreVertical, Info, ExternalLink, Copy, X, UserCheck, CheckCircle, Hash, Activity, TrendingUp, ChevronDown, ChevronUp, UserPlus, Edit, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +26,11 @@ import {
 } from "@/components/ui/tooltip";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
@@ -56,47 +61,55 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   // Fetch proxy DRep info when proxy is enabled and selected
   useEffect(() => {
     const fetchProxyDrepInfo = async () => {
-      
-      
       // Only fetch proxy DRep info if proxy is enabled, has a selected proxy, proxies exist, and the selected proxy is found
       const hasValidProxy = isProxyEnabled && selectedProxyId && proxies.length > 0;
       const selectedProxy = hasValidProxy ? proxies.find(p => p.id === selectedProxyId) : null;
       
-      if (hasValidProxy && selectedProxy && appWallet?.scriptCbor) {
-        setLoadingProxyDrep(true);
+      if (!hasValidProxy || !selectedProxy || !appWallet?.scriptCbor) {
+        // Clear proxy state when no valid proxy is available - fall back to old logic
+        setProxyDrepId(null);
+        setProxyDrepInfo(null);
         setProxyDrepError(null);
-        
-        // Set a timeout to prevent infinite loading
-        const timeoutId = setTimeout(() => {
-          setLoadingProxyDrep(false);
-          setProxyDrepError("Timeout: Could not fetch proxy DRep information");
-        }, 10000); // 10 second timeout
-        
-        try {
-          const txBuilder = getTxBuilder(network);
-          const proxyContract = new MeshProxyContract(
-            {
-              mesh: txBuilder,
-              wallet: undefined,
-              networkId: network,
-            },
-            {
-              paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
-            },
-            appWallet.scriptCbor,
-          );
-          proxyContract.proxyAddress = selectedProxy.proxyAddress;
-          
-          // Get DRep ID
-          const drepId = proxyContract.getDrepId();
-          
-          setProxyDrepId(drepId);
-          
-          // Get DRep status (now with caching and proper error handling)
-          const status = await proxyContract.getDrepStatus(true);
-          setProxyDrepInfo(status);
+        setProxyDelegatorsInfo(null);
+        return;
+      }
 
-          // Get DRep delegators (force refresh on manual view)
+      setLoadingProxyDrep(true);
+      setProxyDrepError(null);
+      
+      // Set a timeout to prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        setLoadingProxyDrep(false);
+        setProxyDrepError("Timeout: Could not fetch proxy DRep information");
+      }, 10000); // 10 second timeout
+      
+      try {
+        const txBuilder = getTxBuilder(network);
+        const proxyContract = new MeshProxyContract(
+          {
+            mesh: txBuilder,
+            wallet: undefined,
+            networkId: network,
+          },
+          {
+            paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
+          },
+          appWallet.scriptCbor,
+        );
+        proxyContract.proxyAddress = selectedProxy.proxyAddress;
+        
+        // Get DRep ID
+        const drepId = proxyContract.getDrepId();
+        
+        setProxyDrepId(drepId);
+        
+        // Get DRep status (now with caching and proper error handling)
+        const status = await proxyContract.getDrepStatus(true);
+        setProxyDrepInfo(status);
+
+        // Get DRep delegators only if DRep is registered (force refresh on manual view)
+        // getDrepDelegators now checks registration status internally, but we can skip if status is null
+        if (status && status !== null) {
           try {
             const delegators = await proxyContract.getDrepDelegators(true);
             setProxyDelegatorsInfo(delegators as {
@@ -106,27 +119,35 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
               count: number;
             });
           } catch {
-            // ignore, leave as null
-            setProxyDelegatorsInfo(null);
+            // If delegators fetch fails, set empty result
+            setProxyDelegatorsInfo({
+              delegators: [],
+              totalDelegation: "0",
+              totalDelegationADA: 0,
+              count: 0
+            });
           }
-          
-          clearTimeout(timeoutId);
-        } catch (error) {
-          // Only log unexpected errors, not 404s which are handled in offchain
-          console.error("Unexpected error in fetchProxyDrepInfo:", error);
-          setProxyDrepError("Failed to fetch proxy DRep information");
-          clearTimeout(timeoutId);
-        } finally {
-          setLoadingProxyDrep(false);
+        } else {
+          // DRep not registered, set empty delegators info
+          setProxyDelegatorsInfo({
+            delegators: [],
+            totalDelegation: "0",
+            totalDelegationADA: 0,
+            count: 0
+          });
         }
-      } else {
-        // Clear proxy state when no valid proxy is available - fall back to old logic
-        setProxyDrepId(null);
-        setProxyDrepInfo(null);
-        setProxyDrepError(null);
-        setProxyDelegatorsInfo(null);
+        
+        clearTimeout(timeoutId);
+      } catch (error) {
+        // Only log unexpected errors, not 404s which are handled in offchain
+        console.error("Unexpected error in fetchProxyDrepInfo:", error);
+        setProxyDrepError("Failed to fetch proxy DRep information");
+        clearTimeout(timeoutId);
+      } finally {
+        setLoadingProxyDrep(false);
       }
     };
+    
     
     fetchProxyDrepInfo();
   }, [isProxyEnabled, selectedProxyId, appWallet?.scriptCbor, network, proxies]);
@@ -191,19 +212,29 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   
   // Check if DRep is actually registered (has info from Blockfrost)
   const isDRepRegistered = displayDrepInfo?.active === true;
+  const [isDRepManagementOpen, setIsDRepManagementOpen] = useState(false);
+  const [showProxySelector, setShowProxySelector] = useState(!!selectedProxyId);
+  
+  // Sync showProxySelector when a proxy is selected
+  useEffect(() => {
+    if (selectedProxyId) {
+      setShowProxySelector(true);
+    }
+  }, [selectedProxyId]);
+  
   return (
     <div className="w-full">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 sm:mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+          <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex-shrink-0">
+            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
           </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
               {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
             </p>
           </div>
@@ -211,7 +242,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
         
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="p-2 rounded-md hover:bg-zinc-100 focus:bg-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
+            className="p-2 rounded-md hover:bg-zinc-100 focus:bg-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800 flex-shrink-0"
             aria-haspopup="true"
           >
             <MoreVertical className="h-4 w-4" />
@@ -231,72 +262,94 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
         </DropdownMenu>
       </div>
 
-      {/* Minimal DRep & Proxy Management Card */}
+      {/* Combined DRep Card with Collapsible Management */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Info className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {hasValidProxyData ? "Proxy DRep Management" : "DRep Information"}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {hasValidProxyData ? "Using proxy for governance operations" : "Standard DRep governance mode"}
-                </p>
-              </div>
+        <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 dark:text-gray-400 flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
+              </h3>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                {hasValidProxyData ? "Using proxy for governance operations" : "Standard DRep governance mode"}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Global Proxy Toggle - Only show when proxies exist */}
-              {proxies && proxies.length > 0 && (
-                <>
+          </div>
+          
+          {/* Improved Proxy Control - Only show when proxies exist */}
+          {proxies && proxies.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex flex-col gap-3">
+                {/* Toggle Row */}
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Proxy Mode:</span>
-                    <button
-                      onClick={() => {
-                        if (isProxyEnabled) {
-                          clearSelectedProxy();
-                          toast({
-                            title: "Proxy Mode Disabled",
-                            description: "Proxy mode has been turned off.",
-                          });
-                        } else {
-                          toast({
-                            title: "Proxy Mode Enabled",
-                            description: "Select a proxy to use for governance operations.",
-                          });
-                        }
-                      }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        isProxyEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          isProxyEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
+                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Proxy Mode</span>
+                    {isProxyEnabled && selectedProxyId && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                        Active
+                      </span>
+                    )}
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Select value={selectedProxyId || undefined} onValueChange={(value) => {
-                      setSelectedProxy(value);
-                      toast({
-                        title: "Proxy Selected",
-                        description: "Proxy mode enabled for governance operations.",
-                      });
-                    }}>
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Select a proxy..." />
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (isProxyEnabled && selectedProxyId) {
+                        // Turn OFF: clear selection and hide selector
+                        clearSelectedProxy();
+                        setShowProxySelector(false);
+                        toast({
+                          title: "Proxy Mode Disabled",
+                          description: "Switched to standard DRep mode.",
+                        });
+                      } else {
+                        // Turn ON: show selector so user can choose a proxy
+                        setShowProxySelector(true);
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      isProxyEnabled && selectedProxyId ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                    type="button"
+                    aria-label={isProxyEnabled && selectedProxyId ? "Disable proxy mode" : "Enable proxy mode"}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                        isProxyEnabled && selectedProxyId ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
+                {/* Proxy Selector - Show when toggle is ON or when a proxy is selected */}
+                {(showProxySelector || isProxyEnabled || selectedProxyId) && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <Select 
+                      value={selectedProxyId || undefined} 
+                      onValueChange={(value) => {
+                        setSelectedProxy(value);
+                        setShowProxySelector(true);
+                        toast({
+                          title: "Proxy Selected",
+                          description: "Proxy mode is now active for governance operations.",
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="w-full text-xs sm:text-sm h-9">
+                        <SelectValue placeholder="Choose a proxy contract..." />
                       </SelectTrigger>
                       <SelectContent>
                         {proxies.map((proxy) => (
                           <SelectItem key={proxy.id} value={proxy.id}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{proxy.description || `Proxy ${proxy.id.slice(-8)}`}</span>
-                              <span className="text-xs text-gray-500">{proxy.proxyAddress.slice(0, 20)}...</span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium text-xs sm:text-sm">
+                                {proxy.description || `Proxy ${proxy.id.slice(-8)}`}
+                              </span>
+                              <span className="text-xs text-gray-500 font-mono">
+                                {proxy.proxyAddress.slice(0, 24)}...
+                              </span>
                             </div>
                           </SelectItem>
                         ))}
@@ -304,33 +357,42 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
                     </Select>
                     {selectedProxyId && (
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           clearSelectedProxy();
+                          setShowProxySelector(false);
                           toast({
-                            title: "Proxy Unselected",
-                            description: "Proxy mode has been disabled. Using standard DRep mode.",
+                            title: "Proxy Cleared",
+                            description: "Switched to standard DRep mode.",
                           });
                         }}
-                        className="text-gray-600 hover:text-gray-700"
+                        className="h-9 w-9 p-0 flex-shrink-0 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        type="button"
+                        aria-label="Clear proxy selection"
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-4 w-4 text-gray-500 hover:text-red-600 dark:hover:text-red-400" />
                       </Button>
                     )}
                   </div>
-                </>
-              )}
+                )}
+                
+                {/* Helper Text */}
+                {!showProxySelector && !isProxyEnabled && !selectedProxyId && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Enable proxy mode to use a proxy contract for governance operations.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-4">
-
-
-          {/* DRep Information - Single Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* DRep Information Content */}
+        <div className="p-3 sm:p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* DRep ID */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -422,35 +484,73 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Actions */}
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Button 
-          className="flex-1 sm:flex-initial" 
-          disabled={isDRepRegistered}
-          variant={isDRepRegistered ? "outline" : "default"}
-        >
-          <Link href={`/wallets/${appWallet.id}/governance/register`}>
-            Register DRep
-          </Link>
-        </Button>
-        <Button 
-          className="flex-1 sm:flex-initial" 
-          disabled={!isDRepRegistered}
-          variant={!isDRepRegistered ? "outline" : "default"}
-        >
-          <Link href={`/wallets/${appWallet.id}/governance/update`}>
-            Update DRep
-          </Link>
-        </Button>
-        <Retire appWallet={appWallet} manualUtxos={manualUtxos} />
-        <Link href={`/wallets/${appWallet.id}/governance/drep`}>
-          <Button className="flex-1 sm:flex-initial" variant="outline">
-            Find a DRep
-          </Button>
-        </Link>
+        {/* Collapsible DRep Management Section */}
+        <Collapsible open={isDRepManagementOpen} onOpenChange={setIsDRepManagementOpen}>
+          <div className="border-t border-gray-200 dark:border-gray-700">
+            <CollapsibleTrigger className="w-full">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                    <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    DRep Management
+                  </h3>
+                </div>
+                {isDRepManagementOpen ? (
+                  <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500 dark:text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500 dark:text-gray-400" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+                <div className="space-y-3">
+                  {/* Primary Actions - Registration & Update */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button 
+                      className="w-full justify-start gap-3 h-auto py-3.5 px-4 text-sm sm:text-base font-medium" 
+                      disabled={isDRepRegistered}
+                      variant={isDRepRegistered ? "outline" : "default"}
+                    >
+                      <UserPlus className="h-5 w-5 flex-shrink-0" />
+                      <Link href={`/wallets/${appWallet.id}/governance/register`} className="flex-1 text-left">
+                        Register DRep
+                      </Link>
+                    </Button>
+                    <Button 
+                      className="w-full justify-start gap-3 h-auto py-3.5 px-4 text-sm sm:text-base font-medium" 
+                      disabled={!isDRepRegistered}
+                      variant={!isDRepRegistered ? "outline" : "default"}
+                    >
+                      <Edit className="h-5 w-5 flex-shrink-0" />
+                      <Link href={`/wallets/${appWallet.id}/governance/update`} className="flex-1 text-left">
+                        Update DRep
+                      </Link>
+                    </Button>
+                  </div>
+                  
+                  {/* Secondary Actions - Retire & Find */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="w-full">
+                      <Retire appWallet={appWallet} manualUtxos={manualUtxos} />
+                    </div>
+                    <Link href={`/wallets/${appWallet.id}/governance/drep`} className="w-full">
+                      <Button className="w-full justify-start gap-3 h-auto py-3.5 px-4 text-sm sm:text-base font-medium" variant="outline">
+                        <Search className="h-5 w-5 flex-shrink-0" />
+                        Find a DRep
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
       </div>
     </div>
   );
 }
+

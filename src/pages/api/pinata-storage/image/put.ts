@@ -1,14 +1,25 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-// import { put } from "@vercel/blob";
-import fs from "fs";
 import { env } from "@/env";
 import formidable, { Fields, Files, File } from "formidable";
+import fs from "fs";
 
 export const config = {
   api: {
     bodyParser: false, // Required for file uploads
   },
 };
+
+interface PinataResponse {
+  data: {
+    id: string;
+    name: string;
+    cid: string;
+    size: number;
+    number_of_files: number;
+    mime_type: string;
+    group_id: string | null;
+  };
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -41,8 +52,7 @@ export default async function handler(
     }
 
     const file: File = Array.isArray(files.file) ? files.file[0] : files.file;
-    const fileStream = fs.createReadStream(file.filepath);
-
+    
     // Validate and retrieve form fields
     const rawShortHash = Array.isArray(fields.shortHash)
       ? fields.shortHash[0]
@@ -61,28 +71,57 @@ export default async function handler(
     }
     const filename = rawFilename;
 
-    // Build the storage path as: img/[shortHash]/filename
-    const storagePath = `img/${shortHash}/${filename}`;
-
+    // Read file as buffer
+    const fileBuffer = fs.readFileSync(file.filepath);
     const contentType =
       typeof file.mimetype === "string"
         ? file.mimetype
         : "application/octet-stream";
 
-    // Vercel blob storage is not currently configured
-    return res.status(501).json({ error: "Vercel blob storage not configured" });
-    
-    // const response = await put(storagePath, fileStream, {
-    //   access: "public",
-    //   token: env.BLOB_READ_WRITE_TOKEN,
-    //   contentType,
-    // });
+    // Create Blob for Pinata upload
+    const fileBlob = new Blob([fileBuffer], { type: contentType });
 
-    // return res.status(200).json({ url: response.url });
+    // Create FormData for Pinata upload
+    const formData = new FormData();
+    formData.append("file", fileBlob, filename);
+    formData.append("network", "public");
+
+    // Upload to Pinata
+    const pinataResponse = await fetch("https://uploads.pinata.cloud/v3/files", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.PINATA_JWT}`,
+      },
+      body: formData,
+    });
+
+    if (!pinataResponse.ok) {
+      const errorText = await pinataResponse.text();
+      console.error("Pinata upload error:", errorText);
+      return res.status(pinataResponse.status).json({ 
+        error: "Pinata upload failed", 
+        details: errorText 
+      });
+    }
+
+    const pinataData = (await pinataResponse.json()) as PinataResponse;
+    
+    // Construct IPFS gateway URL using public IPFS gateway
+    const ipfsUrl = `https://ipfs.io/ipfs/${pinataData.data.cid}`;
+
+    return res.status(200).json({ 
+      url: ipfsUrl,
+      cid: pinataData.data.cid,
+      id: pinataData.data.id,
+    });
   } catch (err) {
     console.error("File upload error:", err);
     return res
       .status(500)
-      .json({ error: "Internal Server Error", details: err });
+      .json({ 
+        error: "Internal Server Error", 
+        details: err instanceof Error ? err.message : String(err)
+      });
   }
 }
+

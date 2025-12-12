@@ -9,7 +9,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
@@ -81,13 +81,14 @@ export default function UpdateDRep() {
     if (!multisigWallet) {
       throw new Error("Multisig wallet not connected");
     }
-    // Cast metadata to a known record type
-    const drepMetadata = (await getDRepMetadata(
+    // Get metadata with both compacted (for upload) and normalized (for hashing) forms
+    const metadataResult = await getDRepMetadata(
       formState,
       appWallet,
-    )) as Record<string, unknown>;
-    console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
+    );
+    
+    // Upload the compacted JSON-LD (readable format)
+    const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -95,15 +96,15 @@ export default function UpdateDRep() {
       },
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata),
+        value: JSON.stringify(metadataResult.compacted, null, 2), // Pretty print for readability
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
-    // Await file retrieval
-    const fileContent = getFile(anchorUrl);
-    const anchorObj = JSON.parse(fileContent);
-    const anchorHash = hashDrepAnchor(anchorObj);
+    
+    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
+    // The normalized form is in N-Quads format which is the canonical representation
+    const anchorHash = hashDrepAnchor(metadataResult.compacted);
     return { anchorUrl, anchorHash };
   }
 
@@ -229,11 +230,11 @@ export default function UpdateDRep() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Minus className="h-6 w-6" />
-          Update DRep
+    <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+          <Minus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+          <span>Update DRep</span>
         </h1>
       </div>
       {appWallet && (

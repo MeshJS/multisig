@@ -12,11 +12,6 @@ const config = {
     defaultLocale: "en",
   },
   transpilePackages: ["geist"],
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -36,8 +31,18 @@ const config = {
         protocol: "https",
         hostname: "ipfs.io",
       },
+      {
+        protocol: "https",
+        hostname: "gateway.pinata.cloud",
+      },
     ],
   },
+  // Turbopack configuration (Next.js 16+)
+  // Empty config silences the warning about webpack/turbopack conflict
+  // WebAssembly support is enabled by default in Turbopack
+  turbopack: {},
+  
+  // Webpack config for builds that explicitly use webpack (e.g., with --webpack flag)
   webpack: function (config, options) {
     config.experiments = {
       asyncWebAssembly: true,

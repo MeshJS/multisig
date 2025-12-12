@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useProxyData, useProxyActions } from "@/lib/zustand/proxy";
+import { useProxyData, useProxyActions, useProxyStore } from "@/lib/zustand/proxy";
 import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 
@@ -46,7 +46,8 @@ export default function ProxyDataLoader() {
       
       setProxies(appWallet.id, proxyData);
     }
-  }, [apiProxies, appWallet?.id, setProxies]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiProxies, appWallet?.id]); // setProxies is stable from Zustand, no need to include
 
   // Fetch additional data for each proxy
   useEffect(() => {
@@ -68,16 +69,24 @@ export default function ProxyDataLoader() {
                 proxy.paramUtxo,
                 true,
               );
-              await fetchProxyDelegatorsInfo(
-                appWallet.id,
-                proxy.id,
-                proxy.proxyAddress,
-                proxy.authTokenId,
-                appWallet.scriptCbor,
-                network.toString(),
-                proxy.paramUtxo,
-                true,
-              );
+              // Only fetch delegators if DRep is registered
+              // Check if we have drepInfo and it's not null (meaning DRep is registered)
+              const currentProxies = useProxyStore.getState().proxies[appWallet.id] || [];
+              const currentProxy = currentProxies.find(p => p.id === proxy.id);
+              if (currentProxy?.drepInfo !== null && currentProxy?.drepInfo !== undefined) {
+                await fetchProxyDelegatorsInfo(
+                  appWallet.id,
+                  proxy.id,
+                  proxy.proxyAddress,
+                  proxy.authTokenId,
+                  appWallet.scriptCbor,
+                  network.toString(),
+                  proxy.paramUtxo,
+                  true,
+                );
+              } else {
+                console.log(`Skipping delegators fetch for proxy ${proxy.id} - DRep not registered`);
+              }
             } catch (error) {
               console.error(`Error fetching data for proxy ${proxy.id}:`, error);
             }
@@ -85,7 +94,8 @@ export default function ProxyDataLoader() {
         }
       })();
     }
-  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network, fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network]); // Zustand actions are stable, no need to include them
 
   // Clear proxy data when wallet changes
   useEffect(() => {

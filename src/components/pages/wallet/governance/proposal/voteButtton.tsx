@@ -31,6 +31,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { BallotType } from "../ballot/ballot";
+import { useBallotModal } from "@/hooks/useBallotModal";
+import { Plus, Info, Lock, FileText, CheckCircle2, ClipboardList } from "lucide-react";
+import { ProposalDetails } from "@/types/governance";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface VoteButtonProps {
   appWallet: Wallet;
@@ -40,6 +44,7 @@ interface VoteButtonProps {
   utxos: UTxO[];
   selectedBallotId?: string;
   proposalTitle?: string;
+  proposalDetails?: ProposalDetails;
   /**
    * Optional handler from the proposal page to open the ballot sidebar.
    * When provided, the \"Add proposal to ballot\" button will simply
@@ -56,21 +61,25 @@ export default function VoteButton({
   utxos,
   selectedBallotId,
   proposalTitle,
+  proposalDetails,
   onOpenBallotSidebar,
 }: VoteButtonProps) {
   // Use the custom hook for ballots (still used for proxy / context where needed)
   const { ballots } = useBallot(appWallet?.id);
 
-  // Determine if this proposal already exists on any ballot
-  const isOnAnyBallot = useMemo(
-    () =>
-      !!proposalId &&
-      Array.isArray(ballots) &&
-      ballots.some(
-        (b: BallotType) => Array.isArray(b.items) && b.items.includes(proposalId),
-      ),
-    [ballots, proposalId],
-  );
+  // Determine if this proposal already exists on any ballot and count ballots
+  const { isOnAnyBallot, ballotCount } = useMemo(() => {
+    if (!proposalId || !Array.isArray(ballots)) {
+      return { isOnAnyBallot: false, ballotCount: 0 };
+    }
+    const matchingBallots = ballots.filter(
+      (b: BallotType) => Array.isArray(b.items) && b.items.includes(proposalId),
+    );
+    return {
+      isOnAnyBallot: matchingBallots.length > 0,
+      ballotCount: matchingBallots.length,
+    };
+  }, [ballots, proposalId]);
 
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
@@ -80,11 +89,21 @@ export default function VoteButton({
   const network = useSiteStore((state) => state.network);
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
+  const { openModal, setCurrentProposal } = useBallotModal();
 
   // Proxy state
   const { isProxyEnabled, selectedProxyId } = useProxy();
   const { wallet } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
+
+  // Check if proposal is active (only Active proposals can be voted on)
+  const isProposalActive = useMemo(() => {
+    if (!proposalDetails) return true; // If no details, assume active to not block voting
+    // A proposal is active if it has no enacted, dropped, or expired epoch
+    return !proposalDetails.enacted_epoch && 
+           !proposalDetails.dropped_epoch && 
+           !proposalDetails.expired_epoch;
+  }, [proposalDetails]);
 
   // Get proxies for proxy mode
   const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
@@ -324,56 +343,110 @@ export default function VoteButton({
   }
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-center justify-center space-y-2">
-      <Select
-        value={voteKind}
-        onValueChange={(value) =>
-          setVoteKind(value as "Yes" | "No" | "Abstain")
-        }
-      >
-        <SelectTrigger className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500">
-          <SelectValue placeholder="Select Vote Kind" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem value="Yes">Yes</SelectItem>
-            <SelectItem value="No">No</SelectItem>
-            <SelectItem value="Abstain">Abstain</SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-
-      {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
-        <div className="w-full p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-          <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
-            Proxy Mode Active - Select a proxy to continue
-          </p>
-          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-            Go to the Proxy Control panel above and select a proxy to enable voting.
-          </p>
+    <div className="flex w-full max-w-sm flex-col items-stretch justify-center space-y-2 sm:space-y-3">
+      {!isProposalActive ? (
+        // Inactive proposal state
+        <div className="flex flex-col items-center gap-2">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 cursor-help">
+                  <Lock className="h-4 w-4" />
+                  <span>Voting closed</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="max-w-xs">
+                  This proposal can no longer be voted on. You can still manage it in your ballots.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
+      ) : (
+        // Active proposal state
+        <>
+          <Select
+            value={voteKind}
+            onValueChange={(value) =>
+              setVoteKind(value as "Yes" | "No" | "Abstain")
+            }
+          >
+            <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 sm:px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800">
+              <SelectValue placeholder="Select Vote Kind" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="Yes">Yes</SelectItem>
+                <SelectItem value="No">No</SelectItem>
+                <SelectItem value="Abstain">Abstain</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
+            <div className="w-full p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs sm:text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+                    Proxy Mode Active
+                  </p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                    Select a proxy in the Proxy Control panel above to enable voting.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={hasValidProxy ? voteProxy : vote}
+            disabled={loading || utxos.length === 0}
+            className="w-full rounded-md bg-blue-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading
+              ? "Voting..."
+              : utxos.length > 0
+                ? `Vote${hasValidProxy ? " (Proxy)" : ""}`
+                : "No UTxOs Available"}
+          </Button>
+        </>
       )}
 
-      <Button
-        onClick={hasValidProxy ? voteProxy : vote}
-        disabled={loading || utxos.length === 0}
-        className="w-full rounded-md bg-blue-600 px-6 py-2 font-semibold text-white shadow hover:bg-blue-700"
-      >
-        {loading
-          ? "Voting..."
-          : utxos.length > 0
-            ? `Vote${hasValidProxy ? " (Proxy Mode)" : ""}`
-            : "No UTxOs Available"}
-      </Button>
-
-      {onOpenBallotSidebar && (
-        <Button
-          onClick={onOpenBallotSidebar}
-          className="w-full rounded-md bg-green-600 hover:bg-green-700 px-6 py-2 font-semibold text-white shadow"
-        >
-          {isOnAnyBallot ? "Manage proposal on ballots" : "Add proposal to ballot"}
-        </Button>
-      )}
+      <div className="flex justify-center">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => {
+                  setCurrentProposal(proposalId, proposalTitle);
+                  openModal();
+                }}
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 p-0 rounded-md border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500 flex items-center justify-center transition-colors relative"
+              >
+                {isOnAnyBallot ? (
+                  <>
+                    <ClipboardList className="h-4 w-4" />
+                    {ballotCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center text-[10px] font-semibold bg-green-500 dark:bg-green-600 text-white rounded-full border-2 border-white dark:border-gray-800">
+                        {ballotCount}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <ClipboardList className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>{isOnAnyBallot ? `Manage in ${ballotCount} ballot${ballotCount !== 1 ? 's' : ''}` : "Add to Ballot"}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
     </div>
   );
 }

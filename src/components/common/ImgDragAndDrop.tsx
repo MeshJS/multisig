@@ -39,7 +39,7 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
 
   async function checkImageExists(shortHash: string): Promise<string | null> {
     try {
-      const response = await fetch(`/api/vercel-storage/image/exists?shortHash=${shortHash}`, {
+      const response = await fetch(`/api/pinata-storage/image/exists?shortHash=${shortHash}`, {
         method: "GET",
       });
       if (response.ok) {
@@ -81,7 +81,7 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
       formData.append("shortHash", shortHash);
       formData.append("filename", file.name);
 
-      const response = await fetch("/api/vercel-storage/image/put", {
+      const response = await fetch("/api/pinata-storage/image/put", {
         method: "POST",
         body: formData,
       });

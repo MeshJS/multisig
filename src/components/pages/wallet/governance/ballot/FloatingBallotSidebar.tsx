@@ -92,23 +92,23 @@ export default function FloatingBallotSidebar({
         </button>
 
         {open && (
-          <div className="fixed z-50 left-0 bottom-0 w-full h-[85vh] bg-white dark:bg-gray-900 border-t p-4 shadow-xl animate-slideUp flex flex-col">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-semibold">Your Ballots</span>
+          <div className="fixed z-50 left-0 bottom-0 w-full h-[85vh] sm:h-[90vh] bg-white dark:bg-gray-900 border-t p-3 sm:p-4 shadow-xl animate-slideUp flex flex-col">
+            <div className="flex justify-between items-center mb-2 sm:mb-3">
+              <span className="font-semibold text-sm sm:text-base">Your Ballots</span>
               {proposalCount > 0 && (
                 <span className="ml-2 inline-block text-xs font-medium text-white bg-blue-500 rounded-full px-2 py-0.5">
                   {proposalCount}
                 </span>
               )}
               <button
-                className="p-2 rounded-full hover:bg-gray-200"
+                className="p-1.5 sm:p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
               >
-                ✕
+                <span className="text-lg sm:text-xl">✕</span>
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto -mx-3 sm:-mx-4 px-3 sm:px-4">
               <BallotCard
                 appWallet={appWallet}
                 selectedBallotId={selectedBallotId}

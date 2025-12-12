@@ -273,12 +273,15 @@ header.border-b {
 }
 
 /* Mobile Signer Cards - very subtle borders */
-.add-wallet-glass-page .sm\\:hidden .border {
-  border-color: rgba(0, 0, 0, 0.06) !important; /* Light mode - more subtle */
-}
+/* Target elements that are only visible on mobile (below sm breakpoint) */
+@media (max-width: 639px) {
+  .add-wallet-glass-page [class*="border"] {
+    border-color: rgba(0, 0, 0, 0.06) !important; /* Light mode - more subtle */
+  }
 
-.dark .add-wallet-glass-page .sm\\:hidden .border {
-  border-color: rgba(255, 255, 255, 0.01) !important; /* Dark mode - barely visible */
+  .dark .add-wallet-glass-page [class*="border"] {
+    border-color: rgba(255, 255, 255, 0.01) !important; /* Dark mode - barely visible */
+  }
 }
 
 /**

@@ -11,7 +11,7 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
-    BLOB_READ_WRITE_TOKEN: z.string(),
+    PINATA_JWT: z.string(),
     GITHUB_TOKEN: z.string(),
     JWT_SECRET: z.string().min(32),
     // NEXTAUTH_SECRET:
@@ -54,7 +54,7 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET,
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
-    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
   },

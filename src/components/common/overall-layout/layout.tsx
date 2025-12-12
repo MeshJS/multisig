@@ -10,6 +10,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
@@ -29,6 +30,8 @@ import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 // Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
 // Using a version-based key ensures fresh mount on updates, preventing cache issues
@@ -360,15 +363,35 @@ export default function RootLayout({
         <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
           <WalletErrorBoundary
             fallback={
-              <div className="flex flex-col items-center justify-center h-full">
-                <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
-                <p className="text-gray-600 mb-4">Please try refreshing the page or reconnecting your wallet.</p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Refresh Page
-                </button>
+              <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
+                <Card className="w-full max-w-md border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-sm shadow-lg">
+                  <CardContent className="flex flex-col items-center text-center p-8 space-y-6">
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-red-500/10 dark:bg-red-500/20 rounded-full blur-xl" />
+                      <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-red-50 dark:bg-red-950/30 border-2 border-red-200 dark:border-red-900/50">
+                        <AlertCircle className="w-10 h-10 text-red-600 dark:text-red-400" />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                        Something went wrong
+                      </h2>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-sm">
+                        Please try refreshing the page or reconnecting your wallet.
+                      </p>
+                    </div>
+                    
+                    <Button
+                      onClick={() => window.location.reload()}
+                      className="w-full sm:w-auto min-w-[140px]"
+                      size="lg"
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh Page
+                    </Button>
+                  </CardContent>
+                </Card>
               </div>
             }
           >

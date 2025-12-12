@@ -711,6 +711,19 @@ export class MeshProxyContract extends MeshTxInitiator {
   getDrepDelegators = async (forceRefresh = false) => {
     const drepId = this.getDrepId();
     
+    // First check if DRep is registered - don't fetch delegators if not registered
+    const drepStatus = await this.getDrepStatus(forceRefresh);
+    if (!drepStatus || drepStatus === null) {
+      // DRep is not registered, return empty result
+      console.log(`DRep ${drepId} is not registered, skipping delegators fetch`);
+      return {
+        delegators: [],
+        totalDelegation: "0",
+        totalDelegationADA: 0,
+        count: 0
+      };
+    }
+    
     // Check cache first
     const cacheKey = `${drepId}_delegators`;
     const cached = drepStatusCache.get(cacheKey);
