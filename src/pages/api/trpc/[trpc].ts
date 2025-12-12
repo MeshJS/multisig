@@ -19,25 +19,9 @@ export default createNextApiHandler({
       error.message.includes("P1017");
 
     if (isConnectionError) {
-      console.error(
-        `❌ Database connection error on ${path ?? "<no-path>"}: ${error.message}`,
-      );
-      // Log DATABASE_URL info (without credentials) for debugging
-      const dbUrl = process.env.DATABASE_URL;
-      if (dbUrl) {
-        try {
-          const url = new URL(dbUrl);
-          console.error(
-            `Database URL: ${url.protocol}//${url.hostname}:${url.port}${url.pathname}`,
-          );
-        } catch {
-          // Ignore URL parsing errors
-        }
-      }
+      console.error(`Database connection error on ${path ?? "<no-path>"}: ${error.message}`);
     } else if (env.NODE_ENV === "development") {
-      console.error(
-        `❌ tRPC failed on ${path ?? "<no-path>"}: ${error.message}`,
-      );
+      console.error(`tRPC failed on ${path ?? "<no-path>"}: ${error.message}`);
     }
   },
 });

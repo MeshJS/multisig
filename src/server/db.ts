@@ -50,10 +50,7 @@ const withRetry = async <T>(
       const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
       
       if (env.NODE_ENV === "development") {
-        console.warn(
-          `Database connection error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${delay}ms...`,
-          error instanceof Error ? error.message : String(error),
-        );
+        console.warn(`Database connection error, retrying in ${delay}ms (${attempt}/${MAX_RETRIES})`);
       }
       
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -74,34 +71,32 @@ const withRetry = async <T>(
 const createPrismaClient = () => {
   // Validate DATABASE_URL is using pooled connection for Supabase
   const dbUrl = env.DATABASE_URL;
-  if (dbUrl && dbUrl.includes("supabase.com")) {
-    const isPooler = dbUrl.includes("pooler");
-    const hasWrongPort = dbUrl.includes(":5432");
-    const hasCorrectPort = dbUrl.includes(":6543");
-    
-    // Critical error: Using pooler hostname with direct port
-    if (isPooler && hasWrongPort) {
-      console.error(
-        "❌ CRITICAL: DATABASE_URL uses pooler hostname but wrong port (5432). " +
-          "For Supabase connection pooler, you MUST use port 6543, not 5432. " +
-          "Fix: Replace :5432 with :6543 in your DATABASE_URL. " +
-          "Get correct URL from: Supabase Dashboard → Settings → Database → Connection Pooling → Transaction mode",
-      );
-    }
-    // Error: Using direct connection instead of pooled
-    else if (!isPooler && hasWrongPort) {
-      console.error(
-        "❌ DATABASE_URL is using direct connection (port 5432). " +
-          "For Vercel serverless with Supabase, you MUST use the connection pooler URL (port 6543). " +
-          "Get it from: Supabase Dashboard → Settings → Database → Connection Pooling → Transaction mode",
-      );
-    }
-    // Warning: Pooler URL missing pgbouncer parameter
-    else if (isPooler && hasCorrectPort && !dbUrl.includes("pgbouncer=true")) {
-      console.warn(
-        "⚠️  DATABASE_URL uses pooler but missing pgbouncer=true parameter. " +
-          "Add ?pgbouncer=true to your connection string for optimal performance.",
-      );
+  if (dbUrl) {
+    try {
+      // Properly parse URL to validate hostname instead of substring matching
+      const url = new URL(dbUrl);
+      const hostname = url.hostname.toLowerCase();
+      const port = url.port ? parseInt(url.port, 10) : (url.protocol === "postgresql:" ? 5432 : null);
+      const isSupabase = hostname.endsWith(".supabase.com") || hostname === "supabase.com";
+      const isPooler = hostname.includes("pooler");
+      const searchParams = new URLSearchParams(url.search);
+      const hasPgbouncer = searchParams.has("pgbouncer") && searchParams.get("pgbouncer") === "true";
+      
+      if (isSupabase) {
+        if (isPooler && port === 5432) {
+          console.error("DATABASE_URL: pooler hostname requires port 6543, not 5432");
+        } else if (!isPooler && port === 5432) {
+          console.error("DATABASE_URL: use connection pooler (port 6543) for serverless");
+        } else if (isPooler && port === 6543 && !hasPgbouncer) {
+          console.warn("DATABASE_URL: add ?pgbouncer=true for optimal performance");
+        }
+      }
+    } catch (error) {
+      // If URL parsing fails, log warning but don't block initialization
+      // Prisma will handle invalid URLs with its own error messages
+      if (env.NODE_ENV === "development") {
+        console.warn("Could not parse DATABASE_URL for validation:", error);
+      }
     }
   }
 
