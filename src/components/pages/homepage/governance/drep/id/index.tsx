@@ -58,14 +58,21 @@ export default function DrepDetailPage() {
         metadata = await blockchainProvider.get(
           `/governance/dreps/${drepId}/metadata/`,
         );
-      } catch {
-        console.warn(`No metadata found for DRep ${drepId}`);
+      } catch (err: any) {
+        // 404 is expected if metadata doesn't exist - silently ignore
+        const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
+        if (!is404) {
+          console.warn("No metadata found for DRep %s:", drepId, err);
+        }
       }
 
       setDrepInfo(details || null);
       setDrepMetadata(metadata || null);
-    } catch (error) {
-      console.error(`Failed to fetch DRep ${drepId} details:`, error);
+    } catch (error: any) {
+      const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
+      if (!is404) {
+        console.error("Failed to fetch DRep %s details:", drepId, error);
+      }
     } finally {
       setLoading(false);
     }

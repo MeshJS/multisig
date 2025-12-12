@@ -298,10 +298,42 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
           const proposalId = p.tx_hash + "#" + p.cert_index;
           try {
             // Fetch both metadata and details in parallel
+            // 404 for metadata is expected if proposal doesn't have metadata - handle silently
             const [metadata, details] = await Promise.all([
-              blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}/metadata`),
+              blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}/metadata`).catch((err: any) => {
+                const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
+                if (is404) {
+                  return null; // 404 is expected - proposal has no metadata
+                }
+                throw err; // Re-throw non-404 errors
+              }),
               blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null)
             ]);
+
+            // If metadata is null (404), use default structure
+            if (!metadata) {
+              return {
+                key: proposalId,
+                metadata: {
+                  tx_hash: p.tx_hash,
+                  cert_index: Number(p.cert_index),
+                  governance_type: p.governance_type,
+                  hash: "",
+                  url: "",
+                  bytes: "",
+                  json_metadata: {
+                    body: {
+                      title: "Metadata not available",
+                      abstract: "",
+                      motivation: "",
+                      rationale: "",
+                      references: []
+                    }
+                  }
+                },
+                details: details as ProposalDetails | null
+              };
+            }
 
             return {
               key: proposalId,
@@ -312,7 +344,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
               details: details as ProposalDetails | null
             };
           } catch (e: any) {
-            // If metadata fetch fails, try to still get details
+            // If metadata fetch fails with non-404 error, try to still get details
             const details = await blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null);
             
             return {
@@ -634,108 +666,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                     {/* Expandable Content */}
                     {isExpanded && (
                       <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-gray-200 dark:border-gray-700 pt-3 sm:pt-4 space-y-3 sm:space-y-4">
-                        {/* Proposal Details */}
-                        {isLoadingDetails ? (
-                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
-                            Loading details...
-                          </div>
-                        ) : details && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pb-3 border-b border-gray-200 dark:border-gray-700">
-                            {/* Status */}
-                            {getProposalStatus(details) && (() => {
-                              const status = getProposalStatus(details)!;
-                              const StatusIcon = status.icon;
-                              return (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-gray-500" />
-                                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                                  </div>
-                                  <Badge className={`${status.color} flex items-center gap-1.5 w-fit`}>
-                                    <StatusIcon className="h-3 w-3" />
-                                    {status.label}
-                                  </Badge>
-                                </div>
-                              );
-                            })()}
-
-                            {/* Governance Type */}
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-gray-500" />
-                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                              </div>
-                              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 capitalize">
-                                {details.governance_type.replace(/_/g, " ")}
-                              </div>
-                            </div>
-
-                            {/* Deposit */}
-                            {details.deposit && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Coins className="h-4 w-4 text-gray-500" />
-                                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Deposit</span>
-                                </div>
-                                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                                  {(parseInt(details.deposit) / 1_000_000).toFixed(2)} ADA
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Ratified Epoch */}
-                            {details.ratified_epoch && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-4 w-4 text-gray-500" />
-                                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Ratified Epoch</span>
-                                </div>
-                                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                                  {details.ratified_epoch}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Enacted Epoch */}
-                            {details.enacted_epoch && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle2 className="h-4 w-4 text-gray-500" />
-                                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Enacted Epoch</span>
-                                </div>
-                                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                                  {details.enacted_epoch}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Expiration */}
-                            {details.expiration && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-gray-500" />
-                                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Expires In</span>
-                                </div>
-                                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                                  {details.expiration} epochs
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Transaction Hash */}
-                            <div className="space-y-2 sm:col-span-2 lg:col-span-1">
-                              <div className="flex items-center gap-2">
-                                <Hash className="h-4 w-4 text-gray-500" />
-                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Transaction</span>
-                              </div>
-                              <div className="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">
-                                {details.tx_hash}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        {/* Abstract - only show if not already visible */}
+                        {/* Abstract - Mobile only */}
                         <div>
                           <h4 className="text-xs sm:text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Abstract</h4>
                           <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 prose prose-sm sm:prose-base max-w-none prose-headings:text-sm sm:prose-headings:text-base prose-p:text-xs sm:prose-p:text-sm prose-p:my-1 sm:prose-p:my-2">
@@ -744,28 +675,6 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                             </ReactMarkdown>
                           </div>
                         </div>
-
-                        {/* Only show additional details not already visible */}
-                        {proposal.json_metadata.body.motivation && (
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Motivation</h4>
-                            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 prose prose-sm sm:prose-base max-w-none prose-headings:text-sm sm:prose-headings:text-base prose-p:text-xs sm:prose-p:text-sm prose-p:my-1 sm:prose-p:my-2">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {proposal.json_metadata.body.motivation}
-                              </ReactMarkdown>
-                            </div>
-                          </div>
-                        )}
-                        {proposal.json_metadata.body.rationale && (
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Rationale</h4>
-                            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 prose prose-sm sm:prose-base max-w-none prose-headings:text-sm sm:prose-headings:text-base prose-p:text-xs sm:prose-p:text-sm prose-p:my-1 sm:prose-p:my-2">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {proposal.json_metadata.body.rationale}
-                              </ReactMarkdown>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Voting History */}
                         {vote && (
@@ -785,18 +694,18 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                         )}
 
                         {/* Actions */}
-                        <div className="flex flex-col gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                           <Link
                             href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
                             className="w-full"
                           >
-                            <Button variant="outline" className="w-full text-sm sm:text-base">
+                            <Button variant="outline" className="w-full text-sm sm:text-base py-2.5">
                               View Full Details
                             </Button>
                           </Link>
                           <Button
                             variant="default"
-                            className="w-full text-sm bg-green-600 hover:bg-green-700 text-white"
+                            className="w-full text-sm bg-green-600 hover:bg-green-700 text-white py-2.5"
                             onClick={() => {
                               setCurrentProposal(proposalId, proposal.json_metadata.body.title);
                               openModal();
@@ -805,16 +714,14 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                             <Plus className="mr-2 h-4 w-4" />
                             Add to Ballot
                           </Button>
-                          <div className="flex justify-center">
-                            <VoteButton
-                              utxos={utxos}
-                              appWallet={appWallet}
-                              proposalId={proposalId}
-                              proposalTitle={proposal.json_metadata.body.title}
-                              selectedBallotId={selectedBallotId}
-                              proposalDetails={details}
-                            />
-                          </div>
+                          <VoteButton
+                            utxos={utxos}
+                            appWallet={appWallet}
+                            proposalId={proposalId}
+                            proposalTitle={proposal.json_metadata.body.title}
+                            selectedBallotId={selectedBallotId}
+                            proposalDetails={details}
+                          />
                         </div>
                       </div>
                     )}
@@ -960,15 +867,24 @@ function ProposalRow({
           </div>
         </TableCell>
         <TableCell className="py-3 sm:py-4 w-[15%] align-top" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-col items-center gap-2 min-w-0">
-            <VoteButton
-              utxos={utxos}
-              appWallet={appWallet}
-              proposalId={proposalId}
-              proposalTitle={proposal.json_metadata.body.title}
-              selectedBallotId={selectedBallotId}
-              proposalDetails={details}
-            />
+          <div className="flex flex-col items-end gap-2.5 min-w-0">
+            {/* Voting Status Indicator */}
+            {voteDisplay && (
+              <div className="flex justify-end">
+                <VoteBadge voteKind={voteDisplay} />
+              </div>
+            )}
+            {/* Action Buttons - Right-aligned for table */}
+            <div className="flex flex-col items-end gap-2">
+              <VoteButton
+                utxos={utxos}
+                appWallet={appWallet}
+                proposalId={proposalId}
+                proposalTitle={proposal.json_metadata.body.title}
+                selectedBallotId={selectedBallotId}
+                proposalDetails={details}
+              />
+            </div>
           </div>
         </TableCell>
       </TableRow>
@@ -984,24 +900,6 @@ function ProposalRow({
                 </div>
               ) : details && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pb-3 border-b border-gray-200 dark:border-gray-700">
-                  {/* Status */}
-                  {getProposalStatus(details) && (() => {
-                    const status = getProposalStatus(details)!;
-                    const StatusIcon = status.icon;
-                    return (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-gray-500" />
-                          <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                        </div>
-                        <Badge className={`${status.color} flex items-center gap-1.5 w-fit`}>
-                          <StatusIcon className="h-3 w-3" />
-                          {status.label}
-                        </Badge>
-                      </div>
-                    );
-                  })()}
-
                   {/* Governance Type */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -1089,16 +987,7 @@ function ProposalRow({
                   </div>
                 </div>
               )}
-              {/* Show full abstract in expanded view */}
-              <div>
-                <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Abstract</h4>
-                <div className="text-sm text-gray-600 dark:text-gray-400 prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {proposal.json_metadata.body.abstract}
-                  </ReactMarkdown>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Button
                   variant="default"
                   className="w-full sm:w-auto text-sm bg-green-600 hover:bg-green-700 text-white"

@@ -82,10 +82,6 @@ export default function PageWallets() {
               .map((wallet) => {
                 const walletBalance = balances[wallet.id] ?? null;
                 const walletLoadingState = loadingStates[wallet.id] ?? "idle";
-                // Debug log
-                if (process.env.NODE_ENV === "development") {
-                  console.log(`Wallet ${wallet.id}: balance=${walletBalance}, loadingState=${walletLoadingState}`);
-                }
                 return (
                   <CardWallet
                     key={wallet.id}

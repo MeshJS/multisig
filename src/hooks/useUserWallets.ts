@@ -17,9 +17,11 @@ export default function useUserWallets() {
   let _wallets = wallets;
 
   if (wallets) {
-    _wallets = wallets.map((wallet) => {
-      return buildWallet(wallet as DbWalletWithLegacy, network);
-    });
+    _wallets = wallets
+      .filter((wallet): wallet is DbWalletWithLegacy => wallet != null)
+      .map((wallet) => {
+        return buildWallet(wallet, network);
+      });
     return { wallets: _wallets, isLoading };
   }
 
