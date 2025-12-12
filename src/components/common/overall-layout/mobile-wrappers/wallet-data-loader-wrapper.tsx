@@ -173,11 +173,14 @@ export default function WalletDataLoaderWrapper({
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
       setDrepInfo(drepInfo);
-    } catch (err) {
+    } catch (err: any) {
       // DRep not found (404) is expected if DRep hasn't been registered yet
       // This is normal behavior - the DRep ID exists but isn't registered on-chain
+      const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
+      if (!is404) {
+        console.error(`Error fetching DRep info:`, err);
+      }
       setDrepInfo(undefined);
-      console.log(`DRep not yet registered on-chain (this is normal before registration)`);
     }
   }
 
@@ -194,7 +197,6 @@ export default function WalletDataLoaderWrapper({
 
         // Fetch all proxy data in parallel using the new batch function
         if (proxies.length > 0) {
-          console.log(`WalletDataLoaderWrapper: Fetching data for ${proxies.length} proxies in parallel`);
           await fetchAllProxyData(
             appWallet.id, 
             proxies, 
@@ -202,7 +204,6 @@ export default function WalletDataLoaderWrapper({
             network.toString(),
             false // Use cache to avoid duplicate requests
           );
-          console.log("WalletDataLoaderWrapper: Successfully fetched all proxy data");
         }
       } catch (error) {
         console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);

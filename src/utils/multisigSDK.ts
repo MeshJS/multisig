@@ -520,9 +520,6 @@ export class MultisigWallet {
     const paymentKeys = this.getKeysByRole(0);
     const dRepKeys = this.getKeysByRole(3);
     if (!paymentKeys || !dRepKeys || dRepKeys.length === 0) return false;
-    console.log(
-      `Governance enabled: ${dRepKeys.length} dRep keys and ${paymentKeys.length} payment keys`
-    );
     return dRepKeys.length === paymentKeys.length;
   }
 

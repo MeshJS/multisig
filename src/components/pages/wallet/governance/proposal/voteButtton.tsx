@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import type { BallotType } from "../ballot/ballot";
 import { useBallotModal } from "@/hooks/useBallotModal";
-import { Plus, Info, Lock, FileText, CheckCircle2, ClipboardList } from "lucide-react";
+import { Plus, Info, Lock, FileText, CheckCircle2, Vote } from "lucide-react";
 import { ProposalDetails } from "@/types/governance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -343,7 +343,7 @@ export default function VoteButton({
   }
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-stretch justify-center space-y-2 sm:space-y-3">
+    <div className="flex w-full flex-col items-stretch justify-center space-y-2 sm:space-y-3">
       {!isProposalActive ? (
         // Inactive proposal state
         <div className="flex flex-col items-center gap-2">
@@ -429,7 +429,7 @@ export default function VoteButton({
               >
                 {isOnAnyBallot ? (
                   <>
-                    <ClipboardList className="h-4 w-4" />
+                    <Vote className="h-4 w-4" />
                     {ballotCount > 0 && (
                       <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center text-[10px] font-semibold bg-green-500 dark:bg-green-600 text-white rounded-full border-2 border-white dark:border-gray-800">
                         {ballotCount}
@@ -437,7 +437,7 @@ export default function VoteButton({
                     )}
                   </>
                 ) : (
-                  <ClipboardList className="h-4 w-4" />
+                  <Vote className="h-4 w-4" />
                 )}
               </Button>
             </TooltipTrigger>

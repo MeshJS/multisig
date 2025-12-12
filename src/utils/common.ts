@@ -26,10 +26,6 @@ export function buildMultisigWallet(
     return undefined;
   }
 
-  console.log(
-    "buildMultisigWallet - stakeCredentialHash",
-    wallet.stakeCredentialHash,
-  );
 
   const keys: MultisigKey[] = [];
   if (wallet.signersAddresses.length > 0) {
@@ -44,7 +40,9 @@ export function buildMultisigWallet(
             name: wallet.signersDescriptions[i] || "",
           });
         } catch (e) {
-          console.warn(`Invalid payment address at index ${i}:`, addr);
+          if (process.env.NODE_ENV === "development") {
+            console.warn(`Invalid payment address at index ${i}:`, addr);
+          }
         }
       }
     });
@@ -90,6 +88,10 @@ export function buildWallet(
   network: number,
   utxos?: UTxO[],
 ): Wallet {
+  if (!wallet) {
+    throw new Error("buildWallet: wallet is required");
+  }
+
   // For wallets with rawImportBodies, use stored values instead of deriving
   if (wallet.rawImportBodies?.multisig) {
     const multisig = wallet.rawImportBodies.multisig;
@@ -146,14 +148,33 @@ export function buildWallet(
 
   //depricated -> only payment-script left in for compatibility
   //Remove later when refactoring
+  const validScripts = wallet.signersAddresses
+    .filter((addr) => addr) // Filter out null/undefined addresses
+    .map((addr) => {
+      try {
+        return {
+          type: "sig" as const,
+          keyHash: resolvePaymentKeyHash(addr!),
+        };
+        } catch (e) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn(`Invalid payment address in buildWallet:`, addr);
+          }
+          return null;
+        }
+    })
+    .filter((script): script is { type: "sig"; keyHash: string } => script !== null);
+
+  if (validScripts.length === 0) {
+    console.error("buildWallet: No valid payment addresses found");
+    throw new Error("Failed to build wallet: No valid payment addresses");
+  }
+
   const nativeScript = {
-    type: wallet.type ? wallet.type : "atLeast",
-    scripts: wallet.signersAddresses.map((addr) => ({
-      type: "sig",
-      keyHash: resolvePaymentKeyHash(addr),
-    })),
+    type: (wallet.type as "all" | "any" | "atLeast") || "atLeast",
+    scripts: validScripts,
   };
-  if (nativeScript.type == "atLeast") {
+  if (nativeScript.type === "atLeast") {
     //@ts-ignore
     nativeScript.required = wallet.numRequiredSigners!;
   }

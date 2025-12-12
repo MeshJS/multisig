@@ -68,13 +68,9 @@ export default function useWalletBalances(
         const addressNetwork = addressToNetwork(walletAddress);
         const provider = getProvider(addressNetwork);
 
-        console.log(`Fetching balance for wallet ${wallet.id} (${walletAddress.slice(0, 20)}...)`);
-
         // Fetch address info using Blockfrost API
         // This returns an object with an 'amount' array containing assets
         const addressInfo = await provider.get(`/addresses/${walletAddress}/`);
-
-        console.log(`Fetched address info for wallet ${wallet.id}`, addressInfo);
 
         // Calculate balance from assets
         // Blockfrost returns { amount: [{ unit: string, quantity: string }] }
@@ -87,22 +83,20 @@ export default function useWalletBalances(
             const lovelaceAmount = parseInt(lovelaceAsset.quantity);
             balance = lovelaceAmount / 1000000;
             balance = Math.round(balance * 100) / 100;
-            console.log(`Found lovelace asset: ${lovelaceAmount} lovelace = ${balance} ADA`);
-          } else {
-            console.log(`No lovelace asset found in address info for wallet ${wallet.id}`);
           }
-        } else {
-          console.warn(`Invalid address info format for wallet ${wallet.id}:`, addressInfo);
         }
-
-        console.log(`Final balance for wallet ${wallet.id}: ${balance} ADA`);
 
         // Update state
         setBalances((prev) => ({ ...prev, [wallet.id]: balance }));
         setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
         fetchedWalletsRef.current.add(wallet.id);
-      } catch (error) {
-        console.error(`Error fetching balance for wallet ${wallet.id}:`, error);
+      } catch (error: any) {
+        // Handle 404 errors gracefully (address doesn't exist yet - this is normal)
+        const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
+        if (!is404) {
+          // Only log non-404 errors
+          console.error(`Error fetching balance for wallet ${wallet.id}:`, error);
+        }
         setBalances((prev) => ({ ...prev, [wallet.id]: null }));
         setLoadingStates((prev) => ({ ...prev, [wallet.id]: "error" }));
         fetchedWalletsRef.current.add(wallet.id); // Mark as attempted to avoid retries
@@ -113,17 +107,14 @@ export default function useWalletBalances(
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) {
-      console.log("Queue processing already in progress");
       return;
     }
 
     if (queueRef.current.length === 0) {
-      console.log("Queue is empty, stopping fetch");
       setIsFetching(false);
       return;
     }
 
-    console.log(`Starting to process ${queueRef.current.length} wallets`);
     processingRef.current = true;
     setIsFetching(true);
 
@@ -140,11 +131,9 @@ export default function useWalletBalances(
 
         // Skip if already fetched
         if (fetchedWalletsRef.current.has(wallet.id)) {
-          console.log(`Skipping wallet ${wallet.id} - already fetched`);
           continue;
         }
 
-        console.log(`Processing wallet ${wallet.id} from queue`);
         await fetchWalletBalance(wallet);
 
         // Cooldown between requests (except for the last one)
@@ -152,7 +141,8 @@ export default function useWalletBalances(
           await new Promise((resolve) => setTimeout(resolve, cooldownMs));
         }
       }
-      console.log("Finished processing queue");
+    } catch (error) {
+      console.error("Error processing balance queue:", error);
     } finally {
       processingRef.current = false;
       setIsFetching(queueRef.current.length > 0);
@@ -162,17 +152,13 @@ export default function useWalletBalances(
   useEffect(() => {
     // Wait for wallets to be available
     if (!wallets) {
-      console.log("Wallets not yet loaded, waiting...");
       return;
     }
 
     if (wallets.length === 0) {
-      console.log("No wallets provided to useWalletBalances");
       setIsFetching(false);
       return;
     }
-
-    console.log(`useWalletBalances effect: ${wallets.length} wallets provided`);
 
     // Create a stable reference to wallet IDs for comparison
     const walletIds = wallets.map((w) => w.id).sort().join(",");
@@ -182,17 +168,14 @@ export default function useWalletBalances(
 
     // On first load (refresh), clear the fetched wallets set so we refetch balances
     if (isFirstLoad) {
-      console.log("First load detected, clearing fetched wallets cache");
       fetchedWalletsRef.current.clear();
       initializedWalletsRef.current.clear();
     }
 
     // Only process if wallet IDs have actually changed OR if this is the first load
     if (!isFirstLoad && walletIds === lastWalletIdsRef.current) {
-      console.log("Wallet IDs unchanged, checking if queue needs processing");
       // Wallets haven't changed, but check if we need to continue processing
       if (!processingRef.current && queueRef.current.length > 0) {
-        console.log("Resuming queue processing");
         processQueue().catch((error) => {
           console.error("Error processing balance queue:", error);
           processingRef.current = false;
@@ -202,15 +185,12 @@ export default function useWalletBalances(
       return;
     }
 
-    console.log(isFirstLoad ? "First load, processing wallets" : "Wallet IDs changed, processing new wallets");
     lastWalletIdsRef.current = walletIds;
 
     // Filter out wallets that have already been fetched
     const walletsToFetch = wallets.filter(
       (wallet) => !fetchedWalletsRef.current.has(wallet.id),
     );
-
-    console.log(`${walletsToFetch.length} wallets need balance fetching`);
 
     if (walletsToFetch.length === 0) {
       setIsFetching(false);
@@ -231,18 +211,13 @@ export default function useWalletBalances(
       queueRef.current.push(wallet);
     });
 
-    console.log(`Added ${walletsToFetch.length} wallets to queue. Queue length: ${queueRef.current.length}`);
-
     // Start processing if not already processing
     if (!processingRef.current) {
-      console.log("Starting queue processing");
       processQueue().catch((error) => {
         console.error("Error processing balance queue:", error);
         processingRef.current = false;
         setIsFetching(false);
       });
-    } else {
-      console.log("Queue processing already in progress, skipping");
     }
 
     // Cleanup on unmount
