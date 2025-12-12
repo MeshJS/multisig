@@ -229,7 +229,33 @@ export const useProxyStore = create<ProxyState>()(
           );
           proxyContract.proxyAddress = proxyAddress;
           
-          // Get delegators info
+          // Check if DRep is registered before fetching delegators
+          const drepStatus = await proxyContract.getDrepStatus(forceRefresh);
+          if (!drepStatus || drepStatus === null) {
+            // DRep is not registered, set empty delegators info and return early
+            const emptyDelegatorsInfo: ProxyDelegatorsInfo = {
+              delegators: [],
+              totalDelegation: "0",
+              totalDelegationADA: 0,
+              count: 0
+            };
+            
+            const currentState = get();
+            const updatedProxies = currentState.proxies[walletId]?.map(proxy => 
+              proxy.id === proxyId 
+                ? { ...proxy, delegatorsInfo: emptyDelegatorsInfo, lastUpdated: Date.now() }
+                : proxy
+            ) || [];
+            
+            set((state) => ({
+              proxies: { ...state.proxies, [walletId]: updatedProxies },
+              drepLoading: { ...state.drepLoading, [proxyId]: false },
+              drepErrors: { ...state.drepErrors, [proxyId]: null },
+            }));
+            return;
+          }
+          
+          // Get delegators info (only if DRep is registered)
           const delegatorsInfo = await proxyContract.getDrepDelegators(forceRefresh) as ProxyDelegatorsInfo;
           
           // Update the specific proxy's delegators data
@@ -300,12 +326,31 @@ export const useProxyStore = create<ProxyState>()(
               );
               proxyContract.proxyAddress = proxy.proxyAddress;
               
-              // Fetch all data for this proxy in parallel
-              const [balance, drepStatus, delegators] = await Promise.allSettled([
+              // Fetch balance and DRep status first
+              const [balance, drepStatus] = await Promise.allSettled([
                 proxyContract.getProxyBalance(),
                 proxyContract.getDrepStatus(forceRefresh),
-                proxyContract.getDrepDelegators(forceRefresh),
               ]);
+              
+              // Only fetch delegators if DRep is registered
+              let delegators: PromiseSettledResult<ProxyDelegatorsInfo>;
+              if (drepStatus.status === 'fulfilled' && drepStatus.value !== null) {
+                const delegatorsResult = await Promise.allSettled([
+                  proxyContract.getDrepDelegators(forceRefresh),
+                ]);
+                delegators = delegatorsResult[0] as PromiseSettledResult<ProxyDelegatorsInfo>;
+              } else {
+                // DRep not registered, create empty delegators result
+                delegators = {
+                  status: 'fulfilled' as const,
+                  value: {
+                    delegators: [],
+                    totalDelegation: "0",
+                    totalDelegationADA: 0,
+                    count: 0
+                  }
+                } as PromiseSettledResult<ProxyDelegatorsInfo>;
+              }
               
               // Get DRep ID
               const drepId = proxyContract.getDrepId();

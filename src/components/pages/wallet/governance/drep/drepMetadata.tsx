@@ -1,6 +1,23 @@
 import jsonld from "jsonld";
 import type { JsonLdDocument, ContextDefinition } from "jsonld";
 
+// CIP-119 character limits
+const MAX_TEXT_LENGTH = 1000;
+
+// Valid reference types per CIP-119 schema
+const VALID_REFERENCE_TYPES = ["GovernanceMetadata", "Other", "Link", "Identity"] as const;
+
+// Helper function to truncate text to max length
+function truncateText(text: string, maxLength: number): string {
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+// Return type for DRep metadata with both compacted and normalized forms
+export interface DRepMetadataResult {
+  compacted: Record<string, unknown>;
+  normalized: string; // Canonicalized N-Quads format for hashing
+}
+
 // Explicitly declare that this function returns a Promise containing a JSON‑LD document.
 // (You can adjust the return type if you have a more precise interface.)
 export async function getDRepMetadata(
@@ -16,7 +33,12 @@ export async function getDRepMetadata(
     identities: string[];
   },
   appWallet: { address: string }
-): Promise<Record<string, unknown>> {
+): Promise<DRepMetadataResult> {
+  // Validate and truncate text fields per CIP-119 requirements
+  const objectives = truncateText(formState.objectives, MAX_TEXT_LENGTH);
+  const motivations = truncateText(formState.motivations, MAX_TEXT_LENGTH);
+  const qualifications = truncateText(formState.qualifications, MAX_TEXT_LENGTH);
+
   // Build the raw JSON‑LD object
   const metadata = {
     "@context": {
@@ -62,6 +84,8 @@ export async function getDRepMetadata(
             "@id": "CIP119:image",
             "@context": {
               ImageObject: "https://schema.org/ImageObject",
+              contentUrl: "https://schema.org/contentUrl",
+              sha256: "https://schema.org/sha256",
             },
           },
           objectives: "CIP119:objectives",
@@ -92,24 +116,37 @@ export async function getDRepMetadata(
     body: {
       title: `${formState.givenName} - DRep`,
       abstract: formState.bio,
-      motivations: formState.motivations,
+      motivations: motivations,
       rationale: "",
       paymentAddress: appWallet.address,
       givenName: formState.givenName,
-      image: {
-        "@type": "ImageObject",
-        contentUrl: formState.imageUrl,
-        sha256: formState.imageSha256,
-      },
-      objectives: formState.objectives,
-      qualifications: formState.qualifications,
+      ...(formState.imageUrl && 
+          formState.imageSha256 && 
+          formState.imageUrl.trim() !== "" && 
+          formState.imageSha256.trim() !== "" ? {
+        image: {
+          "@type": "ImageObject",
+          contentUrl: formState.imageUrl.trim(),
+          sha256: formState.imageSha256.trim(),
+        }
+      } : {}),
+      objectives: objectives,
+      qualifications: qualifications,
       references: [
         ...formState.links
           .filter((link) => link.trim() !== "")
-          .map((link) => ({ "@type": "Link", label: link, uri: link })),
+          .map((link) => ({ 
+            "@type": "Link" as const, 
+            label: link, 
+            uri: link 
+          })),
         ...formState.identities
           .filter((id) => id.trim() !== "")
-          .map((id) => ({ "@type": "Identity", label: id, uri: id })),
+          .map((id) => ({ 
+            "@type": "Identity" as const, 
+            label: id, 
+            uri: id 
+          })),
       ],
       comment: formState.bio,
       externalUpdates: [],
@@ -126,10 +163,31 @@ export async function getDRepMetadata(
     ],
   };
 
-  // Instead of casting to any, we cast to the proper types.
+  // Expand first to ensure all properties are preserved, then compact
+  // This ensures that properties like contentUrl and sha256 are not lost
+  const expanded = await jsonld.expand(
+    metadata as unknown as JsonLdDocument
+  );
+
+  // Compact the JSON-LD document for readability
   const compacted = await jsonld.compact(
-    metadata as unknown as JsonLdDocument,
+    expanded as unknown as JsonLdDocument,
     metadata["@context"] as unknown as ContextDefinition
   );
-  return compacted;
+
+  // Normalize (canonicalize) the JSON-LD document per CIP-100/CIP-119
+  // This produces a canonical form that should be used for hashing
+  const normalized = await jsonld.normalize(
+    compacted as unknown as JsonLdDocument,
+    {
+      algorithm: "URDNA2015",
+      format: "application/n-quads",
+    }
+  );
+
+  // Return both the compacted (for upload) and normalized (for hashing) versions
+  return {
+    compacted,
+    normalized,
+  };
 }

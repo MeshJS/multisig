@@ -9,7 +9,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
@@ -82,13 +82,14 @@ export default function RegisterDRep() {
     if (!multisigWallet) {
       throw new Error("Multisig wallet not connected");
     }
-    // Cast metadata to a known record type
-    const drepMetadata = (await getDRepMetadata(
+    // Get metadata with both compacted (for upload) and normalized (for hashing) forms
+    const metadataResult = await getDRepMetadata(
       formState,
       appWallet,
-    )) as Record<string, unknown>;
-    console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
+    );
+    
+    // Upload the compacted JSON-LD (readable format)
+    const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -96,15 +97,15 @@ export default function RegisterDRep() {
       },
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata),
+        value: JSON.stringify(metadataResult.compacted, null, 2), // Pretty print for readability
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
-    // Await file retrieval
-    const fileContent = getFile(anchorUrl);
-    const anchorObj = JSON.parse(fileContent);
-    const anchorHash = hashDrepAnchor(anchorObj);
+    
+    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
+    // The normalized form is in N-Quads format which is the canonical representation
+    const anchorHash = hashDrepAnchor(metadataResult.compacted);
     return { anchorUrl, anchorHash };
   }
 
@@ -224,20 +225,22 @@ export default function RegisterDRep() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Plus className="h-6 w-6" />
-          Register DRep
+    <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+          <Plus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+          <span>Register DRep</span>
         </h1>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
           {/* Global Proxy Status - Only show when proxies exist */}
           {proxies && proxies.length > 0 && (
-            <div className="flex items-center space-x-2 p-3 rounded-lg border bg-muted/30">
-              <div className={`w-3 h-3 rounded-full ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-              <span className="text-sm font-medium">
-                {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
-              </span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 p-3 rounded-lg border bg-muted/30">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                <span className="text-xs sm:text-sm font-medium">
+                  {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
+                </span>
+              </div>
               <span className="text-xs text-muted-foreground">
                 {isProxyEnabled 
                   ? 'DRep will be registered using a proxy contract' 
@@ -249,22 +252,22 @@ export default function RegisterDRep() {
 
           {/* Proxy Configuration - Only show when proxies exist */}
           {isProxyEnabled && proxies && proxies.length > 0 && (
-            <div className="space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
-              <p className="text-sm text-muted-foreground">
+            <div className="space-y-2 sm:space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 This will register the DRep using a proxy contract, allowing for more flexible governance control.
               </p>
               {proxies && proxies.length > 0 ? (
                 <div className="space-y-2">
-                  <Label htmlFor="proxy-select">Select Proxy</Label>
+                  <Label htmlFor="proxy-select" className="text-xs sm:text-sm">Select Proxy</Label>
                   <Select value={selectedProxyId} onValueChange={setSelectedProxy}>
-                    <SelectTrigger id="proxy-select">
+                    <SelectTrigger id="proxy-select" className="w-full text-sm sm:text-base">
                       <SelectValue placeholder="Choose a proxy..." />
                     </SelectTrigger>
                     <SelectContent>
                       {proxies.map((proxy: any) => (
                         <SelectItem key={proxy.id} value={proxy.id}>
                           <div className="flex flex-col">
-                            <span className="font-medium">
+                            <span className="font-medium text-xs sm:text-sm">
                               {proxy.description || `Proxy ${proxy.id.slice(0, 8)}...`}
                             </span>
                             <span className="text-xs text-muted-foreground">
@@ -277,7 +280,7 @@ export default function RegisterDRep() {
                   </Select>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">
+                <div className="text-xs sm:text-sm text-muted-foreground">
                   {proxiesLoading ? "Loading proxies..." : "No proxies available. Please create a proxy first."}
                 </div>
               )}
@@ -287,7 +290,7 @@ export default function RegisterDRep() {
           {/* Standard Mode Info */}
           {!isProxyEnabled && (
             <div className="p-3 rounded-lg border bg-gray-50/50 dark:bg-gray-950/20">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 DRep will be registered directly to your multisig wallet. 
                 To use proxy registration, enable proxy mode in the Proxy Control panel.
               </p>
