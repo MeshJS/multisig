@@ -2,6 +2,8 @@ import { Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import Retire from "./drep/retire";
 import Link from "next/link";
+import RegisterDrepModal from "./drep/RegisterDrepModal";
+import UpdateDrepModal from "./drep/UpdateDrepModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +33,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import CardUI from "@/components/ui/card-content";
 
 export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
@@ -162,51 +165,58 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   // Show loading or error state if no DRep ID
   if (!displayDrepId) {
     return (
-      <div className="w-full">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-              <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Loading or Error State */}
-        <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800/50">
+      <CardUI
+        title={hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
+        description="Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress."
+        headerDom={
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="p-2 rounded-md hover:bg-gray-100 focus:bg-gray-100 dark:hover:bg-gray-800 dark:focus:bg-gray-800 flex-shrink-0 transition-colors"
+              aria-haspopup="true"
+            >
+              <MoreVertical className="h-4 w-4" />
+              <span className="sr-only">Toggle menu</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`https://gov.tools/drep_directory/${displayDrepId || ''}`}
+                  className="flex items-center gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  gov.tools
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      >
+        <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0A0A0B]">
           {loadingProxyDrep ? (
             <div className="flex items-center gap-3">
-              <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
-              <p className="text-gray-600 dark:text-gray-400">
+              <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin"></div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
                 Loading proxy DRep information...
               </p>
             </div>
           ) : proxyDrepError ? (
             <div className="flex items-center gap-3">
-              <div className="w-4 h-4 rounded-full bg-red-500"></div>
+              <div className="w-4 h-4 rounded-full bg-red-500 dark:bg-red-400"></div>
               <div>
-                <p className="text-red-600 dark:text-red-400 font-medium">Error loading proxy DRep</p>
-                <p className="text-sm text-red-500 dark:text-red-400">{proxyDrepError}</p>
+                <p className="text-sm font-medium text-red-600 dark:text-red-400">Error loading proxy DRep</p>
+                <p className="text-xs text-red-500 dark:text-red-400">{proxyDrepError}</p>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <div className="w-4 h-4 rounded-full bg-gray-400"></div>
-              <p className="text-gray-600 dark:text-gray-400">
+              <div className="w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-500"></div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
                 {hasValidProxyData ? "No proxy DRep information available" : "No DRep information available"}
               </p>
             </div>
           )}
         </div>
-      </div>
+      </CardUI>
     );
   }
   
@@ -214,6 +224,8 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   const isDRepRegistered = displayDrepInfo?.active === true;
   const [isDRepManagementOpen, setIsDRepManagementOpen] = useState(false);
   const [showProxySelector, setShowProxySelector] = useState(!!selectedProxyId);
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   
   // Sync showProxySelector when a proxy is selected
   useEffect(() => {
@@ -223,26 +235,13 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   }, [selectedProxyId]);
   
   return (
-    <div className="w-full">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 sm:mb-6">
-        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-          <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex-shrink-0">
-            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress.
-            </p>
-          </div>
-        </div>
-        
+    <CardUI
+      title={hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
+      description="Note: governance features are currently in alpha as Blockfrost and CIPs standards are work in progress."
+      headerDom={
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="p-2 rounded-md hover:bg-zinc-100 focus:bg-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800 flex-shrink-0"
+            className="p-2 rounded-md hover:bg-gray-100 focus:bg-gray-100 dark:hover:bg-gray-800 dark:focus:bg-gray-800 flex-shrink-0 transition-colors"
             aria-haspopup="true"
           >
             <MoreVertical className="h-4 w-4" />
@@ -260,34 +259,20 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      {/* Combined DRep Card with Collapsible Management */}
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        {/* Header */}
-        <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 dark:text-gray-400 flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                {hasValidProxyData ? "Using proxy for governance operations" : "Standard DRep governance mode"}
-              </p>
-            </div>
-          </div>
-          
-          {/* Improved Proxy Control - Only show when proxies exist */}
-          {proxies && proxies.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {/* Proxy Control Section - Only show when proxies exist */}
+        {proxies && proxies.length > 0 && (
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0A0A0B]">
+            <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-3">
                 {/* Toggle Row */}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Proxy Mode</span>
                     {isProxyEnabled && selectedProxyId && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#0A0A0B]/50 text-gray-700 dark:text-gray-300">
                         Active
                       </span>
                     )}
@@ -309,8 +294,8 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
                         setShowProxySelector(true);
                       }
                     }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                      isProxyEnabled && selectedProxyId ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 ${
+                      isProxyEnabled && selectedProxyId ? 'bg-gray-600 dark:bg-gray-500' : 'bg-gray-200 dark:bg-gray-800'
                     }`}
                     type="button"
                     aria-label={isProxyEnabled && selectedProxyId ? "Disable proxy mode" : "Enable proxy mode"}
@@ -387,20 +372,21 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
                 )}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* DRep Information Content */}
-        <div className="p-3 sm:p-6 space-y-4">
+        <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0A0A0B]">
+          <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* DRep ID */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Hash className="h-4 w-4 text-gray-500" />
+                <Hash className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">DRep ID</span>
               </div>
               <div className="space-y-2">
-                <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-2 border border-gray-200 dark:border-gray-800">
                   <code className="text-xs font-mono text-gray-800 dark:text-gray-200 break-all block">
                     {loadingProxyDrep ? "..." : displayDrepId}
                   </code>
@@ -429,14 +415,14 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             {/* DRep Status */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-gray-500" />
+                <Activity className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
               </div>
               <div className="flex items-center gap-2">
                 {loadingProxyDrep ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                    <span className="text-sm text-gray-500">Loading...</span>
+                    <div className="w-3 h-3 border-2 border-gray-300 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin"></div>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
                   <TooltipProvider>
@@ -462,7 +448,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
             {/* Voting Power */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-gray-500" />
+                <TrendingUp className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Voting Power</span>
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -483,16 +469,17 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
               </div>
             </div>
           </div>
+          </div>
         </div>
 
         {/* Collapsible DRep Management Section */}
         <Collapsible open={isDRepManagementOpen} onOpenChange={setIsDRepManagementOpen}>
-          <div className="border-t border-gray-200 dark:border-gray-700">
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0A0A0B]">
             <CollapsibleTrigger className="w-full">
-              <div className="flex items-center justify-between px-4 sm:px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+              <div className="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer -m-4 p-4 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                    <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="p-2 rounded-lg bg-gray-100 dark:bg-[#0A0A0B]/50">
+                    <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 dark:text-gray-400" />
                   </div>
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
                     DRep Management
@@ -506,7 +493,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
               </div>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+              <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-800">
                 <div className="space-y-3">
                   {/* Primary Actions - Registration & Update */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -514,21 +501,19 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
                       className="w-full justify-start gap-3 h-auto py-3.5 px-4 text-sm sm:text-base font-medium" 
                       disabled={isDRepRegistered}
                       variant={isDRepRegistered ? "outline" : "default"}
+                      onClick={() => setRegisterModalOpen(true)}
                     >
                       <UserPlus className="h-5 w-5 flex-shrink-0" />
-                      <Link href={`/wallets/${appWallet.id}/governance/register`} className="flex-1 text-left">
-                        Register DRep
-                      </Link>
+                      <span className="flex-1 text-left">Register DRep</span>
                     </Button>
                     <Button 
                       className="w-full justify-start gap-3 h-auto py-3.5 px-4 text-sm sm:text-base font-medium" 
                       disabled={!isDRepRegistered}
                       variant={!isDRepRegistered ? "outline" : "default"}
+                      onClick={() => setUpdateModalOpen(true)}
                     >
                       <Edit className="h-5 w-5 flex-shrink-0" />
-                      <Link href={`/wallets/${appWallet.id}/governance/update`} className="flex-1 text-left">
-                        Update DRep
-                      </Link>
+                      <span className="flex-1 text-left">Update DRep</span>
                     </Button>
                   </div>
                   
@@ -550,7 +535,19 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
           </div>
         </Collapsible>
       </div>
-    </div>
+      
+      {/* Register DRep Modal */}
+      <RegisterDrepModal
+        open={registerModalOpen}
+        onOpenChange={setRegisterModalOpen}
+      />
+      
+      {/* Update DRep Modal */}
+      <UpdateDrepModal
+        open={updateModalOpen}
+        onOpenChange={setUpdateModalOpen}
+      />
+    </CardUI>
   );
 }
 

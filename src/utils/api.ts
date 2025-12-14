@@ -45,6 +45,34 @@ export const api = createTRPCNext<AppRouter>({
     };
   },
   /**
+   * React Query configuration for global defaults.
+   * These defaults can be overridden per-query when needed.
+   */
+  queryClientConfig: {
+    defaultOptions: {
+      queries: {
+        // Data is considered fresh for 5 minutes
+        staleTime: 5 * 60 * 1000, // 5 minutes
+        // Cached data is kept for 10 minutes after last use
+        gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+        // Don't refetch when window regains focus
+        refetchOnWindowFocus: false,
+        // Don't refetch on mount if data is stale (use cached data)
+        refetchOnMount: false,
+        // Retry failed requests once
+        retry: 1,
+        // Retry delay: exponential backoff starting at 1s
+        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+        // Use structural sharing to prevent unnecessary re-renders when data hasn't changed
+        structuralSharing: true,
+      },
+      mutations: {
+        // Retry mutations once on failure
+        retry: 1,
+      },
+    },
+  },
+  /**
    * Whether tRPC should await queries when server rendering pages.
    *
    * @see https://trpc.io/docs/nextjs#ssr-boolean-default-false

@@ -96,7 +96,7 @@ export default function FloatingBallotSidebar({
             <div className="flex justify-between items-center mb-2 sm:mb-3">
               <span className="font-semibold text-sm sm:text-base">Your Ballots</span>
               {proposalCount > 0 && (
-                <span className="ml-2 inline-block text-xs font-medium text-white bg-blue-500 rounded-full px-2 py-0.5">
+                <span className="ml-2 inline-block text-xs font-medium text-white bg-gray-500 dark:bg-gray-600 rounded-full px-2 py-0.5">
                   {proposalCount}
                 </span>
               )}

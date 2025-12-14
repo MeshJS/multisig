@@ -447,18 +447,20 @@ export const useProxyData = (walletId?: string) => {
 };
 
 export const useSelectedProxy = () => {
-  const selectedProxyId = useProxyStore((state) => state.selectedProxyId);
-  const isProxyEnabled = useProxyStore((state) => state.isProxyEnabled);
-  const proxies = useProxyStore((state) => state.proxies);
-  
-  // Find the selected proxy across all wallets
-  let selectedProxy: ProxyData | undefined;
-  for (const walletProxies of Object.values(proxies)) {
-    selectedProxy = walletProxies.find(proxy => proxy.id === selectedProxyId);
-    if (selectedProxy) break;
-  }
-  
-  return { selectedProxy, selectedProxyId, isProxyEnabled };
+  // Use a single selector to prevent multiple re-renders
+  return useProxyStore((state) => {
+    const selectedProxyId = state.selectedProxyId;
+    const isProxyEnabled = state.isProxyEnabled;
+    
+    // Find the selected proxy across all wallets
+    let selectedProxy: ProxyData | undefined;
+    for (const walletProxies of Object.values(state.proxies)) {
+      selectedProxy = walletProxies.find(proxy => proxy.id === selectedProxyId);
+      if (selectedProxy) break;
+    }
+    
+    return { selectedProxy, selectedProxyId, isProxyEnabled };
+  });
 };
 
 export const useProxyActions = () => {

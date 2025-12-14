@@ -169,7 +169,7 @@ export default function VoteCC({
         </div>
         <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
           <div
-            className="h-2.5 rounded-full bg-blue-500 dark:bg-blue-400 transition-all duration-300"
+            className="h-2.5 rounded-full bg-gray-500 dark:bg-gray-400 transition-all duration-300"
             style={{ width: `${(selectedCandidates.length / 7) * 100}%` }}
           ></div>
         </div>
@@ -185,7 +185,7 @@ export default function VoteCC({
                 if (!isDisabled) toggleCandidate(candidate.id);
               }}
               className={`cursor-pointer rounded border p-4 text-sm transition
-                ${isSelected ? "border-blue-500 bg-blue-100 dark:bg-blue-900 dark:border-blue-400 font-semibold ring-2 ring-blue-400 dark:ring-blue-300 shadow-md" : ""}
+                ${isSelected ? "border-gray-500 bg-gray-100 dark:bg-gray-800 dark:border-gray-400 font-semibold ring-2 ring-gray-400 dark:ring-gray-300 shadow-md" : ""}
                 ${isDisabled ? "cursor-not-allowed opacity-50" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:shadow"}`}
             >
               <div className="text-base font-medium text-gray-900 dark:text-gray-100">{candidate.name}</div>

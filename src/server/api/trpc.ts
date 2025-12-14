@@ -129,13 +129,18 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 });
 
 /**
+ * Caching middleware for queries (imported from middleware/cache)
+ */
+import { cacheMiddleware } from "./middleware/cache";
+
+/**
  * Public (unauthenticated) procedure
  *
  * This is the base piece you use to build new queries and mutations on your tRPC API. It does not
  * guarantee that a user querying is authorized, but you can still access user session data if they
  * are logged in.
  */
-export const publicProcedure = t.procedure.use(timingMiddleware);
+export const publicProcedure = t.procedure.use(timingMiddleware).use(cacheMiddleware);
 
 /**
  * Protected (authenticated) procedure
@@ -147,6 +152,7 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
+  .use(cacheMiddleware)
   .use(({ ctx, next }) => {
     if (!ctx.session || !ctx.session.user) {
       throw new TRPCError({ code: "UNAUTHORIZED" });

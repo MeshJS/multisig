@@ -85,7 +85,9 @@ export default async function handler(
 
     const blockchainProvider = getProvider(network);
 
-    const utxos: UTxO[] = await blockchainProvider.fetchAddressUTxOs(addr);
+    // Use cached UTxO fetch to reduce Blockfrost API calls
+    const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+    const utxos: UTxO[] = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
 
     const blockedUtxos: { hash: string; index: number }[] =
       pendingTxsResult.flatMap((m): { hash: string; index: number }[] => {
@@ -112,6 +114,11 @@ export default async function handler(
         ),
     );
 
+    // Set cache headers for CDN/edge caching
+    res.setHeader(
+      "Cache-Control",
+      "public, s-maxage=30, stale-while-revalidate=60",
+    );
     res.status(200).json(freeUtxos);
   } catch (error) {
     console.error("Error in freeUtxos handler", {

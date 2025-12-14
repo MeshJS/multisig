@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Wallet } from "@/types/wallet";
 import {
   Table,
@@ -198,31 +198,34 @@ export default function UTxOSelector({
     setLoaded(false);
   }, [appWallet?.id]);
 
-  const checkPending = (cUtxos: UTxO[]) => {
-    if (!transactions || !cUtxos) return;
+  // Memoize blocked UTxOs computation
+  const computedBlockedUtxos = useMemo(() => {
+    if (!transactions) return [];
+    return transactions.flatMap((m) => {
+      const txJson = JSON.parse(m.txJson);
+      return txJson.inputs.map(
+        (n: { txIn: { txHash: string; txIndex: number } }) => ({
+          hash: n.txIn.txHash ?? undefined,
+          index: n.txIn.txIndex ?? undefined,
+        }),
+      );
+    });
+  }, [transactions]);
 
-    const blockedUtxos: { hash: string; index: number }[] =
-      transactions.flatMap((m) => {
-        const txJson = JSON.parse(m.txJson);
-        return txJson.inputs.map(
-          (n: { txIn: { txHash: string; txIndex: number } }) => ({
-            hash: n.txIn.txHash ?? undefined,
-            index: n.txIn.txIndex ?? undefined,
-          }),
-        );
-      });
+  const checkPending = useCallback((cUtxos: UTxO[]) => {
+    if (!cUtxos) return;
 
     const freeUtxos = cUtxos.filter(
       (utxo) =>
-        !blockedUtxos.some(
+        !computedBlockedUtxos.some(
           (bU) =>
             bU.hash === utxo.input.txHash &&
             bU.index === utxo.input.outputIndex,
         ),
     );
     setSelectedUtxos(freeUtxos);
-    setBlockedUtxos(blockedUtxos);
-  };
+    setBlockedUtxos(computedBlockedUtxos);
+  }, [computedBlockedUtxos]);
 
   // Track last emitted state to avoid redundant updates
   const lastEmitted = useRef<{ utxos: UTxO[]; manual: boolean }>({
@@ -247,7 +250,7 @@ export default function UTxOSelector({
     }
   }, [selectedUtxos, manualSelected, onSelectionChange, isInitialLoad]);
 
-  const handleSelectUtxo = (utxo: UTxO, isChecked: boolean) => {
+  const handleSelectUtxo = useCallback((utxo: UTxO, isChecked: boolean) => {
     setSelectedUtxos((prev) =>
       isChecked
         ? [...prev, utxo]
@@ -257,9 +260,9 @@ export default function UTxOSelector({
               u.input.outputIndex !== utxo.input.outputIndex,
           ),
     );
-  };
+  }, []);
 
-  const handleRowClick = (utxo: UTxO) => {
+  const handleRowClick = useCallback((utxo: UTxO) => {
     const isCurrentlySelected = selectedUtxos.some(
       (u) =>
         u.input.txHash === utxo.input.txHash &&
@@ -275,9 +278,9 @@ export default function UTxOSelector({
     if (!isBlocked) {
       handleSelectUtxo(utxo, !isCurrentlySelected);
     }
-  };
+  }, [selectedUtxos, blockedUtxos, handleSelectUtxo]);
 
-  const handleToggleSelectAll = () => {
+  const handleToggleSelectAll = useCallback(() => {
     if (selectedUtxos.length > 0) {
       setSelectedUtxos([]);
     } else {
@@ -291,10 +294,10 @@ export default function UTxOSelector({
       );
       setSelectedUtxos(freeUtxos);
     }
-  };
+  }, [selectedUtxos.length, utxos, blockedUtxos]);
 
-  // Pagination handlers
-  const handlePageChange = (newPage: number) => {
+  // Pagination handlers - memoized
+  const handlePageChange = useCallback((newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
       setCurrentPage(newPage);
       
@@ -309,21 +312,21 @@ export default function UTxOSelector({
         fetchUtxos(newPage, pageSize);
       }
     }
-  };
+  }, [totalPages, currentPage, pageSize, fetchUtxos]);
 
-  const handlePageSizeChange = (newPageSize: number) => {
+  const handlePageSizeChange = useCallback((newPageSize: number) => {
     setPageSize(newPageSize);
     setCurrentPage(1);
     fetchUtxos(1, newPageSize);
-  };
+  }, [fetchUtxos]);
 
-  const handlePreviousPage = () => {
+  const handlePreviousPage = useCallback(() => {
     handlePageChange(currentPage - 1);
-  };
+  }, [handlePageChange, currentPage]);
 
-  const handleNextPage = () => {
+  const handleNextPage = useCallback(() => {
     handlePageChange(currentPage + 1);
-  };
+  }, [handlePageChange, currentPage]);
 
   return (
     <div>

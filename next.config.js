@@ -44,6 +44,8 @@ const config = {
         hostname: "gateway.pinata.cloud",
       },
     ],
+    // Allow unoptimized images for local proxy API routes
+    unoptimized: false,
   },
   // Turbopack configuration (Next.js 16+)
   // Empty config silences the warning about webpack/turbopack conflict
@@ -56,8 +58,23 @@ const config = {
       asyncWebAssembly: true,
       layers: true,
     };
+    
+    // Optimize tree-shaking by ensuring proper module resolution
+    config.optimization = {
+      ...config.optimization,
+      usedExports: true,
+      sideEffects: false,
+    };
+    
     return config;
   },
 };
 
-export default config;
+// Bundle analyzer - only enable when ANALYZE env var is set
+const withBundleAnalyzer = process.env.ANALYZE === 'true' 
+  ? require('@next/bundle-analyzer')({
+      enabled: true,
+    })
+  : (config) => config;
+
+export default withBundleAnalyzer(config);

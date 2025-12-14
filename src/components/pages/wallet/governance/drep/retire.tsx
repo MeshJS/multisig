@@ -170,9 +170,19 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       }
 
       const txBuilder = getTxBuilder(network);
-      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      
+      const drepData = multisigWallet?.getDRep(appWallet);
+      if (!drepData) {
+        toast({
+          title: "DRep Error",
+          description: "DRep not found",
+          variant: "destructive",
+        });
+        return;
+      }
+      const { dRepId, drepCbor } = drepData;
+      
       const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-      const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
       const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
       
       if (!changeAddress) {
@@ -191,22 +201,6 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         });
         return;
       }
-      if (!drepCbor) {
-        toast({
-          title: "DRep Script Error",
-          description: "DRep script not found",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!dRepId) {
-        toast({
-          title: "DRep Error",
-          description: "DRep not found",
-          variant: "destructive",
-        });
-        return;
-      }
       
       for (const utxo of selectedUtxos) {
         txBuilder.txIn(
@@ -220,8 +214,13 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       txBuilder
         .txInScript(scriptCbor)
         .changeAddress(changeAddress)
-        .drepDeregistrationCertificate(dRepId, "500000000")
-        .certificateScript(drepCbor);
+        .drepDeregistrationCertificate(dRepId, "500000000");
+      
+      // Only add certificateScript if it's different from the spending script
+      // to avoid "extraneous scripts" error
+      if (drepCbor !== scriptCbor) {
+        txBuilder.certificateScript(drepCbor);
+      }
 
       await newTransaction({
         txBuilder,

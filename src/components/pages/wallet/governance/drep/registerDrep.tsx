@@ -24,7 +24,11 @@ interface PutResponse {
   url: string;
 }
 
-export default function RegisterDRep() {
+interface RegisterDRepProps {
+  onClose?: () => void;
+}
+
+export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   const { appWallet } = useAppWallet();
   const { connected, wallet } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -115,17 +119,16 @@ export default function RegisterDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
+    
+    const drepData = multisigWallet?.getDRep(appWallet);
+    if (!drepData) {
       throw new Error("DRep not found");
     }
+    const { dRepId, drepCbor } = drepData;
+    
     const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
     if (!scriptCbor) {
       throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
     }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
@@ -163,10 +166,14 @@ export default function RegisterDRep() {
         description: "DRep registration",
         toastMessage: "DRep registration transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
@@ -217,87 +224,27 @@ export default function RegisterDRep() {
         description: "Proxy DRep registration",
         toastMessage: "Proxy DRep registration transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
-          <Plus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
-          <span>Register DRep</span>
-        </h1>
-        <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-          {/* Global Proxy Status - Only show when proxies exist */}
-          {proxies && proxies.length > 0 && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 p-3 rounded-lg border bg-muted/30">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-                <span className="text-xs sm:text-sm font-medium">
-                  {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
-                </span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {isProxyEnabled 
-                  ? 'DRep will be registered using a proxy contract' 
-                  : 'DRep will be registered directly'
-                }
-              </span>
-            </div>
-          )}
-
-          {/* Proxy Configuration - Only show when proxies exist */}
-          {isProxyEnabled && proxies && proxies.length > 0 && (
-            <div className="space-y-2 sm:space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                This will register the DRep using a proxy contract, allowing for more flexible governance control.
-              </p>
-              {proxies && proxies.length > 0 ? (
-                <div className="space-y-2">
-                  <Label htmlFor="proxy-select" className="text-xs sm:text-sm">Select Proxy</Label>
-                  <Select value={selectedProxyId} onValueChange={setSelectedProxy}>
-                    <SelectTrigger id="proxy-select" className="w-full text-sm sm:text-base">
-                      <SelectValue placeholder="Choose a proxy..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {proxies.map((proxy: any) => (
-                        <SelectItem key={proxy.id} value={proxy.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-xs sm:text-sm">
-                              {proxy.description || `Proxy ${proxy.id.slice(0, 8)}...`}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {proxy.proxyAddress.slice(0, 20)}...
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="text-xs sm:text-sm text-muted-foreground">
-                  {proxiesLoading ? "Loading proxies..." : "No proxies available. Please create a proxy first."}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Standard Mode Info */}
-          {!isProxyEnabled && (
-            <div className="p-3 rounded-lg border bg-gray-50/50 dark:bg-gray-950/20">
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                DRep will be registered directly to your multisig wallet. 
-                To use proxy registration, enable proxy mode in the Proxy Control panel.
-              </p>
-            </div>
-          )}
+    <div className={`w-full max-w-4xl mx-auto ${onClose ? '' : 'px-3 sm:px-4 md:px-6'}`}>
+      {!onClose && (
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+            <Plus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+            <span>Register DRep</span>
+          </h1>
         </div>
-      </div>
+      )}
       {appWallet && (
         <DRepForm
           _imageUrl={""}

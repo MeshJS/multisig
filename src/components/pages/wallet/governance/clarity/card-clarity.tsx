@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Wallet } from "@/types/wallet";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { api } from "@/utils/api";
 // import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
@@ -50,13 +50,13 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
 
   return (
     <CardUI title="Clarity Governance" cardClassName="col-span-2">
-      <div className="flex flex-col space-y-3 sm:space-y-4 p-2 sm:p-4">
+      <div className="flex flex-col space-y-3 sm:space-y-4">
         {appWallet.clarityApiKey ? (
           <div className="flex flex-col space-y-3 sm:space-y-4">
             <div className="flex items-center space-x-2">
-              <span className="font-medium text-sm sm:text-base">Clarity API:</span>
-              <CheckCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0" />
-              <span className="text-sm sm:text-base">Connected</span>
+              <span className="font-medium text-sm sm:text-base text-gray-900 dark:text-gray-100">Clarity API:</span>
+              <CheckCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+              <span className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Connected</span>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2">
               <Link
@@ -112,7 +112,7 @@ export default function ClarityCard({ appWallet }: ClarityCardProps) {
           </div>
         ) : (
           <div className="flex flex-col space-y-3 sm:space-y-4">
-            <p className="text-xs sm:text-sm text-gray-500">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               No Clarity API Key associated with this wallet.
             </p>
             <div>

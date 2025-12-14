@@ -16,7 +16,14 @@ export default function useAvailableUtxos({
   const { data: transactions, isLoading: transactionsLoading } =
     api.transaction.getPendingTransactions.useQuery(
       { walletId: walletId! },
-      { enabled: !!walletId }
+      { 
+        enabled: !!walletId,
+        staleTime: 30 * 1000, // 30 seconds
+        gcTime: 2 * 60 * 1000, // 2 minutes
+        // Don't auto-refetch - rely on other hooks to trigger updates
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+      }
     );
 
   if (!utxos || utxos.length === 0 || transactionsLoading) {

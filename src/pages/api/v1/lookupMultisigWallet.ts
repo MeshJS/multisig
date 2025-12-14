@@ -51,6 +51,8 @@ export default async function handler(
       );
     });
 
+    // Cache lookup results for 1 minute (blockchain metadata changes infrequently)
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
     res.status(200).json(matchedItems);
   } catch (error) {
     console.error("lookupWallet error:", error);

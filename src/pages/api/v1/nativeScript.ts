@@ -67,6 +67,8 @@ export default async function handler(
       return res.status(500).json({ error: "Wallet could not be constructed" });
     }
 
+    // Cache wallet scripts for 5 minutes (they don't change often)
+    res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
     return res.status(200).json(
       types.map((m) => ({
         type: m,

@@ -17,12 +17,59 @@ export default function useTransaction() {
 
   const { mutateAsync: createTransaction } =
     api.transaction.createTransaction.useMutation({
-      onSuccess: async () => {
-        void ctx.transaction.getPendingTransactions.invalidate();
-        void ctx.transaction.getAllTransactions.invalidate();
+      onMutate: async (newTransaction) => {
+        // Cancel any outgoing refetches
+        await ctx.transaction.getPendingTransactions.cancel({ walletId: newTransaction.walletId });
+        await ctx.transaction.getAllTransactions.cancel({ walletId: newTransaction.walletId });
+
+        // Snapshot the previous value
+        const previousPending = ctx.transaction.getPendingTransactions.getData({ walletId: newTransaction.walletId });
+        const previousAll = ctx.transaction.getAllTransactions.getData({ walletId: newTransaction.walletId });
+
+        // Optimistically update pending transactions
+        ctx.transaction.getPendingTransactions.setData(
+          { walletId: newTransaction.walletId },
+          (old) => {
+            if (!old) return old;
+            const optimisticTx = {
+              id: `temp-${Date.now()}`,
+              walletId: newTransaction.walletId,
+              txJson: newTransaction.txJson,
+              signedAddresses: newTransaction.signedAddresses,
+              txCbor: newTransaction.txCbor,
+              state: newTransaction.state,
+              description: newTransaction.description,
+              txHash: newTransaction.txHash,
+              rejectedAddresses: [],
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+            return [optimisticTx, ...old];
+          }
+        );
+
+        return { previousPending, previousAll };
       },
-      onError: (e) => {
-        console.error("createTransaction", e);
+      onError: (err, newTransaction, context) => {
+        // Rollback on error
+        if (context?.previousPending) {
+          ctx.transaction.getPendingTransactions.setData(
+            { walletId: newTransaction.walletId },
+            context.previousPending
+          );
+        }
+        if (context?.previousAll) {
+          ctx.transaction.getAllTransactions.setData(
+            { walletId: newTransaction.walletId },
+            context.previousAll
+          );
+        }
+        console.error("createTransaction", err);
+      },
+      onSuccess: async (data, variables) => {
+        // Invalidate to refetch with real data
+        void ctx.transaction.getPendingTransactions.invalidate({ walletId: variables.walletId });
+        void ctx.transaction.getAllTransactions.invalidate({ walletId: variables.walletId });
       },
     });
 

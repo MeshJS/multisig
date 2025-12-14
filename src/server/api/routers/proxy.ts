@@ -57,26 +57,29 @@ export const proxyRouter = createTRPCRouter({
   getProxiesByUser: publicProcedure
     .input(z.object({ userAddress: z.string() }))
     .query(async ({ ctx, input }) => {
-      // First find the user by address
-      const user = await ctx.db.user.findUnique({
-        where: {
-          address: input.userAddress,
-        },
-      });
+      // Optimized: Use a single query with raw SQL to avoid N+1
+      // This performs a JOIN in a single database round trip
+      const proxies = await ctx.db.$queryRaw<Array<{
+        id: string;
+        walletId: string | null;
+        proxyAddress: string;
+        authTokenId: string;
+        paramUtxo: string;
+        description: string | null;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string | null;
+      }>>`
+        SELECT p.*
+        FROM "Proxy" p
+        INNER JOIN "User" u ON p."userId" = u.id
+        WHERE u.address = ${input.userAddress}
+          AND p."isActive" = true
+        ORDER BY p."createdAt" DESC
+      `;
 
-      if (!user) {
-        return [];
-      }
-
-      return ctx.db.proxy.findMany({
-        where: {
-          userId: user.id,
-          isActive: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
+      return proxies;
     }),
 
   getProxiesByUserOrWallet: publicProcedure
@@ -85,7 +88,7 @@ export const proxyRouter = createTRPCRouter({
       userAddress: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      // Prefer fetching by walletId when available
+      // Prefer fetching by walletId when available (already optimized with index)
       if (input.walletId) {
         return ctx.db.proxy.findMany({
           where: {
@@ -97,18 +100,29 @@ export const proxyRouter = createTRPCRouter({
       }
 
       // Fallback: fetch by user address if provided
+      // Optimized: Use a single query with raw SQL to avoid N+1
       if (input.userAddress) {
-        const user = await ctx.db.user.findUnique({
-          where: { address: input.userAddress },
-        });
-        if (!user) return [];
-        return ctx.db.proxy.findMany({
-          where: {
-            userId: user.id,
-            isActive: true,
-          },
-          orderBy: { createdAt: "desc" },
-        });
+        const proxies = await ctx.db.$queryRaw<Array<{
+          id: string;
+          walletId: string | null;
+          proxyAddress: string;
+          authTokenId: string;
+          paramUtxo: string;
+          description: string | null;
+          isActive: boolean;
+          createdAt: Date;
+          updatedAt: Date;
+          userId: string | null;
+        }>>`
+          SELECT p.*
+          FROM "Proxy" p
+          INNER JOIN "User" u ON p."userId" = u.id
+          WHERE u.address = ${input.userAddress}
+            AND p."isActive" = true
+          ORDER BY p."createdAt" DESC
+        `;
+
+        return proxies;
       }
 
       // No criteria provided

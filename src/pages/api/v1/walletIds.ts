@@ -61,6 +61,8 @@ export default async function handler(
       return res.status(404).json({ error: "Wallets not found" });
     }
 
+    // Cache wallet IDs for 2 minutes (they change when wallets are added/removed)
+    res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
     res.status(200).json(walletIds);
   } catch (error) {
     console.error("Error fetching wallet IDs:", error);

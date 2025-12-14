@@ -116,7 +116,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
     if (proposalDetails.enacted_epoch) return { label: "Enacted", icon: CheckCircle2, color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" };
     if (proposalDetails.dropped_epoch) return { label: "Dropped", icon: XCircle, color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" };
     if (proposalDetails.expired_epoch) return { label: "Expired", icon: XCircle, color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" };
-    if (proposalDetails.ratified_epoch) return { label: "Ratified", icon: CheckCircle2, color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" };
+    if (proposalDetails.ratified_epoch) return { label: "Ratified", icon: CheckCircle2, color: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300" };
     return { label: "Active", icon: Clock, color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" };
   };
 
@@ -280,7 +280,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
           </div>
 
           {/* Abstract */}
-          <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-4 sm:pt-6 w-full">
+          <div className="space-y-2 border-t border-gray-200 dark:border-gray-800 pt-4 sm:pt-6 w-full">
             <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 w-full">
               <div className="text-xs sm:text-sm font-medium text-foreground flex-shrink-0 min-w-20">
                 Abstract
@@ -295,7 +295,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
 
           {/* Motivation */}
           {proposalMetadata.json_metadata.body.motivation && (
-            <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-4 sm:pt-6 w-full">
+            <div className="space-y-2 border-t border-gray-200 dark:border-gray-800 pt-4 sm:pt-6 w-full">
               <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 w-full">
                 <div className="text-xs sm:text-sm font-medium text-foreground flex-shrink-0 min-w-20">
                   Motivation
@@ -311,7 +311,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
 
           {/* Rationale */}
           {proposalMetadata.json_metadata.body.rationale && (
-            <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-4 sm:pt-6 w-full">
+            <div className="space-y-2 border-t border-gray-200 dark:border-gray-800 pt-4 sm:pt-6 w-full">
               <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 w-full">
                 <div className="text-xs sm:text-sm font-medium text-foreground flex-shrink-0 min-w-20">
                   Rationale
@@ -327,7 +327,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
 
           {/* References */}
           {proposalMetadata.json_metadata.body.references && proposalMetadata.json_metadata.body.references.length > 0 && (
-            <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-4 sm:pt-6 w-full">
+            <div className="space-y-2 border-t border-gray-200 dark:border-gray-800 pt-4 sm:pt-6 w-full">
               <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 w-full">
                 <div className="text-xs sm:text-sm font-medium text-foreground flex-shrink-0 min-w-20">
                   References
@@ -413,7 +413,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
                 </div>
               ))}
             </div>
-            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600 dark:text-gray-400">Total Amount:</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">

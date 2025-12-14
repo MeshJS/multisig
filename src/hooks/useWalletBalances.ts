@@ -6,6 +6,7 @@ import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import { buildMultisigWallet } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
+import { useWalletBalancesStore } from "@/lib/zustand/wallet-balances";
 
 type WalletBalanceState = "idle" | "loading" | "loaded" | "error";
 
@@ -25,6 +26,11 @@ export default function useWalletBalances(
 ): UseWalletBalancesResult {
   const { cooldownMs = 400 } = options;
   const network = useSiteStore((state) => state.network);
+  // Access store actions directly to ensure they're stable references
+  const setBalance = useWalletBalancesStore((state) => state.setBalance);
+  const getCachedBalance = useWalletBalancesStore((state) => state.getCachedBalance);
+  const clearExpiredBalances = useWalletBalancesStore((state) => state.clearExpiredBalances);
+  
   const [balances, setBalances] = useState<Record<string, number | null>>({});
   const [loadingStates, setLoadingStates] = useState<
     Record<string, WalletBalanceState>
@@ -38,10 +44,29 @@ export default function useWalletBalances(
   const initializedWalletsRef = useRef<Set<string>>(new Set());
   const lastWalletIdsRef = useRef<string>("");
 
+  // Clear expired balances once on mount (not on every wallets change)
+  const hasClearedExpiredRef = useRef(false);
+  useEffect(() => {
+    if (!hasClearedExpiredRef.current) {
+      clearExpiredBalances();
+      hasClearedExpiredRef.current = true;
+    }
+  }, [clearExpiredBalances]);
+
   const fetchWalletBalance = useCallback(
     async (wallet: Wallet): Promise<void> => {
-      // Skip if already fetched
+      // Skip if already fetched in this session
       if (fetchedWalletsRef.current.has(wallet.id)) {
+        return;
+      }
+
+      // Check cache first (5 minute cache duration)
+      const cachedData = getCachedBalance(wallet.id, 5 * 60 * 1000);
+      if (cachedData) {
+        // Use cached balance
+        setBalances((prev) => ({ ...prev, [wallet.id]: cachedData.balance }));
+        setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
+        fetchedWalletsRef.current.add(wallet.id);
         return;
       }
 
@@ -86,23 +111,50 @@ export default function useWalletBalances(
           }
         }
 
-        // Update state
+        // Update local state
         setBalances((prev) => ({ ...prev, [wallet.id]: balance }));
         setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
+        
+        // Cache the balance in Zustand store (including successful fetches)
+        setBalance(wallet.id, balance, walletAddress);
+        
         fetchedWalletsRef.current.add(wallet.id);
       } catch (error: any) {
-        // Handle 404 errors gracefully (address doesn't exist yet - this is normal)
-        const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
-        if (!is404) {
+        // Handle 404 errors gracefully (address doesn't exist yet - this is normal for unused addresses)
+        // Check multiple possible error formats from Blockfrost API
+        const is404 = 
+          error?.response?.status === 404 || 
+          error?.data?.status_code === 404 ||
+          error?.status === 404 ||
+          (error?.message && error.message.includes("404")) ||
+          (error?.message && error.message.includes("Not Found"));
+        
+        if (is404) {
+          // 404 is expected for unused addresses - set balance to 0 (not null) and mark as loaded
+          const walletNetwork = wallet.signersAddresses.length > 0 
+            ? addressToNetwork(wallet.signersAddresses[0]!)
+            : network;
+          const mWallet = buildMultisigWallet(wallet, walletNetwork);
+          const walletAddress = mWallet?.getScript().address || wallet.address;
+          
+          setBalances((prev) => ({ ...prev, [wallet.id]: 0 }));
+          setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
+          
+          // Cache 404 results too (balance = 0) to avoid repeated requests
+          setBalance(wallet.id, 0, walletAddress);
+          
+          fetchedWalletsRef.current.add(wallet.id);
+          // Don't log 404 errors - they're expected for unused addresses
+        } else {
           // Only log non-404 errors
           console.error(`Error fetching balance for wallet ${wallet.id}:`, error);
+          setBalances((prev) => ({ ...prev, [wallet.id]: null }));
+          setLoadingStates((prev) => ({ ...prev, [wallet.id]: "error" }));
+          fetchedWalletsRef.current.add(wallet.id);
         }
-        setBalances((prev) => ({ ...prev, [wallet.id]: null }));
-        setLoadingStates((prev) => ({ ...prev, [wallet.id]: "error" }));
-        fetchedWalletsRef.current.add(wallet.id); // Mark as attempted to avoid retries
       }
     },
-    [],
+    [network, getCachedBalance, setBalance],
   );
 
   const processQueue = useCallback(async () => {
@@ -187,10 +239,26 @@ export default function useWalletBalances(
 
     lastWalletIdsRef.current = walletIds;
 
-    // Filter out wallets that have already been fetched
-    const walletsToFetch = wallets.filter(
-      (wallet) => !fetchedWalletsRef.current.has(wallet.id),
-    );
+    // First, load any cached balances into local state
+    const cached: Record<string, number | null> = {};
+    wallets.forEach((wallet) => {
+      const cachedData = getCachedBalance(wallet.id);
+      if (cachedData) {
+        cached[wallet.id] = cachedData.balance;
+        setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
+        fetchedWalletsRef.current.add(wallet.id);
+      }
+    });
+    
+    if (Object.keys(cached).length > 0) {
+      setBalances((prev) => ({ ...prev, ...cached }));
+    }
+
+    // Filter out wallets that have already been fetched (either in this session or from cache)
+    const walletsToFetch = wallets.filter((wallet) => {
+      // Skip if already fetched in this session or from cache
+      return !fetchedWalletsRef.current.has(wallet.id);
+    });
 
     if (walletsToFetch.length === 0) {
       setIsFetching(false);

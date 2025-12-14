@@ -22,7 +22,11 @@ interface PutResponse {
   url: string;
 }
 
-export default function UpdateDRep() {
+interface UpdateDRepProps {
+  onClose?: () => void;
+}
+
+export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   const { appWallet } = useAppWallet();
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -157,7 +161,11 @@ export default function UpdateDRep() {
         toastMessage: "Proxy DRep update transaction has been created",
       });
 
-      router.push(`/wallets/${appWallet.id}/governance`);
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (error) {
       console.error("Proxy DRep update error:", error);
       throw error;
@@ -172,17 +180,16 @@ export default function UpdateDRep() {
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
+    
+    const drepData = multisigWallet?.getDRep(appWallet);
+    if (!drepData) {
       throw new Error("DRep not found");
     }
+    const { dRepId, drepCbor } = drepData;
+    
     const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
     if (!scriptCbor) {
       throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
     }
     const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
     if (!changeAddress) {
@@ -213,30 +220,42 @@ export default function UpdateDRep() {
         .drepUpdateCertificate(dRepId, {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
-        })
-        .certificateScript(drepCbor)
-        .changeAddress(changeAddress);
+        });
+      
+      // Only add certificateScript if it's different from the spending script
+      // to avoid "extraneous scripts" error
+      if (drepCbor !== scriptCbor) {
+        txBuilder.certificateScript(drepCbor);
+      }
+      
+      txBuilder.changeAddress(changeAddress);
 
       await newTransaction({
         txBuilder,
         description: "DRep update",
         toastMessage: "DRep update transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 md:px-6">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
-          <Minus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
-          <span>Update DRep</span>
-        </h1>
-      </div>
+    <div className={`w-full max-w-4xl mx-auto ${onClose ? '' : 'px-3 sm:px-4 md:px-6'}`}>
+      {!onClose && (
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+            <Minus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+            <span>Update DRep</span>
+          </h1>
+        </div>
+      )}
       {appWallet && (
         <DRepForm
           _imageUrl={""}

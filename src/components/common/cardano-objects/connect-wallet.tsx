@@ -320,31 +320,31 @@ function ConnectWalletContent({
     if (isConnecting) {
       return (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          <span className="font-medium">Connecting...</span>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin transition-opacity duration-300" />
+          <span className="font-medium transition-opacity duration-300">Connecting...</span>
         </>
       );
     }
     if (isConnected && isLoading) {
       return (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          <span className="font-medium">Loading...</span>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin transition-opacity duration-300" />
+          <span className="font-medium transition-opacity duration-300">Loading...</span>
         </>
       );
     }
     if (isConnected && user && !userLoading) {
       return (
         <>
-          <CheckCircle2 className="mr-2 h-4 w-4" />
-          <span className="font-medium">{connectedWalletName || "Connected"}</span>
+          <CheckCircle2 className="mr-2 h-4 w-4 transition-all duration-300" />
+          <span className="font-medium transition-opacity duration-300">{connectedWalletName || "Connected"}</span>
         </>
       );
     }
     return (
       <>
-        <Wallet className="mr-2 h-4 w-4" />
-        <span className="font-medium">Connect Wallet</span>
+        <Wallet className="mr-2 h-4 w-4 transition-all duration-300" />
+        <span className="font-medium transition-opacity duration-300">Connect Wallet</span>
       </>
     );
   };
@@ -355,7 +355,8 @@ function ConnectWalletContent({
         <Button
           variant="secondary"
           className={cn(
-            "rounded-full px-4 py-2 h-auto transition-all duration-300 ease-in-out",
+            "rounded-full px-4 py-2 h-auto",
+            "transition-all duration-300 ease-in-out",
             "shadow-sm hover:shadow-md",
             "border border-zinc-200 dark:border-zinc-800",
             "bg-white dark:bg-zinc-900",

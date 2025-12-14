@@ -79,16 +79,16 @@ function PageGovernanceContent() {
       <div className="fixed bottom-5 right-5 z-40">
         <Button
           onClick={openModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/70 dark:border-slate-700/80 shadow-[0_12px_30px_rgba(0,0,0,0.18)] text-sm font-semibold text-slate-800 dark:text-slate-50 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-[0_16px_40px_rgba(0,0,0,0.22)] hover:border-white/80 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/90 dark:bg-[#0A0A0B]/90 backdrop-blur-xl border border-gray-200/70 dark:border-gray-800/80 shadow-[0_12px_30px_rgba(0,0,0,0.18)] text-sm font-semibold text-gray-800 dark:text-gray-50 transition-all duration-150 hover:-translate-y-[1px] hover:shadow-[0_16px_40px_rgba(0,0,0,0.22)] hover:border-gray-300/80 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-[#0A0A0B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0A0A0B]"
         >
           <span className="flex items-center gap-2">
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white shadow-inner shadow-blue-500/50 dark:bg-blue-500 dark:shadow-blue-400/60">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-600 dark:bg-gray-500 text-white shadow-inner shadow-gray-500/50 dark:shadow-gray-400/60">
               <Vote className="h-3.5 w-3.5" />
             </span>
             <span className="truncate">Manage Ballots</span>
           </span>
           {proposalCount > 0 && (
-            <span className="ml-1 text-xs font-bold text-slate-700 dark:text-slate-50 bg-slate-100/90 dark:bg-slate-800/90 px-2 py-0.5 rounded-full border border-slate-200/80 dark:border-slate-600">
+            <span className="ml-1 text-xs font-bold text-gray-700 dark:text-gray-50 bg-gray-100/90 dark:bg-gray-800/90 px-2 py-0.5 rounded-full border border-gray-200/80 dark:border-gray-800">
               {proposalCount}
             </span>
           )}
