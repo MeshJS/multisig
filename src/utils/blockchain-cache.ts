@@ -83,12 +83,12 @@ export async function cachedGet<T>(
   // Use unstable_cache for server-side caching
   const getCachedData = unstable_cache(
     async () => {
-      return provider.get<T>(endpoint);
+      return (await provider.get(endpoint)) as T;
     },
     [cacheKey],
     {
       revalidate: cacheConfig.revalidate,
-      tags: cacheConfig.tags,
+      tags: cacheConfig.tags ? [...cacheConfig.tags] : undefined,
     }
   );
 

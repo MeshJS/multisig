@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
@@ -300,7 +300,7 @@ export default function TransactionCard({
   //   }
   // }, []);
 
-  const outputList = useMemo((): JSX.Element => {
+  const outputList = useMemo((): React.ReactElement => {
     return (
       <>
         {txJson.outputs.map((output: any, i: number) => {

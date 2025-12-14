@@ -38,9 +38,9 @@ export default function useTransaction() {
               signedAddresses: newTransaction.signedAddresses,
               txCbor: newTransaction.txCbor,
               state: newTransaction.state,
-              description: newTransaction.description,
-              txHash: newTransaction.txHash,
-              rejectedAddresses: [],
+              description: newTransaction.description ?? null,
+              txHash: newTransaction.txHash ?? null,
+              rejectedAddresses: [] as string[],
               createdAt: new Date(),
               updatedAt: new Date(),
             };

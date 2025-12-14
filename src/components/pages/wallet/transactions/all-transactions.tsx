@@ -26,7 +26,7 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ResponsiveTransactionsTable from "./responsive-transactions-table";
 import ScrollableTableWrapper from "./scrollable-table-wrapper";
 
@@ -175,7 +175,7 @@ function TransactionRow({
     setTransactionOutputs(outputs);
   }, [transaction, walletAssetMetadata]);
 
-  const outputList = useMemo((): JSX.Element => {
+  const outputList = useMemo((): React.ReactElement => {
     return (
       <>
         {transaction.outputs.map((output: any, i) => {

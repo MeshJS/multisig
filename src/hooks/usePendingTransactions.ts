@@ -85,7 +85,7 @@ export default function usePendingTransactions({
         // Use structural sharing to prevent unnecessary re-renders
         structuralSharing: (oldData, newData) => {
           // If data is actually the same, return old data to prevent re-render
-          if (areTransactionsEqual(oldData, newData)) {
+          if (areTransactionsEqual(oldData as Transaction[] | undefined, newData as Transaction[] | undefined)) {
             return oldData;
           }
           return newData;

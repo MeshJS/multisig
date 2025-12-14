@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from "remark-gfm";
 import { getProvider } from "@/utils/get-provider";
@@ -777,7 +777,7 @@ function ProposalRow({
   isLoadingDetails?: boolean;
   setCurrentProposal: (proposalId?: string, proposalTitle?: string) => void;
   openModal: () => void;
-}): JSX.Element {
+}): React.ReactElement {
   const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
   
   // Convert vote to display format

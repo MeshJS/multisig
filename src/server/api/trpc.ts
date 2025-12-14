@@ -131,7 +131,9 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 /**
  * Caching middleware for queries (imported from middleware/cache)
  */
-import { cacheMiddleware } from "./middleware/cache";
+import { createCacheMiddleware } from "./middleware/cache";
+
+const cacheMiddleware = createCacheMiddleware(t);
 
 /**
  * Public (unauthenticated) procedure

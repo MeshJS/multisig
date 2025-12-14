@@ -11,7 +11,6 @@
  */
 
 import { TRPCError } from "@trpc/server";
-import type { MiddlewareFunction } from "@trpc/server/dist/types/internals/middlewares";
 
 /**
  * Cache configuration for different query types
@@ -109,36 +108,36 @@ function getCacheConfigForPath(path: string): typeof QUERY_CACHE_CONFIG[keyof ty
  * 
  * Only applies to queries (not mutations).
  */
-export const cacheMiddleware: MiddlewareFunction<
-  { path: string; type: string; input: unknown },
-  { path: string; type: string; input: unknown }
-> = async ({ path, type, next }) => {
-  // Only apply to queries, not mutations
-  if (type !== "query") {
-    return next();
-  }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createCacheMiddleware(t: any) {
+  return t.middleware(async ({ path, type, next }: { path: string; type: string; next: () => Promise<unknown> }) => {
+    // Only apply to queries, not mutations
+    if (type !== "query") {
+      return next();
+    }
 
-  // For now, just pass through
-  // Actual caching happens via React Query on the client
-  // and Next.js cache headers on API routes
-  try {
-    return await next();
-  } catch (error) {
-    // Re-throw TRPC errors
-    if (error instanceof TRPCError) {
+    // For now, just pass through
+    // Actual caching happens via React Query on the client
+    // and Next.js cache headers on API routes
+    try {
+      return await next();
+    } catch (error) {
+      // Re-throw TRPC errors
+      if (error instanceof TRPCError) {
+        throw error;
+      }
+      // For other errors, log and re-throw
+      console.error(`[Cache Middleware] Error in query ${path}:`, error);
       throw error;
     }
-    // For other errors, log and re-throw
-    console.error(`[Cache Middleware] Error in query ${path}:`, error);
-    throw error;
-  }
-};
+  });
+}
 
 /**
  * Helper to create cache tags for invalidation
  */
 export function getCacheTagsForPath(path: string): string[] {
   const config = getCacheConfigForPath(path);
-  return config?.tags ?? [];
+  return config?.tags ? [...config.tags] : [];
 }
 

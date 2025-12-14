@@ -135,18 +135,19 @@ export default function RootLayout({
       // Snapshot previous value
       const previous = ctx.user.getUserByAddress.getData({ address: variables.address });
       
-      // Optimistically update
-      ctx.user.getUserByAddress.setData(
-        { address: variables.address },
-        (old) => old ?? {
-          address: variables.address,
-          stakeAddress: variables.stakeAddress,
-          drepKeyHash: variables.drepKeyHash ?? "",
-          nostrKey: variables.nostrKey,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      );
+      // Optimistically update (only if old exists, otherwise wait for server response)
+      if (previous) {
+        ctx.user.getUserByAddress.setData(
+          { address: variables.address },
+          {
+            ...previous,
+            address: variables.address,
+            stakeAddress: variables.stakeAddress,
+            drepKeyHash: variables.drepKeyHash ?? "",
+            nostrKey: variables.nostrKey,
+          }
+        );
+      }
       
       return { previous };
     },
@@ -165,6 +166,11 @@ export default function RootLayout({
   });
   const { mutate: updateUser } = api.user.updateUser.useMutation({
     onMutate: async (variables) => {
+      // Only do optimistic update if address is provided
+      if (!variables.address) {
+        return { previous: undefined };
+      }
+      
       // Cancel outgoing refetches
       await ctx.user.getUserByAddress.cancel({ address: variables.address });
       
@@ -172,23 +178,32 @@ export default function RootLayout({
       const previous = ctx.user.getUserByAddress.getData({ address: variables.address });
       
       // Optimistically update
-      ctx.user.getUserByAddress.setData(
-        { address: variables.address },
-        (old) => old ? { ...old, ...variables, updatedAt: new Date() } : old
-      );
+      if (previous) {
+        ctx.user.getUserByAddress.setData(
+          { address: variables.address },
+          {
+            ...previous,
+            ...(variables.address && { address: variables.address }),
+            ...(variables.stakeAddress && { stakeAddress: variables.stakeAddress }),
+            ...(variables.drepKeyHash && { drepKeyHash: variables.drepKeyHash }),
+          }
+        );
+      }
       
       return { previous };
     },
     onError: (err, variables, context) => {
       // Rollback on error
-      if (context?.previous) {
+      if (context?.previous && variables.address) {
         ctx.user.getUserByAddress.setData({ address: variables.address }, context.previous);
       }
       console.error("Error updating user:", err);
     },
     onSuccess: (_, variables) => {
       console.log("User updated successfully, invalidating user query");
-      void ctx.user.getUserByAddress.invalidate({ address: variables.address });
+      if (variables.address) {
+        void ctx.user.getUserByAddress.invalidate({ address: variables.address });
+      }
     },
   });
 

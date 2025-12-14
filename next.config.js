@@ -19,7 +19,7 @@ const config = {
     locales: ["en"],
     defaultLocale: "en",
   },
-  transpilePackages: ["geist"],
+  transpilePackages: ["geist", "@meshsdk/react"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -66,11 +66,23 @@ const config = {
       sideEffects: false,
     };
     
+    // Handle CommonJS modules that don't support named exports
+    config.resolve = {
+      ...config.resolve,
+      extensionAlias: {
+        ".js": [".js", ".ts", ".tsx"],
+      },
+    };
+    
     return config;
   },
+  
+  // External packages for server components to avoid bundling issues
+  serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
 };
 
 // Bundle analyzer - only enable when ANALYZE env var is set
+/** @type {(config: import("next").NextConfig) => import("next").NextConfig} */
 const withBundleAnalyzer = process.env.ANALYZE === 'true' 
   ? require('@next/bundle-analyzer')({
       enabled: true,
