@@ -4,6 +4,7 @@ import { verifyJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
+import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,6 +13,10 @@ export default async function handler(
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
   
+  if (!applyRateLimit(req, res, { keySuffix: "v1/submitDatum" })) {
+    return;
+  }
+
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -19,6 +24,10 @@ export default async function handler(
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  if (!enforceBodySize(req, res, 128 * 1024)) {
+    return;
   }
 
   const authHeader = req.headers.authorization;
@@ -77,6 +86,13 @@ export default async function handler(
 
   if (!isValid) {
     return res.status(401).json({ error: "Invalid signature" });
+  }
+
+  const wallet = await db.wallet.findUnique({ where: { id: walletId } });
+  const signers = wallet?.signersAddresses ?? [];
+  const isSigner = Array.isArray(signers) && signers.includes(address);
+  if (!wallet || !isSigner) {
+    return res.status(403).json({ error: "Not authorized for this wallet" });
   }
   
   try {

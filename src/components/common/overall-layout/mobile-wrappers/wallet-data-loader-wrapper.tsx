@@ -12,6 +12,8 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
+import { WalletAuthModal } from "@/components/common/modals/WalletAuthModal";
+import { useUserStore } from "@/lib/zustand/user";
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -25,6 +27,7 @@ export default function WalletDataLoaderWrapper({
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const prevWalletIdRef = useRef<string | null>(null);
   const ctx = api.useUtils();
@@ -51,6 +54,15 @@ export default function WalletDataLoaderWrapper({
   const { fetchAllProxyData, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
+
+  const userAddress = useUserStore((state) => state.userAddress);
+
+  const walletSessionQuery = api.auth.getWalletSession.useQuery(
+    { address: userAddress ?? "" },
+    {
+      enabled: !!userAddress,
+    },
+  );
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -242,28 +254,77 @@ export default function WalletDataLoaderWrapper({
     }
   }, [appWallet]);
 
+  useEffect(() => {
+    if (!userAddress) return;
+    if (walletSessionQuery.isLoading || walletSessionQuery.error) return;
+    if (walletSessionQuery.data && !walletSessionQuery.data.authorized) {
+      setShowAuthModal(true);
+    }
+  }, [
+    userAddress,
+    walletSessionQuery.isLoading,
+    walletSessionQuery.error,
+    walletSessionQuery.data,
+  ]);
+
   if (mode === "button") {
     return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="rounded-full"
-        onClick={() => refreshWallet()}
-        disabled={loading}
-      >
-        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      </Button>
+      <>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="rounded-full"
+          onClick={() => refreshWallet()}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+        {userAddress && (
+          <WalletAuthModal
+            address={userAddress}
+            open={showAuthModal}
+            onClose={() => setShowAuthModal(false)}
+            onAuthorized={() => {
+              void walletSessionQuery.refetch();
+              void ctx.transaction.getPendingTransactions.invalidate();
+              void ctx.transaction.getAllTransactions.invalidate();
+              void ctx.signable.getPendingSignables.invalidate();
+              void ctx.signable.getCompleteSignables.invalidate();
+              void ctx.proxy.getProxiesByUserOrWallet.invalidate();
+              void ctx.migration.getPendingMigrations.invalidate();
+            }}
+          />
+        )}
+      </>
     );
   }
 
   // Menu item mode
   return (
-    <div
-      className="flex items-center gap-2 cursor-pointer"
-      onClick={() => refreshWallet()}
-    >
-      <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      <span>Refresh Wallet</span>
-    </div>
+    <>
+      <div
+        className="flex items-center gap-2 cursor-pointer"
+        onClick={() => refreshWallet()}
+      >
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <span>Refresh Wallet</span>
+      </div>
+      {userAddress && (
+        <WalletAuthModal
+          address={userAddress}
+          open={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onAuthorized={() => {
+            void walletSessionQuery.refetch();
+            void ctx.transaction.getPendingTransactions.invalidate();
+            void ctx.transaction.getAllTransactions.invalidate();
+            void ctx.signable.getPendingSignables.invalidate();
+            void ctx.signable.getCompleteSignables.invalidate();
+            void ctx.proxy.getProxiesByUserOrWallet.invalidate();
+            void ctx.migration.getPendingMigrations.invalidate();
+          }}
+        />
+      )}
+    </>
   );
 }

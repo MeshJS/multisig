@@ -1,11 +1,38 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+const requireSessionAddress = (ctx: any) => {
+  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (!address) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return address;
+};
+
+const assertMigrationOwner = async (ctx: any, migrationId: string, requester: string) => {
+  const migration = await ctx.db.migration.findUnique({ where: { id: migrationId } });
+  if (!migration) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Migration not found" });
+  }
+  if (migration.ownerAddress !== requester) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not owner of migration" });
+  }
+  return migration;
+};
 
 export const migrationRouter = createTRPCRouter({
-  // Get pending migrations for a user
-  getPendingMigrations: publicProcedure
+  // Get pending migrations for a user – require authenticated session whose address matches owner
+  getPendingMigrations: protectedProcedure
     .input(z.object({ ownerAddress: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      if (!addresses.includes(input.ownerAddress)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
       return ctx.db.migration.findMany({
         where: {
           ownerAddress: input.ownerAddress,
@@ -20,24 +47,26 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Get a specific migration by ID
-  getMigration: publicProcedure
+  getMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.migration.findUnique({
-        where: {
-          id: input.migrationId
-        }
-      });
+      const sessionAddress = requireSessionAddress(ctx);
+      const migration = await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      return migration;
     }),
 
   // Create a new migration
-  createMigration: publicProcedure
+  createMigration: protectedProcedure
     .input(z.object({
       originalWalletId: z.string(),
       ownerAddress: z.string(),
       migrationData: z.any().optional()
     }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      if (sessionAddress !== input.ownerAddress) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
       return ctx.db.migration.create({
         data: {
           originalWalletId: input.originalWalletId,
@@ -50,7 +79,7 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Update migration step
-  updateMigrationStep: publicProcedure
+  updateMigrationStep: protectedProcedure
     .input(z.object({
       migrationId: z.string(),
       currentStep: z.number(),
@@ -59,6 +88,8 @@ export const migrationRouter = createTRPCRouter({
       errorMessage: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
       const updateData: any = {
         currentStep: input.currentStep,
         updatedAt: new Date()
@@ -88,12 +119,14 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Update migration data
-  updateMigrationData: publicProcedure
+  updateMigrationData: protectedProcedure
     .input(z.object({
       migrationId: z.string(),
       migrationData: z.any()
     }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
       return ctx.db.migration.update({
         where: {
           id: input.migrationId
@@ -106,9 +139,11 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Cancel a migration
-  cancelMigration: publicProcedure
+  cancelMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
       // Delete the migration record completely
       return ctx.db.migration.delete({
         where: {
@@ -118,9 +153,11 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Complete a migration
-  completeMigration: publicProcedure
+  completeMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
       return ctx.db.migration.update({
         where: {
           id: input.migrationId
@@ -134,9 +171,10 @@ export const migrationRouter = createTRPCRouter({
     }),
 
   // Get migration by original wallet ID
-  getMigrationByOriginalWallet: publicProcedure
+  getMigrationByOriginalWallet: protectedProcedure
     .input(z.object({ originalWalletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       return ctx.db.migration.findFirst({
         where: {
           originalWalletId: input.originalWalletId,

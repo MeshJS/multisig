@@ -1,17 +1,41 @@
-import { useMemo } from "react";
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+const requireSessionAddress = (ctx: any) => {
+  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (!address) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return address;
+};
+
+const assertWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+  const isSigner =
+    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
+  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
+  if (!isSigner && !isOwner) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
+  }
+  return wallet;
+};
 
 export const ballotRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
-        description: z.string(),
+        description: z.string().max(2000),
         type: z.number(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.ballot.create({
         data: {
           walletId: input.walletId,
@@ -21,7 +45,7 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  updateBallot: publicProcedure
+  updateBallot: protectedProcedure
     .input(
       z.object({
         ballotId: z.string(),
@@ -33,6 +57,12 @@ export const ballotRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const ballot = await ctx.db.ballot.findUnique({ where: { id: input.ballotId } });
+      if (!ballot) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ballot not found" });
+      }
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       return ctx.db.ballot.update({
         where: {
           id: input.ballotId,
@@ -47,9 +77,15 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ ballotId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const ballot = await ctx.db.ballot.findUnique({ where: { id: input.ballotId } });
+      if (!ballot) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ballot not found" });
+      }
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       return ctx.db.ballot.delete({
         where: {
           id: input.ballotId,
@@ -57,9 +93,11 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  getByWallet: publicProcedure
+  getByWallet: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return await ctx.db.ballot.findMany({
         where: {
           walletId: input.walletId,
@@ -70,7 +108,7 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  addProposalToBallot: publicProcedure
+  addProposalToBallot: protectedProcedure
     .input(
       z.object({
         ballotId: z.string(),
@@ -82,6 +120,7 @@ export const ballotRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       // Find the ballot
       const ballot = await ctx.db.ballot.findUnique({
         where: { id: input.ballotId },
@@ -89,6 +128,7 @@ export const ballotRouter = createTRPCRouter({
       if (!ballot) {
         throw new Error("Ballot not found");
       }
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       // Check if proposal already exists to prevent duplicates
       if (Array.isArray(ballot.items) && ballot.items.includes(input.item)) {
         throw new Error("Proposal already exists in this ballot");
@@ -117,7 +157,7 @@ export const ballotRouter = createTRPCRouter({
         } as any,
       });
     }),
-      removeProposalFromBallot: publicProcedure
+      removeProposalFromBallot: protectedProcedure
     .input(
       z.object({
         ballotId: z.string(),
@@ -125,6 +165,7 @@ export const ballotRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       // Find the ballot
       const ballot = await ctx.db.ballot.findUnique({
         where: { id: input.ballotId },
@@ -132,6 +173,7 @@ export const ballotRouter = createTRPCRouter({
       if (!ballot) {
         throw new Error("Ballot not found");
       }
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       // Remove the item at the given index from all arrays
       const ballotWithAnchors = ballot as typeof ballot & { anchorUrls?: string[]; anchorHashes?: string[] };
       const updatedItems = Array.isArray(ballot.items)
@@ -161,7 +203,7 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  updateChoice: publicProcedure
+  updateChoice: protectedProcedure
     .input(
       z.object({
         ballotId: z.string(),
@@ -170,12 +212,14 @@ export const ballotRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       const ballot = await ctx.db.ballot.findUnique({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
       if (!Array.isArray(ballot.choices) || ballot.choices.length <= input.index)
         throw new Error("Invalid choice index");
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       const updatedChoices = [...ballot.choices];
       updatedChoices[input.index] = input.choice;
       return ctx.db.ballot.update({
@@ -184,7 +228,7 @@ export const ballotRouter = createTRPCRouter({
       });
     }),
 
-  updateProposalAnchor: publicProcedure
+  updateProposalAnchor: protectedProcedure
     .input(
       z.object({
         ballotId: z.string(),
@@ -194,12 +238,14 @@ export const ballotRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       const ballot = await ctx.db.ballot.findUnique({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
       if (!Array.isArray(ballot.items) || ballot.items.length <= input.index)
         throw new Error("Invalid proposal index");
+      await assertWalletAccess(ctx, ballot.walletId, sessionAddress);
       
       const ballotWithAnchors = ballot as any;
       const updatedAnchorUrls = Array.isArray(ballotWithAnchors.anchorUrls) 

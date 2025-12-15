@@ -1,21 +1,46 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+const requireSessionAddress = (ctx: any) => {
+  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (!address) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return address;
+};
+
+const assertWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+  const isSigner =
+    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
+  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
+  if (!isSigner && !isOwner) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
+  }
+  return wallet;
+};
 
 export const signableRouter = createTRPCRouter({
-  createSignable: publicProcedure
+  createSignable: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
-        payload: z.string(),
+        payload: z.string().min(1),
         signatures: z.array(z.string()),
         signedAddresses: z.array(z.string()),
-        method: z.string(),
+        method: z.string().min(1),
         state: z.number(),
         description: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.signable.create({
         data: {
           walletId: input.walletId,
@@ -29,7 +54,7 @@ export const signableRouter = createTRPCRouter({
       });
     }),
 
-  updateSignable: publicProcedure
+  updateSignable: protectedProcedure
     .input(
       z.object({
         signableId: z.string(),
@@ -41,6 +66,12 @@ export const signableRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const signable = await ctx.db.signable.findUnique({ where: { id: input.signableId } });
+      if (!signable) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Signable not found" });
+      }
+      await assertWalletAccess(ctx, signable.walletId, sessionAddress);
       return ctx.db.signable.update({
         where: {
           id: input.signableId,
@@ -54,9 +85,15 @@ export const signableRouter = createTRPCRouter({
       });
     }),
 
-  deleteSignable: publicProcedure
+  deleteSignable: protectedProcedure
     .input(z.object({ signableId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const signable = await ctx.db.signable.findUnique({ where: { id: input.signableId } });
+      if (!signable) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Signable not found" });
+      }
+      await assertWalletAccess(ctx, signable.walletId, sessionAddress);
       return ctx.db.signable.delete({
         where: {
           id: input.signableId,
@@ -64,9 +101,12 @@ export const signableRouter = createTRPCRouter({
       });
     }),
 
-  getAllSignables: publicProcedure
+  // Read-only queries require authenticated session whose address is a signer/owner
+  getAllSignables: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return await ctx.db.signable.findMany({
         where: {
           walletId: input.walletId,
@@ -78,9 +118,11 @@ export const signableRouter = createTRPCRouter({
       });
     }),
 
-  getPendingSignables: publicProcedure
+  getPendingSignables: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return await ctx.db.signable.findMany({
         where: {
           walletId: input.walletId,
@@ -91,9 +133,11 @@ export const signableRouter = createTRPCRouter({
         },
       });
     }),
-    getCompleteSignables: publicProcedure
+    getCompleteSignables: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return await ctx.db.signable.findMany({
         where: {
           walletId: input.walletId,

@@ -3,6 +3,7 @@ import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { applyRateLimit } from "@/lib/security/requestGuards";
 
 export default async function handler(
   req: NextApiRequest,
@@ -11,6 +12,10 @@ export default async function handler(
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
   
+  if (!applyRateLimit(req, res, { keySuffix: "v1/walletIds" })) {
+    return;
+  }
+
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();

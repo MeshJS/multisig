@@ -1,21 +1,30 @@
+import "@/polyfills/arrayChunk";
+
 import { GeistSans } from "geist/font/sans";
 import { type Session } from "next-auth";
 import { SessionProvider } from "next-auth/react";
 import { type AppType } from "next/app";
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 
 import { api } from "@/utils/api";
 
 import "@/styles/globals.css";
 import "@meshsdk/react/styles.css";
-import { MeshProvider } from "@meshsdk/react";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
 import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
 
-import 'swagger-ui-react/swagger-ui.css';
-import '../styles/swagger-overrides.css';
+import "swagger-ui-react/swagger-ui.css";
+import "../styles/swagger-overrides.css";
+
+// MeshProvider pulls in dependencies that assume a browser/webpack env.
+// Load it client-side only to avoid SSR/runtime issues in Next.js dev/SSR.
+const MeshProviderNoSSR = dynamic(
+  () => import("@meshsdk/react").then((m) => m.MeshProvider),
+  { ssr: false },
+);
 
 const MyApp: AppType<{ session: Session | null }> = ({
   Component,
@@ -43,7 +52,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
   }, []);
 
   return (
-    <MeshProvider>
+    <MeshProviderNoSSR>
       <SessionProvider session={session}>
         <NostrChatProvider>
           <div className={GeistSans.className}>
@@ -57,7 +66,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
           </div>
         </NostrChatProvider>
       </SessionProvider>
-    </MeshProvider>
+    </MeshProviderNoSSR>
   );
 };
 

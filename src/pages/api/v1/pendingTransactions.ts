@@ -3,6 +3,7 @@ import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { applyRateLimit } from "@/lib/security/requestGuards";
 
 export default async function handler(
   req: NextApiRequest,
@@ -10,6 +11,10 @@ export default async function handler(
 ) {
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
+
+  if (!applyRateLimit(req, res, { keySuffix: "v1/pendingTransactions" })) {
+    return;
+  }
 
   await cors(req, res);
   if (req.method === "OPTIONS") {
