@@ -114,7 +114,7 @@ export default function NewWalletCreationStep({
         {/* Info Messages */}
         <div className="space-y-3">
           {!walletFlow.newWalletId && (
-            <div className="flex items-start gap-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2 p-4 bg-blue-50 border border-blue-200/50 rounded-lg">
               <svg className="w-5 h-5 mt-0.5 flex-shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -134,7 +134,7 @@ export default function NewWalletCreationStep({
           </div>
 
           {walletFlow.newWalletId && appWallet.migrationTargetWalletId && (
-            <div className="flex items-start gap-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-start gap-2 p-4 bg-amber-50 border border-amber-200/50 rounded-lg">
               <svg className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>

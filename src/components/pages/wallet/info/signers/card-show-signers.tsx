@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useWallet } from "@meshsdk/react";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { getFirstAndLast } from "@/utils/strings";
@@ -12,13 +12,58 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import DiscordIcon from "@/components/common/discordIcon";
-import DiscordImage from "@/components/common/discordImage";
 import { Button } from "@/components/ui/button";
 import { Wallet } from "@/types/wallet";
+import Image from "next/image";
+import getDiscordAvatar from "@/lib/discord/getDiscordAvatar";
 
 interface ShowSignersProps {
   appWallet: Wallet;
+}
+
+interface ProfileIconWithDiscordProps {
+  discordId?: string;
+  size?: "sm" | "md";
+}
+
+function ProfileIconWithDiscord({ discordId, size = "md" }: ProfileIconWithDiscordProps) {
+  const [discordImageUrl, setDiscordImageUrl] = useState<string | null>(null);
+  const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
+  
+  const iconSize = size === "sm" ? "w-6 h-6" : "w-7 h-7";
+  const imageSize = size === "sm" ? 24 : 28;
+
+  useEffect(() => {
+    if (discordId) {
+      setIsLoadingDiscord(true);
+      getDiscordAvatar(discordId)
+        .then((url) => {
+          setDiscordImageUrl(url);
+          setIsLoadingDiscord(false);
+        })
+        .catch(() => {
+          setIsLoadingDiscord(false);
+        });
+    } else {
+      setDiscordImageUrl(null);
+    }
+  }, [discordId]);
+
+  return (
+    <div className={`${iconSize} rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 relative overflow-hidden`}>
+      {discordImageUrl && !isLoadingDiscord ? (
+        <Image
+          src={discordImageUrl}
+          width={imageSize}
+          height={imageSize}
+          alt="Discord avatar"
+          className="rounded-full"
+        />
+      ) : (
+        <User className={`${size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5"} text-primary`} />
+      )}
+    </div>
+  );
 }
 
 export default function ShowSigners({ appWallet }: ShowSignersProps) {
@@ -135,14 +180,12 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
       const isCurrentUser = userAddress && address === userAddress;
 
       return (
-        <div key={address} className="p-3 sm:p-4 border rounded-lg bg-card">
+        <div key={address} className="p-3 sm:p-4 border border-border/30 rounded-lg bg-card">
           {/* Mobile Layout */}
           <div className="flex flex-col gap-3 sm:hidden">
             {/* Header */}
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <User className="w-3 h-3 text-primary" />
-              </div>
+              <ProfileIconWithDiscord discordId={discordId} size="sm" />
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-medium truncate">{signerName}</h3>
               </div>
@@ -198,24 +241,11 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
                   Verify
                 </Button>
               )}
-              {discordId ? (
-                <DiscordImage discordId={discordId} />
-              ) : !isLoadingDiscordIds && isCurrentUser ? (
+              {!discordId && !isLoadingDiscordIds && isCurrentUser && (
                 <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-xs flex-1">
                   Connect Discord
                 </Button>
-              ) : currentUserDiscordId ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger className="text-gray-500">
-                      <DiscordIcon />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Discord not connected</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : null}
+              )}
             </div>
           </div>
 
@@ -223,9 +253,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
           <div className="hidden sm:flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* User Icon */}
-              <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="w-3.5 h-3.5 text-primary" />
-              </div>
+              <ProfileIconWithDiscord discordId={discordId} size="md" />
               
               {/* Signer Info */}
               <div className="flex-1 min-w-0">
@@ -285,25 +313,12 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
                 </Button>
               )}
 
-              {/* Discord Status */}
-              {discordId ? (
-                <DiscordImage discordId={discordId} />
-              ) : !isLoadingDiscordIds && isCurrentUser ? (
+              {/* Connect Discord Button */}
+              {!discordId && !isLoadingDiscordIds && isCurrentUser && (
                 <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-sm">
                   Connect Discord
                 </Button>
-              ) : currentUserDiscordId ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger className="text-gray-500">
-                      <DiscordIcon />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Discord not connected</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : null}
+              )}
             </div>
           </div>
         </div>

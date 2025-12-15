@@ -176,13 +176,13 @@ export default function MigrationPreChecks({
   const getStatusColor = (status: PreCheckResult["status"]) => {
     switch (status) {
       case "success":
-        return "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20";
+        return "border-green-200/50 bg-green-50 dark:border-green-800/50 dark:bg-green-900/20";
       case "warning":
-        return "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20";
+        return "border-yellow-200/50 bg-yellow-50 dark:border-yellow-800/50 dark:bg-yellow-900/20";
       case "error":
-        return "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20";
+        return "border-red-200/50 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20";
       default:
-        return "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800";
+        return "border-gray-200/50 bg-gray-50 dark:border-gray-700/50 dark:bg-gray-800";
     }
   };
 
@@ -237,7 +237,7 @@ export default function MigrationPreChecks({
 
         {/* Summary Alert */}
         {allChecksComplete && (hasWarnings || hasErrors) && (
-          <Alert className={hasErrors ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20" : "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20"}>
+          <Alert className={hasErrors ? "border-red-200/50 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20" : "border-yellow-200/50 bg-yellow-50 dark:border-yellow-800/50 dark:bg-yellow-900/20"}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {hasErrors 
@@ -249,7 +249,7 @@ export default function MigrationPreChecks({
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-3 pt-6 border-t">
+        <div className="flex gap-3 pt-6 border-t border-border/30">
           <Button
             variant="outline"
             onClick={onCancel}

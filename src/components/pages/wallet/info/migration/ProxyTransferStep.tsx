@@ -110,7 +110,7 @@ export default function ProxyTransferStep({
           {hasProxies ? (
             <div className="space-y-3">
               {(existingProxies ?? []).map((proxy, index) => (
-                <div key={proxy.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div key={proxy.id} className="flex items-center justify-between p-4 border border-border/30 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Users className="h-5 w-5 text-blue-500" />
                     <div>
@@ -128,7 +128,7 @@ export default function ProxyTransferStep({
               ))}
             </div>
           ) : (
-            <div className="flex items-center gap-3 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
+            <div className="flex items-center gap-3 p-4 border border-border/30 rounded-lg bg-gray-50 dark:bg-gray-800">
               <CheckCircle className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               <div>
                 <h4 className="font-medium">No Proxies Found</h4>
@@ -147,7 +147,7 @@ export default function ProxyTransferStep({
         description="Destination for the proxy registrations"
       >
         <div className="space-y-4">
-          <div className="p-4 border rounded-lg">
+          <div className="p-4 border border-border/30 rounded-lg">
             <h4 className="font-medium mb-2">Transfer Details</h4>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -173,7 +173,7 @@ export default function ProxyTransferStep({
           title="Transfer Complete"
           description="Proxy registrations have been transferred"
         >
-          <div className="flex items-center gap-3 p-4 border rounded-lg bg-green-50 dark:bg-green-900/20">
+          <div className="flex items-center gap-3 p-4 border border-border/30 rounded-lg bg-green-50 dark:bg-green-900/20">
             <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             <div>
               <h4 className="font-medium">Proxies Transferred</h4>
@@ -192,7 +192,7 @@ export default function ProxyTransferStep({
         description="Complete the proxy transfer"
         cardClassName="col-span-2"
       >
-        <div className="flex gap-3 border-t pt-4">
+        <div className="flex gap-3 border-t border-border/30 pt-4">
           <Button variant="outline" onClick={onBack} className="flex-1">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Fund Transfer

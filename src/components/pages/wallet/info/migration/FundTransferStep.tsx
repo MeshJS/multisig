@@ -302,7 +302,7 @@ export default function FundTransferStep({
         description="Unable to load the new wallet information"
         cardClassName="col-span-2"
       >
-        <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
+        <Alert className="border-red-200/50 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20">
           <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
           <AlertDescription className="text-red-800 dark:text-red-200">
             The new wallet could not be loaded. This might happen if the wallet
@@ -366,7 +366,7 @@ export default function FundTransferStep({
         description="Funds to be transferred"
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="flex items-center justify-between rounded-lg border border-border/30 p-4">
             <div>
               <h4 className="font-medium">ADA Balance</h4>
               <p className="text-sm text-muted-foreground">Native currency</p>
@@ -386,7 +386,7 @@ export default function FundTransferStep({
               {nonAdaAssets.map((asset, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="flex items-center justify-between rounded-lg border border-border/30 p-3"
                 >
                   <div>
                     <p className="font-medium">{asset.unit}</p>
@@ -403,7 +403,7 @@ export default function FundTransferStep({
           )}
 
           {currentUtxos.length === 0 && (
-            <div className="flex items-center gap-3 rounded-lg border bg-blue-50 p-4 dark:bg-blue-900/20">
+            <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-blue-50 p-4 dark:bg-blue-900/20">
               <CheckCircle className="h-5 w-5 text-blue-500 dark:text-blue-400" />
               <div>
                 <h4 className="font-medium">No Funds to Transfer</h4>
@@ -419,7 +419,7 @@ export default function FundTransferStep({
       {/* New Wallet Information */}
       <CardUI title="New Wallet" description="Destination for the funds">
         <div className="space-y-4">
-          <div className="rounded-lg border p-4">
+          <div className="rounded-lg border border-border/30 p-4">
             <h4 className="mb-2 font-medium">Wallet Details</h4>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -458,7 +458,7 @@ export default function FundTransferStep({
           title="Transfer Complete"
           description="Fund transfer has been initiated"
         >
-          <div className="flex items-center gap-3 rounded-lg border bg-green-50 p-4 dark:bg-green-900/20">
+          <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-green-50 p-4 dark:bg-green-900/20">
             <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             <div>
               <h4 className="font-medium">Transfer Initiated</h4>
@@ -477,7 +477,7 @@ export default function FundTransferStep({
         description="Complete the fund transfer"
         cardClassName="col-span-2"
       >
-        <div className="flex gap-3 border-t pt-4">
+        <div className="flex gap-3 border-t border-border/30 pt-4">
           <Button variant="outline" onClick={onBack} className="flex-1">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Proxy Setup

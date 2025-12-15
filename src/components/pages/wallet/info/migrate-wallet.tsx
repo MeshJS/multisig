@@ -36,11 +36,11 @@ const MigrationProgress = ({
   ];
 
   return (
-    <div className="mb-8 p-6 bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg border border-primary/20">
+    <div className="mb-8 p-6 bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg border border-primary/10">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold">Migration Progress</h3>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground bg-background px-3 py-1 rounded-full border">
+          <span className="text-sm text-muted-foreground bg-background px-3 py-1 rounded-full border border-border/30">
             Step {currentStep + 1} of {totalSteps}
           </span>
           <Button
@@ -658,7 +658,7 @@ export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {
         cardClassName="col-span-2"
       >
         <div className="space-y-4">
-          <Alert className="border-green-200 bg-green-50">
+          <Alert className="border-green-200/50 bg-green-50">
             <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
               Migration successfully aborted. All wallets, migration records, and references have been removed. You can start a new migration when ready.
@@ -689,7 +689,7 @@ export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {
     >
       <div className="space-y-4">
         {(appWallet as any).migrationTargetWalletId || migrationState.newWalletId ? (
-          <Alert className="border-blue-200 bg-blue-50">
+          <Alert className="border-blue-200/50 bg-blue-50">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800">
               <strong>Migration In Progress:</strong> You have an ongoing migration. Click "Continue Migration" to resume where you left off.
@@ -710,35 +710,35 @@ export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {
         )}
 
         <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center gap-3 p-3 border border-border/30 rounded-lg">
             <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
               1
             </div>
             <span className="text-sm">Pre-checks (DRep, staking, pending transactions)</span>
           </div>
           
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center gap-3 p-3 border border-border/30 rounded-lg">
             <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
               2
             </div>
             <span className="text-sm">Create new wallet with updated configuration</span>
           </div>
           
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center gap-3 p-3 border border-border/30 rounded-lg">
             <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
               3
             </div>
             <span className="text-sm">Setup proxy for the new wallet (optional)</span>
           </div>
           
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center gap-3 p-3 border border-border/30 rounded-lg">
             <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
               4
             </div>
             <span className="text-sm">Transfer all funds to the new wallet</span>
           </div>
           
-          <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center gap-3 p-3 border border-border/30 rounded-lg">
             <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
               5
             </div>
