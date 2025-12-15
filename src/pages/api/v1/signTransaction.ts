@@ -8,6 +8,8 @@ import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
 import { csl, calculateTxHash } from "@meshsdk/core-csl";
+import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { getClientIP } from "@/lib/security/rateLimit";
 
 function coerceBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
@@ -41,6 +43,10 @@ export default async function handler(
 ) {
   addCorsCacheBustingHeaders(res);
 
+  if (!applyRateLimit(req, res, { keySuffix: "v1/signTransaction" })) {
+    return;
+  }
+
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -48,6 +54,10 @@ export default async function handler(
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  if (!enforceBodySize(req, res, 256 * 1024)) {
+    return;
   }
 
   const authHeader = req.headers.authorization;
@@ -114,7 +124,14 @@ export default async function handler(
   }
 
   try {
-    const caller = createCaller({ db, session });
+    const caller = createCaller({
+      db,
+      session,
+      sessionAddress: payload.address,
+      sessionWallets: [payload.address],
+      primaryWallet: payload.address,
+      ip: getClientIP(req),
+    });
 
     const wallet = await caller.wallet.getWallet({ walletId, address });
     if (!wallet) {

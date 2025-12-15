@@ -42,12 +42,12 @@ export default function BallotModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 flex-shrink-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <VoteIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800/50">
+                  <VoteIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                 </div>
                 <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                   Manage Ballots

@@ -685,14 +685,14 @@ export default function BallotCard({
   return (
     <div className="flex flex-col h-full">
       {/* Ballot Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 dark:border-gray-700 pb-3 mb-4 scrollbar-hide">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-3 mb-4 scrollbar-hide">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           {ballots.map((b) => (
             <button
               key={b.id}
               className={`px-3 py-1.5 rounded-lg font-medium text-sm whitespace-nowrap transition-all ${
                 b.id === selectedBallotId
-                  ? "bg-blue-600 text-white shadow-md"
+                  ? "bg-gray-600 dark:bg-gray-500 text-white shadow-md"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
               }`}
               onClick={(e) => {
@@ -732,10 +732,10 @@ export default function BallotCard({
 
       {/* Create Ballot Input */}
       {creating && (
-        <div className="flex gap-2 mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="flex gap-2 mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-800">
           <input
             type="text"
-            className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm dark:bg-gray-900 dark:text-white flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-800 text-sm dark:bg-gray-900 dark:text-white flex-1 focus:outline-none focus:ring-2 focus:ring-gray-500"
             placeholder="Enter ballot name..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -797,7 +797,7 @@ export default function BallotCard({
               />
               
               {/* Vote Summary */}
-              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-800">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-2">
                     <VoteIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
@@ -812,7 +812,7 @@ export default function BallotCard({
                     <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
                       No: {voteSummary.no}
                     </Badge>
-                    <Badge variant="outline" className="bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-700">
+                    <Badge variant="outline" className="bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-800">
                       Abstain: {voteSummary.abstain}
                     </Badge>
                   </div>
@@ -835,7 +835,7 @@ export default function BallotCard({
               <div className="flex gap-3 mt-4">
                 <Button
                   variant="default"
-                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  className="flex-1 px-4 py-2.5 bg-gray-600 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white font-medium"
                   onClick={hasValidProxy ? handleSubmitProxyVote : handleSubmitVote}
                   disabled={loading || !selectedBallot.items || selectedBallot.items.length === 0 || !utxos || utxos.length === 0}
                 >
@@ -920,7 +920,7 @@ export default function BallotCard({
           <div className="mt-4 flex justify-end gap-2">
             <Button
               variant="outline"
-              className="border border-gray-300 hover:border-gray-400 dark:border-slate-600 dark:hover:border-slate-400"
+              className="border border-gray-300 hover:border-gray-400 dark:border-gray-800 dark:hover:border-gray-400"
               onClick={() => setDeleteConfirmModal(null)}
               disabled={deleteBallot.isPending}
             >
@@ -1059,7 +1059,7 @@ function ProposalRationaleEditor({
   }, [constructJsonLdFromComment, onStateChange]);
 
   return (
-    <div className="space-y-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 p-4">
+    <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Voting Rationale (Optional)</p>
         {state.hash && (
@@ -1241,9 +1241,9 @@ function BallotOverviewTable({
       case "No":
         return "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800";
       case "Abstain":
-        return "text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700";
+        return "text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-800";
       default:
-        return "text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700";
+        return "text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-800";
     }
   };
 
@@ -1394,12 +1394,12 @@ function BallotOverviewTable({
 
   return (
     <>
-      <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+      <div className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300 w-12">#</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Proposal</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300 w-40">Vote</th>
@@ -1510,7 +1510,7 @@ function BallotOverviewTable({
                       </td>
                     </tr>
                     {expandedRationaleIdx === idx && (
-                      <tr className="bg-blue-50/30 dark:bg-blue-900/10">
+                      <tr className="bg-gray-50/30 dark:bg-gray-800/30">
                         <td colSpan={4} className="px-4 py-4">
                           <ProposalRationaleEditor
                             idx={idx}
@@ -1540,7 +1540,7 @@ function BallotOverviewTable({
             return (
               <div
                 key={`${ballotId}-${item}-${idx}`}
-                className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                className="p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
               >
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex-1 min-w-0">
@@ -1667,7 +1667,7 @@ function BallotOverviewTable({
           <div className="mt-4 flex justify-end gap-2">
             <Button
               variant="outline"
-              className="border border-gray-300 hover:border-gray-400 dark:border-slate-600 dark:hover:border-slate-400"
+              className="border border-gray-300 hover:border-gray-400 dark:border-gray-800 dark:hover:border-gray-400"
               onClick={cancelDelete}
               disabled={isRemoving}
             >

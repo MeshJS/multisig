@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { validateMultisigImportPayload } from "@/utils/validateMultisigImport";
 import { db } from "@/server/db";
+import { checkRateLimit, getClientIP } from "@/lib/security/rateLimit";
 
 
 // Draft endpoint: accepts POST request values and logs them
@@ -22,6 +23,32 @@ export default async function handler(
     }
 
     try {
+    // Basic rate limiting to reduce DoS risk
+    const clientIP = getClientIP(req);
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const maxRequests = isDevelopment ? 50 : 10; // per minute
+    if (!checkRateLimit(clientIP, maxRequests, 60 * 1000)) {
+      return res.status(429).json({ error: "Too many requests" });
+    }
+
+    // Early shape guard
+    if (typeof req.body !== "object" || req.body === null) {
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+
+    // Payload size cap (approx bytes)
+    const bodySizeBytes = Buffer.byteLength(JSON.stringify(req.body ?? ""), "utf8");
+    const maxSizeBytes = 200 * 1024; // 200KB
+    if (bodySizeBytes > maxSizeBytes) {
+      return res.status(413).json({ error: "Request entity too large" });
+    }
+
+    // Cap users array length to avoid heavy processing on huge payloads
+    const usersArray = (req.body as any)?.users;
+    if (Array.isArray(usersArray) && usersArray.length > 200) {
+      return res.status(400).json({ error: "Too many users in payload (max 200)" });
+    }
+
         const receivedAt = new Date().toISOString();
 
         const result = await validateMultisigImportPayload(req.body);

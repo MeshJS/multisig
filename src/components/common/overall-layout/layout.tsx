@@ -1,4 +1,4 @@
-import React, { useEffect, Component, ReactNode } from "react";
+import React, { useEffect, Component, ReactNode, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
@@ -32,6 +32,7 @@ import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 // Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
 // Using a version-based key ensures fresh mount on updates, preventing cache issues
@@ -127,22 +128,82 @@ export default function RootLayout({
   }, []);
 
   const { mutate: createUser } = api.user.createUser.useMutation({
+    onMutate: async (variables) => {
+      // Cancel outgoing refetches
+      await ctx.user.getUserByAddress.cancel({ address: variables.address });
+      
+      // Snapshot previous value
+      const previous = ctx.user.getUserByAddress.getData({ address: variables.address });
+      
+      // Optimistically update (only if old exists, otherwise wait for server response)
+      if (previous) {
+        ctx.user.getUserByAddress.setData(
+          { address: variables.address },
+          {
+            ...previous,
+            address: variables.address,
+            stakeAddress: variables.stakeAddress,
+            drepKeyHash: variables.drepKeyHash ?? "",
+            nostrKey: variables.nostrKey,
+          }
+        );
+      }
+      
+      return { previous };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        ctx.user.getUserByAddress.setData({ address: variables.address }, context.previous);
+      }
+      console.error("Error creating user:", err);
+    },
     onSuccess: (_, variables) => {
       console.log("User created/updated successfully, invalidating user query");
-      // Invalidate the user query so it refetches the newly created user
+      // Invalidate to ensure we have the latest data
       void ctx.user.getUserByAddress.invalidate({ address: variables.address });
-    },
-    onError: (e) => {
-      console.error("Error creating user:", e);
     },
   });
   const { mutate: updateUser } = api.user.updateUser.useMutation({
+    onMutate: async (variables) => {
+      // Only do optimistic update if address is provided
+      if (!variables.address) {
+        return { previous: undefined };
+      }
+      
+      // Cancel outgoing refetches
+      await ctx.user.getUserByAddress.cancel({ address: variables.address });
+      
+      // Snapshot previous value
+      const previous = ctx.user.getUserByAddress.getData({ address: variables.address });
+      
+      // Optimistically update
+      if (previous) {
+        ctx.user.getUserByAddress.setData(
+          { address: variables.address },
+          {
+            ...previous,
+            ...(variables.address && { address: variables.address }),
+            ...(variables.stakeAddress && { stakeAddress: variables.stakeAddress }),
+            ...(variables.drepKeyHash && { drepKeyHash: variables.drepKeyHash }),
+          }
+        );
+      }
+      
+      return { previous };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previous && variables.address) {
+        ctx.user.getUserByAddress.setData({ address: variables.address }, context.previous);
+      }
+      console.error("Error updating user:", err);
+    },
     onSuccess: (_, variables) => {
       console.log("User updated successfully, invalidating user query");
-      void ctx.user.getUserByAddress.invalidate({ address: variables.address });
-    },
-    onError: (e) => {
-      console.error("Error updating user:", e);
+      if (variables.address) {
+        void ctx.user.getUserByAddress.invalidate({ address: variables.address });
+      }
     },
   });
 
@@ -196,12 +257,13 @@ export default function RootLayout({
     initializeWallet();
   }, [connected, activeWallet, user, address, createUser, generateNsec]);
 
-  const isWalletPath = router.pathname.includes("/wallets/[wallet]");
-  const walletPageRoute = router.pathname.split("/wallets/[wallet]/")[1];
-  const walletPageNames = walletPageRoute ? walletPageRoute.split("/") : [];
-  const pageIsPublic = publicRoutes.includes(router.pathname);
-  const isLoggedIn = !!user;
-  const isHomepage = router.pathname === "/";
+  // Memoize computed route values
+  const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
+  const walletPageRoute = useMemo(() => router.pathname.split("/wallets/[wallet]/")[1], [router.pathname]);
+  const walletPageNames = useMemo(() => walletPageRoute ? walletPageRoute.split("/") : [], [walletPageRoute]);
+  const pageIsPublic = useMemo(() => publicRoutes.includes(router.pathname), [router.pathname]);
+  const isLoggedIn = useMemo(() => !!user, [user]);
+  const isHomepage = useMemo(() => router.pathname === "/", [router.pathname]);
 
   // Keep track of the last visited wallet to show wallet menu even on other pages
   const [lastVisitedWalletId, setLastVisitedWalletId] = React.useState<string | null>(null);
@@ -224,7 +286,7 @@ export default function RootLayout({
     }
   }, [router.query.wallet, isWalletPath, appWallet, multisigWallet]);
 
-  const clearWalletContext = React.useCallback(() => {
+  const clearWalletContext = useCallback(() => {
     setLastVisitedWalletId(null);
     setLastVisitedWalletName(null);
     setLastWalletStakingEnabled(null);
@@ -237,11 +299,25 @@ export default function RootLayout({
     }
   }, [isHomepage, lastVisitedWalletId, clearWalletContext]);
 
-  const showWalletMenu = isLoggedIn && (isWalletPath || !!lastVisitedWalletId);
+  // Memoize computed values
+  const showWalletMenu = useMemo(() => isLoggedIn && (isWalletPath || !!lastVisitedWalletId), [isLoggedIn, isWalletPath, lastVisitedWalletId]);
+
+  // Don't show background loading when wallet is connecting or just connected (button already shows spinner)
+  // The connect button shows a spinner when: connecting OR (connected && (!user || userLoading))
+  const isConnecting = useMemo(() => String(walletState) === String(WalletState.CONNECTING), [walletState]);
+  const isButtonShowingSpinner = useMemo(() => isConnecting || (connected && (!user || isLoading)), [isConnecting, connected, user, isLoading]);
+  const shouldShowBackgroundLoading = useMemo(() => isLoading && !isButtonShowingSpinner, [isLoading, isButtonShowingSpinner]);
+  
+  // Memoize wallet ID for menu
+  const walletIdForMenu = useMemo(() => (router.query.wallet as string) || lastVisitedWalletId || undefined, [router.query.wallet, lastVisitedWalletId]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">
-      {isLoading && <Loading />}
+      {shouldShowBackgroundLoading && (
+        <div className="fixed inset-0 z-50 transition-opacity duration-300 ease-in-out opacity-100">
+          <Loading />
+        </div>
+      )}
 
       {/* Header - full width, always on top */}
       <header
@@ -250,11 +326,11 @@ export default function RootLayout({
       >
           <div className="flex h-14 items-center gap-4 lg:h-16">
             {/* Mobile menu button - hidden only on public homepage (not logged in) */}
-            {(isLoggedIn || !isHomepage) && (
+              {(isLoggedIn || !isHomepage) && (
               <MobileNavigation
                 showWalletMenu={showWalletMenu}
                 isLoggedIn={isLoggedIn}
-                walletId={router.query.wallet as string || lastVisitedWalletId || undefined}
+                walletId={walletIdForMenu}
                 fallbackWalletName={lastVisitedWalletName}
                 onClearWallet={clearWalletContext}
                 stakingEnabled={lastWalletStakingEnabled ?? undefined}
@@ -342,7 +418,7 @@ export default function RootLayout({
                   {showWalletMenu && (
                     <div className="mt-4">
                       <MenuWallet
-                        walletId={router.query.wallet as string || lastVisitedWalletId || undefined}
+                        walletId={walletIdForMenu}
                         stakingEnabled={isWalletPath ? undefined : (lastWalletStakingEnabled ?? undefined)}
                       />
                     </div>

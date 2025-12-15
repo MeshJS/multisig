@@ -15,6 +15,11 @@ import { ZodError } from "zod";
 
 import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db";
+import { getClientIP } from "@/lib/security/rateLimit";
+import {
+  getWalletSessionFromReq,
+  type WalletSessionPayload,
+} from "@/lib/auth/walletSession";
 
 /**
  * 1. CONTEXT
@@ -26,6 +31,10 @@ import { db } from "@/server/db";
 
 interface CreateContextOptions {
   session: Session | null;
+  ip: string;
+  sessionAddress: string | null;
+  sessionWallets: string[];
+  primaryWallet: string | null;
 }
 
 /**
@@ -38,12 +47,14 @@ interface CreateContextOptions {
  *
  * @see https://create.t3.gg/en/usage/trpc#-serverapitrpcts
  */
-const createInnerTRPCContext = (opts: CreateContextOptions) => {
-  return {
-    session: opts.session,
-    db,
-  };
-};
+const createInnerTRPCContext = (opts: CreateContextOptions) => ({
+  session: opts.session,
+  sessionAddress: opts.sessionAddress,
+  sessionWallets: opts.sessionWallets,
+  primaryWallet: opts.primaryWallet,
+  ip: opts.ip,
+  db,
+});
 
 /**
  * This is the actual context you will use in your router. It will be used to process every request
@@ -55,10 +66,35 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
   const { req, res } = opts;
 
   // Get the session from the server using the getServerSession wrapper function
-  const session = await getServerAuthSession({ req, res });
+  // Gracefully degrade to anonymous if auth providers are not configured
+  let session: Session | null = null;
+  try {
+    session = await getServerAuthSession({ req, res });
+  } catch (err) {
+    console.warn("[trpc] getServerAuthSession failed; continuing without session", err);
+  }
+
+  // Derive wallet-session information from HttpOnly cookie
+  let walletSession: WalletSessionPayload | null = null;
+  try {
+    walletSession = getWalletSessionFromReq(req);
+  } catch (err) {
+    console.warn("[trpc] getWalletSessionFromReq failed; continuing without wallet session", err);
+  }
+
+  const sessionWallets = walletSession?.wallets ?? [];
+  const primaryWallet = walletSession?.primaryWallet ?? (sessionWallets[0] ?? null);
+
+  // Prefer NextAuth user id as sessionAddress when available, otherwise fall back to wallet-session
+  const sessionAddress = session?.user?.id ?? primaryWallet ?? null;
+  const ip = getClientIP(req);
 
   return createInnerTRPCContext({
     session,
+    sessionAddress,
+    sessionWallets,
+    primaryWallet,
+    ip,
   });
 };
 
@@ -129,13 +165,39 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 });
 
 /**
+ * Basic rate limiting middleware keyed by client IP and procedure path.
+ * In production, swap the in-memory store with a distributed cache.
+ */
+import { checkRateLimit } from "@/lib/security/rateLimit";
+
+const rateLimitMiddleware = t.middleware(({ ctx, path, next }) => {
+  const ip = ctx.ip ?? "unknown";
+  const key = `${ip}:${path}`;
+  const windowMs = 60 * 1000;
+  const max = t._config.isDev ? 120 : 60;
+
+  if (!checkRateLimit(key, max, windowMs)) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many requests" });
+  }
+
+  return next();
+});
+
+/**
+ * Caching middleware for queries (imported from middleware/cache)
+ */
+import { createCacheMiddleware } from "./middleware/cache";
+
+const cacheMiddleware = createCacheMiddleware(t);
+
+/**
  * Public (unauthenticated) procedure
  *
  * This is the base piece you use to build new queries and mutations on your tRPC API. It does not
  * guarantee that a user querying is authorized, but you can still access user session data if they
  * are logged in.
  */
-export const publicProcedure = t.procedure.use(timingMiddleware);
+export const publicProcedure = t.procedure.use(rateLimitMiddleware).use(timingMiddleware).use(cacheMiddleware);
 
 /**
  * Protected (authenticated) procedure
@@ -146,15 +208,36 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  * @see https://trpc.io/docs/procedures
  */
 export const protectedProcedure = t.procedure
+  .use(rateLimitMiddleware)
   .use(timingMiddleware)
+  .use(cacheMiddleware)
   .use(({ ctx, next }) => {
-    if (!ctx.session || !ctx.session.user) {
+    const hasNextAuth = !!ctx.session?.user;
+    const hasWalletSession =
+      Array.isArray((ctx as any).sessionWallets) && (ctx as any).sessionWallets.length > 0;
+
+    if (!hasNextAuth && !hasWalletSession) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
+
+    // Derive a stable sessionAddress:
+    // - Prefer NextAuth user id
+    // - Fallback to primaryWallet / first wallet-session address
+    let sessionAddress = ctx.sessionAddress ?? null;
+    if (hasNextAuth) {
+      sessionAddress = ctx.session?.user?.id ?? sessionAddress;
+    } else if (!sessionAddress && hasWalletSession) {
+      const wallets = (ctx as any).sessionWallets as string[];
+      sessionAddress = wallets[0] ?? null;
+    }
+
     return next({
       ctx: {
-        // infers the `session` as non-nullable
-        session: { ...ctx.session, user: ctx.session.user },
+        ...ctx,
+        // When NextAuth is present, keep the non-nullable session typing;
+        // otherwise, leave session as-is but still expose sessionAddress.
+        session: hasNextAuth ? { ...ctx.session, user: ctx.session!.user } : ctx.session,
+        sessionAddress,
       },
     });
   });

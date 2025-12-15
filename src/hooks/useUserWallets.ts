@@ -11,6 +11,8 @@ export default function useUserWallets() {
     { address: userAddress! },
     {
       enabled: userAddress !== undefined,
+      staleTime: 1 * 60 * 1000, // 1 minute (user/wallet data)
+      gcTime: 5 * 60 * 1000, // 5 minutes
     },
   );
 

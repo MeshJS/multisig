@@ -2,7 +2,7 @@ export default function Loading() {
   return (
     <div
       role="status"
-      className="fixed flex h-screen w-screen items-center justify-center"
+      className="fixed flex h-screen w-screen items-center justify-center bg-background/80 backdrop-blur-sm"
     >
       <svg
         aria-hidden="true"

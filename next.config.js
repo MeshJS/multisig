@@ -19,7 +19,7 @@ const config = {
     locales: ["en"],
     defaultLocale: "en",
   },
-  transpilePackages: ["geist"],
+  transpilePackages: ["geist", "@meshsdk/react"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -44,6 +44,8 @@ const config = {
         hostname: "gateway.pinata.cloud",
       },
     ],
+    // Allow unoptimized images for local proxy API routes
+    unoptimized: false,
   },
   // Turbopack configuration (Next.js 16+)
   // Empty config silences the warning about webpack/turbopack conflict
@@ -56,8 +58,35 @@ const config = {
       asyncWebAssembly: true,
       layers: true,
     };
+    
+    // Optimize tree-shaking by ensuring proper module resolution
+    config.optimization = {
+      ...config.optimization,
+      usedExports: true,
+      sideEffects: false,
+    };
+    
+    // Handle CommonJS modules that don't support named exports
+    config.resolve = {
+      ...config.resolve,
+      extensionAlias: {
+        ".js": [".js", ".ts", ".tsx"],
+      },
+    };
+    
     return config;
   },
+  
+  // External packages for server components to avoid bundling issues
+  serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
 };
 
-export default config;
+// Bundle analyzer - only enable when ANALYZE env var is set
+/** @type {(config: import("next").NextConfig) => import("next").NextConfig} */
+const withBundleAnalyzer = process.env.ANALYZE === 'true' 
+  ? require('@next/bundle-analyzer')({
+      enabled: true,
+    })
+  : (config) => config;
+
+export default withBundleAnalyzer(config);

@@ -9,6 +9,8 @@ export default function useUser() {
       enabled: userAddress !== undefined && userAddress !== null && userAddress !== "",
       retry: false,
       refetchOnWindowFocus: false,
+      staleTime: 1 * 60 * 1000, // 1 minute (user data)
+      gcTime: 5 * 60 * 1000, // 5 minutes
     },
   );
   

@@ -56,16 +56,19 @@ function DappCard({ title, description, url }: { title: string; description: str
     <a href={url} target="_blank" rel="noopener noreferrer" className="hover:no-underline">
       <CardUI title="" cardClassName="hover:border-zinc-400 transition-colors">
         {shouldShowImageArea ? (
-          <div className="overflow-hidden bg-muted">
-            <img
+          <div className="overflow-hidden bg-muted relative w-full h-48">
+            <Image
               src={ogImage as string}
               alt={title}
-              className={`w-full object-cover transition-opacity ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+              fill
+              className={`object-cover transition-opacity ${imageLoaded ? "opacity-100" : "opacity-0"}`}
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              unoptimized={ogImage ? ogImage.startsWith('/api/local/proxy') : false}
             />
             {!imageLoaded && (
-              <div className="w-full h-48 animate-pulse bg-zinc-200 dark:bg-zinc-800" />
+              <div className="absolute inset-0 w-full h-48 animate-pulse bg-zinc-200 dark:bg-zinc-800" />
             )}
           </div>
         ) : (
@@ -75,7 +78,14 @@ function DappCard({ title, description, url }: { title: string; description: str
             ) : (
               <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 {favicon ? (
-                  <img src={favicon} alt="favicon" className="h-8 w-8 rounded-lg shadow-sm" />
+                  <Image
+                    src={favicon}
+                    alt="favicon"
+                    width={32}
+                    height={32}
+                    className="rounded-lg shadow-sm"
+                    unoptimized={favicon ? favicon.startsWith('/api/local/proxy') : false}
+                  />
                 ) : (
                   <div className="h-8 w-8 rounded-lg bg-zinc-300 dark:bg-zinc-700 shadow-sm" />
                 )}
@@ -87,7 +97,16 @@ function DappCard({ title, description, url }: { title: string; description: str
 
         <div className={`p-6 ${shouldShowImageArea ? "border-t" : ""}`}>
           <h3 className="font-semibold text-lg flex items-center gap-2 mb-2">
-            {favicon && <img src={favicon} alt="favicon" className="h-4 w-4 rounded-sm" />}
+            {favicon && (
+              <Image
+                src={favicon}
+                alt="favicon"
+                width={16}
+                height={16}
+                className="rounded-sm"
+                unoptimized={favicon ? favicon.startsWith('/api/local/proxy') : false}
+              />
+            )}
             <span>{title}</span>
           </h3>
           <p className="text-sm text-muted-foreground">{description}</p>

@@ -6,6 +6,7 @@ import {
   DataSignature,
 } from "@meshsdk/core";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,12 +15,19 @@ export default async function handler(
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
   
+  if (!applyRateLimit(req, res, { keySuffix: "v1/authSigner" })) {
+    return;
+  }
+
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
   if (req.method === "POST") {
+    if (!enforceBodySize(req, res, 64 * 1024)) {
+      return;
+    }
     const { address, signature, key } = req.body;
     if (
       typeof address !== "string" ||

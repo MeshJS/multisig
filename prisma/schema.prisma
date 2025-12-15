@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   // For Supabase + Vercel serverless optimization:
   // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
   //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
@@ -55,6 +55,10 @@ model Transaction {
   txHash            String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([state])
+  @@index([walletId, state])
 }
 
 model Signable {
@@ -122,6 +126,11 @@ model Proxy {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   userId       String?
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([walletId, isActive])
+  @@index([userId, isActive])
 }
 
 model BalanceSnapshot {

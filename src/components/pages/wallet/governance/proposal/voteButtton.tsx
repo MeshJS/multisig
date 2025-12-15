@@ -372,7 +372,7 @@ export default function VoteButton({
               setVoteKind(value as "Yes" | "No" | "Abstain")
             }
           >
-            <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 sm:px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800">
+            <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 sm:px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-gray-500 bg-white dark:bg-gray-800">
               <SelectValue placeholder="Select Vote Kind" />
             </SelectTrigger>
             <SelectContent>
@@ -403,7 +403,7 @@ export default function VoteButton({
           <Button
             onClick={hasValidProxy ? voteProxy : vote}
             disabled={loading || utxos.length === 0}
-            className="w-full rounded-md bg-blue-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-md bg-gray-600 dark:bg-gray-500 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white shadow hover:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading
               ? "Voting..."
