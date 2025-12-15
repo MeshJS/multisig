@@ -219,4 +219,3 @@ CREATE POLICY "deny_all_authenticated__prisma_migrations" ON "_prisma_migrations
   USING (false)
   WITH CHECK (false);
 
-
