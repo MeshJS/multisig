@@ -68,32 +68,43 @@ export function UpgradeStakingWallet({
   return (
     <CardUI
       title="Upgrade Wallet"
-      description="Add a stake key script to your multisig Wallet and tranfer all funds to new Address."
+      description="Add a stake key script to your multisig Wallet and transfer all funds to new Address."
       cardClassName="col-span-2"
     >
-      {!mWallet.stakingEnabled() && (
-        <div>
-          Not all stake keys have been added. Click Edit Signers to add your
-          stake key!
-        </div>
-      )}
+      <div className="space-y-4">
+        {!mWallet.stakingEnabled() && (
+          <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              Not all stake keys have been added. Click Edit Signers to add your stake key!
+            </p>
+          </div>
+        )}
 
-      {mWallet.stakingEnabled() && (
-        <div>
-          Transfer all funds to new Address.
-          <RowLabelInfo
-            label="Old Address"
-            value={appWallet.address}
-            copyString={appWallet.address}
-          />
-          {balance} Ada remaining on old Address.
-          <RowLabelInfo
-            label="New Stakable Address"
-            value={newAddress}
-            copyString={newAddress}
-          />
-        </div>
-      )}
+        {mWallet.stakingEnabled() && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Transfer all funds to the new stakable address.
+            </p>
+            <div className="space-y-3">
+              <RowLabelInfo
+                label="Old Address"
+                value={appWallet.address}
+                copyString={appWallet.address}
+              />
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm font-medium mb-1">Balance Remaining</p>
+                <p className="text-lg font-semibold">{balance} ADA</p>
+                <p className="text-xs text-muted-foreground mt-1">on old address</p>
+              </div>
+              <RowLabelInfo
+                label="New Address"
+                value={newAddress || ""}
+                copyString={newAddress || ""}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </CardUI>
   );
 }

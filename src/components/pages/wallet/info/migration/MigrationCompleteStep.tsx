@@ -147,7 +147,7 @@ export default function MigrationCompleteStep({
             </div>
           )}
 
-          <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+          <Alert className="border-blue-200/50 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-900/20">
             <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-800 dark:text-blue-200">
               <strong>Important:</strong> Your old wallet will be archived after migration completion. 

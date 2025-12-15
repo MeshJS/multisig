@@ -42,23 +42,34 @@ export function ArchiveWallet({ appWallet }: { appWallet: Wallet }) {
   return (
     <CardUI
       title="Archive Wallet"
-      description="Archive this wallet"
+      description="Archive this wallet to remove it from your wallet list"
       cardClassName="col-span-2"
     >
-      <p>
-        Archiving this wallet will remove it from your list of wallets. You can
-        always restore it later.
-      </p>
-      <div>
-        {appWallet.isArchived ? (
-          <Button onClick={() => archiveWallet(false)} variant="default">
-            Restore Wallet
-          </Button>
-        ) : (
-          <Button onClick={() => archiveWallet(true)} variant="destructive">
-            Archive Wallet
-          </Button>
-        )}
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {appWallet.isArchived 
+            ? "This wallet is currently archived and hidden from your wallet list."
+            : "Archiving this wallet will remove it from your list of wallets. You can always restore it later."}
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {appWallet.isArchived ? (
+            <Button 
+              onClick={() => archiveWallet(false)} 
+              variant="default"
+              className="w-full sm:w-auto"
+            >
+              Restore Wallet
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => archiveWallet(true)} 
+              variant="destructive"
+              className="w-full sm:w-auto"
+            >
+              Archive Wallet
+            </Button>
+          )}
+        </div>
       </div>
     </CardUI>
   );
