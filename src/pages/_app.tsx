@@ -10,7 +10,6 @@ import dynamic from "next/dynamic";
 import { api } from "@/utils/api";
 
 import "@/styles/globals.css";
-import "@meshsdk/react/styles.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
@@ -20,9 +19,9 @@ import "swagger-ui-react/swagger-ui.css";
 import "../styles/swagger-overrides.css";
 
 // MeshProvider pulls in dependencies that assume a browser/webpack env.
-// Load it client-side only to avoid SSR/runtime issues in Next.js dev/SSR.
+// Load it client-side only (including its styles) to avoid SSR/runtime issues.
 const MeshProviderNoSSR = dynamic(
-  () => import("@meshsdk/react").then((m) => m.MeshProvider),
+  () => import("@/components/common/MeshProviderClient"),
   { ssr: false },
 );
 

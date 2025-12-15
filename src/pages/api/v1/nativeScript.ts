@@ -7,6 +7,7 @@ import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { getClientIP } from "@/lib/security/rateLimit";
 
 export default async function handler(
   req: NextApiRequest,
@@ -58,7 +59,14 @@ export default async function handler(
       return res.status(403).json({ error: "Address mismatch" });
     }
 
-    const caller = createCaller({ db, session });
+    const caller = createCaller({
+      db,
+      session,
+      sessionAddress: payload.address,
+      sessionWallets: [payload.address],
+      primaryWallet: payload.address,
+      ip: getClientIP(req),
+    });
     const walletFetch: DbWallet | null = await caller.wallet.getWallet({ walletId, address });
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });

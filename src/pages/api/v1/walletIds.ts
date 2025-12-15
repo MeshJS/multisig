@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { getClientIP } from "@/lib/security/rateLimit";
 
 export default async function handler(
   req: NextApiRequest,
@@ -41,7 +42,14 @@ export default async function handler(
     user: { id: payload.address },
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   };
-  const caller = createCaller({ db, session });
+  const caller = createCaller({
+    db,
+    session,
+    sessionAddress: payload.address,
+    sessionWallets: [payload.address],
+    primaryWallet: payload.address,
+    ip: getClientIP(req),
+  });
 
   const { address } = req.query;
 

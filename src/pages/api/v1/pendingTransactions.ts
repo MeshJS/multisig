@@ -4,6 +4,7 @@ import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { getClientIP } from "@/lib/security/rateLimit";
 
 export default async function handler(
   req: NextApiRequest,
@@ -55,7 +56,14 @@ export default async function handler(
   }
 
   try {
-    const caller = createCaller({ db, session });
+    const caller = createCaller({
+      db,
+      session,
+      sessionAddress: payload.address,
+      sessionWallets: [payload.address],
+      primaryWallet: payload.address,
+      ip: getClientIP(req),
+    });
 
     const wallet = await caller.wallet.getWallet({ walletId, address });
     if (!wallet) {
