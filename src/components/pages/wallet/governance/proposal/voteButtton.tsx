@@ -154,7 +154,12 @@ export default function VoteButton({
       };
 
       // Vote using proxy
-      const txBuilderResult = await proxyContract.voteProxyDrep([voteData], utxos, multisigWallet?.getScript().address);
+      // Use multisig wallet address if available, otherwise fallback to appWallet (for legacy wallets)
+      const proxyAddress = multisigWallet?.getScript().address || appWallet?.address;
+      if (!proxyAddress) {
+        throw new Error("Wallet address not found");
+      }
+      const txBuilderResult = await proxyContract.voteProxyDrep([voteData], utxos, proxyAddress);
 
       await newTransaction({
         txBuilder: txBuilderResult,
@@ -229,8 +234,6 @@ export default function VoteButton({
         setLoading(false);
         return;
       }
-      if (!multisigWallet)
-        throw new Error("Multisig Wallet could not be built.");
       // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
       // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
       const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;

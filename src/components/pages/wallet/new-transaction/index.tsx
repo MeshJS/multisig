@@ -178,6 +178,11 @@ export default function PageNewTransaction() {
               unit: outputs[i]!.unit,
               quantity: outputs[i]!.amount,
             },
+            // if unit is not lovelace, add 1160000 lovelace as native assets are not allowed to be in an output alone.
+            ...(outputs[i]!.unit !== "lovelace" ? [{
+              unit: "lovelace",
+              quantity: "1160000",
+            }] : [])
           ]);
         }
       }
