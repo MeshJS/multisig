@@ -29,10 +29,21 @@ export default function PageWallets() {
   const [showArchived, setShowArchived] = useState(false);
   const userAddress = useUserStore((state) => state.userAddress);
 
+  // Check wallet session authorization before enabling queries
+  const { data: walletSession } = api.auth.getWalletSession.useQuery(
+    { address: userAddress ?? "" },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+      refetchOnWindowFocus: false,
+    },
+  );
+  const isAuthorized = walletSession?.authorized ?? false;
+
   const { data: newPendingWallets, isLoading: isLoadingNewWallets } = api.wallet.getUserNewWallets.useQuery(
     { address: userAddress! },
     {
-      enabled: userAddress !== undefined,
+      // Only enable query when user is authorized (prevents 403 errors)
+      enabled: userAddress !== undefined && isAuthorized,
       retry: (failureCount, error) => {
         // Don't retry on authorization errors (403)
         if (error && typeof error === "object") {
@@ -60,15 +71,24 @@ export default function PageWallets() {
     api.wallet.getUserNewWalletsNotOwner.useQuery(
       { address: userAddress! },
       {
-        enabled: userAddress !== undefined,
+        // Only enable query when user is authorized (prevents 403 errors)
+        enabled: userAddress !== undefined && isAuthorized,
         retry: (failureCount, error) => {
           // Don't retry on authorization errors (403)
           if (error && typeof error === "object") {
-            const err = error as { code?: string; message?: string; data?: { code?: string } };
+            const err = error as { 
+              code?: string; 
+              message?: string; 
+              data?: { code?: string; httpStatus?: number };
+              shape?: { code?: string; message?: string };
+            };
+            const errorMessage = err.message || err.shape?.message || "";
             const isAuthError =
               err.code === "FORBIDDEN" ||
               err.data?.code === "FORBIDDEN" ||
-              err.message?.includes("Address mismatch");
+              err.data?.httpStatus === 403 ||
+              err.shape?.code === "FORBIDDEN" ||
+              errorMessage.includes("Address mismatch");
             if (isAuthError) return false;
           }
           return failureCount < 1;

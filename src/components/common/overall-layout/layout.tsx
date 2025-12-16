@@ -371,19 +371,35 @@ export default function RootLayout({
     // Don't refetch here - let the natural query refetch handle it if needed
   }, []);
 
-  const handleAuthModalAuthorized = useCallback(() => {
+  const handleAuthModalAuthorized = useCallback(async () => {
     setShowAuthModal(false);
     setCheckingSession(false);
     setHasCheckedSession(true); // Mark as checked so we don't check again
     // Show loading skeleton for smooth transition
     setShowPostAuthLoading(true);
-    // Refetch session after authorization to update state (but don't show modal again)
-    void refetchWalletSession();
+    
+    // Wait a moment for the cookie to be set by the browser, then refetch session
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Refetch session to update state
+    await refetchWalletSession();
+    
+    // Invalidate wallet queries so they refetch with the new session
+    // Use a small delay to ensure cookie is available on subsequent requests
+    setTimeout(() => {
+      const userAddressForInvalidation = userAddress || address;
+      if (userAddressForInvalidation) {
+        void ctx.wallet.getUserWallets.invalidate({ address: userAddressForInvalidation });
+        void ctx.wallet.getUserNewWallets.invalidate({ address: userAddressForInvalidation });
+        void ctx.wallet.getUserNewWalletsNotOwner.invalidate({ address: userAddressForInvalidation });
+      }
+    }, 300);
+    
     // Hide loading after a brief delay to allow data to load
     setTimeout(() => {
       setShowPostAuthLoading(false);
-    }, 1000);
-  }, [refetchWalletSession]);
+    }, 1500);
+  }, [refetchWalletSession, ctx.wallet, userAddress, address]);
 
   // Memoize computed route values
   const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
