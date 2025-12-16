@@ -42,16 +42,17 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
             Please deposit fund to this script address before continuing
           </p>
         )}
-        <div className="flex space-x-2">
-          <Link href={`/wallets/${appWallet.id}/transactions/deposit`}>
-            <Button size="sm">Deposit Funds</Button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:space-y-0">
+          <Link href={`/wallets/${appWallet.id}/transactions/deposit`} className="w-full sm:w-auto">
+            <Button size="sm" className="w-full sm:w-auto">Deposit Funds</Button>
           </Link>
           <Link
             href={
               balance > 0 ? `/wallets/${appWallet.id}/transactions/new` : "#"
             }
+            className="w-full sm:w-auto"
           >
-            <Button size="sm" disabled={balance == 0}>
+            <Button size="sm" disabled={balance == 0} className="w-full sm:w-auto">
               New Transaction
             </Button>
           </Link>

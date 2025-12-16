@@ -264,6 +264,35 @@ export default function PageNewTransaction() {
 
       <div className="grid gap-4 sm:gap-6">
         <CardUI 
+          title="Description"
+          description="Provide context and information for other signers about this transaction"
+          cardClassName="w-full"
+        >
+          <div className="space-y-3">
+            <Textarea
+              className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
+              value={description}
+              onChange={(e) => {
+                if (e.target.value.length <= 128)
+                  setDescription(e.target.value);
+              }}
+              placeholder="e.g., Payment for services, Contribution to project, etc."
+            />
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
+              <span>Optional description for signers</span>
+              <span className={description.length >= 128 ? "text-destructive" : ""}>
+                {description.length}/128
+              </span>
+            </div>
+            {description.length >= 128 && (
+              <p className="text-sm text-destructive">
+                Description should be less than 128 characters
+              </p>
+            )}
+          </div>
+        </CardUI>
+
+        <CardUI 
           title="Recipients" 
           description="Specify the recipients and amounts for your transaction"
           cardClassName="w-full"
@@ -468,36 +497,6 @@ export default function PageNewTransaction() {
             recipientAssets={assets}
           />
         )}
-      </CardUI>
-
-
-      <CardUI
-        title="Description"
-        description="Provide context and information for other signers about this transaction"
-        cardClassName="w-full"
-      >
-        <div className="space-y-3">
-          <Textarea
-            className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
-            value={description}
-            onChange={(e) => {
-              if (e.target.value.length <= 128)
-                setDescription(e.target.value);
-            }}
-            placeholder="e.g., Payment for services, Contribution to project, etc."
-          />
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
-            <span>Optional description for signers</span>
-            <span className={description.length >= 128 ? "text-destructive" : ""}>
-              {description.length}/128
-            </span>
-          </div>
-          {description.length >= 128 && (
-            <p className="text-sm text-destructive">
-              Description should be less than 128 characters
-            </p>
-          )}
-        </div>
       </CardUI>
 
       <CardUI

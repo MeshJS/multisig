@@ -1,7 +1,7 @@
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
-import { buildWallet } from "./common";
+import { buildWallet } from "@/utils/common";
 import { DbWalletWithLegacy } from "@/types/wallet";
 
 export default function useUserWallets() {

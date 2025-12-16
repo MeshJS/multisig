@@ -402,7 +402,9 @@ export default function BallotCard({
     setLoading(true);
     try {
       if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
-      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
+      // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+      const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
       if (!dRepId) {
         setAlert("DRep not found");
         toast({

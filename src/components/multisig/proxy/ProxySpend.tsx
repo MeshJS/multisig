@@ -1,4 +1,5 @@
 import React, { memo } from "react";
+import { truncateTokenSymbol } from "@/utils/strings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,7 +140,7 @@ const ProxySpend = memo(function ProxySpend({
                   <div key={index} className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary">
-                        {asset.unit === "lovelace" ? "ADA" : asset.unit}
+                        {asset.unit === "lovelace" ? "ADA" : truncateTokenSymbol(asset.unit)}
                       </Badge>
                       <span className="font-mono text-sm">
                         {asset.unit === "lovelace" 

@@ -9,10 +9,12 @@ import { getFirstAndLast } from "@/utils/strings";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildMultisigWallet, getWalletType } from "@/utils/common";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Archive } from "lucide-react";
 import PageHeader from "@/components/common/page-header";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
@@ -236,6 +238,11 @@ function CardWallet({
     walletId: wallet.id,
   });
 
+  // Check wallet type for badge display using centralized detection
+  const walletType = getWalletType(wallet);
+  const isSummonWallet = walletType === 'summon';
+  const isLegacyWallet = walletType === 'legacy';
+
   // Rebuild the multisig wallet to get the correct canonical address for display
   // This ensures we show the correct address even if wallet.address was built incorrectly
   const displayAddress = useMemo(() => {
@@ -260,6 +267,17 @@ function CardWallet({
         title={`${wallet.name}${wallet.isArchived ? " (Archived)" : ""}`}
         description={wallet.description}
         cardClassName=""
+        headerDom={
+          isSummonWallet ? (
+            <Badge 
+              variant="outline" 
+              className="text-xs bg-orange-600/10 border-orange-600/30 text-orange-700 dark:text-orange-400"
+            >
+              <Archive className="h-3 w-3 mr-1" />
+              Summon
+            </Badge>
+          ) : undefined
+        }
       >
         <WalletBalance balance={balance} loadingState={loadingState} />
         <RowLabelInfo

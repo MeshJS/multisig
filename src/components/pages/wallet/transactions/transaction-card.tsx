@@ -9,6 +9,7 @@ import {
   dateToFormatted,
   getFirstAndLast,
   lovelaceToAda,
+  truncateTokenSymbol,
 } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -20,7 +21,7 @@ import { Transaction } from "@prisma/client";
 import { QuestionMarkIcon } from "@radix-ui/react-icons";
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
@@ -317,8 +318,8 @@ export default function TransactionCard({
                     unit.unit === "lovelace"
                       ? "₳"
                       : assetMetadata?.ticker
-                        ? `$${assetMetadata?.ticker}`
-                        : unit.unit;
+                        ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                        : truncateTokenSymbol(unit.unit);
                   return (
                     <span key={`${unit.unit}-${j}`}>
                       {j > 0 && " + "}
@@ -355,9 +356,9 @@ export default function TransactionCard({
   if (!appWallet) return <></>;
   return (
     <Card className="self-start overflow-hidden">
-      <CardHeader className="flex flex-row items-start bg-muted/50">
-        <div className="grid gap-0.5">
-          <CardTitle className="group flex items-center gap-2 text-lg">
+      <CardHeader className="flex flex-row items-start bg-muted/50 p-4 sm:p-6">
+        <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
+          <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
             {transaction.description}
             {/* <Button
                       size="icon"
@@ -368,11 +369,11 @@ export default function TransactionCard({
                       <span className="sr-only">Copy Order ID</span>
                     </Button> */}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             {dateToFormatted(transaction.createdAt)}
           </CardDescription>
         </div>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 flex-shrink-0">
           {/* <Button size="sm" variant="outline" className="h-8 gap-1">
                     <Truck className="h-3.5 w-3.5" />
                     <span className="lg:sr-only xl:not-sr-only xl:whitespace-nowrap">
@@ -430,8 +431,8 @@ export default function TransactionCard({
           </DropdownMenu>
         </div>
       </CardHeader>
-      <CardContent className="p-6 text-sm">
-        <div className="grid gap-3">
+      <CardContent className="p-4 sm:p-6 text-sm">
+        <div className="grid gap-3 sm:gap-4">
           {txJson.outputs.length > 0 && (
             <>
               <div className="font-semibold">Sending</div>
@@ -467,91 +468,174 @@ export default function TransactionCard({
             </>
           )}
 
-          <div className="flex items-center gap-2">
-            <div className="font-semibold">Signers</div>
-            <Button size="sm" variant="outline" onClick={handleRemindAll}>
-              <div className="flex flex-row items-center gap-1">
-                Remind All
-                <DiscordIcon />
+          {/* Signer Threshold Visualization */}
+          {(() => {
+            const signersCount = appWallet.signersAddresses.length;
+            const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
+            const signedCount = transaction.signedAddresses.length;
+            const rejectedCount = transaction.rejectedAddresses.length;
+            
+            const getSignersText = () => {
+              if (appWallet.type === 'all') {
+                return `All ${signersCount} signers required`;
+              } else if (appWallet.type === 'any') {
+                return `Any of ${signersCount} signers`;
+              } else {
+                return `${requiredSigners} of ${signersCount} signers`;
+              }
+            };
+            
+            const getRequiredCount = () => {
+              if (appWallet.type === 'all') {
+                return signersCount;
+              } else if (appWallet.type === 'any') {
+                return 1;
+              } else {
+                return requiredSigners;
+              }
+            };
+            
+            const requiredCount = getRequiredCount();
+            const isComplete = signedCount >= requiredCount;
+            
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Signing Threshold</div>
+                      <div className="text-sm font-medium">{getSignersText()}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {signedCount} signed, {rejectedCount} rejected
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {Array.from({ length: signersCount }).map((_, index) => {
+                        const signerAddress = appWallet.signersAddresses[index];
+                        const hasSigned = transaction.signedAddresses.includes(signerAddress);
+                        const hasRejected = transaction.rejectedAddresses.includes(signerAddress);
+                        const isRequired = index < requiredCount;
+                        
+                        return (
+                          <User
+                            key={index}
+                            className={`h-5 w-5 sm:h-6 sm:w-6 ${
+                              hasSigned
+                                ? "text-green-500 opacity-100"
+                                : hasRejected
+                                ? "text-red-500 opacity-100"
+                                : isRequired
+                                ? "text-foreground opacity-100"
+                                : "text-muted-foreground opacity-30"
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleRemindAll} 
+                    className="flex-shrink-0"
+                  >
+                    <div className="flex flex-row items-center gap-1.5">
+                      <span className="text-xs sm:text-sm">Remind All</span>
+                      <DiscordIcon className="h-3 w-3" />
               </div>
             </Button>
           </div>
 
-          <ul className="grid gap-3">
+                <Separator />
+                
+                {/* Signers List */}
+                <div className="space-y-2">
             {appWallet.signersAddresses.map((signerAddress, index) => {
+                    const hasSigned = transaction.signedAddresses.includes(signerAddress);
+                    const hasRejected = transaction.rejectedAddresses.includes(signerAddress);
+                    const isPending = !hasSigned && !hasRejected;
+                    const canRemind = signerAddress !== userAddress && 
+                                     isPending &&
+                                     discordIds &&
+                                     Object.keys(discordIds).includes(signerAddress);
+                    
               return (
-                <li
+                      <div
                   key={signerAddress}
-                  className="flex items-center justify-between"
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors ${
+                          hasSigned
+                            ? "bg-green-500/10 border-green-500/20"
+                            : hasRejected
+                            ? "bg-red-500/10 border-red-500/20"
+                            : "bg-muted/30 border-border/30"
+                        }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className={`flex-shrink-0 ${
+                            hasSigned
+                              ? "text-green-500"
+                              : hasRejected
+                              ? "text-red-500"
+                              : "text-muted-foreground"
+                          }`}>
+                            {hasSigned ? (
+                              <Check className="h-4 w-4" />
+                            ) : hasRejected ? (
+                              <X className="h-4 w-4" />
+                            ) : (
+                              <QuestionMarkIcon className="h-4 w-4" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium break-words">
                       {appWallet.signersDescriptions[index] &&
                       appWallet.signersDescriptions[index].length > 0
-                        ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
+                                ? appWallet.signersDescriptions[index]
                         : getFirstAndLast(signerAddress)}
-                      {signerAddress == userAddress && ` (You)`}
-                    </span>
-                    {signerAddress !== userAddress &&
-                      !transaction.signedAddresses.includes(signerAddress) &&
-                      discordIds &&
-                      Object.keys(discordIds).includes(signerAddress) && (
-                        <span className="flex items-center">
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+                              {getFirstAndLast(signerAddress)}
+                              {signerAddress == userAddress && " (You)"}
+                            </div>
+                          </div>
+                        </div>
+                        {canRemind && (
                           <TooltipProvider>
                             <Tooltip>
-                              <TooltipTrigger>
-                                {!transaction.signedAddresses.includes(
-                                  signerAddress,
-                                ) &&
-                                  discordIds &&
-                                  Object.keys(discordIds).includes(
-                                    signerAddress,
-                                  ) && (
+                              <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() =>
-                                        sendReminder(signerAddress)
-                                      }
+                                  onClick={() => sendReminder(signerAddress)}
+                                  className="h-7 px-2 text-xs flex-shrink-0"
                                     >
                                       <div className="flex flex-row items-center gap-1">
-                                        Remind
-                                        <DiscordIcon />
+                                    <span className="hidden sm:inline">Remind</span>
+                                    <DiscordIcon className="h-3 w-3" />
                                       </div>
                                     </Button>
-                                  )}
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>Send a Discord reminder.</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
-                        </span>
                       )}
                   </div>
-                  <span>
-                    {transaction.signedAddresses.includes(signerAddress) ? (
-                      <Check className="h-4 w-4 text-green-400" />
-                    ) : transaction.rejectedAddresses.includes(
-                        signerAddress,
-                      ) ? (
-                      <X className="h-4 w-4 text-red-400" />
-                    ) : (
-                      <QuestionMarkIcon className="h-4 w-4" />
-                    )}
-                  </span>
-                </li>
               );
             })}
-          </ul>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </CardContent>
 
       {userAddress &&
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
-          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
-            <Button onClick={() => signTx()} disabled={loading}>
+          <CardFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
+            <Button onClick={() => signTx()} disabled={loading} className="w-full sm:w-auto flex-1">
               {loading ? (
                 <Loader className="h-4 w-4 animate-spin" />
               ) : (
@@ -562,6 +646,7 @@ export default function TransactionCard({
               variant="destructive"
               onClick={() => rejectTx()}
               disabled={loading}
+              className="w-full sm:w-auto flex-1"
             >
               {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
             </Button>
@@ -576,13 +661,14 @@ export default function TransactionCard({
             appWallet.signersAddresses.length) ||
         (appWallet.type == "any" && (
           <>
-            <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+            <CardFooter className="flex items-center justify-center border-t bg-muted/50 px-4 sm:px-6 py-3">
               <Button
                 variant="destructive"
                 onClick={() => deleteTx()}
                 disabled={loading}
                 loading={loading}
                 hold={3000}
+                className="w-full sm:w-auto"
               >
                 Delete Transaction
               </Button>

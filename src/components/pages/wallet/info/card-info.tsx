@@ -39,28 +39,44 @@ import Code from "@/components/ui/code";
 import { Carousel } from "@/components/ui/carousel";
 import { type MultisigWallet } from "@/utils/multisigSDK";
 import { getFirstAndLast } from "@/utils/strings";
+import { getWalletType } from "@/utils/common";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);
+  
+  // Check if this is a legacy wallet using the centralized detection
+  const walletType = getWalletType(appWallet);
+  const isLegacyWallet = walletType === 'legacy';
 
   return (
     <CardUI
-      title="About This Wallet"
+      title={appWallet.name}
       description={appWallet.description}
       headerDom={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button aria-haspopup="true" size="icon" variant="ghost">
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
-              {showEdit ? "Close Edit" : "Edit Wallet"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          {isLegacyWallet && (
+            <Badge 
+              variant="outline" 
+              className="text-xs bg-orange-400/10 border-orange-400/30 text-orange-600 dark:text-orange-300"
+            >
+              <Archive className="h-3 w-3 mr-1" />
+              Legacy
+            </Badge>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-haspopup="true" size="icon" variant="ghost">
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
+                {showEdit ? "Close Edit" : "Edit Wallet"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       }
       cardClassName="col-span-2"
     >
@@ -338,15 +354,17 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
     setBalance(balance);
   }, [appWallet, walletsUtxos]);
 
-  // Check if this is a legacy wallet (doesn't use SDK)
-  const isLegacyWallet = !!appWallet.rawImportBodies?.multisig;
+  // Check if this is a legacy wallet using the centralized detection
+  const walletType = getWalletType(appWallet);
+  const isLegacyWallet = walletType === 'legacy';
   
   // For legacy wallets, multisigWallet will be undefined, so use appWallet.address
   // For SDK wallets, prefer the address from multisigWallet if staking is enabled
   const address = multisigWallet?.getKeysByRole(2) ? multisigWallet?.getScript().address : appWallet.address;
   
-  // Get DRep ID from multisig wallet if available, otherwise fallback to appWallet
-  const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+  // Get DRep ID from multisig wallet if available (it handles no DRep keys by using payment script),
+  // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+  const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
   
   // For rawImportBodies wallets, dRepId may not be available
   const showDRepId = dRepId && dRepId.length > 0;
@@ -379,22 +397,6 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   
   return (
     <div className="space-y-4">
-      {/* Wallet Name */}
-      {appWallet.name && (
-        <div className="pb-2 border-b border-border/30">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-xs font-medium text-muted-foreground">Wallet Name</div>
-            {isLegacyWallet && (
-              <Badge variant="outline" className="text-xs">
-                <Archive className="h-3 w-3 mr-1" />
-                Legacy
-              </Badge>
-            )}
-          </div>
-          <div className="text-base font-semibold">{appWallet.name}</div>
-        </div>
-      )}
-      
       {/* Desktop: Grid layout for addresses and balance */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left Column */}
@@ -407,7 +409,7 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
             allowOverflow={false}
           />
           
-          {/* Stake Address - Only show if staking is enabled */}
+          {/* Stake Address - Show if staking is enabled */}
           {multisigWallet && multisigWallet.stakingEnabled() && (() => {
             const stakeAddress = multisigWallet.getStakeAddress();
             return stakeAddress ? (
@@ -419,6 +421,16 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
               />
             ) : null;
           })()}
+          
+          {/* External Stake Key Hash - Always show if available */}
+          {appWallet?.stakeCredentialHash && (
+            <RowLabelInfo
+              label="External Stake Key Hash"
+              value={getFirstAndLast(appWallet.stakeCredentialHash, 20, 15)}
+              copyString={appWallet.stakeCredentialHash}
+              allowOverflow={false}
+            />
+          )}
           
           {/* DRep ID */}
           {showDRepId && dRepId ? (

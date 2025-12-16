@@ -56,7 +56,9 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   } | null>(null);
   
   // Get DRep info for standard mode
-  const currentDrepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+  // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
+  // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+  const currentDrepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
   const currentDrepInfo = drepInfo;
   
   

@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { truncateTokenSymbol } from "@/utils/strings";
 
 interface UTxOSelectorProps {
   appWallet: Wallet;
@@ -419,8 +420,8 @@ export default function UTxOSelector({
                               unit.unit === "lovelace"
                                 ? "₳"
                                 : assetMetadata?.ticker
-                                  ? `$${assetMetadata?.ticker}`
-                                  : unit.unit;
+                                  ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                  : truncateTokenSymbol(unit.unit);
                             return (
                               <span key={unit.unit}>
                                 {j > 0 && ", "}
@@ -563,7 +564,7 @@ export default function UTxOSelector({
                     {totalInfo.received_sum.map((asset, index) => {
                       const assetMetadata = walletAssetMetadata[asset.unit];
                       const decimals = asset.unit === "lovelace" ? 6 : (assetMetadata?.decimals ?? 0);
-                      const assetName = asset.unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${assetMetadata.ticker}` : asset.unit;
+                      const assetName = asset.unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${truncateTokenSymbol(assetMetadata.ticker)}` : truncateTokenSymbol(asset.unit);
                       return (
                         <div key={index}>
                           {(parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
@@ -579,7 +580,7 @@ export default function UTxOSelector({
                     {totalInfo.sent_sum.map((asset, index) => {
                       const assetMetadata = walletAssetMetadata[asset.unit];
                       const decimals = asset.unit === "lovelace" ? 6 : (assetMetadata?.decimals ?? 0);
-                      const assetName = asset.unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${assetMetadata.ticker}` : asset.unit;
+                      const assetName = asset.unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${truncateTokenSymbol(assetMetadata.ticker)}` : truncateTokenSymbol(asset.unit);
                       return (
                         <div key={index}>
                           {(parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
@@ -667,7 +668,7 @@ function FundsSummary({
           const required = requiredFunds[unit] || 0;
           const assetMetadata = walletAssetMetadata[unit];
           const decimals = unit === "lovelace" ? 6 : (assetMetadata?.decimals ?? 0);
-          const assetName = unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${assetMetadata.ticker}` : assetMetadata?.assetName || unit;
+          const assetName = unit === "lovelace" ? "₳" : assetMetadata?.ticker ? `$${truncateTokenSymbol(assetMetadata.ticker)}` : assetMetadata?.assetName || truncateTokenSymbol(unit);
           
           const availableFormatted = (available / Math.pow(10, decimals)).toFixed(6);
           const requiredFormatted = (required / Math.pow(10, decimals)).toFixed(6);

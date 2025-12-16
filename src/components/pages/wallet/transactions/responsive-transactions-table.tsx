@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowUpRight, MoreHorizontal } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
-import { dateToFormatted, getFirstAndLast } from "@/utils/strings";
+import { dateToFormatted, getFirstAndLast, truncateTokenSymbol } from "@/utils/strings";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
@@ -16,7 +16,7 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 interface ResponsiveTransactionsTableProps {
   appWallet: Wallet;
@@ -31,29 +31,8 @@ export default function ResponsiveTransactionsTable({
 }: ResponsiveTransactionsTableProps) {
   return (
     <div className="space-y-4">
-      {/* Desktop view */}
-      <div className="hidden md:block">
-        <div className="grid grid-cols-12 gap-4 border-b pb-2 text-sm font-medium text-muted-foreground">
-          <div className="col-span-4">Transaction</div>
-          <div className="col-span-3">Amount</div>
-          <div className="col-span-4">Signers</div>
-          <div className="col-span-1"></div>
-        </div>
-        {walletTransactions.map((tx) => (
-          <TransactionRowDesktop
-            key={tx.hash}
-            transaction={tx}
-            appWallet={appWallet}
-            dbTransaction={
-              dbTransactions &&
-              dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
-            }
-          />
-        ))}
-      </div>
-
-      {/* Mobile view */}
-      <div className="md:hidden space-y-3">
+      {/* Mobile view - Card layout */}
+      <div className="space-y-3">
         {walletTransactions.map((tx) => (
           <TransactionCard
             key={tx.hash}
@@ -65,123 +44,6 @@ export default function ResponsiveTransactionsTable({
             }
           />
         ))}
-      </div>
-    </div>
-  );
-}
-
-function TransactionRowDesktop({
-  transaction,
-  appWallet,
-  dbTransaction,
-}: {
-  transaction: OnChainTransaction;
-  appWallet: Wallet;
-  dbTransaction?: Transaction;
-}) {
-  const walletAssetMetadata = useWalletsStore(
-    (state) => state.walletAssetMetadata,
-  );
-
-  const outputList = useMemo(() => {
-    return transaction.outputs.map((output: any, i) => {
-      const isSpend = transaction.inputs.some(
-        (input: any) => input.address === appWallet.address,
-      );
-      if (isSpend && output.address != appWallet.address) {
-        return (
-          <div key={i} className="flex flex-col gap-1">
-            <div className="text-red-400">
-              -
-              {output.amount.map((unit: any, j: number) => {
-                const assetMetadata = walletAssetMetadata[unit.unit];
-                const decimals =
-                  unit.unit === "lovelace"
-                    ? 6
-                    : (assetMetadata?.decimals ?? 0);
-                const assetName =
-                  unit.unit === "lovelace"
-                    ? "₳"
-                    : assetMetadata?.ticker
-                      ? `$${assetMetadata?.ticker}`
-                      : unit.unit;
-                return (
-                  <span key={unit.unit}>
-                    {j > 0 && ", "}
-                    {unit.quantity / Math.pow(10, decimals)} {assetName}
-                  </span>
-                );
-              })}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              to {getFirstAndLast(output.address)}
-            </div>
-          </div>
-        );
-      } else if (!isSpend && output.address == appWallet.address) {
-        return (
-          <div key={i} className="text-green-400">
-            +
-            {output.amount.map((unit: any, j: number) => {
-              const assetMetadata = walletAssetMetadata[unit.unit];
-              const decimals =
-                unit.unit === "lovelace"
-                  ? 6
-                  : (assetMetadata?.decimals ?? 0);
-              const assetName =
-                unit.unit === "lovelace"
-                  ? "₳"
-                  : assetMetadata?.ticker
-                    ? `$${assetMetadata?.ticker}`
-                    : unit.unit;
-              return (
-                <span key={unit.unit}>
-                  {j > 0 && ", "}
-                  {unit.quantity / Math.pow(10, decimals)} {assetName}
-                </span>
-              );
-            })}
-          </div>
-        );
-      }
-      return null;
-    }).filter(Boolean);
-  }, [transaction, appWallet, walletAssetMetadata]);
-
-  return (
-    <div className="grid grid-cols-12 gap-4 border-b py-3 items-start">
-      <div className="col-span-4">
-        <LinkCardanoscan
-          url={`transaction/${transaction.hash}`}
-          className="inline-flex items-center gap-1 text-sm hover:underline"
-        >
-          <span>
-            {transaction.hash.substring(0, 6)}...
-            {transaction.hash.slice(-6)}
-          </span>
-          <ArrowUpRight className="h-3 w-3" />
-        </LinkCardanoscan>
-        <div className="text-xs text-muted-foreground mt-1">
-          {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
-        </div>
-        {dbTransaction && (
-          <div className="text-sm mt-1">{dbTransaction.description}</div>
-        )}
-      </div>
-      <div className="col-span-3 space-y-1">{outputList}</div>
-      <div className="col-span-4 flex flex-wrap gap-1">
-        {dbTransaction &&
-          dbTransaction.signedAddresses.map((address) => (
-            <Badge variant="outline" key={address} className="text-xs">
-              {appWallet.signersDescriptions.find(
-                (signer, index) =>
-                  appWallet.signersAddresses[index] === address,
-              ) || getFirstAndLast(address)}
-            </Badge>
-          ))}
-      </div>
-      <div className="col-span-1">
-        <RowAction transaction={transaction} appWallet={appWallet} />
       </div>
     </div>
   );
@@ -207,8 +69,8 @@ function TransactionCard({
       );
       if (isSpend && output.address != appWallet.address) {
         return (
-          <div key={i} className="flex items-center justify-between">
-            <span className="text-red-400">
+          <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+            <span className="text-red-400 font-medium">
               -
               {output.amount.map((unit: any, j: number) => {
                 const assetMetadata = walletAssetMetadata[unit.unit];
@@ -220,8 +82,8 @@ function TransactionCard({
                   unit.unit === "lovelace"
                     ? "₳"
                     : assetMetadata?.ticker
-                      ? `$${assetMetadata?.ticker}`
-                      : unit.unit;
+                      ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                      : truncateTokenSymbol(unit.unit);
                 return (
                   <span key={unit.unit}>
                     {j > 0 && ", "}
@@ -237,7 +99,7 @@ function TransactionCard({
         );
       } else if (!isSpend && output.address == appWallet.address) {
         return (
-          <div key={i} className="text-green-400">
+          <div key={i} className="text-green-400 font-medium">
             +
             {output.amount.map((unit: any, j: number) => {
               const assetMetadata = walletAssetMetadata[unit.unit];
@@ -249,8 +111,8 @@ function TransactionCard({
                 unit.unit === "lovelace"
                   ? "₳"
                   : assetMetadata?.ticker
-                    ? `$${assetMetadata?.ticker}`
-                    : unit.unit;
+                    ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                    : truncateTokenSymbol(unit.unit);
               return (
                 <span key={unit.unit}>
                   {j > 0 && ", "}
@@ -266,36 +128,38 @@ function TransactionCard({
   }, [transaction, appWallet, walletAssetMetadata]);
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
-      <div className="flex items-start justify-between">
-        <div>
+    <div className="rounded-lg border p-4 space-y-3 bg-card">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
           <LinkCardanoscan
             url={`transaction/${transaction.hash}`}
-            className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-medium hover:underline break-all"
           >
-            <span>
+            <span className="break-all">
               {transaction.hash.substring(0, 8)}...
               {transaction.hash.slice(-8)}
             </span>
-            <ArrowUpRight className="h-3 w-3" />
+            <ArrowUpRight className="h-3 w-3 flex-shrink-0" />
           </LinkCardanoscan>
           <div className="text-xs text-muted-foreground mt-1">
             {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
           </div>
         </div>
+        <div className="flex-shrink-0">
         <RowAction transaction={transaction} appWallet={appWallet} />
+        </div>
       </div>
       
       {dbTransaction && (
-        <div className="text-sm">{dbTransaction.description}</div>
+        <div className="text-sm break-words">{dbTransaction.description}</div>
       )}
       
-      <div className="space-y-1">{outputList}</div>
+      <div className="space-y-2">{outputList}</div>
       
       {dbTransaction && dbTransaction.signedAddresses.length > 0 && (
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Signers:</div>
-          <div className="flex flex-wrap gap-1">
+          <div className="text-xs text-muted-foreground mb-2 font-medium">Signers:</div>
+          <div className="flex flex-wrap gap-1.5">
             {dbTransaction.signedAddresses.map((address) => (
               <Badge variant="outline" key={address} className="text-xs">
                 {appWallet.signersDescriptions.find(
