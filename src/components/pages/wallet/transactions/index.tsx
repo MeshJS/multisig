@@ -27,10 +27,10 @@ export default function PageTransactions() {
             <div
               className={`grid gap-4 w-full ${
                 pendingTransactions.length === 1
-                  ? "max-w-2xl"
+                  ? "max-w-4xl"
                   : pendingTransactions.length === 2
-                  ? "max-w-5xl sm:grid-cols-2"
-                  : "max-w-7xl sm:grid-cols-2 lg:grid-cols-3"
+                  ? "max-w-7xl sm:grid-cols-2"
+                  : "max-w-[90rem] sm:grid-cols-2 lg:grid-cols-3"
               }`}
             >
               {pendingTransactions.map((tx) => {

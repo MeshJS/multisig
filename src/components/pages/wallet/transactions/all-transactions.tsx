@@ -12,7 +12,7 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda, truncateTokenSymbol } from "@/utils/strings";
-import CardUI from "@/components/common/card-content";
+import CardUI from "@/components/ui/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
@@ -71,8 +71,9 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
       </div>
 
       {/* Desktop: Compact table without horizontal scroll */}
-      <div className="hidden lg:block">
-        <Table>
+      <div className="hidden lg:block w-full overflow-visible">
+        <div className="w-full">
+          <Table className="w-full">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[30%]">Transaction</TableHead>
@@ -96,6 +97,7 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
               ))}
           </TableBody>
         </Table>
+        </div>
       </div>
     </CardUI>
   );

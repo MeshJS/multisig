@@ -20,7 +20,7 @@ import { Transaction } from "@prisma/client";
 
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
@@ -43,6 +43,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -59,6 +64,7 @@ export default function TransactionCard({
   const userAddress = useUserStore((state) => state.userAddress);
   const txJson = JSON.parse(transaction.txJson);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -380,26 +386,52 @@ export default function TransactionCard({
   }
 
   if (!appWallet) return <></>;
+  
+  // Calculate signing threshold info
+  const signersCount = appWallet.signersAddresses.length;
+  const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
+  const signedCount = transaction.signedAddresses.length;
+  const rejectedCount = transaction.rejectedAddresses.length;
+  
+  const getSignersText = () => {
+    if (appWallet.type === 'all') {
+      return `All ${signersCount} signers required`;
+    } else if (appWallet.type === 'any') {
+      return `Any of ${signersCount} signers`;
+    } else {
+      return `${requiredSigners} of ${signersCount} signers`;
+    }
+  };
+  
+  const getRequiredCount = () => {
+    if (appWallet.type === 'all') {
+      return signersCount;
+    } else if (appWallet.type === 'any') {
+      return 1;
+    } else {
+      return requiredSigners;
+    }
+  };
+  
+  const requiredCount = getRequiredCount();
+  const isComplete = signedCount >= requiredCount;
+  const progressPercentage = Math.min((signedCount / signersCount) * 100, 100);
+  const thresholdPercentage = (requiredCount / signersCount) * 100;
+  const pendingCount = signersCount - signedCount - rejectedCount;
+  
   return (
-    <Card className="self-start overflow-hidden">
-      <CardHeader className="flex flex-row items-start bg-muted/50 p-4 sm:p-6">
-        <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
-          <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
-            {transaction.description}
-            {/* <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      <Copy className="h-3 w-3" />
-                      <span className="sr-only">Copy Order ID</span>
-                    </Button> */}
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            {dateToFormatted(transaction.createdAt)}
-          </CardDescription>
-        </div>
-        <div className="ml-auto flex items-center gap-1 flex-shrink-0">
+    <Card className="self-start overflow-hidden w-full">
+      <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
+        <div className="flex flex-row items-start w-full">
+          <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
+            <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
+              {transaction.description}
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              {dateToFormatted(transaction.createdAt)}
+            </CardDescription>
+          </div>
+          <div className="ml-auto flex items-center gap-1 flex-shrink-0">
           {/* <Button size="sm" variant="outline" className="h-8 gap-1">
                     <Truck className="h-3.5 w-3.5" />
                     <span className="lg:sr-only xl:not-sr-only xl:whitespace-nowrap">
@@ -456,9 +488,73 @@ export default function TransactionCard({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        </div>
+        
+        {/* Signing Threshold - Person Icons with Progress Bar */}
+        <div className="w-full pt-3 border-t border-border/30">
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              {getSignersText()}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: signersCount }).map((_, index) => {
+                let iconColor = "text-muted-foreground opacity-30"; // Light gray (not required, not signed)
+                
+                if (index < signedCount) {
+                  iconColor = "text-green-500 dark:text-green-400"; // Green (signed, starting from left)
+                } else if (index < requiredCount) {
+                  iconColor = "text-foreground opacity-100"; // White (threshold requirement, not signed)
+                }
+                
+                return (
+                  <User
+                    key={index}
+                    className={`h-5 w-5 sm:h-6 sm:w-6 ${iconColor}`}
+                  />
+                );
+              })}
+            </div>
+            {/* Progress Bar */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="h-2.5 bg-muted rounded-full overflow-visible shadow-inner relative cursor-help">
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-foreground/40 z-10"
+                      style={{ left: `${thresholdPercentage}%` }}
+                    >
+                      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground/60" />
+                    </div>
+                    <div
+                      className={`h-full transition-all duration-500 ease-out relative rounded-full ${
+                        isComplete
+                          ? "bg-gradient-to-r from-green-500 to-green-600 shadow-sm shadow-green-500/50"
+                          : "bg-gradient-to-r from-primary to-primary/90"
+                      }`}
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-semibold">{getSignersText()}</div>
+                    <div className="text-muted-foreground">
+                      {signedCount} signed
+                      {rejectedCount > 0 && ` • ${rejectedCount} rejected`}
+                      {pendingCount > 0 && ` • ${pendingCount} pending`}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Progress: {signedCount} / {requiredCount} required
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="p-4 sm:p-6 text-sm">
-        <div className="grid gap-3 sm:gap-4">
+        <div className="grid gap-3 sm:gap-4 max-w-4xl mx-auto w-full">
           {txJson.outputs.length > 0 && (
             <>
               <div className="space-y-3">
@@ -557,118 +653,27 @@ export default function TransactionCard({
             </>
           )}
 
-          {/* Signer Threshold Visualization */}
-          {(() => {
-            const signersCount = appWallet.signersAddresses.length;
-            const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
-            const signedCount = transaction.signedAddresses.length;
-            const rejectedCount = transaction.rejectedAddresses.length;
-            
-            const getSignersText = () => {
-              if (appWallet.type === 'all') {
-                return `All ${signersCount} signers required`;
-              } else if (appWallet.type === 'any') {
-                return `Any of ${signersCount} signers`;
-              } else {
-                return `${requiredSigners} of ${signersCount} signers`;
-              }
-            };
-            
-            const getRequiredCount = () => {
-              if (appWallet.type === 'all') {
-                return signersCount;
-              } else if (appWallet.type === 'any') {
-                return 1;
-              } else {
-                return requiredSigners;
-              }
-            };
-            
-            const requiredCount = getRequiredCount();
-            const isComplete = signedCount >= requiredCount;
-            const progressPercentage = Math.min((signedCount / signersCount) * 100, 100);
-            const thresholdPercentage = (requiredCount / signersCount) * 100;
-            const pendingCount = signersCount - signedCount - rejectedCount;
-            
-            return (
-              <div className="space-y-4">
-                {/* Signing Threshold Section */}
-                <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-3">
-                  <div className="space-y-2">
-                    <div>
-                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                        Signing Threshold
-                      </div>
-                      <div className="text-base font-semibold">{getSignersText()}</div>
-                    </div>
-                    
-                    {/* Progress Bar */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground font-medium">Progress</span>
-                        <span className="font-semibold">
-                          {requiredCount} out of {signersCount}
-                        </span>
-                      </div>
-                      <div className="h-2.5 bg-muted rounded-full overflow-visible shadow-inner relative">
-                        {/* Threshold indicator line */}
-                        <div
-                          className="absolute top-0 bottom-0 w-0.5 bg-foreground/40 z-10"
-                          style={{ left: `${thresholdPercentage}%` }}
-                        >
-                          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground/60" />
-                        </div>
-                        {/* Progress fill */}
-                        <div
-                          className={`h-full transition-all duration-500 ease-out relative rounded-full ${
-                            isComplete
-                              ? "bg-gradient-to-r from-green-500 to-green-600 shadow-sm shadow-green-500/50"
-                              : "bg-gradient-to-r from-primary to-primary/90"
-                          }`}
-                          style={{ width: `${progressPercentage}%` }}
-                        >
-                          {progressPercentage > 0 && (
-                            <div className="absolute inset-0 bg-white/20 animate-pulse rounded-full" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Status Summary */}
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm shadow-green-500/50" />
-                        <span className="text-xs text-muted-foreground font-medium">
-                          {signedCount} signed
-                        </span>
-                      </div>
-                      {rejectedCount > 0 && (
-                        <div className="flex items-center gap-2">
-                          <div className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/50" />
-                          <span className="text-xs text-muted-foreground font-medium">
-                            {rejectedCount} rejected
-                          </span>
-                        </div>
-                      )}
-                      {pendingCount > 0 && (
-                        <div className="flex items-center gap-2">
-                          <div className="h-2.5 w-2.5 rounded-full bg-muted-foreground/50 border border-muted-foreground/30" />
-                          <span className="text-xs text-muted-foreground font-medium">
-                            {pendingCount} pending
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
+          {/* Signers List - Collapsible */}
+          <Collapsible open={isSignersOpen} onOpenChange={setIsSignersOpen}>
+            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors group">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Signers ({signersCount})
+              </div>
+              {isSignersOpen ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground transition-transform" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 space-y-3">
                   {/* Remind All Button */}
                   {pendingCount > 0 && (
-                    <div className="pt-3 border-t border-border/50">
+                    <div className="pb-2">
                       <Button 
                         size="sm" 
                         variant="outline" 
                         onClick={handleRemindAll} 
-                        className="w-full sm:w-auto hover:bg-primary/10 hover:border-primary/50 transition-colors"
+                        className="w-full hover:bg-primary/10 hover:border-primary/50 transition-colors"
                       >
                         <div className="flex flex-row items-center gap-1.5">
                           <DiscordIcon className="h-3.5 w-3.5" />
@@ -677,13 +682,6 @@ export default function TransactionCard({
                       </Button>
                     </div>
                   )}
-                </div>
-                
-                {/* Signers List */}
-                <div className="space-y-3">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
-                    Signers
-                  </div>
                   {appWallet.signersAddresses.map((signerAddress, index) => {
                     const hasSigned = transaction.signedAddresses.includes(signerAddress);
                     const hasRejected = transaction.rejectedAddresses.includes(signerAddress);
@@ -782,10 +780,8 @@ export default function TransactionCard({
                       </div>
                     );
                   })}
-                </div>
-              </div>
-            );
-          })()}
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </CardContent>
 
