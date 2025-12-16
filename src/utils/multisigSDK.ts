@@ -22,7 +22,7 @@ import {
   serializeNativeScript,
   serializeRewardAddress,
 } from "@meshsdk/core";
-import { getDRepIds } from "@meshsdk/core-cst";
+import { DRepID, getDRepIds } from "@meshsdk/core-cst";
 
 /**
  * Extracts the payment key hash from a Cardano address.
@@ -283,17 +283,14 @@ export class MultisigWallet {
   }
 
   getDRepScript(): string | undefined {
-    let dRepScript = this.buildScript(3);
-
-    if(!dRepScript) {
-      dRepScript = this.buildScript(0);
-    }
+    // Check if governance is enabled - if not, use payment script to match getDRepId105()
+    // This ensures consistency: both DRep ID and DRep script CBOR come from the same script
+    const dRepScript = this.drepEnabled() ? this.buildScript(3) : this.buildScript(0);
 
     if (!dRepScript) {
       console.warn("MultisigWallet keys:", this.keys);
-      console.warn("buildScript(3) result:", dRepScript);
       console.error(
-        "Cannot build multisig script: no valid DRep keys provided.",
+        "Cannot build multisig script: no valid keys provided.",
       );
       return undefined;
     }
@@ -559,8 +556,9 @@ export class MultisigWallet {
    * ```
    */
   getDRep(appWallet?: { dRepId: string; scriptCbor: string }): { dRepId: string; drepCbor: string } | undefined {
-    const dRepId = this.getDRepId();
+    
     const dRepCbor = this.getDRepScript();
+    const dRepId = this.getDRepId();
     if (dRepId && dRepCbor) {
       return { dRepId, drepCbor: dRepCbor };
     }

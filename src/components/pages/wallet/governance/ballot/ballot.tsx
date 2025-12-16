@@ -285,7 +285,6 @@ export default function BallotCard({
       const proxy = proxies.find((p: any) => p.id === selectedProxyId);
       if (!proxy) throw new Error("Proxy not found");
 
-      if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
       const meshTxBuilder = getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
@@ -314,7 +313,12 @@ export default function BallotCard({
       });
 
       // Vote using proxy
-      const txBuilder = await proxyContract.voteProxyDrep(votes, utxos, multisigWallet?.getScript().address);
+      // Use multisig wallet address if available, otherwise fallback to appWallet (for legacy wallets)
+      const proxyAddress = multisigWallet?.getScript().address || appWallet?.address;
+      if (!proxyAddress) {
+        throw new Error("Wallet address not found");
+      }
+      const txBuilder = await proxyContract.voteProxyDrep(votes, utxos, proxyAddress);
 
       await newTransaction({
         txBuilder: txBuilder,
@@ -401,8 +405,9 @@ export default function BallotCard({
 
     setLoading(true);
     try {
-      if (!multisigWallet) throw new Error("Multisig Wallet could not be built.");
-      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+      // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
+      // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+      const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
       if (!dRepId) {
         setAlert("DRep not found");
         toast({

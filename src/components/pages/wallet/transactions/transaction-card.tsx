@@ -9,6 +9,7 @@ import {
   dateToFormatted,
   getFirstAndLast,
   lovelaceToAda,
+  truncateTokenSymbol,
 } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -17,16 +18,16 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { useToast } from "@/hooks/use-toast";
 import { Transaction } from "@prisma/client";
 
-import { QuestionMarkIcon } from "@radix-ui/react-icons";
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import Button from "@/components/common/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -42,6 +43,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -58,6 +64,7 @@ export default function TransactionCard({
   const userAddress = useUserStore((state) => state.userAddress);
   const txJson = JSON.parse(transaction.txJson);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -305,38 +312,35 @@ export default function TransactionCard({
       <>
         {txJson.outputs.map((output: any, i: number) => {
           return (
-            <div key={i} className="flex gap-2">
-              <div className="font-weight-400">
-                {output.amount.map((unit: any, j: number) => {
-                  const assetMetadata = walletAssetMetadata[unit.unit];
-                  const decimals =
-                    unit.unit === "lovelace"
-                      ? 6
-                      : (assetMetadata?.decimals ?? 0);
-                  const assetName =
-                    unit.unit === "lovelace"
-                      ? "₳"
-                      : assetMetadata?.ticker
-                        ? `$${assetMetadata?.ticker}`
-                        : unit.unit;
-                  return (
-                    <span key={`${unit.unit}-${j}`}>
-                      {j > 0 && " + "}
-                      {unit.quantity / Math.pow(10, decimals)} {assetName}
-                    </span>
-                  );
-                })}
+            <div key={i} className="flex items-start gap-3 py-1">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm">
+                  {output.amount.map((unit: any, j: number) => {
+                    const assetMetadata = walletAssetMetadata[unit.unit];
+                    const decimals =
+                      unit.unit === "lovelace"
+                        ? 6
+                        : (assetMetadata?.decimals ?? 0);
+                    const assetName =
+                      unit.unit === "lovelace"
+                        ? "₳"
+                        : assetMetadata?.ticker
+                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                          : truncateTokenSymbol(unit.unit);
+                    return (
+                      <span key={`${unit.unit}-${j}`}>
+                        {j > 0 && " + "}
+                        {unit.quantity / Math.pow(10, decimals)} {assetName}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 font-mono">
+                  to {output.address.length > 20
+                    ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
+                    : output.address}
+                </div>
               </div>
-              <span
-                className="overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
-                style={{ maxWidth: "100%", display: "inline-block" }}
-              >
-                {" "}
-                to{" "}
-                {output.address.length > 20
-                  ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
-                  : output.address}
-              </span>
             </div>
           );
         })}
@@ -352,27 +356,82 @@ export default function TransactionCard({
     });
   }
 
+  function VoteBadge({ voteKind }: { voteKind: "Yes" | "No" | "Abstain" }) {
+    const config = {
+      Yes: {
+        icon: CheckCircle2,
+        className: "bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30",
+      },
+      No: {
+        icon: XCircle,
+        className: "bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30",
+      },
+      Abstain: {
+        icon: MinusCircle,
+        className: "bg-muted text-muted-foreground border-border/50",
+      },
+    };
+
+    const { icon: Icon, className } = config[voteKind];
+
+    return (
+      <Badge
+        variant="outline"
+        className={`flex items-center gap-1.5 text-xs font-semibold ${className}`}
+      >
+        <Icon className="h-3 w-3" />
+        <span>{voteKind}</span>
+      </Badge>
+    );
+  }
+
   if (!appWallet) return <></>;
+  
+  // Calculate signing threshold info
+  const signersCount = appWallet.signersAddresses.length;
+  const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
+  const signedCount = transaction.signedAddresses.length;
+  const rejectedCount = transaction.rejectedAddresses.length;
+  
+  const getSignersText = () => {
+    if (appWallet.type === 'all') {
+      return `All ${signersCount} signers required`;
+    } else if (appWallet.type === 'any') {
+      return `Any of ${signersCount} signers`;
+    } else {
+      return `${requiredSigners} of ${signersCount} signers`;
+    }
+  };
+  
+  const getRequiredCount = () => {
+    if (appWallet.type === 'all') {
+      return signersCount;
+    } else if (appWallet.type === 'any') {
+      return 1;
+    } else {
+      return requiredSigners;
+    }
+  };
+  
+  const requiredCount = getRequiredCount();
+  const isComplete = signedCount >= requiredCount;
+  const progressPercentage = Math.min((signedCount / signersCount) * 100, 100);
+  const thresholdPercentage = (requiredCount / signersCount) * 100;
+  const pendingCount = signersCount - signedCount - rejectedCount;
+  
   return (
-    <Card className="self-start overflow-hidden">
-      <CardHeader className="flex flex-row items-start bg-muted/50">
-        <div className="grid gap-0.5">
-          <CardTitle className="group flex items-center gap-2 text-lg">
-            {transaction.description}
-            {/* <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      <Copy className="h-3 w-3" />
-                      <span className="sr-only">Copy Order ID</span>
-                    </Button> */}
-          </CardTitle>
-          <CardDescription>
-            {dateToFormatted(transaction.createdAt)}
-          </CardDescription>
-        </div>
-        <div className="ml-auto flex items-center gap-1">
+    <Card className="self-start overflow-hidden w-full">
+      <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
+        <div className="flex flex-row items-start w-full">
+          <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
+            <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
+              {transaction.description}
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              {dateToFormatted(transaction.createdAt)}
+            </CardDescription>
+          </div>
+          <div className="ml-auto flex items-center gap-1 flex-shrink-0">
           {/* <Button size="sm" variant="outline" className="h-8 gap-1">
                     <Truck className="h-3.5 w-3.5" />
                     <span className="lg:sr-only xl:not-sr-only xl:whitespace-nowrap">
@@ -429,13 +488,83 @@ export default function TransactionCard({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        </div>
+        
+        {/* Signing Threshold - Person Icons with Progress Bar */}
+        <div className="w-full pt-3 border-t border-border/30">
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              {getSignersText()}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: signersCount }).map((_, index) => {
+                let iconColor = "text-muted-foreground opacity-30"; // Light gray (not required, not signed)
+                
+                if (index < signedCount) {
+                  iconColor = "text-green-500 dark:text-green-400"; // Green (signed, starting from left)
+                } else if (index < requiredCount) {
+                  iconColor = "text-foreground opacity-100"; // White (threshold requirement, not signed)
+                }
+                
+                return (
+                  <User
+                    key={index}
+                    className={`h-5 w-5 sm:h-6 sm:w-6 ${iconColor}`}
+                  />
+                );
+              })}
+            </div>
+            {/* Progress Bar */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="h-2.5 bg-muted rounded-full overflow-visible shadow-inner relative cursor-help">
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-foreground/40 z-10"
+                      style={{ left: `${thresholdPercentage}%` }}
+                    >
+                      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground/60" />
+                    </div>
+                    <div
+                      className={`h-full transition-all duration-500 ease-out relative rounded-full ${
+                        isComplete
+                          ? "bg-gradient-to-r from-green-500 to-green-600 shadow-sm shadow-green-500/50"
+                          : "bg-gradient-to-r from-primary to-primary/90"
+                      }`}
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-semibold">{getSignersText()}</div>
+                    <div className="text-muted-foreground">
+                      {signedCount} signed
+                      {rejectedCount > 0 && ` • ${rejectedCount} rejected`}
+                      {pendingCount > 0 && ` • ${pendingCount} pending`}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Progress: {signedCount} / {requiredCount} required
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="p-6 text-sm">
-        <div className="grid gap-3">
+      <CardContent className="p-4 sm:p-6 text-sm">
+        <div className="grid gap-3 sm:gap-4 max-w-4xl mx-auto w-full">
           {txJson.outputs.length > 0 && (
             <>
-              <div className="font-semibold">Sending</div>
-              <ul className="grid gap-3">{outputList}</ul>
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Sending
+                </div>
+                <div className="rounded-lg bg-muted/30 border border-border/50 p-3 space-y-2">
+                  {outputList}
+                </div>
+              </div>
               <Separator className="my-2" />
             </>
           )}
@@ -467,91 +596,200 @@ export default function TransactionCard({
             </>
           )}
 
-          <div className="flex items-center gap-2">
-            <div className="font-semibold">Signers</div>
-            <Button size="sm" variant="outline" onClick={handleRemindAll}>
-              <div className="flex flex-row items-center gap-1">
-                Remind All
-                <DiscordIcon />
-              </div>
-            </Button>
-          </div>
+          {/* Votes Section */}
+          {txJson.votes && txJson.votes.length > 0 && (
+            <>
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Votes
+                </div>
+                <div className="rounded-lg bg-muted/30 border border-border/50 p-3 space-y-3">
+                  {txJson.votes.map((vote: any, index: number) => {
+                    const voteKind = vote.vote?.votingProcedure?.voteKind;
+                    let voteKindDisplay: "Yes" | "No" | "Abstain" = "Abstain";
+                    if (voteKind) {
+                      const normalized = voteKind.toLowerCase();
+                      if (normalized === "yes") {
+                        voteKindDisplay = "Yes";
+                      } else if (normalized === "no") {
+                        voteKindDisplay = "No";
+                      } else {
+                        voteKindDisplay = "Abstain";
+                      }
+                    }
+                    const drepId = vote.vote?.voter?.drepId || "Unknown";
+                    const govActionId = vote.vote?.govActionId;
+                    const govActionHash = govActionId?.txHash || "Unknown";
+                    const govActionIndex = govActionId?.txIndex ?? "Unknown";
 
-          <ul className="grid gap-3">
-            {appWallet.signersAddresses.map((signerAddress, index) => {
-              return (
-                <li
-                  key={signerAddress}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">
-                      {appWallet.signersDescriptions[index] &&
-                      appWallet.signersDescriptions[index].length > 0
-                        ? `${appWallet.signersDescriptions[index]} (${getFirstAndLast(signerAddress)})`
-                        : getFirstAndLast(signerAddress)}
-                      {signerAddress == userAddress && ` (You)`}
-                    </span>
-                    {signerAddress !== userAddress &&
-                      !transaction.signedAddresses.includes(signerAddress) &&
-                      discordIds &&
-                      Object.keys(discordIds).includes(signerAddress) && (
-                        <span className="flex items-center">
+                    return (
+                      <div key={index} className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <VoteBadge voteKind={voteKindDisplay} />
+                          <span className="text-xs text-muted-foreground">on</span>
+                          <div className="flex items-center gap-1.5">
+                            <Vote className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs font-medium">Governance Action</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5 pl-5">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">DRep:</span>{" "}
+                            <span className="font-mono">{getFirstAndLast(drepId)}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Action ID:</span>{" "}
+                            <span className="font-mono">
+                              {getFirstAndLast(govActionHash)}#{govActionIndex}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <Separator className="my-2" />
+            </>
+          )}
+
+          {/* Signers List - Collapsible */}
+          <Collapsible open={isSignersOpen} onOpenChange={setIsSignersOpen}>
+            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors group">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Signers ({signersCount})
+              </div>
+              {isSignersOpen ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground transition-transform" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 space-y-3">
+                  {/* Remind All Button */}
+                  {pendingCount > 0 && (
+                    <div className="pb-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleRemindAll} 
+                        className="w-full hover:bg-primary/10 hover:border-primary/50 transition-colors"
+                      >
+                        <div className="flex flex-row items-center gap-1.5">
+                          <DiscordIcon className="h-3.5 w-3.5" />
+                          <span>Remind All Signers</span>
+                        </div>
+                      </Button>
+                    </div>
+                  )}
+                  {appWallet.signersAddresses.map((signerAddress, index) => {
+                    const hasSigned = transaction.signedAddresses.includes(signerAddress);
+                    const hasRejected = transaction.rejectedAddresses.includes(signerAddress);
+                    const isPending = !hasSigned && !hasRejected;
+                    const isYou = signerAddress === userAddress;
+                    const canRemind = !isYou && 
+                                     isPending &&
+                                     discordIds &&
+                                     Object.keys(discordIds).includes(signerAddress);
+                    
+                    return (
+                      <div
+                        key={signerAddress}
+                        className={`flex items-center gap-3 p-3.5 rounded-lg border transition-all hover:shadow-sm ${
+                          hasSigned
+                            ? "bg-green-500/10 border-green-500/30 hover:bg-green-500/15"
+                            : hasRejected
+                            ? "bg-red-500/10 border-red-500/30 hover:bg-red-500/15"
+                            : isYou
+                            ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
+                            : "bg-muted/40 border-border/40 hover:bg-muted/60"
+                        }`}
+                      >
+                        <div className={`flex-shrink-0 ${
+                          hasSigned
+                            ? "text-green-600 dark:text-green-400"
+                            : hasRejected
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-muted-foreground"
+                        }`}>
+                          {hasSigned ? (
+                            <div className="p-2 rounded-full bg-green-500/20 border border-green-500/30">
+                              <CheckCircle2 className="h-4 w-4" />
+                            </div>
+                          ) : hasRejected ? (
+                            <div className="p-2 rounded-full bg-red-500/20 border border-red-500/30">
+                              <X className="h-4 w-4" />
+                            </div>
+                          ) : (
+                            <div className="p-2 rounded-full bg-muted border border-border/50">
+                              <User className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-sm font-medium break-words">
+                              {appWallet.signersDescriptions[index] &&
+                              appWallet.signersDescriptions[index].length > 0
+                                ? appWallet.signersDescriptions[index]
+                                : getFirstAndLast(signerAddress)}
+                            </div>
+                            {isYou && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold border border-primary/30">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(signerAddress);
+                              toast({
+                                title: "Address copied",
+                                description: "Signer address copied to clipboard",
+                                duration: 2000,
+                              });
+                            }}
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1 font-mono hover:text-foreground transition-colors group"
+                          >
+                            <span>{getFirstAndLast(signerAddress)}</span>
+                            <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        </div>
+                        {canRemind && (
                           <TooltipProvider>
                             <Tooltip>
-                              <TooltipTrigger>
-                                {!transaction.signedAddresses.includes(
-                                  signerAddress,
-                                ) &&
-                                  discordIds &&
-                                  Object.keys(discordIds).includes(
-                                    signerAddress,
-                                  ) && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        sendReminder(signerAddress)
-                                      }
-                                    >
-                                      <div className="flex flex-row items-center gap-1">
-                                        Remind
-                                        <DiscordIcon />
-                                      </div>
-                                    </Button>
-                                  )}
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => sendReminder(signerAddress)}
+                                  className="h-8 px-2 flex-shrink-0"
+                                >
+                                  <div className="flex flex-row items-center gap-1.5">
+                                    <DiscordIcon className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline text-xs">Remind</span>
+                                  </div>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>Send a Discord reminder.</p>
+                                <p>Send a Discord reminder</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
-                        </span>
-                      )}
-                  </div>
-                  <span>
-                    {transaction.signedAddresses.includes(signerAddress) ? (
-                      <Check className="h-4 w-4 text-green-400" />
-                    ) : transaction.rejectedAddresses.includes(
-                        signerAddress,
-                      ) ? (
-                      <X className="h-4 w-4 text-red-400" />
-                    ) : (
-                      <QuestionMarkIcon className="h-4 w-4" />
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </CardContent>
 
       {userAddress &&
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
-          <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
-            <Button onClick={() => signTx()} disabled={loading}>
+          <CardFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
+            <Button onClick={() => signTx()} disabled={loading} className="w-full sm:w-auto flex-1">
               {loading ? (
                 <Loader className="h-4 w-4 animate-spin" />
               ) : (
@@ -562,6 +800,7 @@ export default function TransactionCard({
               variant="destructive"
               onClick={() => rejectTx()}
               disabled={loading}
+              className="w-full sm:w-auto flex-1"
             >
               {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
             </Button>
@@ -576,13 +815,14 @@ export default function TransactionCard({
             appWallet.signersAddresses.length) ||
         (appWallet.type == "any" && (
           <>
-            <CardFooter className="flex items-center justify-between border-t bg-muted/50 px-6 py-3">
+            <CardFooter className="flex items-center justify-center border-t bg-muted/50 px-4 sm:px-6 py-3">
               <Button
                 variant="destructive"
                 onClick={() => deleteTx()}
                 disabled={loading}
                 loading={loading}
                 hold={3000}
+                className="w-full sm:w-auto"
               >
                 Delete Transaction
               </Button>

@@ -17,7 +17,7 @@ export default function CardUI({
   headerDom?: ReactNode;
 }) {
   return (
-    <Card className={`self-start w-full ${cardClassName || ""}`}>
+    <Card className={`w-full ${cardClassName || ""}`}>
       <CardHeader className="flex flex-row items-start sm:items-center justify-between space-y-0 pb-2 px-4 sm:px-6 pt-4 sm:pt-6 gap-2">
         <CardTitle className="text-lg sm:text-xl font-medium pr-2 flex-1 min-w-0">{title}</CardTitle>
         {headerDom && <div className="flex-shrink-0">{headerDom}</div>}

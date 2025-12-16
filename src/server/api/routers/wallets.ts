@@ -98,9 +98,12 @@ export const walletRouter = createTRPCRouter({
         : ctx.sessionAddress
           ? [ctx.sessionAddress]
           : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
       if (addresses.length > 0 && !addresses.includes(input.address)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
+      // Query wallets where the user is a signer
       return ctx.db.wallet.findMany({
         where: {
           signersAddresses: {
@@ -119,6 +122,8 @@ export const walletRouter = createTRPCRouter({
         : ctx.sessionAddress
           ? [ctx.sessionAddress]
           : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
       if (addresses.length > 0 && !addresses.includes(input.address)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
@@ -268,9 +273,12 @@ export const walletRouter = createTRPCRouter({
         : ctx.sessionAddress
           ? [ctx.sessionAddress]
           : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
       if (addresses.length > 0 && !addresses.includes(input.address)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
+      // Query new wallets owned by the user
       return ctx.db.newWallet.findMany({
         where: {
           ownerAddress: input.address,
@@ -287,9 +295,12 @@ export const walletRouter = createTRPCRouter({
         : ctx.sessionAddress
           ? [ctx.sessionAddress]
           : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
       if (addresses.length > 0 && !addresses.includes(input.address)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
+      // Query new wallets where user is a signer but not the owner
       return ctx.db.newWallet.findMany({
         where: {
           signersAddresses: {

@@ -83,7 +83,9 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   const order = "desc";
 
   // Get DRep ID for fetching voting history (proxy mode or standard mode)
-  const standardDrepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+  // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
+  // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+  const standardDrepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
   
   // Get proxy DRep ID if proxy is enabled
   useEffect(() => {

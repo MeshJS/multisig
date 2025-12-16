@@ -9,10 +9,12 @@ import { getFirstAndLast } from "@/utils/strings";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildMultisigWallet, getWalletType } from "@/utils/common";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Archive } from "lucide-react";
 import PageHeader from "@/components/common/page-header";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
@@ -29,10 +31,21 @@ export default function PageWallets() {
   const [showArchived, setShowArchived] = useState(false);
   const userAddress = useUserStore((state) => state.userAddress);
 
+  // Check wallet session authorization before enabling queries
+  const { data: walletSession } = api.auth.getWalletSession.useQuery(
+    { address: userAddress ?? "" },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+      refetchOnWindowFocus: false,
+    },
+  );
+  const isAuthorized = walletSession?.authorized ?? false;
+
   const { data: newPendingWallets, isLoading: isLoadingNewWallets } = api.wallet.getUserNewWallets.useQuery(
     { address: userAddress! },
     {
-      enabled: userAddress !== undefined,
+      // Only enable query when user is authorized (prevents 403 errors)
+      enabled: userAddress !== undefined && isAuthorized,
       retry: (failureCount, error) => {
         // Don't retry on authorization errors (403)
         if (error && typeof error === "object") {
@@ -60,15 +73,24 @@ export default function PageWallets() {
     api.wallet.getUserNewWalletsNotOwner.useQuery(
       { address: userAddress! },
       {
-        enabled: userAddress !== undefined,
+        // Only enable query when user is authorized (prevents 403 errors)
+        enabled: userAddress !== undefined && isAuthorized,
         retry: (failureCount, error) => {
           // Don't retry on authorization errors (403)
           if (error && typeof error === "object") {
-            const err = error as { code?: string; message?: string; data?: { code?: string } };
+            const err = error as { 
+              code?: string; 
+              message?: string; 
+              data?: { code?: string; httpStatus?: number };
+              shape?: { code?: string; message?: string };
+            };
+            const errorMessage = err.message || err.shape?.message || "";
             const isAuthError =
               err.code === "FORBIDDEN" ||
               err.data?.code === "FORBIDDEN" ||
-              err.message?.includes("Address mismatch");
+              err.data?.httpStatus === 403 ||
+              err.shape?.code === "FORBIDDEN" ||
+              errorMessage.includes("Address mismatch");
             if (isAuthError) return false;
           }
           return failureCount < 1;
@@ -216,6 +238,11 @@ function CardWallet({
     walletId: wallet.id,
   });
 
+  // Check wallet type for badge display using centralized detection
+  const walletType = getWalletType(wallet);
+  const isSummonWallet = walletType === 'summon';
+  const isLegacyWallet = walletType === 'legacy';
+
   // Rebuild the multisig wallet to get the correct canonical address for display
   // This ensures we show the correct address even if wallet.address was built incorrectly
   const displayAddress = useMemo(() => {
@@ -240,6 +267,17 @@ function CardWallet({
         title={`${wallet.name}${wallet.isArchived ? " (Archived)" : ""}`}
         description={wallet.description}
         cardClassName=""
+        headerDom={
+          isSummonWallet ? (
+            <Badge 
+              variant="outline" 
+              className="text-xs bg-orange-600/10 border-orange-600/30 text-orange-700 dark:text-orange-400"
+            >
+              <Archive className="h-3 w-3 mr-1" />
+              Summon
+            </Badge>
+          ) : undefined
+        }
       >
         <WalletBalance balance={balance} loadingState={loadingState} />
         <RowLabelInfo

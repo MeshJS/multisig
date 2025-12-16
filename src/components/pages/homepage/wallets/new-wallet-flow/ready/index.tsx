@@ -6,7 +6,7 @@ import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
-import { buildWallet } from "@/hooks/common";
+import { buildWallet } from "@/utils/common";
 
 import PageHeader from "@/components/common/page-header";
 import {

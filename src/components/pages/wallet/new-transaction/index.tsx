@@ -178,6 +178,11 @@ export default function PageNewTransaction() {
               unit: outputs[i]!.unit,
               quantity: outputs[i]!.amount,
             },
+            // if unit is not lovelace, add 1160000 lovelace as native assets are not allowed to be in an output alone.
+            ...(outputs[i]!.unit !== "lovelace" ? [{
+              unit: "lovelace",
+              quantity: "1160000",
+            }] : [])
           ]);
         }
       }
@@ -263,6 +268,35 @@ export default function PageNewTransaction() {
       </div>
 
       <div className="grid gap-4 sm:gap-6">
+        <CardUI 
+          title="Description"
+          description="Provide context and information for other signers about this transaction"
+          cardClassName="w-full"
+        >
+          <div className="space-y-3">
+            <Textarea
+              className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
+              value={description}
+              onChange={(e) => {
+                if (e.target.value.length <= 128)
+                  setDescription(e.target.value);
+              }}
+              placeholder="e.g., Payment for services, Contribution to project, etc."
+            />
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
+              <span>Optional description for signers</span>
+              <span className={description.length >= 128 ? "text-destructive" : ""}>
+                {description.length}/128
+              </span>
+            </div>
+            {description.length >= 128 && (
+              <p className="text-sm text-destructive">
+                Description should be less than 128 characters
+              </p>
+            )}
+          </div>
+        </CardUI>
+
         <CardUI 
           title="Recipients" 
           description="Specify the recipients and amounts for your transaction"
@@ -468,36 +502,6 @@ export default function PageNewTransaction() {
             recipientAssets={assets}
           />
         )}
-      </CardUI>
-
-
-      <CardUI
-        title="Description"
-        description="Provide context and information for other signers about this transaction"
-        cardClassName="w-full"
-      >
-        <div className="space-y-3">
-          <Textarea
-            className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
-            value={description}
-            onChange={(e) => {
-              if (e.target.value.length <= 128)
-                setDescription(e.target.value);
-            }}
-            placeholder="e.g., Payment for services, Contribution to project, etc."
-          />
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
-            <span>Optional description for signers</span>
-            <span className={description.length >= 128 ? "text-destructive" : ""}>
-              {description.length}/128
-            </span>
-          </div>
-          {description.length >= 128 && (
-            <p className="text-sm text-destructive">
-              Description should be less than 128 characters
-            </p>
-          )}
-        </div>
       </CardUI>
 
       <CardUI
