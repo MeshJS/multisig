@@ -27,10 +27,11 @@ export type WalletType = 'legacy' | 'sdk' | 'summon';
 export function getWalletType(wallet: DbWalletWithLegacy): WalletType {
   if (wallet.rawImportBodies?.multisig) return 'summon';
   
-  // Legacy: no stake keys, no stake credential hash, no DRep keys
+  // Legacy: only payment keys (no stake keys, no DRep keys)
+  // External stake credential hash doesn't make it SDK - it's still legacy if only payment keys
   const hasStakeKeys = wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0;
   const hasDRepKeys = wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0;
-  if (!hasStakeKeys && !wallet.stakeCredentialHash && !hasDRepKeys) return 'legacy';
+  if (!hasStakeKeys && !hasDRepKeys) return 'legacy';
   
   return 'sdk';
 }
@@ -262,10 +263,11 @@ export function buildWallet(
       nativeScript.required = wallet.numRequiredSigners!;
     }
 
-    // Build address from payment script only (no staking)
+    // Build address from payment script with external stake credential hash if available
+    // Legacy wallets can have external stake key hash but no individual stake keys
     const address = serializeNativeScript(
       nativeScript as NativeScript,
-      undefined, // No stake credential hash for legacy wallets
+      wallet.stakeCredentialHash as undefined | string, // Use external stake credential hash if available
       network,
     ).address;
 
