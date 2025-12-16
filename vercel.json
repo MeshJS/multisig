@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "src/pages/api/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "framework": "nextjs",
+  "regions": ["fra1"]
+}
+

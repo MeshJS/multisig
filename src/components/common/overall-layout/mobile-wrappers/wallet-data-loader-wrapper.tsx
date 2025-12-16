@@ -12,7 +12,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
-import { WalletAuthModal } from "@/components/common/modals/WalletAuthModal";
+// WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts
 import { useUserStore } from "@/lib/zustand/user";
 
 interface WalletDataLoaderWrapperProps {
@@ -27,7 +27,6 @@ export default function WalletDataLoaderWrapper({
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const prevWalletIdRef = useRef<string | null>(null);
   const ctx = api.useUtils();
@@ -57,12 +56,8 @@ export default function WalletDataLoaderWrapper({
 
   const userAddress = useUserStore((state) => state.userAddress);
 
-  const walletSessionQuery = api.auth.getWalletSession.useQuery(
-    { address: userAddress ?? "" },
-    {
-      enabled: !!userAddress,
-    },
-  );
+  // Session check is now handled in layout.tsx to avoid duplicate modals
+  // Removed walletSessionQuery from here to prevent duplicate authorization prompts
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -254,18 +249,8 @@ export default function WalletDataLoaderWrapper({
     }
   }, [appWallet]);
 
-  useEffect(() => {
-    if (!userAddress) return;
-    if (walletSessionQuery.isLoading || walletSessionQuery.error) return;
-    if (walletSessionQuery.data && !walletSessionQuery.data.authorized) {
-      setShowAuthModal(true);
-    }
-  }, [
-    userAddress,
-    walletSessionQuery.isLoading,
-    walletSessionQuery.error,
-    walletSessionQuery.data,
-  ]);
+  // Session check and authorization modal are now handled in layout.tsx
+  // This prevents duplicate authorization prompts
 
   if (mode === "button") {
     return (
@@ -279,22 +264,7 @@ export default function WalletDataLoaderWrapper({
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
-        {userAddress && (
-          <WalletAuthModal
-            address={userAddress}
-            open={showAuthModal}
-            onClose={() => setShowAuthModal(false)}
-            onAuthorized={() => {
-              void walletSessionQuery.refetch();
-              void ctx.transaction.getPendingTransactions.invalidate();
-              void ctx.transaction.getAllTransactions.invalidate();
-              void ctx.signable.getPendingSignables.invalidate();
-              void ctx.signable.getCompleteSignables.invalidate();
-              void ctx.proxy.getProxiesByUserOrWallet.invalidate();
-              void ctx.migration.getPendingMigrations.invalidate();
-            }}
-          />
-        )}
+        {/* Authorization modal is handled in layout.tsx to avoid duplicate prompts */}
       </>
     );
   }
@@ -309,22 +279,7 @@ export default function WalletDataLoaderWrapper({
         <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         <span>Refresh Wallet</span>
       </div>
-      {userAddress && (
-        <WalletAuthModal
-          address={userAddress}
-          open={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-          onAuthorized={() => {
-            void walletSessionQuery.refetch();
-            void ctx.transaction.getPendingTransactions.invalidate();
-            void ctx.transaction.getAllTransactions.invalidate();
-            void ctx.signable.getPendingSignables.invalidate();
-            void ctx.signable.getCompleteSignables.invalidate();
-            void ctx.proxy.getProxiesByUserOrWallet.invalidate();
-            void ctx.migration.getPendingMigrations.invalidate();
-          }}
-        />
-      )}
+      {/* Authorization modal is handled in layout.tsx to avoid duplicate prompts */}
     </>
   );
 }

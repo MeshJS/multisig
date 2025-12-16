@@ -3,10 +3,12 @@ import { api } from "@/utils/api";
 
 export default function useUser() {
   const userAddress = useUserStore((state) => state.userAddress);
+  const queryEnabled = userAddress !== undefined && userAddress !== null && userAddress !== "";
+  
   const { data: user, isLoading, error } = api.user.getUserByAddress.useQuery(
     { address: userAddress! },
     {
-      enabled: userAddress !== undefined && userAddress !== null && userAddress !== "",
+      enabled: queryEnabled,
       retry: false,
       refetchOnWindowFocus: false,
       staleTime: 1 * 60 * 1000, // 1 minute (user data)

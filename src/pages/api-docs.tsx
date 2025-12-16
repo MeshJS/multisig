@@ -26,9 +26,32 @@ export default function ApiDocs() {
     setGeneratedToken(null); // Clear previous token
     setCopied(false); // Reset copy state
     try {
-      // Get the wallet address
-      const addresses = await wallet.getUsedAddresses();
-      const address = addresses[0];
+      // Get the wallet address - try used addresses first, fall back to unused
+      let address: string | undefined;
+      try {
+        const usedAddresses = await wallet.getUsedAddresses();
+        address = usedAddresses[0];
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("account changed")) {
+          throw error;
+        }
+      }
+      
+      // Fall back to unused addresses if no used addresses found
+      if (!address) {
+        try {
+          const unusedAddresses = await wallet.getUnusedAddresses();
+          address = unusedAddresses[0];
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("account changed")) {
+            throw error;
+          }
+        }
+      }
+      
+      if (!address) {
+        throw new Error("No addresses found for wallet");
+      }
 
       // Step 1: Get nonce
       const nonceResponse = await fetch(`/api/v1/getNonce?address=${address}`);

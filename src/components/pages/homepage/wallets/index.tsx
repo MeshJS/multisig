@@ -20,25 +20,59 @@ import SectionTitle from "@/components/common/section-title";
 import WalletBalance from "./WalletBalance";
 import EmptyWalletsState from "./EmptyWalletsState";
 import SectionExplanation from "./SectionExplanation";
+import WalletCardSkeleton from "./WalletCardSkeleton";
+import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
 
 
 export default function PageWallets() {
-  const { wallets } = useUserWallets();
+  const { wallets, isLoading: isLoadingWallets } = useUserWallets();
   const [showArchived, setShowArchived] = useState(false);
   const userAddress = useUserStore((state) => state.userAddress);
 
-  const { data: newPendingWallets } = api.wallet.getUserNewWallets.useQuery(
+  const { data: newPendingWallets, isLoading: isLoadingNewWallets } = api.wallet.getUserNewWallets.useQuery(
     { address: userAddress! },
     {
       enabled: userAddress !== undefined,
+      retry: (failureCount, error) => {
+        // Don't retry on authorization errors (403)
+        if (error && typeof error === "object") {
+          const err = error as { 
+            code?: string; 
+            message?: string; 
+            data?: { code?: string; httpStatus?: number };
+            shape?: { code?: string; message?: string };
+          };
+          const errorMessage = err.message || err.shape?.message || "";
+          const isAuthError =
+            err.code === "FORBIDDEN" ||
+            err.data?.code === "FORBIDDEN" ||
+            err.data?.httpStatus === 403 ||
+            err.shape?.code === "FORBIDDEN" ||
+            errorMessage.includes("Address mismatch");
+          if (isAuthError) return false;
+        }
+        return failureCount < 1;
+      },
     },
   );
 
-  const { data: getUserNewWalletsNotOwner } =
+  const { data: getUserNewWalletsNotOwner, isLoading: isLoadingNewWalletsNotOwner } =
     api.wallet.getUserNewWalletsNotOwner.useQuery(
       { address: userAddress! },
       {
         enabled: userAddress !== undefined,
+        retry: (failureCount, error) => {
+          // Don't retry on authorization errors (403)
+          if (error && typeof error === "object") {
+            const err = error as { code?: string; message?: string; data?: { code?: string } };
+            const isAuthError =
+              err.code === "FORBIDDEN" ||
+              err.data?.code === "FORBIDDEN" ||
+              err.message?.includes("Address mismatch");
+            if (isAuthError) return false;
+          }
+          return failureCount < 1;
+        },
       },
     );
 
@@ -68,8 +102,15 @@ export default function PageWallets() {
         </PageHeader>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {wallets && wallets.length === 0 && <EmptyWalletsState />}
-          {wallets &&
+          {isLoadingWallets && (
+            <>
+              <WalletCardSkeleton />
+              <WalletCardSkeleton />
+              <WalletCardSkeleton />
+            </>
+          )}
+          {!isLoadingWallets && wallets && wallets.length === 0 && <EmptyWalletsState />}
+          {!isLoadingWallets && wallets &&
             wallets
               .filter((wallet) => showArchived || !wallet.isArchived)
               .sort((a, b) =>
@@ -93,7 +134,19 @@ export default function PageWallets() {
               })}
         </div>
 
-        {newPendingWallets && newPendingWallets.length > 0 && (
+        {isLoadingNewWallets && (
+          <>
+            <SectionTitle>New Wallets to be created</SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have initiated but not yet created on-chain. Complete the wallet creation process to deploy them."
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <WalletInviteCardSkeleton />
+              <WalletInviteCardSkeleton />
+            </div>
+          </>
+        )}
+        {!isLoadingNewWallets && newPendingWallets && newPendingWallets.length > 0 && (
           <>
             <SectionTitle>New Wallets to be created</SectionTitle>
             <SectionExplanation
@@ -113,7 +166,21 @@ export default function PageWallets() {
           </>
         )}
 
-        {getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
+        {isLoadingNewWalletsNotOwner && (
+          <>
+            <SectionTitle>
+              New Wallets awaiting creation
+            </SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have been invited to join as a signer. You can view details and accept or decline the invitation."
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <WalletInviteCardSkeleton />
+              <WalletInviteCardSkeleton />
+            </div>
+          </>
+        )}
+        {!isLoadingNewWalletsNotOwner && getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
           <>
             <SectionTitle>
               New Wallets awaiting creation

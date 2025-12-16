@@ -43,10 +43,45 @@ export default function PageNewWalletInvite() {
 
   const utils = api.useUtils();
 
+  // Check if user has a wallet session before querying
+  const { data: walletSession } = api.auth.getWalletSession.useQuery(
+    { address: userAddress ?? "" },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+      refetchOnWindowFocus: false,
+    },
+  );
+  const isAuthorized = walletSession?.authorized ?? false;
+
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
     {
-      enabled: pathIsNewWallet && newWalletId !== undefined,
+      enabled: pathIsNewWallet && newWalletId !== undefined && isAuthorized,
+      retry: (failureCount, error) => {
+        // Don't retry on authorization errors (403/401)
+        if (error && typeof error === "object") {
+          const err = error as { 
+            code?: string; 
+            message?: string; 
+            data?: { code?: string; httpStatus?: number };
+            shape?: { code?: string; message?: string };
+          };
+          const errorMessage = err.message || err.shape?.message || "";
+          const isAuthError =
+            err.code === "FORBIDDEN" ||
+            err.code === "UNAUTHORIZED" ||
+            err.data?.code === "FORBIDDEN" ||
+            err.data?.code === "UNAUTHORIZED" ||
+            err.data?.httpStatus === 403 ||
+            err.data?.httpStatus === 401 ||
+            err.shape?.code === "FORBIDDEN" ||
+            err.shape?.code === "UNAUTHORIZED" ||
+            errorMessage.includes("Not authorized") ||
+            errorMessage.includes("Unauthorized");
+          if (isAuthError) return false;
+        }
+        return failureCount < 1;
+      },
     },
   );
 
