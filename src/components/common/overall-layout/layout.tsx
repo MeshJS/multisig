@@ -1,4 +1,4 @@
-import React, { useEffect, Component, ReactNode, useMemo, useCallback } from "react";
+import React, { useEffect, Component, ReactNode, useMemo, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
@@ -11,6 +11,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { WalletAuthModal } from "@/components/common/modals/WalletAuthModal";
 
 import SessionProvider from "@/components/SessionProvider";
 import { getServerSession } from "next-auth";
@@ -60,11 +61,8 @@ class WalletErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('Error caught by wallet boundary:', error, errorInfo);
-    
     // Handle specific wallet errors
     if (error.message.includes("account changed")) {
-      console.log("Wallet account changed error caught by boundary, reloading page...");
       window.location.reload();
       return;
     }
@@ -86,7 +84,7 @@ export default function RootLayout({
   const { wallet } = useWallet();
   const { state: walletState, connectedWalletInstance } = useWalletContext();
   const address = useAddress();
-  const { user, isLoading } = useUser();
+  const { user, isLoading: isLoadingUser } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
@@ -95,6 +93,12 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const ctx = api.useUtils();
+  
+  // State for wallet authorization modal
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(false);
+  const [hasCheckedSession, setHasCheckedSession] = useState(false); // Prevent duplicate checks
+  const [showPostAuthLoading, setShowPostAuthLoading] = useState(false); // Show loading after authorization
   
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);
@@ -106,15 +110,17 @@ export default function RootLayout({
   // Global error handler for unhandled promise rejections
   useEffect(() => {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      console.error('Unhandled promise rejection:', event.reason);
-      
       // Handle wallet-related errors specifically
       if (event.reason && typeof event.reason === 'object') {
         const error = event.reason as Error;
         if (error.message && error.message.includes("account changed")) {
-          console.log("Account changed error caught by global handler, reloading page...");
           event.preventDefault(); // Prevent the error from being logged to console
           window.location.reload();
+          return;
+        }
+        // Handle "too many requests" errors silently (rate limiting)
+        if (error.message && error.message.includes("too many requests")) {
+          event.preventDefault(); // Prevent the error from being logged to console
           return;
         }
       }
@@ -156,10 +162,9 @@ export default function RootLayout({
       if (context?.previous) {
         ctx.user.getUserByAddress.setData({ address: variables.address }, context.previous);
       }
-      console.error("Error creating user:", err);
+      // Error creating user - handled silently
     },
     onSuccess: (_, variables) => {
-      console.log("User created/updated successfully, invalidating user query");
       // Invalidate to ensure we have the latest data
       void ctx.user.getUserByAddress.invalidate({ address: variables.address });
     },
@@ -197,10 +202,9 @@ export default function RootLayout({
       if (context?.previous && variables.address) {
         ctx.user.getUserByAddress.setData({ address: variables.address }, context.previous);
       }
-      console.error("Error updating user:", err);
+      // Error updating user - handled silently
     },
     onSuccess: (_, variables) => {
-      console.log("User updated successfully, invalidating user query");
       if (variables.address) {
         void ctx.user.getUserByAddress.invalidate({ address: variables.address });
       }
@@ -213,19 +217,58 @@ export default function RootLayout({
       setUserAddress(address);
     }
   }, [address, setUserAddress]);
+  
+  // Also try to get address from wallet directly if useAddress doesn't work
+  const fetchingAddressRef = useRef(false);
+  useEffect(() => {
+    // Prevent multiple simultaneous calls
+    if (fetchingAddressRef.current) return;
+    
+    if (connected && activeWallet && !address && !userAddress) {
+      fetchingAddressRef.current = true;
+      activeWallet.getUsedAddresses()
+        .then((addresses) => {
+          if (addresses && addresses.length > 0) {
+            setUserAddress(addresses[0]!);
+            fetchingAddressRef.current = false;
+          } else {
+            return activeWallet.getUnusedAddresses();
+          }
+        })
+        .then((addresses) => {
+          if (addresses && addresses.length > 0 && !userAddress) {
+            setUserAddress(addresses[0]!);
+          }
+          fetchingAddressRef.current = false;
+        })
+        .catch((error) => {
+          // Handle "too many requests" error gracefully
+          if (error instanceof Error && error.message.includes("too many requests")) {
+            // Silently ignore rate limit errors - address will be fetched later
+          }
+          fetchingAddressRef.current = false;
+        });
+    }
+  }, [connected, activeWallet, address, userAddress, setUserAddress]);
 
   // Initialize wallet and create user when connected
   useEffect(() => {
-    if (!connected || !activeWallet || user || !address) return;
+    // Use userAddress from store instead of address from hook (hook might not work)
+    const walletAddress = userAddress || address;
+    if (!connected || !activeWallet || user || !walletAddress) {
+      return;
+    }
 
     async function initializeWallet() {
-      if (!address) return;
+      if (!walletAddress) return;
       
       try {
         // Get stake address
         const stakeAddresses = await activeWallet.getRewardAddresses();
         const stakeAddress = stakeAddresses[0];
-        if (!stakeAddress) return;
+        if (!stakeAddress) {
+          return;
+        }
 
         // Get DRep key hash (optional)
         let drepKeyHash = "";
@@ -241,13 +284,12 @@ export default function RootLayout({
         // Create or update user
         const nostrKey = generateNsec();
         createUser({
-          address,
+          address: walletAddress,
           stakeAddress,
           drepKeyHash,
           nostrKey: JSON.stringify(nostrKey),
         });
       } catch (error) {
-        console.error("Error initializing wallet:", error);
         if (error instanceof Error && error.message.includes("account changed")) {
           window.location.reload();
         }
@@ -255,7 +297,93 @@ export default function RootLayout({
     }
 
     initializeWallet();
-  }, [connected, activeWallet, user, address, createUser, generateNsec]);
+  }, [connected, activeWallet, user, userAddress, address, createUser, generateNsec]);
+
+  // Check wallet session and show authorization modal for first-time connections
+  // Check session as soon as wallet is connected and address is available (don't wait for user)
+  // Use userAddress from store (which we set from wallet) instead of address from hook
+  const walletAddressForSession = userAddress || address;
+  // Only check session once per wallet connection (prevent duplicate checks)
+  const shouldCheckSession = !!connected && !!walletAddressForSession && !checkingSession && !hasCheckedSession && walletAddressForSession.length > 0;
+  const { data: walletSessionData, isLoading: isLoadingWalletSession, refetch: refetchWalletSession } = api.auth.getWalletSession.useQuery(
+    { address: walletAddressForSession ?? "" },
+    { 
+      enabled: shouldCheckSession,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false, // Don't refetch on mount to prevent duplicate checks
+    }
+  );
+  
+
+  useEffect(() => {
+    // Only check session once per wallet connection
+    // Use userAddress from store (which we set from wallet) instead of address from hook
+    const walletAddressForCheck = userAddress || address;
+    if (!connected || !walletAddressForCheck || walletAddressForCheck.length === 0 || showAuthModal || checkingSession || hasCheckedSession) {
+      return;
+    }
+
+    // Wait for query to finish loading
+    if (isLoadingWalletSession) {
+      return;
+    }
+
+    // Check if wallet has an active session
+    // Only show modal if we have data (not undefined) and wallet is not authorized
+    if (walletSessionData !== undefined) {
+      setHasCheckedSession(true); // Mark as checked to prevent duplicate checks
+      const hasSession = walletSessionData.authorized ?? false;
+      
+      if (!hasSession) {
+        // Wallet is connected but doesn't have a session - show authorization modal
+        setCheckingSession(true);
+        setShowAuthModal(true);
+      }
+    }
+  }, [connected, user, userAddress, address, walletSessionData, showAuthModal, checkingSession, isLoadingWalletSession, hasCheckedSession]);
+  
+  // Reset hasCheckedSession when wallet disconnects or address changes
+  useEffect(() => {
+    if (!connected) {
+      setHasCheckedSession(false);
+      setCheckingSession(false);
+      setShowAuthModal(false);
+    }
+  }, [connected]);
+  
+  // Reset hasCheckedSession when address changes (different wallet connected)
+  const prevAddressRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentAddress = userAddress || address;
+    if (prevAddressRef.current !== undefined && prevAddressRef.current !== currentAddress) {
+      // Address changed, reset session check
+      setHasCheckedSession(false);
+      setCheckingSession(false);
+      setShowAuthModal(false);
+    }
+    prevAddressRef.current = currentAddress;
+  }, [userAddress, address]);
+
+  const handleAuthModalClose = useCallback(() => {
+    setShowAuthModal(false);
+    setCheckingSession(false);
+    setHasCheckedSession(true); // Mark as checked to prevent showing modal again
+    // Don't refetch here - let the natural query refetch handle it if needed
+  }, []);
+
+  const handleAuthModalAuthorized = useCallback(() => {
+    setShowAuthModal(false);
+    setCheckingSession(false);
+    setHasCheckedSession(true); // Mark as checked so we don't check again
+    // Show loading skeleton for smooth transition
+    setShowPostAuthLoading(true);
+    // Refetch session after authorization to update state (but don't show modal again)
+    void refetchWalletSession();
+    // Hide loading after a brief delay to allow data to load
+    setTimeout(() => {
+      setShowPostAuthLoading(false);
+    }, 1000);
+  }, [refetchWalletSession]);
 
   // Memoize computed route values
   const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
@@ -281,7 +409,6 @@ export default function RootLayout({
         setLastWalletStakingEnabled(stakingEnabled);
       } catch (error) {
         // Don't update state on error - keep the last known value
-        console.error("Error checking staking status:", error);
       }
     }
   }, [router.query.wallet, isWalletPath, appWallet, multisigWallet]);
@@ -303,17 +430,34 @@ export default function RootLayout({
   const showWalletMenu = useMemo(() => isLoggedIn && (isWalletPath || !!lastVisitedWalletId), [isLoggedIn, isWalletPath, lastVisitedWalletId]);
 
   // Don't show background loading when wallet is connecting or just connected (button already shows spinner)
-  // The connect button shows a spinner when: connecting OR (connected && (!user || userLoading))
+  // The connect button shows a spinner when: connecting OR (connected && address exists but user doesn't exist yet and user is loading)
   const isConnecting = useMemo(() => String(walletState) === String(WalletState.CONNECTING), [walletState]);
-  const isButtonShowingSpinner = useMemo(() => isConnecting || (connected && (!user || isLoading)), [isConnecting, connected, user, isLoading]);
-  const shouldShowBackgroundLoading = useMemo(() => isLoading && !isButtonShowingSpinner, [isLoading, isButtonShowingSpinner]);
+  // Only show button spinner if we're actually connecting, or if we have an address but no user yet
+  const isButtonShowingSpinner = useMemo(() => {
+    const result = isConnecting || (connected && !!address && !user && isLoadingUser);
+    return result;
+  }, [isConnecting, connected, address, user, isLoadingUser]);
+  
+  // Only show background loading if:
+  // 1. User is loading AND user doesn't exist yet (if user exists, no need to show loading)
+  // 2. We have an address (user query is actually running)
+  // 3. The button spinner is not showing (to avoid double spinners)
+  // 4. User address is set (to ensure query is enabled)
+  const shouldShowBackgroundLoading = useMemo(() => {
+    // Don't show loading if user already exists (even if query is still loading)
+    if (user) {
+      return false;
+    }
+    const result = isLoadingUser && !!address && address.length > 0 && !!userAddress && !isButtonShowingSpinner;
+    return result;
+  }, [isLoadingUser, address, userAddress, isButtonShowingSpinner, user]);
   
   // Memoize wallet ID for menu
   const walletIdForMenu = useMemo(() => (router.query.wallet as string) || lastVisitedWalletId || undefined, [router.query.wallet, lastVisitedWalletId]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">
-      {shouldShowBackgroundLoading && (
+      {(shouldShowBackgroundLoading || showPostAuthLoading) && (
         <div className="fixed inset-0 z-50 transition-opacity duration-300 ease-in-out opacity-100">
           <Loading />
         </div>
@@ -475,6 +619,17 @@ export default function RootLayout({
           </WalletErrorBoundary>
         </main>
       </div>
+      
+      {/* Wallet Authorization Modal - shows when wallet is connected but not authorized */}
+      {(userAddress || address) && (
+        <WalletAuthModal
+          address={userAddress || address || ""}
+          open={showAuthModal}
+          onClose={handleAuthModalClose}
+          onAuthorized={handleAuthModalAuthorized}
+          autoAuthorize={true}
+        />
+      )}
     </div>
   );
 }

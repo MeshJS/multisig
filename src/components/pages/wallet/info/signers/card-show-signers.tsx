@@ -125,9 +125,14 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
       addresses: appWallet.signersAddresses,
     });
 
-  const { data: currentUserDiscordId } = api.user.getUserDiscordId.useQuery({
-    address: userAddress ?? "",
-  });
+  const { data: currentUserDiscordId } = api.user.getUserDiscordId.useQuery(
+    {
+      address: userAddress ?? "",
+    },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+    }
+  );
 
   const signersList = useMemo(() => {
     async function signVerify() {

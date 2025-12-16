@@ -30,18 +30,61 @@ const assertWalletAccess = async (ctx: any, walletId: string, requester: string)
   return wallet;
 };
 
-const assertNewWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+// Check if user is the owner of the wallet
+const assertNewWalletOwnerAccess = async (ctx: any, walletId: string, requester: string) => {
   const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
+  
+  // Check if requester is the owner (exact match)
+  const isOwner = wallet.ownerAddress === requester;
+  
+  // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
+  
+  if (!isOwner && !isOwnerViaSession) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can perform this action" });
+  }
+  return wallet;
+};
+
+// Check if user is a signer or owner (for read access)
+const assertNewWalletSignerAccess = async (ctx: any, walletId: string, requester: string) => {
+  const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+  
+  // Check if user is the owner (owners always have full access)
+  const isOwner = wallet.ownerAddress === requester;
+  
+  // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
+  
+  if (isOwner || isOwnerViaSession) {
+    return wallet;
+  }
+  
+  // Check if user is a signer
   const isSigner =
     Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
-  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
-  if (!isSigner && !isOwner) {
+  
+  // Also check if any signer address is in sessionWallets
+  const isSignerViaSession = Array.isArray(wallet.signersAddresses) && 
+    wallet.signersAddresses.some((addr: string) => sessionWallets.includes(addr));
+  
+  if (!isSigner && !isSignerViaSession) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
   }
   return wallet;
+};
+
+// Check if user can read the wallet (signer or owner)
+const assertNewWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+  return assertNewWalletSignerAccess(ctx, walletId, requester);
 };
 
 export const walletRouter = createTRPCRouter({
@@ -325,7 +368,8 @@ export const walletRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      await assertNewWalletAccess(ctx, input.walletId, sessionAddress);
+      // Only owners can update the entire wallet
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.update({
         where: {
@@ -357,7 +401,8 @@ export const walletRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      await assertNewWalletAccess(ctx, input.walletId, sessionAddress);
+      // Only owners can update all signers
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -380,7 +425,34 @@ export const walletRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      await assertNewWalletAccess(ctx, input.walletId, sessionAddress);
+      const wallet = await assertNewWalletSignerAccess(ctx, input.walletId, sessionAddress);
+      
+      // Check if user is the owner - owners can update all descriptions
+      const isOwner = wallet.ownerAddress === sessionAddress;
+      
+      if (!isOwner) {
+        // Non-owners can only update their own description
+        // Find the signer's index in the signersAddresses array
+        const signerIndex = wallet.signersAddresses.indexOf(sessionAddress);
+        if (signerIndex < 0) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You are not a signer of this wallet" });
+        }
+        
+        // Verify that only the signer's own description is being changed
+        // All other descriptions must remain the same
+        for (let i = 0; i < wallet.signersDescriptions.length; i++) {
+          if (i !== signerIndex && wallet.signersDescriptions[i] !== input.signersDescriptions[i]) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You can only update your own description" });
+          }
+        }
+        
+        // Verify the array lengths match
+        if (input.signersDescriptions.length !== wallet.signersDescriptions.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Descriptions array length mismatch" });
+        }
+      }
+      
+      // Owners can update all, signers can only update their own (validated above)
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -431,7 +503,8 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      await assertNewWalletAccess(ctx, input.walletId, sessionAddress);
+      // Only owners can delete the wallet
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.newWallet.delete({
         where: {
           id: input.walletId,

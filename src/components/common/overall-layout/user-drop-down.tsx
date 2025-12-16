@@ -61,9 +61,14 @@ export default function UserDropDown() {
     }
   }
 
-  const { data: discordData } = api.user.getUserDiscordId.useQuery({
-    address: userAddress ?? "",
-  });
+  const { data: discordData } = api.user.getUserDiscordId.useQuery(
+    {
+      address: userAddress ?? "",
+    },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+    }
+  );
 
   return (
     <DropdownMenu>

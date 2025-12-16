@@ -18,9 +18,17 @@ export default createNextApiHandler({
       error.message.includes("P1008") ||
       error.message.includes("P1017");
 
+    // Skip logging expected authorization errors (403/401, address mismatch, not authorized)
+    const isExpectedAuthError =
+      error.code === "FORBIDDEN" ||
+      error.code === "UNAUTHORIZED" ||
+      error.message.includes("Address mismatch") ||
+      error.message.includes("Not authorized") ||
+      error.message.includes("Unauthorized");
+
     if (isConnectionError) {
       console.error(`Database connection error on ${path ?? "<no-path>"}: ${error.message}`);
-    } else if (env.NODE_ENV === "development") {
+    } else if (!isExpectedAuthError && env.NODE_ENV === "development") {
       console.error(`tRPC failed on ${path ?? "<no-path>"}: ${error.message}`);
     }
   },
