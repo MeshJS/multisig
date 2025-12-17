@@ -141,6 +141,9 @@ export default function PageNewTransaction() {
             unit,
             (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
           );
+          if (unit !== "lovelace") {
+            assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+          }
         }
       }
       const utxos = manualUtxos;
