@@ -13,7 +13,7 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
     PINATA_JWT: z.string(),
-    GITHUB_TOKEN: z.string(),
+    GITHUB_TOKEN: z.string().optional(),
     JWT_SECRET: z.string().min(32),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"

@@ -1,0 +1,110 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: multisig-postgres-dev
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: multisig
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - multisig-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: multisig-app-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/multisig
+      - DIRECT_URL=postgresql://postgres:postgres@postgres:5432/multisig
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - multisig-network
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL to be ready...' &&
+        until pg_isready -h postgres -p 5432 -U postgres; do
+          sleep 1
+        done &&
+        echo 'PostgreSQL is ready!' &&
+        echo 'Running database migrations...' &&
+        npx prisma migrate deploy || npx prisma db push &&
+        echo 'Starting development server...' &&
+        npm run dev
+      "
+
+  # Optional: Database initialization service
+  # Note: For better migration management, use Ansible instead:
+  #   cd ansible && make setup
+  #   or: cd ansible && ansible-playbook playbooks/dev-db-setup.yml
+  db-init:
+    image: node:20-alpine
+    container_name: multisig-db-init-dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./docker/ensure-roles.sh:/docker/ensure-roles.sh:ro
+      - ./docker/fix-crowdfund-rls.sh:/docker/fix-crowdfund-rls.sh:ro
+    command: >
+      sh -c "
+        apk add --no-cache postgresql-client &&
+        echo 'Waiting for PostgreSQL to be ready...' &&
+        until pg_isready -h postgres -p 5432 -U postgres; do
+          sleep 1
+        done &&
+        echo 'PostgreSQL is ready!' &&
+        echo 'Ensuring required roles exist...' &&
+        sh /docker/ensure-roles.sh &&
+        echo 'Installing dependencies...' &&
+        npm ci --silent &&
+        echo 'Running database migrations...' &&
+        if ! npx prisma migrate deploy; then
+          echo 'Migration failed, attempting to fix Crowdfund table issue...' &&
+          sh /docker/fix-crowdfund-rls.sh || true &&
+          echo 'Retrying migrations...' &&
+          npx prisma migrate deploy
+        fi &&
+        echo 'Applying post-migration fixes...' &&
+        sh /docker/fix-crowdfund-rls.sh || true &&
+        echo 'Database migrations completed successfully!'
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - multisig-network
+    profiles:
+      - db-init  # Only start with: docker compose --profile db-init up
+
+volumes:
+  postgres-dev-data:
+
+networks:
+  multisig-network:
+    driver: bridge
+
