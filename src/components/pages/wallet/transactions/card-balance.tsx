@@ -7,12 +7,15 @@ import type { Wallet } from "@/types/wallet";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
+import { Upload } from "lucide-react";
+import ImportTransactionDialog from "./import-transaction-dialog";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   useEffect(() => {
     if(!utxos) return
@@ -56,7 +59,20 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
               New Transaction
             </Button>
           </Link>
+          <Button
+            onClick={() => setImportDialogOpen(true)}
+            size="sm"
+            className="w-full sm:w-auto"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import Transaction
+          </Button>
         </div>
+        <ImportTransactionDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          walletId={appWallet.id}
+        />
 
         {/* Suggesting to disable the button if the balance is less than 0, or no previous transactions */}
         {/* <Button
