@@ -342,7 +342,14 @@ export const walletRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      if (sessionAddress !== input.ownerAddress) {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      
+      // Allow ownerAddress to be either the sessionAddress or any address in sessionWallets
+      const isAuthorized = 
+        sessionAddress === input.ownerAddress || 
+        sessionWallets.includes(input.ownerAddress);
+      
+      if (!isAuthorized) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Owner address mismatch" });
       }
       const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;

@@ -335,6 +335,15 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       return;
     }
 
+    if (!userAddress) {
+      toast({
+        title: "Error",
+        description: "Please connect your wallet before creating a wallet invite link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const walletData = {
@@ -345,7 +354,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
         signersStakeKeys: signersStakeKeys,
         signersDRepKeys: signersDRepKeys,
         numRequiredSigners: numRequiredSigners,
-        ownerAddress: userAddress ?? "",
+        ownerAddress: userAddress,
         stakeCredentialHash: stakeKey || undefined,
         scriptType: nativeScriptType || undefined,
       };
