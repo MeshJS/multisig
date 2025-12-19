@@ -73,9 +73,10 @@ import RecipientCsv from "./RecipientCsv";
 import { truncateTokenSymbol } from "@/utils/strings";
 import { UserPlus } from "lucide-react";
 
-export default function PageNewTransaction() {
+export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => void } = {}) {
   const { connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
+  const router = useRouter();
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
   const [addDescription, setAddDescription] = useState<boolean>(true);
@@ -95,14 +96,16 @@ export default function PageNewTransaction() {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { toast } = useToast();
-  const router = useRouter();
   const [assets, setAssets] = useState<string[]>(["lovelace"]);
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
   const [previewTxBody, setPreviewTxBody] = useState<{
     inputs: Array<{ txHash: string; outputIndex: number }>;
-    outputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }>;
+    outputs: Array<{
+      address: string;
+      amount: Array<{ unit: string; quantity: string }>;
+    }>;
     changeAddress?: string;
   } | null>(null);
 
@@ -118,52 +121,76 @@ export default function PageNewTransaction() {
     { walletId: appWallet?.id ?? "" },
     {
       enabled: !!appWallet?.id,
-    }
+    },
   );
 
   // Create address lookup maps
-  const contactMap = useMemo<Map<string, { name: string; description?: string | null }>>(() => {
+  const contactMap = useMemo<
+    Map<string, { name: string; description?: string | null }>
+  >(() => {
     if (!contacts) return new Map();
-    const map = new Map<string, { name: string; description?: string | null }>();
-    contacts.forEach((contact: { address: string; name: string; description?: string | null }) => {
-      map.set(contact.address, { name: contact.name, description: contact.description ?? undefined });
-    });
+    const map = new Map<
+      string,
+      { name: string; description?: string | null }
+    >();
+    contacts.forEach(
+      (contact: {
+        address: string;
+        name: string;
+        description?: string | null;
+      }) => {
+        map.set(contact.address, {
+          name: contact.name,
+          description: contact.description ?? undefined,
+        });
+      },
+    );
     return map;
   }, [contacts]);
 
   // Function to get address label
-  const getAddressLabel = useCallback((address: string): { label: string; type: "self" | "signer" | "contact" | "unknown" } => {
-    if (!appWallet) return { label: "", type: "unknown" };
-    
-    // Check if it's the multisig wallet address
-    if (address === appWallet.address) {
-      return { label: "Self (Multisig)", type: "self" };
-    }
-    
-    // Check if it's a signer
-    const signerIndex = appWallet.signersAddresses?.findIndex((addr) => addr === address);
-    if (signerIndex !== undefined && signerIndex >= 0) {
-      const signerDescription = appWallet.signersDescriptions?.[signerIndex] || `Signer ${signerIndex + 1}`;
-      return { label: signerDescription, type: "signer" };
-    }
-    
-    // Check if it's a contact
-    const contact = contactMap.get(address);
-    if (contact) {
-      return { label: contact.name, type: "contact" };
-    }
-    
-    return { label: "", type: "unknown" };
-  }, [appWallet, contactMap]);
+  const getAddressLabel = useCallback(
+    (
+      address: string,
+    ): { label: string; type: "self" | "signer" | "contact" | "unknown" } => {
+      if (!appWallet) return { label: "", type: "unknown" };
+
+      // Check if it's the multisig wallet address
+      if (address === appWallet.address) {
+        return { label: "Self (Multisig)", type: "self" };
+      }
+
+      // Check if it's a signer
+      const signerIndex = appWallet.signersAddresses?.findIndex(
+        (addr) => addr === address,
+      );
+      if (signerIndex !== undefined && signerIndex >= 0) {
+        const signerDescription =
+          appWallet.signersDescriptions?.[signerIndex] ||
+          `Signer ${signerIndex + 1}`;
+        return { label: signerDescription, type: "signer" };
+      }
+
+      // Check if it's a contact
+      const contact = contactMap.get(address);
+      if (contact) {
+        return { label: contact.name, type: "contact" };
+      }
+
+      return { label: "", type: "unknown" };
+    },
+    [appWallet, contactMap],
+  );
 
   useEffect(() => {
     reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Calculate final UTxOs that will be used in transaction (after keepRelevant filtering)
   const finalSelectedUtxos = useMemo(() => {
     if (manualUtxos.length === 0) return [];
-    
+
     if (sendAllAssets) {
       return manualUtxos;
     }
@@ -191,15 +218,25 @@ export default function PageNewTransaction() {
           (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
         );
         if (unit !== "lovelace") {
-          assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+          assetMap.set(
+            "lovelace",
+            (Number(assetMap.get("lovelace") || 0) + 1160000).toString(),
+          );
         }
       }
     }
 
     if (assetMap.size === 0) return manualUtxos;
-    
+
     return keepRelevant(assetMap, manualUtxos);
-  }, [manualUtxos, sendAllAssets, recipientAddresses, amounts, assets, walletAssetMetadata]);
+  }, [
+    manualUtxos,
+    sendAllAssets,
+    recipientAddresses,
+    amounts,
+    assets,
+    walletAssetMetadata,
+  ]);
 
   // Preview transaction outputs as user prepares the transaction
   useEffect(() => {
@@ -239,7 +276,10 @@ export default function PageNewTransaction() {
             (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
           );
           if (unit !== "lovelace") {
-            assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+            assetMap.set(
+              "lovelace",
+              (Number(assetMap.get("lovelace") || 0) + 1160000).toString(),
+            );
           }
         }
       }
@@ -251,8 +291,11 @@ export default function PageNewTransaction() {
       }));
 
       // Build output array for preview
-      const previewOutputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }> = [];
-      
+      const previewOutputs: Array<{
+        address: string;
+        amount: Array<{ unit: string; quantity: string }>;
+      }> = [];
+
       if (!sendAllAssets && outputs.length > 0) {
         for (const output of outputs) {
           previewOutputs.push({
@@ -262,19 +305,24 @@ export default function PageNewTransaction() {
                 unit: output.unit,
                 quantity: output.amount,
               },
-              ...(output.unit !== "lovelace" ? [{
-                unit: "lovelace",
-                quantity: "1160000",
-              }] : [])
+              ...(output.unit !== "lovelace"
+                ? [
+                    {
+                      unit: "lovelace",
+                      quantity: "1160000",
+                    },
+                  ]
+                : []),
             ],
           });
         }
       }
 
       // Determine change address
-      const changeAddress = sendAllAssets && outputs.length > 0 
-        ? outputs[0]!.address 
-        : appWallet.address;
+      const changeAddress =
+        sendAllAssets && outputs.length > 0
+          ? outputs[0]!.address
+          : appWallet.address;
 
       setPreviewTxBody({
         inputs,
@@ -294,6 +342,8 @@ export default function PageNewTransaction() {
     finalSelectedUtxos,
     sendAllAssets,
     walletAssetMetadata,
+    // Note: router.pathname is checked inside the effect, not in dependencies
+    // to prevent infinite loops when router object changes
   ]);
 
   function reset() {
@@ -343,7 +393,10 @@ export default function PageNewTransaction() {
             (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
           );
           if (unit !== "lovelace") {
-            assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+            assetMap.set(
+              "lovelace",
+              (Number(assetMap.get("lovelace") || 0) + 1160000).toString(),
+            );
           }
         }
       }
@@ -360,8 +413,8 @@ export default function PageNewTransaction() {
       }
 
       const txBuilder = getTxBuilder(network);
-      const paymentScript = appWallet.scriptCbor
-      if(!paymentScript) return
+      const paymentScript = appWallet.scriptCbor;
+      if (!paymentScript) return;
 
       for (const utxo of selectedUtxos) {
         txBuilder
@@ -371,9 +424,8 @@ export default function PageNewTransaction() {
             utxo.output.amount,
             utxo.output.address,
           )
-          .txInScript(paymentScript)
+          .txInScript(paymentScript);
       }
-
 
       if (!sendAllAssets) {
         for (let i = 0; i < outputs.length; i++) {
@@ -383,10 +435,14 @@ export default function PageNewTransaction() {
               quantity: outputs[i]!.amount,
             },
             // if unit is not lovelace, add 1160000 lovelace as native assets are not allowed to be in an output alone.
-            ...(outputs[i]!.unit !== "lovelace" ? [{
-              unit: "lovelace",
-              quantity: "1160000",
-            }] : [])
+            ...(outputs[i]!.unit !== "lovelace"
+              ? [
+                  {
+                    unit: "lovelace",
+                    quantity: "1160000",
+                  },
+                ]
+              : []),
           ]);
         }
       }
@@ -456,7 +512,10 @@ export default function PageNewTransaction() {
   }
 
   function addMultisigSignerAsRecipient(signerIndex: number) {
-    if (appWallet?.signersAddresses && appWallet.signersAddresses[signerIndex]) {
+    if (
+      appWallet?.signersAddresses &&
+      appWallet.signersAddresses[signerIndex]
+    ) {
       const signerAddress = appWallet.signersAddresses[signerIndex]!;
       setRecipientAddresses([...recipientAddresses, signerAddress]);
       setAmounts([...amounts, ""]);
@@ -464,24 +523,30 @@ export default function PageNewTransaction() {
     }
   }
 
+  // Match deposit page behavior - don't return early, handle undefined in functions that need it
+  // This prevents unmount/remount cycles that cause "Cancel rendering route" errors
+  
+  if (!appWallet) {
+    return null;
+  }
+
   return (
-    <main className="pointer-events-auto flex flex-1 flex-col gap-4 p-3 sm:gap-6 sm:p-4 md:gap-8 md:p-8 max-w-6xl mx-auto">
-      <div className="flex flex-col gap-2">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3 sm:gap-4 md:gap-6">
+      {/* Hide title/description when used in modal (they're in DialogHeader) */}
+      <div className="hidden flex-col gap-2 sm:flex">
         <SectionTitle>New Transaction</SectionTitle>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Create a new multisig transaction by specifying recipients, amounts, and transaction details.
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Create a new multisig transaction by specifying recipients, amounts,
+          and transaction details.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:gap-6">
-        <CardUI 
-          title="Description"
-          cardClassName="w-full"
-        >
+      <div className="grid gap-3 sm:gap-4 md:gap-6">
+        <CardUI title="Description" cardClassName="w-full">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Input
-                className="text-sm sm:text-base flex-1"
+                className="flex-1 text-sm sm:text-base"
                 value={description}
                 onChange={(e) => {
                   if (e.target.value.length <= 128)
@@ -492,12 +557,13 @@ export default function PageNewTransaction() {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <QuestionMarkCircledIcon className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-help" />
+                    <QuestionMarkCircledIcon className="h-5 w-5 shrink-0 cursor-help text-muted-foreground transition-colors hover:text-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="text-sm">
-                      Add a brief description to help other signers understand the purpose of this transaction. 
-                      This will be visible to all wallet members when reviewing the transaction.
+                      Add a brief description to help other signers understand
+                      the purpose of this transaction. This will be visible to
+                      all wallet members when reviewing the transaction.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -505,7 +571,11 @@ export default function PageNewTransaction() {
             </div>
             {description.length > 0 && (
               <div className="flex justify-end text-xs text-muted-foreground">
-                <span className={description.length >= 128 ? "text-destructive" : ""}>
+                <span
+                  className={
+                    description.length >= 128 ? "text-destructive" : ""
+                  }
+                >
                   {description.length}/128
                 </span>
               </div>
@@ -513,8 +583,8 @@ export default function PageNewTransaction() {
           </div>
         </CardUI>
 
-        <CardUI 
-          title="Recipients" 
+        <CardUI
+          title="Recipients"
           description="Specify the recipients and amounts for your transaction"
           cardClassName="w-full"
         >
@@ -527,16 +597,22 @@ export default function PageNewTransaction() {
               amounts={amounts}
               assets={assets}
             />
-            
+
             {/* Desktop Table */}
-            <div className="hidden sm:block border rounded-lg overflow-hidden">
+            <div className="hidden overflow-hidden rounded-lg border sm:block">
               <div className="overflow-x-auto">
                 <Table className="min-w-[600px]">
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead className="font-semibold min-w-[200px]">Address</TableHead>
-                      <TableHead className="w-[120px] sm:w-[140px] font-semibold">Amount</TableHead>
-                      <TableHead className="w-[140px] sm:w-[180px] font-semibold">Asset</TableHead>
+                      <TableHead className="min-w-[200px] font-semibold">
+                        Address
+                      </TableHead>
+                      <TableHead className="w-[120px] font-semibold sm:w-[140px]">
+                        Amount
+                      </TableHead>
+                      <TableHead className="w-[140px] font-semibold sm:w-[180px]">
+                        Asset
+                      </TableHead>
                       <TableHead className="w-[60px] sm:w-[80px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -557,74 +633,95 @@ export default function PageNewTransaction() {
                     ))}
                     <TableRow className="border-t-2">
                       <TableCell colSpan={4} className="py-3 sm:py-4">
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
+                            className="h-8 flex-1 gap-2 sm:h-9 sm:flex-none"
                             onClick={() => addNewRecipient()}
                             disabled={sendAllAssets}
                           >
                             <PlusCircle className="h-4 w-4" />
-                            <span className="hidden sm:inline">Add Recipient</span>
+                            <span className="hidden sm:inline">
+                              Add Recipient
+                            </span>
                             <span className="sm:hidden">Add</span>
                           </Button>
-                          
+
                           <Button
                             size="sm"
                             variant="outline"
-                            className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
+                            className="h-8 flex-1 gap-2 sm:h-9 sm:flex-none"
                             onClick={() => addSelfAsRecipient()}
                             disabled={sendAllAssets || !appWallet?.address}
                           >
                             <PlusCircle className="h-4 w-4" />
-                            <span className="hidden sm:inline">Add Self Multisig</span>
+                            <span className="hidden sm:inline">
+                              Add Self Multisig
+                            </span>
                             <span className="sm:hidden">Self Multisig</span>
                           </Button>
-                          
+
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="gap-2 h-8 sm:h-9 flex-1 sm:flex-none"
-                                disabled={sendAllAssets || !appWallet?.signersAddresses || appWallet.signersAddresses.length === 0}
+                                className="h-8 flex-1 gap-2 sm:h-9 sm:flex-none"
+                                disabled={
+                                  sendAllAssets ||
+                                  !appWallet?.signersAddresses ||
+                                  appWallet.signersAddresses.length === 0
+                                }
                               >
                                 <PlusCircle className="h-4 w-4" />
-                                <span className="hidden sm:inline">Add Signer</span>
+                                <span className="hidden sm:inline">
+                                  Add Signer
+                                </span>
                                 <span className="sm:hidden">Signer</span>
                                 <ChevronDown className="h-3 w-3" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              {appWallet?.signersAddresses?.map((signerAddress, index) => {
-                                const signerDescription = appWallet.signersDescriptions?.[index] || `Signer ${index + 1}`;
+                              {appWallet?.signersAddresses?.map(
+                                (signerAddress, index) => {
+                                  const signerDescription =
+                                    appWallet.signersDescriptions?.[index] ||
+                                    `Signer ${index + 1}`;
 
-                                return (
-                                  <DropdownMenuItem
-                                    key={index}
-                                    onClick={() => addMultisigSignerAsRecipient(index)}
-                                    className="flex flex-col items-start gap-1"
-                                  >
-                                    <span className="font-medium">{signerDescription}</span>
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      {signerAddress.slice(0, 20)}...
-                                    </span>
-                                  </DropdownMenuItem>
-                                );
-                              })}
+                                  return (
+                                    <DropdownMenuItem
+                                      key={index}
+                                      onClick={() =>
+                                        addMultisigSignerAsRecipient(index)
+                                      }
+                                      className="flex flex-col items-start gap-1"
+                                    >
+                                      <span className="font-medium">
+                                        {signerDescription}
+                                      </span>
+                                      <span className="font-mono text-xs text-muted-foreground">
+                                        {signerAddress.slice(0, 20)}...
+                                      </span>
+                                    </DropdownMenuItem>
+                                  );
+                                },
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                          
+
                           {contacts && contacts.length > 0 && (
                             <ContactsDialog
                               contacts={contacts}
                               onSelectContact={(contact) => {
-                                setRecipientAddresses([...recipientAddresses, contact.address]);
+                                setRecipientAddresses([
+                                  ...recipientAddresses,
+                                  contact.address,
+                                ]);
                                 setAmounts([...amounts, ""]);
                                 setAssets([...assets, "lovelace"]);
                               }}
-                              className="h-8 sm:h-9 flex-1 sm:flex-none"
+                              className="h-8 flex-1 sm:h-9 sm:flex-none"
                             />
                           )}
                         </div>
@@ -651,39 +748,43 @@ export default function PageNewTransaction() {
                   getAddressLabel={getAddressLabel}
                 />
               ))}
-              
+
               {/* Mobile Add Buttons */}
               <div className="mt-4 space-y-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-2 h-9 w-full"
+                  className="h-9 w-full gap-2"
                   onClick={() => addNewRecipient()}
                   disabled={sendAllAssets}
                 >
                   <PlusCircle className="h-4 w-4" />
                   Add Recipient
                 </Button>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="gap-2 h-9"
+                    className="h-9 gap-2"
                     onClick={() => addSelfAsRecipient()}
                     disabled={sendAllAssets || !appWallet?.address}
                   >
                     <PlusCircle className="h-4 w-4" />
                     Add Self
                   </Button>
-                  
+
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-2 h-9"
-                        disabled={sendAllAssets || !appWallet?.signersAddresses || appWallet.signersAddresses.length === 0}
+                        className="h-9 gap-2"
+                        disabled={
+                          sendAllAssets ||
+                          !appWallet?.signersAddresses ||
+                          appWallet.signersAddresses.length === 0
+                        }
                       >
                         <PlusCircle className="h-4 w-4" />
                         Add Signer
@@ -691,30 +792,41 @@ export default function PageNewTransaction() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
-                      {appWallet?.signersAddresses?.map((signerAddress, index) => {
-                        const signerDescription = appWallet.signersDescriptions?.[index] || `Signer ${index + 1}`;
+                      {appWallet?.signersAddresses?.map(
+                        (signerAddress, index) => {
+                          const signerDescription =
+                            appWallet.signersDescriptions?.[index] ||
+                            `Signer ${index + 1}`;
 
-                        return (
-                          <DropdownMenuItem
-                            key={index}
-                            onClick={() => addMultisigSignerAsRecipient(index)}
-                            className="flex flex-col items-start gap-1"
-                          >
-                            <span className="font-medium">{signerDescription}</span>
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {signerAddress.slice(0, 20)}...
-                            </span>
-                          </DropdownMenuItem>
-                        );
-                      })}
+                          return (
+                            <DropdownMenuItem
+                              key={index}
+                              onClick={() =>
+                                addMultisigSignerAsRecipient(index)
+                              }
+                              className="flex flex-col items-start gap-1"
+                            >
+                              <span className="font-medium">
+                                {signerDescription}
+                              </span>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {signerAddress.slice(0, 20)}...
+                              </span>
+                            </DropdownMenuItem>
+                          );
+                        },
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  
+
                   {contacts && contacts.length > 0 && (
                     <ContactsDialog
                       contacts={contacts}
                       onSelectContact={(contact) => {
-                        setRecipientAddresses([...recipientAddresses, contact.address]);
+                        setRecipientAddresses([
+                          ...recipientAddresses,
+                          contact.address,
+                        ]);
                         setAmounts([...amounts, ""]);
                         setAssets([...assets, "lovelace"]);
                       }}
@@ -727,99 +839,63 @@ export default function PageNewTransaction() {
           </div>
         </CardUI>
 
-      <CardUI 
-        title="UTxOs" 
-        description="Select which unspent transaction outputs to use for this transaction and preview the transaction structure"
-        cardClassName="w-full"
-      >
-        <div className="space-y-6">
-          {/* UTxO Selector Subsection */}
-          {appWallet && (
-            <UTxOSelector
-              appWallet={appWallet}
-              network={network}
-              onSelectionChange={(utxos, manual) => {
-                setManualUtxos(utxos);
-                setManualSelected(manual);
-              }}
-              recipientAmounts={amounts}
-              recipientAssets={assets}
-            />
-          )}
+        <CardUI
+          title="UTxOs"
+          description="Select which unspent transaction outputs to use for this transaction and preview the transaction structure"
+          cardClassName="w-full"
+        >
+          <div className="space-y-6">
+            {/* UTxO Selector Subsection */}
+            {appWallet && (
+              <UTxOSelector
+                appWallet={appWallet}
+                network={network}
+                onSelectionChange={(utxos, manual) => {
+                  setManualUtxos(utxos);
+                  setManualSelected(manual);
+                }}
+                recipientAmounts={amounts}
+                recipientAssets={assets}
+              />
+            )}
 
-          {/* Transaction Preview - Only show if outputs are defined */}
-          {(previewTxBody?.outputs.length ?? 0) > 0 || sendAllAssets ? (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Transaction Preview</h3>
-              <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-              {/* Input UTxOs for Transaction */}
-              <div className="flex-1">
-                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Input UTxOs ({finalSelectedUtxos.length})</h4>
-                {finalSelectedUtxos.length > 0 ? (
-                  <>
-                    {/* Mobile Card Layout */}
-                    <div className="block sm:hidden space-y-2">
-                      {finalSelectedUtxos.map((utxo, index) => (
-                        <div
-                          key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}
-                          className="p-3 border-2 border-blue-500 rounded-lg bg-muted/20"
-                        >
-                          <div className="font-mono text-xs mb-2 break-all">
-                            <span className="font-medium">{utxo.input.outputIndex}</span>
-                            <span className="text-muted-foreground">-</span>
-                            <span className="text-muted-foreground break-all">
-                              {utxo.input.txHash.slice(0, 8)}...{utxo.input.txHash.slice(-8)}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Array.isArray(utxo.output.amount) ? (
-                              utxo.output.amount.map((unit: any, j: number) => {
-                                const assetMetadata = walletAssetMetadata[unit.unit];
-                                const decimals =
-                                  unit.unit === "lovelace"
-                                    ? 6
-                                    : (assetMetadata?.decimals ?? 0);
-                                const assetName =
-                                  unit.unit === "lovelace"
-                                    ? "₳"
-                                    : assetMetadata?.ticker
-                                      ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
-                                      : truncateTokenSymbol(unit.unit);
-                                return (
-                                  <span key={unit.unit} className="text-xs font-medium">
-                                    {j > 0 && <span className="text-muted-foreground">,</span>}
-                                    {(parseFloat(unit.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
-                                  </span>
-                                );
-                              })
-                            ) : (
-                              <span className="text-xs text-muted-foreground">No amount data</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Desktop Table Layout */}
-                    <div className="hidden sm:block border-2 border-blue-500 rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead className="font-semibold">Tx Index - Hash</TableHead>
-                            <TableHead className="font-semibold">Outputs</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
+            {/* Transaction Preview - Only show if outputs are defined */}
+            {(previewTxBody?.outputs.length ?? 0) > 0 || sendAllAssets ? (
+              <div>
+                <h3 className="mb-3 text-sm font-semibold">
+                  Transaction Preview
+                </h3>
+                <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+                  {/* Input UTxOs for Transaction */}
+                  <div className="flex-1">
+                    <h4 className="mb-2 text-xs font-medium text-muted-foreground">
+                      Input UTxOs ({finalSelectedUtxos.length})
+                    </h4>
+                    {finalSelectedUtxos.length > 0 ? (
+                      <>
+                        {/* Mobile Card Layout */}
+                        <div className="block space-y-2 sm:hidden">
                           {finalSelectedUtxos.map((utxo, index) => (
-                            <TableRow key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}>
-                              <TableCell className="font-mono text-xs">
-                                {utxo.input.outputIndex}-{utxo.input.txHash.slice(0, 10)}...{utxo.input.txHash.slice(-10)}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {Array.isArray(utxo.output.amount) ? (
-                                    utxo.output.amount.map((unit: any, j: number) => {
-                                      const assetMetadata = walletAssetMetadata[unit.unit];
+                            <div
+                              key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}
+                              className="rounded-lg border-2 border-blue-500 bg-muted/20 p-3"
+                            >
+                              <div className="mb-2 break-all font-mono text-xs">
+                                <span className="font-medium">
+                                  {utxo.input.outputIndex}
+                                </span>
+                                <span className="text-muted-foreground">-</span>
+                                <span className="break-all text-muted-foreground">
+                                  {utxo.input.txHash.slice(0, 8)}...
+                                  {utxo.input.txHash.slice(-8)}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {Array.isArray(utxo.output.amount) ? (
+                                  utxo.output.amount.map(
+                                    (unit: any, j: number) => {
+                                      const assetMetadata =
+                                        walletAssetMetadata[unit.unit];
                                       const decimals =
                                         unit.unit === "lovelace"
                                           ? 6
@@ -831,308 +907,477 @@ export default function PageNewTransaction() {
                                             ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
                                             : truncateTokenSymbol(unit.unit);
                                       return (
-                                        <span key={unit.unit} className="text-sm">
-                                          {j > 0 && <span className="text-muted-foreground">,</span>}
-                                          {(parseFloat(unit.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
+                                        <span
+                                          key={unit.unit}
+                                          className="text-xs font-medium"
+                                        >
+                                          {j > 0 && (
+                                            <span className="text-muted-foreground">
+                                              ,
+                                            </span>
+                                          )}
+                                          {(
+                                            parseFloat(unit.quantity) /
+                                            Math.pow(10, decimals)
+                                          ).toFixed(6)}{" "}
+                                          {assetName}
                                         </span>
                                       );
-                                    })
-                                  ) : (
-                                    <span className="text-sm text-muted-foreground">No amount data</span>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                ) : (
-                  <div className="p-4 border-2 border-blue-500 rounded-lg bg-muted/30">
-                    <p className="text-sm text-muted-foreground">
-                      {manualUtxos.length === 0 
-                        ? "No UTxOs selected. Use the selector above to choose UTxOs for this transaction."
-                        : "Selected UTxOs will be filtered based on recipient requirements. Select UTxOs above to see them here."}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Output UTxOs */}
-              <div className="flex-1">
-                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Output UTxOs ({previewTxBody?.outputs.length ?? 0})</h4>
-                {previewTxBody ? (
-                  <div>
-                    {previewTxBody.outputs.length > 0 ? (
-                      <>
-                        {/* Mobile Card Layout */}
-                        <div className="block sm:hidden space-y-2">
-                          {previewTxBody.outputs.map((output, index) => {
-                            const addressLabel = getAddressLabel(output.address);
-                            return (
-                            <div key={index} className="p-3 border-2 border-red-500 rounded-lg bg-muted/20">
-                              <div className="mb-2">
-                                {addressLabel.label && (
-                                  <div className="text-xs font-semibold mb-1">
-                                    <span className={cn(
-                                      addressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
-                                      addressLabel.type === "signer" && "text-green-600 dark:text-green-400",
-                                      addressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
-                                    )}>
-                                      {addressLabel.label}
-                                    </span>
-                                  </div>
+                                    },
+                                  )
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    No amount data
+                                  </span>
                                 )}
-                                <div className="font-mono text-xs break-all text-muted-foreground">
-                                  {output.address.slice(0, 12)}...{output.address.slice(-12)}
-                                </div>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                {output.amount.map((asset, assetIndex) => {
-                                  const assetMetadata = walletAssetMetadata[asset.unit];
-                                  const decimals =
-                                    asset.unit === "lovelace"
-                                      ? 6
-                                      : (assetMetadata?.decimals ?? 0);
-                                    const assetName =
-                                      asset.unit === "lovelace"
-                                        ? "₳"
-                                        : assetMetadata?.ticker
-                                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
-                                          : truncateTokenSymbol(asset.unit);
-                                  const formattedAmount = (parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6);
-                                  return (
-                                    <span key={assetIndex} className="text-xs font-medium">
-                                      {formattedAmount} {assetName}
-                                    </span>
-                                  );
-                                })}
                               </div>
                             </div>
-                          );
-                          })}
+                          ))}
                         </div>
 
                         {/* Desktop Table Layout */}
-                        <div className="hidden sm:block border-2 border-red-500 rounded-lg overflow-hidden">
+                        <div className="hidden overflow-hidden rounded-lg border-2 border-blue-500 sm:block">
                           <Table>
                             <TableHeader>
                               <TableRow className="bg-muted/50">
-                                <TableHead className="font-semibold">Address</TableHead>
-                                <TableHead className="font-semibold">Amount</TableHead>
+                                <TableHead className="font-semibold">
+                                  Tx Index - Hash
+                                </TableHead>
+                                <TableHead className="font-semibold">
+                                  Outputs
+                                </TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {previewTxBody.outputs.map((output, index) => {
-                                const addressLabel = getAddressLabel(output.address);
-                                return (
-                                <TableRow key={index}>
-                                  <TableCell>
-                                    <div className="flex flex-col gap-1">
-                                      {addressLabel.label && (
-                                        <div className="text-xs font-semibold">
-                                          <span className={cn(
-                                            addressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
-                                            addressLabel.type === "signer" && "text-green-600 dark:text-green-400",
-                                            addressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
-                                          )}>
-                                            {addressLabel.label}
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className="font-mono text-xs text-muted-foreground">
-                                        {output.address.slice(0, 20)}...{output.address.slice(-20)}
-                                      </div>
-                                    </div>
+                              {finalSelectedUtxos.map((utxo, index) => (
+                                <TableRow
+                                  key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}
+                                >
+                                  <TableCell className="font-mono text-xs">
+                                    {utxo.input.outputIndex}-
+                                    {utxo.input.txHash.slice(0, 10)}...
+                                    {utxo.input.txHash.slice(-10)}
                                   </TableCell>
                                   <TableCell>
-                                    <div className="flex flex-col gap-1">
-                                      {output.amount.map((asset, assetIndex) => {
-                                        const assetMetadata = walletAssetMetadata[asset.unit];
-                                        const decimals =
-                                          asset.unit === "lovelace"
-                                            ? 6
-                                            : (assetMetadata?.decimals ?? 0);
-                                    const assetName =
-                                      asset.unit === "lovelace"
-                                        ? "₳"
-                                        : assetMetadata?.ticker
-                                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
-                                          : truncateTokenSymbol(asset.unit);
-                                        const formattedAmount = (parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6);
-                                        return (
-                                          <span key={assetIndex} className="text-sm">
-                                            {formattedAmount} {assetName}
-                                          </span>
-                                        );
-                                      })}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {Array.isArray(utxo.output.amount) ? (
+                                        utxo.output.amount.map(
+                                          (unit: any, j: number) => {
+                                            const assetMetadata =
+                                              walletAssetMetadata[unit.unit];
+                                            const decimals =
+                                              unit.unit === "lovelace"
+                                                ? 6
+                                                : (assetMetadata?.decimals ??
+                                                  0);
+                                            const assetName =
+                                              unit.unit === "lovelace"
+                                                ? "₳"
+                                                : assetMetadata?.ticker
+                                                  ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                                  : truncateTokenSymbol(
+                                                      unit.unit,
+                                                    );
+                                            return (
+                                              <span
+                                                key={unit.unit}
+                                                className="text-sm"
+                                              >
+                                                {j > 0 && (
+                                                  <span className="text-muted-foreground">
+                                                    ,
+                                                  </span>
+                                                )}
+                                                {(
+                                                  parseFloat(unit.quantity) /
+                                                  Math.pow(10, decimals)
+                                                ).toFixed(6)}{" "}
+                                                {assetName}
+                                              </span>
+                                            );
+                                          },
+                                        )
+                                      ) : (
+                                        <span className="text-sm text-muted-foreground">
+                                          No amount data
+                                        </span>
+                                      )}
                                     </div>
                                   </TableCell>
                                 </TableRow>
-                              );
-                              })}
+                              ))}
                             </TableBody>
                           </Table>
                         </div>
                       </>
-                      ) : sendAllAssets ? (
-                        <div className="p-4 border-2 border-red-500 rounded-lg bg-muted/30">
-                          <p className="text-sm text-muted-foreground">
-                            All assets will be sent to: <span className="font-mono text-xs">{previewTxBody.changeAddress?.slice(0, 20)}...{previewTxBody.changeAddress?.slice(-20)}</span>
+                    ) : (
+                      <div className="rounded-lg border-2 border-blue-500 bg-muted/30 p-4">
+                        <p className="text-sm text-muted-foreground">
+                          {manualUtxos.length === 0
+                            ? "No UTxOs selected. Use the selector above to choose UTxOs for this transaction."
+                            : "Selected UTxOs will be filtered based on recipient requirements. Select UTxOs above to see them here."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Output UTxOs */}
+                  <div className="flex-1">
+                    <h4 className="mb-2 text-xs font-medium text-muted-foreground">
+                      Output UTxOs ({previewTxBody?.outputs.length ?? 0})
+                    </h4>
+                    {previewTxBody ? (
+                      <div>
+                        {previewTxBody.outputs.length > 0 ? (
+                          <>
+                            {/* Mobile Card Layout */}
+                            <div className="block space-y-2 sm:hidden">
+                              {previewTxBody.outputs.map((output, index) => {
+                                const addressLabel = getAddressLabel(
+                                  output.address,
+                                );
+                                return (
+                                  <div
+                                    key={index}
+                                    className="rounded-lg border-2 border-red-500 bg-muted/20 p-3"
+                                  >
+                                    <div className="mb-2">
+                                      {addressLabel.label && (
+                                        <div className="mb-1 text-xs font-semibold">
+                                          <span
+                                            className={cn(
+                                              addressLabel.type === "self" &&
+                                                "text-blue-600 dark:text-blue-400",
+                                              addressLabel.type === "signer" &&
+                                                "text-green-600 dark:text-green-400",
+                                              addressLabel.type === "contact" &&
+                                                "text-purple-600 dark:text-purple-400",
+                                            )}
+                                          >
+                                            {addressLabel.label}
+                                          </span>
+                                        </div>
+                                      )}
+                                      <div className="break-all font-mono text-xs text-muted-foreground">
+                                        {output.address.slice(0, 12)}...
+                                        {output.address.slice(-12)}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                      {output.amount.map(
+                                        (asset, assetIndex) => {
+                                          const assetMetadata =
+                                            walletAssetMetadata[asset.unit];
+                                          const decimals =
+                                            asset.unit === "lovelace"
+                                              ? 6
+                                              : (assetMetadata?.decimals ?? 0);
+                                          const assetName =
+                                            asset.unit === "lovelace"
+                                              ? "₳"
+                                              : assetMetadata?.ticker
+                                                ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                                : truncateTokenSymbol(
+                                                    asset.unit,
+                                                  );
+                                          const formattedAmount = (
+                                            parseFloat(asset.quantity) /
+                                            Math.pow(10, decimals)
+                                          ).toFixed(6);
+                                          return (
+                                            <span
+                                              key={assetIndex}
+                                              className="text-xs font-medium"
+                                            >
+                                              {formattedAmount} {assetName}
+                                            </span>
+                                          );
+                                        },
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Desktop Table Layout */}
+                            <div className="hidden overflow-hidden rounded-lg border-2 border-red-500 sm:block">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead className="font-semibold">
+                                      Address
+                                    </TableHead>
+                                    <TableHead className="font-semibold">
+                                      Amount
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {previewTxBody.outputs.map(
+                                    (output, index) => {
+                                      const addressLabel = getAddressLabel(
+                                        output.address,
+                                      );
+                                      return (
+                                        <TableRow key={index}>
+                                          <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                              {addressLabel.label && (
+                                                <div className="text-xs font-semibold">
+                                                  <span
+                                                    className={cn(
+                                                      addressLabel.type ===
+                                                        "self" &&
+                                                        "text-blue-600 dark:text-blue-400",
+                                                      addressLabel.type ===
+                                                        "signer" &&
+                                                        "text-green-600 dark:text-green-400",
+                                                      addressLabel.type ===
+                                                        "contact" &&
+                                                        "text-purple-600 dark:text-purple-400",
+                                                    )}
+                                                  >
+                                                    {addressLabel.label}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              <div className="font-mono text-xs text-muted-foreground">
+                                                {output.address.slice(0, 20)}...
+                                                {output.address.slice(-20)}
+                                              </div>
+                                            </div>
+                                          </TableCell>
+                                          <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                              {output.amount.map(
+                                                (asset, assetIndex) => {
+                                                  const assetMetadata =
+                                                    walletAssetMetadata[
+                                                      asset.unit
+                                                    ];
+                                                  const decimals =
+                                                    asset.unit === "lovelace"
+                                                      ? 6
+                                                      : (assetMetadata?.decimals ??
+                                                        0);
+                                                  const assetName =
+                                                    asset.unit === "lovelace"
+                                                      ? "₳"
+                                                      : assetMetadata?.ticker
+                                                        ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                                        : truncateTokenSymbol(
+                                                            asset.unit,
+                                                          );
+                                                  const formattedAmount = (
+                                                    parseFloat(asset.quantity) /
+                                                    Math.pow(10, decimals)
+                                                  ).toFixed(6);
+                                                  return (
+                                                    <span
+                                                      key={assetIndex}
+                                                      className="text-sm"
+                                                    >
+                                                      {formattedAmount}{" "}
+                                                      {assetName}
+                                                    </span>
+                                                  );
+                                                },
+                                              )}
+                                            </div>
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    },
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </>
+                        ) : sendAllAssets ? (
+                          <div className="rounded-lg border-2 border-red-500 bg-muted/30 p-4">
+                            <p className="text-sm text-muted-foreground">
+                              All assets will be sent to:{" "}
+                              <span className="font-mono text-xs">
+                                {previewTxBody.changeAddress?.slice(0, 20)}...
+                                {previewTxBody.changeAddress?.slice(-20)}
+                              </span>
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border-2 border-red-500 bg-muted/30 p-4">
+                            <p className="text-sm text-muted-foreground">
+                              No outputs defined
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Configure recipients and select UTxOs to see preview
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Change Address - Below both sections */}
+                {previewTxBody?.changeAddress &&
+                  !sendAllAssets &&
+                  (() => {
+                    const changeAddressLabel = getAddressLabel(
+                      previewTxBody.changeAddress,
+                    );
+                    return (
+                      <div className="mt-4">
+                        <h4 className="mb-2 text-xs font-medium text-muted-foreground">
+                          Change Address
+                        </h4>
+                        <div className="rounded-lg border bg-muted/30 p-3">
+                          {changeAddressLabel.label && (
+                            <div className="mb-1 text-xs font-semibold">
+                              <span
+                                className={cn(
+                                  changeAddressLabel.type === "self" &&
+                                    "text-blue-600 dark:text-blue-400",
+                                  changeAddressLabel.type === "signer" &&
+                                    "text-green-600 dark:text-green-400",
+                                  changeAddressLabel.type === "contact" &&
+                                    "text-purple-600 dark:text-purple-400",
+                                )}
+                              >
+                                {changeAddressLabel.label}
+                              </span>
+                            </div>
+                          )}
+                          <p className="break-all font-mono text-xs text-muted-foreground">
+                            {previewTxBody.changeAddress}
                           </p>
                         </div>
-                      ) : (
-                        <div className="p-4 border-2 border-red-500 rounded-lg bg-muted/30">
-                          <p className="text-sm text-muted-foreground">No outputs defined</p>
-                        </div>
-                      )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Configure recipients and select UTxOs to see preview</p>
-                )}
+                      </div>
+                    );
+                  })()}
+              </div>
+            ) : null}
+          </div>
+        </CardUI>
+
+        <CardUI
+          title="On-chain Metadata"
+          description="Attach additional information to the transaction that will be visible on the blockchain"
+          cardClassName="w-full"
+        >
+          <div className="space-y-3">
+            <Textarea
+              className="min-h-16 resize-none text-sm sm:min-h-20 sm:text-base"
+              value={metadata}
+              onChange={(e) => {
+                if (e.target.value.length <= 64) setMetadata(e.target.value);
+              }}
+              placeholder="e.g., PR #123, Invoice #456, etc."
+            />
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+              <span>Optional metadata for blockchain record</span>
+              <span className={metadata.length >= 64 ? "text-destructive" : ""}>
+                {metadata.length}/64
+              </span>
+            </div>
+            {metadata.length >= 64 && (
+              <p className="text-sm text-destructive">
+                Metadata should be less than 64 characters
+              </p>
+            )}
+          </div>
+        </CardUI>
+
+        <CardUI
+          title="Transaction Options"
+          description="Configure additional settings for your transaction"
+          cardClassName="w-full"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3 rounded-lg border bg-muted/30 p-3 sm:p-4">
+              <Checkbox
+                id="sendAllAssetCheck"
+                checked={sendAllAssets}
+                onCheckedChange={() => setSendAllAssets(!sendAllAssets)}
+                className="mt-0.5 flex-shrink-0"
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <label
+                  htmlFor="sendAllAssetCheck"
+                  className="flex cursor-pointer items-start gap-2 text-sm font-medium leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  <span className="flex-1">
+                    Send all assets to first recipient
+                  </span>
+                  <HoverCard>
+                    <HoverCardTrigger className="flex-shrink-0">
+                      <QuestionMarkCircledIcon className="h-4 w-4 text-muted-foreground transition-colors hover:text-foreground" />
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80 max-w-[calc(100vw-2rem)]">
+                      <div className="space-y-2">
+                        <h4 className="font-semibold">Send All Assets</h4>
+                        <p className="text-sm">
+                          When enabled, all assets in the wallet will be sent to
+                          the first recipient's address. This is useful for
+                          wallet consolidation or complete asset transfers.
+                        </p>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </label>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Transfers all wallet assets to the first recipient instead of
+                  specific amounts
+                </p>
               </div>
             </div>
-
-              {/* Change Address - Below both sections */}
-              {previewTxBody?.changeAddress && !sendAllAssets && (() => {
-                const changeAddressLabel = getAddressLabel(previewTxBody.changeAddress);
-                return (
-                  <div className="mt-4">
-                    <h4 className="text-xs font-medium mb-2 text-muted-foreground">Change Address</h4>
-                    <div className="p-3 border rounded-lg bg-muted/30">
-                      {changeAddressLabel.label && (
-                        <div className="text-xs font-semibold mb-1">
-                          <span className={cn(
-                            changeAddressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
-                            changeAddressLabel.type === "signer" && "text-green-600 dark:text-green-400",
-                            changeAddressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
-                          )}>
-                            {changeAddressLabel.label}
-                          </span>
-                        </div>
-                      )}
-                      <p className="font-mono text-xs break-all text-muted-foreground">
-                        {previewTxBody.changeAddress}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : null}
-        </div>
-      </CardUI>
-
-      <CardUI
-        title="On-chain Metadata"
-        description="Attach additional information to the transaction that will be visible on the blockchain"
-        cardClassName="w-full"
-      >
-        <div className="space-y-3">
-          <Textarea
-            className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
-            value={metadata}
-            onChange={(e) => {
-              if (e.target.value.length <= 64)
-                setMetadata(e.target.value);
-            }}
-            placeholder="e.g., PR #123, Invoice #456, etc."
-          />
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
-            <span>Optional metadata for blockchain record</span>
-            <span className={metadata.length >= 64 ? "text-destructive" : ""}>
-              {metadata.length}/64
-            </span>
           </div>
-          {metadata.length >= 64 && (
-            <p className="text-sm text-destructive">
-              Metadata should be less than 64 characters
-            </p>
-          )}
-        </div>
-      </CardUI>
+        </CardUI>
 
-      <CardUI
-        title="Transaction Options"
-        description="Configure additional settings for your transaction"
-        cardClassName="w-full"
-      >
-        <div className="space-y-4">
-          <div className="flex items-start space-x-3 p-3 sm:p-4 border rounded-lg bg-muted/30">
-            <Checkbox
-              id="sendAllAssetCheck"
-              checked={sendAllAssets}
-              onCheckedChange={() => setSendAllAssets(!sendAllAssets)}
-              className="mt-0.5 flex-shrink-0"
-            />
-            <div className="flex-1 space-y-1 min-w-0">
-              <label
-                htmlFor="sendAllAssetCheck"
-                className="flex items-start gap-2 text-sm font-medium leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-              >
-                <span className="flex-1">Send all assets to first recipient</span>
-                <HoverCard>
-                  <HoverCardTrigger className="flex-shrink-0">
-                    <QuestionMarkCircledIcon className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
-                  </HoverCardTrigger>
-                  <HoverCardContent className="w-80 max-w-[calc(100vw-2rem)]">
-                    <div className="space-y-2">
-                      <h4 className="font-semibold">Send All Assets</h4>
-                      <p className="text-sm">
-                        When enabled, all assets in the wallet will be sent to the first recipient's address. 
-                        This is useful for wallet consolidation or complete asset transfers.
-                      </p>
-                    </div>
-                  </HoverCardContent>
-                </HoverCard>
-              </label>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Transfers all wallet assets to the first recipient instead of specific amounts
+        <div className="flex flex-col items-center gap-4 border-t pt-4 sm:pt-6">
+          {error && (
+            <div className="w-full max-w-md rounded-lg border border-destructive/20 bg-destructive/5 p-3 sm:p-4">
+              <div className="flex items-center gap-2 text-destructive">
+                <X className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm font-medium">Transaction Error</span>
+              </div>
+              <p className="mt-1 break-words text-sm text-destructive/80">
+                {error}
               </p>
             </div>
-          </div>
-        </div>
-      </CardUI>
-
-      <div className="flex flex-col items-center gap-4 pt-4 sm:pt-6 border-t">
-        {error && (
-          <div className="w-full max-w-md p-3 sm:p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
-            <div className="flex items-center gap-2 text-destructive">
-              <X className="h-4 w-4 flex-shrink-0" />
-              <span className="text-sm font-medium">Transaction Error</span>
-            </div>
-            <p className="text-sm text-destructive/80 mt-1 break-words">{error}</p>
-          </div>
-        )}
-        
-        <Button 
-          onClick={() => createNewTransaction()} 
-          disabled={loading}
-          size="lg"
-          className="w-full sm:min-w-[200px] sm:w-auto h-11 sm:h-12"
-        >
-          {loading ? (
-            <>
-              <Loader className="mr-2 h-4 w-4 animate-spin" />
-              <span className="hidden sm:inline">Creating Transaction...</span>
-              <span className="sm:hidden">Creating...</span>
-            </>
-          ) : (
-            <>
-              <Send className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Create Transaction</span>
-              <span className="sm:hidden">Create</span>
-            </>
           )}
-        </Button>
-        
-        <p className="text-xs text-muted-foreground text-center max-w-md px-4 leading-relaxed">
-          This will create a multisig transaction that requires signatures from other wallet members
-        </p>
+
+          <Button
+            onClick={() => createNewTransaction()}
+            disabled={loading}
+            size="lg"
+            className="h-11 w-full sm:h-12 sm:w-auto sm:min-w-[200px]"
+          >
+            {loading ? (
+              <>
+                <Loader className="mr-2 h-4 w-4 animate-spin" />
+                <span className="hidden sm:inline">
+                  Creating Transaction...
+                </span>
+                <span className="sm:hidden">Creating...</span>
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Create Transaction</span>
+                <span className="sm:hidden">Create</span>
+              </>
+            )}
+          </Button>
+
+          <p className="max-w-md px-4 text-center text-xs leading-relaxed text-muted-foreground">
+            This will create a multisig transaction that requires signatures
+            from other wallet members
+          </p>
+        </div>
       </div>
-      </div>
-    </main>
+    </div>
   );
 }
 
@@ -1142,7 +1387,12 @@ function ContactsDialog({
   onSelectContact,
   className,
 }: {
-  contacts: Array<{ id: string; name: string; address: string; description?: string | null }>;
+  contacts: Array<{
+    id: string;
+    name: string;
+    address: string;
+    description?: string | null;
+  }>;
   onSelectContact: (contact: { address: string }) => void;
   className?: string;
 }) {
@@ -1170,7 +1420,7 @@ function ContactsDialog({
         </DialogHeader>
         <div className="max-h-[400px] overflow-y-auto">
           {contacts.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
+            <p className="py-4 text-center text-sm text-muted-foreground">
               No contacts available
             </p>
           ) : (
@@ -1182,16 +1432,17 @@ function ContactsDialog({
                     onSelectContact(contact);
                     setOpen(false);
                   }}
-                  className="w-full text-left p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  className="w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
                 >
                   <div className="font-medium">{contact.name}</div>
                   {contact.description && (
-                    <div className="text-xs text-muted-foreground mt-1">
+                    <div className="mt-1 text-xs text-muted-foreground">
                       {contact.description}
                     </div>
                   )}
-                  <div className="text-xs font-mono text-muted-foreground mt-1 break-all">
-                    {contact.address.slice(0, 20)}...{contact.address.slice(-20)}
+                  <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                    {contact.address.slice(0, 20)}...
+                    {contact.address.slice(-20)}
                   </div>
                 </button>
               ))}
