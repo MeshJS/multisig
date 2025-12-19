@@ -116,4 +116,3 @@ export class QueryInvalidation {
 export function getQueryInvalidation(utils: ReturnType<typeof import("@/utils/api").api.useUtils>) {
   return new QueryInvalidation(utils);
 }
-

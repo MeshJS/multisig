@@ -10,12 +10,16 @@ const requireSessionAddress = (ctx: any) => {
   return address;
 };
 
-const assertMigrationOwner = async (ctx: any, migrationId: string, requester: string) => {
+const assertMigrationOwner = async (ctx: any, migrationId: string, requester: string | string[]) => {
   const migration = await ctx.db.migration.findUnique({ where: { id: migrationId } });
   if (!migration) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Migration not found" });
   }
-  if (migration.ownerAddress !== requester) {
+  
+  // Check if requester is a single address or array of addresses
+  const requesterAddresses = Array.isArray(requester) ? requester : [requester];
+  
+  if (!requesterAddresses.includes(migration.ownerAddress)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Not owner of migration" });
   }
   return migration;
@@ -50,8 +54,13 @@ export const migrationRouter = createTRPCRouter({
   getMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      const migration = await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      // Check against sessionWallets array like getPendingMigrations does
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      
+      const migration = await assertMigrationOwner(ctx, input.migrationId, addresses);
       return migration;
     }),
 
@@ -63,10 +72,31 @@ export const migrationRouter = createTRPCRouter({
       migrationData: z.any().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      if (sessionAddress !== input.ownerAddress) {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      if (!addresses.includes(input.ownerAddress)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
+
+      // Check if there's already an active migration for this wallet
+      const existingMigration = await ctx.db.migration.findFirst({
+        where: {
+          originalWalletId: input.originalWalletId,
+          status: {
+            in: ["pending", "in_progress"]
+          }
+        }
+      });
+
+      if (existingMigration) {
+        throw new TRPCError({ 
+          code: "CONFLICT", 
+          message: `A migration is already in progress for this wallet. Migration started by ${existingMigration.ownerAddress} at ${existingMigration.createdAt.toISOString()}. Please wait for it to complete or cancel it first.` 
+        });
+      }
+
       return ctx.db.migration.create({
         data: {
           originalWalletId: input.originalWalletId,
@@ -88,8 +118,13 @@ export const migrationRouter = createTRPCRouter({
       errorMessage: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      // Check against sessionWallets array like getPendingMigrations does
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      
+      await assertMigrationOwner(ctx, input.migrationId, addresses);
       const updateData: any = {
         currentStep: input.currentStep,
         updatedAt: new Date()
@@ -125,8 +160,13 @@ export const migrationRouter = createTRPCRouter({
       migrationData: z.any()
     }))
     .mutation(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      // Check against sessionWallets array like getPendingMigrations does
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      
+      await assertMigrationOwner(ctx, input.migrationId, addresses);
       return ctx.db.migration.update({
         where: {
           id: input.migrationId
@@ -142,8 +182,13 @@ export const migrationRouter = createTRPCRouter({
   cancelMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      // Check against sessionWallets array like getPendingMigrations does
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      
+      await assertMigrationOwner(ctx, input.migrationId, addresses);
       // Delete the migration record completely
       return ctx.db.migration.delete({
         where: {
@@ -156,8 +201,13 @@ export const migrationRouter = createTRPCRouter({
   completeMigration: protectedProcedure
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
-      await assertMigrationOwner(ctx, input.migrationId, sessionAddress);
+      // Check against sessionWallets array like getPendingMigrations does
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : [requireSessionAddress(ctx)];
+      
+      await assertMigrationOwner(ctx, input.migrationId, addresses);
       return ctx.db.migration.update({
         where: {
           id: input.migrationId

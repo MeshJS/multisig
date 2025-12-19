@@ -8,6 +8,7 @@ export default function CardUI({
   icon,
   cardClassName,
   headerDom,
+  profileImage,
 }: {
   children: React.ReactNode;
   title: string;
@@ -15,6 +16,7 @@ export default function CardUI({
   icon?: any;
   cardClassName?: string;
   headerDom?: ReactNode;
+  profileImage?: ReactNode;
 }) {
   // Make title larger for wallet info card (col-span-2)
   const isLargeTitle = cardClassName?.includes('col-span-2');
@@ -22,7 +24,14 @@ export default function CardUI({
   return (
     <Card className={`w-full max-w-4xl ${cardClassName}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className={isLargeTitle ? "text-2xl sm:text-3xl font-semibold" : "text-xl font-medium"}>{title}</CardTitle>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {profileImage && (
+            <div className="flex-shrink-0">
+              {profileImage}
+            </div>
+          )}
+          <CardTitle className={isLargeTitle ? "text-2xl sm:text-3xl font-semibold" : "text-xl font-medium"}>{title}</CardTitle>
+        </div>
         {headerDom && headerDom}
         {icon && (
           <>

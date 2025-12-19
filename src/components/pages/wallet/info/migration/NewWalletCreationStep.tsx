@@ -7,22 +7,128 @@ import ReviewSignersCard from "@/components/pages/homepage/wallets/new-wallet-fl
 import ReviewRequiredSignersCard from "@/components/pages/homepage/wallets/new-wallet-flow/create/ReviewRequiredSignersCard";
 import CollapsibleAdvancedSection from "@/components/pages/homepage/wallets/new-wallet-flow/create/CollapsibleAdvancedSection";
 import { useMigrationWalletFlowState } from "./useMigrationWalletFlowState";
+import { useUserStore } from "@/lib/zustand/user";
+import { api } from "@/utils/api";
 
 interface NewWalletCreationStepProps {
   appWallet: Wallet;
+  newWalletId?: string | null;
+  migrationId?: string | null;
   onBack: () => void;
   onContinue: (newWalletId: string) => void;
 }
 
 export default function NewWalletCreationStep({ 
-  appWallet, 
+  appWallet,
+  newWalletId: propNewWalletId,
+  migrationId,
   onBack, 
   onContinue 
 }: NewWalletCreationStepProps) {
-  const walletFlow = useMigrationWalletFlowState(appWallet);
+  const walletFlow = useMigrationWalletFlowState(appWallet, migrationId);
   const hasAttemptedTemporaryWallet = React.useRef(false);
+  const { userAddress } = useUserStore();
+  const utils = api.useUtils();
+  
+  // Use prop newWalletId if provided, otherwise use walletFlow's newWalletId
+  const effectiveNewWalletId = propNewWalletId || walletFlow.newWalletId;
+  
+  // Sync propNewWalletId to appWallet so walletFlow can find it
+  // This is a workaround since walletFlow checks appWallet.migrationTargetWalletId
+  React.useEffect(() => {
+    if (propNewWalletId && !(appWallet as any).migrationTargetWalletId) {
+      // Temporarily set migrationTargetWalletId so walletFlow can find it
+      (appWallet as any).migrationTargetWalletId = propNewWalletId;
+    }
+  }, [propNewWalletId, appWallet]);
+
+  // Check if final wallet already exists (only once on mount)
+  const hasCheckedExistingWallet = React.useRef(false);
+  
+  React.useEffect(() => {
+    const checkExistingWallet = async () => {
+      if (hasCheckedExistingWallet.current) return;
+      
+      // Check migrationTargetWalletId first, then effectiveNewWalletId
+      const migrationTargetId = (appWallet as any).migrationTargetWalletId || effectiveNewWalletId;
+      
+      if (migrationTargetId && userAddress) {
+        hasCheckedExistingWallet.current = true;
+        
+        try {
+          // Try to fetch as Wallet (final wallet)
+          const walletData = await utils.wallet.getWallet.fetch({
+            address: userAddress,
+            walletId: migrationTargetId,
+          });
+          
+          if (walletData) {
+            // Final wallet exists, automatically continue to next step
+            onContinue(migrationTargetId);
+            return;
+          }
+        } catch (error) {
+          // Wallet doesn't exist as final wallet, check if it's a NewWallet
+          try {
+            const newWalletData = await utils.wallet.getNewWallet.fetch({
+              walletId: migrationTargetId,
+            });
+            
+            if (newWalletData) {
+              // Temporary wallet exists, load it but don't auto-continue
+              // The walletFlow should load it via existingNewWallet query
+              return;
+            }
+          } catch (newWalletError) {
+            // Neither exists, continue with normal flow
+            hasCheckedExistingWallet.current = false; // Reset if check failed
+          }
+        }
+      }
+    };
+
+    checkExistingWallet();
+  }, [appWallet, userAddress, effectiveNewWalletId, utils, onContinue]);
 
   const handleCreateWallet = async () => {
+    // Check if wallet already exists before creating
+    const migrationTargetId = (appWallet as any).migrationTargetWalletId || effectiveNewWalletId;
+    
+    if (migrationTargetId && userAddress) {
+      try {
+        // First check if it's a final Wallet
+        const walletData = await utils.wallet.getWallet.fetch({
+          address: userAddress,
+          walletId: migrationTargetId,
+        });
+        
+        if (walletData) {
+          // Final wallet already exists, just continue
+          onContinue(migrationTargetId);
+          return;
+        }
+      } catch (error) {
+        // Not a final wallet, check if it's a NewWallet
+        try {
+          const newWalletData = await utils.wallet.getNewWallet.fetch({
+            walletId: migrationTargetId,
+          });
+          
+          if (newWalletData) {
+            // Temporary wallet exists, create final wallet from it
+            const finalWalletId = await walletFlow.createMigrationWallet();
+            if (finalWalletId !== null) {
+              onContinue(finalWalletId);
+            }
+            return;
+          }
+        } catch (newWalletError) {
+          // Neither exists, proceed with creation
+        }
+      }
+    }
+    
+    // No existing wallet found, create new one
     const finalWalletId = await walletFlow.createMigrationWallet();
     
     if (finalWalletId !== null) {
@@ -31,16 +137,35 @@ export default function NewWalletCreationStep({
   };
 
   // Create temporary wallet on mount to enable invite link
+  // BUT only if no wallet exists yet (neither final nor temporary)
   React.useEffect(() => {
+    // PRIORITY CHECK: Don't create if propNewWalletId is provided (continuing migration)
+    // This must be checked FIRST before any other checks
+    if (propNewWalletId) {
+      return; // We're continuing a migration, don't create new wallet
+    }
+    
+    // Don't create if we already have a wallet ID (from props or walletFlow)
+    if (effectiveNewWalletId) {
+      return; // Wallet already exists, don't create
+    }
+    
+    // Don't create if migration target wallet exists
+    if ((appWallet as any).migrationTargetWalletId) {
+      return; // Migration target exists, don't create temporary wallet
+    }
+    
+    // Only create if all conditions are met AND we're not continuing a migration
     if (!walletFlow.newWalletId && 
         walletFlow.name && 
         walletFlow.signersAddresses.length > 0 && 
         !walletFlow.loading && 
-        !hasAttemptedTemporaryWallet.current) {
+        !hasAttemptedTemporaryWallet.current &&
+        !propNewWalletId) { // Extra check for propNewWalletId
       hasAttemptedTemporaryWallet.current = true;
       walletFlow.createTemporaryWallet();
     }
-  }, [walletFlow.name, walletFlow.signersAddresses.length, walletFlow.newWalletId, walletFlow.loading, walletFlow.createTemporaryWallet]);
+  }, [walletFlow.name, walletFlow.signersAddresses.length, walletFlow.newWalletId, walletFlow.loading, walletFlow.createTemporaryWallet, effectiveNewWalletId, propNewWalletId, appWallet]);
 
   // Don't automatically continue - let user decide when to proceed
   // React.useEffect(() => {
@@ -113,7 +238,7 @@ export default function NewWalletCreationStep({
       <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:justify-between">
         {/* Info Messages */}
         <div className="space-y-3">
-          {!walletFlow.newWalletId && (
+          {!effectiveNewWalletId && (
             <div className="flex items-start gap-2 p-4 bg-blue-50 border border-blue-200/50 rounded-lg">
               <svg className="w-5 h-5 mt-0.5 flex-shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -133,16 +258,6 @@ export default function NewWalletCreationStep({
             </p>
           </div>
 
-          {walletFlow.newWalletId && appWallet.migrationTargetWalletId && (
-            <div className="flex items-start gap-2 p-4 bg-amber-50 border border-amber-200/50 rounded-lg">
-              <svg className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <p className="text-sm text-amber-800">
-                <strong>Final Wallet Already Created:</strong> The final wallet for this migration has already been created. You can only create one new wallet per migration.
-              </p>
-            </div>
-          )}
         </div>
         
         {/* Action Buttons */}
@@ -156,7 +271,7 @@ export default function NewWalletCreationStep({
             Back
           </Button>
           
-          {!walletFlow.newWalletId ? (
+          {!effectiveNewWalletId ? (
             <Button
               onClick={handleCreateWallet}
               disabled={!walletFlow.isValidForCreate || walletFlow.loading}
@@ -176,41 +291,29 @@ export default function NewWalletCreationStep({
               )}
             </Button>
           ) : (
-            <div className="flex gap-3 flex-1 sm:flex-none">
-              {/* Only show Create Final Wallet button if no final wallet has been created yet */}
-              {!appWallet.migrationTargetWalletId && (
-                <Button
-                  onClick={handleCreateWallet}
-                  disabled={!walletFlow.isValidForCreate || walletFlow.loading}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {walletFlow.loading ? (
-                    <>
-                      <Loader className="h-4 w-4 mr-2 animate-spin" />
-                      Creating Final Wallet...
-                    </>
-                  ) : (
-                    <>
-                      Create Final Wallet
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              )}
-              
-              {/* Show appropriate continue button based on whether final wallet exists */}
-              {appWallet.migrationTargetWalletId && (
-                <Button
-                  onClick={() => onContinue(appWallet.migrationTargetWalletId!)}
-                  className="flex-1"
-                  size="lg"
-                >
+            <Button
+              onClick={handleCreateWallet}
+              disabled={!walletFlow.isValidForCreate || walletFlow.loading}
+              className="flex-1 sm:flex-none"
+              size="lg"
+            >
+              {walletFlow.loading ? (
+                <>
+                  <Loader className="h-4 w-4 mr-2 animate-spin" />
+                  Creating Final Wallet...
+                </>
+              ) : appWallet.migrationTargetWalletId ? (
+                <>
                   Continue to Fund Transfer
                   <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
+                </>
+              ) : (
+                <>
+                  Create Final Wallet and Continue to Transfer Funds
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </>
               )}
-            </div>
+            </Button>
           )}
         </div>
       </div>

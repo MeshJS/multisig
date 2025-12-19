@@ -24,6 +24,7 @@ import EmptyWalletsState from "./EmptyWalletsState";
 import SectionExplanation from "./SectionExplanation";
 import WalletCardSkeleton from "./WalletCardSkeleton";
 import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
+import IPFSImage from "@/components/common/ipfs-image";
 
 
 export default function PageWallets() {
@@ -267,6 +268,18 @@ function CardWallet({
         title={`${wallet.name}${wallet.isArchived ? " (Archived)" : ""}`}
         description={wallet.description}
         cardClassName=""
+        profileImage={
+          wallet.profileImageIpfsUrl ? (
+            <div className="relative aspect-square w-10 sm:w-12 rounded-lg overflow-hidden border border-border/50 shadow-sm">
+              <IPFSImage
+                src={wallet.profileImageIpfsUrl}
+                alt="Wallet Profile"
+                fill
+                className="object-cover object-center"
+              />
+            </div>
+          ) : undefined
+        }
         headerDom={
           isSummonWallet ? (
             <Badge 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,6 +52,11 @@ export default function FundTransferStep({
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferComplete, setTransferComplete] = useState(false);
   const [transferTxId, setTransferTxId] = useState<string | null>(null);
+  const [waitingForTransaction, setWaitingForTransaction] = useState(false);
+  const [lastSeenPendingCount, setLastSeenPendingCount] = useState<number>(0);
+  
+  // Monitor pending transactions
+  const { transactions: pendingTransactions } = usePendingTransactions({ walletId: appWallet.id });
 
   // Get current wallet data
   const currentUtxos = walletsUtxos[appWallet.id] || [];
@@ -257,17 +263,15 @@ export default function FundTransferStep({
         toastMessage: "Fund transfer transaction created successfully",
       });
 
-      setTransferComplete(true);
+      // Set waiting state - we'll monitor the transaction status
+      setWaitingForTransaction(true);
+      setIsTransferring(false);
+      
       toast({
         title: "Transfer Initiated",
         description:
           "Fund transfer transaction has been created and is pending signatures.",
       });
-
-      // Automatically proceed to the next step after a short delay
-      setTimeout(() => {
-        onContinue();
-      }, 2000); // 2 second delay to show the success message
     } catch (error) {
       console.error("Failed to transfer funds:", error);
       toast({
@@ -280,6 +284,54 @@ export default function FundTransferStep({
     }
   };
 
+  // Monitor pending transactions to detect when transfer is complete
+  useEffect(() => {
+    if (!waitingForTransaction) return;
+
+    // Track pending count to detect when transaction disappears (completed)
+    const currentPendingCount = pendingTransactions?.length || 0;
+    
+    // If we saw pending transactions before and now there are fewer, transaction might be completed
+    if (lastSeenPendingCount > 0 && currentPendingCount < lastSeenPendingCount) {
+      // Transaction likely completed and moved out of pending
+      setTransferComplete(true);
+      setWaitingForTransaction(false);
+      toast({
+        title: "Transfer Complete",
+        description: "Fund transfer transaction has been completed successfully.",
+      });
+      setTimeout(() => {
+        onContinue();
+      }, 2000);
+      return;
+    }
+
+    if (pendingTransactions && pendingTransactions.length > 0) {
+      setLastSeenPendingCount(pendingTransactions.length);
+      
+      // Find the most recent migration transfer transaction
+      const migrationTx = pendingTransactions
+        .filter((tx: any) => tx.description?.includes("Migration: Transfer all funds"))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (migrationTx) {
+        // Transaction is complete if it has a txHash (submitted) or state is 1 (completed)
+        if (migrationTx.txHash || migrationTx.state === 1) {
+          setTransferComplete(true);
+          setWaitingForTransaction(false);
+          toast({
+            title: "Transfer Complete",
+            description: "Fund transfer transaction has been completed successfully.",
+          });
+          // Proceed to next step after a short delay
+          setTimeout(() => {
+            onContinue();
+          }, 2000);
+        }
+      }
+    }
+  }, [pendingTransactions, waitingForTransaction, onContinue, lastSeenPendingCount]);
+
   if (isLoadingNewWalletData || isLoadingNewWalletDataFallback) {
     return (
       <CardUI
@@ -290,6 +342,34 @@ export default function FundTransferStep({
         <div className="flex items-center justify-center py-8">
           <Loader className="h-8 w-8 animate-spin" />
           <span className="ml-2">Loading new wallet information...</span>
+        </div>
+      </CardUI>
+    );
+  }
+
+  // Show waiting card after transaction is created
+  if (waitingForTransaction) {
+    return (
+      <CardUI
+        title="Waiting for Transaction"
+        description="Fund transfer transaction is pending signatures"
+        cardClassName="col-span-2"
+      >
+        <div className="space-y-4">
+          <Alert className="border-blue-200/50 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-900/20">
+            <Loader className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              <strong>Transaction Created</strong>
+              <p className="mt-2">
+                The fund transfer transaction has been created and is waiting for required signatures.
+                Once all signers have signed and the transaction is submitted, you will automatically proceed to the next step.
+              </p>
+            </AlertDescription>
+          </Alert>
+          
+          <div className="flex items-center justify-center py-4">
+            <Loader className="h-8 w-8 animate-spin text-primary" />
+          </div>
         </div>
       </CardUI>
     );

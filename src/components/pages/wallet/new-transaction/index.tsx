@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 
 import {
@@ -28,6 +28,7 @@ import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import SectionTitle from "@/components/ui/section-title";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import CardUI from "@/components/ui/card-content";
@@ -46,15 +47,31 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import UTxOSelector from "./utxoSelector";
 import RecipientRow from "./RecipientRow";
 import RecipientRowMobile from "./RecipientRowMobile";
 import RecipientCsv from "./RecipientCsv";
+import { truncateTokenSymbol } from "@/utils/strings";
+import { UserPlus } from "lucide-react";
 
 export default function PageNewTransaction() {
   const { connected } = useWallet();
@@ -83,6 +100,11 @@ export default function PageNewTransaction() {
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
+  const [previewTxBody, setPreviewTxBody] = useState<{
+    inputs: Array<{ txHash: string; outputIndex: number }>;
+    outputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }>;
+    changeAddress?: string;
+  } | null>(null);
 
   const { data: discordData } = api.user.getDiscordIds.useQuery({
     addresses: appWallet?.signersAddresses ?? [],
@@ -91,9 +113,188 @@ export default function PageNewTransaction() {
   // Extract Discord IDs
   const discordIds = Object.values(discordData ?? {}).filter(Boolean);
 
+  // Fetch contacts
+  const { data: contacts } = api.contact.getAll.useQuery(
+    { walletId: appWallet?.id ?? "" },
+    {
+      enabled: !!appWallet?.id,
+    }
+  );
+
+  // Create address lookup maps
+  const contactMap = useMemo<Map<string, { name: string; description?: string | null }>>(() => {
+    if (!contacts) return new Map();
+    const map = new Map<string, { name: string; description?: string | null }>();
+    contacts.forEach((contact: { address: string; name: string; description?: string | null }) => {
+      map.set(contact.address, { name: contact.name, description: contact.description ?? undefined });
+    });
+    return map;
+  }, [contacts]);
+
+  // Function to get address label
+  const getAddressLabel = useCallback((address: string): { label: string; type: "self" | "signer" | "contact" | "unknown" } => {
+    if (!appWallet) return { label: "", type: "unknown" };
+    
+    // Check if it's the multisig wallet address
+    if (address === appWallet.address) {
+      return { label: "Self (Multisig)", type: "self" };
+    }
+    
+    // Check if it's a signer
+    const signerIndex = appWallet.signersAddresses?.findIndex((addr) => addr === address);
+    if (signerIndex !== undefined && signerIndex >= 0) {
+      const signerDescription = appWallet.signersDescriptions?.[signerIndex] || `Signer ${signerIndex + 1}`;
+      return { label: signerDescription, type: "signer" };
+    }
+    
+    // Check if it's a contact
+    const contact = contactMap.get(address);
+    if (contact) {
+      return { label: contact.name, type: "contact" };
+    }
+    
+    return { label: "", type: "unknown" };
+  }, [appWallet, contactMap]);
+
   useEffect(() => {
     reset();
   }, []);
+
+  // Calculate final UTxOs that will be used in transaction (after keepRelevant filtering)
+  const finalSelectedUtxos = useMemo(() => {
+    if (manualUtxos.length === 0) return [];
+    
+    if (sendAllAssets) {
+      return manualUtxos;
+    }
+
+    // Calculate required assets
+    const assetMap = new Map<Unit, Quantity>();
+    for (let i = 0; i < recipientAddresses.length; i++) {
+      const address = recipientAddresses[i];
+      if (address && address.startsWith("addr") && address.length > 0) {
+        const rawUnit = assets[i];
+        const unit = rawUnit
+          ? rawUnit === "ADA"
+            ? "lovelace"
+            : rawUnit
+          : "lovelace";
+        const assetMetadata = walletAssetMetadata[unit];
+        const multiplier =
+          unit === "lovelace"
+            ? 1000000
+            : Math.pow(10, assetMetadata?.decimals ?? 0);
+        const parsedAmount = parseFloat(amounts[i]!) || 0;
+        const thisAmount = parsedAmount * multiplier;
+        assetMap.set(
+          unit,
+          (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
+        );
+        if (unit !== "lovelace") {
+          assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+        }
+      }
+    }
+
+    if (assetMap.size === 0) return manualUtxos;
+    
+    return keepRelevant(assetMap, manualUtxos);
+  }, [manualUtxos, sendAllAssets, recipientAddresses, amounts, assets, walletAssetMetadata]);
+
+  // Preview transaction outputs as user prepares the transaction
+  useEffect(() => {
+    if (!appWallet || !userAddress) {
+      setPreviewTxBody(null);
+      return;
+    }
+
+    try {
+      const outputs: { address: string; unit: string; amount: string }[] = [];
+      const assetMap = new Map<Unit, Quantity>();
+
+      // Build outputs from recipients
+      for (let i = 0; i < recipientAddresses.length; i++) {
+        const address = recipientAddresses[i];
+        if (address && address.startsWith("addr") && address.length > 0) {
+          const rawUnit = assets[i];
+          const unit = rawUnit
+            ? rawUnit === "ADA"
+              ? "lovelace"
+              : rawUnit
+            : "lovelace";
+          const assetMetadata = walletAssetMetadata[unit];
+          const multiplier =
+            unit === "lovelace"
+              ? 1000000
+              : Math.pow(10, assetMetadata?.decimals ?? 0);
+          const parsedAmount = parseFloat(amounts[i]!) || 0;
+          const thisAmount = parsedAmount * multiplier;
+          outputs.push({
+            address: address,
+            unit: unit,
+            amount: thisAmount.toString(),
+          });
+          assetMap.set(
+            unit,
+            (Number(assetMap.get(unit) || 0) + thisAmount).toString(),
+          );
+          if (unit !== "lovelace") {
+            assetMap.set("lovelace", (Number(assetMap.get("lovelace") || 0) + 1160000).toString());
+          }
+        }
+      }
+
+      // Build inputs from final selected UTxOs
+      const inputs = finalSelectedUtxos.map((utxo) => ({
+        txHash: utxo.input.txHash,
+        outputIndex: utxo.input.outputIndex,
+      }));
+
+      // Build output array for preview
+      const previewOutputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }> = [];
+      
+      if (!sendAllAssets && outputs.length > 0) {
+        for (const output of outputs) {
+          previewOutputs.push({
+            address: output.address,
+            amount: [
+              {
+                unit: output.unit,
+                quantity: output.amount,
+              },
+              ...(output.unit !== "lovelace" ? [{
+                unit: "lovelace",
+                quantity: "1160000",
+              }] : [])
+            ],
+          });
+        }
+      }
+
+      // Determine change address
+      const changeAddress = sendAllAssets && outputs.length > 0 
+        ? outputs[0]!.address 
+        : appWallet.address;
+
+      setPreviewTxBody({
+        inputs,
+        outputs: previewOutputs,
+        changeAddress,
+      });
+    } catch (error) {
+      console.error("Error building preview:", error);
+      setPreviewTxBody(null);
+    }
+  }, [
+    appWallet,
+    userAddress,
+    recipientAddresses,
+    amounts,
+    assets,
+    finalSelectedUtxos,
+    sendAllAssets,
+    walletAssetMetadata,
+  ]);
 
   function reset() {
     setAddDescription(true);
@@ -196,6 +397,8 @@ export default function PageNewTransaction() {
         txBuilder.changeAddress(appWallet.address);
       }
 
+      console.log("txBuilder:", txBuilder.meshTxBuilderBody);
+
       await newTransaction({
         txBuilder,
         description: addDescription ? description : undefined,
@@ -273,29 +476,39 @@ export default function PageNewTransaction() {
       <div className="grid gap-4 sm:gap-6">
         <CardUI 
           title="Description"
-          description="Provide context and information for other signers about this transaction"
           cardClassName="w-full"
         >
           <div className="space-y-3">
-            <Textarea
-              className="min-h-16 sm:min-h-20 resize-none text-sm sm:text-base"
-              value={description}
-              onChange={(e) => {
-                if (e.target.value.length <= 128)
-                  setDescription(e.target.value);
-              }}
-              placeholder="e.g., Payment for services, Contribution to project, etc."
-            />
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0 text-xs text-muted-foreground">
-              <span>Optional description for signers</span>
-              <span className={description.length >= 128 ? "text-destructive" : ""}>
-                {description.length}/128
-              </span>
+            <div className="flex items-center gap-2">
+              <Input
+                className="text-sm sm:text-base flex-1"
+                value={description}
+                onChange={(e) => {
+                  if (e.target.value.length <= 128)
+                    setDescription(e.target.value);
+                }}
+                placeholder="Optional description for signers"
+              />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <QuestionMarkCircledIcon className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-sm">
+                      Add a brief description to help other signers understand the purpose of this transaction. 
+                      This will be visible to all wallet members when reviewing the transaction.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-            {description.length >= 128 && (
-              <p className="text-sm text-destructive">
-                Description should be less than 128 characters
-              </p>
+            {description.length > 0 && (
+              <div className="flex justify-end text-xs text-muted-foreground">
+                <span className={description.length >= 128 ? "text-destructive" : ""}>
+                  {description.length}/128
+                </span>
+              </div>
             )}
           </div>
         </CardUI>
@@ -339,6 +552,7 @@ export default function PageNewTransaction() {
                         assets={assets}
                         setAssets={setAssets}
                         disableAdaAmountInput={sendAllAssets}
+                        getAddressLabel={getAddressLabel}
                       />
                     ))}
                     <TableRow className="border-t-2">
@@ -401,6 +615,18 @@ export default function PageNewTransaction() {
                               })}
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          
+                          {contacts && contacts.length > 0 && (
+                            <ContactsDialog
+                              contacts={contacts}
+                              onSelectContact={(contact) => {
+                                setRecipientAddresses([...recipientAddresses, contact.address]);
+                                setAmounts([...amounts, ""]);
+                                setAssets([...assets, "lovelace"]);
+                              }}
+                              className="h-8 sm:h-9 flex-1 sm:flex-none"
+                            />
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -422,6 +648,7 @@ export default function PageNewTransaction() {
                   assets={assets}
                   setAssets={setAssets}
                   disableAdaAmountInput={sendAllAssets}
+                  getAddressLabel={getAddressLabel}
                 />
               ))}
               
@@ -482,6 +709,18 @@ export default function PageNewTransaction() {
                       })}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  
+                  {contacts && contacts.length > 0 && (
+                    <ContactsDialog
+                      contacts={contacts}
+                      onSelectContact={(contact) => {
+                        setRecipientAddresses([...recipientAddresses, contact.address]);
+                        setAmounts([...amounts, ""]);
+                        setAssets([...assets, "lovelace"]);
+                      }}
+                      className="h-9 w-full"
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -490,21 +729,299 @@ export default function PageNewTransaction() {
 
       <CardUI 
         title="UTxOs" 
-        description="Select which unspent transaction outputs to use for this transaction"
+        description="Select which unspent transaction outputs to use for this transaction and preview the transaction structure"
         cardClassName="w-full"
       >
-        {appWallet && (
-          <UTxOSelector
-            appWallet={appWallet}
-            network={network}
-            onSelectionChange={(utxos, manual) => {
-              setManualUtxos(utxos);
-              setManualSelected(manual);
-            }}
-            recipientAmounts={amounts}
-            recipientAssets={assets}
-          />
-        )}
+        <div className="space-y-6">
+          {/* UTxO Selector Subsection */}
+          {appWallet && (
+            <UTxOSelector
+              appWallet={appWallet}
+              network={network}
+              onSelectionChange={(utxos, manual) => {
+                setManualUtxos(utxos);
+                setManualSelected(manual);
+              }}
+              recipientAmounts={amounts}
+              recipientAssets={assets}
+            />
+          )}
+
+          {/* Transaction Preview - Only show if outputs are defined */}
+          {(previewTxBody?.outputs.length ?? 0) > 0 || sendAllAssets ? (
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Transaction Preview</h3>
+              <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+              {/* Input UTxOs for Transaction */}
+              <div className="flex-1">
+                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Input UTxOs ({finalSelectedUtxos.length})</h4>
+                {finalSelectedUtxos.length > 0 ? (
+                  <>
+                    {/* Mobile Card Layout */}
+                    <div className="block sm:hidden space-y-2">
+                      {finalSelectedUtxos.map((utxo, index) => (
+                        <div
+                          key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}
+                          className="p-3 border-2 border-blue-500 rounded-lg bg-muted/20"
+                        >
+                          <div className="font-mono text-xs mb-2 break-all">
+                            <span className="font-medium">{utxo.input.outputIndex}</span>
+                            <span className="text-muted-foreground">-</span>
+                            <span className="text-muted-foreground break-all">
+                              {utxo.input.txHash.slice(0, 8)}...{utxo.input.txHash.slice(-8)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Array.isArray(utxo.output.amount) ? (
+                              utxo.output.amount.map((unit: any, j: number) => {
+                                const assetMetadata = walletAssetMetadata[unit.unit];
+                                const decimals =
+                                  unit.unit === "lovelace"
+                                    ? 6
+                                    : (assetMetadata?.decimals ?? 0);
+                                const assetName =
+                                  unit.unit === "lovelace"
+                                    ? "₳"
+                                    : assetMetadata?.ticker
+                                      ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                      : truncateTokenSymbol(unit.unit);
+                                return (
+                                  <span key={unit.unit} className="text-xs font-medium">
+                                    {j > 0 && <span className="text-muted-foreground">,</span>}
+                                    {(parseFloat(unit.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
+                                  </span>
+                                );
+                              })
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No amount data</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Table Layout */}
+                    <div className="hidden sm:block border-2 border-blue-500 rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="font-semibold">Tx Index - Hash</TableHead>
+                            <TableHead className="font-semibold">Outputs</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {finalSelectedUtxos.map((utxo, index) => (
+                            <TableRow key={`${utxo.input.txHash}-${utxo.input.outputIndex}`}>
+                              <TableCell className="font-mono text-xs">
+                                {utxo.input.outputIndex}-{utxo.input.txHash.slice(0, 10)}...{utxo.input.txHash.slice(-10)}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {Array.isArray(utxo.output.amount) ? (
+                                    utxo.output.amount.map((unit: any, j: number) => {
+                                      const assetMetadata = walletAssetMetadata[unit.unit];
+                                      const decimals =
+                                        unit.unit === "lovelace"
+                                          ? 6
+                                          : (assetMetadata?.decimals ?? 0);
+                                      const assetName =
+                                        unit.unit === "lovelace"
+                                          ? "₳"
+                                          : assetMetadata?.ticker
+                                            ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                            : truncateTokenSymbol(unit.unit);
+                                      return (
+                                        <span key={unit.unit} className="text-sm">
+                                          {j > 0 && <span className="text-muted-foreground">,</span>}
+                                          {(parseFloat(unit.quantity) / Math.pow(10, decimals)).toFixed(6)} {assetName}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">No amount data</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-4 border-2 border-blue-500 rounded-lg bg-muted/30">
+                    <p className="text-sm text-muted-foreground">
+                      {manualUtxos.length === 0 
+                        ? "No UTxOs selected. Use the selector above to choose UTxOs for this transaction."
+                        : "Selected UTxOs will be filtered based on recipient requirements. Select UTxOs above to see them here."}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Output UTxOs */}
+              <div className="flex-1">
+                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Output UTxOs ({previewTxBody?.outputs.length ?? 0})</h4>
+                {previewTxBody ? (
+                  <div>
+                    {previewTxBody.outputs.length > 0 ? (
+                      <>
+                        {/* Mobile Card Layout */}
+                        <div className="block sm:hidden space-y-2">
+                          {previewTxBody.outputs.map((output, index) => {
+                            const addressLabel = getAddressLabel(output.address);
+                            return (
+                            <div key={index} className="p-3 border-2 border-red-500 rounded-lg bg-muted/20">
+                              <div className="mb-2">
+                                {addressLabel.label && (
+                                  <div className="text-xs font-semibold mb-1">
+                                    <span className={cn(
+                                      addressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
+                                      addressLabel.type === "signer" && "text-green-600 dark:text-green-400",
+                                      addressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
+                                    )}>
+                                      {addressLabel.label}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="font-mono text-xs break-all text-muted-foreground">
+                                  {output.address.slice(0, 12)}...{output.address.slice(-12)}
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                {output.amount.map((asset, assetIndex) => {
+                                  const assetMetadata = walletAssetMetadata[asset.unit];
+                                  const decimals =
+                                    asset.unit === "lovelace"
+                                      ? 6
+                                      : (assetMetadata?.decimals ?? 0);
+                                    const assetName =
+                                      asset.unit === "lovelace"
+                                        ? "₳"
+                                        : assetMetadata?.ticker
+                                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                          : truncateTokenSymbol(asset.unit);
+                                  const formattedAmount = (parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6);
+                                  return (
+                                    <span key={assetIndex} className="text-xs font-medium">
+                                      {formattedAmount} {assetName}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                          })}
+                        </div>
+
+                        {/* Desktop Table Layout */}
+                        <div className="hidden sm:block border-2 border-red-500 rounded-lg overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/50">
+                                <TableHead className="font-semibold">Address</TableHead>
+                                <TableHead className="font-semibold">Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {previewTxBody.outputs.map((output, index) => {
+                                const addressLabel = getAddressLabel(output.address);
+                                return (
+                                <TableRow key={index}>
+                                  <TableCell>
+                                    <div className="flex flex-col gap-1">
+                                      {addressLabel.label && (
+                                        <div className="text-xs font-semibold">
+                                          <span className={cn(
+                                            addressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
+                                            addressLabel.type === "signer" && "text-green-600 dark:text-green-400",
+                                            addressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
+                                          )}>
+                                            {addressLabel.label}
+                                          </span>
+                                        </div>
+                                      )}
+                                      <div className="font-mono text-xs text-muted-foreground">
+                                        {output.address.slice(0, 20)}...{output.address.slice(-20)}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col gap-1">
+                                      {output.amount.map((asset, assetIndex) => {
+                                        const assetMetadata = walletAssetMetadata[asset.unit];
+                                        const decimals =
+                                          asset.unit === "lovelace"
+                                            ? 6
+                                            : (assetMetadata?.decimals ?? 0);
+                                    const assetName =
+                                      asset.unit === "lovelace"
+                                        ? "₳"
+                                        : assetMetadata?.ticker
+                                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                                          : truncateTokenSymbol(asset.unit);
+                                        const formattedAmount = (parseFloat(asset.quantity) / Math.pow(10, decimals)).toFixed(6);
+                                        return (
+                                          <span key={assetIndex} className="text-sm">
+                                            {formattedAmount} {assetName}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </>
+                      ) : sendAllAssets ? (
+                        <div className="p-4 border-2 border-red-500 rounded-lg bg-muted/30">
+                          <p className="text-sm text-muted-foreground">
+                            All assets will be sent to: <span className="font-mono text-xs">{previewTxBody.changeAddress?.slice(0, 20)}...{previewTxBody.changeAddress?.slice(-20)}</span>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-4 border-2 border-red-500 rounded-lg bg-muted/30">
+                          <p className="text-sm text-muted-foreground">No outputs defined</p>
+                        </div>
+                      )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Configure recipients and select UTxOs to see preview</p>
+                )}
+              </div>
+            </div>
+
+              {/* Change Address - Below both sections */}
+              {previewTxBody?.changeAddress && !sendAllAssets && (() => {
+                const changeAddressLabel = getAddressLabel(previewTxBody.changeAddress);
+                return (
+                  <div className="mt-4">
+                    <h4 className="text-xs font-medium mb-2 text-muted-foreground">Change Address</h4>
+                    <div className="p-3 border rounded-lg bg-muted/30">
+                      {changeAddressLabel.label && (
+                        <div className="text-xs font-semibold mb-1">
+                          <span className={cn(
+                            changeAddressLabel.type === "self" && "text-blue-600 dark:text-blue-400",
+                            changeAddressLabel.type === "signer" && "text-green-600 dark:text-green-400",
+                            changeAddressLabel.type === "contact" && "text-purple-600 dark:text-purple-400"
+                          )}>
+                            {changeAddressLabel.label}
+                          </span>
+                        </div>
+                      )}
+                      <p className="font-mono text-xs break-all text-muted-foreground">
+                        {previewTxBody.changeAddress}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : null}
+        </div>
       </CardUI>
 
       <CardUI
@@ -616,5 +1133,72 @@ export default function PageNewTransaction() {
       </div>
       </div>
     </main>
+  );
+}
+
+// Contacts Dialog Component
+function ContactsDialog({
+  contacts,
+  onSelectContact,
+  className,
+}: {
+  contacts: Array<{ id: string; name: string; address: string; description?: string | null }>;
+  onSelectContact: (contact: { address: string }) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (contacts.length === 0) {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className={cn("gap-2", className)}>
+          <UserPlus className="h-4 w-4" />
+          <span className="hidden sm:inline">Add from Contacts</span>
+          <span className="sm:hidden">Contacts</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Select Contact</DialogTitle>
+          <DialogDescription>
+            Choose a contact to add as a recipient
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[400px] overflow-y-auto">
+          {contacts.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No contacts available
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {contacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  onClick={() => {
+                    onSelectContact(contact);
+                    setOpen(false);
+                  }}
+                  className="w-full text-left p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="font-medium">{contact.name}</div>
+                  {contact.description && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {contact.description}
+                    </div>
+                  )}
+                  <div className="text-xs font-mono text-muted-foreground mt-1 break-all">
+                    {contact.address.slice(0, 20)}...{contact.address.slice(-20)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

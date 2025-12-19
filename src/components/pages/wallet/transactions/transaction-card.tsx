@@ -20,7 +20,7 @@ import { Transaction } from "@prisma/client";
 
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
@@ -28,6 +28,7 @@ import { Button as ShadcnButton } from "@/components/ui/button";
 import Button from "@/components/common/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -113,6 +114,49 @@ export default function TransactionCard({
   const { data: discordIds } = api.user.getDiscordIds.useQuery({
     addresses: appWallet?.signersAddresses || [],
   });
+
+  // Fetch contacts for address labeling
+  const { data: contacts } = api.contact.getAll.useQuery(
+    { walletId: appWallet?.id ?? "" },
+    { enabled: !!appWallet?.id }
+  );
+
+  // Create contact map
+  const contactMap = useMemo(() => {
+    if (!contacts) return new Map();
+    const map = new Map<string, { name: string; description?: string | null }>();
+    contacts.forEach((contact: { address: string; name: string; description?: string | null }) => {
+      map.set(contact.address, { name: contact.name, description: contact.description });
+    });
+    return map;
+  }, [contacts]);
+
+  // Function to get address label
+  const getAddressLabel = useMemo(() => {
+    return (address: string): { label: string; type: "self" | "signer" | "contact" | "unknown" } => {
+      if (!appWallet) return { label: "", type: "unknown" };
+      
+      // Check if it's the multisig wallet address
+      if (address === appWallet.address) {
+        return { label: "Self (Multisig)", type: "self" };
+      }
+      
+      // Check if it's a signer
+      const signerIndex = appWallet.signersAddresses?.findIndex((addr) => addr === address);
+      if (signerIndex !== undefined && signerIndex >= 0) {
+        const signerDescription = appWallet.signersDescriptions?.[signerIndex] || `Signer ${signerIndex + 1}`;
+        return { label: signerDescription, type: "signer" };
+      }
+      
+      // Check if it's a contact
+      const contact = contactMap.get(address);
+      if (contact) {
+        return { label: contact.name, type: "contact" };
+      }
+      
+      return { label: "", type: "unknown" };
+    };
+  }, [appWallet, contactMap]);
 
   async function sendReminder(signerAddress: string) {
     try {
@@ -335,10 +379,31 @@ export default function TransactionCard({
                     );
                   })}
                 </div>
-                <div className="text-xs text-muted-foreground mt-1 font-mono">
-                  to {output.address.length > 20
-                    ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
-                    : output.address}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground font-mono">
+                    to {output.address.length > 20
+                      ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
+                      : output.address}
+                  </span>
+                  {(() => {
+                    const addressLabel = getAddressLabel(output.address);
+                    if (addressLabel.label) {
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-xs shrink-0",
+                            addressLabel.type === "self" && "border-blue-500 text-blue-700 dark:text-blue-400",
+                            addressLabel.type === "signer" && "border-green-500 text-green-700 dark:text-green-400",
+                            addressLabel.type === "contact" && "border-purple-500 text-purple-700 dark:text-purple-400"
+                          )}
+                        >
+                          {addressLabel.label}
+                        </Badge>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
             </div>
@@ -346,7 +411,7 @@ export default function TransactionCard({
         })}
       </>
     );
-  }, [txJson, walletAssetMetadata]);
+  }, [txJson, walletAssetMetadata, getAddressLabel]);
 
   function handleRemindAll() {
     appWallet?.signersAddresses.map((signerAddress) => {
@@ -494,45 +559,56 @@ export default function TransactionCard({
         <div className="w-full pt-3 border-t border-border/30">
           <div className="space-y-3">
             <div className="text-xs font-medium text-muted-foreground">
-              {getSignersText()}
+              <b>Threshold:</b> {getSignersText()}
             </div>
-            <div className="flex items-center gap-1.5">
-              {Array.from({ length: signersCount }).map((_, index) => {
-                let iconColor = "text-muted-foreground opacity-30"; // Light gray (not required, not signed)
-                
-                if (index < signedCount) {
-                  iconColor = "text-green-500 dark:text-green-400"; // Green (signed, starting from left)
-                } else if (index < requiredCount) {
-                  iconColor = "text-foreground opacity-100"; // White (threshold requirement, not signed)
-                }
-                
-                return (
-                  <User
-                    key={index}
-                    className={`h-5 w-5 sm:h-6 sm:w-6 ${iconColor}`}
-                  />
-                );
-              })}
-            </div>
-            {/* Progress Bar */}
+            {/* Progress Bar with Icons */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="h-2.5 bg-muted rounded-full overflow-visible shadow-inner relative cursor-help">
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-foreground/40 z-10"
-                      style={{ left: `${thresholdPercentage}%` }}
+                  <div className="relative p-3 bg-muted/30 rounded-lg border">
+                    {/* Person Icons distributed along the progress bar */}
+                    <div 
+                      className="grid mb-3 w-full "
+                      style={{ gridTemplateColumns: `repeat(${signersCount}, 1fr)`, height: '24px' }}
                     >
-                      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground/60" />
+                      {Array.from({ length: signersCount }).map((_, index) => {
+                        let iconColor = "text-muted-foreground opacity-30"; // Light gray (not required, not signed)
+                        
+                        if (index < signedCount) {
+                          iconColor = "text-green-500 dark:text-green-400"; // Green (signed, starting from left)
+                        } else if (index < requiredCount) {
+                          iconColor = "text-foreground opacity-100"; // White (threshold requirement, not signed)
+                        }
+                        
+                        return (
+                          <div
+                            key={index}
+                            className="flex items-center justify-center"
+                          >
+                            <User
+                              className={`h-5 w-5 sm:h-6 sm:w-6 ${iconColor}`}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div
-                      className={`h-full transition-all duration-500 ease-out relative rounded-full ${
-                        isComplete
-                          ? "bg-gradient-to-r from-green-500 to-green-600 shadow-sm shadow-green-500/50"
-                          : "bg-gradient-to-r from-primary to-primary/90"
-                      }`}
-                      style={{ width: `${progressPercentage}%` }}
-                    />
+                    {/* Progress Bar */}
+                    <div className="h-2.5 bg-muted rounded-full overflow-visible shadow-inner relative cursor-help w-full">
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-foreground/40 z-10"
+                        style={{ left: `${thresholdPercentage}%` }}
+                      >
+                        <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-foreground/60" />
+                      </div>
+                      <div
+                        className={`h-full transition-all duration-500 ease-out relative rounded-full ${
+                          isComplete
+                            ? "bg-gradient-to-r from-green-500 to-green-600 shadow-sm shadow-green-500/50"
+                            : "bg-gradient-to-r from-primary to-primary/90"
+                        }`}
+                        style={{ width: `${progressPercentage}%` }}
+                      />
+                    </div>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -565,33 +641,6 @@ export default function TransactionCard({
                   {outputList}
                 </div>
               </div>
-              <Separator className="my-2" />
-            </>
-          )}
-          {txJson.changeAddress != appWallet.address && (
-            <>
-              <div className="font-semibold">Sending</div>
-              <ul className="grid gap-3">
-                {txJson.inputs.map((input: any) => {
-                  return (
-                    <li
-                      key={input.txIn.txHash}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="text-muted-foreground">
-                        {getFirstAndLast(txJson.changeAddress)}
-                      </span>
-                      <span>
-                        {lovelaceToAda(
-                          input.txIn.amount.find(
-                            (unit: any) => unit.unit === "lovelace",
-                          ).quantity,
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
               <Separator className="my-2" />
             </>
           )}
@@ -644,6 +693,100 @@ export default function TransactionCard({
                             </span>
                           </div>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <Separator className="my-2" />
+            </>
+          )}
+
+          {/* Certificates Section */}
+          {txJson.certificates && txJson.certificates.length > 0 && (
+            <>
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Certificates
+                </div>
+                <div className="rounded-lg bg-muted/30 border border-border/50 p-3 space-y-3">
+                  {txJson.certificates.map((cert: any, index: number) => {
+                    const certType = cert.certType?.type;
+                    let certIcon = Award;
+                    let certLabel = "Certificate";
+                    let certColor = "text-muted-foreground";
+                    let certDetails: React.ReactNode = null;
+
+                    if (certType === "DRepDeregistration") {
+                      certIcon = UserMinus;
+                      certLabel = "DRep Deregistration";
+                      certColor = "text-orange-500 dark:text-orange-400";
+                      const drepId = cert.certType?.drepId || "Unknown";
+                      const coin = cert.certType?.coin;
+                      certDetails = (
+                        <div className="space-y-1.5 pl-5">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">DRep ID:</span>{" "}
+                            <span className="font-mono">{getFirstAndLast(drepId)}</span>
+                          </div>
+                          {coin && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Refund:</span>{" "}
+                              <span className="text-green-500 dark:text-green-400 font-medium">
+                                +{lovelaceToAda(parseInt(coin))} ₳
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else if (certType === "DRepRegistration") {
+                      certIcon = UserPlus;
+                      certLabel = "DRep Registration";
+                      certColor = "text-blue-500 dark:text-blue-400";
+                      const drepId = cert.certType?.drepId || "Unknown";
+                      const deposit = cert.certType?.deposit;
+                      certDetails = (
+                        <div className="space-y-1.5 pl-5">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">DRep ID:</span>{" "}
+                            <span className="font-mono">{getFirstAndLast(drepId)}</span>
+                          </div>
+                          {deposit && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Deposit:</span>{" "}
+                              <span className="text-red-500 dark:text-red-400 font-medium">
+                                -{lovelaceToAda(parseInt(deposit))} ₳
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else if (certType === "DRepUpdate") {
+                      certIcon = UserCog;
+                      certLabel = "DRep Update";
+                      certColor = "text-purple-500 dark:text-purple-400";
+                      const drepId = cert.certType?.drepId || "Unknown";
+                      certDetails = (
+                        <div className="space-y-1.5 pl-5">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">DRep ID:</span>{" "}
+                            <span className="font-mono">{getFirstAndLast(drepId)}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const Icon = certIcon;
+
+                    return (
+                      <div key={index} className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className={`flex items-center gap-1.5 ${certColor}`}>
+                            <Icon className="h-4 w-4" />
+                            <span className="text-xs font-medium">{certLabel}</span>
+                          </div>
+                        </div>
+                        {certDetails}
                       </div>
                     );
                   })}
@@ -789,21 +932,35 @@ export default function TransactionCard({
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
-            <Button onClick={() => signTx()} disabled={loading} className="w-full sm:w-auto flex-1">
+            <Button 
+              onClick={() => signTx()} 
+              disabled={loading}
+              loading={loading}
+              className={`w-full sm:w-auto ${loading ? 'flex-1' : 'flex-1 sm:flex-none'} relative overflow-hidden transition-all duration-300 ${
+                loading 
+                  ? "bg-primary/90 shadow-lg shadow-primary/20 cursor-wait" 
+                  : ""
+              }`}
+            >
               {loading ? (
-                <Loader className="h-4 w-4 animate-spin" />
+                <>
+                  <span className="hidden sm:inline">Signing Transaction...</span>
+                  <span className="sm:hidden">Signing...</span>
+                  <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                </>
               ) : (
                 "Approve & Sign"
               )}
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => rejectTx()}
-              disabled={loading}
-              className="w-full sm:w-auto flex-1"
-            >
-              {loading ? <Loader className="h-4 w-4 animate-spin" /> : "Reject"}
-            </Button>
+            {!loading && (
+              <Button
+                variant="destructive"
+                onClick={() => rejectTx()}
+                className="w-full sm:w-auto flex-1"
+              >
+                Reject
+              </Button>
+            )}
           </CardFooter>
         )}
 

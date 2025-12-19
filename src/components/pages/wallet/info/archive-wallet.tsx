@@ -36,6 +36,7 @@ export function ArchiveWallet({ appWallet }: { appWallet: Wallet }) {
       name: appWallet.name,
       description: appWallet.description ?? "",
       isArchived: isArchived,
+      profileImageIpfsUrl: appWallet.profileImageIpfsUrl ?? null,
     });
   }
 

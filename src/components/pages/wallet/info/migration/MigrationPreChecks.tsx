@@ -2,13 +2,15 @@ import React, { useState, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
-import { AlertCircle, CheckCircle, Loader, ArrowRight } from "lucide-react";
+import { AlertCircle, CheckCircle, Loader, ArrowRight, ExternalLink } from "lucide-react";
 import { Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useSiteStore } from "@/lib/zustand/site";
+import { useProxyStore } from "@/lib/zustand/proxy";
 import { getProvider } from "@/utils/get-provider";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { MultisigWallet } from "@/utils/multisigSDK";
+import Link from "next/link";
 
 interface PreCheckResult {
   status: "loading" | "success" | "warning" | "error";
@@ -29,6 +31,7 @@ export default function MigrationPreChecks({
 }: MigrationPreChecksProps) {
   const network = useSiteStore((state) => state.network);
   const drepInfo = useWalletsStore((state) => state.drepInfo);
+  const proxies = useProxyStore((state) => state.proxies[appWallet.id] || []);
   const { transactions: pendingTransactions } = usePendingTransactions({
     walletId: appWallet.id,
   });
@@ -53,7 +56,7 @@ export default function MigrationPreChecks({
         network
       );
     } catch (error) {
-      console.error("Failed to build multisig wallet:", error);
+      // Failed to build multisig wallet - will be handled by staking check
       return null;
     }
   }, [appWallet, network]);
@@ -62,15 +65,28 @@ export default function MigrationPreChecks({
   useEffect(() => {
     async function checkDRepStatus() {
       try {
-        if (drepInfo) {
+        // Check for active proxy DRep (allowed)
+        const hasActiveProxyDrep = proxies.some((proxy: any) => proxy.drepInfo?.active === true);
+        
+        // Check for active direct DRep (not allowed - must be retired)
+        const hasActiveDirectDrep = drepInfo?.active === true;
+        
+        if (hasActiveDirectDrep) {
+          // Direct DRep is active - this blocks migration
           setDrepCheck({
-            status: drepInfo.active ? "warning" : "success",
-            message: drepInfo.active ? "DRep is registered" : "DRep is not registered",
-            details: drepInfo.active 
-              ? "You have an active DRep registration. Consider updating your DRep registration after migration."
-              : "No DRep registration found."
+            status: "error",
+            message: "Direct DRep registration is active",
+            details: "You must retire your direct DRep registration before migrating. Only proxy DRep registrations are allowed during migration."
+          });
+        } else if (hasActiveProxyDrep) {
+          // Only proxy DRep is active - this is allowed
+          setDrepCheck({
+            status: "success",
+            message: "Proxy DRep is registered",
+            details: "You have an active proxy DRep registration, which is allowed for migration."
           });
         } else {
+          // No DRep registration
           setDrepCheck({
             status: "success",
             message: "DRep is not registered",
@@ -87,7 +103,7 @@ export default function MigrationPreChecks({
     }
 
     checkDRepStatus();
-  }, [drepInfo]);
+  }, [drepInfo, proxies]);
 
   // Check staking registration
   useEffect(() => {
@@ -187,30 +203,58 @@ export default function MigrationPreChecks({
   };
 
   return (
-    <CardUI
-      title="Step 1: Pre-Checks"
-      description="Review your wallet status before starting migration"
-      cardClassName="col-span-2"
-    >
+    <div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold mb-1">Step 1: Pre-Checks</h3>
+        <p className="text-sm text-muted-foreground">Review your wallet status before starting migration</p>
+      </div>
       <div className="space-y-6">
         {/* DRep Check */}
-        <div className={`p-4 border rounded-lg ${getStatusColor(drepCheck.status)}`}>
-          <div className="flex items-center gap-3">
-            {getStatusIcon(drepCheck.status)}
+        <div 
+          className={`p-4 border rounded-lg transition-all duration-200 ${getStatusColor(drepCheck.status)}`}
+          role="status"
+          aria-live="polite"
+          aria-label={`DRep Registration: ${drepCheck.status === "loading" ? "Checking" : drepCheck.status === "success" ? "Ready" : drepCheck.status === "warning" ? "Warning" : "Error"}`}
+        >
+          <div className="flex items-start gap-3">
+            {drepCheck.status === "loading" ? (
+              <Loader className="h-4 w-4 animate-spin text-muted-foreground mt-0.5" />
+            ) : (
+              <div className="mt-0.5">{getStatusIcon(drepCheck.status)}</div>
+            )}
             <div className="flex-1">
               <h4 className="font-medium">DRep Registration</h4>
               <p className="text-sm text-muted-foreground">{drepCheck.message}</p>
               {drepCheck.details && (
                 <p className="text-xs text-muted-foreground mt-1">{drepCheck.details}</p>
               )}
+              {drepCheck.status === "error" && (
+                <div className="mt-3">
+                  <Link href={`/wallets/${appWallet.id}/governance`}>
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                      <ExternalLink className="h-3 w-3 mr-2" />
+                      Go to Governance to Retire DRep
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Staking Check */}
-        <div className={`p-4 border rounded-lg ${getStatusColor(stakingCheck.status)}`}>
+        <div 
+          className={`p-4 border rounded-lg transition-all duration-200 ${getStatusColor(stakingCheck.status)}`}
+          role="status"
+          aria-live="polite"
+          aria-label={`Staking Registration: ${stakingCheck.status === "loading" ? "Checking" : stakingCheck.status === "success" ? "Ready" : stakingCheck.status === "warning" ? "Warning" : "Error"}`}
+        >
           <div className="flex items-center gap-3">
-            {getStatusIcon(stakingCheck.status)}
+            {stakingCheck.status === "loading" ? (
+              <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              getStatusIcon(stakingCheck.status)
+            )}
             <div className="flex-1">
               <h4 className="font-medium">Staking Registration</h4>
               <p className="text-sm text-muted-foreground">{stakingCheck.message}</p>
@@ -222,9 +266,18 @@ export default function MigrationPreChecks({
         </div>
 
         {/* Pending Transactions Check */}
-        <div className={`p-4 border rounded-lg ${getStatusColor(pendingTxCheck.status)}`}>
+        <div 
+          className={`p-4 border rounded-lg transition-all duration-200 ${getStatusColor(pendingTxCheck.status)}`}
+          role="status"
+          aria-live="polite"
+          aria-label={`Pending Transactions: ${pendingTxCheck.status === "loading" ? "Checking" : pendingTxCheck.status === "success" ? "Ready" : pendingTxCheck.status === "warning" ? "Warning" : "Error"}`}
+        >
           <div className="flex items-center gap-3">
-            {getStatusIcon(pendingTxCheck.status)}
+            {pendingTxCheck.status === "loading" ? (
+              <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              getStatusIcon(pendingTxCheck.status)
+            )}
             <div className="flex-1">
               <h4 className="font-medium">Pending Transactions</h4>
               <p className="text-sm text-muted-foreground">{pendingTxCheck.message}</p>
@@ -261,6 +314,7 @@ export default function MigrationPreChecks({
             onClick={onContinue}
             disabled={!allChecksComplete || hasErrors}
             className="flex-1"
+            aria-label={hasErrors ? "Cannot continue: Some checks failed" : allChecksComplete ? "Continue to wallet creation" : "Waiting for checks to complete"}
           >
             {allChecksComplete ? (
               <>
@@ -268,11 +322,14 @@ export default function MigrationPreChecks({
                 <ArrowRight className="h-4 w-4 ml-2" />
               </>
             ) : (
-              "Checking..."
+              <>
+                <Loader className="h-4 w-4 animate-spin mr-2" />
+                Checking...
+              </>
             )}
           </Button>
         </div>
       </div>
-    </CardUI>
+    </div>
   );
 }

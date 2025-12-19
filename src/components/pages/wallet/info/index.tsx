@@ -2,6 +2,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import CardInfo from "./card-info";
 import CardSigners from "./signers/card-signers";
+import { ManageContacts } from "./manage-contacts";
 import { MigrateWallet } from "./migrate-wallet";
 import { ArchiveWallet } from "./archive-wallet";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
@@ -19,6 +20,7 @@ export default function WalletInfo() {
       <div className="grid grid-cols-1 gap-4 sm:gap-6">
         <CardInfo appWallet={appWallet} />
         <CardSigners appWallet={appWallet} />
+        <ManageContacts appWallet={appWallet} />
         <MigrateWallet appWallet={appWallet} />
         <ProxyControlCard />
         {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}

@@ -12,6 +12,3 @@ export default function WalletBalanceSkeleton() {
     />
   );
 }
-
-
-
