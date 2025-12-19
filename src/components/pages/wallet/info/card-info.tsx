@@ -9,6 +9,9 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { deserializeAddress } from "@meshsdk/core";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
+import IPFSImage from "@/components/common/ipfs-image";
+import Image from "next/image";
 
 import {
   DropdownMenu,
@@ -52,6 +55,18 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
     <CardUI
       title={appWallet.name}
       description={appWallet.description}
+      profileImage={
+        appWallet.profileImageIpfsUrl ? (
+          <div className="relative aspect-square w-12 sm:w-14 rounded-lg overflow-hidden border border-border/50 shadow-sm">
+            <IPFSImage
+              src={appWallet.profileImageIpfsUrl}
+              alt="Wallet Profile"
+              fill
+              className="object-cover object-center"
+            />
+          </div>
+        ) : undefined
+      }
       headerDom={
         <div className="flex items-center gap-2">
           {isLegacyWallet && (
@@ -101,6 +116,9 @@ function EditInfo({
     appWallet.description ?? "",
   );
   const [isArchived, setIsArchived] = useState<boolean>(appWallet.isArchived);
+  const [profileImageIpfsUrl, setProfileImageIpfsUrl] = useState<string | null>(
+    appWallet.profileImageIpfsUrl ?? null,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const ctx = api.useUtils();
   const { toast } = useToast();
@@ -133,6 +151,7 @@ function EditInfo({
       name,
       description,
       isArchived,
+      profileImageIpfsUrl: profileImageIpfsUrl || null,
     });
   }
   return (
@@ -157,6 +176,17 @@ function EditInfo({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+      </div>
+      <div className="grid gap-2 sm:gap-3">
+        <Label htmlFor="profileImage">Profile Image</Label>
+        <ImgDragAndDrop
+          onImageUpload={(url) => setProfileImageIpfsUrl(url)}
+          initialUrl={profileImageIpfsUrl}
+        />
+        <p className="text-xs text-muted-foreground">
+          <strong>Note:</strong> Images will be stored on public IPFS (InterPlanetary File System). 
+          Once uploaded, the image will be publicly accessible and cannot be removed from IPFS.
+        </p>
       </div>
       <div className="grid gap-2 sm:gap-3">
         <Label htmlFor="type" className="text-sm">
@@ -190,7 +220,10 @@ function EditInfo({
           onClick={() => editWallet()}
           disabled={
             loading ||
-            (appWallet.name === name && appWallet.description === description && appWallet.isArchived === isArchived)
+            (appWallet.name === name && 
+             appWallet.description === description && 
+             appWallet.isArchived === isArchived &&
+             appWallet.profileImageIpfsUrl === profileImageIpfsUrl)
           }
           className="flex-1 sm:flex-initial"
         >
@@ -396,22 +429,16 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   const requiredCount = getRequiredCount();
   
   return (
-    <div className="space-y-4">
-      {/* Desktop: Grid layout for addresses and balance */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Left Column */}
-        <div className="space-y-4">
-          {/* Signing Threshold - Above Address */}
-          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/30">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
-              <div className="text-sm font-medium">{getSignersText()}</div>
-            </div>
+    <div className="space-y-6">
+      {/* Top Section: Key Info */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+          {/* Signing Threshold */}
+          <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-lg border border-border/40">
             <div className="flex items-center gap-1.5 flex-shrink-0">
               {Array.from({ length: signersCount }).map((_, index) => (
                 <User
                   key={index}
-                  className={`h-5 w-5 sm:h-6 sm:w-6 ${
+                  className={`h-4 w-4 sm:h-5 sm:w-5 ${
                     index < requiredCount
                       ? "text-foreground opacity-100"
                       : "text-muted-foreground opacity-30"
@@ -419,8 +446,23 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
                 />
               ))}
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
+              <div className="text-sm font-semibold">{getSignersText()}</div>
+            </div>
           </div>
           
+          {/* Balance */}
+          <div className="flex flex-col justify-center p-4 bg-muted/40 rounded-lg border border-border/40">
+            <div className="text-xs font-medium text-muted-foreground mb-1">Balance</div>
+            <div className="text-2xl sm:text-3xl font-bold">{balance} ₳</div>
+          </div>
+      </div>
+      
+      {/* Addresses Section */}
+      <div className="space-y-3 pt-2 border-t border-border/30">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Wallet Details</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Address */}
           <RowLabelInfo
             label="Address"
@@ -467,15 +509,6 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
               copyString=""
             />
           ) : null}
-        </div>
-        
-        {/* Right Column */}
-        <div className="space-y-4">
-          {/* Balance - Larger Display */}
-          <div className="flex flex-col gap-2">
-            <div className="text-sm font-medium text-muted-foreground">Balance</div>
-            <div className="text-2xl sm:text-3xl font-semibold">{balance} ₳</div>
-          </div>
         </div>
       </div>
       

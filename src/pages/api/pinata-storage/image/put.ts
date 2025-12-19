@@ -53,6 +53,15 @@ export default async function handler(
 
     const file: File = Array.isArray(files.file) ? files.file[0] : files.file;
     
+    // Validate file size (1MB = 1,048,576 bytes)
+    const MAX_FILE_SIZE = 1048576;
+    const fileSize = file.size;
+    if (fileSize > MAX_FILE_SIZE) {
+      return res.status(400).json({ 
+        error: `File size exceeds 1MB limit. File size: ${(fileSize / 1024 / 1024).toFixed(2)}MB` 
+      });
+    }
+    
     // Validate and retrieve form fields
     const rawShortHash = Array.isArray(fields.shortHash)
       ? fields.shortHash[0]

@@ -20,15 +20,24 @@ interface ErrorResponse {
 
 interface ImgDragAndDropProps {
   onImageUpload: (url: string, digest: string) => void;
+  initialUrl?: string | null;
 }
 
-export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
+export default function ImgDragAndDrop({ onImageUpload, initialUrl }: ImgDragAndDropProps) {
   const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [filePath, setFilePath] = useState<string>("");
+  const [imageUrl, setImageUrl] = useState<string | null>(initialUrl ?? null);
+  const [filePath, setFilePath] = useState<string>(initialUrl ?? "");
   const [digest, setDigest] = useState<string>("");
   const lastComputedUrlRef = useRef<string>("");
+
+  // Update state when initialUrl changes
+  useEffect(() => {
+    if (initialUrl) {
+      setImageUrl(initialUrl);
+      setFilePath(initialUrl);
+    }
+  }, [initialUrl]);
 
   async function computeSha256(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer();
@@ -59,6 +68,14 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
     if (!acceptedFiles.length) return;
     const file = acceptedFiles[0];
     if (!file) return;
+    
+    // Check file size (1MB = 1,048,576 bytes)
+    const MAX_FILE_SIZE = 1048576;
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File size exceeds 1MB limit. File size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      return;
+    }
+    
     setUploading(true);
     setError(null);
 
@@ -112,6 +129,17 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
     onDrop,
     accept: { "image/*": [] },
     multiple: false,
+    maxSize: 1048576, // 1MB in bytes
+    onDropRejected: (fileRejections) => {
+      const rejection = fileRejections[0];
+      if (rejection?.errors?.[0]?.code === "file-too-large") {
+        setError("File size exceeds 1MB limit. Please choose a smaller image.");
+      } else if (rejection?.errors?.[0]?.code === "file-invalid-type") {
+        setError("Invalid file type. Please upload an image file.");
+      } else {
+        setError("File upload rejected. Please try again.");
+      }
+    },
   });
 
   // Compute image digest for manually entered URLs
@@ -121,15 +149,39 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
         try {
           const response = await fetch(filePath);
           if (!response.ok) throw new Error("Image fetch failed");
+          
+          // Check Content-Length header if available
+          const contentLength = response.headers.get("content-length");
+          const MAX_FILE_SIZE = 1048576; // 1MB
+          if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
+            setError(`Image size exceeds 1MB limit. Image size: ${(parseInt(contentLength) / 1024 / 1024).toFixed(2)}MB`);
+            setFilePath("");
+            setImageUrl(null);
+            return;
+          }
+          
           const arrayBuffer = await response.arrayBuffer();
+          
+          // Check actual file size
+          if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
+            setError(`Image size exceeds 1MB limit. Image size: ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)}MB`);
+            setFilePath("");
+            setImageUrl(null);
+            return;
+          }
+          
           const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const urlDigest = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
           setDigest(urlDigest);
+          setError(null);
           lastComputedUrlRef.current = filePath;
           onImageUpload(filePath, urlDigest);
         } catch (err) {
           console.error("Failed to generate digest from URL:", err);
+          setError("Failed to load image from URL. Please check the URL and try again.");
+          setFilePath("");
+          setImageUrl(null);
         }
       })();
     }
@@ -139,13 +191,12 @@ export default function ImgDragAndDrop({ onImageUpload }: ImgDragAndDropProps) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-4">
         {imageUrl && (
-          <div className="relative h-32 w-32">
+          <div className="relative aspect-square w-32">
             <Image
               src={imageUrl}
               alt="Uploaded Preview"
-              width={128}
-              height={128}
-              className="rounded-md object-cover"
+              fill
+              className="rounded-md object-cover object-center"
             />
             <button
               onClick={() => {

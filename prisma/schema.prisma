@@ -41,6 +41,7 @@ model Wallet {
   clarityApiKey           String?
   rawImportBodies         Json?
   migrationTargetWalletId String?
+  profileImageIpfsUrl     String?
 }
 
 model Transaction {

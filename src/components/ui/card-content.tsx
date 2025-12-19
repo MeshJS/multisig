@@ -8,6 +8,7 @@ export default function CardUI({
   icon,
   cardClassName,
   headerDom,
+  profileImage,
 }: {
   children: React.ReactNode;
   title: string;
@@ -15,11 +16,19 @@ export default function CardUI({
   icon?: any;
   cardClassName?: string;
   headerDom?: ReactNode;
+  profileImage?: ReactNode;
 }) {
   return (
     <Card className={`w-full ${cardClassName || ""}`}>
       <CardHeader className="flex flex-row items-start sm:items-center justify-between space-y-0 pb-2 px-4 sm:px-6 pt-4 sm:pt-6 gap-2">
-        <CardTitle className="text-lg sm:text-xl font-medium pr-2 flex-1 min-w-0">{title}</CardTitle>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {profileImage && (
+            <div className="flex-shrink-0">
+              {profileImage}
+            </div>
+          )}
+          <CardTitle className="text-lg sm:text-xl font-medium pr-2 flex-1 min-w-0">{title}</CardTitle>
+        </div>
         {headerDom && <div className="flex-shrink-0">{headerDom}</div>}
         {icon && (
           <>

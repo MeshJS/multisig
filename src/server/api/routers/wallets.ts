@@ -228,20 +228,33 @@ export const walletRouter = createTRPCRouter({
         name: z.string().min(1).max(256),
         description: z.string().max(2000),
         isArchived: z.boolean(),
+        profileImageIpfsUrl: z.string().url().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       await assertWalletAccess(ctx, input.walletId, sessionAddress);
+      const updateData: {
+        name: string;
+        description: string;
+        isArchived: boolean;
+        profileImageIpfsUrl?: string | null;
+      } = {
+        name: input.name,
+        description: input.description,
+        isArchived: input.isArchived,
+      };
+      
+      // Only update profileImageIpfsUrl if it's explicitly provided
+      if (input.profileImageIpfsUrl !== undefined) {
+        updateData.profileImageIpfsUrl = input.profileImageIpfsUrl ?? null;
+      }
+      
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
         },
-        data: {
-          name: input.name,
-          description: input.description,
-          isArchived: input.isArchived,
-        },
+        data: updateData,
       });
     }),
 
