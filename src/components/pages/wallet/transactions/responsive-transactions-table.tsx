@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight, MoreHorizontal } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, UserMinus, UserPlus, UserCog, Award } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
-import { dateToFormatted, getFirstAndLast, truncateTokenSymbol } from "@/utils/strings";
+import { dateToFormatted, getFirstAndLast, truncateTokenSymbol, lovelaceToAda } from "@/utils/strings";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
@@ -127,6 +127,95 @@ function TransactionCard({
     }).filter(Boolean);
   }, [transaction, appWallet, walletAssetMetadata]);
 
+  const certificatesList = useMemo(() => {
+    if (!dbTransaction?.txJson) return null;
+    try {
+      const txJson = JSON.parse(dbTransaction.txJson);
+      if (!txJson.certificates || txJson.certificates.length === 0) return null;
+
+      return txJson.certificates.map((cert: any, index: number) => {
+        const certType = cert.certType?.type;
+        let certIcon = Award;
+        let certLabel = "Certificate";
+        let certColor = "text-muted-foreground";
+        let certDetails: React.ReactNode = null;
+
+        if (certType === "DRepDeregistration") {
+          certIcon = UserMinus;
+          certLabel = "DRep Deregistration";
+          certColor = "text-orange-500 dark:text-orange-400";
+          const drepId = cert.certType?.drepId || "Unknown";
+          const coin = cert.certType?.coin;
+          certDetails = (
+            <div className="space-y-1 mt-1.5">
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">DRep:</span>{" "}
+                <span className="font-mono">{getFirstAndLast(drepId)}</span>
+              </div>
+              {coin && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Refund:</span>{" "}
+                  <span className="text-green-500 dark:text-green-400 font-medium">
+                    +{lovelaceToAda(parseInt(coin))} ₳
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        } else if (certType === "DRepRegistration") {
+          certIcon = UserPlus;
+          certLabel = "DRep Registration";
+          certColor = "text-blue-500 dark:text-blue-400";
+          const drepId = cert.certType?.drepId || "Unknown";
+          const deposit = cert.certType?.deposit;
+          certDetails = (
+            <div className="space-y-1 mt-1.5">
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">DRep:</span>{" "}
+                <span className="font-mono">{getFirstAndLast(drepId)}</span>
+              </div>
+              {deposit && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Deposit:</span>{" "}
+                  <span className="text-red-500 dark:text-red-400 font-medium">
+                    -{lovelaceToAda(parseInt(deposit))} ₳
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        } else if (certType === "DRepUpdate") {
+          certIcon = UserCog;
+          certLabel = "DRep Update";
+          certColor = "text-purple-500 dark:text-purple-400";
+          const drepId = cert.certType?.drepId || "Unknown";
+          certDetails = (
+            <div className="space-y-1 mt-1.5">
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">DRep:</span>{" "}
+                <span className="font-mono">{getFirstAndLast(drepId)}</span>
+              </div>
+            </div>
+          );
+        }
+
+        const Icon = certIcon;
+
+        return (
+          <div key={index} className="flex items-start gap-2 text-sm">
+            <Icon className={`h-4 w-4 mt-0.5 flex-shrink-0 ${certColor}`} />
+            <div className="flex-1 min-w-0">
+              <div className={`font-medium ${certColor}`}>{certLabel}</div>
+              {certDetails}
+            </div>
+          </div>
+        );
+      });
+    } catch (e) {
+      return null;
+    }
+  }, [dbTransaction]);
+
   return (
     <div className="rounded-lg border p-4 space-y-3 bg-card">
       <div className="flex items-start justify-between gap-2">
@@ -155,6 +244,15 @@ function TransactionCard({
       )}
       
       <div className="space-y-2">{outputList}</div>
+
+      {certificatesList && certificatesList.length > 0 && (
+        <div className="space-y-2 pt-2 border-t">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Certificates
+          </div>
+          <div className="space-y-2">{certificatesList}</div>
+        </div>
+      )}
       
       {dbTransaction && dbTransaction.signedAddresses.length > 0 && (
         <div>

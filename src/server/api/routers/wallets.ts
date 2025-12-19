@@ -13,15 +13,20 @@ const requireSessionAddress = (ctx: any) => {
   return address;
 };
 
-const assertWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+const assertWalletAccess = async (ctx: any, walletId: string, requester: string | string[]) => {
   const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
 
-  const isSigner =
-    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
-  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
+  const requesters = Array.isArray(requester) ? requester : [requester];
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const allRequesters = [...requesters, ...sessionWallets];
+
+  const isSigner = allRequesters.some((addr) =>
+    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr)
+  );
+  const isOwner = allRequesters.some((addr) => wallet.ownerAddress === addr || wallet.ownerAddress === "all");
 
   if (!isSigner && !isOwner) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Not a signer of this wallet" });
@@ -571,8 +576,10 @@ export const walletRouter = createTRPCRouter({
   clearMigrationTarget: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
       const sessionAddress = requireSessionAddress(ctx);
-      await assertWalletAccess(ctx, input.walletId, sessionAddress);
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      await assertWalletAccess(ctx, input.walletId, requesters);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -639,8 +646,10 @@ export const walletRouter = createTRPCRouter({
   archiveWallet: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
       const sessionAddress = requireSessionAddress(ctx);
-      await assertWalletAccess(ctx, input.walletId, sessionAddress);
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      await assertWalletAccess(ctx, input.walletId, requesters);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,

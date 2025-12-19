@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
@@ -217,6 +217,28 @@ function TransactionRow({
     );
   }, [transaction, appWallet, walletAssetMetadata]);
 
+  const certificatesInfo = useMemo(() => {
+    if (!dbTransaction?.txJson) return null;
+    try {
+      const txJson = JSON.parse(dbTransaction.txJson);
+      if (!txJson.certificates || txJson.certificates.length === 0) return null;
+
+      return txJson.certificates.map((cert: any) => {
+        const certType = cert.certType?.type;
+        if (certType === "DRepDeregistration") {
+          return { type: "DRepDeregistration", icon: UserMinus, label: "DRep Deregistration", color: "text-orange-500" };
+        } else if (certType === "DRepRegistration") {
+          return { type: "DRepRegistration", icon: UserPlus, label: "DRep Registration", color: "text-blue-500" };
+        } else if (certType === "DRepUpdate") {
+          return { type: "DRepUpdate", icon: UserCog, label: "DRep Update", color: "text-purple-500" };
+        }
+        return { type: "Certificate", icon: Award, label: "Certificate", color: "text-muted-foreground" };
+      });
+    } catch (e) {
+      return null;
+    }
+  }, [dbTransaction]);
+
   return (
     <TableRow style={{ backgroundColor: "none" }} className="hover:bg-muted/50">
       <TableCell className="align-top py-4">
@@ -236,6 +258,19 @@ function TransactionRow({
         {dbTransaction && (
             <div className="text-sm font-medium break-words line-clamp-2">
             {dbTransaction.description}
+          </div>
+        )}
+        {certificatesInfo && certificatesInfo.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {certificatesInfo.map((certInfo, idx) => {
+              const Icon = certInfo.icon;
+              return (
+                <Badge key={idx} variant="outline" className={`text-xs ${certInfo.color} border-current/30`}>
+                  <Icon className="h-3 w-3 mr-1" />
+                  {certInfo.label}
+                </Badge>
+              );
+            })}
           </div>
         )}
         </div>

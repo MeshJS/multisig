@@ -16,6 +16,8 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useToast } from "@/hooks/use-toast";
 import type { Wallet } from "@/types/wallet";
 
+const apiClient = api;
+
 export interface MigrationWalletFlowState {
   // Core wallet data
   name: string;
@@ -74,7 +76,7 @@ export interface MigrationWalletFlowState {
   handleSaveAdvanced: (newStakeKey: string, scriptType: "all" | "any" | "atLeast") => Promise<void>;
 }
 
-export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletFlowState {
+export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: string | null): MigrationWalletFlowState {
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
@@ -104,20 +106,44 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
   );
 
   // Get existing new wallet data if migration is in progress
-  type WalletWithMigration = { migrationTargetWalletId?: string };
+  // Check both migrationTargetWalletId and any passed newWalletId
+  type WalletWithMigration = { migrationTargetWalletId?: string; migrationData?: { newWalletId?: string } };
+  const migrationTargetId = (appWallet as unknown as WalletWithMigration).migrationTargetWalletId;
+  const migrationDataNewWalletId = (appWallet as unknown as WalletWithMigration).migrationData?.newWalletId;
+  const walletIdToCheck = migrationTargetId || migrationDataNewWalletId || newWalletId;
+  
+  // Query for NewWallet if walletIdToCheck exists
   const { data: existingNewWallet } = api.wallet.getNewWallet.useQuery(
     {
-      walletId: ((appWallet as unknown as WalletWithMigration).migrationTargetWalletId) ?? "",
+      walletId: walletIdToCheck ?? "",
     },
     {
-      enabled: Boolean((appWallet as unknown as WalletWithMigration).migrationTargetWalletId),
+      enabled: Boolean(walletIdToCheck),
     }
   );
+  
+  // Also check if the walletIdToCheck exists as a final Wallet
+  const { data: existingFinalWallet } = api.wallet.getWallet.useQuery(
+    {
+      address: userAddress!,
+      walletId: walletIdToCheck ?? "",
+    },
+    {
+      enabled: Boolean(walletIdToCheck) && Boolean(userAddress),
+    }
+  );
+  
+  // If final wallet exists, set newWalletId to it (so we don't try to create again)
+  useEffect(() => {
+    if (existingFinalWallet && walletIdToCheck && walletIdToCheck !== newWalletId) {
+      setNewWalletId(walletIdToCheck);
+    }
+  }, [existingFinalWallet, walletIdToCheck, newWalletId]);
 
   // Initialize data from current wallet
   useEffect(() => {
     if (walletData) {
-      setName(`${walletData.name} - Migrated`);
+      setName(`${walletData.name} - Migration in Progress`);
       setDescription(walletData.description ?? "");
       setSignerAddresses(walletData.signersAddresses ?? []);
       setSignerDescriptions(walletData.signersDescriptions ?? []);
@@ -168,6 +194,28 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       setNativeScriptType((existingNewWallet.scriptType as "atLeast" | "all" | "any") ?? "atLeast");
     }
   }, [existingNewWallet]);
+
+  // Also check for migrationTargetWalletId and set it if it exists
+  // Also check migration data for newWalletId
+  useEffect(() => {
+    const migrationTargetId = (appWallet as unknown as WalletWithMigration).migrationTargetWalletId;
+    if (migrationTargetId && !newWalletId) {
+      // Set the wallet ID if migration target exists but newWalletId is not set
+      setNewWalletId(migrationTargetId);
+    }
+    
+    // Also check if migration data has newWalletId (from migration state)
+    // This handles the case when continuing a migration
+    const migrationData = (appWallet as any).migrationData;
+    if (migrationData?.newWalletId && !newWalletId) {
+      setNewWalletId(migrationData.newWalletId);
+    }
+    
+    // Also check walletIdToCheck - if it exists and we don't have newWalletId set, set it
+    if (walletIdToCheck && !newWalletId) {
+      setNewWalletId(walletIdToCheck);
+    }
+  }, [appWallet, newWalletId, walletIdToCheck]);
 
   // MultisigWallet computation
   const multisigWallet = useMemo(() => {
@@ -232,10 +280,28 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
   ]);
 
   // API Mutations
+  const { mutateAsync: updateMigrationStep } = api.migration.updateMigrationStep.useMutation();
+  
   const { mutate: createNewWallet } = api.wallet.createNewWallet.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setNewWalletId(data.id);
       setLoading(false);
+      
+      // Update migration record with newWalletId if migrationId exists
+      if (migrationId) {
+        try {
+          await updateMigrationStep({
+            migrationId: migrationId,
+            currentStep: 1, // CREATE_WALLET step
+            status: "in_progress",
+            newWalletId: data.id,
+          });
+        } catch (error) {
+          console.warn("Failed to update migration with newWalletId:", error);
+          // Continue even if migration update fails
+        }
+      }
+      
       toast({
         title: "Wallet Created",
         description: "New wallet configuration created successfully",
@@ -321,8 +387,15 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
 
   // Create temporary wallet for invite link (if not already created)
   const createTemporaryWallet = useCallback(async () => {
+    // Don't create if we already have a wallet ID
     if (newWalletId) {
       return; // Already created
+    }
+    
+    // Don't create if migrationTargetWalletId exists (continuing migration)
+    const migrationTargetId = (appWallet as unknown as WalletWithMigration).migrationTargetWalletId;
+    if (migrationTargetId) {
+      return; // Migration target exists, don't create temporary wallet
     }
 
     
@@ -385,20 +458,48 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
       return null;
     }
 
-    if (!newWalletId) {
+    // Check if final wallet has already been created
+    const migrationTargetId = (appWallet as unknown as WalletWithMigration).migrationTargetWalletId;
+    if (migrationTargetId && userAddress) {
+      try {
+        // Check if it exists as a final Wallet
+        const existingWallet = await utils.wallet.getWallet.fetch({
+          address: userAddress,
+          walletId: migrationTargetId,
+        });
+        
+        if (existingWallet) {
+          // Final wallet already exists, return it instead of creating
+          return migrationTargetId;
+        }
+      } catch (error) {
+        // Not a final wallet, check if it's a temporary NewWallet
+        try {
+          const tempWallet = await utils.wallet.getNewWallet.fetch({
+            walletId: migrationTargetId,
+          });
+          
+          if (tempWallet) {
+            // migrationTargetId is a temporary wallet, use it as newWalletId
+            // Update the state to use this temporary wallet ID
+            if (!newWalletId || newWalletId !== migrationTargetId) {
+              setNewWalletId(migrationTargetId);
+            }
+            // Continue with creation using this temporary wallet
+          }
+        } catch (tempError) {
+          // Not a temporary wallet either, continue with creation
+        }
+      }
+    }
+
+    // Use migrationTargetId if it's a temporary wallet, otherwise use newWalletId
+    const walletIdToUse = migrationTargetId && !newWalletId ? migrationTargetId : newWalletId;
+    
+    if (!walletIdToUse) {
       toast({
         title: "Error",
         description: "Please create the temporary wallet first to generate invite link.",
-        variant: "destructive",
-      });
-      return null;
-    }
-
-    // Check if final wallet has already been created
-    if ((appWallet as unknown as WalletWithMigration).migrationTargetWalletId) {
-      toast({
-        title: "Error",
-        description: "Final wallet has already been created for this migration. You can only create one new wallet per migration.",
         variant: "destructive",
       });
       return null;
@@ -413,9 +514,13 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
 
 
       // Create the final wallet using the mutation
+      // Capture walletIdToUse in closure for cleanup
+      const tempWalletIdForCleanup = walletIdToUse;
+      // Remove "- Migration in Progress" suffix from name when creating final wallet
+      const finalWalletName = name.replace(/\s*-\s*Migration in Progress\s*$/, "");
       return new Promise((resolve, reject) => {
         createWallet({
-          name: name,
+          name: finalWalletName,
           description: description,
           signersAddresses: signersAddresses,
           signersDescriptions: signersDescriptions,
@@ -434,9 +539,9 @@ export function useMigrationWalletFlowState(appWallet: Wallet): MigrationWalletF
               migrationTargetWalletId: data.id,
             });
             
-            // Clean up the temporary NewWallet
-            if (newWalletId && newWalletId !== data.id) {
-              void deleteNewWallet({ walletId: newWalletId }).catch((err) => {
+            // Clean up the temporary NewWallet (use captured tempWalletIdForCleanup)
+            if (tempWalletIdForCleanup && tempWalletIdForCleanup !== data.id) {
+              void deleteNewWallet({ walletId: tempWalletIdForCleanup }).catch((err) => {
                 console.warn("Failed to delete temporary new wallet:", err);
               });
             }

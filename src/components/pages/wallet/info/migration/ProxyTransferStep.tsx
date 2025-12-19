@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -66,6 +66,17 @@ export default function ProxyTransferStep({
       setIsTransferring(false);
     }
   };
+
+  // Automatically proceed to next step if there are no proxies to transfer
+  useEffect(() => {
+    if (!isLoadingProxies && existingProxies && existingProxies.length === 0 && !transferComplete) {
+      // Small delay to show the "No Proxies Found" message
+      const timer = setTimeout(() => {
+        onContinue();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingProxies, existingProxies, transferComplete, onContinue]);
 
   if (isLoadingProxies) {
     return (
