@@ -241,7 +241,7 @@ export default function MigrationCompleteStep({
                 <div className="text-lg font-semibold">{pendingTransactions?.length || 0}</div>
               </div>
             </div>
-            {oldWalletBalance > 0 && (
+            {oldWalletBalance !== undefined && oldWalletBalance > 0 && (
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Remaining Balance:</span>

@@ -596,7 +596,7 @@ export function MigrateWallet({ appWallet }: { appWallet: Wallet }) {
         const existingMigration = pendingMigrations.find(
           (migration: any) => migration.originalWalletId === appWallet.id
         );
-        migrationIdToCancel = existingMigration?.id;
+        migrationIdToCancel = existingMigration?.id ?? null;
       }
 
       // Try multiple sources for the migration target ID

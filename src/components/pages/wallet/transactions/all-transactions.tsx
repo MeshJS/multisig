@@ -28,6 +28,14 @@ import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import React, { useEffect, useMemo, useState } from "react";
 import ResponsiveTransactionsTable from "./responsive-transactions-table";
+import type { LucideIcon } from "lucide-react";
+
+type CertificateInfo = {
+  type: string;
+  icon: LucideIcon;
+  label: string;
+  color: string;
+};
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -217,13 +225,13 @@ function TransactionRow({
     );
   }, [transaction, appWallet, walletAssetMetadata]);
 
-  const certificatesInfo = useMemo(() => {
+  const certificatesInfo = useMemo((): CertificateInfo[] | null => {
     if (!dbTransaction?.txJson) return null;
     try {
       const txJson = JSON.parse(dbTransaction.txJson);
       if (!txJson.certificates || txJson.certificates.length === 0) return null;
 
-      return txJson.certificates.map((cert: any) => {
+      return txJson.certificates.map((cert: any): CertificateInfo => {
         const certType = cert.certType?.type;
         if (certType === "DRepDeregistration") {
           return { type: "DRepDeregistration", icon: UserMinus, label: "DRep Deregistration", color: "text-orange-500" };
@@ -262,7 +270,7 @@ function TransactionRow({
         )}
         {certificatesInfo && certificatesInfo.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {certificatesInfo.map((certInfo, idx) => {
+            {certificatesInfo.map((certInfo: CertificateInfo, idx: number) => {
               const Icon = certInfo.icon;
               return (
                 <Badge key={idx} variant="outline" className={`text-xs ${certInfo.color} border-current/30`}>

@@ -7,6 +7,7 @@ import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-ad
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 
 /*
@@ -26,6 +27,7 @@ function RecipientRowMobile({
   assets,
   setAssets,
   disableAdaAmountInput,
+  getAddressLabel,
 }: {
   index: number;
   recipientAddresses: string[];
@@ -35,6 +37,7 @@ function RecipientRowMobile({
   assets: string[];
   setAssets: (value: string[]) => void;
   disableAdaAmountInput: boolean;
+  getAddressLabel?: (address: string) => { label: string; type: "self" | "signer" | "contact" | "unknown" };
 }) {
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [adaHandle, setAdaHandle] = useState<string>("");
@@ -119,15 +122,36 @@ function RecipientRowMobile({
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
             Address
           </label>
-          <Input
-            type="string"
-            placeholder="addr1... or $handle"
-            value={recipientAddresses[index]}
-            onChange={(e) => {
-              void handleAddressChange(e.target.value);
-            }}
-            className="w-full"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              type="string"
+              placeholder="addr1... or $handle"
+              value={recipientAddresses[index]}
+              onChange={(e) => {
+                void handleAddressChange(e.target.value);
+              }}
+              className="flex-1"
+            />
+            {getAddressLabel && recipientAddresses[index] && (() => {
+              const addressLabel = getAddressLabel(recipientAddresses[index]!);
+              if (addressLabel.label) {
+                return (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "shrink-0",
+                      addressLabel.type === "self" && "border-blue-500 text-blue-700 dark:text-blue-400",
+                      addressLabel.type === "signer" && "border-green-500 text-green-700 dark:text-green-400",
+                      addressLabel.type === "contact" && "border-purple-500 text-purple-700 dark:text-purple-400"
+                    )}
+                  >
+                    {addressLabel.label}
+                  </Badge>
+                );
+              }
+              return null;
+            })()}
+          </div>
           {adaHandle && (
             <div className="text-xs text-muted-foreground mt-1">
               {adaHandle}

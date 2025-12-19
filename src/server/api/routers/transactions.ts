@@ -40,7 +40,7 @@ const assertWalletAccess = async (ctx: any, walletId: string) => {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
-  const authorized = addresses.some((addr) => {
+  const authorized = addresses.some((addr: string) => {
     const isSigner =
       Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr);
     const isOwner = wallet.ownerAddress === addr || wallet.ownerAddress === "all";
@@ -205,7 +205,7 @@ export const transactionRouter = createTRPCRouter({
 
       // Get wallet signer keyhashes
       const walletSignerKeyHashes = new Set<string>();
-      wallet.signersAddresses.forEach((addr) => {
+      wallet.signersAddresses.forEach((addr: string) => {
         try {
           const keyHash = resolvePaymentKeyHash(addr).toLowerCase();
           walletSignerKeyHashes.add(keyHash);
@@ -236,7 +236,7 @@ export const transactionRouter = createTRPCRouter({
         if (walletSignerKeyHashes.has(keyHash)) {
           hasValidSignature = true;
           // Find the address that matches this keyhash
-          const matchingAddress = wallet.signersAddresses.find((addr) => {
+          const matchingAddress = wallet.signersAddresses.find((addr: string) => {
             try {
               return resolvePaymentKeyHash(addr).toLowerCase() === keyHash;
             } catch {
@@ -355,21 +355,22 @@ export const transactionRouter = createTRPCRouter({
             // Handle BigNum conversion properly - CSL BigNum may be a number or object with to_str()
             let coinStr: string;
             try {
-              if (typeof coin === "number") {
-                coinStr = coin.toString();
-              } else if (typeof coin === "bigint") {
-                coinStr = coin.toString();
-              } else if (coin && typeof coin === "object") {
+              const coinValue = coin as unknown;
+              if (typeof coinValue === "number") {
+                coinStr = coinValue.toString();
+              } else if (typeof coinValue === "bigint") {
+                coinStr = coinValue.toString();
+              } else if (coinValue && typeof coinValue === "object") {
                 // Try to_str() first (CSL BigNum method)
-                if ("to_str" in coin && typeof (coin as any).to_str === "function") {
-                  coinStr = (coin as any).to_str();
-                } else if ("to_string" in coin && typeof (coin as any).to_string === "function") {
-                  coinStr = (coin as any).to_string();
+                if ("to_str" in coinValue && typeof (coinValue as any).to_str === "function") {
+                  coinStr = (coinValue as any).to_str();
+                } else if ("to_string" in coinValue && typeof (coinValue as any).to_string === "function") {
+                  coinStr = (coinValue as any).to_string();
                 } else {
-                  coinStr = String(coin);
+                  coinStr = String(coinValue);
                 }
               } else {
-                coinStr = String(coin);
+                coinStr = String(coinValue);
               }
               if (coinStr && coinStr !== "0" && coinStr !== "") {
                 amountList.push({
@@ -403,21 +404,22 @@ export const transactionRouter = createTRPCRouter({
                         // Handle BigNum conversion properly
                         let quantityStr: string;
                         try {
-                          if (typeof quantity === "number") {
-                            quantityStr = quantity.toString();
-                          } else if (typeof quantity === "bigint") {
-                            quantityStr = quantity.toString();
-                          } else if (quantity && typeof quantity === "object") {
+                          const quantityValue = quantity as unknown;
+                          if (typeof quantityValue === "number") {
+                            quantityStr = quantityValue.toString();
+                          } else if (typeof quantityValue === "bigint") {
+                            quantityStr = quantityValue.toString();
+                          } else if (quantityValue && typeof quantityValue === "object") {
                             // Try to_str() first (CSL BigNum method)
-                            if ("to_str" in quantity && typeof (quantity as any).to_str === "function") {
-                              quantityStr = (quantity as any).to_str();
-                            } else if ("to_string" in quantity && typeof (quantity as any).to_string === "function") {
-                              quantityStr = (quantity as any).to_string();
+                            if ("to_str" in quantityValue && typeof (quantityValue as any).to_str === "function") {
+                              quantityStr = (quantityValue as any).to_str();
+                            } else if ("to_string" in quantityValue && typeof (quantityValue as any).to_string === "function") {
+                              quantityStr = (quantityValue as any).to_string();
                             } else {
-                              quantityStr = String(quantity);
+                              quantityStr = String(quantityValue);
                             }
                           } else {
-                            quantityStr = String(quantity);
+                            quantityStr = String(quantityValue);
                           }
                           if (quantityStr && quantityStr !== "0" && quantityStr !== "") {
                             amountList.push({
@@ -450,21 +452,22 @@ export const transactionRouter = createTRPCRouter({
       const fee = txBody.fee();
       let feeStr: string;
       try {
-        if (typeof fee === "number") {
-          feeStr = fee.toString();
-        } else if (typeof fee === "bigint") {
-          feeStr = fee.toString();
-        } else if (fee && typeof fee === "object") {
+        const feeValue = fee as unknown;
+        if (typeof feeValue === "number") {
+          feeStr = feeValue.toString();
+        } else if (typeof feeValue === "bigint") {
+          feeStr = feeValue.toString();
+        } else if (feeValue && typeof feeValue === "object") {
           // Try to_str() first (CSL BigNum method)
-          if ("to_str" in fee && typeof (fee as any).to_str === "function") {
-            feeStr = (fee as any).to_str();
-          } else if ("to_string" in fee && typeof (fee as any).to_string === "function") {
-            feeStr = (fee as any).to_string();
+          if ("to_str" in feeValue && typeof (feeValue as any).to_str === "function") {
+            feeStr = (feeValue as any).to_str();
+          } else if ("to_string" in feeValue && typeof (feeValue as any).to_string === "function") {
+            feeStr = (feeValue as any).to_string();
           } else {
-            feeStr = String(fee);
+            feeStr = String(feeValue);
           }
         } else {
-          feeStr = String(fee);
+          feeStr = String(feeValue);
         }
       } catch (error) {
         console.warn("Failed to convert fee to string:", error);

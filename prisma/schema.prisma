@@ -163,3 +163,17 @@ model Migration {
   @@index([status])
   @@index([createdAt])
 }
+
+model Contact {
+  id          String   @id @default(cuid())
+  walletId    String // The multisig wallet that owns this contact
+  name        String
+  address     String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([walletId, address])
+  @@index([walletId])
+  @@index([address])
+}

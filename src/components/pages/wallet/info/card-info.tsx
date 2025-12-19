@@ -401,6 +401,26 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Left Column */}
         <div className="space-y-4">
+          {/* Signing Threshold - Above Address */}
+          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/30">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
+              <div className="text-sm font-medium">{getSignersText()}</div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {Array.from({ length: signersCount }).map((_, index) => (
+                <User
+                  key={index}
+                  className={`h-5 w-5 sm:h-6 sm:w-6 ${
+                    index < requiredCount
+                      ? "text-foreground opacity-100"
+                      : "text-muted-foreground opacity-30"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          
           {/* Address */}
           <RowLabelInfo
             label="Address"
@@ -451,31 +471,10 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
         
         {/* Right Column */}
         <div className="space-y-4">
-          {/* Balance */}
-          <RowLabelInfo 
-            label="Balance" 
-            value={`${balance} ₳`}
-            allowOverflow={false}
-          />
-          
-          {/* Signing Threshold */}
-          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/30">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
-              <div className="text-sm font-medium">{getSignersText()}</div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {Array.from({ length: signersCount }).map((_, index) => (
-                <User
-                  key={index}
-                  className={`h-5 w-5 sm:h-6 sm:w-6 ${
-                    index < requiredCount
-                      ? "text-foreground opacity-100"
-                      : "text-muted-foreground opacity-30"
-                  }`}
-                />
-              ))}
-            </div>
+          {/* Balance - Larger Display */}
+          <div className="flex flex-col gap-2">
+            <div className="text-sm font-medium text-muted-foreground">Balance</div>
+            <div className="text-2xl sm:text-3xl font-semibold">{balance} ₳</div>
           </div>
         </div>
       </div>

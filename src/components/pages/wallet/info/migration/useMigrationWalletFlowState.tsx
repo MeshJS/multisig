@@ -93,6 +93,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
   const userAddress = useUserStore((state) => state.userAddress);
   const network = useSiteStore((state) => state.network);
   const { toast } = useToast();
+  const utils = api.useUtils();
   
   // Get complete wallet data from database
   const { data: walletData } = api.wallet.getWallet.useQuery(
