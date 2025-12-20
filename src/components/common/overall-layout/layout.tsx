@@ -76,6 +76,56 @@ class WalletErrorBoundary extends Component<
   }
 }
 
+// Component to track layout content changes
+function LayoutContentTracker({ 
+  children, 
+  router, 
+  pageIsPublic, 
+  userAddress 
+}: { 
+  children: ReactNode; 
+  router: ReturnType<typeof useRouter>;
+  pageIsPublic: boolean;
+  userAddress: string | undefined;
+}) {
+  const prevPathRef = useRef<string>(router.pathname);
+  const prevQueryRef = useRef<string>(JSON.stringify(router.query));
+  
+  useEffect(() => {
+    const handleRouteChangeStart = (url: string) => {
+      // Route change started
+    };
+    
+    const handleRouteChangeComplete = (url: string) => {
+      prevPathRef.current = router.pathname;
+      prevQueryRef.current = JSON.stringify(router.query);
+    };
+    
+    const handleRouteChangeError = (err: Error, url: string) => {
+      // Route change error
+    };
+    
+    router.events.on('routeChangeStart', handleRouteChangeStart);
+    router.events.on('routeChangeComplete', handleRouteChangeComplete);
+    router.events.on('routeChangeError', handleRouteChangeError);
+    
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart);
+      router.events.off('routeChangeComplete', handleRouteChangeComplete);
+      router.events.off('routeChangeError', handleRouteChangeError);
+    };
+  }, [router]);
+  
+  useEffect(() => {
+    if (router.pathname !== prevPathRef.current || JSON.stringify(router.query) !== prevQueryRef.current) {
+      prevPathRef.current = router.pathname;
+      prevQueryRef.current = JSON.stringify(router.query);
+    }
+  }, [router.pathname, router.query]);
+  
+  return <>{children}</>;
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -631,7 +681,9 @@ export default function RootLayout({
               </div>
             }
           >
-            {pageIsPublic || userAddress ? children : <PageHomepage />}
+            <LayoutContentTracker router={router} pageIsPublic={pageIsPublic} userAddress={userAddress}>
+              {pageIsPublic || userAddress ? children : <PageHomepage />}
+            </LayoutContentTracker>
           </WalletErrorBoundary>
         </main>
       </div>

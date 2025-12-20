@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { Upload } from "lucide-react";
 import ImportTransactionDialog from "./import-transaction-dialog";
+import NewTransactionDialog from "./new-transaction-dialog";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
@@ -16,6 +17,7 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [newTransactionDialogOpen, setNewTransactionDialogOpen] = useState(false);
 
   useEffect(() => {
     if(!utxos) return
@@ -49,16 +51,14 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
           <Link href={`/wallets/${appWallet.id}/transactions/deposit`} className="w-full sm:w-auto">
             <Button size="sm" className="w-full sm:w-auto">Deposit Funds</Button>
           </Link>
-          <Link
-            href={
-              balance > 0 ? `/wallets/${appWallet.id}/transactions/new` : "#"
-            }
+          <Button 
+            size="sm" 
+            disabled={balance == 0} 
             className="w-full sm:w-auto"
+            onClick={() => setNewTransactionDialogOpen(true)}
           >
-            <Button size="sm" disabled={balance == 0} className="w-full sm:w-auto">
-              New Transaction
-            </Button>
-          </Link>
+            New Transaction
+          </Button>
           <Button
             onClick={() => setImportDialogOpen(true)}
             size="sm"
@@ -71,6 +71,11 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
         <ImportTransactionDialog
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
+          walletId={appWallet.id}
+        />
+        <NewTransactionDialog
+          open={newTransactionDialogOpen}
+          onOpenChange={setNewTransactionDialogOpen}
           walletId={appWallet.id}
         />
 
