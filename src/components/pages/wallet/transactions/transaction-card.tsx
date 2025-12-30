@@ -379,8 +379,8 @@ export default function TransactionCard({
                     );
                   })}
                 </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-muted-foreground font-mono">
+                <div className="flex items-center gap-2 mt-1 flex-wrap min-w-0">
+                  <span className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1">
                     to {output.address.length > 20
                       ? `${output.address.slice(0, 10)}...${output.address.slice(-10)}`
                       : output.address}
@@ -388,17 +388,24 @@ export default function TransactionCard({
                   {(() => {
                     const addressLabel = getAddressLabel(output.address);
                     if (addressLabel.label) {
+                      // Use shorter label on mobile for "Self (Multisig)"
+                      const displayLabel = addressLabel.type === "self" && addressLabel.label === "Self (Multisig)"
+                        ? "Self"
+                        : addressLabel.label;
+                      
                       return (
                         <Badge
                           variant="outline"
                           className={cn(
-                            "text-xs shrink-0",
+                            "text-xs shrink-0 max-w-full",
                             addressLabel.type === "self" && "border-blue-500 text-blue-700 dark:text-blue-400",
                             addressLabel.type === "signer" && "border-green-500 text-green-700 dark:text-green-400",
                             addressLabel.type === "contact" && "border-purple-500 text-purple-700 dark:text-purple-400"
                           )}
+                          title={addressLabel.label !== displayLabel ? addressLabel.label : undefined}
                         >
-                          {addressLabel.label}
+                          <span className="hidden sm:inline">{addressLabel.label}</span>
+                          <span className="sm:hidden">{displayLabel}</span>
                         </Badge>
                       );
                     }
@@ -931,12 +938,12 @@ export default function TransactionCard({
       {userAddress &&
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
-          <CardFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
+          <CardFooter className="flex items-center gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
             <Button 
               onClick={() => signTx()} 
               disabled={loading}
               loading={loading}
-              className={`w-full sm:w-auto ${loading ? 'flex-1' : 'flex-1 sm:flex-none'} relative overflow-hidden transition-all duration-300 ${
+              className={`flex-1 h-10 relative overflow-hidden transition-all duration-300 ${
                 loading 
                   ? "bg-primary/90 shadow-lg shadow-primary/20 cursor-wait" 
                   : ""
@@ -956,9 +963,13 @@ export default function TransactionCard({
               <Button
                 variant="destructive"
                 onClick={() => rejectTx()}
-                className="w-full sm:w-auto flex-1"
+                className="h-10 w-10 flex-shrink-0 sm:hover:min-w-[90px] sm:hover:w-auto px-0 sm:hover:px-3 transition-all duration-300 ease-in-out flex items-center justify-center gap-2 group overflow-hidden"
+                title="Reject"
               >
-                Reject
+                <X className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline-block max-w-0 sm:group-hover:max-w-[60px] opacity-0 sm:group-hover:opacity-100 transition-all duration-300 whitespace-nowrap overflow-hidden">
+                  Reject
+                </span>
               </Button>
             )}
           </CardFooter>
