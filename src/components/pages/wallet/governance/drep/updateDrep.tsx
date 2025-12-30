@@ -82,9 +82,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
     if (!appWallet) {
       throw new Error("Wallet not connected");
     }
-    if (!multisigWallet) {
-      throw new Error("Multisig wallet not connected");
-    }
+    // Note: multisigWallet can be undefined for legacy wallets, which is handled in updateDrep()
     // Get metadata with both compacted (for upload) and normalized (for hashing) forms
     const metadataResult = await getDRepMetadata(
       formState,
@@ -113,8 +111,13 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet) {
-      throw new Error("Multisig wallet not connected");
+    if (!connected || !userAddress || !appWallet) {
+      throw new Error("Wallet not connected");
+    }
+    // Proxy mode requires multisigWallet (SDK wallets only)
+    if (!multisigWallet) {
+      // Fall back to standard update for legacy wallets
+      return updateDrep();
     }
     if (!hasValidProxy) {
       // Fall back to standard update if no valid proxy
@@ -175,25 +178,47 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet)
-      throw new Error("Multisig wallet not connected");
+    if (!connected || !userAddress || !appWallet)
+      throw new Error("Wallet not connected");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
     
-    const drepData = multisigWallet?.getDRep(appWallet);
-    if (!drepData) {
-      throw new Error("DRep not found");
-    }
-    const { dRepId, drepCbor } = drepData;
+    // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
+    // For SDK wallets, use multisigWallet to compute DRep ID and script
+    let dRepId: string;
+    let drepCbor: string;
+    let scriptCbor: string;
+    let changeAddress: string;
     
-    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    if (!scriptCbor) {
-      throw new Error("Script not found");
+    if (multisigWallet) {
+      const drepData = multisigWallet.getDRep(appWallet);
+      if (!drepData) {
+        throw new Error("DRep not found");
+      }
+      dRepId = drepData.dRepId;
+      drepCbor = drepData.drepCbor;
+      const multisigScript = multisigWallet.getScript();
+      const multisigScriptCbor = multisigScript.scriptCbor;
+      const appScriptCbor = appWallet.scriptCbor;
+      if (!multisigScriptCbor && !appScriptCbor) {
+        throw new Error("Script CBOR not found");
+      }
+      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+      changeAddress = multisigScript.address;
+    } else {
+      // Legacy wallet: use appWallet values (computed with input order preserved)
+      if (!appWallet.dRepId || !appWallet.scriptCbor) {
+        throw new Error("DRep ID or script not found for legacy wallet");
+      }
+      dRepId = appWallet.dRepId;
+      drepCbor = appWallet.scriptCbor; // Use payment script CBOR for legacy wallets
+      scriptCbor = appWallet.scriptCbor;
+      changeAddress = appWallet.address;
     }
-    const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
-    if (!changeAddress) {
-      throw new Error("Change address not found");
+    
+    if (!scriptCbor || !changeAddress) {
+      throw new Error("Script or change address not found");
     }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();

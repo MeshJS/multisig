@@ -530,16 +530,21 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
     return null;
   }
 
+  // Check if component is used in a modal (has onSuccess prop)
+  const isInModal = !!onSuccess;
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3 sm:gap-4 md:gap-6">
+    <div className={`mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3 sm:gap-4 md:gap-6 ${isInModal ? 'pt-0' : ''}`}>
       {/* Hide title/description when used in modal (they're in DialogHeader) */}
-      <div className="hidden flex-col gap-2 sm:flex">
-        <SectionTitle>New Transaction</SectionTitle>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          Create a new multisig transaction by specifying recipients, amounts,
-          and transaction details.
-        </p>
-      </div>
+      {!isInModal && (
+        <div className="flex flex-col gap-2">
+          <SectionTitle>New Transaction</SectionTitle>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Create a new multisig transaction by specifying recipients, amounts,
+            and transaction details.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:gap-4 md:gap-6">
         <CardUI title="Description" cardClassName="w-full">
