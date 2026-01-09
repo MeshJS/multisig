@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+# Install PostgreSQL client tools for health checks
+RUN apk add --no-cache postgresql-client
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Copy Prisma schema (needed for postinstall script)
+COPY prisma ./prisma
+
+# Install dependencies (postinstall will run prisma generate)
+RUN npm ci
+
+# Expose port
+EXPOSE 3000
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"]

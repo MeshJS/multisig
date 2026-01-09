@@ -59,6 +59,8 @@ export async function getDRepMetadata(
             "@context": {
               GovernanceMetadata: "CIP100:GovernanceMetadataReference",
               Other: "CIP100:OtherReference",
+              Link: "CIP100:OtherReference",
+              Identity: "CIP100:OtherReference",
               label: "CIP100:reference-label",
               uri: "CIP100:reference-uri",
               referenceHash: {
