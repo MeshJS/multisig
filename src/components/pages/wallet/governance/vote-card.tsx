@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import VoteButton from "./proposal/voteButtton";
-import { UTxO } from "@meshsdk/core";
+import type { UTxO } from "@meshsdk/core";
 
 interface VoteCardProps {
   appWallet: Wallet;
@@ -16,7 +16,13 @@ interface VoteCardProps {
   proposalTitle?: string;
 }
 
-export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotId, proposalTitle }: VoteCardProps) {
+export default function VoteCard({
+  appWallet,
+  utxos,
+  proposalId,
+  selectedBallotId,
+  proposalTitle,
+}: VoteCardProps) {
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [localProposalId, setLocalProposalId] = useState<string>(proposalId ?? "");
   const [description, setDescription] = useState<string>("");
@@ -24,15 +30,15 @@ export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotI
 
   return (
     <CardUI title="Vote for proposal" description="" cardClassName="col-span-2">
-      <fieldset className="grid gap-6">
+      <fieldset className="grid gap-4 sm:gap-6">
         {/* Conditionally show the Proposal ID input if no proposalId prop is provided */}
         {!proposalId && (
-          <div className="grid gap-3">
-            <Label htmlFor="proposal-id">Proposal ID (i.e. hash#0)</Label>
+          <div className="grid gap-2 sm:gap-3">
+            <Label htmlFor="proposal-id" className="text-sm sm:text-base">Proposal ID (i.e. hash#0)</Label>
             <Input
               id="proposal-id"
               type="text"
-              className="w-full"
+              className="w-full text-sm sm:text-base"
               placeholder="e.g. 7fd6429add8f2611ad8d48c0cc49101463093aec285faea402e8cfde78ea58d7#0"
               value={localProposalId}
               onChange={(e) => setLocalProposalId(e.target.value)}
@@ -40,21 +46,21 @@ export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotI
           </div>
         )}
 
-        <div className="grid gap-3">
-          <Label htmlFor="description">Description</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label htmlFor="description" className="text-sm sm:text-base">Description</Label>
           <Input
             id="description"
-            className="w-full"
+            className="w-full text-sm sm:text-base"
             placeholder="What you are voting for"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        <div className="grid gap-3">
-          <Label htmlFor="metadata">On-chain Metadata (optional)</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label htmlFor="metadata" className="text-sm sm:text-base">On-chain Metadata (optional)</Label>
           <Textarea
             id="metadata"
-            className="w-full"
+            className="w-full text-sm sm:text-base min-h-[80px] sm:min-h-[100px]"
             placeholder="Rational or link to content"
             value={metadata}
             onChange={(e) => setMetadata(e.target.value)}
@@ -62,12 +68,12 @@ export default function VoteCard({ appWallet, utxos, proposalId, selectedBallotI
         </div>
 
         {!drepInfo?.active && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             * Please register DRep before creating a vote transaction
           </p>
         )}
 
-        <div className="flex gap-4">
+        <div className="flex gap-2 sm:gap-4">
           <VoteButton
             appWallet={appWallet}
             proposalId={proposalId ?? localProposalId}

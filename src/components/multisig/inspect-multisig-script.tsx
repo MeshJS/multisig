@@ -1,5 +1,5 @@
-import CardUI from "@/components/common/card-content";
-import Code from "@/components/common/code";
+import CardUI from "@/components/ui/card-content";
+import Code from "@/components/ui/code";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { type MultisigWallet } from "@/utils/multisigSDK";
 import { Carousel } from "@/components/ui/carousel";
@@ -88,37 +88,36 @@ export default function InspectMultisigScript({
   }
 
   return (
-    <div className="col-span-2 w-full rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50">
-      <div className="flex flex-row items-center justify-between space-y-0 pb-2 p-6">
-        <h3 className="text-xl font-medium">Native Script</h3>
-      </div>
-      <div className="p-6 pt-0">
+    <CardUI
+      title="Native Script"
+      description="Advanced script details for SDK-managed wallets"
+      cardClassName="col-span-2"
+    >
+      <div className="mt-1 flex flex-col gap-2">
         <div className="mt-1 flex flex-col gap-2">
-          <div className="mt-1 flex flex-col gap-2">
-            {mWallet.stakingEnabled() && <RowLabelInfo
-              label="Address"
-              value={<Code>{mWallet.getScript().address}</Code>}
-              copyString={mWallet.getScript().address}
-            />}
-            <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
-            {mWallet.stakingEnabled() && (
-              <RowLabelInfo
-                label="Stake Address"
-                value={<Code>{mWallet.getStakeAddress()}</Code>}
-                copyString={mWallet.getStakeAddress()}
-              />
-            )}
-            {/* add pending rewards like balance */}
-            {mWallet.isGovernanceEnabled() && <RowLabelInfo
-              label="dRep ID"
-              value={<Code>{mWallet.getDRepId()}</Code>}
-              copyString={mWallet.getDRepId()}
-            />}
+          {mWallet.stakingEnabled() && <RowLabelInfo
+            label="Address"
+            value={<Code>{mWallet.getScript().address}</Code>}
+            copyString={mWallet.getScript().address}
+          />}
+          <RowLabelInfo label="Balance" value={<Code>{`${balance} ₳`}</Code>} />
+          {mWallet.stakingEnabled() && (
+            <RowLabelInfo
+              label="Stake Address"
+              value={<Code>{mWallet.getStakeAddress()}</Code>}
+              copyString={mWallet.getStakeAddress()}
+            />
+          )}
+          {/* add pending rewards like balance */}
+          {mWallet.isGovernanceEnabled() && <RowLabelInfo
+            label="dRep ID"
+            value={<Code>{mWallet.getDRepId()}</Code>}
+            copyString={mWallet.getDRepId()}
+          />}
 
-            <Carousel slides={slides} />
-          </div>
+          <Carousel slides={slides} />
         </div>
       </div>
-    </div>
+    </CardUI>
   );
 }

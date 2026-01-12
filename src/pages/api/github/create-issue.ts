@@ -11,6 +11,10 @@ interface Request extends NextApiRequest {
 }
 
 export default async function handler(req: Request, res: NextApiResponse) {
+  if (!env.GITHUB_TOKEN) {
+    return res.status(503).json({ error: "GitHub integration not configured" });
+  }
+
   const octokit = new Octokit({
     auth: env.GITHUB_TOKEN,
   });

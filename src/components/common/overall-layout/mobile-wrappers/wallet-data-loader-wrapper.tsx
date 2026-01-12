@@ -12,6 +12,8 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import { BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
+// WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts
+import { useUserStore } from "@/lib/zustand/user";
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -51,6 +53,11 @@ export default function WalletDataLoaderWrapper({
   const { fetchAllProxyData, setProxies } = useProxyActions();
 
   const setDrepInfo = useWalletsStore((state) => state.setDrepInfo);
+
+  const userAddress = useUserStore((state) => state.userAddress);
+
+  // Session check is now handled in layout.tsx to avoid duplicate modals
+  // Removed walletSessionQuery from here to prevent duplicate authorization prompts
 
   async function fetchUtxos() {
     if (appWallet) {
@@ -185,8 +192,9 @@ export default function WalletDataLoaderWrapper({
   }
 
   function dRepIds() {
-    // Use multisig wallet DRep ID if available, otherwise fallback to appWallet
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
+    // Use multisig wallet DRep ID if available (it handles no DRep keys by using payment script),
+    // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
+    const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
     if (!dRepId) return null;
     return getDRepIds(dRepId);
   }
@@ -205,11 +213,14 @@ export default function WalletDataLoaderWrapper({
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
       setDrepInfo(drepInfo);
-    } catch (err) {
+    } catch (err: any) {
       // DRep not found (404) is expected if DRep hasn't been registered yet
       // This is normal behavior - the DRep ID exists but isn't registered on-chain
+      const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
+      if (!is404) {
+        console.error(`Error fetching DRep info:`, err);
+      }
       setDrepInfo(undefined);
-      console.log(`DRep not yet registered on-chain (this is normal before registration)`);
     }
   }
 
@@ -226,7 +237,6 @@ export default function WalletDataLoaderWrapper({
 
         // Fetch all proxy data in parallel using the new batch function
         if (proxies.length > 0) {
-          console.log(`WalletDataLoaderWrapper: Fetching data for ${proxies.length} proxies in parallel`);
           await fetchAllProxyData(
             appWallet.id, 
             proxies, 
@@ -234,7 +244,6 @@ export default function WalletDataLoaderWrapper({
             network.toString(),
             false // Use cache to avoid duplicate requests
           );
-          console.log("WalletDataLoaderWrapper: Successfully fetched all proxy data");
         }
       } catch (error) {
         console.error("WalletDataLoaderWrapper: Error fetching proxy data:", error);
@@ -287,30 +296,37 @@ export default function WalletDataLoaderWrapper({
     }
   }, [appWallet]);
 
+  // Session check and authorization modal are now handled in layout.tsx
+  // This prevents duplicate authorization prompts
+
   if (mode === "button") {
     return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="rounded-full"
-        onClick={() => refreshWallet()}
-        disabled={loading}
-        title="Refresh wallet data"
-      >
-        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      </Button>
+      <>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="rounded-full"
+          onClick={() => refreshWallet()}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+        {/* Authorization modal is handled in layout.tsx to avoid duplicate prompts */}
+      </>
     );
   }
 
   // Menu item mode
   return (
-    <div
-      className="flex items-center gap-2 cursor-pointer"
-      onClick={() => refreshWallet()}
-      title="Refresh wallet data"
-    >
-      <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      <span>Refresh Wallet</span>
-    </div>
+    <>
+      <div
+        className="flex items-center gap-2 cursor-pointer"
+        onClick={() => refreshWallet()}
+      >
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <span>Refresh Wallet</span>
+      </div>
+      {/* Authorization modal is handled in layout.tsx to avoid duplicate prompts */}
+    </>
   );
 }

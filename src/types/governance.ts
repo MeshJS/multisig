@@ -8,6 +8,11 @@ export type ProposalMetadata = {
       abstract: string;
       motivation: string;
       rationale: string;
+      references?: Array<{
+        "@type": string;
+        label: string;
+        uri: string;
+      }>;
     };
     authors: {
       name: string;
@@ -16,6 +21,35 @@ export type ProposalMetadata = {
   tx_hash: string;
   url: string;
   governance_type: string;
+};
+
+export type ProposalDetails = {
+  id: string;
+  tx_hash: string;
+  cert_index: number;
+  governance_type: string;
+  deposit: string;
+  return_address: string;
+  governance_description: {
+    tag: string;
+  };
+  ratified_epoch: number | null;
+  enacted_epoch: number | null;
+  dropped_epoch: number | null;
+  expired_epoch: number | null;
+  expiration: number | null;
+};
+
+export type ProposalParameters = {
+  id: string;
+  tx_hash: string;
+  cert_index: number;
+  parameters: Record<string, any>;
+};
+
+export type ProposalWithdrawal = {
+  stake_address: string;
+  amount: string;
 };
 
 export type BlockfrostDrepInfo = {

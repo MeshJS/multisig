@@ -104,116 +104,138 @@ export default function DRepForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <p>
+    <div className="flex flex-col gap-3 sm:gap-4">
+      <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
         A DRep is expected to actively participate in governance and act as a
         representative of other Cardano members. Becoming a DRep requires a
         refundable deposit of ₳500.{" "}
         <Link
           href="https://docs.gov.tools/about/what-is-cardano-govtool/govtool-functions/dreps"
           passHref
+          className="text-blue-600 dark:text-blue-400 hover:underline"
         >
           Learn more
         </Link>
         .
       </p>
 
-      <fieldset className="grid gap-6">
-        <div className="grid gap-3">
-          <Label>DRep Name</Label>
+      <fieldset className="grid gap-4 sm:gap-6">
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">DRep Name</Label>
           <Input
             placeholder="name must be without spaces"
             value={givenName}
             onChange={(e) => setGivenName(e.target.value)}
+            className="text-sm sm:text-base"
           />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Bio</Label>
-          <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Bio</Label>
+          <Textarea 
+            value={bio} 
+            onChange={(e) => setBio(e.target.value)}
+            className="text-sm sm:text-base min-h-[80px] sm:min-h-[100px]"
+          />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Email</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Email</Label>
           <Input
             type="email"
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="text-sm sm:text-base"
           />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Upload Image</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Upload Image</Label>
           <ImgDragAndDrop onImageUpload={handleImageUpload} />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Objectives</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Objectives</Label>
           <Textarea
             value={objectives}
             onChange={(e) => setObjectives(e.target.value)}
+            className="text-sm sm:text-base min-h-[80px] sm:min-h-[100px]"
           />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Motivations</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Motivations</Label>
           <Textarea
             value={motivations}
             onChange={(e) => setMotivations(e.target.value)}
+            className="text-sm sm:text-base min-h-[80px] sm:min-h-[100px]"
           />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Qualifications</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Qualifications</Label>
           <Textarea
             value={qualifications}
             onChange={(e) => setQualifications(e.target.value)}
+            className="text-sm sm:text-base min-h-[80px] sm:min-h-[100px]"
           />
         </div>
 
-        <div className="grid gap-3">
-          <Label>Links</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Links</Label>
           {localLinks.map((link, index) => (
             <div key={index} className="flex gap-2">
               <Input
                 value={link}
                 onChange={(e) => updateLink(index, e.target.value)}
                 placeholder="https://path/to/info"
+                className="text-sm sm:text-base flex-1"
               />
               <Button
                 onClick={() => removeLink(index)}
                 size="icon"
                 variant="destructive"
+                className="flex-shrink-0 h-10 w-10 sm:h-11 sm:w-11"
               >
-                X
+                <span className="text-sm sm:text-base">×</span>
               </Button>
             </div>
           ))}
-          <Button onClick={addLink} variant="secondary">
+          <Button 
+            onClick={addLink} 
+            variant="secondary"
+            className="w-full sm:w-auto text-sm sm:text-base"
+          >
             + Add Link
           </Button>
         </div>
 
-        <div className="grid gap-3">
-          <Label>Identities</Label>
+        <div className="grid gap-2 sm:gap-3">
+          <Label className="text-sm sm:text-base">Identities</Label>
           {localIdentities.map((identity, index) => (
             <div key={index} className="flex gap-2">
               <Input
                 value={identity}
                 onChange={(e) => updateIdentity(index, e.target.value)}
                 placeholder="https://path/to/identity"
+                className="text-sm sm:text-base flex-1"
               />
               <Button
                 onClick={() => removeIdentity(index)}
                 size="icon"
                 variant="destructive"
+                className="flex-shrink-0 h-10 w-10 sm:h-11 sm:w-11"
               >
-                X
+                <span className="text-sm sm:text-base">×</span>
               </Button>
             </div>
           ))}
-          <Button onClick={addIdentity} variant="secondary">
+          <Button 
+            onClick={addIdentity} 
+            variant="secondary"
+            className="w-full sm:w-auto text-sm sm:text-base"
+          >
             + Add Identity
           </Button>
         </div>
@@ -230,7 +252,7 @@ export default function DRepForm({
         />
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2 sm:space-y-3">
         <Button
           onClick={onSubmit}
           disabled={
@@ -240,17 +262,17 @@ export default function DRepForm({
             !objectives ||
             !qualifications
           }
-          className="w-full"
+          className="w-full text-sm sm:text-base py-2 sm:py-2.5"
         >
           {loading
             ? "Loading..."
             : mode === "register"
-            ? `Register DRep ${isProxyMode ? "(Proxy Mode)" : "(Standard Mode)"}`
-            : `Update DRep ${isProxyMode ? "(Proxy Mode)" : "(Standard Mode)"}`}
+            ? `Register DRep${isProxyMode ? " (Proxy)" : ""}`
+            : `Update DRep${isProxyMode ? " (Proxy)" : ""}`}
         </Button>
         {isProxyMode && (
-          <p className="text-xs text-muted-foreground text-center">
-            This will create a multisig transaction for proxy DRep registration
+          <p className="text-xs sm:text-sm text-muted-foreground text-center px-2">
+            This will create a multisig transaction for proxy DRep {mode === "register" ? "registration" : "update"}
           </p>
         )}
       </div>

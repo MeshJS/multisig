@@ -9,7 +9,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
@@ -24,7 +24,11 @@ interface PutResponse {
   url: string;
 }
 
-export default function RegisterDRep() {
+interface RegisterDRepProps {
+  onClose?: () => void;
+}
+
+export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   const { appWallet } = useAppWallet();
   const { connected, wallet } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -82,13 +86,14 @@ export default function RegisterDRep() {
     if (!multisigWallet) {
       throw new Error("Multisig wallet not connected");
     }
-    // Cast metadata to a known record type
-    const drepMetadata = (await getDRepMetadata(
+    // Get metadata with both compacted (for upload) and normalized (for hashing) forms
+    const metadataResult = await getDRepMetadata(
       formState,
       appWallet,
-    )) as Record<string, unknown>;
-    console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
+    );
+    
+    // Upload the compacted JSON-LD (readable format)
+    const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -96,36 +101,60 @@ export default function RegisterDRep() {
       },
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata, null, 2),
+        value: JSON.stringify(metadataResult.compacted, null, 2), // Pretty print for readability
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
     
-    // Await file retrieval
-    const fileContent = getFile(res.url); // Use original URL for file content
-    const anchorObj = JSON.parse(fileContent);
-    const anchorHash = hashDrepAnchor(anchorObj);
+    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
+    // The normalized form is in N-Quads format which is the canonical representation
+    const anchorHash = hashDrepAnchor(metadataResult.compacted);
     return { anchorUrl, anchorHash };
   }
 
   async function registerDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet)
-      throw new Error("Multisig wallet not connected");
+    if (!connected || !userAddress || !appWallet)
+      throw new Error("Wallet not connected");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
-      throw new Error("DRep not found");
+    
+    // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
+    // For SDK wallets, use multisigWallet to compute DRep ID and script
+    let dRepId: string;
+    let drepCbor: string;
+    let scriptCbor: string;
+    let changeAddress: string;
+    
+    if (multisigWallet) {
+      const drepData = multisigWallet.getDRep(appWallet);
+      if (!drepData) {
+        throw new Error("DRep not found");
+      }
+      dRepId = drepData.dRepId;
+      drepCbor = drepData.drepCbor;
+      const multisigScript = multisigWallet.getScript();
+      const multisigScriptCbor = multisigScript.scriptCbor;
+      const appScriptCbor = appWallet.scriptCbor;
+      if (!multisigScriptCbor && !appScriptCbor) {
+        throw new Error("Script CBOR not found");
+      }
+      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+      changeAddress = multisigScript.address;
+    } else {
+      // Legacy wallet: use appWallet values (computed with input order preserved)
+      if (!appWallet.dRepId || !appWallet.scriptCbor) {
+        throw new Error("DRep ID or script not found for legacy wallet");
+      }
+      dRepId = appWallet.dRepId;
+      drepCbor = appWallet.scriptCbor; // Use payment script CBOR for legacy wallets
+      scriptCbor = appWallet.scriptCbor;
+      changeAddress = appWallet.address;
     }
-    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
-    if (!scriptCbor) {
-      throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
+    
+    if (!scriptCbor || !changeAddress) {
+      throw new Error("Script or change address not found");
     }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
@@ -154,7 +183,7 @@ export default function RegisterDRep() {
           anchorDataHash: anchorHash,
         })
         .certificateScript(drepCbor)
-        .changeAddress(multisigWallet.getScript().address);
+        .changeAddress(changeAddress);
 
 
 
@@ -163,10 +192,14 @@ export default function RegisterDRep() {
         description: "DRep registration",
         toastMessage: "DRep registration transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
@@ -217,85 +250,27 @@ export default function RegisterDRep() {
         description: "Proxy DRep registration",
         toastMessage: "Proxy DRep registration transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Plus className="h-6 w-6" />
-          Register DRep
-        </h1>
-        <div className="mt-4 space-y-3">
-          {/* Global Proxy Status - Only show when proxies exist */}
-          {proxies && proxies.length > 0 && (
-            <div className="flex items-center space-x-2 p-3 rounded-lg border bg-muted/30">
-              <div className={`w-3 h-3 rounded-full ${isProxyEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-              <span className="text-sm font-medium">
-                {isProxyEnabled ? 'Proxy Mode Enabled' : 'Standard Mode'}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {isProxyEnabled 
-                  ? 'DRep will be registered using a proxy contract' 
-                  : 'DRep will be registered directly'
-                }
-              </span>
-            </div>
-          )}
-
-          {/* Proxy Configuration - Only show when proxies exist */}
-          {isProxyEnabled && proxies && proxies.length > 0 && (
-            <div className="space-y-3 p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-950/20">
-              <p className="text-sm text-muted-foreground">
-                This will register the DRep using a proxy contract, allowing for more flexible governance control.
-              </p>
-              {proxies && proxies.length > 0 ? (
-                <div className="space-y-2">
-                  <Label htmlFor="proxy-select">Select Proxy</Label>
-                  <Select value={selectedProxyId} onValueChange={setSelectedProxy}>
-                    <SelectTrigger id="proxy-select">
-                      <SelectValue placeholder="Choose a proxy..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {proxies.map((proxy: any) => (
-                        <SelectItem key={proxy.id} value={proxy.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {proxy.description || `Proxy ${proxy.id.slice(0, 8)}...`}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {proxy.proxyAddress.slice(0, 20)}...
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  {proxiesLoading ? "Loading proxies..." : "No proxies available. Please create a proxy first."}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Standard Mode Info */}
-          {!isProxyEnabled && (
-            <div className="p-3 rounded-lg border bg-gray-50/50 dark:bg-gray-950/20">
-              <p className="text-sm text-muted-foreground">
-                DRep will be registered directly to your multisig wallet. 
-                To use proxy registration, enable proxy mode in the Proxy Control panel.
-              </p>
-            </div>
-          )}
+    <div className={`w-full max-w-4xl mx-auto ${onClose ? '' : 'px-3 sm:px-4 md:px-6'}`}>
+      {!onClose && (
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+            <Plus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+            <span>Register DRep</span>
+          </h1>
         </div>
-      </div>
+      )}
       {appWallet && (
         <DRepForm
           _imageUrl={""}

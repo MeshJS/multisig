@@ -1,18 +1,9 @@
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { Loader } from "lucide-react";
-import { useState } from "react";
+import { useState, forwardRef } from "react";
+import type { ButtonProps as ShadcnButtonProps } from "@/components/ui/button";
 
-export default function Button({
-  children,
-  onClick,
-  disabled = false,
-  loading,
-  className,
-  variant,
-  size,
-  asChild,
-  hold,
-}: {
+export interface ButtonProps {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
@@ -30,12 +21,26 @@ export default function Button({
   size?: "default" | "sm" | "lg" | "icon" | null | undefined;
   asChild?: boolean | undefined;
   hold?: number;
-}) {
+}
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps & ShadcnButtonProps>(function Button({
+  children,
+  onClick,
+  disabled = false,
+  loading,
+  className,
+  variant,
+  size,
+  asChild,
+  hold,
+  ...props
+}, ref) {
   const [holding, setHolding] = useState<boolean>(false);
   const [curTime, setCurTime] = useState<number>(0);
 
   return (
     <ShadcnButton
+      ref={ref}
       variant={variant}
       onClick={hold === undefined ? onClick : undefined}
       disabled={disabled}
@@ -61,6 +66,7 @@ export default function Button({
             }
           : undefined
       }
+      {...props}
     >
       {loading && <Loader className="h-4 w-4 animate-spin mr-2" />}
       {children}
@@ -69,4 +75,6 @@ export default function Button({
         ` (Hold for ${Math.round((hold - (Date.now() - curTime)) / 1000)} secs)`}
     </ShadcnButton>
   );
-}
+});
+
+export default Button;

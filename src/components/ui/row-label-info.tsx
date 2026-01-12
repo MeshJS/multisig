@@ -19,13 +19,13 @@ export default function RowLabelInfo({
 }) {
   const { toast } = useToast();
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex max-w-full items-center justify-center gap-2">
-        {label && (
-          <div className="text-nowrap text-sm font-medium leading-none min-w-20">
-            {label}
-          </div>
-        )}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+      {label && (
+        <div className="text-sm font-medium leading-none min-w-[80px] sm:min-w-20 text-muted-foreground">
+          {label}
+        </div>
+      )}
+      <div className="flex-1 min-w-0 flex items-center gap-2">
         {copyString ? (
           <Button
             variant="ghost"
@@ -37,7 +37,7 @@ export default function RowLabelInfo({
                 duration: 5000,
               });
             }}
-            className="m-0 h-auto max-w-full justify-start truncate p-0"
+            className="m-0 h-auto max-w-full justify-start truncate p-0 text-left font-mono text-xs sm:text-sm"
           >
             <Value
               value={value}
@@ -69,7 +69,7 @@ function Value({
 }) {
   return (
     <div
-      className={`${className ? className : `max-w-full ${allowOverflow ?? "overflow-hidden truncate whitespace-nowrap"} text-sm text-muted-foreground`}`}
+      className={`${className ? className : `max-w-full ${allowOverflow ? "break-words" : "overflow-hidden truncate whitespace-nowrap"} text-sm text-muted-foreground`}`}
     >
       {value}
     </div>

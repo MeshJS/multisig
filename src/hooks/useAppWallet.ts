@@ -1,6 +1,6 @@
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
-import { buildWallet } from "./common";
+import { buildWallet } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useRouter } from "next/router";
 import { useWalletsStore } from "@/lib/zustand/wallets";

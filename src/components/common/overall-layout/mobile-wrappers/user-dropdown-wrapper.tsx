@@ -72,9 +72,14 @@ export default function UserDropDownWrapper({
     }
   }
 
-  const { data: discordData } = api.user.getUserDiscordId.useQuery({
-    address: userAddress ?? "",
-  });
+  const { data: discordData } = api.user.getUserDiscordId.useQuery(
+    {
+      address: userAddress ?? "",
+    },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+    }
+  );
 
   async function handleCopyAddress() {
     try {

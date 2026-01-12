@@ -6,8 +6,79 @@ export const swaggerSpec = swaggerJSDoc({
     info: {
       title: "Multisig API",
       version: "1.0.0",
-      description:
-        "OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.",
+      description: `# Multisig API Documentation
+
+OpenAPI documentation for the Multisig API. This is in alpha stage and under active development. The endpoints are subject to change.
+
+## Getting Started
+
+### Authentication
+
+Most endpoints require authentication using a Bearer token (JWT). To authenticate:
+
+#### Option 1: Generate Token with Wallet (Recommended)
+
+1. **Connect your wallet** to the application
+2. Look for the **floating token generator button** in the **upper right corner** of this page
+3. Click the button to **"Generate Token"** - this will:
+   - Request a nonce from the API
+   - Prompt you to sign the nonce with your connected wallet
+   - Exchange the signature for a JWT token
+   - Automatically authorize the token in Swagger UI
+4. If successful, a **copyable token field** will appear above the button showing your generated token
+5. You can **copy the token** using the copy button if needed
+6. The token is automatically applied to all API requests
+
+#### Option 2: Manual Token Entry
+
+1. Click the **"Authorize"** button at the top right of this page (next to the scheme container)
+2. Enter your JWT token in the format: \`Bearer <your-token>\` or just \`<your-token>\`
+3. Click **"Authorize"** to apply the token to all requests
+4. Click **"Close"** to close the authorization dialog
+
+#### Token Generation Hints
+
+- If your wallet is **not connected**, you'll see a hint in the upper right corner: "Connect wallet to generate token"
+- Once connected, hover over the floating button to see the "Generate Token" option
+- After generation, the token is displayed in a copyable field for your convenience
+
+Your token will be automatically included in the \`Authorization\` header for all API requests.
+
+### Using the API
+
+1. **Browse Endpoints**: Expand the sections below to see available endpoints organized by tags (V1, Auth, etc.)
+
+2. **View Details**: Click on any endpoint to see:
+   - Request parameters (query, path, or body)
+   - Request/response schemas
+   - Example values
+   - Response codes and descriptions
+
+3. **Try It Out**: 
+   - Click the **"Try it out"** button on any endpoint
+   - Fill in the required parameters
+   - Click **"Execute"** to send a real request to the API
+   - View the response including status code, headers, and body
+
+4. **Understand Responses**: 
+   - Success responses (200, 201, etc.) show the expected data structure
+   - Error responses (400, 401, 403, 500, etc.) show possible error scenarios
+
+### API Base URL
+
+All endpoints are relative to: \`/api\`
+
+For example, \`/api/v1/nativeScript\` would be accessed at:
+- Production: \`https://your-domain.com/api/v1/nativeScript\`
+- Development: \`http://localhost:3000/api/v1/nativeScript\`
+
+### Rate Limiting
+
+Please be mindful of rate limits when testing endpoints. Excessive requests may result in temporary restrictions.
+
+### Support
+
+For issues or questions about the API, please refer to the main application documentation or contact support.`,
     },
     components: {
       securitySchemes: {
@@ -15,6 +86,21 @@ export const swaggerSpec = swaggerJSDoc({
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
+          description: `# Authentication
+
+This API uses **Bearer Token** authentication (JWT).
+
+## Quick Start
+
+**Option 1: Generate Token (Recommended)**
+1. Connect your wallet
+2. Use the floating token generator in the upper right corner
+3. Click "Generate Token" and sign the nonce
+4. Token is automatically authorized
+
+**Option 2: Manual Entry**
+1. Enter your token below: \`Bearer <your-token>\` or just \`<your-token>\`
+2. Click "Authorize"`,
         },
       },
     },
@@ -196,12 +282,75 @@ export const swaggerSpec = swaggerJSDoc({
           },
         },
       },
+      "/api/v1/pendingTransactions": {
+        get: {
+          tags: ["V1"],
+          summary: "Get pending transactions for a wallet",
+          description:
+            "Returns all pending multisig transactions awaiting signatures for the specified wallet and address.",
+          parameters: [
+            {
+              in: "query",
+              name: "walletId",
+              required: true,
+              schema: { type: "string" },
+              description: "ID of the multisig wallet",
+            },
+            {
+              in: "query",
+              name: "address",
+              required: true,
+              schema: { type: "string" },
+              description: "Address associated with the wallet (must match JWT)",
+            },
+          ],
+          responses: {
+            200: {
+              description: "A list of pending transactions",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        walletId: { type: "string" },
+                        txJson: { type: "string" },
+                        txCbor: { type: "string" },
+                        signedAddresses: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        rejectedAddresses: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                        description: { type: "string" },
+                        state: { type: "number" },
+                        createdAt: { type: "string" },
+                        updatedAt: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid address or walletId parameter" },
+            401: { description: "Unauthorized or invalid token" },
+            403: { description: "Address mismatch" },
+            404: { description: "Wallet not found" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
       "/api/v1/signTransaction": {
         post: {
           tags: ["V1"],
-          summary: "Sign a pending multisig transaction",
+          summary: "Sign an existing transaction",
           description:
-            "Adds a signature to an existing multisig transaction and automatically submits it once the required signatures are met.",
+            "Records a witness for an existing multisig transaction and optionally submits it if the signing threshold is met.",
           requestBody: {
             required: true,
             content: {
@@ -212,13 +361,16 @@ export const swaggerSpec = swaggerJSDoc({
                     walletId: { type: "string" },
                     transactionId: { type: "string" },
                     address: { type: "string" },
-                    signedTx: { type: "string" },
+                    signature: { type: "string" },
+                    key: { type: "string" },
+                    broadcast: { type: "boolean" },
                   },
                   required: [
                     "walletId",
                     "transactionId",
                     "address",
-                    "signedTx",
+                    "signature",
+                    "key",
                   ],
                 },
               },
@@ -226,7 +378,8 @@ export const swaggerSpec = swaggerJSDoc({
           },
           responses: {
             200: {
-              description: "Transaction successfully updated",
+              description:
+                "Witness stored. Includes updated transaction and submission status.",
               content: {
                 "application/json": {
                   schema: {
@@ -254,18 +407,59 @@ export const swaggerSpec = swaggerJSDoc({
                           updatedAt: { type: "string" },
                         },
                       },
-                      thresholdReached: { type: "boolean" },
+                      submitted: { type: "boolean" },
+                      txHash: { type: "string", nullable: true },
                     },
                   },
                 },
               },
             },
-            400: { description: "Validation error" },
-            401: { description: "Unauthorized" },
-            403: { description: "Authorization error" },
+            401: { description: "Unauthorized or invalid signature" },
+            403: { description: "Forbidden due to address mismatch or access" },
             404: { description: "Wallet or transaction not found" },
-            409: { description: "Signer already processed this transaction" },
-            502: { description: "Blockchain submission failed" },
+            409: {
+              description:
+                "Transaction already finalized or conflicting update detected",
+            },
+            502: {
+              description:
+                "Witness stored but submission to the network failed",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      error: { type: "string" },
+                      transaction: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          walletId: { type: "string" },
+                          txJson: { type: "string" },
+                          txCbor: { type: "string" },
+                          signedAddresses: {
+                            type: "array",
+                            items: { type: "string" },
+                          },
+                          rejectedAddresses: {
+                            type: "array",
+                            items: { type: "string" },
+                          },
+                          description: { type: "string" },
+                          state: { type: "number" },
+                          txHash: { type: "string" },
+                          createdAt: { type: "string" },
+                          updatedAt: { type: "string" },
+                        },
+                      },
+                      submitted: { type: "boolean" },
+                      txHash: { type: "string", nullable: true },
+                      submissionError: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
           },

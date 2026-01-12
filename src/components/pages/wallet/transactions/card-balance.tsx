@@ -7,12 +7,17 @@ import type { Wallet } from "@/types/wallet";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
+import { Upload } from "lucide-react";
+import ImportTransactionDialog from "./import-transaction-dialog";
+import NewTransactionDialog from "./new-transaction-dialog";
 
 export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const utxos = walletsUtxos[appWallet.id];
   const [balance, setBalance] = useState<number>(0);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [newTransactionDialogOpen, setNewTransactionDialogOpen] = useState(false);
 
   useEffect(() => {
     if(!utxos) return
@@ -42,20 +47,37 @@ export default function CardBalance({ appWallet }: { appWallet: Wallet }) {
             Please deposit fund to this script address before continuing
           </p>
         )}
-        <div className="flex space-x-2">
-          <Link href={`/wallets/${appWallet.id}/transactions/deposit`}>
-            <Button size="sm">Deposit Funds</Button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:space-y-0">
+          <Link href={`/wallets/${appWallet.id}/transactions/deposit`} className="w-full sm:w-auto">
+            <Button size="sm" className="w-full sm:w-auto">Deposit Funds</Button>
           </Link>
-          <Link
-            href={
-              balance > 0 ? `/wallets/${appWallet.id}/transactions/new` : "#"
-            }
+          <Button 
+            size="sm" 
+            disabled={balance == 0} 
+            className="w-full sm:w-auto"
+            onClick={() => setNewTransactionDialogOpen(true)}
           >
-            <Button size="sm" disabled={balance == 0}>
-              New Transaction
-            </Button>
-          </Link>
+            New Transaction
+          </Button>
+          <Button
+            onClick={() => setImportDialogOpen(true)}
+            size="sm"
+            className="w-full sm:w-auto"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import Transaction
+          </Button>
         </div>
+        <ImportTransactionDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          walletId={appWallet.id}
+        />
+        <NewTransactionDialog
+          open={newTransactionDialogOpen}
+          onOpenChange={setNewTransactionDialogOpen}
+          walletId={appWallet.id}
+        />
 
         {/* Suggesting to disable the button if the balance is less than 0, or no previous transactions */}
         {/* <Button

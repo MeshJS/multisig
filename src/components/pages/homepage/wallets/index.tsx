@@ -1,39 +1,111 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import Link from "next/link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import useUserWallets from "@/hooks/useUserWallets";
+import useWalletBalances from "@/hooks/useWalletBalances";
 import { Wallet } from "@/types/wallet";
 import { getFirstAndLast } from "@/utils/strings";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
+import { useSiteStore } from "@/lib/zustand/site";
+import { buildMultisigWallet, getWalletType } from "@/utils/common";
+import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Archive } from "lucide-react";
 import PageHeader from "@/components/common/page-header";
 import CardUI from "@/components/common/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import SectionTitle from "@/components/common/section-title";
+import WalletBalance from "./WalletBalance";
+import EmptyWalletsState from "./EmptyWalletsState";
+import SectionExplanation from "./SectionExplanation";
+import WalletCardSkeleton from "./WalletCardSkeleton";
+import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
+import IPFSImage from "@/components/common/ipfs-image";
 
 
 export default function PageWallets() {
-  const { wallets } = useUserWallets();
+  const { wallets, isLoading: isLoadingWallets } = useUserWallets();
   const [showArchived, setShowArchived] = useState(false);
   const userAddress = useUserStore((state) => state.userAddress);
 
-  const { data: newPendingWallets } = api.wallet.getUserNewWallets.useQuery(
+  // Check wallet session authorization before enabling queries
+  const { data: walletSession } = api.auth.getWalletSession.useQuery(
+    { address: userAddress ?? "" },
+    {
+      enabled: !!userAddress && userAddress.length > 0,
+      refetchOnWindowFocus: false,
+    },
+  );
+  const isAuthorized = walletSession?.authorized ?? false;
+
+  const { data: newPendingWallets, isLoading: isLoadingNewWallets } = api.wallet.getUserNewWallets.useQuery(
     { address: userAddress! },
     {
-      enabled: userAddress !== undefined,
+      // Only enable query when user is authorized (prevents 403 errors)
+      enabled: userAddress !== undefined && isAuthorized,
+      retry: (failureCount, error) => {
+        // Don't retry on authorization errors (403)
+        if (error && typeof error === "object") {
+          const err = error as { 
+            code?: string; 
+            message?: string; 
+            data?: { code?: string; httpStatus?: number };
+            shape?: { code?: string; message?: string };
+          };
+          const errorMessage = err.message || err.shape?.message || "";
+          const isAuthError =
+            err.code === "FORBIDDEN" ||
+            err.data?.code === "FORBIDDEN" ||
+            err.data?.httpStatus === 403 ||
+            err.shape?.code === "FORBIDDEN" ||
+            errorMessage.includes("Address mismatch");
+          if (isAuthError) return false;
+        }
+        return failureCount < 1;
+      },
     },
   );
 
-  const { data: getUserNewWalletsNotOwner } =
+  const { data: getUserNewWalletsNotOwner, isLoading: isLoadingNewWalletsNotOwner } =
     api.wallet.getUserNewWalletsNotOwner.useQuery(
       { address: userAddress! },
       {
-        enabled: userAddress !== undefined,
+        // Only enable query when user is authorized (prevents 403 errors)
+        enabled: userAddress !== undefined && isAuthorized,
+        retry: (failureCount, error) => {
+          // Don't retry on authorization errors (403)
+          if (error && typeof error === "object") {
+            const err = error as { 
+              code?: string; 
+              message?: string; 
+              data?: { code?: string; httpStatus?: number };
+              shape?: { code?: string; message?: string };
+            };
+            const errorMessage = err.message || err.shape?.message || "";
+            const isAuthError =
+              err.code === "FORBIDDEN" ||
+              err.data?.code === "FORBIDDEN" ||
+              err.data?.httpStatus === 403 ||
+              err.shape?.code === "FORBIDDEN" ||
+              errorMessage.includes("Address mismatch");
+            if (isAuthError) return false;
+          }
+          return failureCount < 1;
+        },
       },
     );
+
+  // Filter wallets for balance fetching (only non-archived or all if showing archived)
+  const walletsForBalance = wallets?.filter(
+    (wallet) => showArchived || !wallet.isArchived,
+  ) as Wallet[] | undefined;
+
+  // Fetch balances with rate limiting
+  const { balances, loadingStates } = useWalletBalances(walletsForBalance);
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,16 +125,15 @@ export default function PageWallets() {
         </PageHeader>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {wallets && wallets.length === 0 && (
-            <div className="col-span-3 text-center text-muted-foreground">
-              No wallets,{" "}
-              <Link href="/wallets/new-wallet-flow/save">
-                <b className="cursor-pointer text-white">create one</b>
-              </Link>
-              ?
-            </div>
+          {isLoadingWallets && (
+            <>
+              <WalletCardSkeleton />
+              <WalletCardSkeleton />
+              <WalletCardSkeleton />
+            </>
           )}
-          {wallets &&
+          {!isLoadingWallets && wallets && wallets.length === 0 && <EmptyWalletsState />}
+          {!isLoadingWallets && wallets &&
             wallets
               .filter((wallet) => showArchived || !wallet.isArchived)
               .sort((a, b) =>
@@ -72,14 +143,38 @@ export default function PageWallets() {
                     ? 1
                     : -1,
               )
-              .map((wallet) => (
-                <CardWallet key={wallet.id} wallet={wallet as Wallet} />
-              ))}
+              .map((wallet) => {
+                const walletBalance = balances[wallet.id] ?? null;
+                const walletLoadingState = loadingStates[wallet.id] ?? "idle";
+                return (
+                  <CardWallet
+                    key={wallet.id}
+                    wallet={wallet as Wallet}
+                    balance={walletBalance}
+                    loadingState={walletLoadingState}
+                  />
+                );
+              })}
         </div>
 
-        {newPendingWallets && newPendingWallets.length > 0 && (
+        {isLoadingNewWallets && (
           <>
             <SectionTitle>New Wallets to be created</SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have initiated but not yet created on-chain. Complete the wallet creation process to deploy them."
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <WalletInviteCardSkeleton />
+              <WalletInviteCardSkeleton />
+            </div>
+          </>
+        )}
+        {!isLoadingNewWallets && newPendingWallets && newPendingWallets.length > 0 && (
+          <>
+            <SectionTitle>New Wallets to be created</SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have initiated but not yet created on-chain. Complete the wallet creation process to deploy them."
+            />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               {newPendingWallets
                 .sort((a, b) => a.name.localeCompare(b.name))
@@ -94,11 +189,28 @@ export default function PageWallets() {
           </>
         )}
 
-        {getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
+        {isLoadingNewWalletsNotOwner && (
           <>
             <SectionTitle>
               New Wallets awaiting creation
             </SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have been invited to join as a signer. You can view details and accept or decline the invitation."
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <WalletInviteCardSkeleton />
+              <WalletInviteCardSkeleton />
+            </div>
+          </>
+        )}
+        {!isLoadingNewWalletsNotOwner && getUserNewWalletsNotOwner && getUserNewWalletsNotOwner.length > 0 && (
+          <>
+            <SectionTitle>
+              New Wallets awaiting creation
+            </SectionTitle>
+            <SectionExplanation
+              description="These are wallets you have been invited to join as a signer. You can view details and accept or decline the invitation."
+            />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               {getUserNewWalletsNotOwner
                 .sort((a, b) => a.name.localeCompare(b.name))
@@ -113,10 +225,42 @@ export default function PageWallets() {
   );
 }
 
-function CardWallet({ wallet }: { wallet: Wallet }) {
+function CardWallet({
+  wallet,
+  balance,
+  loadingState,
+}: {
+  wallet: Wallet;
+  balance: number | null;
+  loadingState: "idle" | "loading" | "loaded" | "error";
+}) {
+  const network = useSiteStore((state) => state.network);
   const { transactions: pendingTransactions } = usePendingTransactions({
     walletId: wallet.id,
   });
+
+  // Check wallet type for badge display using centralized detection
+  const walletType = getWalletType(wallet);
+  const isSummonWallet = walletType === 'summon';
+  const isLegacyWallet = walletType === 'legacy';
+
+  // Rebuild the multisig wallet to get the correct canonical address for display
+  // This ensures we show the correct address even if wallet.address was built incorrectly
+  const displayAddress = useMemo(() => {
+    try {
+      const walletNetwork = wallet.signersAddresses.length > 0 
+        ? addressToNetwork(wallet.signersAddresses[0]!)
+        : network;
+      const mWallet = buildMultisigWallet(wallet, walletNetwork);
+      if (mWallet) {
+        return mWallet.getScript().address;
+      }
+    } catch (error) {
+      console.error(`Error building wallet for display: ${wallet.id}`, error);
+    }
+    // Fallback to wallet.address if rebuild fails (legacy support)
+    return wallet.address;
+  }, [wallet, network]);
 
   return (
     <Link href={`/wallets/${wallet.id}`}>
@@ -124,11 +268,35 @@ function CardWallet({ wallet }: { wallet: Wallet }) {
         title={`${wallet.name}${wallet.isArchived ? " (Archived)" : ""}`}
         description={wallet.description}
         cardClassName=""
+        profileImage={
+          wallet.profileImageIpfsUrl ? (
+            <div className="relative aspect-square w-10 sm:w-12 rounded-lg overflow-hidden border border-border/50 shadow-sm">
+              <IPFSImage
+                src={wallet.profileImageIpfsUrl}
+                alt="Wallet Profile"
+                fill
+                className="object-cover object-center"
+              />
+            </div>
+          ) : undefined
+        }
+        headerDom={
+          isSummonWallet ? (
+            <Badge 
+              variant="outline" 
+              className="text-xs bg-orange-600/10 border-orange-600/30 text-orange-700 dark:text-orange-400"
+            >
+              <Archive className="h-3 w-3 mr-1" />
+              Summon
+            </Badge>
+          ) : undefined
+        }
       >
+        <WalletBalance balance={balance} loadingState={loadingState} />
         <RowLabelInfo
           label="Address"
-          value={getFirstAndLast(wallet.address)}
-          copyString={wallet.address}
+          value={getFirstAndLast(displayAddress)}
+          copyString={displayAddress}
         />
         <RowLabelInfo
           label="DRep ID"

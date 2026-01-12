@@ -95,7 +95,7 @@ export function Globe({ globeConfig, data }: WorldProps) {
       _buildData();
       _buildMaterial();
     }
-  }, [globeRef.current]);
+  }, [globeRef.current, globeConfig]);
 
   const _buildMaterial = () => {
     if (!globeRef.current) return;
@@ -106,10 +106,18 @@ export function Globe({ globeConfig, data }: WorldProps) {
       emissiveIntensity: number;
       shininess: number;
     };
-    globeMaterial.color = new Color(globeConfig.globeColor);
-    globeMaterial.emissive = new Color(globeConfig.emissive);
-    globeMaterial.emissiveIntensity = globeConfig.emissiveIntensity || 0.1;
-    globeMaterial.shininess = globeConfig.shininess || 0.9;
+    globeMaterial.color = new Color(globeConfig.globeColor || defaultProps.globeColor);
+    globeMaterial.emissive = new Color(globeConfig.emissive || defaultProps.emissive);
+    globeMaterial.emissiveIntensity = globeConfig.emissiveIntensity ?? defaultProps.emissiveIntensity;
+    globeMaterial.shininess = globeConfig.shininess ?? defaultProps.shininess;
+    
+    // Update atmosphere if globe ref is available
+    if (globeRef.current) {
+      globeRef.current
+        .showAtmosphere(globeConfig.showAtmosphere ?? defaultProps.showAtmosphere)
+        .atmosphereColor(globeConfig.atmosphereColor || defaultProps.atmosphereColor)
+        .atmosphereAltitude(globeConfig.atmosphereAltitude ?? defaultProps.atmosphereAltitude);
+    }
   };
 
   const _buildData = () => {
@@ -179,7 +187,8 @@ export function Globe({ globeConfig, data }: WorldProps) {
         return (e as { arcAlt: number }).arcAlt * 1;
       })
       .arcStroke(() => {
-        return [0.32, 0.28, 0.3][Math.round(Math.random() * 2)] || null;
+        // Enhanced stroke widths for better visibility
+        return [0.4, 0.35, 0.38][Math.round(Math.random() * 2)] || 0.35;
       })
       .arcDashLength(defaultProps.arcLength)
       .arcDashInitialGap((e) => (e as { order: number }).order * 1)
@@ -191,7 +200,7 @@ export function Globe({ globeConfig, data }: WorldProps) {
       .pointColor((e) => (e as { color: string }).color)
       .pointsMerge(true)
       .pointAltitude(0.0)
-      .pointRadius(2);
+      .pointRadius(globeConfig.pointSize || defaultProps.pointSize);
 
     globeRef.current
       .ringsData([])
@@ -246,23 +255,33 @@ export function WebGLRendererConfig() {
 export function World(props: WorldProps) {
   const { globeConfig } = props;
   const scene = new Scene();
-  scene.fog = new Fog(0xffffff, 400, 2000);
+  // Enhanced fog for better depth perception
+  scene.fog = new Fog(0x000000, 400, 2000);
   return (
-    <Canvas scene={scene} camera={new PerspectiveCamera(50, aspect, 180, 1800)}>
+    <Canvas 
+      scene={scene} 
+      camera={new PerspectiveCamera(50, aspect, 180, 1800)}
+      gl={{ antialias: true, alpha: true }}
+    >
       <WebGLRendererConfig />
-      <ambientLight color={globeConfig.ambientLight} intensity={0.6} />
-      <directionalLight
-        color={globeConfig.directionalLeftLight}
-        position={new Vector3(-400, 100, 400)}
+      <ambientLight 
+        color={globeConfig.ambientLight || "#4a90e2"} 
+        intensity={0.7} 
       />
       <directionalLight
-        color={globeConfig.directionalTopLight}
+        color={globeConfig.directionalLeftLight || "#ffffff"}
+        position={new Vector3(-400, 100, 400)}
+        intensity={0.8}
+      />
+      <directionalLight
+        color={globeConfig.directionalTopLight || "#a0c4ff"}
         position={new Vector3(-200, 500, 200)}
+        intensity={0.6}
       />
       <pointLight
-        color={globeConfig.pointLight}
+        color={globeConfig.pointLight || "#ffffff"}
         position={new Vector3(-200, 500, 200)}
-        intensity={0.8}
+        intensity={1.0}
       />
       <Globe {...props} />
       <OrbitControls
@@ -270,10 +289,12 @@ export function World(props: WorldProps) {
         enableZoom={false}
         minDistance={cameraZ}
         maxDistance={cameraZ}
-        autoRotateSpeed={1}
-        autoRotate={true}
+        autoRotateSpeed={globeConfig.autoRotateSpeed ?? 0.5}
+        autoRotate={globeConfig.autoRotate ?? true}
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI - Math.PI / 3}
+        enableDamping={true}
+        dampingFactor={0.05}
       />
     </Canvas>
   );

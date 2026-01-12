@@ -6,6 +6,8 @@ import { signableRouter } from "./routers/signable";
 import { ballotRouter } from "./routers/ballot";
 import { proxyRouter } from "./routers/proxy";
 import { migrationRouter } from "./routers/migrations";
+import { authRouter } from "./routers/auth";
+import { contactRouter } from "./routers/contacts";
 
 import { crowdfundRouter } from "./routers/crowdfunds";
 
@@ -23,6 +25,8 @@ export const appRouter = createTRPCRouter({
   crowdfund: crowdfundRouter,
   proxy: proxyRouter,
   migration: migrationRouter,
+  auth: authRouter,
+  contact: contactRouter,
 });
 
 // export type definition of API

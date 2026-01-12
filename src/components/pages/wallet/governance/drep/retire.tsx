@@ -155,7 +155,17 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
 
     try {
       const blockchainProvider = getProvider(network);
-      const utxos = await blockchainProvider.fetchAddressUTxOs(multisigWallet.getScript().address);
+      // For legacy wallets, use appWallet address; for SDK wallets, use multisig address
+      const addressToFetch = multisigWallet?.getScript().address || appWallet.address;
+      if (!addressToFetch) {
+        toast({
+          title: "Address Error",
+          description: "No address available to fetch UTxOs",
+          variant: "destructive",
+        });
+        return;
+      }
+      const utxos = await blockchainProvider.fetchAddressUTxOs(addressToFetch);
 
       const assetMap = new Map<Unit, Quantity>();
       assetMap.set("lovelace", "5000000");
@@ -170,39 +180,59 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       }
 
       const txBuilder = getTxBuilder(network);
-      const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-      const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-      const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
-      const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
       
-      if (!changeAddress) {
-        toast({
-          title: "Address Error",
-          description: "Change address not found",
-          variant: "destructive",
-        });
-        return;
+      // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
+      // For SDK wallets, use multisigWallet to compute DRep ID and script
+      let dRepId: string;
+      let drepCbor: string;
+      let scriptCbor: string;
+      let changeAddress: string;
+      
+      if (multisigWallet) {
+        const drepData = multisigWallet.getDRep(appWallet);
+        if (!drepData) {
+          toast({
+            title: "DRep Error",
+            description: "DRep not found",
+            variant: "destructive",
+          });
+          return;
+        }
+        dRepId = drepData.dRepId;
+        drepCbor = drepData.drepCbor;
+        const multisigScript = multisigWallet.getScript();
+        const multisigScriptCbor = multisigScript.scriptCbor;
+        const appScriptCbor = appWallet.scriptCbor;
+        if (!multisigScriptCbor && !appScriptCbor) {
+          toast({
+            title: "Script Error",
+            description: "Script CBOR not found",
+            variant: "destructive",
+          });
+          return;
+        }
+        scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+        changeAddress = multisigScript.address;
+      } else {
+        // Legacy wallet: use appWallet values (computed with input order preserved)
+        if (!appWallet.dRepId || !appWallet.scriptCbor) {
+          toast({
+            title: "DRep Error",
+            description: "DRep ID or script not found for legacy wallet",
+            variant: "destructive",
+          });
+          return;
+        }
+        dRepId = appWallet.dRepId;
+        drepCbor = appWallet.scriptCbor; // Use payment script CBOR for legacy wallets
+        scriptCbor = appWallet.scriptCbor;
+        changeAddress = appWallet.address;
       }
-      if (!scriptCbor) {
+      
+      if (!scriptCbor || !changeAddress) {
         toast({
           title: "Script Error",
-          description: "Script not found",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!drepCbor) {
-        toast({
-          title: "DRep Script Error",
-          description: "DRep script not found",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!dRepId) {
-        toast({
-          title: "DRep Error",
-          description: "DRep not found",
+          description: "Script or change address not found",
           variant: "destructive",
         });
         return;
@@ -220,8 +250,13 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       txBuilder
         .txInScript(scriptCbor)
         .changeAddress(changeAddress)
-        .drepDeregistrationCertificate(dRepId, "500000000")
-        .certificateScript(drepCbor);
+        .drepDeregistrationCertificate(dRepId, "500000000");
+      
+      // Only add certificateScript if it's different from the spending script
+      // to avoid "extraneous scripts" error
+      if (drepCbor !== scriptCbor) {
+        txBuilder.certificateScript(drepCbor);
+      }
 
       await newTransaction({
         txBuilder,

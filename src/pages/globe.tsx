@@ -5,29 +5,32 @@ const World = dynamic(() => import("@/components/ui/globe").then((m) => m.World)
   ssr: false,
 });
 
+// Enhanced globe configuration with better colors and effects
 const globeConfig = {
-  pointSize: 4,
-  globeColor: "#062056",
+  pointSize: 3,
+  globeColor: "#0a1929",
   showAtmosphere: true,
-  atmosphereColor: "#FFFFFF",
-  atmosphereAltitude: 0.1,
-  emissive: "#062056",
-  emissiveIntensity: 0.1,
-  shininess: 0.9,
-  polygonColor: "rgba(255,255,255,0.7)",
-  ambientLight: "#38bdf8",
+  atmosphereColor: "#1e3a5f",
+  atmosphereAltitude: 0.15,
+  emissive: "#0a1929",
+  emissiveIntensity: 0.2,
+  shininess: 0.95,
+  polygonColor: "rgba(100, 150, 255, 0.3)",
+  ambientLight: "#4a90e2",
   directionalLeftLight: "#ffffff",
-  directionalTopLight: "#ffffff",
+  directionalTopLight: "#a0c4ff",
   pointLight: "#ffffff",
-  arcTime: 1000,
-  arcLength: 0.9,
+  arcTime: 2000,
+  arcLength: 0.85,
   rings: 1,
   maxRings: 3,
   initialPosition: { lat: 22.3193, lng: 114.1694 },
   autoRotate: true,
-  autoRotateSpeed: 0.5,
+  autoRotateSpeed: 0.3,
 };
-const colors = ["#06b6d4", "#3b82f6", "#6366f1"];
+
+// Enhanced color palette - more vibrant and modern
+const colors = ["#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7"];
 const sampleArcs = [
   {
     order: 1,
@@ -393,15 +396,55 @@ const sampleArcs = [
 
 export default function Globe() {
   const [live, setLive] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
   useEffect(() => {
     setLive(true);
+    
+    // Check for dark mode
+    const checkDarkMode = () => {
+      const isDarkMode = 
+        window.matchMedia("(prefers-color-scheme: dark)").matches ||
+        document.documentElement.classList.contains("dark");
+      setIsDark(isDarkMode);
+    };
+
+    checkDarkMode();
+    
+    // Listen for dark mode changes
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const observer = new MutationObserver(checkDarkMode);
+    
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    mediaQuery.addEventListener("change", checkDarkMode);
+
+    return () => {
+      mediaQuery.removeEventListener("change", checkDarkMode);
+      observer.disconnect();
+    };
   }, []);
+
+  // Adjust globe config based on theme
+  const adaptiveGlobeConfig = {
+    ...globeConfig,
+    globeColor: isDark ? "#0a1929" : "#e8f4f8",
+    atmosphereColor: isDark ? "#1e3a5f" : "#b8d4e8",
+    emissive: isDark ? "#0a1929" : "#d0e8f0",
+    emissiveIntensity: isDark ? 0.2 : 0.1,
+    polygonColor: isDark ? "rgba(100, 150, 255, 0.3)" : "rgba(59, 130, 246, 0.2)",
+    ambientLight: isDark ? "#4a90e2" : "#60a5fa",
+  };
+
   return (
     <>
       <div className="relative mx-auto h-full w-full max-w-5xl overflow-hidden px-4">
         <div className="absolute z-10 w-full h-full">
           {/* @ts-ignore */}
-          {live && <World data={sampleArcs} globeConfig={globeConfig} />}
+          {live && <World data={sampleArcs} globeConfig={adaptiveGlobeConfig} />}
         </div>
       </div>
     </>

@@ -9,7 +9,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
-import { getFile, hashDrepAnchor } from "@meshsdk/core";
+import { hashDrepAnchor } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
@@ -22,7 +22,11 @@ interface PutResponse {
   url: string;
 }
 
-export default function UpdateDRep() {
+interface UpdateDRepProps {
+  onClose?: () => void;
+}
+
+export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   const { appWallet } = useAppWallet();
   const { wallet, connected } = useWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -78,16 +82,15 @@ export default function UpdateDRep() {
     if (!appWallet) {
       throw new Error("Wallet not connected");
     }
-    if (!multisigWallet) {
-      throw new Error("Multisig wallet not connected");
-    }
-    // Cast metadata to a known record type
-    const drepMetadata = (await getDRepMetadata(
+    // Note: multisigWallet can be undefined for legacy wallets, which is handled in updateDrep()
+    // Get metadata with both compacted (for upload) and normalized (for hashing) forms
+    const metadataResult = await getDRepMetadata(
       formState,
       appWallet,
-    )) as Record<string, unknown>;
-    console.log(drepMetadata);
-    const rawResponse = await fetch("/api/vercel-storage/put", {
+    );
+    
+    // Upload the compacted JSON-LD (readable format)
+    const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -95,22 +98,26 @@ export default function UpdateDRep() {
       },
       body: JSON.stringify({
         pathname: `drep/${formState.givenName}.jsonld`,
-        value: JSON.stringify(drepMetadata, null, 2),
+        value: JSON.stringify(metadataResult.compacted, null, 2), // Pretty print for readability
       }),
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
     
-    // Await file retrieval
-    const fileContent = getFile(res.url); // Use original URL for file content
-    const anchorObj = JSON.parse(fileContent);
-    const anchorHash = hashDrepAnchor(anchorObj);
+    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
+    // The normalized form is in N-Quads format which is the canonical representation
+    const anchorHash = hashDrepAnchor(metadataResult.compacted);
     return { anchorUrl, anchorHash };
   }
 
   async function updateProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet) {
-      throw new Error("Multisig wallet not connected");
+    if (!connected || !userAddress || !appWallet) {
+      throw new Error("Wallet not connected");
+    }
+    // Proxy mode requires multisigWallet (SDK wallets only)
+    if (!multisigWallet) {
+      // Fall back to standard update for legacy wallets
+      return updateDrep();
     }
     if (!hasValidProxy) {
       // Fall back to standard update if no valid proxy
@@ -157,7 +164,11 @@ export default function UpdateDRep() {
         toastMessage: "Proxy DRep update transaction has been created",
       });
 
-      router.push(`/wallets/${appWallet.id}/governance`);
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (error) {
       console.error("Proxy DRep update error:", error);
       throw error;
@@ -167,26 +178,47 @@ export default function UpdateDRep() {
   }
 
   async function updateDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet)
-      throw new Error("Multisig wallet not connected");
+    if (!connected || !userAddress || !appWallet)
+      throw new Error("Wallet not connected");
 
     setLoading(true);
     const txBuilder = getTxBuilder(network);
-    const dRepId = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepId() : appWallet?.dRepId;
-    if (!dRepId) {
-      throw new Error("DRep not found");
+    
+    // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
+    // For SDK wallets, use multisigWallet to compute DRep ID and script
+    let dRepId: string;
+    let drepCbor: string;
+    let scriptCbor: string;
+    let changeAddress: string;
+    
+    if (multisigWallet) {
+      const drepData = multisigWallet.getDRep(appWallet);
+      if (!drepData) {
+        throw new Error("DRep not found");
+      }
+      dRepId = drepData.dRepId;
+      drepCbor = drepData.drepCbor;
+      const multisigScript = multisigWallet.getScript();
+      const multisigScriptCbor = multisigScript.scriptCbor;
+      const appScriptCbor = appWallet.scriptCbor;
+      if (!multisigScriptCbor && !appScriptCbor) {
+        throw new Error("Script CBOR not found");
+      }
+      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+      changeAddress = multisigScript.address;
+    } else {
+      // Legacy wallet: use appWallet values (computed with input order preserved)
+      if (!appWallet.dRepId || !appWallet.scriptCbor) {
+        throw new Error("DRep ID or script not found for legacy wallet");
+      }
+      dRepId = appWallet.dRepId;
+      drepCbor = appWallet.scriptCbor; // Use payment script CBOR for legacy wallets
+      scriptCbor = appWallet.scriptCbor;
+      changeAddress = appWallet.address;
     }
-    const scriptCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().scriptCbor : appWallet.scriptCbor;
-    const drepCbor = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getDRepScript() : appWallet.scriptCbor;
-    if (!scriptCbor) {
-      throw new Error("Script not found");
-    }
-    if (!drepCbor) {
-      throw new Error("DRep script not found");
-    }
-    const changeAddress = multisigWallet?.getKeysByRole(3) ? multisigWallet?.getScript().address : appWallet.address;
-    if (!changeAddress) {
-      throw new Error("Change address not found");
+    
+    if (!scriptCbor || !changeAddress) {
+      throw new Error("Script or change address not found");
     }
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
@@ -213,30 +245,42 @@ export default function UpdateDRep() {
         .drepUpdateCertificate(dRepId, {
           anchorUrl: anchorUrl,
           anchorDataHash: anchorHash,
-        })
-        .certificateScript(drepCbor)
-        .changeAddress(changeAddress);
+        });
+      
+      // Only add certificateScript if it's different from the spending script
+      // to avoid "extraneous scripts" error
+      if (drepCbor !== scriptCbor) {
+        txBuilder.certificateScript(drepCbor);
+      }
+      
+      txBuilder.changeAddress(changeAddress);
 
       await newTransaction({
         txBuilder,
         description: "DRep update",
         toastMessage: "DRep update transaction has been created",
       });
+      if (onClose) {
+        onClose();
+      } else {
+        router.push(`/wallets/${appWallet.id}/governance`);
+      }
     } catch (e) {
       console.error(e);
     }
-    router.push(`/wallets/${appWallet.id}/governance`);
     setLoading(false);
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Minus className="h-6 w-6" />
-          Update DRep
-        </h1>
-      </div>
+    <div className={`w-full max-w-4xl mx-auto ${onClose ? '' : 'px-3 sm:px-4 md:px-6'}`}>
+      {!onClose && (
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+            <Minus className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
+            <span>Update DRep</span>
+          </h1>
+        </div>
+      )}
       {appWallet && (
         <DRepForm
           _imageUrl={""}

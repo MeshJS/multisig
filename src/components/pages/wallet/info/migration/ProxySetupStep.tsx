@@ -105,7 +105,7 @@ export default function ProxySetupStep({
       >
         <div className="space-y-4">
           {hasExistingProxy ? (
-            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+            <Alert className="border-blue-200/50 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-900/20">
               <CheckCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <AlertDescription className="text-blue-800 dark:text-blue-200">
                 Your current wallet has an existing proxy configuration. 
@@ -113,7 +113,7 @@ export default function ProxySetupStep({
               </AlertDescription>
             </Alert>
           ) : (
-            <Alert className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+            <Alert className="border-yellow-200/50 bg-yellow-50 dark:border-yellow-800/50 dark:bg-yellow-900/20">
               <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
               <AlertDescription className="text-yellow-800 dark:text-yellow-200">
                 No existing proxy found. You can optionally create a proxy for your new wallet 

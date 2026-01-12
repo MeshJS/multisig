@@ -1,6 +1,8 @@
 import { ChangeEvent, useRef } from "react";
 import Papa from "papaparse";
 import { useDropzone } from "react-dropzone";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { toast } from "@/hooks/use-toast";
 
@@ -69,18 +71,20 @@ export default function RecipientCsv({
     <>
       <div
         {...getRootProps()}
-        className="flex items-center justify-center border-2 border-dashed border-gray-400 p-4 rounded-md cursor-pointer hover:bg-gray-100"
+        className="flex items-center justify-center border-2 border-dashed border-muted-foreground/30 dark:border-muted-foreground/50 p-4 rounded-md cursor-pointer hover:bg-muted/50 dark:hover:bg-muted/30 transition-colors"
       >
         <input {...getInputProps()} />
         {isDragActive ? (
-          <p>Drop the CSV file here ...</p>
+          <p className="text-foreground">Drop the CSV file here ...</p>
         ) : (
-          <p>Drag & drop a CSV file here, or click to select one</p>
+          <p className="text-muted-foreground">Drag & drop a CSV file here, or click to select one</p>
         )}
       </div>
       <div className="mt-2">
-        <button
-          className="text-blue-500 hover:underline text-sm"
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
           onClick={() => {
             const headers = "address,unit,amount\n";
             const rows = recipientAddresses.map((address, index) => {
@@ -101,8 +105,9 @@ export default function RecipientCsv({
             document.body.removeChild(link);
           }}
         >
+          <Download className="h-4 w-4" />
           Download current recipients as CSV
-        </button>
+        </Button>
       </div>
     </>
   );

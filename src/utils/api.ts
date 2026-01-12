@@ -28,9 +28,32 @@ export const api = createTRPCNext<AppRouter>({
        */
       links: [
         loggerLink({
-          enabled: (opts) =>
-            process.env.NODE_ENV === "development" ||
-            (opts.direction === "down" && opts.result instanceof Error),
+          enabled: (opts) => {
+            // Don't log expected authorization errors (403/401 errors)
+            if (opts.direction === "down" && opts.result instanceof Error) {
+              const error = opts.result as { 
+                code?: string; 
+                message?: string; 
+                data?: { code?: string; httpStatus?: number };
+                shape?: { code?: string; message?: string };
+              };
+              const errorMessage = error.message || error.shape?.message || "";
+              const isExpectedAuthError =
+                error.code === "FORBIDDEN" ||
+                error.code === "UNAUTHORIZED" ||
+                error.data?.code === "FORBIDDEN" ||
+                error.data?.code === "UNAUTHORIZED" ||
+                error.data?.httpStatus === 403 ||
+                error.data?.httpStatus === 401 ||
+                error.shape?.code === "FORBIDDEN" ||
+                error.shape?.code === "UNAUTHORIZED" ||
+                errorMessage.includes("Address mismatch") ||
+                errorMessage.includes("Not authorized") ||
+                errorMessage.includes("Unauthorized");
+              if (isExpectedAuthError) return false;
+            }
+            return process.env.NODE_ENV === "development";
+          },
         }),
         httpBatchLink({
           /**
@@ -42,6 +65,68 @@ export const api = createTRPCNext<AppRouter>({
           url: `${getBaseUrl()}/api/trpc`,
         }),
       ],
+      queryClientConfig: {
+        defaultOptions: {
+          queries: {
+            retry: (failureCount, error) => {
+              // Don't retry on authorization errors (403/401)
+              if (error && typeof error === "object") {
+                const err = error as { 
+                  code?: string; 
+                  message?: string; 
+                  data?: { code?: string; httpStatus?: number };
+                  shape?: { code?: string; message?: string };
+                };
+                const errorMessage = err.message || err.shape?.message || "";
+                const isAuthError =
+                  err.code === "FORBIDDEN" ||
+                  err.code === "UNAUTHORIZED" ||
+                  err.data?.code === "FORBIDDEN" ||
+                  err.data?.code === "UNAUTHORIZED" ||
+                  err.data?.httpStatus === 403 ||
+                  err.data?.httpStatus === 401 ||
+                  err.shape?.code === "FORBIDDEN" ||
+                  err.shape?.code === "UNAUTHORIZED" ||
+                  errorMessage.includes("Address mismatch") ||
+                  errorMessage.includes("Not authorized") ||
+                  errorMessage.includes("Unauthorized");
+                if (isAuthError) return false;
+              }
+              // Default retry behavior for other errors
+              return failureCount < 3;
+            },
+          },
+          mutations: {
+            retry: (failureCount, error) => {
+              // Don't retry mutations on authorization errors
+              if (error && typeof error === "object") {
+                const err = error as { 
+                  code?: string; 
+                  message?: string; 
+                  data?: { code?: string; httpStatus?: number };
+                  shape?: { code?: string; message?: string };
+                };
+                const errorMessage = err.message || err.shape?.message || "";
+                const isAuthError =
+                  err.code === "FORBIDDEN" ||
+                  err.code === "UNAUTHORIZED" ||
+                  err.data?.code === "FORBIDDEN" ||
+                  err.data?.code === "UNAUTHORIZED" ||
+                  err.data?.httpStatus === 403 ||
+                  err.data?.httpStatus === 401 ||
+                  err.shape?.code === "FORBIDDEN" ||
+                  err.shape?.code === "UNAUTHORIZED" ||
+                  errorMessage.includes("Address mismatch") ||
+                  errorMessage.includes("Not authorized") ||
+                  errorMessage.includes("Unauthorized");
+                if (isAuthError) return false;
+              }
+              // Don't retry mutations by default
+              return false;
+            },
+          },
+        },
+      },
     };
   },
   /**

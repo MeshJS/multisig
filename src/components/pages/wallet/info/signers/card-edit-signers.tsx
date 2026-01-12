@@ -170,10 +170,10 @@ export default function EditSigners({
             : (appWallet as any).signersDRepKeys?.[index] ?? "";
 
           return (
-            <div key={index} className="border rounded-lg p-3 sm:p-4 bg-card">
+            <div key={index} className="border border-border/30 rounded-lg p-3 sm:p-4 bg-card">
               <div className="space-y-3 sm:space-y-4">
                 {/* Signer's Name at the top with user icon */}
-                <div className="flex items-center gap-2 sm:gap-3 pb-2 sm:pb-3 border-b">
+                <div className="flex items-center gap-2 sm:gap-3 pb-2 sm:pb-3 border-b border-border/30">
                   <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
                   </div>
@@ -195,7 +195,7 @@ export default function EditSigners({
                 <div className="space-y-2">
                   <Label className="text-xs sm:text-sm font-medium">Address</Label>
                   <div className="flex items-start gap-2">
-                    <div className="flex-1 p-2 sm:p-3 rounded-md border bg-muted/50 font-mono text-xs sm:text-sm break-all">
+                    <div className="flex-1 p-2 sm:p-3 rounded-md border border-border/30 bg-muted/50 font-mono text-xs sm:text-sm break-all">
                       {signer ? getFirstAndLast(signer) : "No address"}
                     </div>
                     {signer && (
@@ -221,8 +221,8 @@ export default function EditSigners({
                   <div className="flex items-start gap-2">
                     <div className={`flex-1 p-2 sm:p-3 rounded-md border font-mono text-xs sm:text-sm break-all ${
                       newStakekey(index) 
-                        ? "bg-green-50 border-green-500 text-green-700" 
-                        : "bg-muted/50"
+                        ? "bg-green-50 border-green-500/50 text-green-700" 
+                        : "bg-muted/50 border-border/30"
                     }`}>
                       {stakeAddr ? getFirstAndLast(stakeAddr) : "No stake address"}
                     </div>
@@ -255,8 +255,8 @@ export default function EditSigners({
                   <div className="flex items-start gap-2">
                     <div className={`flex-1 p-2 sm:p-3 rounded-md border font-mono text-xs sm:text-sm break-all ${
                       newDRepKey(index) 
-                        ? "bg-green-50 border-green-500 text-green-700" 
-                        : "bg-muted/50"
+                        ? "bg-green-50 border-green-500/50 text-green-700" 
+                        : "bg-muted/50 border-border/30"
                     }`}>
                       {drepKey ? getFirstAndLast(drepKey) : "No DRep key"}
                     </div>
@@ -287,17 +287,17 @@ export default function EditSigners({
           );
         })}
       </div>
-      {drepInfo?.active && (
-        <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+      {drepInfo?.active && !updatedDRepKeys.every(key => key && key.length > 0) && (
+        <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200/50 dark:border-yellow-800/50 rounded-lg">
           <div className="flex items-start gap-2 sm:gap-3">
-            <div className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 mt-0.5">
+            <div className="flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 dark:text-yellow-400 mt-0.5">
               ⚠️
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm font-medium text-yellow-800 mb-1">
+              <p className="text-xs sm:text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
                 DRep is currently registered
               </p>
-              <p className="text-xs sm:text-sm text-yellow-700 break-words">
+              <p className="text-xs sm:text-sm text-yellow-700 dark:text-yellow-300 break-words">
                 You must deregister the DRep before updating DRep keys. Go to the Governance section to deregister your DRep first.
               </p>
             </div>

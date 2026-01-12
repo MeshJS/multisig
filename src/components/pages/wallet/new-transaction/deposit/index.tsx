@@ -24,6 +24,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
 import { cn } from "@/lib/utils";
+import { getBalanceFromUtxos } from "@/utils/getBalance";
 
 export default function PageNewTransaction() {
   const { connected, wallet } = useWallet();
@@ -42,16 +43,39 @@ export default function PageNewTransaction() {
   const router = useRouter();
   const userAssets = useUserStore((state) => state.userAssets);
   const userAssetMetadata = useUserStore((state) => state.userAssetMetadata);
+  const [userBalance, setUserBalance] = useState<number>(0);
 
   useEffect(() => {
     reset();
   }, []);
 
-  const userBalance = useMemo(() => {
-    const lovelace =
-      userAssets.find((asset) => asset.unit === "lovelace")?.quantity || 0;
-    return Number(lovelace) / Math.pow(10, 6);
-  }, [userAssets]);
+  // Fetch user balance directly from blockchain
+  useEffect(() => {
+    async function fetchUserBalance() {
+      if (!userAddress || network === undefined || network === null) {
+        // Fallback to userAssets if address/network not available
+        const lovelace =
+          userAssets.find((asset) => asset.unit === "lovelace")?.quantity || 0;
+        setUserBalance(Number(lovelace) / Math.pow(10, 6));
+        return;
+      }
+
+      try {
+        const blockchainProvider = getProvider(network);
+        const utxos = await blockchainProvider.fetchAddressUTxOs(userAddress);
+        const balance = getBalanceFromUtxos(utxos);
+        setUserBalance(balance ?? 0);
+      } catch (error) {
+        console.error("Failed to fetch user balance:", error);
+        // Fallback to userAssets if available
+        const lovelace =
+          userAssets.find((asset) => asset.unit === "lovelace")?.quantity || 0;
+        setUserBalance(Number(lovelace) / Math.pow(10, 6));
+      }
+    }
+
+    fetchUserBalance();
+  }, [userAddress, network, userAssets]);
 
   function reset() {
     setMetadata("");
@@ -82,9 +106,11 @@ export default function PageNewTransaction() {
     > = {};
 
     // reduce assets and amounts to Asset: Amount object
+    // Only ADA deposits are allowed
     for (let i = 0; i < assets.length; i++) {
       const unit = assets[i] ?? "";
-      if (unit === "ADA") {
+      // Only process ADA deposits
+      if (unit === "ADA" || unit === "lovelace" || unit === "") {
         if (assetsAmounts.lovelace) {
           assetsAmounts.lovelace.amount += Number(amounts[i]) ?? 0;
         } else {
@@ -95,19 +121,8 @@ export default function PageNewTransaction() {
             unit: "lovelace",
           };
         }
-      } else {
-        if (assetsAmounts[unit]) {
-          assetsAmounts[unit].amount += Number(amounts[i]) ?? 0;
-        } else {
-          const asset = userWalletAssets.find((asset) => asset.unit === unit);
-          assetsAmounts[unit] = {
-            amount: Number(amounts[i]) ?? 0,
-            assetName: asset?.assetName ?? unit,
-            decimals: userAssetMetadata[unit]?.decimals ?? 0,
-            unit: asset?.unit ?? "",
-          };
-        }
       }
+      // Ignore any non-ADA assets
     }
     return assetsAmounts;
   }, [amounts, assets, userWalletAssets, userAssetMetadata]);
@@ -149,17 +164,17 @@ export default function PageNewTransaction() {
       for (let i = 0; i < UTxoCount; i++) {
         if (address && address.startsWith("addr") && address.length > 0) {
           const rawUnit = assets[i];
-          // Default to 'lovelace' if rawUnit is undefined or if it's 'ADA'
-          const unit = rawUnit
-            ? rawUnit === "ADA"
-              ? "lovelace"
-              : rawUnit
-            : "lovelace";
-          const assetMetadata = userAssetMetadata[unit];
-          const multiplier =
-            unit === "lovelace"
-              ? 1000000
-              : Math.pow(10, assetMetadata?.decimals ?? 0);
+          // Only allow ADA deposits - enforce lovelace unit
+          const unit = "lovelace";
+          
+          // Validate that only ADA is being deposited
+          if (rawUnit && rawUnit !== "ADA" && rawUnit !== "lovelace") {
+            setError("Only ADA can be deposited. Please select ADA for all UTxOs.");
+            setLoading(false);
+            return;
+          }
+          
+          const multiplier = 1000000; // ADA always uses 6 decimals
           const parsedAmount = parseFloat(amounts[i]!) || 0;
           const thisAmount = parsedAmount * multiplier;
           outputs.push({
@@ -242,7 +257,7 @@ export default function PageNewTransaction() {
   function addNewUTxO() {
     setUTxoCount(UTxoCount + 1);
     setAmounts([...amounts, "100"]);
-    setAssets([...assets, "ADA"]);
+    setAssets([...assets, "ADA"]); // Only ADA can be deposited
   }
 
   return (
@@ -384,21 +399,6 @@ function UTxORow({
     });
   }, [userAssets, userAssetMetadata]);
 
-  const assetOptions = useMemo(() => {
-    return (
-      <>
-        {userWalletAssets.map((userWalletAsset) => {
-          return (
-            <option key={userWalletAsset.unit} value={userWalletAsset.unit}>
-              {userWalletAsset.unit === "lovelace"
-                ? "ADA"
-                : userWalletAsset.assetName}
-            </option>
-          );
-        })}
-      </>
-    );
-  }, [userWalletAssets]);
 
   return (
     <TableRow>
@@ -420,10 +420,11 @@ function UTxORow({
       </TableCell>
       <TableCell className="w-[240px]">
         <select
-          value={assets[index]}
+          value="ADA"
           onChange={(e) => {
+            // Only allow ADA deposits - force to ADA
             const newAssets = [...assets];
-            newAssets[index] = e.target.value;
+            newAssets[index] = "ADA";
             setAssets(newAssets);
           }}
           disabled={disableAdaAmountInput}
@@ -431,7 +432,7 @@ function UTxORow({
             "flex h-9 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300",
           )}
         >
-          {assetOptions}
+          <option value="ADA">ADA</option>
         </select>
       </TableCell>
       <TableCell>
