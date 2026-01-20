@@ -41,6 +41,10 @@ const config = {
       },
       {
         protocol: "https",
+        hostname: "*.mypinata.cloud",
+      },
+      {
+        protocol: "https",
         hostname: "gateway.pinata.cloud",
       },
     ],

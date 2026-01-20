@@ -1,0 +1,920 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info, HelpCircle, FileText, Settings, AlertTriangle, HardDrive, DollarSign, Info as InfoIcon, Upload, CheckCircle2, Loader2, Target } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { generateGovActionMetadata, uploadMetadata, hashMetadata, generateBodyHashForWitness } from "@/utils/governanceMetadata";
+import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@meshsdk/react";
+import useUser from "@/hooks/useUser";
+import { deserializeAddress, resolveScriptHash, applyParamsToScript, serializePlutusScript } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/core";
+import blueprint from "../../gov-crowdfundV2/plutus.json";
+import { stringToHex } from "@meshsdk/common";
+
+// Static deposit values (in lovelace)
+const STAKE_REGISTER_DEPOSIT = 2000000; // 2 ADA
+const DREP_REGISTER_DEPOSIT = 500000000; // 500 ADA
+
+interface GovAction {
+  type: 'motion_no_confidence' | 'update_committee' | 'new_constitution' | 'hard_fork' | 'protocol_parameter_changes' | 'treasury_withdrawals' | 'info';
+  title: string;
+  abstract: string;
+  motivation: string;
+  rationale: string;
+  references?: Array<{
+    "@type": string;
+    label: string;
+    uri: string;
+  }>;
+  comment?: string;
+  externalUpdates?: Array<{
+    title: string;
+    uri: string;
+  }>;
+  metadata?: Record<string, any>;
+}
+
+interface TreasuryBeneficiaryInput {
+  address: string;
+  amountAda: string;
+}
+
+interface GovData {
+  gov_action_period?: number;
+  delegate_pool_id?: string;
+  gov_action?: GovAction;
+  stake_register_deposit?: number;
+  drep_register_deposit?: number;
+  gov_deposit?: number;
+  govActionMetadataUrl?: string;
+  govActionMetadataHash?: string;
+  fundraiseTarget?: string; // Funding target in ADA (as string for form input)
+  minCharge?: string; // Minimum charge in ADA (as string for form input)
+  allowOverSubscription?: boolean; // Allow over-subscription flag
+}
+
+interface LaunchExtProps {
+  onGovDataUpdate: (data: GovData) => void;
+  initialData?: GovData;
+}
+
+// All governance action types (for future use)
+const ALL_GOVERNANCE_ACTION_TYPES = [
+  { 
+    value: 'motion_no_confidence', 
+    label: 'Motion of No-Confidence', 
+    description: 'A motion to create a state of no-confidence in the current constitutional committee',
+    icon: AlertTriangle,
+    color: 'text-red-500 dark:text-red-400',
+    disabled: true // Not yet supported
+  },
+  { 
+    value: 'update_committee', 
+    label: 'Update Committee', 
+    description: 'Changes to the members of the constitutional committee and/or to its signature threshold and/or terms',
+    icon: Settings,
+    color: 'text-blue-500 dark:text-blue-400',
+    disabled: true // Not yet supported
+  },
+  { 
+    value: 'new_constitution', 
+    label: 'New Constitution or Guardrails Script', 
+    description: 'A modification to the Constitution or Guardrails Script, recorded as on-chain hashes',
+    icon: FileText,
+    color: 'text-purple-500 dark:text-purple-400',
+    disabled: true // Not yet supported
+  },
+  { 
+    value: 'hard_fork', 
+    label: 'Hard-Fork Initiation', 
+    description: 'Triggers a non-backwards compatible upgrade of the network; requires a prior software upgrade',
+    icon: HardDrive,
+    color: 'text-orange-500 dark:text-orange-400',
+    disabled: true // Not yet supported
+  },
+  { 
+    value: 'protocol_parameter_changes', 
+    label: 'Protocol Parameter Changes', 
+    description: 'Any change to one or more updatable protocol parameters, excluding changes to major protocol versions',
+    icon: Settings,
+    color: 'text-green-500 dark:text-green-400',
+    disabled: true // Not yet supported
+  },
+  { 
+    value: 'treasury_withdrawals', 
+    label: 'Treasury Withdrawals', 
+    description: 'Withdrawals from the treasury',
+    icon: DollarSign,
+    color: 'text-yellow-500 dark:text-yellow-400',
+    disabled: false // Now supported
+  },
+  { 
+    value: 'info', 
+    label: 'Info', 
+    description: 'An action that has no effect on-chain, other than an on-chain record',
+    icon: InfoIcon,
+    color: 'text-gray-500 dark:text-gray-400',
+    disabled: false // Currently supported
+  }
+];
+
+// Only show supported governance action types (currently 'info' and 'treasury_withdrawals')
+const GOVERNANCE_ACTION_TYPES = ALL_GOVERNANCE_ACTION_TYPES.filter(
+  type => !type.disabled
+);
+
+export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
+  const { toast } = useToast();
+  const { wallet, connected } = useWallet();
+  const { user } = useUser();
+  const [govData, setGovData] = useState<GovData>({
+    gov_action_period: initialData?.gov_action_period || 6,
+    delegate_pool_id: initialData?.delegate_pool_id || "",
+    gov_action: initialData?.gov_action || {
+      type: 'info',
+      title: '',
+      abstract: '',
+      motivation: '',
+      rationale: '',
+      comment: '',
+      references: undefined,
+      externalUpdates: undefined,
+      metadata: {}
+    },
+    stake_register_deposit: STAKE_REGISTER_DEPOSIT,
+    drep_register_deposit: DREP_REGISTER_DEPOSIT,
+    gov_deposit: initialData?.gov_deposit || (initialData?.fundraiseTarget ? Math.round(parseFloat(initialData.fundraiseTarget) * 1000000) : undefined),
+    govActionMetadataUrl: initialData?.govActionMetadataUrl,
+    govActionMetadataHash: initialData?.govActionMetadataHash,
+    fundraiseTarget: initialData?.fundraiseTarget,
+    minCharge: initialData?.minCharge || "2", // Default to 2 ADA
+    allowOverSubscription: initialData?.allowOverSubscription ?? true, // Always allow over-subscription by default
+  });
+  const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
+
+  // Sync gov_deposit with fundraiseTarget (they should be the same for governance)
+  useEffect(() => {
+    if (govData.fundraiseTarget) {
+      const govDepositLovelace = Math.round(parseFloat(govData.fundraiseTarget) * 1000000);
+      if (govData.gov_deposit !== govDepositLovelace) {
+        setGovData(prev => ({ ...prev, gov_deposit: govDepositLovelace }));
+      }
+    }
+  }, [govData.fundraiseTarget]);
+
+  // Initialize treasury withdrawals metadata defaults
+  useEffect(() => {
+    if (govData.gov_action?.type === 'treasury_withdrawals') {
+      const hasWithdrawals = !!govData.gov_action.metadata?.withdrawals;
+      const hasBeneficiaries = Array.isArray(govData.gov_action.metadata?.beneficiaries);
+      if (!hasWithdrawals || !hasBeneficiaries) {
+        setGovData(prev => ({
+          ...prev,
+          gov_action: {
+            ...prev.gov_action!,
+            metadata: {
+              ...prev.gov_action?.metadata,
+              withdrawals: prev.gov_action?.metadata?.withdrawals || {},
+              beneficiaries: hasBeneficiaries
+                ? prev.gov_action?.metadata?.beneficiaries
+                : [{ address: "", amountAda: "", amount: "" }],
+            },
+          },
+        }));
+      }
+    }
+  }, [govData.gov_action?.type]);
+
+
+  useEffect(() => {
+    onGovDataUpdate(govData);
+  }, [govData, onGovDataUpdate]);
+
+  const updateGovData = (updates: Partial<GovData>) => {
+    setGovData(prev => ({ ...prev, ...updates }));
+  };
+
+  const updateGovAction = (updates: Partial<GovAction>) => {
+    setGovData(prev => ({
+      ...prev,
+      gov_action: { ...prev.gov_action!, ...updates }
+    }));
+  };
+
+  const isValidPaymentAddress = (address: string) => {
+    if (!address) return false;
+    try {
+      const decoded = deserializeAddress(address);
+      return !!decoded?.pubKeyHash || !!decoded?.scriptHash;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const syncTreasuryBeneficiaries = (beneficiaries: TreasuryBeneficiaryInput[]) => {
+    const normalized = beneficiaries.map((beneficiary) => {
+      const amountAda = beneficiary.amountAda.trim();
+      const adaValue = amountAda ? parseFloat(amountAda) : NaN;
+      const amountLovelace =
+        !isNaN(adaValue) && adaValue > 0
+          ? Math.round(adaValue * 1_000_000).toString()
+          : "";
+      return {
+        address: beneficiary.address.trim(),
+        amountAda: beneficiary.amountAda,
+        amount: amountLovelace,
+      };
+    });
+
+    const { totalLovelace, withdrawals } = normalized.reduce(
+      (acc, beneficiary) => {
+        if (
+          beneficiary.address &&
+          beneficiary.amount &&
+          isValidPaymentAddress(beneficiary.address)
+        ) {
+          acc.totalLovelace += Number(beneficiary.amount);
+          acc.withdrawals[beneficiary.address] = beneficiary.amount;
+        }
+        return acc;
+      },
+      { totalLovelace: 0, withdrawals: {} as Record<string, string> },
+    );
+
+    setGovData(prev => ({
+      ...prev,
+      gov_action: {
+        ...prev.gov_action!,
+        metadata: {
+          ...prev.gov_action?.metadata,
+          beneficiaries: normalized,
+          withdrawalAmount: totalLovelace ? totalLovelace.toString() : "",
+          withdrawalAmountAda: totalLovelace
+            ? (totalLovelace / 1_000_000).toString()
+            : "",
+          withdrawals,
+        },
+      },
+    }));
+  };
+
+
+  const handleUploadMetadata = async () => {
+    if (!govData.gov_action) {
+      toast({
+        title: "Missing governance action",
+        description: "Please fill in all governance action fields first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { title, abstract, motivation, rationale, references } = govData.gov_action;
+
+    if (!title || !abstract || !motivation || !rationale) {
+      toast({
+        title: "Incomplete fields",
+        description: "Please fill in all required governance action fields (title, abstract, motivation, rationale).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!connected || !wallet || !user?.address) {
+      toast({
+        title: "Wallet required",
+        description: "Please connect your wallet to sign the metadata.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingMetadata(true);
+    try {
+      // Build context and body for witness signing
+      const context = {
+        "@language": "en-us",
+        CIP100: "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
+        CIP108: "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0108/README.md#",
+        hashAlgorithm: "CIP100:hashAlgorithm",
+        body: {
+          "@id": "CIP108:body",
+          "@context": {
+            title: "CIP108:title",
+            abstract: "CIP108:abstract",
+            motivation: "CIP108:motivation",
+            rationale: "CIP108:rationale",
+            references: {
+              "@id": "CIP108:references",
+              "@container": "@set",
+              "@context": {
+                GovernanceMetadata: "CIP100:GovernanceMetadataReference",
+                Other: "CIP100:OtherReference",
+                label: "CIP100:reference-label",
+                uri: "CIP100:reference-uri",
+              },
+            },
+          },
+        },
+      };
+
+      const body: Record<string, unknown> = {
+        title,
+        abstract,
+        motivation,
+        rationale,
+      };
+
+      if (references && references.length > 0) {
+        body.references = references.map(ref => ({
+          "@type": (ref["@type"] === "GovernanceMetadata" || ref["@type"] === "Other") 
+            ? ref["@type"] 
+            : "Other" as "GovernanceMetadata" | "Other",
+          label: ref.label,
+          uri: ref.uri,
+        }));
+      }
+
+      // Generate body hash for witness signing
+      const bodyHash = await generateBodyHashForWitness(context, body);
+
+      // Sign the hash using wallet (CIP-0008 signing protocol, but algorithm is ed25519 per CIP-100)
+      const signatureResult = await wallet.signData(bodyHash, user.address);
+
+      if (!signatureResult?.signature || !signatureResult?.key) {
+        throw new Error("Failed to sign metadata");
+      }
+
+      // Generate CIP-108 compliant metadata with witness
+      // Note: witnessAlgorithm must be "ed25519" per CIP-100, not "CIP-0008"
+      // CIP-0008 is the signing protocol, but the algorithm itself is ed25519
+      const metadata = await generateGovActionMetadata({
+        title,
+        abstract,
+        motivation,
+        rationale,
+        references: references?.map(ref => ({
+          "@type": (ref["@type"] === "GovernanceMetadata" || ref["@type"] === "Other") 
+            ? ref["@type"] 
+            : "Other" as "GovernanceMetadata" | "Other",
+          label: ref.label,
+          uri: ref.uri,
+        })),
+        authorName: "Crowdfund Proposer",
+      }, {
+        witnessAlgorithm: "ed25519",
+        publicKey: signatureResult.key,
+        signature: signatureResult.signature,
+      });
+
+      // Calculate hash (must be async per CIP-100/CIP-108)
+      const metadataHash = await hashMetadata(metadata);
+
+      // Upload metadata
+      const timestamp = Date.now();
+      const pathname = `gov-actions/${timestamp}-${title.replace(/[^a-zA-Z0-9]/g, '-')}.jsonld`;
+      const metadataUrl = await uploadMetadata(pathname, JSON.stringify(metadata, null, 2));
+
+      // Update state
+      updateGovData({
+        govActionMetadataUrl: metadataUrl,
+        govActionMetadataHash: metadataHash,
+      });
+
+      toast({
+        title: "Metadata uploaded successfully",
+        description: "Governance action metadata has been uploaded and is ready for use.",
+      });
+    } catch (error) {
+      console.error("Failed to upload metadata:", error);
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload metadata. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingMetadata(false);
+    }
+  };
+
+  return (
+    <TooltipProvider>
+      <div className="space-y-6">
+
+        {/* Delegate Pool ID */}
+        <div className="space-y-2">
+          <Label htmlFor="delegate_pool_id" className="flex items-center gap-2">
+            Delegate Pool ID *
+            <Tooltip>
+              <TooltipTrigger>
+                <Info className="h-3 w-3 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Pool ID to delegate voting power to (56 characters, starts with "pool")</p>
+              </TooltipContent>
+            </Tooltip>
+          </Label>
+          <Input
+            id="delegate_pool_id"
+            value={govData.delegate_pool_id || ""}
+            onChange={(e) => updateGovData({ delegate_pool_id: e.target.value })}
+            placeholder="pool1abcd... (56 characters)"
+          />
+          {govData.delegate_pool_id && govData.delegate_pool_id.length > 0 && govData.delegate_pool_id.length < 56 && (
+            <p className="text-sm text-red-500 dark:text-red-400">
+              Pool ID must be 56 characters long. Current length: {govData.delegate_pool_id.length}
+            </p>
+          )}
+        </div>
+
+        {/* Governance Action Type */}
+        <div className="space-y-2">
+          <Label htmlFor="gov_action_type" className="flex items-center gap-2">
+            Governance Action Type *
+            <Tooltip>
+              <TooltipTrigger>
+                <Info className="h-3 w-3 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Select the type of governance action to be proposed</p>
+              </TooltipContent>
+            </Tooltip>
+          </Label>
+          
+          <Alert className="bg-blue-50 border-blue-200">
+            <InfoIcon className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Supported governance action types:</strong> Info Action (NicePoll, constructor 6) and Treasury Withdrawals (constructor 2). 
+              Other governance action types will be added step by step. The validator is parameterized with the selected governance action type.
+            </AlertDescription>
+          </Alert>
+
+          <Select
+            value={govData.gov_action?.type || 'info'}
+            onValueChange={(value) => {
+              const selectedType = value as 'info' | 'treasury_withdrawals';
+              // Only allow supported types
+              if (selectedType === 'info' || selectedType === 'treasury_withdrawals') {
+                updateGovAction({ 
+                  type: selectedType,
+                  // Initialize metadata.withdrawals for treasury_withdrawals
+                  ...(selectedType === 'treasury_withdrawals' && {
+                    metadata: {
+                      ...govData.gov_action?.metadata,
+                      withdrawals: govData.gov_action?.metadata?.withdrawals || {},
+                      beneficiaries: govData.gov_action?.metadata?.beneficiaries || [
+                        { address: "", amountAda: "", amount: "" },
+                      ],
+                    }
+                  })
+                });
+              }
+            }}
+          >
+            <SelectTrigger className="bg-muted">
+              <SelectValue placeholder="Select governance action type" />
+            </SelectTrigger>
+            <SelectContent>
+              {GOVERNANCE_ACTION_TYPES.map((actionType) => {
+                const IconComponent = actionType.icon;
+                return (
+                  <SelectItem 
+                    key={actionType.value} 
+                    value={actionType.value}
+                    disabled={actionType.disabled}
+                  >
+                    <div className="flex items-center gap-2">
+                      <IconComponent className={`h-4 w-4 ${actionType.color}`} />
+                      <div>
+                        <div className="font-medium">{actionType.label}</div>
+                        <div className="text-xs text-muted-foreground">{actionType.description}</div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Governance Action Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {(() => {
+                const actionType = GOVERNANCE_ACTION_TYPES.find(t => t.value === govData.gov_action?.type);
+                const IconComponent = actionType?.icon || InfoIcon;
+                return (
+                  <>
+                    <IconComponent className={`h-5 w-5 ${actionType?.color || 'text-gray-500 dark:text-gray-400'}`} />
+                    {actionType?.label || 'Governance Action'} Details
+                  </>
+                );
+              })()}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_title" className="flex items-center gap-2">
+                Action Title *
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>A clear, concise title for the governance action</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Input
+                id="gov_action_title"
+                value={govData.gov_action?.title || ""}
+                onChange={(e) => updateGovAction({ title: e.target.value })}
+                placeholder="Enter a clear title for the governance action"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_abstract" className="flex items-center gap-2">
+                Abstract *
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Brief summary of the governance action</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_abstract"
+                value={govData.gov_action?.abstract || ""}
+                onChange={(e) => updateGovAction({ abstract: e.target.value })}
+                placeholder="Provide a brief abstract of the governance action"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_motivation" className="flex items-center gap-2">
+                Motivation *
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Explain the motivation behind this governance action</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_motivation"
+                value={govData.gov_action?.motivation || ""}
+                onChange={(e) => updateGovAction({ motivation: e.target.value })}
+                placeholder="Explain the motivation for this governance action"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_rationale" className="flex items-center gap-2">
+                Rationale *
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Explain why this governance action is necessary and beneficial</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_rationale"
+                value={govData.gov_action?.rationale || ""}
+                onChange={(e) => updateGovAction({ rationale: e.target.value })}
+                placeholder="Explain the reasoning and benefits of this governance action"
+                rows={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_comment" className="flex items-center gap-2">
+                Comment
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Additional comments or notes about the governance action</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_comment"
+                value={govData.gov_action?.comment || ""}
+                onChange={(e) => updateGovAction({ comment: e.target.value })}
+                placeholder="Add any additional comments or notes"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_references" className="flex items-center gap-2">
+                References
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>References to related documents, websites, or resources (JSON format)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_references"
+                value={govData.gov_action?.references ? JSON.stringify(govData.gov_action.references, null, 2) : ""}
+                onChange={(e) => {
+                  try {
+                    const references = e.target.value ? JSON.parse(e.target.value) : undefined;
+                    updateGovAction({ references });
+                  } catch (error) {
+                    // Invalid JSON, don't update
+                  }
+                }}
+                placeholder='[{"@type": "Other", "label": "Example", "uri": "https://example.com"}]'
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gov_action_external_updates" className="flex items-center gap-2">
+                External Updates
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>External updates or related projects (JSON format)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Textarea
+                id="gov_action_external_updates"
+                value={govData.gov_action?.externalUpdates ? JSON.stringify(govData.gov_action.externalUpdates, null, 2) : ""}
+                onChange={(e) => {
+                  try {
+                    const externalUpdates = e.target.value ? JSON.parse(e.target.value) : undefined;
+                    updateGovAction({ externalUpdates });
+                  } catch (error) {
+                    // Invalid JSON, don't update
+                  }
+                }}
+                placeholder='[{"title": "Example Project", "uri": "https://example.com"}]'
+                rows={3}
+              />
+            </div>
+
+            {/* Action-specific metadata could be added here based on the selected type */}
+            {govData.gov_action?.type === 'protocol_parameter_changes' && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> For protocol parameter changes, you may need to specify which parameters will be modified and their new values in the metadata section.
+                </p>
+              </div>
+            )}
+
+            {govData.gov_action?.type === 'treasury_withdrawals' && (() => {
+              const rawBeneficiaries = Array.isArray(govData.gov_action?.metadata?.beneficiaries)
+                ? govData.gov_action?.metadata?.beneficiaries
+                : [];
+              const beneficiaries = rawBeneficiaries.length > 0
+                ? rawBeneficiaries
+                : [{ address: "", amountAda: "", amount: "" }];
+              const beneficiaryInputs = beneficiaries.map((beneficiary: any) => ({
+                address: beneficiary.address || "",
+                amountAda:
+                  beneficiary.amountAda ||
+                  (beneficiary.amount
+                    ? (Number(beneficiary.amount) / 1_000_000).toString()
+                    : ""),
+              })) as TreasuryBeneficiaryInput[];
+              const totalLovelace = beneficiaries.reduce((sum: number, beneficiary: any) => {
+                const amount = beneficiary.amount
+                  ? Number(beneficiary.amount)
+                  : beneficiary.amountAda
+                    ? Math.round(Number(beneficiary.amountAda) * 1_000_000)
+                    : 0;
+                return sum + (Number.isFinite(amount) ? amount : 0);
+              }, 0);
+
+              return (
+                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Beneficiaries (Payment Addresses) *
+                    </Label>
+                    <div className="space-y-3">
+                      {beneficiaryInputs.map((beneficiary, index) => {
+                        const addressError =
+                          beneficiary.address && !isValidPaymentAddress(beneficiary.address)
+                            ? "Enter a valid payment address (addr/addr_test)."
+                            : "";
+
+                        return (
+                          <div key={`${beneficiary.address}-${index}`} className="space-y-2">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_160px_110px]">
+                              <Input
+                                value={beneficiary.address}
+                                onChange={(e) => {
+                                  const next = [...beneficiaryInputs];
+                                  next[index] = { ...next[index], address: e.target.value };
+                                  syncTreasuryBeneficiaries(next);
+                                }}
+                                placeholder="addr1..."
+                              />
+                              <Input
+                                type="number"
+                                value={beneficiary.amountAda}
+                                onChange={(e) => {
+                                  const next = [...beneficiaryInputs];
+                                  next[index] = { ...next[index], amountAda: e.target.value };
+                                  syncTreasuryBeneficiaries(next);
+                                }}
+                                placeholder="1.0"
+                                min="0"
+                                step="0.1"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  const next = beneficiaryInputs.filter((_, i) => i !== index);
+                                  syncTreasuryBeneficiaries(
+                                    next.length > 0 ? next : [{ address: "", amountAda: "" }],
+                                  );
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            {addressError && (
+                              <p className="text-xs text-red-600">{addressError}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          syncTreasuryBeneficiaries([
+                            ...beneficiaryInputs,
+                            { address: "", amountAda: "" },
+                          ]);
+                        }}
+                      >
+                        Add beneficiary
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Total withdrawal amount:{" "}
+                    <span className="font-semibold text-foreground">
+                      {(totalLovelace / 1_000_000).toLocaleString()} ADA
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+
+
+        {/* Metadata Upload Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+              Governance Action Metadata (CIP-108)
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Upload CIP-108 compliant metadata for your governance action</p>
+                </TooltipContent>
+              </Tooltip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert className="border-blue-500/50 bg-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/20">
+              <Info className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+              <AlertDescription>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                  <strong>Metadata Upload</strong>
+                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Generate, sign with your wallet (CIP-0008), and upload CIP-108 compliant metadata for your governance action. This metadata will be attached to the governance action when it's submitted to the chain.
+                </p>
+              </AlertDescription>
+            </Alert>
+
+            {govData.govActionMetadataUrl && govData.govActionMetadataHash ? (
+              <Alert className="border-green-500/50 bg-green-500/10 dark:border-green-500/30 dark:bg-green-500/20 space-y-2">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-semibold">Metadata uploaded successfully</span>
+                </div>
+                <AlertDescription>
+                  <div className="text-sm space-y-1">
+                    <div>
+                      <span className="font-medium">URL:</span>{" "}
+                      <a
+                        href={govData.govActionMetadataUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline break-all dark:text-blue-400"
+                      >
+                        {govData.govActionMetadataUrl}
+                      </a>
+                    </div>
+                    <div>
+                      <span className="font-medium">Hash:</span>{" "}
+                      <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                        {govData.govActionMetadataHash}
+                      </code>
+                    </div>
+                  </div>
+                </AlertDescription>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadMetadata}
+                  disabled={isUploadingMetadata}
+                  className="mt-2"
+                >
+                  {isUploadingMetadata ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Re-sign & Re-upload Metadata
+                    </>
+                  )}
+                </Button>
+              </Alert>
+            ) : (
+              <Button
+                onClick={handleUploadMetadata}
+                disabled={isUploadingMetadata || !connected || !wallet || !user?.address || !govData.gov_action?.title || !govData.gov_action?.abstract || !govData.gov_action?.motivation || !govData.gov_action?.rationale}
+                className="w-full"
+              >
+                {isUploadingMetadata ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading Metadata...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Sign & Upload Governance Action Metadata
+                  </>
+                )}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Information Panel */}
+        <Alert className="border-blue-500/50 bg-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/20">
+          <Info className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+          <AlertDescription>
+            <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-2">Governance Extension Information</h4>
+            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <li>• This extension enables your crowdfund to participate in Cardano governance</li>
+              <li>• Voting power will be delegated to the specified stake pool</li>
+              <li>• Governance actions can be proposed and voted on</li>
+              <li>• Deposits are required for various governance operations</li>
+            </ul>
+          </AlertDescription>
+        </Alert>
+      </div>
+    </TooltipProvider>
+  );
+}

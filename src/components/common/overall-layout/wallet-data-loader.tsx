@@ -5,9 +5,16 @@ import { useEffect, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
-import { OnChainTransaction, TxInfo } from "@/types/transaction";
+import type { OnChainTransaction, TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useProxyActions } from "@/lib/zustand/proxy";
+import type { ProxyData } from "@/lib/zustand/proxy";
+import type { UTXO } from "@/types/transaction";
+
+interface TxUtxosResponse {
+  inputs: UTXO[];
+  outputs: UTXO[];
+}
 
 export default function WalletDataLoader() {
   const { appWallet } = useAppWallet();
@@ -37,12 +44,31 @@ export default function WalletDataLoader() {
     if (appWallet) {
       const _transactions: OnChainTransaction[] = [];
       const blockchainProvider = getProvider(network);
-      let transactions: TxInfo[] = await blockchainProvider.get(
-        `/addresses/${appWallet.address}/transactions`,
-      );
+      // Use standardized IFetcher method
+      const txResponse = await blockchainProvider.fetchAddressTxs(appWallet.address);
+      // Convert TransactionInfo[] to TxInfo[] format for compatibility
+      const transactionsResponse: TxInfo[] = txResponse.map((tx: any) => ({
+        tx_hash: tx.hash || tx.tx_hash,
+        block_height: tx.block || 0,
+        block_time: tx.slot || 0,
+        tx_index: tx.index || 0
+      }));
+      let transactions = transactionsResponse;
       transactions = transactions.reverse().splice(0, 10);
       for (const tx of transactions) {
-        const txData = await blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`);
+        // Use standardized IFetcher method
+        const utxos = await blockchainProvider.fetchUTxOs(tx.tx_hash);
+        // Convert UTxO[] to UTXO[] format for compatibility
+        const outputs = utxos.map((utxo: any) => ({
+          address: utxo.output.address,
+          amount: utxo.output.amount,
+          output_index: utxo.input.outputIndex,
+          tx_hash: utxo.input.txHash,
+          data_hash: utxo.output.dataHash,
+          inline_datum: utxo.output.plutusData,
+          reference_script_hash: utxo.output.scriptHash,
+        }));
+        const txData: TxUtxosResponse = { inputs: [], outputs };
         _transactions.push({
           hash: tx.tx_hash,
           tx: tx,
@@ -63,7 +89,7 @@ export default function WalletDataLoader() {
         // Get proxies from API
         const proxies = await ctx.proxy.getProxiesByUserOrWallet.fetch({
           walletId: appWallet.id,
-        });
+        }) as ProxyData[];
 
         console.log("WalletDataLoader: Found proxies", proxies);
 
@@ -105,24 +131,26 @@ export default function WalletDataLoader() {
   }
 
   useEffect(() => {
-    console.log("WalletDataLoader: useEffect triggered", {
-      hasAppWallet: !!appWallet,
-      walletId: appWallet?.id,
-      hasUtxos: appWallet?.id ? walletsUtxos[appWallet.id] !== undefined : false
-    });
+    // WalletDataLoader useEffect triggered
     
     if (appWallet && walletsUtxos[appWallet?.id] === undefined) {
       console.log("WalletDataLoader: Calling refreshWallet");
-      refreshWallet();
+      void refreshWallet().catch((error) => {
+        console.error("WalletDataLoader: Error in refreshWallet:", error);
+      });
     }
-  }, [appWallet]);
+  }, [appWallet, walletsUtxos]);
 
   return (
     <Button
       variant="secondary"
       size="icon"
       className="rounded-full"
-      onClick={() => refreshWallet()}
+      onClick={() => {
+        void refreshWallet().catch((error) => {
+          console.error("WalletDataLoader: Error in refreshWallet:", error);
+        });
+      }}
       disabled={loading}
     >
       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

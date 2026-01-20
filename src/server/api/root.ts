@@ -9,6 +9,7 @@ import { migrationRouter } from "./routers/migrations";
 import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
 
+import { crowdfundRouter } from "./routers/crowdfunds";
 
 /**
  * This is the primary router for your server.
@@ -21,6 +22,7 @@ export const appRouter = createTRPCRouter({
   wallet: walletRouter,
   signable: signableRouter,
   ballot: ballotRouter,
+  crowdfund: crowdfundRouter,
   proxy: proxyRouter,
   migration: migrationRouter,
   auth: authRouter,

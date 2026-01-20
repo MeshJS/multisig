@@ -1,4 +1,6 @@
 import { MultisigKey } from '../utils/multisigSDK';
+import { SlotConfig } from '@meshsdk/common';
+import { resolveSlotNoSancho } from '../components/crowdfund/test_sancho_utils';
 
 // Mock key hashes for testing
 export const mockKeyHashes = {
@@ -129,4 +131,49 @@ export async function createPaymentAndStakeWallet(): Promise<MultisigKey[]> {
     { keyHash: stakeKeyHash, role: 2, name: 'Stake Key 1' },
     { keyHash: stakeKeyHash, role: 2, name: 'Stake Key 2' },
   ];
+}
+
+// Slot configuration testing utilities
+
+// Simple test configs for backward compatibility
+export const mockSlotConfig: SlotConfig = {
+  zeroTime: 0, // Unix timestamp 0 (1970-01-01 00:00:00 UTC)
+  zeroSlot: 0, // Start at slot 0
+  slotLength: 1000, // 1 second per slot (1000ms)
+  startEpoch: 0, // Start at epoch 0
+  epochLength: 86400, // 1 day per epoch (86400 seconds)
+};
+
+export const fastSlotConfig: SlotConfig = {
+  zeroTime: Date.now(), // Start from current time
+  zeroSlot: 0,
+  slotLength: 100, // 100ms per slot
+  startEpoch: 0,
+  epochLength: 864, // 86.4 seconds per epoch (864 slots * 100ms)
+};
+
+/**
+ * Create a slot config that starts at a specific timestamp
+ * @param startTime Unix timestamp in milliseconds
+ * @param slotLengthMs Slot length in milliseconds (default: 1000ms)
+ * @returns SlotConfig starting at the specified time
+ */
+export function createSlotConfigFromTime(startTime: number, slotLengthMs: number = 1000): SlotConfig {
+  return {
+    zeroTime: startTime,
+    zeroSlot: 0,
+    slotLength: slotLengthMs,
+    startEpoch: 0,
+    epochLength: 86400000 / slotLengthMs, // 1 day worth of slots
+  };
+}
+
+/**
+ * Test helper to use Sancho slot resolver
+ * @param network Network name (not used, kept for compatibility)
+ * @param milliseconds Timestamp in milliseconds
+ * @returns Promise<string> - slot number as string
+ */
+export async function testSanchoSlotResolver(network: string, milliseconds: number): Promise<string> {
+  return resolveSlotNoSancho(network, milliseconds);
 }

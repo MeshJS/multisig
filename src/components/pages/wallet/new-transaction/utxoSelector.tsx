@@ -76,96 +76,20 @@ export default function UTxOSelector({
     try {
       setLoading(true);
       
-      // Only fetch two pages at once if page size exceeds 100 (API limit)
-      const shouldFetchTwoPages = count > 100;
-      const nextPage = page + 1;
+      // Use standardized IFetcher method - fetch all UTxOs and simulate pagination
+      const allUtxos = await blockchainProvider.fetchAddressUTxOs(address);
       
-      // Fetch UTxOs (conditionally two pages)
-      const utxoPromises = [
-        blockchainProvider.get(`/addresses/${address}/utxos?page=${page}&count=${Math.min(count, 100)}&order=desc`)
-      ];
+      // Simulate pagination by slicing the results
+      const startIndex = (page - 1) * count;
+      const endIndex = startIndex + count;
+      const paginatedUtxos = allUtxos.slice(startIndex, endIndex);
+      setUtxos(paginatedUtxos);
       
-      if (shouldFetchTwoPages) {
-        // For page sizes > 100, we need to split into two requests of 100 each
-        const remainingCount = count - 100;
-        utxoPromises.push(
-          blockchainProvider.get(`/addresses/${address}/utxos?page=${nextPage}&count=${Math.min(remainingCount, 100)}&order=desc`).catch(() => [])
-        );
-      }
+      const totalCount = allUtxos.length;
+      setTotalUtxos(totalCount);
+      setTotalPages(Math.max(1, Math.ceil(totalCount / count)));
       
-      // Fetch UTxOs
-      const utxoResponses = await Promise.all(utxoPromises);
-      
-      // Process UTxO responses
-      let rawUtxos1: any[] = [];
-      let rawUtxos2: any[] = [];
-      
-      if (Array.isArray(utxoResponses[0])) {
-        rawUtxos1 = utxoResponses[0];
-      } else {
-        rawUtxos1 = utxoResponses[0].data || utxoResponses[0] || [];
-      }
-      
-      if (shouldFetchTwoPages && utxoResponses[1]) {
-        if (Array.isArray(utxoResponses[1])) {
-          rawUtxos2 = utxoResponses[1];
-        } else {
-          rawUtxos2 = utxoResponses[1].data || utxoResponses[1] || [];
-        }
-      }
-      
-      // Combine pages if fetching two
-      const allRawUtxos = shouldFetchTwoPages ? [...rawUtxos1, ...rawUtxos2] : rawUtxos1;
-      
-      // Transform Blockfrost API response to Mesh SDK UTxO format
-      const fetchedUtxos: UTxO[] = allRawUtxos.map((rawUtxo: any) => ({
-        input: {
-          txHash: rawUtxo.tx_hash,
-          outputIndex: rawUtxo.output_index,
-        },
-        output: {
-          address: rawUtxo.address,
-          amount: rawUtxo.amount, // Keep as array format as expected by the UI
-          dataHash: rawUtxo.data_hash,
-          inlineDatum: rawUtxo.inline_datum,
-          referenceScriptHash: rawUtxo.reference_script_hash,
-        },
-      }));
-      
-      setUtxos(fetchedUtxos);
-      
-      // Calculate pagination based on whether we fetched two pages
-      if (shouldFetchTwoPages) {
-        // Two-page logic: when count > 100, we split into two API requests
-        const displayPage = Math.floor((page - 1) / 2) + 1;
-        const firstPageCount = Math.min(count, 100);
-        const secondPageCount = Math.min(count - 100, 100);
-        
-        if (rawUtxos1.length < firstPageCount) {
-          // First page is incomplete, so we're at the end
-          setTotalUtxos((displayPage - 1) * count + rawUtxos1.length);
-          setTotalPages(displayPage);
-        } else if (rawUtxos2.length < secondPageCount) {
-          // Second page is incomplete, so we're at the end
-          setTotalUtxos((displayPage - 1) * count + rawUtxos1.length + rawUtxos2.length);
-          setTotalPages(displayPage);
-        } else {
-          // Both pages are full, so there might be more
-          setTotalUtxos(displayPage * count);
-          setTotalPages(displayPage + 1);
-        }
-      } else {
-        // Single-page logic: when count <= 100, we use single API request
-        if (rawUtxos1.length < count) {
-          setTotalUtxos((page - 1) * count + rawUtxos1.length);
-          setTotalPages(page);
-        } else {
-          setTotalUtxos(page * count);
-          setTotalPages(page + 1);
-        }
-      }
-      
-      checkPending(fetchedUtxos);
+      checkPending(paginatedUtxos);
       setLoaded(true);
       setIsInitialLoad(false);
     } catch (error) {

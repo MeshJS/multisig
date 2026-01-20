@@ -116,6 +116,27 @@ model Ballot {
   createdAt        DateTime @default(now())
 }
 
+model Crowdfund {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+  paramUtxo         String? // JSON string containing { txHash: string, outputIndex: number }
+  govDatum          String? // Stores governance configuration JSON for gov-crowdfund v2
+  govAddress        String? // Optional governance-specific address metadata
+  spendRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
+  stakeRefScript    String? // JSON string containing { txHash: string, outputIndex: number }
+  refAddress        String? // Address where reference scripts are stored
+  drepAnchor        String? // JSON string containing { url: string, hash: string }
+  govActionAnchor   String? // JSON string containing { url: string, hash: string }
+  govActionId       String? // JSON string containing { txHash: string, index: number }
+  govState          Int      @default(0) // Governance state: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
+  createdAt         DateTime @default(now())
+}
+
 model Proxy {
   id           String   @id @default(cuid())
   walletId     String?
@@ -163,6 +184,14 @@ model Migration {
   @@index([originalWalletId])
   @@index([status])
   @@index([createdAt])
+}
+
+model UrlShortener {
+  id          String   @id @default(cuid())
+  shortId     String   @unique
+  originalUrl String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Contact {

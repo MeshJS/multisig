@@ -23,18 +23,19 @@ export default function PageStaking() {
 
   useEffect(() => {
     if (!address) return;
-    blockchainProvider
-      .get(`/accounts/${address}`)
-      .then((data) => {
+    
+    const fetchStakingInfo = async () => {
+      try {
+        // Use standardized IFetcher method
+        const data = await blockchainProvider.fetchAccountInfo(address);
         setStakingInfo({
-          poolId: data.pool_id,
-          active: data.active,
-          balance: data.controlled_amount,
-          rewards: data.rewards_sum,
-          withdrawals: data.withdrawals_sum,
+          poolId: data.poolId || "NA",
+          active: data.active || false,
+          balance: data.balance || "NA",
+          rewards: data.rewards || "NA",
+          withdrawals: data.withdrawals || "NA",
         });
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("Failed to fetch staking info", err);
         setStakingInfo({
           poolId: "NA",
@@ -43,7 +44,10 @@ export default function PageStaking() {
           rewards: "NA",
           withdrawals: "NA",
         });
-      });
+      }
+    };
+    
+    fetchStakingInfo();
   }, [address, blockchainProvider]);
 
   if (!stakingInfo) return <p>Loading staking info...</p>;

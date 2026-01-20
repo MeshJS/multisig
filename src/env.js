@@ -15,6 +15,9 @@ export const env = createEnv({
     PINATA_JWT: z.string(),
     GITHUB_TOKEN: z.string().optional(),
     JWT_SECRET: z.string().min(32),
+    BLOB_READ_WRITE_TOKEN: z.string().optional(),
+    PINATA_API_KEY: z.string().optional(),
+    PINATA_SECRET_API_KEY: z.string().optional(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -38,6 +41,14 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string(),
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
+    NEXT_PUBLIC_GOV_TESTNET: z.preprocess(
+      (val) => val === "true" || val === true,
+      z.boolean().optional().default(false)
+    ),
+    NEXT_PUBLIC_SANCHO_API_URL: z.string().optional(),
+    NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: z.string().optional(),
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
+    NEXT_PUBLIC_REF_ADDR: z.string().optional(),
   },
 
   /**
@@ -56,9 +67,17 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET,
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
+    NEXT_PUBLIC_GOV_TESTNET: process.env.NEXT_PUBLIC_GOV_TESTNET,
+    NEXT_PUBLIC_SANCHO_API_URL: process.env.NEXT_PUBLIC_SANCHO_API_URL,
+    NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: process.env.NEXT_PUBLIC_CUSTOM_SLOT_CONFIG,
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
+    NEXT_PUBLIC_REF_ADDR: process.env.NEXT_PUBLIC_REF_ADDR,
     PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    PINATA_API_KEY: process.env.PINATA_API_KEY,
+    PINATA_SECRET_API_KEY: process.env.PINATA_SECRET_API_KEY,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
