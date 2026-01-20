@@ -1,20 +1,26 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/collection/pairs.{get_first}
-use cardano/address.{Address, Credential, from_script}
+use cardano/address.{
+  Address, Credential, Inline, Script, VerificationKey, from_script,
+}
 use cardano/assets.{Lovelace, PolicyId, from_lovelace, lovelace_of}
 use cardano/certificate.{
-  Certificate, DelegateBlockProduction, DelegateBoth, DelegateCredential,
-  DelegateRepresentative, DelegateVote, RegisterCredential,
-  RegisterDelegateRepresentative, StakePoolId, UnregisterCredential,
+  AlwaysAbstain, AlwaysNoConfidence, Certificate, DelegateBlockProduction,
+  DelegateBoth, DelegateCredential, DelegateRepresentative, DelegateVote,
+  RegisterAndDelegateCredential, RegisterCredential,
+  RegisterDelegateRepresentative, Registered, StakePoolId, UnregisterCredential,
   UnregisterDelegateRepresentative,
 }
 use cardano/governance.{
   GovernanceAction, GovernanceActionId, ProposalProcedure, Vote, Voter, Yes,
 }
 use cardano/transaction.{Input, Output, Redeemer, ScriptPurpose, Spend}
-use cocktail.{inputs_at, inputs_with_policy}
-use types.{CrowdfundGovRedeemer}
+use cocktail.{
+  inputs_at, inputs_at_with, inputs_with_policy, output_inline_datum,
+  outputs_at_with, value_length,
+}
+use types.{CrowdfundGovDatum, CrowdfundGovRedeemer}
 
 pub fn check_fundraise_target(
   allow_over_subscription: Bool,
@@ -50,86 +56,35 @@ pub fn redeemer_with_input(
   redeemers |> pairs.get_first(Spend(output_reference))
 }
 
-// Combined certificate check - processes certificates list only once
-// Returns True if all four certificates are found and correct
-pub fn check_register_certs(
-  certificates: List<Certificate>,
-  credential: Credential,
-  drep_deposit: Lovelace,
-  stake_pool: StakePoolId,
-  delegate_representative: DelegateRepresentative,
-) -> Bool {
-  let (has_stake_reg, has_drep_reg, has_block_delegate, has_vote_delegate) =
-    list.foldl(
-      certificates,
-      (False, False, False, False),
-      fn(cert: Certificate, acc: (Bool, Bool, Bool, Bool)) {
-        let (has_stake_reg, has_drep_reg, has_block_delegate, has_vote_delegate) =
-          acc
-        when cert is {
-          RegisterCredential { credential: c, deposit: Never } ->
-            if c == credential {
-              trace @"register stake certificate found"
-              (True, has_drep_reg, has_block_delegate, has_vote_delegate)
-            } else {
-              acc
-            }
-          RegisterDelegateRepresentative {
-            delegate_representative: drep_cred,
-            deposit: dep,
-          } ->
-            if drep_cred == credential && dep == drep_deposit {
-              trace @"register drep certificate found"
-              (has_stake_reg, True, has_block_delegate, has_vote_delegate)
-            } else {
-              acc
-            }
-          DelegateCredential {
-            credential: c,
-            delegate: DelegateBlockProduction { stake_pool: sp },
-          } ->
-            if c == credential && sp == stake_pool {
-              trace @"delegate stake certificate found"
-              (has_stake_reg, has_drep_reg, True, has_vote_delegate)
-            } else {
-              acc
-            }
-          DelegateCredential {
-            credential: c,
-            delegate: DelegateVote { delegate_representative: dr },
-          } ->
-            if c == credential && dr == delegate_representative {
-              trace @"delegate vote certificate found"
-              (has_stake_reg, has_drep_reg, has_block_delegate, True)
-            } else {
-              acc
-            }
-          DelegateCredential {
-            credential: c,
-            delegate: DelegateBoth {
-              stake_pool: sp,
-              delegate_representative: dr,
-            },
-          } ->
-            if c == credential && sp == stake_pool && dr == delegate_representative {
-              trace @"delegate both stake and vote certificate found"
-              (has_stake_reg, has_drep_reg, True, True)
-            } else {
-              acc
-            }
-          _ -> acc
-        }
-      },
-    )
-  has_stake_reg && has_drep_reg && has_block_delegate && has_vote_delegate
-}
-
-// Individual functions kept for backward compatibility and other use cases
 pub fn register_stake_certificate(
   certificates: List<Certificate>,
   credential: Credential,
 ) {
-  list.has(certificates, RegisterCredential { credential, deposit: Never })
+  // Extract hash from expected credential (works for both Script and VerificationKey)
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  // Check for certificate with matching hash (ignoring credential type mismatch)
+  list.any(
+    certificates,
+    fn(cert) {
+      when cert is {
+        RegisterCredential { credential: c, .. } ->
+          when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        RegisterAndDelegateCredential { credential: c, .. } ->
+          when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
+    },
+  )
 }
 
 pub fn register_drep_certificate(
@@ -137,11 +92,26 @@ pub fn register_drep_certificate(
   credential: Credential,
   deposit: Lovelace,
 ) {
-  list.has(
+  // Extract hash from expected credential
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
     certificates,
-    RegisterDelegateRepresentative {
-      delegate_representative: credential,
-      deposit,
+    fn(cert) {
+      when cert is {
+        RegisterDelegateRepresentative {
+          delegate_representative: c,
+          deposit: d,
+        } ->
+          d == deposit && when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
     },
   )
 }
@@ -151,11 +121,25 @@ pub fn delegate_stake_certificate(
   credential: Credential,
   stake_pool: StakePoolId,
 ) {
-  list.has(
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
     certificates,
-    DelegateCredential {
-      credential,
-      delegate: DelegateBlockProduction { stake_pool },
+    fn(cert) {
+      when cert is {
+        DelegateCredential {
+          credential: c,
+          delegate: DelegateBlockProduction { stake_pool: sp },
+        } ->
+          sp == stake_pool && when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
     },
   )
 }
@@ -165,11 +149,29 @@ pub fn delegate_vote_certificate(
   credential: Credential,
   delegate_representative: DelegateRepresentative,
 ) {
-  list.has(
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
     certificates,
-    DelegateCredential {
-      credential,
-      delegate: DelegateVote { delegate_representative },
+    fn(cert) {
+      when cert is {
+        DelegateCredential {
+          credential: c,
+          delegate: DelegateVote { delegate_representative: dr },
+        } ->
+          delegate_representatives_match(
+            dr,
+            delegate_representative,
+            expected_hash,
+          ) && when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
     },
   )
 }
@@ -180,20 +182,73 @@ pub fn delegate_stake_and_vote_certificate(
   stake_pool: StakePoolId,
   delegate_representative: DelegateRepresentative,
 ) {
-  list.has(
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
     certificates,
-    DelegateCredential {
-      credential,
-      delegate: DelegateBoth { stake_pool, delegate_representative },
+    fn(cert) {
+      when cert is {
+        DelegateCredential {
+          credential: c,
+          delegate: DelegateBoth { stake_pool: sp, delegate_representative: dr },
+        } ->
+          sp == stake_pool && delegate_representatives_match(
+            dr,
+            delegate_representative,
+            expected_hash,
+          ) && when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
     },
   )
+}
+
+// Helper to compare DelegateRepresentative with hash-based credential matching
+fn delegate_representatives_match(
+  actual: DelegateRepresentative,
+  expected: DelegateRepresentative,
+  expected_hash: ByteArray,
+) -> Bool {
+  when (actual, expected) is {
+    (Registered(c1), Registered(_)) ->
+      when c1 is {
+        Script(h) -> h == expected_hash
+        VerificationKey(h) -> h == expected_hash
+      }
+    (AlwaysAbstain, AlwaysAbstain) -> True
+    (AlwaysNoConfidence, AlwaysNoConfidence) -> True
+    _ -> False
+  }
 }
 
 pub fn unregister_stake_certificate(
   certificates: List<Certificate>,
   credential: Credential,
 ) {
-  list.has(certificates, UnregisterCredential { credential, refund: Never })
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
+    certificates,
+    fn(cert) {
+      when cert is {
+        UnregisterCredential { credential: c, .. } ->
+          when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
+    },
+  )
 }
 
 pub fn unregister_drep_certificate(
@@ -201,11 +256,25 @@ pub fn unregister_drep_certificate(
   credential: Credential,
   refund: Lovelace,
 ) {
-  list.has(
+  let expected_hash =
+    when credential is {
+      Script(h) -> h
+      VerificationKey(h) -> h
+    }
+  list.any(
     certificates,
-    UnregisterDelegateRepresentative {
-      delegate_representative: credential,
-      refund,
+    fn(cert) {
+      when cert is {
+        UnregisterDelegateRepresentative {
+          delegate_representative: c,
+          refund: r,
+        } ->
+          r == refund && when c is {
+            Script(h) -> h == expected_hash
+            VerificationKey(h) -> h == expected_hash
+          }
+        _ -> False
+      }
     },
   )
 }
@@ -279,4 +348,26 @@ pub fn check_vote(
 
   expect Some(gov_pair) = value_list
   list.has(gov_pair, Pair(gov_tx_id, Yes))
+}
+
+/// Extract inline stake credential from an address
+pub fn get_inline_credential(address: Address) -> Credential {
+  expect Some(stake_credential) = address.stake_credential
+  expect Inline(credential) = stake_credential
+  credential
+}
+
+/// Get single input/output pair with auth token at address, extract output datum, and check value is clean
+/// Returns (Input, Output, CrowdfundGovDatum, Bool) where Bool is whether output value has exactly 2 assets
+pub fn get_single_auth_io(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  address: Address,
+  auth_token: PolicyId,
+) -> (Input, Output, CrowdfundGovDatum, Bool) {
+  expect [only_input] = inputs_at_with(inputs, address, auth_token, "")
+  expect [only_output] = outputs_at_with(outputs, address, auth_token, "")
+  expect only_output_datum: CrowdfundGovDatum = output_inline_datum(only_output)
+  let is_output_value_clean = value_length(only_output.value) == 2
+  (only_input, only_output, only_output_datum, is_output_value_clean)
 }

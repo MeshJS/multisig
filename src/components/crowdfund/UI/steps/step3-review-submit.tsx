@@ -11,9 +11,10 @@ import useUser from "@/hooks/useUser";
 import {
   deserializeAddress,
   MeshTxBuilder,
+  deserializePoolId,
   resolveSlotNo,
 } from "@meshsdk/core";
-import { MeshCrowdfundContract } from "../../offchain";
+import { MeshCrowdfundContract, GovernanceConfig } from "../../offchain";
 import { mapGovExtensionToConfig } from "../utils";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
@@ -27,6 +28,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { CrowdfundFormData } from "../launch-wizard";
+import { useCollateralToast } from "../useCollateralToast";
 
 interface Step3ReviewSubmitProps {
   formData: CrowdfundFormData;
@@ -46,6 +48,22 @@ export function Step3ReviewSubmit({
   const { toast } = useToast();
   const { user } = useUser();
   const { connected, wallet } = useWallet();
+
+  // Create governance config for collateral toast
+  const governanceConfigForCollateral = useMemo((): GovernanceConfig => {
+    return {
+      delegatePoolId: formData.delegate_pool_id || "",
+      govActionPeriod: formData.gov_action_period || 6,
+      stakeRegisterDeposit: formData.stake_register_deposit || 2000000,
+      drepRegisterDeposit: formData.drep_register_deposit || 500000000,
+      govDeposit: formData.gov_deposit || 100000000000,
+    };
+  }, [formData]);
+
+  const { handleError: handleCollateralError, ensureCollateral } = useCollateralToast({
+    proposerKeyHash: proposerKeyHashR0,
+    governance: governanceConfigForCollateral,
+  });
 
   // Scroll to create button when component mounts (when navigating to step 3)
   useEffect(() => {
@@ -84,6 +102,7 @@ export function Step3ReviewSubmit({
     if (!provider) return null;
     return new MeshTxBuilder({
       fetcher: provider,
+      evaluator: provider,
       submitter: provider,
       verbose: true,
     });
@@ -236,11 +255,138 @@ export function Step3ReviewSubmit({
         drepMetadataHash: formData.drepMetadataHash,
       });
 
+      // Determine governance action type and beneficiaries from formData
+      const govAction = formData.gov_action;
+      const govActionType = govAction?.type === 'treasury_withdrawals' 
+        ? 'TreasuryWithdrawalsAction' 
+        : 'InfoAction';
+      
+      // For TreasuryWithdrawalsAction, collect beneficiaries from metadata and derive totals
+      let treasuryBeneficiaries: Array<{ address: string; amount: string }> | undefined;
+      if (govActionType === 'TreasuryWithdrawalsAction') {
+        const beneficiaries = (govAction?.metadata?.beneficiaries || []) as Array<{
+          address?: string;
+          amount?: string;
+          amountAda?: string;
+        }>;
+
+        if (!beneficiaries || beneficiaries.length === 0) {
+          throw new Error(
+            "TreasuryWithdrawalsAction requires at least one beneficiary. " +
+              "Please add beneficiaries in Step 2.",
+          );
+        }
+
+        let totalLovelace = 0;
+        const normalizedBeneficiaries = beneficiaries.map((beneficiary, index) => {
+          const address = (beneficiary.address || "").trim();
+          if (!address) {
+            throw new Error(`Treasury beneficiary at index ${index} is missing address`);
+          }
+
+          let decoded;
+          try {
+            decoded = deserializeAddress(address);
+          } catch (error) {
+            throw new Error(
+              `Treasury beneficiary at index ${index} has invalid payment address: ${address}`,
+            );
+          }
+
+          if (!decoded?.pubKeyHash && !decoded?.scriptHash) {
+            throw new Error(
+              `Treasury beneficiary at index ${index} must be a payment address (addr/addr_test). ` +
+                `Reward addresses are not supported.`,
+            );
+          }
+
+          let amountLovelace = (beneficiary.amount || "").trim();
+          if (!amountLovelace || amountLovelace === "0") {
+            const amountAda = (beneficiary.amountAda || "").trim();
+            const adaValue = parseFloat(amountAda);
+            if (!isNaN(adaValue) && adaValue > 0) {
+              amountLovelace = Math.round(adaValue * 1_000_000).toString();
+            }
+          }
+
+          if (!amountLovelace || amountLovelace === "0") {
+            throw new Error(
+              `Treasury beneficiary at index ${index} has invalid amount. ` +
+                `Expected a positive amount in ADA.`,
+            );
+          }
+
+          totalLovelace += Number(amountLovelace);
+          return {
+            address,
+            amount: amountLovelace,
+          };
+        });
+
+        const withdrawalAmountAda = (totalLovelace / 1_000_000).toString();
+        const withdrawals = normalizedBeneficiaries.reduce(
+          (acc, beneficiary) => {
+            acc[beneficiary.address] = beneficiary.amount;
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
+
+        treasuryBeneficiaries = normalizedBeneficiaries;
+
+        if (formData.gov_action) {
+          formData.gov_action.metadata = {
+            ...formData.gov_action.metadata,
+            beneficiaries: normalizedBeneficiaries,
+            withdrawalAmountAda,
+            withdrawalAmount: totalLovelace.toString(),
+            withdrawals,
+          };
+        }
+
+        console.log("[handleSubmit] TreasuryWithdrawalsAction beneficiaries normalized:", {
+          count: normalizedBeneficiaries.length,
+          totalLovelace,
+        });
+      }
+
+      // Validate treasuryBeneficiaries before creating contract
+      if (govActionType === 'TreasuryWithdrawalsAction') {
+        if (!treasuryBeneficiaries || treasuryBeneficiaries.length === 0) {
+          throw new Error(
+            "TreasuryWithdrawalsAction requires treasuryBeneficiaries. " +
+            "Please ensure beneficiaries are specified in Step 2."
+          );
+        }
+        
+        // Validate each beneficiary
+        treasuryBeneficiaries.forEach((beneficiary, index) => {
+          if (!beneficiary.address || beneficiary.address === "") {
+            throw new Error(`Treasury beneficiary at index ${index} is missing address`);
+          }
+          if (!beneficiary.amount || beneficiary.amount === "" || beneficiary.amount === "0") {
+            throw new Error(
+              `Treasury beneficiary at index ${index} has invalid amount: "${beneficiary.amount}". ` +
+              `Expected a non-empty string representing lovelace.`
+            );
+          }
+        });
+        
+        console.log("[handleSubmit] Validated treasuryBeneficiaries before contract creation:", {
+          count: treasuryBeneficiaries.length,
+          beneficiaries: treasuryBeneficiaries.map(b => ({
+            address: b.address.substring(0, 20) + "...",
+            amount: b.amount,
+          })),
+        });
+      }
+
       // Create the crowdfunding contract instance
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
           fetcher: provider,
+          evaluator: provider,
           wallet: wallet,
           networkId: networkId,
         },
@@ -248,14 +394,12 @@ export function Step3ReviewSubmit({
           proposerKeyHash: proposerKeyHashR0,
           governance: governanceConfig,
           refAddress: env.NEXT_PUBLIC_REF_ADDR,
+          govActionType: govActionType as 'InfoAction' | 'TreasuryWithdrawalsAction',
+          treasuryBeneficiaries,
         },
       );
 
-      // Always ensure we have a param UTxO
-      const utxos = await wallet.getUtxos();
-      if (utxos.length > 0) {
-        contract.setparamUtxo(utxos[0]!);
-      }
+      
       if (!formData.stake_register_deposit) {
         formData.stake_register_deposit = 2000000;
       }
@@ -297,13 +441,20 @@ export function Step3ReviewSubmit({
         min_charge: parseFloat(formData.minCharge || "0") * 1000000, // Convert ADA to lovelace
       };
 
+      // Check for collateral before attempting transaction
+      const hasCollateral = await ensureCollateral();
+      if (!hasCollateral) {
+        setIsSubmitting(false);
+        return; // Toast already shown by ensureCollateral
+      }
+
       // Setup the crowdfund
       console.log("[handleSubmit] Calling setupCrowdfund", {
         hasGovContract: true,
         datumData,
       });
-
       console.log("cachedGovActionParam:", contract.cachedGovActionParam);
+
       const {
         tx,
         paramUtxo,
@@ -405,6 +556,14 @@ export function Step3ReviewSubmit({
       // But we still need to handle other errors (like transaction building failures)
       const errorMessage = e instanceof Error ? e.message : String(e);
       
+      console.error("[handleSubmit] Setup failed:", e);
+      
+      // Check if it's a collateral error and show special toast
+      if (handleCollateralError(e)) {
+        // Collateral error was handled
+        return;
+      }
+      
       // Only show error toast if we haven't already shown one (for submission errors)
       if (!errorMessage.includes("insufficientlyFundedOutputs") && 
           !errorMessage.includes("TxSendError")) {
@@ -414,8 +573,6 @@ export function Step3ReviewSubmit({
           variant: "destructive",
         });
       }
-      
-      console.error("[handleSubmit] Setup failed:", e);
     } finally {
       setIsSubmitting(false);
     }

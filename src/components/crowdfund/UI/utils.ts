@@ -109,9 +109,34 @@ export function convertUIGovActionToGovernanceAction(
         action: {},
       };
     case 'TreasuryWithdrawalsAction':
+      // Extract withdrawals from UI action metadata or use empty object
+      // Format: { "addr1...": "1000000", "addr_test1...": "2000000", ... }
+      const metadataBeneficiaries = Array.isArray(uiAction?.metadata?.beneficiaries)
+        ? uiAction?.metadata?.beneficiaries
+        : [];
+      const beneficiaryWithdrawals = metadataBeneficiaries.reduce(
+        (acc: Record<string, string>, beneficiary: any) => {
+          if (beneficiary?.address && beneficiary?.amount) {
+            acc[beneficiary.address] = beneficiary.amount;
+          }
+          return acc;
+        },
+        {},
+      );
+      const withdrawals: Record<string, string> =
+        Object.keys(beneficiaryWithdrawals).length > 0
+          ? beneficiaryWithdrawals
+          : uiAction?.metadata?.withdrawals || uiAction?.withdrawals || {};
+      
+      // Extract policyHash if provided
+      const policyHash = uiAction?.metadata?.policyHash || uiAction?.policyHash;
+      
       return {
         kind: 'TreasuryWithdrawalsAction',
-        action: {},
+        action: {
+          withdrawals,
+          ...(policyHash && { policyHash }),
+        },
       };
     case 'InfoAction':
     default:

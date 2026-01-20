@@ -20,6 +20,7 @@ import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
 import { mapGovExtensionToConfig, parseGovDatum } from "./utils";
 import { env } from "@/env";
+import { useCollateralToast } from "./useCollateralToast";
 
 interface ContributeToCrowdfundProps {
   crowdfund: any;
@@ -103,6 +104,25 @@ export function ContributeToCrowdfund({
     }
   }, [minContribution, maxContribution, amount]);
 
+  // Governance config for collateral toast
+  const governanceConfigForCollateral = useMemo(() => {
+    if (!govExtension) {
+      return {
+        delegatePoolId: "",
+        govActionPeriod: 6,
+        stakeRegisterDeposit: 2000000,
+        drepRegisterDeposit: 500000000,
+        govDeposit: 100000000000,
+      };
+    }
+    return mapGovExtensionToConfig(govExtension);
+  }, [govExtension]);
+
+  const { handleError: handleCollateralError, ensureCollateral } = useCollateralToast({
+    proposerKeyHash: "",
+    governance: governanceConfigForCollateral,
+  });
+
   // Add the updateCrowdfund mutation
   const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation({
     onSuccess: () => {
@@ -154,6 +174,7 @@ export function ContributeToCrowdfund({
     if (!provider) return null;
     return new MeshTxBuilder({
       fetcher: provider,
+      evaluator: provider,
       submitter: provider,
       selector: new LargestFirstInputSelector(),
       verbose: true,
@@ -189,6 +210,13 @@ export function ContributeToCrowdfund({
     setIsContributing(true);
 
     try {
+      // Check for collateral before attempting transaction
+      const hasCollateral = await ensureCollateral();
+      if (!hasCollateral) {
+        setIsContributing(false);
+        return; // Toast already shown by ensureCollateral
+      }
+
       // Check wallet balance before attempting transaction
       const contributionAmount = Number(amount) * 1000000;
       const estimatedFees = 200000; // 0.2 ADA estimate
@@ -208,6 +236,38 @@ export function ContributeToCrowdfund({
         throw new Error("Governance extension data not found for this crowdfund.");
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
+      
+      // Extract govActionType and treasuryBeneficiaries from gov_action
+      let govActionType: 'InfoAction' | 'TreasuryWithdrawalsAction' = 'InfoAction';
+      let treasuryBeneficiaries: Array<{ address: string; amount: string }> | undefined = undefined;
+      
+      if (govExtension.gov_action && typeof govExtension.gov_action === 'object') {
+        const govAction = govExtension.gov_action as any;
+        if (govAction.kind === 'TreasuryWithdrawalsAction' || govAction.type === 'treasury_withdrawals') {
+          govActionType = 'TreasuryWithdrawalsAction';
+          // Extract beneficiaries from the action
+          if (govAction.action?.withdrawals) {
+            const withdrawals = govAction.action.withdrawals;
+            treasuryBeneficiaries = Object.entries(withdrawals).map(([address, amount]) => ({
+              address,
+              amount: String(amount),
+            }));
+          } else if (govAction.metadata?.beneficiaries) {
+            // Fallback to metadata beneficiaries if withdrawals not in action
+            const beneficiaries = Array.isArray(govAction.metadata.beneficiaries)
+              ? govAction.metadata.beneficiaries
+              : [];
+            treasuryBeneficiaries = beneficiaries
+              .filter((b: any) => b.address && b.amount)
+              .map((b: any) => ({
+                address: b.address,
+                amount: String(b.amount),
+              }));
+          }
+        } else if (govAction.kind === 'InfoAction' || govAction.type === 'info' || !govAction.kind) {
+          govActionType = 'InfoAction';
+        }
+      }
       
       // Parse reference scripts if available
       let spendRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
@@ -258,12 +318,16 @@ export function ContributeToCrowdfund({
         stakeRefScript,
         hasSpendRefScript: !!spendRefScript,
         hasStakeRefScript: !!stakeRefScript,
+        govActionType,
+        hasTreasuryBeneficiaries: !!treasuryBeneficiaries,
+        treasuryBeneficiariesCount: treasuryBeneficiaries?.length,
       });
 
       const contract = new MeshCrowdfundContract(
         {
           mesh: meshTxBuilder,
           fetcher: provider,
+          evaluator: provider,
           wallet: wallet,
           networkId: network,
         },
@@ -274,6 +338,8 @@ export function ContributeToCrowdfund({
           spendRefScript,
           stakeRefScript,
           refAddress: env.NEXT_PUBLIC_REF_ADDR,
+          govActionType,
+          treasuryBeneficiaries,
         },
       );
 
@@ -355,6 +421,12 @@ export function ContributeToCrowdfund({
       onSuccess?.();
     } catch (error: any) {
       console.log("error", error);
+
+      // Check if it's a collateral error and show special toast
+      if (handleCollateralError(error)) {
+        // Collateral error was handled
+        return;
+      }
 
       // Handle specific error types
       let errorMessage =

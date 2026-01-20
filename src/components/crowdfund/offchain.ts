@@ -9,8 +9,13 @@ import {
   mConStr1,
   mConStr2,
   mConStr3,
+  mCredential,
+  mNone,
+  mSome,
   mOutputReference,
   mPubKeyAddress,
+  mScriptAddress,
+  list,
   resolveSlotNo,
   stringToHex,
 } from "@meshsdk/common";
@@ -18,11 +23,13 @@ import {
   TxParser,
   UTxO,
   applyParamsToScript,
+  deserializeAddress,
   resolveScriptHash,
   resolveScriptHashDRepId,
   serializeData,
   serializePlutusScript,
 } from "@meshsdk/core";
+import { bech32 } from "bech32";
 import { resolveTxHash, scriptHashToRewardAddress } from "@meshsdk/core-cst";
 
 import blueprint from "./gov-crowdfundV2/plutus.json";
@@ -33,9 +40,11 @@ import {
   VotedDatumTS,
   RefundableDatumTS,
   GovernanceActionIdTS,
+  TreasuryBeneficiary,
 } from "./crowdfund";
 import { MeshTxInitiator, MeshTxInitiatorInput } from "./common";
 import { env } from "@/env";
+import { getProvider } from "@/utils/get-provider";
 
 // Import Sancho slot resolver
 import { resolveSlotNoSancho } from "./test_sancho_utils";
@@ -76,6 +85,8 @@ export interface MeshCrowdfundContractConfig {
   spendRefScript?: { txHash: string; outputIndex: number };
   stakeRefScript?: { txHash: string; outputIndex: number };
   refAddress?: string; // Address where reference scripts are stored
+  govActionType?: 'InfoAction' | 'TreasuryWithdrawalsAction';
+  treasuryBeneficiaries?: TreasuryBeneficiary[];
 }
 
 interface RegisterStakeArgs {
@@ -109,14 +120,12 @@ interface PostGovernanceWithdrawalArgs {
 
 enum CrowdfundGovRedeemerTag {
   ContributeFund = 0,
-  PreMatureContributorWithdrawal = 1,
-  PreMatureRemoveEmptyInstance = 2,
-  RegisterCerts = 3, // Register certificates only (Crowdfund → Crowdfund, no state change)
-  ProposeGovAction = 4,
-  VoteOnGovAction = 5,
-  DeregisterCerts = 6,
-  AfterCompleteContributorWithdrawal = 7,
-  AfterCompleteRemoveEmptyInstance = 8,
+  ContributorWithdrawal = 1, // Handles both Crowdfund (failed/expired) and Refundable (post-governance)
+  RegisterCerts = 2,
+  ProposeGovAction = 3,
+  VoteOnGovAction = 4,
+  DeregisterCerts = 5,
+  RemoveEmptyInstance = 6,
 }
 
 enum MintPolarityTag {
@@ -188,25 +197,48 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   public readonly governance: GovernanceConfig;
   private paramUtxo?: UTxO | { txHash: string; outputIndex: number };
   private cachedCrowdfundAddress?: string;
+  private cachedCrowdfundSpendCbor?: string;
   public cachedGovActionParam?: ReturnType<typeof mConStr>;
   private ref_spend_txhash?: string; // Reference script transaction hash
   private ref_spend_outputIndex?: number; // Reference script output index
   private ref_stake_txhash?: string; // Stake reference script transaction hash
   private ref_stake_outputIndex?: number; // Stake reference script output index
   private refAddress?: string; // Address where reference scripts are stored
+  private govActionType?: 'InfoAction' | 'TreasuryWithdrawalsAction';
+  private treasuryBeneficiaries?: TreasuryBeneficiary[];
 
   constructor(
     inputs: MeshTxInitiatorInput,
     contract: MeshCrowdfundContractConfig,
   ) {
     super(inputs);
+    // Ensure the evaluator is set on the mesh object for transaction evaluation
+    if (inputs.evaluator) {
+      this.mesh.evaluator = inputs.evaluator;
+    }
     this.proposerKeyHash = contract.proposerKeyHash;
     this.governance = contract.governance;
+    this.govActionType = contract.govActionType || 'InfoAction';
+    this.treasuryBeneficiaries = contract.treasuryBeneficiaries;
     
-    // Initialize governance action parameter to NicePoll (constructor 6)
+    // Debug: Log constructor parameters
+    console.log("[MeshCrowdfundContract] Constructor called with:", {
+      govActionType: this.govActionType,
+      hasTreasuryBeneficiaries: !!contract.treasuryBeneficiaries,
+      treasuryBeneficiariesCount: contract.treasuryBeneficiaries?.length,
+      treasuryBeneficiaries: JSON.stringify(contract.treasuryBeneficiaries),
+    });
+
+    // Initialize governance action parameter based on type
     // This must match the governanceAction passed to proposeGovAction()
-    this.cachedGovActionParam = mConStr(6, []);
-    
+    if (this.govActionType === 'TreasuryWithdrawalsAction') {
+      // Will be computed in getGovActionParam()
+      this.cachedGovActionParam = undefined;
+    } else {
+      // InfoAction: NicePoll (constructor 6)
+      this.cachedGovActionParam = mConStr(6, []);
+    }
+
     if (contract.paramUtxo) {
       this.paramUtxo = contract.paramUtxo;
     }
@@ -315,17 +347,228 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     );
   }
 
+  private decodePaymentAddressWithType(address: string): {
+    hash: string;
+    isScript: boolean;
+  } {
+    try {
+      const decoded = deserializeAddress(address);
+      if (decoded?.scriptHash) {
+        return { hash: decoded.scriptHash, isScript: true };
+      }
+      if (decoded?.pubKeyHash) {
+        return { hash: decoded.pubKeyHash, isScript: false };
+      }
+      throw new Error("Address does not contain a payment credential");
+    } catch (error) {
+      throw new Error(
+        `Invalid payment address for treasury beneficiary: ${address}. ` +
+          `Expected a payment address (addr/addr_test).`,
+      );
+    }
+  }
+
   /**
    * Get the governance action parameter for the validator.
-   * Currently only supports NicePoll (constructor 6, empty) per VGovernanceAction type.
-   * This matches the Aiken type: pub type VGovernanceAction { ... NicePoll }
+   * Supports InfoAction (NicePoll, constructor 6) and TreasuryWithdrawal (constructor 2).
+   * This matches the Aiken type: pub type VGovernanceAction { ... }
    * Constructor indices: 0=VProtocolParameters, 1=HardFork, 2=TreasuryWithdrawal,
    * 3=NoConfidence, 4=ConstitutionalCommittee, 5=NewConstitution, 6=NicePoll
    */
+  private govActionParamCallCount = 0;
   private getGovActionParam() {
-      // NicePoll is constructor 6 with no fields (empty array)
+    this.govActionParamCallCount++;
+    const callId = this.govActionParamCallCount;
+    const governanceAction = this.governance.governanceAction;
+    const withdrawalsFromAction =
+      governanceAction?.kind === "TreasuryWithdrawalsAction"
+        ? governanceAction?.action?.withdrawals
+        : undefined;
+    
+    console.log(`[getGovActionParam #${callId}] Called with:`, {
+      govActionType: this.govActionType,
+      governanceActionKind: governanceAction?.kind,
+      hasWithdrawals: !!withdrawalsFromAction,
+      withdrawalsCount: withdrawalsFromAction
+        ? Object.keys(withdrawalsFromAction).length
+        : 0,
+      withdrawals: withdrawalsFromAction,
+      stackTrace: new Error().stack,
+    });
+    
+    if (this.govActionType === 'TreasuryWithdrawalsAction') {
+      // VTreasuryWithdrawal is constructor 2
+      // Structure: mConStr(2, [beneficiariesPairs, guardrailsOption])
+      // beneficiaries: Pairs<Credential, Lovelace> - list of pairs
+      // guardrails: Option<ScriptHash> - None for now (can be enhanced later)
+      
+      // Create array of Pair structures: each pair is [Credential, Lovelace]
+      // In Aiken, Pairs<Credential, Lovelace> is a list of pairs
+      // Each pair is represented as a tuple (constructor 0 with 2 fields)
+      if (governanceAction?.kind !== "TreasuryWithdrawalsAction") {
+        throw new Error(
+          `Governance action type mismatch. Expected TreasuryWithdrawalsAction, got ${governanceAction?.kind}.`,
+        );
+      }
+
+      const withdrawals = governanceAction.action?.withdrawals;
+      if (!withdrawals || Object.keys(withdrawals).length === 0) {
+        throw new Error(
+          "TreasuryWithdrawalsAction requires withdrawals in governanceAction.action.withdrawals",
+        );
+      }
+
+      const withdrawalEntries = Object.entries(withdrawals).sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+
+      const beneficiaryPairs = withdrawalEntries.map(([address, rawAmount], index) => {
+        console.log(`[getGovActionParam] Processing withdrawal ${index}:`, {
+          address,
+          amount: rawAmount,
+          amountType: typeof rawAmount,
+        });
+
+        if (!address) {
+          throw new Error(`Treasury withdrawal at index ${index} is missing address`);
+        }
+
+        // Check amount with detailed logging
+        console.log(`[getGovActionParam] Withdrawal ${index} rawAmount:`, {
+          value: rawAmount,
+          type: typeof rawAmount,
+          isUndefined: rawAmount === undefined,
+          isNull: rawAmount === null,
+          isEmpty: rawAmount === "",
+          isZero: rawAmount === "0",
+        });
+
+        if (rawAmount === undefined || rawAmount === null) {
+          throw new Error(
+            `Treasury withdrawal at index ${index} has undefined/null amount. ` +
+              `Address: ${address}`,
+          );
+        }
+        if (rawAmount === "" || rawAmount === "0") {
+          throw new Error(
+            `Treasury withdrawal at index ${index} has empty or zero amount: "${rawAmount}"`,
+          );
+        }
+
+        // Decode payment address to get credential hash and type
+        const { hash: credentialHashHex, isScript: isScriptCredential } =
+          this.decodePaymentAddressWithType(address);
+
+        console.log(`[getGovActionParam] Withdrawal ${index} credential:`, {
+          credentialHashHex,
+          isScriptCredential,
+          addressPrefix: address.substring(0, 15),
+        });
+
+        // Create credential - use Script type for script-derived addresses
+        const credential = mCredential(credentialHashHex, isScriptCredential);
+
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:421',message:'mCredential result',data:{index,credentialHashHex,isScriptCredential,credentialType:typeof credential,credentialAlternative:credential?.alternative,credentialFields:credential?.fields,credentialFieldsTypes:credential?.fields?.map((f:any)=>typeof f),hasUndefined:credential?.fields?.some((f:any)=>f===undefined)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        console.log(`[getGovActionParam] Withdrawal ${index} mCredential result:`, {
+          credential,
+          credentialJson: JSON.stringify(credential),
+        });
+
+        // Convert amount to BigInt - ensure it's a valid string/number
+        const amountValue = typeof rawAmount === "string"
+          ? rawAmount.trim()
+          : String(rawAmount);
+
+        console.log(`[getGovActionParam] Withdrawal ${index} amountValue after conversion:`, {
+          amountValue,
+          amountValueType: typeof amountValue,
+        });
+
+        if (!amountValue || amountValue === "" || amountValue === "0" || amountValue === "undefined" || amountValue === "null") {
+          throw new Error(
+            `Treasury withdrawal at index ${index} has invalid amount value: "${amountValue}" ` +
+            `(original: "${rawAmount}", type: ${typeof rawAmount})`,
+          );
+        }
+
+        // Create a pair tuple: [Credential, Lovelace]
+        // Use mConStr to create a Pair structure (constructor 0 with 2 fields)
+        let amountBigInt: bigint;
+        try {
+          amountBigInt = BigInt(amountValue);
+        } catch (bigIntError) {
+          console.error(`[getGovActionParam] BigInt conversion failed for withdrawal ${index}:`, {
+            amountValue,
+            amountValueType: typeof amountValue,
+            rawAmount,
+            rawAmountType: typeof rawAmount,
+            error: bigIntError,
+          });
+          throw new Error(
+            `Failed to convert amount to BigInt for treasury withdrawal at index ${index}. ` +
+            `Value: "${amountValue}", Type: ${typeof amountValue}. ` +
+            `Original error: ${bigIntError instanceof Error ? bigIntError.message : String(bigIntError)}`,
+          );
+        }
+        console.log(`[getGovActionParam] Withdrawal ${index} BigInt conversion successful:`, amountBigInt.toString());
+
+        // Create the pair structure
+        const pair = mConStr(0, [credential, amountBigInt]);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:467',message:'Pair structure created',data:{index,credential:credential?JSON.stringify(credential):null,amountBigInt:amountBigInt?.toString(),pairFields:pair?.fields?.map((f:any)=>typeof f),pairAlternative:pair?.alternative},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        console.log(`[getGovActionParam] Withdrawal ${index} pair structure:`, pair);
+        
+        return pair;
+      });
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:473',message:'beneficiaryPairs before list()',data:{count:beneficiaryPairs.length,pairs:beneficiaryPairs.map((p:any,i:number)=>({index:i,alternative:p?.alternative,fieldsCount:p?.fields?.length,field0Type:typeof p?.fields?.[0],field1Type:typeof p?.fields?.[1],field0:JSON.stringify(p?.fields?.[0]),field1:p?.fields?.[1]?.toString()}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      console.log(`[getGovActionParam] beneficiaryPairs count:`, beneficiaryPairs.length);
+      
+      // In Plutus Data, a list is represented as an array of Data values
+      // We pass the array directly - applyParamsToScript will serialize it correctly
+      const beneficiariesList = beneficiaryPairs;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:485',message:'beneficiariesList as array',data:{isArray:Array.isArray(beneficiariesList),length:beneficiariesList?.length,firstItem:beneficiariesList?.[0]?{alternative:beneficiariesList[0].alternative,fieldsCount:beneficiariesList[0].fields?.length}:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      console.log(`[getGovActionParam] beneficiariesList:`, beneficiariesList);
+      
+      // Guardrails: None for now (can be enhanced later if policyHash is provided)
+      const guardrailsOption = mNone();
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:491',message:'guardrailsOption created',data:{alternative:guardrailsOption?.alternative,fieldsCount:guardrailsOption?.fields?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      console.log(`[getGovActionParam] guardrailsOption:`, guardrailsOption);
+      
+      // VTreasuryWithdrawal: constructor 2 with [beneficiariesList, guardrailsOption]
+      // beneficiariesList is an array of pairs, guardrailsOption is an Option
+      // Return raw Data object - applyParamsToScript handles serialization
+      const finalStructure = mConStr(2, [beneficiariesList as any, guardrailsOption]);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:488',message:'finalStructure created',data:{alternative:finalStructure?.alternative,fieldsCount:finalStructure?.fields?.length,field0Type:typeof finalStructure?.fields?.[0],field1Type:typeof finalStructure?.fields?.[1],field0Keys:finalStructure?.fields?.[0]?Object.keys(finalStructure.fields[0]):null,field1Keys:finalStructure?.fields?.[1]?Object.keys(finalStructure.fields[1]):null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      console.log(`[getGovActionParam] Final structure (raw Data):`, finalStructure);
+      
+      return finalStructure;
+    }
+    
+    if (this.govActionType === "InfoAction") {
+      // InfoAction: NicePoll (constructor 6) with no fields
       // This must match the governanceAction passed to proposeGovAction()
-    return serializeData(mConStr(6, []));
+      // Return raw Data object - applyParamsToScript handles serialization
+      return mConStr(6, []);
+    }
+
+    throw new Error(
+      `Unsupported governance action type: ${this.govActionType}.`,
+    );
   }
 
   private getAuthTokenCbor() {
@@ -340,17 +583,34 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     return resolveScriptHash(this.getAuthTokenCbor(), "V3");
   }
 
+  /**
+   * Decode a bech32 pool ID to its hex hash
+   */
+  private decodePoolIdToHex(bech32PoolId: string): string {
+    const decoded = bech32.decode(bech32PoolId);
+    const bytes = bech32.fromWords(decoded.words);
+    return Buffer.from(bytes).toString("hex");
+  }
+
   private getCrowdfundSpendCbor() {
     const compiled = findValidator(VALIDATOR_TITLES.SPEND);
+    const govActionParam = this.getGovActionParam();
+    // Serialize the Data object to CBOR bytes (hex string) since the validator expects ByteArray
+    // The validator parameter gov_action is typed as ByteArray, so we need to serialize it explicitly
+    const govActionParamSerialized = serializeData(govActionParam);
+    
     return applyParamsToScript(compiled, [
       this.getAuthTokenPolicyId(),
       stringToHex(this.proposerKeyHash),
-      this.getGovActionParam(),
-      stringToHex(this.governance.delegatePoolId),
+      govActionParamSerialized, // Pass serialized CBOR bytes instead of Data object
+      this.decodePoolIdToHex(this.governance.delegatePoolId), // Decode bech32 pool ID to hex hash
       this.governance.stakeRegisterDeposit,
       this.governance.drepRegisterDeposit,
       this.governance.govDeposit,
     ]);
+    
+    console.log("[getCrowdfundSpendCbor] Cached CBOR computed");
+    return this.cachedCrowdfundSpendCbor;
   }
 
   private getCrowdfundSpendHash() {
@@ -368,6 +628,15 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
   private getStakePublishHash() {
     return resolveScriptHash(this.getStakePublishCbor(), "V3");
+  }
+
+  /**
+   * Public method to compute the contract's reward address
+   * Requires paramUtxo to be set first
+   */
+  public computeRewardAddress(): RewardAddress {
+    const scriptHash = this.getStakePublishHash();
+    return scriptHashToRewardAddress(scriptHash, this.networkId);
   }
 
   private getStakeVoteCbor() {
@@ -408,10 +677,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   }
 
   private getGovernanceRewardAddress(): RewardAddress {
-    return scriptHashToRewardAddress(
-      this.getStakePublishHash(),
-      this.networkId,
-    );
+    // Use the same method as the UI to ensure consistency
+    // This correctly handles testnet vs mainnet based on networkId
+    const scriptHash = this.getStakePublishHash();
+    return scriptHashToRewardAddress(scriptHash, this.networkId);
   }
 
   private getDrepId() {
@@ -437,7 +706,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   }
 
   private buildProposedDatum(datum: CrowdfundDatumTS, fundsControlled: bigint) {
-    return mConStr2([
+    // Proposed is constructor 1 in CrowdfundGovDatum: Crowdfund(0), Proposed(1), Voted(2), Refundable(3)
+    return mConStr1([
       datum.stake_script || this.getStakePublishHash(),
       datum.share_token || this.getShareTokenPolicyId(),
       fundsControlled,
@@ -452,10 +722,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     govActionId: GovernanceActionIdTS,
     deadline: number,
   ) {
-    const govActionIdData = mConStr0([
+    // GovernanceActionId is a product type (record) with [txHash, index]
+    // Use mOutputReference which properly encodes as Plutus data list
+    const govActionIdData = mOutputReference(
       govActionId.transaction,
       govActionId.proposal_procedure,
-    ]);
+    );
 
     return mConStr2([
       stakeScriptHash,
@@ -564,14 +836,99 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     return { utxos, collateral, walletAddress };
   };
 
+  /**
+   * Creates collateral UTxOs for the wallet.
+   * Creates up to 3 UTxOs of 5 ADA each based on available balance.
+   */
+  setupCollateral = async (): Promise<{ tx: string }> => {
+    const utxos = await this.wallet?.getUtxos();
+    const walletAddress = await this.getWalletDappAddress();
+    
+    if (!utxos || utxos.length === 0) {
+      throw new Error("No UTxOs found in wallet");
+    }
+    if (!walletAddress) {
+      throw new Error("No wallet address found");
+    }
+
+    // Calculate total available lovelace
+    const totalLovelace = utxos.reduce((sum, utxo) => {
+      const lovelace = utxo.output.amount.find((a) => a.unit === "lovelace");
+      return sum + BigInt(lovelace?.quantity || "0");
+    }, 0n);
+
+    // Each collateral UTxO is 5 ADA + we need some for fees (~0.5 ADA)
+    const collateralAmount = 5_000_000n; // 5 ADA
+    const feeBuffer = 500_000n; // 0.5 ADA for fees
+    const minRequired = collateralAmount + feeBuffer;
+
+    if (totalLovelace < minRequired) {
+      throw new Error(
+        `Insufficient balance. Need at least ${Number(minRequired) / 1_000_000} ADA, have ${Number(totalLovelace) / 1_000_000} ADA`
+      );
+    }
+
+    // Calculate how many 5 ADA UTxOs we can create (max 3)
+    const availableForCollateral = totalLovelace - feeBuffer;
+    const possibleUtxos = Number(availableForCollateral / collateralAmount);
+    const numCollateralUtxos = Math.min(possibleUtxos, 3);
+
+    if (numCollateralUtxos < 1) {
+      throw new Error("Insufficient balance to create collateral UTxO");
+    }
+
+    this.mesh.reset();
+    
+    // Add outputs for each collateral UTxO
+    for (let i = 0; i < numCollateralUtxos; i++) {
+      this.mesh.txOut(walletAddress, [
+        { unit: "lovelace", quantity: collateralAmount.toString() },
+      ]);
+    }
+
+    const tx = await this.mesh
+      .selectUtxosFrom(utxos)
+      .changeAddress(walletAddress)
+      .complete();
+
+    return { tx };
+  };
 
   /**
    * Deploys a new crowdfund by minting the auth token and locking it at the crowdfund script address.
    */
   setupCrowdfund = async (datum: CrowdfundDatumTS) => {
     const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
+    console.log("utxos:", utxos);
+    console.log("paramUtxo:", this.paramUtxo);
     if (!this.paramUtxo && utxos.length > 0) {
-      this.paramUtxo = utxos[0];
+      // Calculate minimum required lovelace for transaction
+      // Outputs: crowdfund (~2 ADA) + reference script (80 ADA) + fees (~0.2 ADA)
+      const minRequiredLovelace = BigInt(82_200_000); // ~82.2 ADA
+
+      // Sort UTxOs by lovelace amount (descending)
+      const sortedUtxos = utxos
+        .map((utxo) => ({
+          ...utxo,
+          lovelaceAmount: lovelaceOf(utxo.output.amount),
+        }))
+        .sort((a, b) => (b.lovelaceAmount > a.lovelaceAmount ? 1 : -1));
+
+      // Find first UTXO large enough to cover the cost
+      const sufficientUtxo = sortedUtxos.find(
+        (utxo) => utxo.lovelaceAmount >= minRequiredLovelace,
+      );
+
+      if (sufficientUtxo) {
+        this.paramUtxo = sufficientUtxo;
+      } else if (sortedUtxos.length > 0) {
+        // Use the largest UTXO available - Mesh will add more inputs via selectUtxosFrom
+        const largestUtxo = sortedUtxos[0]!;
+        this.paramUtxo = largestUtxo;
+        console.warn(
+          `No single UTXO large enough. Using largest UTXO (${largestUtxo.lovelaceAmount.toString()} lovelace). Additional inputs will be selected automatically.`,
+        );
+      }
     }
     const crowdfundAddress = this.ensureCrowdfundAddress();
     const shareTokenPolicy = this.getShareTokenPolicyId();
@@ -594,6 +951,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       throw new Error("Reference address not set");
     }
 
+    const assetMetadata = {
+      name: "Crowdfund Auth Token",
+      image: "ipfs://QmRzicpReutwCkM6aotuKjErFCUD213DpwPq6ByuzMJaua",
+      mediaType: "image/jpg",
+      description: "This NFT was minted by Mesh (https://meshjs.dev/).",
+    };
+    const metadata = { [this.getAuthTokenPolicyId()]: { [""]: { ...assetMetadata } } };
+
     this.mesh.reset();
     const tx = await this.mesh
       .txIn(
@@ -605,6 +970,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .mintPlutusScriptV3()
       .mint("1", this.getAuthTokenPolicyId(), "")
       .mintingScript(this.getAuthTokenCbor())
+      .metadataValue(721, metadata)
       .mintRedeemerValue(this.buildMintRedeemer(MintPolarityTag.Mint))
       .txOut(crowdfundAddress, [
         { unit: this.getAuthTokenPolicyId(), quantity: "1" },
@@ -620,11 +986,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
-      .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .complete();
-
     return {
       tx,
       paramUtxo: param.input,
@@ -754,11 +1118,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
-      .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .invalidHereafter(Number(slot))
+      .setFee('1700000')
       .complete();
+
+    const evaluateTx = await this.mesh.evaluator?.evaluateTx(tx);
+    console.log("evaluateTx:", evaluateTx);
 
     return { tx };
   };
@@ -812,9 +1179,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .spendingTxInReference(refSpendUtxo, refSpendOutputIndex)
       .txInInlineDatumPresent()
       .txInRedeemerValue(
-        this.buildSpendRedeemer(
-          CrowdfundGovRedeemerTag.PreMatureContributorWithdrawal,
-        ),
+        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ContributorWithdrawal),
       )
       .mintPlutusScriptV3()
       .mint(
@@ -832,10 +1197,10 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
-      .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
       .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .invalidHereafter(Number(slot))
+      .setFee('1700000')
       .complete();
 
     return { tx };
@@ -886,7 +1251,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       }
     }
 
-
     if (totalAda < requiredAda) {
       console.warn(
         `[registerCerts] Warning: Selected UTxOs may not have enough ADA. Required: ${requiredAda.toString()}, Available: ${totalAda.toString()}`,
@@ -920,18 +1284,20 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     if (outputWithInlineDatum.inlineDatum) {
       // Check if inlineDatum is already a Mesh Data object (has type and content properties)
       if (
-        typeof outputWithInlineDatum.inlineDatum === 'object' &&
+        typeof outputWithInlineDatum.inlineDatum === "object" &&
         outputWithInlineDatum.inlineDatum !== null &&
-        'type' in outputWithInlineDatum.inlineDatum &&
-        'content' in outputWithInlineDatum.inlineDatum
+        "type" in outputWithInlineDatum.inlineDatum &&
+        "content" in outputWithInlineDatum.inlineDatum
       ) {
         // Use the datum directly if it's already in Mesh Data format
         outputDatum = outputWithInlineDatum.inlineDatum;
         console.log("[registerCerts] Using inline datum directly from UTxO");
-      } else if (typeof outputWithInlineDatum.inlineDatum === 'string') {
+      } else if (typeof outputWithInlineDatum.inlineDatum === "string") {
         // If it's a CBOR hex string, we need to parse it
         // For now, fallback to building from parameter since parsing CBOR requires additional utilities
-        console.warn("[registerCerts] Inline datum is CBOR hex string, building from parameter to ensure correct structure");
+        console.warn(
+          "[registerCerts] Inline datum is CBOR hex string, building from parameter to ensure correct structure",
+        );
         outputDatum = this.buildCrowdfundDatum(
           datum,
           datum.share_token || this.getShareTokenPolicyId(),
@@ -939,7 +1305,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         );
       } else {
         // Unknown format, fallback to building from parameter
-        console.warn("[registerCerts] Unknown inline datum format, falling back to building from parameter");
+        console.warn(
+          "[registerCerts] Unknown inline datum format, falling back to building from parameter",
+        );
         outputDatum = this.buildCrowdfundDatum(
           datum,
           datum.share_token || this.getShareTokenPolicyId(),
@@ -948,7 +1316,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       }
     } else {
       // Fallback to building from parameter if no inline datum
-      console.warn("[registerCerts] No inline datum found in UTxO, building from parameter");
+      console.warn(
+        "[registerCerts] No inline datum found in UTxO, building from parameter",
+      );
       outputDatum = this.buildCrowdfundDatum(
         datum,
         datum.share_token || this.getShareTokenPolicyId(),
@@ -1013,7 +1383,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     ).toString();
     console.log("outputDatum:", outputDatum);
 
-    console.log(utxos)
+    console.log(utxos);
     // Build transaction matching validator structure (lines 231-286)
     this.mesh.reset();
     const tx = await this.mesh
@@ -1025,9 +1395,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         authTokenUtxo.output.address,
       )
       .txInInlineDatumPresent()
-      .spendingTxInReference(refSpendUtxo, refSpendOutputIndex)
+      .spendingTxInReference(refSpendUtxo, refSpendOutputIndex) //Spend reference script for better perfomance
       .txInRedeemerValue(
-        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.RegisterCerts), //PublishRedeemer.Register
+        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.RegisterCerts),
       )
       .txOut(this.ensureCrowdfundAddress(), updatedValue)
       .txOutInlineDatumValue(outputDatum, "Mesh")
@@ -1047,9 +1417,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         "V3",
       )
       .certificateRedeemerValue(
-        mConStr(0,[]), //PublishRedeemer.Register
+        mConStr(0, []), //PublishRedeemer.Register
         undefined,
-        {mem: 155512, steps: 151283213 },
+        { mem: 200000, steps: 200000000 },
       )
       // Register DRep certificate
       .drepRegistrationCertificate(drepId, {
@@ -1064,9 +1434,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         "V3",
       )
       .certificateRedeemerValue(
-        mConStr(0,[]), //PublishRedeemer.Register
+        mConStr(0, []), //PublishRedeemer.Register
         undefined,
-        {mem: 155512, steps: 151283213 },
+        { mem: 200000, steps: 200000000 },
       )
       // Delegate vote to DRep
       .voteDelegationCertificate({ dRepId: drepId }, rewardAddress)
@@ -1078,9 +1448,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         "V3",
       )
       .certificateRedeemerValue(
-        mConStr(0,[]), //PublishRedeemer.Register
+        mConStr(0, []), //PublishRedeemer.Register
         undefined,
-        {mem: 155512, steps: 151283213 },
+        { mem: 200000, steps: 200000000 },
       )
       // RegisterCerts only registers certificates and keeps the Crowdfund state
       .txInCollateral(
@@ -1090,6 +1460,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.address,
       )
       .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
+      .requiredSignerHash(this.proposerKeyHash)
       .selectUtxosFrom(utxos)
       .changeAddress(walletAddress)
       .invalidHereafter(Number(slot));
@@ -1099,7 +1470,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     //await tx.evaluateRedeemers();
     const completeTx = await tx.complete();
     console.log("completeTx:", completeTx);
-    const evaluateTx = await this.mesh.evaluator?.evaluateTx(completeTx);
+    const provider = getProvider(this.networkId);
+    const evaluateTx = await provider.evaluateTx(completeTx);
     console.log("evaluateTx:", evaluateTx);
 
     return { tx: completeTx };
@@ -1134,7 +1506,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       authTokenUtxo.output.amount,
       -BigInt(govDeposit),
     );
-    const fundsControlled = lovelaceOf(authTokenUtxo.output.amount);
+    // Use current_fundraised_amount from datum (not actual lovelace) - validator expects this exact value
+    const fundsControlled = BigInt(datum.current_fundraised_amount);
     // Build Proposed datum from Crowdfund datum (transition: Crowdfund → Proposed)
     const proposedDatum = this.buildProposedDatum(datum, fundsControlled);
     const slot = env.NEXT_PUBLIC_GOV_TESTNET
@@ -1148,22 +1521,47 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       this.governance.anchorGovAction,
     );
 
-
-    // Ensure only InfoAction (NicePoll) is used, matching the validator parameter
-    // The validator is parameterized with NicePoll (constructor 6), so we must use InfoAction
+    // Get the governance action (defaults to InfoAction if not provided)
     const proposalAction = governanceAction ||
       this.governance.governanceAction || {
         kind: "InfoAction",
         action: {},
       };
 
-    // Validate that only InfoAction is used (maps to NicePoll, constructor 6)
-    if (proposalAction.kind !== "InfoAction") {
-      throw new Error(
-        `Only InfoAction (NicePoll) is currently supported. ` +
-        `The validator is parameterized with NicePoll (VGovernanceAction constructor 6). ` +
-        `Received: ${proposalAction.kind}`
-      );
+    // Validate governance action matches the configured type
+    if (this.govActionType === 'TreasuryWithdrawalsAction') {
+      if (proposalAction.kind !== 'TreasuryWithdrawalsAction') {
+        throw new Error(
+          `Governance action type mismatch. Expected TreasuryWithdrawalsAction, got ${proposalAction.kind}. ` +
+          `The validator is parameterized with TreasuryWithdrawal (VGovernanceAction constructor 2).`,
+        );
+      }
+      // Validate that withdrawals are provided
+      const withdrawals = proposalAction.action?.withdrawals;
+      if (!withdrawals || Object.keys(withdrawals).length === 0) {
+        throw new Error('TreasuryWithdrawalsAction requires withdrawals in the action object');
+      }
+      // Validate that beneficiaries match withdrawals if provided
+      if (this.treasuryBeneficiaries && this.treasuryBeneficiaries.length > 0) {
+        const withdrawalKeys = Object.keys(withdrawals);
+        const beneficiaryAddresses = this.treasuryBeneficiaries.map(b => b.address);
+        const addressesMatch = withdrawalKeys.every(addr => beneficiaryAddresses.includes(addr)) &&
+          beneficiaryAddresses.every(addr => withdrawalKeys.includes(addr));
+        if (!addressesMatch) {
+          console.warn(
+            '[proposeGovAction] Warning: Beneficiaries in config do not match withdrawals in action. ' +
+            'Using withdrawals from action object.'
+          );
+        }
+      }
+    } else {
+      // InfoAction (NicePoll, constructor 6)
+      if (proposalAction.kind !== "InfoAction") {
+        throw new Error(
+          `Governance action type mismatch. Expected InfoAction (NicePoll), got ${proposalAction.kind}. ` +
+          `The validator is parameterized with NicePoll (VGovernanceAction constructor 6).`,
+        );
+      }
     }
 
     // Validate spend reference script is set
@@ -1208,7 +1606,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txOutInlineDatumValue(proposedDatum, "Mesh")
       //adds governance proposal to the transaction
       // proposalAction is already a proper GovernanceAction type from MeshJS
-      
+
       .proposal(
         proposalAction,
         {
@@ -1236,37 +1634,47 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
       .selectUtxosFrom(utxos)
       .changeAddress(walletAddress)
-      .invalidHereafter(Number(slot))
+      .invalidHereafter(Number(slot));
 
-      console.log(tx)
+    console.log(tx);
 
-      const completeTx = await tx.complete();
-      console.log("completeTx:", completeTx);
-      const evaluateTx = await this.mesh.evaluator?.evaluateTx(completeTx);
-      console.log("evaluateTx:", evaluateTx);
-
+    const completeTx = await tx.complete();
+    console.log("completeTx:", completeTx);
+    const evaluateTx = await this.mesh.evaluator?.evaluateTx(completeTx);
+    console.log("evaluateTx:", evaluateTx);
 
     return { tx: completeTx };
   };
 
   voteOnGovAction = async ({ datum, voteKind }: VoteOnGovActionArgs) => {
-    const { utxos, collateral } = await this.ensureWalletInfo();
+    const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
     const authTokenUtxo = await this.fetchCrowdfundUtxo();
     const drepId = this.getDrepId();
+
+    // Use datum from DB - handle both CrowdfundDatumTS and ProposedDatumTS
+    const datumAny = datum as any;
+    const stakeScript = datumAny.stake_script;
+    const shareToken = datumAny.share_token;
+    // funds_controlled in ProposedDatumTS, current_fundraised_amount in CrowdfundDatumTS
+    const fundsControlled = BigInt(datumAny.funds_controlled ?? datumAny.current_fundraised_amount);
+    const deadline = datumAny.deadline;
+
     const govActionId: GovernanceActionIdTS = {
       transaction: authTokenUtxo.input.txHash,
       proposal_procedure: 0,
     };
 
     const votedDatum = this.buildVotedDatum(
-      datum.stake_script,
-      datum.share_token,
-      BigInt(datum.funds_controlled),
+      stakeScript,
+      shareToken,
+      fundsControlled,
       govActionId,
-      datum.deadline,
+      deadline,
     );
 
-    const slot = this.getSlotAfterMinutes(5);
+    const slot = env.NEXT_PUBLIC_GOV_TESTNET
+      ? await this.getSlotAfterMinutesAsync(5)
+      : this.getSlotAfterMinutes(5);
 
     this.mesh.reset();
     const tx = await this.mesh
@@ -1301,10 +1709,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       )
       .voteScript(this.getStakeVoteCbor())
       .voteRedeemerValue("")
-      .changeAddress(this.ensureCrowdfundAddress())
+      .changeAddress(walletAddress)
       .selectUtxosFrom(utxos)
       .invalidHereafter(Number(slot))
       .complete();
+
+      const evaluateTx = await this.mesh.evaluator?.evaluateTx(tx);
+    console.log("evaluateTx:", evaluateTx);
+
 
     return { tx, govActionId };
   };
@@ -1322,15 +1734,23 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       BigInt(refundTotal),
     );
 
+    // Use datum from DB - handle both VotedDatumTS and CrowdfundDatumTS
+    const datumAny = datum as any;
+    const stakeScript = datumAny.stake_script;
+    const shareToken = datumAny.share_token;
+    const fundsControlled = BigInt(datumAny.funds_controlled ?? datumAny.current_fundraised_amount);
+
     const refundableDatum = this.buildRefundableDatum(
-      datum.stake_script,
-      datum.share_token,
-      BigInt(datum.funds_controlled),
+      stakeScript,
+      shareToken,
+      fundsControlled,
     );
 
     const drepId = this.getDrepId();
     const rewardAddress = this.getGovernanceRewardAddress();
-    const slot = this.getSlotAfterMinutes(10);
+    const slot = env.NEXT_PUBLIC_GOV_TESTNET
+      ? await this.getSlotAfterMinutesAsync(10)
+      : this.getSlotAfterMinutes(10);
 
     this.mesh.reset();
     const tx = await this.mesh
@@ -1378,14 +1798,21 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     if (withdrawAmount <= 0) {
       throw new Error("withdrawAmount must be greater than zero");
     }
-    if (withdrawAmount > datum.funds_controlled) {
+
+    const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
+    const authTokenUtxo = await this.fetchCrowdfundUtxo();
+
+    // Use datum from DB - handle both RefundableDatumTS and CrowdfundDatumTS
+    const datumAny = datum as any;
+    const stakeScript = datumAny.stake_script;
+    const shareToken = datumAny.share_token;
+    const fundsControlled = BigInt(datumAny.funds_controlled ?? datumAny.current_fundraised_amount);
+
+    if (BigInt(withdrawAmount) > fundsControlled) {
       throw new Error("withdrawAmount exceeds available refundable balance");
     }
 
     const withdrawBigInt = BigInt(withdrawAmount);
-
-    const { utxos, collateral, walletAddress } = await this.ensureWalletInfo();
-    const authTokenUtxo = await this.fetchCrowdfundUtxo();
 
     const newValue = adjustLovelace(
       authTokenUtxo.output.amount,
@@ -1393,12 +1820,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     );
 
     const updatedDatum = this.buildRefundableDatum(
-      datum.stake_script,
-      datum.share_token,
-      BigInt(datum.funds_controlled) - withdrawBigInt,
+      stakeScript,
+      shareToken,
+      fundsControlled - withdrawBigInt,
     );
 
-    const slot = this.getSlotAfterMinutes(5);
+    const slot = env.NEXT_PUBLIC_GOV_TESTNET
+      ? await this.getSlotAfterMinutesAsync(5)
+      : this.getSlotAfterMinutes(5);
 
     this.mesh.reset();
     const tx = await this.mesh
@@ -1412,14 +1841,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       .txInScript(this.getCrowdfundSpendCbor())
       .txInInlineDatumPresent()
       .txInRedeemerValue(
-        this.buildSpendRedeemer(
-          CrowdfundGovRedeemerTag.AfterCompleteContributorWithdrawal,
-        ),
+        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ContributorWithdrawal),
       )
       .mintPlutusScriptV3()
       .mint(
         (-withdrawBigInt).toString(),
-        datum.share_token || this.getShareTokenPolicyId(),
+        shareToken || this.getShareTokenPolicyId(),
         "",
       )
       .mintingScript(this.getShareTokenCbor())

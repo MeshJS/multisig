@@ -1,11 +1,10 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Settings } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CrowdfundFormData } from "../launch-wizard";
-import { LaunchExt } from "../../gov-extension/control/launch-ext";
+import { LaunchExt } from "../launch-ext";
 
 interface Step2ChoiceProps {
   formData: CrowdfundFormData;
@@ -65,18 +64,6 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Alert className="border-orange-500/50 bg-orange-500/10 dark:border-orange-500/30 dark:bg-orange-500/20">
-                <Settings className="h-5 w-5 text-orange-700 dark:text-orange-300" />
-                <AlertDescription>
-                  <p className="text-sm text-orange-700 dark:text-orange-300 mb-2">
-                    <strong>Governance Extension Enabled</strong>
-                  </p>
-                  <p className="text-sm text-orange-700 dark:text-orange-300">
-                    Your crowdfund will be able to participate in Cardano governance voting and actions.
-                  </p>
-                </AlertDescription>
-              </Alert>
-
               <LaunchExt
                 onGovDataUpdate={handleGovDataUpdate}
                 initialData={{
@@ -89,6 +76,8 @@ export function Step2Choice({ formData, updateFormData }: Step2ChoiceProps) {
                   fundraiseTarget: formData.fundraiseTarget,
                   minCharge: formData.minCharge,
                   allowOverSubscription: formData.allowOverSubscription,
+                  govActionMetadataUrl: formData.govActionMetadataUrl,
+                  govActionMetadataHash: formData.govActionMetadataHash,
                 }}
               />
             </div>

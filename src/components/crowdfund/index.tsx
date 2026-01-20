@@ -17,16 +17,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings } from "lucide-react";
+import { Calendar, Users, Coins, Target, Clock, Plus, X, Settings, Trash2 } from "lucide-react";
 import { CrowdfundDatumTS } from "./crowdfund";
 import { dateToFormatted } from "@/utils/strings";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { parseGovDatum } from "./UI/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function PageCrowdfund() {
   const { connected, wallet } = useWallet();
   const { user } = useUser();
+  const { toast } = useToast();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingDraft, setEditingDraft] = useState<any>(null);
   const [selectedCrowdfund, setSelectedCrowdfund] = useState<any>(null);
@@ -57,6 +59,27 @@ export default function PageCrowdfund() {
 
   const { data: allCrowdfunds } = api.crowdfund.getAllCrowdfunds.useQuery();
   const { data: publicCrowdfunds } = api.crowdfund.getPublicCrowdfunds.useQuery();
+
+  const deleteDraft = api.crowdfund.deleteCrowdfund.useMutation({
+    onSuccess: () => {
+      toast({ title: "Draft deleted successfully" });
+      refetch();
+      utils.crowdfund.getAllCrowdfunds.invalidate();
+    },
+    onError: (err) => {
+      toast({ 
+        title: "Failed to delete draft", 
+        description: err.message,
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const handleDeleteDraft = (crowdfund: any) => {
+    if (window.confirm(`Are you sure you want to delete the draft "${crowdfund.name}"?`)) {
+      deleteDraft.mutate({ id: crowdfund.id });
+    }
+  };
 
   // Fetch latest crowdfund data when modal opens
   const { data: latestCrowdfundData, refetch: refetchCrowdfundById } = api.crowdfund.getCrowdfundById.useQuery(
@@ -197,8 +220,8 @@ export default function PageCrowdfund() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {crowdfunds.map((fund: any) => (
                   <CrowdfundCard 
-                    key={fund.id} 
-                    crowdfund={fund} 
+                    key={fund.id}
+                    crowdfund={fund}
                     networkId={networkId}
                     isOwner={true}
                     onClick={() => handleCrowdfundClick(fund)}
@@ -206,6 +229,7 @@ export default function PageCrowdfund() {
                       setEditingDraft(crowdfund);
                       setShowCreateForm(true);
                     }}
+                    onDeleteDraft={handleDeleteDraft}
                   />
                 ))}
               </div>
@@ -336,13 +360,15 @@ function CrowdfundCard({
   networkId,
   isOwner, 
   onClick,
-  onEditDraft
+  onEditDraft,
+  onDeleteDraft
 }: { 
   crowdfund: any; 
   networkId: number;
   isOwner: boolean;
   onClick: () => void;
   onEditDraft?: (crowdfund: any) => void;
+  onDeleteDraft?: (crowdfund: any) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [contributions, setContributions] = useState<Array<{
@@ -373,6 +399,20 @@ function CrowdfundCard({
   let mockData: any = null;
   let progressPercentage = 0;
   
+  // Compute governance state label
+  const getGovStateLabel = (state: number | undefined | null): string | null => {
+    if (state === undefined || state === null || state === 0) return null;
+    const labels: Record<number, string> = {
+      1: "Registered",
+      2: "Proposed",
+      3: "Voted",
+      4: "Refundable",
+    };
+    return labels[state] || null;
+  };
+
+  const govStateLabel = govDetails ? getGovStateLabel(crowdfund.govState) : null;
+
   if (!isDraft && datum) {
     const secondsLeft = datum.deadline / 1000 - Math.floor(Date.now() / 1000);
     const daysLeft = Math.ceil(secondsLeft / (24 * 60 * 60)); // Convert seconds to days
@@ -383,12 +423,23 @@ function CrowdfundCard({
       ? uniqueContributors.toString() 
       : (datum.current_fundraised_amount > 0 ? "1+" : "0");
     
+    // Determine status - for governance crowdfunds that reached target, show gov state
+    const isTargetReached = datum.current_fundraised_amount >= datum.fundraise_target;
+    let status: string;
+    if (govDetails && isTargetReached && govStateLabel) {
+      status = govStateLabel;
+    } else if (daysLeft > 0) {
+      status = "active";
+    } else {
+      status = "expired";
+    }
+    
     mockData = {
       totalRaised: datum.current_fundraised_amount / 1000000,
       fundingGoal: datum.fundraise_target / 1000000,
       contributors: contributorCount,
       daysLeft: daysLeft,
-      status: daysLeft > 0 ? "active" : "expired" as const
+      status: status
     };
 
     progressPercentage = (mockData.totalRaised / mockData.fundingGoal) * 100;
@@ -606,12 +657,37 @@ function CrowdfundCard({
                   Owner
                 </Badge>
               )}
-              <Badge 
-                variant={isDraft ? "outline" : (mockData?.status === "active" ? "default" : "secondary")}
-                className="text-xs"
-              >
-                {isDraft ? "Draft" : mockData?.status}
-              </Badge>
+              {(() => {
+                const status = isDraft ? "Draft" : mockData?.status;
+                const isGovState = ["Registered", "Proposed", "Voted", "Refundable"].includes(status);
+                
+                // Determine variant and styling based on status
+                let variant: "outline" | "default" | "secondary" | "destructive" = "secondary";
+                let className = "text-xs";
+                
+                if (isDraft) {
+                  variant = "outline";
+                } else if (status === "active") {
+                  variant = "default";
+                } else if (isGovState) {
+                  variant = "outline";
+                  if (status === "Registered") {
+                    className = "text-xs bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border-amber-500/50";
+                  } else if (status === "Proposed") {
+                    className = "text-xs bg-purple-500/10 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 border-purple-500/50";
+                  } else if (status === "Voted") {
+                    className = "text-xs bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-300 border-green-500/50";
+                  } else if (status === "Refundable") {
+                    className = "text-xs bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-500/50";
+                  }
+                }
+                
+                return (
+                  <Badge variant={variant} className={className}>
+                    {status}
+                  </Badge>
+                );
+              })()}
               {govDetails && (
                 <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border-blue-500/50 dark:border-blue-500/30">
                   <Settings className="w-3 h-3 mr-1" />
@@ -708,16 +784,29 @@ function CrowdfundCard({
               {isExpanded ? "Hide Details" : "View Details"}
             </Button>
             {isDraft && onEditDraft ? (
-              <Button 
-                variant="default" 
-                size="sm" 
-                className="flex-1"
-                onClick={() => {
-                  onEditDraft(crowdfund);
-                }}
-              >
-                Edit Draft
-              </Button>
+              <>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => {
+                    onEditDraft(crowdfund);
+                  }}
+                >
+                  Edit Draft
+                </Button>
+                {onDeleteDraft && (
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => {
+                      onDeleteDraft(crowdfund);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </>
             ) : !isOwner && (
               <Button 
                 size="sm" 

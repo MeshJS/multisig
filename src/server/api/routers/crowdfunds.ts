@@ -52,6 +52,7 @@ export const crowdfundRouter = createTRPCRouter({
         refAddress: z.string().optional(), // Address where reference scripts are stored
         drepAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
         govActionAnchor: z.string().optional(), // JSON string containing { url: string, hash: string }
+        govActionId: z.string().optional(), // JSON string containing { txHash: string, index: number }
         govState: z.number().optional(), // Governance state: 0=Crowdfund, 1=RegisteredCerts, 2=Proposed, 3=Voted, 4=Refundable
       }),
     )

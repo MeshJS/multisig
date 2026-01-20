@@ -57,22 +57,41 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
   const [currentStep, setCurrentStep] = useState(1);
   const { toast } = useToast();
   const { user } = useUser();
+  const utils = api.useUtils();
   
   const saveDraft = api.crowdfund.createCrowdfund.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("[LaunchWizard] Draft saved:", data);
       toast({ title: "Draft saved successfully" });
+      // Invalidate queries to refresh the list
+      utils.crowdfund.getCrowdfundsByProposerKeyHash.invalidate();
+      utils.crowdfund.getAllCrowdfunds.invalidate();
     },
     onError: (err) => {
-      toast({ title: "Error saving draft", description: err.message });
+      console.error("[LaunchWizard] Error saving draft:", err);
+      toast({ 
+        title: "Error saving draft", 
+        description: err.message || "Unknown error occurred",
+        variant: "destructive"
+      });
     },
   });
 
   const updateDraft = api.crowdfund.updateCrowdfund.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("[LaunchWizard] Draft updated:", data);
       toast({ title: "Draft updated successfully" });
+      // Invalidate queries to refresh the list
+      utils.crowdfund.getCrowdfundsByProposerKeyHash.invalidate();
+      utils.crowdfund.getAllCrowdfunds.invalidate();
     },
     onError: (err) => {
-      toast({ title: "Error updating draft", description: err.message });
+      console.error("[LaunchWizard] Error updating draft:", err);
+      toast({ 
+        title: "Error updating draft", 
+        description: err.message || "Unknown error occurred",
+        variant: "destructive"
+      });
     },
   });
 
@@ -176,11 +195,44 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
   const isStep2Valid = () => {
     // Always validate governance fields
     // gov_action_period defaults to 6, so we don't need to validate it
-    return formData.delegate_pool_id &&
+    const basicFieldsValid = formData.delegate_pool_id &&
            formData.gov_action?.title &&
            formData.gov_action?.abstract &&
            formData.gov_action?.motivation &&
            formData.gov_action?.rationale;
+    
+    // For TreasuryWithdrawalsAction, validate beneficiaries
+    if (formData.gov_action?.type === 'treasury_withdrawals') {
+      const beneficiaries = formData.gov_action?.metadata?.beneficiaries;
+      const hasValidBeneficiary =
+        Array.isArray(beneficiaries) &&
+        beneficiaries.some((beneficiary) => {
+          const address = (beneficiary?.address || "").trim();
+          if (!address) return false;
+          try {
+            const decoded = deserializeAddress(address);
+            if (!decoded?.pubKeyHash && !decoded?.scriptHash) {
+              return false;
+            }
+          } catch (error) {
+            return false;
+          }
+
+          let amountLovelace = (beneficiary?.amount || "").trim();
+          if (!amountLovelace || amountLovelace === "0") {
+            const amountAda = (beneficiary?.amountAda || "").trim();
+            const adaValue = parseFloat(amountAda);
+            if (!isNaN(adaValue) && adaValue > 0) {
+              amountLovelace = Math.round(adaValue * 1_000_000).toString();
+            }
+          }
+          return !!amountLovelace && amountLovelace !== "0";
+        });
+
+      return basicFieldsValid && hasValidBeneficiary;
+    }
+    
+    return basicFieldsValid;
   };
 
   const canProceed = () => {
@@ -197,6 +249,8 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
   };
 
   const handleSaveDraft = () => {
+    console.log("[LaunchWizard] handleSaveDraft called", { formData, user });
+    
     if (!formData.name) {
       toast({
         title: "Cannot save draft",
@@ -242,12 +296,12 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       stake_script: "", // Will be set when deployed
       share_token: "", // Will be set when deployed
       crowdfund_address: "", // Will be set when deployed
-      fundraise_target: parseInt(formData.fundraiseTarget) * 1000000, // Convert ADA to lovelace
+      fundraise_target: (parseInt(formData.fundraiseTarget) || 100000) * 1000000, // Convert ADA to lovelace
       current_fundraised_amount: 0, // Always 0 for drafts
-      allow_over_subscription: formData.allowOverSubscription,
+      allow_over_subscription: formData.allowOverSubscription ?? true,
       deadline: formData.deadline ? new Date(formData.deadline).getTime() : 0, // Convert to timestamp
-      expiry_buffer: parseInt(formData.expiryBuffer),
-      min_charge: parseInt(formData.minCharge) * 1000000, // Convert ADA to lovelace
+      expiry_buffer: parseInt(formData.expiryBuffer) || 86400,
+      min_charge: (parseInt(formData.minCharge) || 0) * 1000000, // Convert ADA to lovelace
     };
 
     draftPayload.datum = JSON.stringify(crowdfundDatum);
@@ -260,14 +314,22 @@ export function LaunchWizard(props: LaunchWizardProps = {}) {
       stake_register_deposit: formData.stake_register_deposit,
       drep_register_deposit: formData.drep_register_deposit,
       gov_deposit: formData.gov_deposit,
+      govActionMetadataUrl: formData.govActionMetadataUrl,
+      govActionMetadataHash: formData.govActionMetadataHash,
+      fundraiseTarget: formData.fundraiseTarget,
+      minCharge: formData.minCharge,
+      allowOverSubscription: formData.allowOverSubscription,
     });
 
     // govAddress will be undefined for drafts - will be set when actually created
 
     // Use update mutation if editing existing draft, otherwise create new
+    console.log("[LaunchWizard] Saving draft payload:", draftPayload);
     if (draftData && draftData.id) {
+      console.log("[LaunchWizard] Updating existing draft:", draftData.id);
       updateDraft.mutate({ id: draftData.id, ...draftPayload });
     } else {
+      console.log("[LaunchWizard] Creating new draft");
       saveDraft.mutate(draftPayload);
     }
   };

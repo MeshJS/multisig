@@ -273,7 +273,6 @@ function ConnectWalletContent({
             );
           } catch (error) {
             // Continue if asset metadata fetch fails
->>>>>>> origin/main
           }
         }
       } catch {

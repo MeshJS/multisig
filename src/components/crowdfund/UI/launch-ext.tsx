@@ -19,6 +19,10 @@ import { generateGovActionMetadata, uploadMetadata, hashMetadata, generateBodyHa
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@meshsdk/react";
 import useUser from "@/hooks/useUser";
+import { deserializeAddress, resolveScriptHash, applyParamsToScript, serializePlutusScript } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/core";
+import blueprint from "../../gov-crowdfundV2/plutus.json";
+import { stringToHex } from "@meshsdk/common";
 
 // Static deposit values (in lovelace)
 const STAKE_REGISTER_DEPOSIT = 2000000; // 2 ADA
@@ -41,6 +45,11 @@ interface GovAction {
     uri: string;
   }>;
   metadata?: Record<string, any>;
+}
+
+interface TreasuryBeneficiaryInput {
+  address: string;
+  amountAda: string;
 }
 
 interface GovData {
@@ -110,7 +119,7 @@ const ALL_GOVERNANCE_ACTION_TYPES = [
     description: 'Withdrawals from the treasury',
     icon: DollarSign,
     color: 'text-yellow-500 dark:text-yellow-400',
-    disabled: true // Not yet supported
+    disabled: false // Now supported
   },
   { 
     value: 'info', 
@@ -122,7 +131,7 @@ const ALL_GOVERNANCE_ACTION_TYPES = [
   }
 ];
 
-// Only show supported governance action types (currently only 'info')
+// Only show supported governance action types (currently 'info' and 'treasury_withdrawals')
 const GOVERNANCE_ACTION_TYPES = ALL_GOVERNANCE_ACTION_TYPES.filter(
   type => !type.disabled
 );
@@ -166,19 +175,29 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     }
   }, [govData.fundraiseTarget]);
 
-  // Ensure governance action type is always 'info' (only supported type)
+  // Initialize treasury withdrawals metadata defaults
   useEffect(() => {
-    if (govData.gov_action?.type && govData.gov_action.type !== 'info') {
-      console.warn(
-        `[LaunchExt] Only 'info' governance action type is supported. ` +
-        `Received '${govData.gov_action.type}', forcing to 'info'.`
-      );
-      setGovData(prev => ({
-        ...prev,
-        gov_action: { ...prev.gov_action!, type: 'info' }
-      }));
+    if (govData.gov_action?.type === 'treasury_withdrawals') {
+      const hasWithdrawals = !!govData.gov_action.metadata?.withdrawals;
+      const hasBeneficiaries = Array.isArray(govData.gov_action.metadata?.beneficiaries);
+      if (!hasWithdrawals || !hasBeneficiaries) {
+        setGovData(prev => ({
+          ...prev,
+          gov_action: {
+            ...prev.gov_action!,
+            metadata: {
+              ...prev.gov_action?.metadata,
+              withdrawals: prev.gov_action?.metadata?.withdrawals || {},
+              beneficiaries: hasBeneficiaries
+                ? prev.gov_action?.metadata?.beneficiaries
+                : [{ address: "", amountAda: "", amount: "" }],
+            },
+          },
+        }));
+      }
     }
   }, [govData.gov_action?.type]);
+
 
   useEffect(() => {
     onGovDataUpdate(govData);
@@ -192,6 +211,63 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     setGovData(prev => ({
       ...prev,
       gov_action: { ...prev.gov_action!, ...updates }
+    }));
+  };
+
+  const isValidPaymentAddress = (address: string) => {
+    if (!address) return false;
+    try {
+      const decoded = deserializeAddress(address);
+      return !!decoded?.pubKeyHash || !!decoded?.scriptHash;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const syncTreasuryBeneficiaries = (beneficiaries: TreasuryBeneficiaryInput[]) => {
+    const normalized = beneficiaries.map((beneficiary) => {
+      const amountAda = beneficiary.amountAda.trim();
+      const adaValue = amountAda ? parseFloat(amountAda) : NaN;
+      const amountLovelace =
+        !isNaN(adaValue) && adaValue > 0
+          ? Math.round(adaValue * 1_000_000).toString()
+          : "";
+      return {
+        address: beneficiary.address.trim(),
+        amountAda: beneficiary.amountAda,
+        amount: amountLovelace,
+      };
+    });
+
+    const { totalLovelace, withdrawals } = normalized.reduce(
+      (acc, beneficiary) => {
+        if (
+          beneficiary.address &&
+          beneficiary.amount &&
+          isValidPaymentAddress(beneficiary.address)
+        ) {
+          acc.totalLovelace += Number(beneficiary.amount);
+          acc.withdrawals[beneficiary.address] = beneficiary.amount;
+        }
+        return acc;
+      },
+      { totalLovelace: 0, withdrawals: {} as Record<string, string> },
+    );
+
+    setGovData(prev => ({
+      ...prev,
+      gov_action: {
+        ...prev.gov_action!,
+        metadata: {
+          ...prev.gov_action?.metadata,
+          beneficiaries: normalized,
+          withdrawalAmount: totalLovelace ? totalLovelace.toString() : "",
+          withdrawalAmountAda: totalLovelace
+            ? (totalLovelace / 1_000_000).toString()
+            : "",
+          withdrawals,
+        },
+      },
     }));
   };
 
@@ -381,22 +457,32 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
           <Alert className="bg-blue-50 border-blue-200">
             <InfoIcon className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800">
-              <strong>Currently only Info Action (NicePoll) is supported.</strong> Other governance action types 
-              will be added step by step. The validator is parameterized with NicePoll (VGovernanceAction constructor 6).
+              <strong>Supported governance action types:</strong> Info Action (NicePoll, constructor 6) and Treasury Withdrawals (constructor 2). 
+              Other governance action types will be added step by step. The validator is parameterized with the selected governance action type.
             </AlertDescription>
           </Alert>
 
           <Select
             value={govData.gov_action?.type || 'info'}
             onValueChange={(value) => {
-              // Force 'info' type - other types not yet supported
-              if (value !== 'info') {
-                updateGovAction({ type: 'info' });
-              } else {
-                updateGovAction({ type: value as any });
+              const selectedType = value as 'info' | 'treasury_withdrawals';
+              // Only allow supported types
+              if (selectedType === 'info' || selectedType === 'treasury_withdrawals') {
+                updateGovAction({ 
+                  type: selectedType,
+                  // Initialize metadata.withdrawals for treasury_withdrawals
+                  ...(selectedType === 'treasury_withdrawals' && {
+                    metadata: {
+                      ...govData.gov_action?.metadata,
+                      withdrawals: govData.gov_action?.metadata?.withdrawals || {},
+                      beneficiaries: govData.gov_action?.metadata?.beneficiaries || [
+                        { address: "", amountAda: "", amount: "" },
+                      ],
+                    }
+                  })
+                });
               }
             }}
-            disabled={true}
           >
             <SelectTrigger className="bg-muted">
               <SelectValue placeholder="Select governance action type" />
@@ -610,13 +696,109 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
               </div>
             )}
 
-            {govData.gov_action?.type === 'treasury_withdrawals' && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> For treasury withdrawals, specify the withdrawal amount and recipient address in the metadata section.
-                </p>
-              </div>
-            )}
+            {govData.gov_action?.type === 'treasury_withdrawals' && (() => {
+              const rawBeneficiaries = Array.isArray(govData.gov_action?.metadata?.beneficiaries)
+                ? govData.gov_action?.metadata?.beneficiaries
+                : [];
+              const beneficiaries = rawBeneficiaries.length > 0
+                ? rawBeneficiaries
+                : [{ address: "", amountAda: "", amount: "" }];
+              const beneficiaryInputs = beneficiaries.map((beneficiary: any) => ({
+                address: beneficiary.address || "",
+                amountAda:
+                  beneficiary.amountAda ||
+                  (beneficiary.amount
+                    ? (Number(beneficiary.amount) / 1_000_000).toString()
+                    : ""),
+              })) as TreasuryBeneficiaryInput[];
+              const totalLovelace = beneficiaries.reduce((sum: number, beneficiary: any) => {
+                const amount = beneficiary.amount
+                  ? Number(beneficiary.amount)
+                  : beneficiary.amountAda
+                    ? Math.round(Number(beneficiary.amountAda) * 1_000_000)
+                    : 0;
+                return sum + (Number.isFinite(amount) ? amount : 0);
+              }, 0);
+
+              return (
+                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Beneficiaries (Payment Addresses) *
+                    </Label>
+                    <div className="space-y-3">
+                      {beneficiaryInputs.map((beneficiary, index) => {
+                        const addressError =
+                          beneficiary.address && !isValidPaymentAddress(beneficiary.address)
+                            ? "Enter a valid payment address (addr/addr_test)."
+                            : "";
+
+                        return (
+                          <div key={`${beneficiary.address}-${index}`} className="space-y-2">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_160px_110px]">
+                              <Input
+                                value={beneficiary.address}
+                                onChange={(e) => {
+                                  const next = [...beneficiaryInputs];
+                                  next[index] = { ...next[index], address: e.target.value };
+                                  syncTreasuryBeneficiaries(next);
+                                }}
+                                placeholder="addr1..."
+                              />
+                              <Input
+                                type="number"
+                                value={beneficiary.amountAda}
+                                onChange={(e) => {
+                                  const next = [...beneficiaryInputs];
+                                  next[index] = { ...next[index], amountAda: e.target.value };
+                                  syncTreasuryBeneficiaries(next);
+                                }}
+                                placeholder="1.0"
+                                min="0"
+                                step="0.1"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  const next = beneficiaryInputs.filter((_, i) => i !== index);
+                                  syncTreasuryBeneficiaries(
+                                    next.length > 0 ? next : [{ address: "", amountAda: "" }],
+                                  );
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            {addressError && (
+                              <p className="text-xs text-red-600">{addressError}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          syncTreasuryBeneficiaries([
+                            ...beneficiaryInputs,
+                            { address: "", amountAda: "" },
+                          ]);
+                        }}
+                      >
+                        Add beneficiary
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Total withdrawal amount:{" "}
+                    <span className="font-semibold text-foreground">
+                      {(totalLovelace / 1_000_000).toLocaleString()} ADA
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 

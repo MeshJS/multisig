@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { MeshCrowdfundContract } from '../components/crowdfund/base-crowdfund/offchain';
+import { MeshCrowdfundContract } from '../components/crowdfund/offchain';
 import { MeshTxBuilder, UTxO } from '@meshsdk/core';
 import { CrowdfundDatumTS } from '../components/crowdfund/crowdfund';
 import { mockSlotConfig, createSlotConfigFromTime, testSanchoSlotResolver } from './testUtils';

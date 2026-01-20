@@ -51,6 +51,16 @@ export interface RefundableDatumTS {
   funds_controlled: number;
 }
 
+export interface TreasuryBeneficiary {
+  address: string;  // Bech32 payment address (addr/addr_test)
+  amount: string;   // Lovelace as string
+}
+
+export interface TreasuryWithdrawalsActionData {
+  beneficiaries: TreasuryBeneficiary[];
+  policyHash?: string;  // Optional guardrails script hash
+}
+
 export type CrowdfundDatum = ConStr0<
   [
     ByteString, // stake_script

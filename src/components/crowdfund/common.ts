@@ -35,6 +35,7 @@ export class MeshTxInitiator {
   constructor({
     mesh,
     fetcher,
+    evaluator,
     wallet,
     networkId = 0,
     stakeCredential = "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575",
@@ -43,6 +44,9 @@ export class MeshTxInitiator {
     this.mesh = mesh;
     if (fetcher) {
       this.fetcher = fetcher;
+    }
+    if (evaluator) {
+      this.evaluator = evaluator;
     }
     if (wallet) {
       this.wallet = wallet;

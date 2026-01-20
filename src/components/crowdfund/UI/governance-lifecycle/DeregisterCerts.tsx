@@ -2,57 +2,43 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, AlertTriangle, Unlock } from "lucide-react";
+import { Loader2, Unlock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../../offchain";
 import { VotedDatumTS } from "../../crowdfund";
+import { api } from "@/utils/api";
+import { useCollateralToast } from "../useCollateralToast";
+import { getProvider } from "@/utils/get-provider";
 
 interface DeregisterCertsProps {
   contract: MeshCrowdfundContract;
   datum: VotedDatumTS;
+  crowdfundId?: string;
   onSuccess?: () => void;
 }
 
 export function DeregisterCerts({
   contract,
   datum,
+  crowdfundId,
   onSuccess,
 }: DeregisterCertsProps) {
   const { toast } = useToast();
   const { wallet } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
-  const validate = async () => {
-    const errors: string[] = [];
+  const { handleError: handleCollateralError, ensureCollateral } = useCollateralToast({
+    proposerKeyHash: "",
+    governance: contract.governance,
+  });
 
-    // Check if wallet is connected
-    if (!wallet) {
-      errors.push("Wallet not connected");
-    }
+  const updateCrowdfund = api.crowdfund.updateCrowdfund.useMutation();
 
-    // Check if deadline has passed
-    const currentTime = Math.floor(Date.now() / 1000);
-    if (datum.deadline > currentTime) {
-      errors.push(
-        `Deadline has not passed yet. Deadline: ${new Date(datum.deadline * 1000).toLocaleString()}`,
-      );
-    }
-
-    // Check reference scripts
-    const refSpendUtxo = contract.getRefSpendUtxo();
-    if (!refSpendUtxo) {
-      errors.push(
-        "Spend reference script not set. Make sure the crowdfund has spendRefScript set in the database.",
-      );
-    }
-
-    setValidationErrors(errors);
-    return errors.length === 0;
-  };
+  const refundTotal =
+    contract.governance.stakeRegisterDeposit +
+    contract.governance.drepRegisterDeposit +
+    contract.governance.govDeposit;
 
   const handleDeregisterCerts = async () => {
     if (!wallet) {
@@ -64,134 +50,86 @@ export function DeregisterCerts({
       return;
     }
 
+    // Check deadline
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (datum.deadline > currentTime) {
+      toast({
+        title: "Too early",
+        description: `Deadline: ${new Date(datum.deadline * 1000).toLocaleString()}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Validate before proceeding
-      const isValid = await validate();
-      if (!isValid) {
-        toast({
-          title: "Validation failed",
-          description: validationErrors.join(", "),
-          variant: "destructive",
-        });
+      // Check for collateral before attempting transaction
+      const hasCollateral = await ensureCollateral();
+      if (!hasCollateral) {
         setIsLoading(false);
-        return;
+        return; // Toast already shown by ensureCollateral
       }
 
       const { tx } = await contract.deregisterGovAction({ datum });
-      const signedTx = await wallet.signTx(tx);
-      const txHash = await wallet.submitTx(signedTx);
+      const networkId = await wallet.getNetworkId();
+      const provider = getProvider(networkId);
+      const signedTx = await wallet.signTx(tx, true);
+      const txHash = await provider.submitTx(signedTx);
+
+      if (crowdfundId) {
+        try {
+          await updateCrowdfund.mutateAsync({
+            id: crowdfundId,
+            govState: 4,
+          });
+        } catch (error) {
+          console.error("[DeregisterCerts] Failed to update govState:", error);
+        }
+      }
 
       toast({
-        title: "Certificates deregistered successfully",
-        description: `Transaction submitted: ${txHash.substring(0, 16)}...`,
+        title: "Certificates deregistered",
+        description: `Refund: ${(refundTotal / 1_000_000).toFixed(0)} ADA`,
       });
 
       onSuccess?.();
     } catch (error: any) {
       console.error("[DeregisterCerts] Error:", error);
-      toast({
-        title: "Failed to deregister certificates",
-        description: error.message || "An error occurred",
-        variant: "destructive",
-      });
+      if (!handleCollateralError(error)) {
+        toast({
+          title: "Failed to deregister",
+          description: error.message || "An error occurred",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const refundTotal =
-    contract.governance.stakeRegisterDeposit +
-    contract.governance.drepRegisterDeposit +
-    contract.governance.govDeposit;
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Unlock className="h-5 w-5 text-orange-500" />
-          Step 4: Deregister Certificates
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert>
-          <AlertDescription>
-            This step deregisters stake and DRep certificates and refunds all
-            deposits after the governance period ends. The crowdfund will
-            transition from <strong>Voted</strong> to <strong>Refundable</strong>{" "}
-            state.
-          </AlertDescription>
-        </Alert>
-
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Stake Registration Deposit Refund:</span>
-            <span>
-              {(contract.governance.stakeRegisterDeposit / 1_000_000).toFixed(
-                2,
-              )}{" "}
-              ADA
-            </span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>DRep Registration Deposit Refund:</span>
-            <span>
-              {(contract.governance.drepRegisterDeposit / 1_000_000).toFixed(
-                2,
-              )}{" "}
-              ADA
-            </span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Governance Deposit Refund:</span>
-            <span>
-              {(contract.governance.govDeposit / 1_000_000).toFixed(2)} ADA
-            </span>
-          </div>
-          <div className="flex justify-between text-sm font-semibold border-t pt-2">
-            <span>Total Refund:</span>
-            <span>{(refundTotal / 1_000_000).toFixed(2)} ADA</span>
-          </div>
-        </div>
-
-        <div className="text-sm text-muted-foreground">
-          <p>
-            Deadline: {new Date(datum.deadline * 1000).toLocaleString()}
-          </p>
-        </div>
-
-        {validationErrors.length > 0 && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <ul className="list-disc list-inside space-y-1">
-                {validationErrors.map((error, idx) => (
-                  <li key={idx}>{error}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
+    <div className="space-y-3">
+      <div className="text-xs text-muted-foreground text-center">
+        Refund: {(refundTotal / 1_000_000).toFixed(0)} ADA
+      </div>
+      <Button 
+        onClick={handleDeregisterCerts} 
+        disabled={isLoading} 
+        className="w-full"
+        variant="default"
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Deregistering...
+          </>
+        ) : (
+          <>
+            <Unlock className="mr-2 h-4 w-4" />
+            Complete & Refund
+          </>
         )}
-
-        <Button
-          onClick={handleDeregisterCerts}
-          disabled={isLoading}
-          className="w-full"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Deregistering Certificates...
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Deregister Certificates
-            </>
-          )}
-        </Button>
-      </CardContent>
-    </Card>
+      </Button>
+    </div>
   );
 }
-

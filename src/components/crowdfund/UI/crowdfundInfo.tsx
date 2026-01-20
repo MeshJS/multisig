@@ -36,7 +36,8 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { CrowdfundDatumTS } from "../crowdfund";
-import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, MeshTxBuilder, deserializeAddress } from "@meshsdk/core";
+import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, MeshTxBuilder, deserializeAddress, resolveScriptHashDRepId } from "@meshsdk/core";
+import { scriptHashToRewardAddress } from "@meshsdk/core-cst";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";
@@ -88,6 +89,9 @@ export function CrowdfundInfo({
   const [showDRepSetup, setShowDRepSetup] = useState(false);
   const [drepAnchor, setDrepAnchor] = useState<{ url: string; hash: string } | null>(null);
   const [govActionAnchor, setGovActionAnchor] = useState<{ url: string; hash: string } | null>(null);
+  const [stakeKeyState, setStakeKeyState] = useState<{ registered: boolean; poolId?: string } | null>(null);
+  const [drepState, setDrepState] = useState<{ registered: boolean; deposit?: string } | null>(null);
+  const [loadingOnChainState, setLoadingOnChainState] = useState(false);
   const { toast } = useToast();
 
   // Add the updateCrowdfund mutation hook at component level
@@ -160,6 +164,71 @@ export function CrowdfundInfo({
       setGovActionAnchor(loadedAnchor);
     }
   }, [crowdfund.govActionAnchor, govExtension?.govActionMetadataUrl, govExtension?.govActionMetadataHash]);
+
+  // Fetch on-chain stake key and DRep registration state
+  useEffect(() => {
+    const fetchOnChainState = async () => {
+      if (!crowdfund.datum) return;
+      
+      try {
+        const parsedDatum: CrowdfundDatumTS = JSON.parse(crowdfund.datum);
+        if (!parsedDatum.stake_script) return;
+        
+        setLoadingOnChainState(true);
+        const provider = getProvider(networkId);
+        
+        // Get reward address from stake script hash
+        const rewardAddress = scriptHashToRewardAddress(parsedDatum.stake_script, networkId);
+        
+        // Fetch stake key state
+        try {
+          const accountInfo = await provider.fetchAccountInfo(rewardAddress);
+          setStakeKeyState({
+            registered: accountInfo.active || false,
+            poolId: accountInfo.poolId || undefined,
+          });
+        } catch (err) {
+          // Account not found means not registered
+          setStakeKeyState({ registered: false });
+        }
+        
+        // Fetch DRep state
+        const drepId = resolveScriptHashDRepId(parsedDatum.stake_script);
+        try {
+          // Use Koios API to check DRep status (POST endpoint)
+          const response = await fetch(`/api/koios/drep_info`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ _drep_ids: [drepId] }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data.length > 0) {
+              setDrepState({
+                registered: true,
+                deposit: data[0].deposit,
+              });
+            } else {
+              setDrepState({ registered: false });
+            }
+          } else {
+            setDrepState({ registered: false });
+          }
+        } catch (err) {
+          console.error("Failed to fetch DRep info:", err);
+          setDrepState({ registered: false });
+        }
+      } catch (err) {
+        console.error("Failed to fetch on-chain state:", err);
+      } finally {
+        setLoadingOnChainState(false);
+      }
+    };
+    
+    fetchOnChainState();
+  }, [crowdfund.datum, networkId]);
   
   // Check if this is a draft crowdfund (no authTokenId)
   const isDraft = !crowdfund.authTokenId;
@@ -880,7 +949,7 @@ export function CrowdfundInfo({
 
       const meshTxBuilder = new MeshTxBuilder({
         fetcher: provider,
-        //evaluator: provider,
+        evaluator: provider,
         submitter: provider,
         verbose: true,
       });
@@ -896,6 +965,38 @@ export function CrowdfundInfo({
         ? JSON.parse(crowdfund.stakeRefScript)
         : undefined;
       
+      // Extract govActionType and treasuryBeneficiaries from gov_action
+      let govActionType: 'InfoAction' | 'TreasuryWithdrawalsAction' = 'InfoAction';
+      let treasuryBeneficiaries: Array<{ address: string; amount: string }> | undefined = undefined;
+      
+      if (govExtension.gov_action && typeof govExtension.gov_action === 'object') {
+        const govAction = govExtension.gov_action as any;
+        if (govAction.kind === 'TreasuryWithdrawalsAction' || govAction.type === 'treasury_withdrawals') {
+          govActionType = 'TreasuryWithdrawalsAction';
+          // Extract beneficiaries from the action
+          if (govAction.action?.withdrawals) {
+            const withdrawals = govAction.action.withdrawals;
+            treasuryBeneficiaries = Object.entries(withdrawals).map(([address, amount]) => ({
+              address,
+              amount: String(amount),
+            }));
+          } else if (govAction.metadata?.beneficiaries) {
+            // Fallback to metadata beneficiaries if withdrawals not in action
+            const beneficiaries = Array.isArray(govAction.metadata.beneficiaries)
+              ? govAction.metadata.beneficiaries
+              : [];
+            treasuryBeneficiaries = beneficiaries
+              .filter((b: any) => b.address && b.amount)
+              .map((b: any) => ({
+                address: b.address,
+                amount: String(b.amount),
+              }));
+          }
+        } else if (govAction.kind === 'InfoAction' || govAction.type === 'info' || !govAction.kind) {
+          govActionType = 'InfoAction';
+        }
+      }
+      
       console.log("[createContract] Stake reference script from DB:", {
         raw: crowdfund.stakeRefScript,
         parsed: stakeRefScript,
@@ -906,7 +1007,7 @@ export function CrowdfundInfo({
         {
           mesh: meshTxBuilder,
           fetcher: provider,
-          //evaluator: provider,
+          evaluator: provider,
           wallet: wallet,
           networkId: network,
         },
@@ -917,6 +1018,8 @@ export function CrowdfundInfo({
           spendRefScript,
           stakeRefScript,
           refAddress: env.NEXT_PUBLIC_REF_ADDR,
+          govActionType,
+          treasuryBeneficiaries,
         },
       );
       contract.crowdfundAddress = crowdfund.address;
@@ -971,6 +1074,7 @@ export function CrowdfundInfo({
 
       const meshTxBuilder = new MeshTxBuilder({
         fetcher: provider,
+        evaluator: provider,
         submitter: provider,
         verbose: true,
       });
@@ -982,6 +1086,38 @@ export function CrowdfundInfo({
         throw new Error("Governance extension data not found");
       }
       const governanceConfig = mapGovExtensionToConfig(govExtension);
+
+      // Extract govActionType and treasuryBeneficiaries from gov_action
+      let govActionType: 'InfoAction' | 'TreasuryWithdrawalsAction' = 'InfoAction';
+      let treasuryBeneficiaries: Array<{ address: string; amount: string }> | undefined = undefined;
+      
+      if (govExtension.gov_action && typeof govExtension.gov_action === 'object') {
+        const govAction = govExtension.gov_action as any;
+        if (govAction.kind === 'TreasuryWithdrawalsAction' || govAction.type === 'treasury_withdrawals') {
+          govActionType = 'TreasuryWithdrawalsAction';
+          // Extract beneficiaries from the action
+          if (govAction.action?.withdrawals) {
+            const withdrawals = govAction.action.withdrawals;
+            treasuryBeneficiaries = Object.entries(withdrawals).map(([address, amount]) => ({
+              address,
+              amount: String(amount),
+            }));
+          } else if (govAction.metadata?.beneficiaries) {
+            // Fallback to metadata beneficiaries if withdrawals not in action
+            const beneficiaries = Array.isArray(govAction.metadata.beneficiaries)
+              ? govAction.metadata.beneficiaries
+              : [];
+            treasuryBeneficiaries = beneficiaries
+              .filter((b: any) => b.address && b.amount)
+              .map((b: any) => ({
+                address: b.address,
+                amount: String(b.amount),
+              }));
+          }
+        } else if (govAction.kind === 'InfoAction' || govAction.type === 'info' || !govAction.kind) {
+          govActionType = 'InfoAction';
+        }
+      }
 
       // Parse reference scripts if available
       let spendRefScript: { txHash: string; outputIndex: number } | undefined = undefined;
@@ -1013,7 +1149,7 @@ export function CrowdfundInfo({
         {
           mesh: meshTxBuilder,
           fetcher: provider,
-          //evaluator: provider,
+          evaluator: provider,
           wallet: wallet,
           networkId: network,
         },
@@ -1024,6 +1160,8 @@ export function CrowdfundInfo({
           spendRefScript,
           stakeRefScript,
           refAddress: env.NEXT_PUBLIC_REF_ADDR,
+          govActionType,
+          treasuryBeneficiaries,
         },
       );
 
@@ -1139,8 +1277,27 @@ export function CrowdfundInfo({
   };
 
   const getStatusBadge = () => {
+    // For governance crowdfunds that reached funding, show governance state
+    if (hasGovExtension && isSuccessful) {
+      const govState = crowdfund.govState;
+      if (govState && govState > 0) {
+        const stateConfig: Record<number, { label: string; className: string }> = {
+          1: { label: "Registered", className: "bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 border-amber-500/50" },
+          2: { label: "Proposed", className: "bg-purple-500/10 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 border-purple-500/50" },
+          3: { label: "Voted", className: "bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-300 border-green-500/50" },
+          4: { label: "Refundable", className: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-500/50" },
+        };
+        const config = stateConfig[govState];
+        if (config) {
+          return <Badge variant="outline" className={config.className}>{config.label}</Badge>;
+        }
+      }
+      // Funded but no governance progress yet
+      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">Funded</Badge>;
+    }
+    
     if (isSuccessful) {
-      return <Badge className="bg-green-100 text-green-800">Funded</Badge>;
+      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">Funded</Badge>;
     }
     if (isExpired) {
       return <Badge variant="destructive">Expired</Badge>;
@@ -1188,7 +1345,9 @@ export function CrowdfundInfo({
               currentRaised={currentRaisedLovelace}
               crowdfundId={crowdfund.id}
               stakeRefScript={crowdfund.stakeRefScript}
+              govActionId={crowdfund.govActionId}
               govState={crowdfund.govState}
+              networkId={networkId}
               anchorGovAction={govActionAnchor || (govExtension?.govActionMetadataUrl && govExtension?.govActionMetadataHash ? {
                 url: govExtension.govActionMetadataUrl,
                 hash: govExtension.govActionMetadataHash,
@@ -1377,6 +1536,59 @@ export function CrowdfundInfo({
                 {crowdfund.address || "Not deployed"}
               </div>
             </div>
+            {datum.stake_script && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Stake Key (Reward Address)</span>
+                    {loadingOnChainState ? (
+                      <Badge variant="outline" className="text-xs">Loading...</Badge>
+                    ) : stakeKeyState ? (
+                      stakeKeyState.registered ? (
+                        <Badge variant="default" className="text-xs bg-green-500">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Registered
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          Not Registered
+                        </Badge>
+                      )
+                    ) : null}
+                  </div>
+                  <div className="text-xs font-mono bg-muted p-2 rounded mt-1 break-all">
+                    {scriptHashToRewardAddress(datum.stake_script, networkId)}
+                  </div>
+                  {stakeKeyState?.poolId && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Delegated to: {stakeKeyState.poolId.slice(0, 20)}...
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">DRep ID</span>
+                    {loadingOnChainState ? (
+                      <Badge variant="outline" className="text-xs">Loading...</Badge>
+                    ) : drepState ? (
+                      drepState.registered ? (
+                        <Badge variant="default" className="text-xs bg-green-500">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Registered
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          Not Registered
+                        </Badge>
+                      )
+                    ) : null}
+                  </div>
+                  <div className="text-xs font-mono bg-muted p-2 rounded mt-1 break-all">
+                    {resolveScriptHashDRepId(datum.stake_script)}
+                  </div>
+                </div>
+              </>
+            )}
             <div>
               <span className="text-sm text-muted-foreground">Proposer Key Hash</span>
               <div className="text-xs font-mono bg-muted p-2 rounded mt-1 break-all">
@@ -1541,6 +1753,30 @@ export function CrowdfundInfo({
                           <span className="text-xs font-medium text-muted-foreground block mb-1">Governance Deposit</span>
                           <p className="text-sm font-semibold">{(Number(govExtension.gov_deposit) / 1000000).toLocaleString()} ADA</p>
                         </div>
+                      )}
+                      {govAction?.type === 'treasury_withdrawals' && (
+                        (() => {
+                          const beneficiaries = Array.isArray(govAction?.metadata?.beneficiaries)
+                            ? govAction.metadata.beneficiaries
+                            : [];
+                          const withdrawals = beneficiaries.length
+                            ? beneficiaries.reduce((acc: Record<string, string>, beneficiary: any) => {
+                                if (beneficiary?.address && beneficiary?.amount) {
+                                  acc[beneficiary.address] = beneficiary.amount;
+                                }
+                                return acc;
+                              }, {})
+                            : govAction?.metadata?.withdrawals || {};
+                          const totalAmount = Object.values(withdrawals).reduce((sum: number, amount: any) => {
+                            return sum + Number(amount || 0);
+                          }, 0);
+                          return totalAmount > 0 ? (
+                            <div className="p-3 bg-muted rounded-lg">
+                              <span className="text-xs font-medium text-muted-foreground block mb-1">Withdrawal Amount</span>
+                              <p className="text-sm font-semibold">{(totalAmount / 1000000).toLocaleString()} ADA</p>
+                            </div>
+                          ) : null;
+                        })()
                       )}
                     </div>
                   </div>

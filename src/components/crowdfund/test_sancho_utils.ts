@@ -37,8 +37,8 @@ async function fetchSanchoSlotConfig(): Promise<SlotConfig | null> {
       return cachedSanchoConfig;
     }
 
-    // Use configurable API URL or default to Sancho Koios
-    const apiUrl = process.env.NEXT_PUBLIC_SANCHO_API_URL || 'https://sancho.koios.rest/api/v1/genesis';
+    // Use local API proxy to avoid CORS issues
+    const apiUrl = '/api/koios/genesis';
     
     // Add timeout and better error handling
     const controller = new AbortController();

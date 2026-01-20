@@ -7,6 +7,7 @@ import PinataImgDragAndDrop from "@/components/common/PinataImgDragAndDrop";
 import { getDRepMetadata } from "@/components/pages/wallet/governance/drep/drepMetadata";
 import { hashDrepAnchor } from "@meshsdk/core";
 import type { Wallet } from "@/types/wallet";
+import { useToast } from "@/hooks/use-toast";
 
 interface DRepSetupFormProps {
   appWallet: Wallet;
@@ -24,6 +25,7 @@ export default function DRepSetupForm({
   onAnchorCreated,
   loading = false,
 }: DRepSetupFormProps) {
+  const { toast } = useToast();
   const [formState, setFormState] = useState({
     givenName: "",
     bio: "",
@@ -73,8 +75,8 @@ export default function DRepSetupForm({
 
   // Create DRep anchor using Pinata (with Vercel Blob fallback)
   const createAnchor = async (): Promise<{ anchorUrl: string; anchorHash: string }> => {
-    if (!appWallet) {
-      throw new Error("Wallet not connected");
+    if (!appWallet || !appWallet.address) {
+      throw new Error("Wallet not connected. Please connect your wallet first.");
     }
 
     setIsCreatingAnchor(true);
@@ -148,9 +150,13 @@ export default function DRepSetupForm({
     try {
       const { anchorUrl, anchorHash } = await createAnchor();
       onAnchorCreated(anchorUrl, anchorHash);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create DRep anchor:", error);
-      // You might want to show a toast or error message here
+      toast({
+        title: "Failed to create DRep anchor",
+        description: error.message || "An error occurred while creating the anchor.",
+        variant: "destructive",
+      });
     }
   };
 
