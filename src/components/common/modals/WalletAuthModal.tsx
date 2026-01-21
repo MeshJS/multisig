@@ -3,6 +3,9 @@ import { useWallet } from "@meshsdk/react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import useUTXOS from "@/hooks/useUTXOS";
+import { useSiteStore } from "@/lib/zustand/site";
+import { deserializeAddress, pubKeyAddress, scriptAddress, serializeAddressObj } from "@meshsdk/core";
 
 interface WalletAuthModalProps {
   address: string; // display label; actual signing address is derived from wallet.getUsedAddresses()
@@ -14,12 +17,35 @@ interface WalletAuthModalProps {
 
 export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuthorize = false }: WalletAuthModalProps) {
   const { wallet, connected } = useWallet();
+  const network = useSiteStore((state) => state.network);
+  const netId = (network === 1 ? 1 : 0) as 0 | 1;
+  const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS();
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [hasAutoAuthorized, setHasAutoAuthorized] = useState(false);
 
+  const signingWallet =
+    isUtxosEnabled && utxosWallet?.cardano
+      ? utxosWallet.cardano
+      : (wallet && connected ? wallet : null);
+
+  const normalizePaymentAddress = useCallback((maybeHexOrBech: string): string => {
+    if (maybeHexOrBech.startsWith("addr1") || maybeHexOrBech.startsWith("addr_test1")) {
+      return maybeHexOrBech;
+    }
+    const d = deserializeAddress(maybeHexOrBech);
+    const stakeCredential = d.stakeCredentialHash || d.stakeScriptCredentialHash || "";
+    const rebuilt =
+      d.pubKeyHash
+        ? pubKeyAddress(d.pubKeyHash, stakeCredential, !!d.stakeScriptCredentialHash)
+        : d.scriptHash
+          ? scriptAddress(d.scriptHash, stakeCredential, !!d.stakeScriptCredentialHash)
+          : null;
+    return rebuilt ? serializeAddressObj(rebuilt, netId) : maybeHexOrBech;
+  }, [netId]);
+
   const handleAuthorize = useCallback(async () => {
-    if (!wallet || !connected) {
+    if (!signingWallet) {
       toast({
         title: "No wallet connected",
         description: "Please connect your wallet before authorizing.",
@@ -30,22 +56,34 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
     setSubmitting(true);
     try {
       // Resolve the payment address the wallet uses
-      // Try used addresses first, fall back to unused addresses if needed
+      // Prefer change address (most stable), then fall back to used/unused.
       let signingAddress: string | undefined;
       try {
-        const usedAddresses = await wallet.getUsedAddresses();
-        signingAddress = usedAddresses[0];
+        if (typeof (signingWallet as any).getChangeAddress === "function") {
+          signingAddress = await (signingWallet as any).getChangeAddress();
+        }
       } catch (error) {
         if (error instanceof Error && error.message.includes("account changed")) {
           throw error;
         }
-        // If getUsedAddresses fails for other reasons, try unused addresses
+      }
+
+      // Fall back to used addresses
+      try {
+        if (!signingAddress) {
+        const usedAddresses = await signingWallet.getUsedAddresses();
+        signingAddress = usedAddresses[0];
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("account changed")) {
+          throw error;
+        }
       }
       
       // Fall back to unused addresses if no used addresses found
       if (!signingAddress) {
         try {
-          const unusedAddresses = await wallet.getUnusedAddresses();
+          const unusedAddresses = await signingWallet.getUnusedAddresses();
           signingAddress = unusedAddresses[0];
         } catch (error) {
           if (error instanceof Error && error.message.includes("account changed")) {
@@ -57,6 +95,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
       if (!signingAddress) {
         throw new Error("No addresses found for wallet");
       }
+      signingAddress = normalizePaymentAddress(signingAddress);
 
       // 1) Get nonce from existing endpoint
       const nonceRes = await fetch(`/api/v1/getNonce?address=${encodeURIComponent(signingAddress)}`);
@@ -68,14 +107,14 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
       const nonce: string = nonceJson.nonce;
 
       // 2) Sign nonce with wallet (Mesh signData)
-      if (typeof wallet.signData !== "function") {
+      if (typeof (signingWallet as any).signData !== "function") {
         throw new Error("Wallet does not support signData");
       }
 
       let signed: { signature: string; key: string } | undefined;
       try {
         // Mirror the working Swagger token flow: signData(nonce, address)
-        signed = (await wallet.signData(
+        signed = (await (signingWallet as any).signData(
           nonce,
           signingAddress,
         )) as { signature: string; key: string };
@@ -132,11 +171,11 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
     } finally {
       setSubmitting(false);
     }
-  }, [wallet, connected, toast, onAuthorized, onClose]);
+  }, [signingWallet, toast, onAuthorized, onClose, normalizePaymentAddress]);
 
   // Auto-authorize when modal opens if autoAuthorize is true (only once)
   useEffect(() => {
-    if (open && autoAuthorize && !hasAutoAuthorized && wallet && connected && !submitting) {
+    if (open && autoAuthorize && !hasAutoAuthorized && signingWallet && !submitting) {
       // Small delay to ensure modal is fully rendered before triggering wallet prompt
       const timeoutId = setTimeout(() => {
         setHasAutoAuthorized(true);
@@ -145,7 +184,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
       
       return () => clearTimeout(timeoutId);
     }
-  }, [open, autoAuthorize, hasAutoAuthorized, wallet, connected, submitting, handleAuthorize]);
+  }, [open, autoAuthorize, hasAutoAuthorized, signingWallet, submitting, handleAuthorize]);
 
   // Reset auto-authorize flag when modal closes
   useEffect(() => {

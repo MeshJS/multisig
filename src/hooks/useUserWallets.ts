@@ -7,22 +7,26 @@ import { DbWalletWithLegacy } from "@/types/wallet";
 export default function useUserWallets() {
   const network = useSiteStore((state) => state.network);
   const userAddress = useUserStore((state) => state.userAddress);
+  const address = userAddress ?? "";
   
   // Check wallet session authorization before enabling queries
   const { data: walletSession } = api.auth.getWalletSession.useQuery(
-    { address: userAddress ?? "" },
+    { address },
     {
-      enabled: !!userAddress && userAddress.length > 0,
+      enabled: address.length > 0,
       refetchOnWindowFocus: false,
     },
   );
   const isAuthorized = walletSession?.authorized ?? false;
+  const sessionWallets = walletSession?.wallets ?? [];
+  // If there's no wallet-session constraint, public read queries can run without authorization
+  const canQueryPublicWalletData = sessionWallets.length === 0 || isAuthorized;
   
   const { data: wallets, isLoading } = api.wallet.getUserWallets.useQuery(
-    { address: userAddress! },
+    { address },
     {
       // Only enable query when user is authorized (prevents 403 errors)
-      enabled: userAddress !== undefined && isAuthorized,
+      enabled: address.length > 0 && canQueryPublicWalletData,
       staleTime: 1 * 60 * 1000, // 1 minute (user/wallet data)
       gcTime: 5 * 60 * 1000, // 5 minutes
       retry: (failureCount, error) => {

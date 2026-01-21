@@ -3,7 +3,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useUTXOSStore } from "@/lib/zustand/utxos";
 import { env } from "@/env";
 import { BlockfrostProvider } from "@meshsdk/provider";
-import { Web3Wallet, type EnableWeb3WalletOptions } from "@meshsdk/web3-sdk";
+import { Web3Wallet, type EnableWeb3WalletOptions } from "@utxos/sdk";
 import { useToast } from "./use-toast";
 
 interface UseUTXOSReturn {

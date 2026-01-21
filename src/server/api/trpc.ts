@@ -21,6 +21,24 @@ import {
   type WalletSessionPayload,
 } from "@/lib/auth/walletSession";
 
+function isWalletAddressLike(value: string | null | undefined): value is string {
+  if (!value) return false;
+  // Bech32 payment/reward addresses
+  if (
+    value.startsWith("addr1") ||
+    value.startsWith("addr_test1") ||
+    value.startsWith("stake1") ||
+    value.startsWith("stake_test1")
+  ) {
+    return true;
+  }
+  // CIP-30 often uses hex-encoded bytes for addresses
+  if (/^[0-9a-f]+$/i.test(value) && value.length >= 40) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * 1. CONTEXT
  *
@@ -86,7 +104,10 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
   const primaryWallet = walletSession?.primaryWallet ?? (sessionWallets[0] ?? null);
 
   // Prefer NextAuth user id as sessionAddress when available, otherwise fall back to wallet-session
-  const sessionAddress = session?.user?.id ?? primaryWallet ?? null;
+  const sessionUserId = session?.user?.id ?? null;
+  const sessionAddress = isWalletAddressLike(sessionUserId)
+    ? sessionUserId
+    : (primaryWallet ?? null);
   const ip = getClientIP(req);
 
   return createInnerTRPCContext({

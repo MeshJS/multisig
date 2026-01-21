@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Web3Wallet } from "@meshsdk/web3-sdk";
+import type { Web3Wallet } from "@utxos/sdk";
 
 interface UTXOSState {
   // Wallet instance (not persisted - not serializable)

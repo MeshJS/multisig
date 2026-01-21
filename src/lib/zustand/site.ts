@@ -12,7 +12,8 @@ interface SiteState {
 }
 
 export const useSiteStore = create<SiteState>((set) => ({
-  network: 0,
+  // Default to mainnet (1). Testnet/preprod is 0.
+  network: 1,
   setNetwork: (network: number) => set({ network }),
   randomState: 0,
   setRandomState: () => set({ randomState: Math.random() }),

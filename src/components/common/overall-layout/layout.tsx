@@ -157,6 +157,7 @@ export default function RootLayout({
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
   const { generateNsec } = useNostrChat();
+  const { isEnabled: isUtxosEnabled } = useUTXOS();
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
@@ -170,6 +171,7 @@ export default function RootLayout({
   
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);
+  const anyWalletConnected = connected || isUtxosEnabled;
   // Use connectedWalletInstance if available, otherwise fall back to wallet
   const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0 
     ? connectedWalletInstance 
@@ -371,6 +373,8 @@ export default function RootLayout({
           window.location.reload();
         }
       }
+    }
+    
     initializeWallet();
   }, [connected, activeWallet, user, userAddress, address, createUser, generateNsec]);
 
@@ -379,7 +383,7 @@ export default function RootLayout({
   // Use userAddress from store (which we set from wallet) instead of address from hook
   const walletAddressForSession = userAddress || address;
   // Only check session once per wallet connection (prevent duplicate checks)
-  const shouldCheckSession = !!connected && !!walletAddressForSession && !checkingSession && !hasCheckedSession && walletAddressForSession.length > 0;
+  const shouldCheckSession = !!anyWalletConnected && !!walletAddressForSession && !checkingSession && !hasCheckedSession && walletAddressForSession.length > 0;
   const { data: walletSessionData, isLoading: isLoadingWalletSession, refetch: refetchWalletSession } = api.auth.getWalletSession.useQuery(
     { address: walletAddressForSession ?? "" },
     { 
@@ -394,7 +398,7 @@ export default function RootLayout({
     // Only check session once per wallet connection
     // Use userAddress from store (which we set from wallet) instead of address from hook
     const walletAddressForCheck = userAddress || address;
-    if (!connected || !walletAddressForCheck || walletAddressForCheck.length === 0 || showAuthModal || checkingSession || hasCheckedSession) {
+    if (!anyWalletConnected || !walletAddressForCheck || walletAddressForCheck.length === 0 || showAuthModal || checkingSession || hasCheckedSession) {
       return;
     }
 
@@ -415,16 +419,16 @@ export default function RootLayout({
         setShowAuthModal(true);
       }
     }
-  }, [connected, user, userAddress, address, walletSessionData, showAuthModal, checkingSession, isLoadingWalletSession, hasCheckedSession]);
+  }, [anyWalletConnected, user, userAddress, address, walletSessionData, showAuthModal, checkingSession, isLoadingWalletSession, hasCheckedSession]);
   
   // Reset hasCheckedSession when wallet disconnects or address changes
   useEffect(() => {
-    if (!connected) {
+    if (!anyWalletConnected) {
       setHasCheckedSession(false);
       setCheckingSession(false);
       setShowAuthModal(false);
     }
-  }, [connected]);
+  }, [anyWalletConnected]);
   
   // Reset hasCheckedSession when address changes (different wallet connected)
   const prevAddressRef = useRef<string | undefined>(undefined);
@@ -588,8 +592,10 @@ export default function RootLayout({
 
             {/* Right: Control buttons */}
             <div className="ml-auto flex items-center gap-2">
-              {!connected ? (
-                <ConnectWallet key="wallet-connector" />
+              {!isLoggedIn ? (
+                // On the homepage, the hero renders the wallet connector (avoid double-mount).
+                // On all other routes, show it in the header.
+                isHomepage ? null : <ConnectWallet key="wallet-connector" />
               ) : (
                 <>
                   {/* Desktop buttons */}

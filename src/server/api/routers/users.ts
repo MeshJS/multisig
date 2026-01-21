@@ -28,7 +28,8 @@ export const userRouter = createTRPCRouter({
       z.object({
         address: z.string().min(1, "address required"),
         stakeAddress: z.string().min(1, "stakeAddress required"),
-        drepKeyHash: z.string().min(1, "drepKeyHash required"),
+        // DRep key hash is optional (not all wallets / networks expose it)
+        drepKeyHash: z.string().optional().default(""),
         nostrKey: z.string().min(1, "nostrKey required"),
       }),
     )
