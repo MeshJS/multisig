@@ -4,6 +4,7 @@ import CardUI from "@/components/ui/card-content";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useWallet } from "@meshsdk/react";
+import useActiveWallet from "@/hooks/useActiveWallet";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 // import { api } from "@/utils/api";
@@ -16,6 +17,7 @@ import useTransaction from "@/hooks/useTransaction";
 
 export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
   const { wallet, connected } = useWallet();
+  const { isWalletReady } = useActiveWallet();
   // const [loading, setLoading] = useState<boolean>(false);
   const [recipientAddress, setRecipientAddress] = useState<string>("");
   // const ctx = api.useUtils();
@@ -45,7 +47,7 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
   //   });
 
   async function sendAll() {
-    if (!connected) throw new Error("Wallet not connected");
+    if (!isWalletReady) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
 

@@ -10,7 +10,7 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Database } from "lucide-react";
+import { Database, Sparkles, Info } from "lucide-react";
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -451,6 +451,24 @@ export function PageHomepage() {
               Connect your Cardano wallet to get started. Create your first multisig
               wallet in minutes.
             </p>
+
+            {!user && (
+              <div className="mt-6 mx-auto max-w-lg">
+                <div className="flex items-start gap-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
+                  <div className="mt-0.5 p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/50 flex-shrink-0">
+                    <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
+                      New to crypto?
+                    </p>
+                    <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+                      Try <span className="font-medium">UTXOS</span> - the easiest way to get started. No wallet extension required! Sign in with email or social login from the wallet dropdown.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               {user ? (

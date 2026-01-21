@@ -15,6 +15,8 @@ export const env = createEnv({
     PINATA_JWT: z.string(),
     GITHUB_TOKEN: z.string().optional(),
     JWT_SECRET: z.string().min(32),
+    BLOCKFROST_API_KEY_PREPROD: z.string().optional(),
+    BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -38,6 +40,8 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string(),
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
+    NEXT_PUBLIC_UTXOS_PROJECT_ID: z.string().optional(),
+    NEXT_PUBLIC_NETWORK_ID: z.string().default("0"),
   },
 
   /**
@@ -56,9 +60,13 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET,
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD:
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
+    NEXT_PUBLIC_UTXOS_PROJECT_ID: process.env.NEXT_PUBLIC_UTXOS_PROJECT_ID,
+    NEXT_PUBLIC_NETWORK_ID: process.env.NEXT_PUBLIC_NETWORK_ID ?? "0",
     PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
+    BLOCKFROST_API_KEY_PREPROD: process.env.BLOCKFROST_API_KEY_PREPROD,
+    BLOCKFROST_API_KEY_MAINNET: process.env.BLOCKFROST_API_KEY_MAINNET,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

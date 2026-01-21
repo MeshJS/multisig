@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { useWallet } from "@meshsdk/react";
 import { useRouter } from "next/router";
 import { useUserStore } from "@/lib/zustand/user";
+import useUTXOS from "@/hooks/useUTXOS";
 
 interface LogoutWrapperProps {
   mode: "button" | "menu-item";
@@ -9,12 +10,28 @@ interface LogoutWrapperProps {
 }
 
 export default function LogoutWrapper({ mode, onAction }: LogoutWrapperProps) {
-  const { disconnect } = useWallet();
+  const { connected, disconnect } = useWallet();
+  const { isEnabled: isUtxosEnabled, disable: disableUtxos } = useUTXOS();
   const router = useRouter();
   const setPastWallet = useUserStore((state) => state.setPastWallet);
+  const setPastUtxosEnabled = useUserStore((state) => state.setPastUtxosEnabled);
 
-  function handleLogout() {
-    disconnect();
+  async function handleLogout() {
+    // Disconnect regular wallet if connected
+    if (connected) {
+      disconnect();
+    }
+    
+    // Disconnect UTXOS wallet if enabled with cleanup
+    if (isUtxosEnabled) {
+      try {
+        await disableUtxos();
+        setPastUtxosEnabled(false);
+      } catch (error) {
+        console.error("[Logout] Error disabling UTXOS wallet:", error);
+      }
+    }
+    
     setPastWallet(undefined);
     router.push("/");
     setTimeout(() => {

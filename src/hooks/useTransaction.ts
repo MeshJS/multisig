@@ -2,16 +2,15 @@ import { api } from "@/utils/api";
 import { useToast } from "./use-toast";
 import { useCallback } from "react";
 import { useSiteStore } from "@/lib/zustand/site";
-import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "./useAppWallet";
 import { MeshTxBuilder } from "@meshsdk/core";
+import useActiveWallet from "./useActiveWallet";
 
 export default function useTransaction() {
   const ctx = api.useUtils();
   const { toast } = useToast();
-  const { wallet } = useWallet();
-  const userAddress = useUserStore((state) => state.userAddress);
+  const { activeWallet, userAddress } = useActiveWallet();
   const setLoading = useSiteStore((state) => state.setLoading);
   const { appWallet } = useAppWallet();
 
@@ -99,11 +98,11 @@ export default function useTransaction() {
 
       const unsignedTx = await data.txBuilder.complete();
 
-      console.log("unsignedTX:",unsignedTx)
+      if (!activeWallet) {
+        throw new Error("No wallet available for signing transaction");
+      }
 
-      const signedTx = await wallet.signTx(unsignedTx, true);
-
-      console.log("signedTX:",signedTx)
+      const signedTx = await activeWallet.signTx(unsignedTx, true);
       
 
       const signedAddresses = [];
@@ -130,7 +129,7 @@ export default function useTransaction() {
       }
 
       if (submitTx) {
-        txHash = await wallet.submitTx(signedTx);
+        txHash = await activeWallet.submitTx(signedTx);
       }
 
       await createTransaction({
@@ -151,7 +150,7 @@ export default function useTransaction() {
         duration: 10000,
       });
     },
-    [appWallet, userAddress, wallet, createTransaction],
+    [appWallet, userAddress, activeWallet, createTransaction, setLoading, toast],
   );
 
   return { newTransaction };

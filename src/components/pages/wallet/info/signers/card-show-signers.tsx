@@ -219,17 +219,15 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
                 </TooltipProvider>
               )}
             </div>
-
-            {/* Address */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-mono flex-1 min-w-0 break-all">
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm text-muted-foreground font-mono">
                 {getFirstAndLast(address)}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => copyToClipboard(address, `addr-${index}`)}
-                className="h-7 w-7 p-0 flex-shrink-0"
+                className="h-7 w-7 p-0"
               >
                 {copiedItems.has(`addr-${index}`) ? (
                   <Check className="w-3.5 h-3.5 text-green-600" />
@@ -338,6 +336,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
     updateWalletVerifiedList,
     isLoadingDiscordIds,
     currentUserDiscordId,
+    copiedItems,
   ]);
 
   return (

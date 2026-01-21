@@ -31,18 +31,22 @@ export function getWalletSessionFromReq(req: NextApiRequest): WalletSessionPaylo
 
 export function setWalletSessionCookie(res: NextApiResponse, payload: WalletSessionPayload) {
   const token = createWalletSessionToken(payload);
+  const secure = env.NODE_ENV === "production";
+  const secureAttr = secure ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `${WALLET_SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${
+    `${WALLET_SESSION_COOKIE}=${token}; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=${
       7 * 24 * 60 * 60
     }`,
   );
 }
 
 export function clearWalletSessionCookie(res: NextApiResponse) {
+  const secure = env.NODE_ENV === "production";
+  const secureAttr = secure ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `${WALLET_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+    `${WALLET_SESSION_COOKIE}=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`,
   );
 }
 

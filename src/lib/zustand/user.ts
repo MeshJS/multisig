@@ -23,6 +23,8 @@ interface UserState {
   setUser: (user: User | undefined) => void;
   pastWallet: string | undefined;
   setPastWallet: (pastWallet: string | undefined) => void;
+  pastUtxosEnabled: boolean;
+  setPastUtxosEnabled: (enabled: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -34,6 +36,11 @@ export const useUserStore = create<UserState>()(
       setUser: (user) => set({ user }),
       pastWallet: undefined,
       setPastWallet: (wallet) => set({ pastWallet: wallet }),
+      pastUtxosEnabled: false,
+      setPastUtxosEnabled: (enabled) => {
+        const newValue = typeof enabled === "function" ? enabled(get().pastUtxosEnabled) : enabled;
+        set({ pastUtxosEnabled: newValue });
+      },
       userAssets: [],
       setUserAssets: (assets) => set({ userAssets: assets }),
       userAssetMetadata: {},
@@ -49,6 +56,9 @@ export const useUserStore = create<UserState>()(
       name: "persisted-state",
       partialize: (state) => ({
         pastWallet: state.pastWallet,
+        pastUtxosEnabled: state.pastUtxosEnabled,
+        // Note: userAddress is NOT persisted because it should be set fresh when wallet connects
+        // This ensures the address is always current and matches the connected wallet
       }),
     },
   ),
