@@ -7,12 +7,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
-import { dateToFormatted, getFirstAndLast, lovelaceToAda } from "@/utils/strings";
-import CardUI from "@/components/common/card-content";
+import { dateToFormatted, getFirstAndLast, lovelaceToAda, truncateTokenSymbol } from "@/utils/strings";
+import CardUI from "@/components/ui/card-content";
 import { OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Transaction } from "@prisma/client";
@@ -26,9 +26,16 @@ import {
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ResponsiveTransactionsTable from "./responsive-transactions-table";
-import ScrollableTableWrapper from "./scrollable-table-wrapper";
+import type { LucideIcon } from "lucide-react";
+
+type CertificateInfo = {
+  type: string;
+  icon: LucideIcon;
+  label: string;
+  color: string;
+};
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -40,9 +47,6 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   );
 
   const walletTransactions = _walletTransactions[appWallet.id];
-  
-  // Toggle between responsive and scrollable table
-  const [useResponsiveTable, setUseResponsiveTable] = useState(false);
 
   if (walletTransactions === undefined)
     return <div className="text-center">No transactions yet</div>;
@@ -56,23 +60,34 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
           url={`address/${appWallet.address}`}
           className="ml-auto gap-1"
         >
-          <Button size="sm">
-            View All
-            <ArrowUpRight className="h-4 w-4" />
+          <Button size="sm" className="text-xs sm:text-sm">
+            <span className="hidden sm:inline">View All</span>
+            <span className="sm:hidden">All</span>
+            <ArrowUpRight className="h-3 w-3 sm:h-4 sm:w-4" />
           </Button>
         </LinkCardanoscan>
       }
-      cardClassName="col-span-3"
+      cardClassName="w-full"
     >
-      {/* Option 1: Using the ScrollableTableWrapper component with shadow indicators */}
-      <ScrollableTableWrapper>
-        <Table>
+      {/* Mobile & Tablet: Responsive card layout */}
+      <div className="lg:hidden">
+        <ResponsiveTransactionsTable
+                  appWallet={appWallet}
+          walletTransactions={walletTransactions}
+          dbTransactions={dbTransactions}
+                />
+      </div>
+
+      {/* Desktop: Compact table without horizontal scroll */}
+      <div className="hidden lg:block w-full overflow-visible">
+        <div className="w-full">
+          <Table className="w-full">
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[200px]">Transaction</TableHead>
-              <TableHead className="min-w-[150px]">Amount</TableHead>
-              <TableHead className="min-w-[200px]">Signers</TableHead>
-              <TableHead className="min-w-[50px]"></TableHead>
+              <TableHead className="w-[30%]">Transaction</TableHead>
+              <TableHead className="w-[25%]">Amount</TableHead>
+              <TableHead className="w-[35%]">Signers</TableHead>
+              <TableHead className="w-[10%]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -90,42 +105,8 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
               ))}
           </TableBody>
         </Table>
-      </ScrollableTableWrapper>
-
-      {/* Option 2: CSS-based force scroll (uncomment to use) */}
-      {/* <div className="force-scroll-container">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[200px]">Transaction</TableHead>
-              <TableHead className="min-w-[150px]">Amount</TableHead>
-              <TableHead className="min-w-[200px]">Signers</TableHead>
-              <TableHead className="min-w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {walletTransactions &&
-              walletTransactions.map((tx) => (
-                <TransactionRow
-                  key={tx.hash}
-                  transaction={tx}
-                  appWallet={appWallet}
-                  dbTransaction={
-                    dbTransactions &&
-                    dbTransactions.find((t: Transaction) => t.txHash === tx.hash)
-                  }
-                />
-              ))}
-          </TableBody>
-        </Table>
-      </div> */}
-
-      {/* Option 3: Responsive table without scroll (uncomment to use) */}
-      {/* <ResponsiveTransactionsTable
-        appWallet={appWallet}
-        walletTransactions={walletTransactions}
-        dbTransactions={dbTransactions}
-      /> */}
+        </div>
+      </div>
     </CardUI>
   );
 }
@@ -175,7 +156,7 @@ function TransactionRow({
     setTransactionOutputs(outputs);
   }, [transaction, walletAssetMetadata]);
 
-  const outputList = useMemo((): JSX.Element => {
+  const outputList = useMemo((): React.ReactElement => {
     return (
       <>
         {transaction.outputs.map((output: any, i) => {
@@ -184,8 +165,8 @@ function TransactionRow({
           );
           if (isSpend && output.address != appWallet.address) {
             return (
-              <div key={i} className="flex gap-2">
-                <div className="text-red-400">
+              <div key={i} className="flex flex-col gap-0.5">
+                <div className="text-red-400 font-medium text-sm truncate">
                   -
                   {output.amount.map((unit: any, j: number) => {
                     const assetMetadata = walletAssetMetadata[unit.unit];
@@ -197,8 +178,8 @@ function TransactionRow({
                       unit.unit === "lovelace"
                         ? "₳"
                         : assetMetadata?.ticker
-                          ? `$${assetMetadata?.ticker}`
-                          : unit.unit;
+                          ? `$${truncateTokenSymbol(assetMetadata.ticker)}`
+                          : truncateTokenSymbol(unit.unit);
                     return (
                       <span key={unit.unit}>
                         {j > 0 && ", "}
@@ -207,15 +188,14 @@ function TransactionRow({
                     );
                   })}
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {getFirstAndLast(output.address)}
+                <div className="text-xs text-muted-foreground font-mono truncate">
+                  to {getFirstAndLast(output.address)}
                 </div>
               </div>
             );
           } else if (!isSpend && output.address == appWallet.address) {
             return (
-              <div key={i} className="flex gap-2">
-                <div className="text-green-400">
+              <div key={i} className="text-green-400 font-medium text-sm truncate">
                   +
                   {output.amount.map((unit: any, j: number) => {
                     const assetMetadata = walletAssetMetadata[unit.unit];
@@ -228,7 +208,7 @@ function TransactionRow({
                         ? "₳"
                         : assetMetadata?.ticker
                           ? `$${assetMetadata?.ticker}`
-                          : unit.unit;
+                        : truncateTokenSymbol(unit.unit);
                     return (
                       <span key={unit.unit}>
                         {j > 0 && ", "}
@@ -236,70 +216,113 @@ function TransactionRow({
                       </span>
                     );
                   })}
-                </div>
               </div>
             );
           }
+          return null;
         })}
       </>
     );
   }, [transaction, appWallet, walletAssetMetadata]);
 
+  const certificatesInfo = useMemo((): CertificateInfo[] | null => {
+    if (!dbTransaction?.txJson) return null;
+    try {
+      const txJson = JSON.parse(dbTransaction.txJson);
+      if (!txJson.certificates || txJson.certificates.length === 0) return null;
+
+      return txJson.certificates.map((cert: any): CertificateInfo => {
+        const certType = cert.certType?.type;
+        if (certType === "DRepDeregistration") {
+          return { type: "DRepDeregistration", icon: UserMinus, label: "DRep Deregistration", color: "text-orange-500" };
+        } else if (certType === "DRepRegistration") {
+          return { type: "DRepRegistration", icon: UserPlus, label: "DRep Registration", color: "text-blue-500" };
+        } else if (certType === "DRepUpdate") {
+          return { type: "DRepUpdate", icon: UserCog, label: "DRep Update", color: "text-purple-500" };
+        }
+        return { type: "Certificate", icon: Award, label: "Certificate", color: "text-muted-foreground" };
+      });
+    } catch (e) {
+      return null;
+    }
+  }, [dbTransaction]);
+
   return (
-    <TableRow style={{ backgroundColor: "none" }}>
-      <TableCell>
-        <div className="flex gap-2 text-sm text-muted-foreground md:inline">
+    <TableRow style={{ backgroundColor: "none" }} className="hover:bg-muted/50">
+      <TableCell className="align-top py-4">
+        <div className="flex flex-col gap-1.5 min-w-0">
           <LinkCardanoscan
             url={`transaction/${transaction.hash}`}
-            className="flex w-44 flex-col gap-1"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
           >
-            <span className="flex gap-1">
-              <span>
-                {transaction.hash.substring(0, 6)}...
-                {transaction.hash.slice(-6)}
-              </span>
-              <ArrowUpRight className="h-3 w-3" />
+            <span className="font-mono text-xs truncate">
+              {transaction.hash.substring(0, 8)}...{transaction.hash.slice(-8)}
             </span>
-            <span className="text-xs">
-              {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
-            </span>
+            <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
           </LinkCardanoscan>
-        </div>
+          <span className="text-xs text-muted-foreground">
+            {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
+          </span>
         {dbTransaction && (
-          <div className="overflow-auto break-all font-medium">
+            <div className="text-sm font-medium break-words line-clamp-2">
             {dbTransaction.description}
           </div>
         )}
+        {certificatesInfo && certificatesInfo.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {certificatesInfo.map((certInfo: CertificateInfo, idx: number) => {
+              const Icon = certInfo.icon;
+              return (
+                <Badge key={idx} variant="outline" className={`text-xs ${certInfo.color} border-current/30`}>
+                  <Icon className="h-3 w-3 mr-1" />
+                  {certInfo.label}
+                </Badge>
+              );
+            })}
+          </div>
+        )}
+        </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top py-4">
+        <div className="space-y-1.5 min-w-0">
         {outputList}
         {dbTransaction && dbTransaction.description && (
           <>
             {dbTransaction.description == "DRep registration" && (
-              <div className="flex gap-2">
-                <div className="text-red-400">-{lovelaceToAda(500000000)}</div>
+                <div className="text-red-400 font-medium text-sm">
+                  -{lovelaceToAda(500000000)} ₳
               </div>
             )}
             {dbTransaction.description == "DRep retirement" && (
-              <div className="flex gap-2">
-                <div className="text-green-400">{lovelaceToAda(500000000)}</div>
+                <div className="text-green-400 font-medium text-sm">
+                  +{lovelaceToAda(500000000)} ₳
               </div>
             )}
           </>
         )}
+        </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top py-4">
+        <div className="flex flex-wrap gap-1.5 min-w-0">
         {dbTransaction &&
           dbTransaction.signedAddresses.map((address) => (
-            <Badge variant="outline" key={address}>
+              <Badge 
+                variant="outline" 
+                key={address}
+                className="text-xs font-normal"
+              >
               {appWallet.signersDescriptions.find(
                 (signer, index) =>
                   appWallet.signersAddresses[index] === address,
               ) || getFirstAndLast(address)}
             </Badge>
           ))}
+          {(!dbTransaction || dbTransaction.signedAddresses.length === 0) && (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top py-4">
         <RowAction transaction={transaction} appWallet={appWallet} />
       </TableCell>
     </TableRow>

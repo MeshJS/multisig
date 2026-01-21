@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { getProvider } from "@/utils/get-provider";
+import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 
 export default async function handler(
   req: NextApiRequest,
@@ -11,6 +12,10 @@ export default async function handler(
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
   
+  if (!applyRateLimit(req, res, { keySuffix: "v1/addTransaction" })) {
+    return;
+  }
+
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -18,6 +23,10 @@ export default async function handler(
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  if (!enforceBodySize(req, res, 200 * 1024)) {
+    return;
   }
 
   const authHeader = req.headers.authorization;
@@ -65,6 +74,11 @@ export default async function handler(
   const wallet = await db.wallet.findUnique({ where: { id: walletId } });
   const reqSigners = wallet?.numRequiredSigners;
   const type = wallet?.type;
+  const signers = wallet?.signersAddresses ?? [];
+  const isSigner = Array.isArray(signers) && signers.includes(address);
+  if (!wallet || !isSigner) {
+    return res.status(403).json({ error: "Not authorized for this wallet" });
+  }
   const network = address.includes("test") ? 0 : 1;
 
   try {

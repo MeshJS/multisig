@@ -1,13 +1,114 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
 import type { RawImportBodies } from "@/types/wallet";
 import { Prisma } from "@prisma/client";
 
+const requireSessionAddress = (ctx: any) => {
+  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (!address) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return address;
+};
+
+const assertWalletAccess = async (ctx: any, walletId: string, requester: string | string[]) => {
+  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+
+  const requesters = Array.isArray(requester) ? requester : [requester];
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const allRequesters = [...requesters, ...sessionWallets];
+
+  const isSigner = allRequesters.some((addr) =>
+    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr)
+  );
+  const isOwner = allRequesters.some((addr) => wallet.ownerAddress === addr || wallet.ownerAddress === "all");
+
+  if (!isSigner && !isOwner) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not a signer of this wallet" });
+  }
+
+  return wallet;
+};
+
+// Check if user is the owner of the wallet
+const assertNewWalletOwnerAccess = async (ctx: any, walletId: string, requester: string) => {
+  const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+  
+  // Check if requester is the owner (exact match)
+  const isOwner = wallet.ownerAddress === requester;
+  
+  // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
+  
+  if (!isOwner && !isOwnerViaSession) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can perform this action" });
+  }
+  return wallet;
+};
+
+// Check if user is a signer or owner (for read access)
+const assertNewWalletSignerAccess = async (ctx: any, walletId: string, requester: string) => {
+  const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+  
+  // Check if user is the owner (owners always have full access)
+  const isOwner = wallet.ownerAddress === requester;
+  
+  // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
+  
+  if (isOwner || isOwnerViaSession) {
+    return wallet;
+  }
+  
+  // Check if user is a signer
+  const isSigner =
+    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
+  
+  // Also check if any signer address is in sessionWallets
+  const isSignerViaSession = Array.isArray(wallet.signersAddresses) && 
+    wallet.signersAddresses.some((addr: string) => sessionWallets.includes(addr));
+  
+  if (!isSigner && !isSignerViaSession) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
+  }
+  return wallet;
+};
+
+// Check if user can read the wallet (signer or owner)
+const assertNewWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+  return assertNewWalletSignerAccess(ctx, walletId, requester);
+};
+
 export const walletRouter = createTRPCRouter({
+  // Read operations stay public but validate signer membership by address param
   getUserWallets: publicProcedure
     .input(z.object({ address: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : ctx.sessionAddress
+          ? [ctx.sessionAddress]
+          : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
+      if (addresses.length > 0 && !addresses.includes(input.address)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
+      // Query wallets where the user is a signer
       return ctx.db.wallet.findMany({
         where: {
           signersAddresses: {
@@ -20,6 +121,17 @@ export const walletRouter = createTRPCRouter({
   getWallet: publicProcedure
     .input(z.object({ address: z.string(), walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : ctx.sessionAddress
+          ? [ctx.sessionAddress]
+          : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
+      if (addresses.length > 0 && !addresses.includes(input.address)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
       return ctx.db.wallet.findUnique({
         where: {
           id: input.walletId,
@@ -30,23 +142,24 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  createWallet: publicProcedure
+  createWallet: protectedProcedure
     .input(
       z.object({
-        name: z.string(),
-        description: z.string(),
+        name: z.string().min(1).max(256),
+        description: z.string().max(2000),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string().nullable()).nullable(),
         signersDRepKeys: z.array(z.string().optional()).nullable(),
-        numRequiredSigners: z.number(),
-        scriptCbor: z.string(),
+        numRequiredSigners: z.number().min(1),
+        scriptCbor: z.string().min(1),
         stakeCredentialHash: z.string().optional(),
         type: z.enum(["atLeast", "all", "any"]),
         rawImportBodies: z.any().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      requireSessionAddress(ctx);
       try {
         const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
         
@@ -88,7 +201,7 @@ export const walletRouter = createTRPCRouter({
       }
     }),
 
-  updateWalletVerifiedList: publicProcedure
+  updateWalletVerifiedList: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -96,6 +209,8 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -106,29 +221,44 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateWallet: publicProcedure
+  updateWallet: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
-        name: z.string(),
-        description: z.string(),
+        name: z.string().min(1).max(256),
+        description: z.string().max(2000),
         isArchived: z.boolean(),
+        profileImageIpfsUrl: z.string().url().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
+      const updateData: {
+        name: string;
+        description: string;
+        isArchived: boolean;
+        profileImageIpfsUrl?: string | null;
+      } = {
+        name: input.name,
+        description: input.description,
+        isArchived: input.isArchived,
+      };
+      
+      // Only update profileImageIpfsUrl if it's explicitly provided
+      if (input.profileImageIpfsUrl !== undefined) {
+        updateData.profileImageIpfsUrl = input.profileImageIpfsUrl ?? null;
+      }
+      
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
         },
-        data: {
-          name: input.name,
-          description: input.description,
-          isArchived: input.isArchived,
-        },
+        data: updateData,
       });
     }),
 
-  updateWalletSignersDescriptions: publicProcedure
+  updateWalletSignersDescriptions: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -138,6 +268,8 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -153,6 +285,18 @@ export const walletRouter = createTRPCRouter({
   getUserNewWallets: publicProcedure
     .input(z.object({ address: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : ctx.sessionAddress
+          ? [ctx.sessionAddress]
+          : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
+      if (addresses.length > 0 && !addresses.includes(input.address)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
+      // Query new wallets owned by the user
       return ctx.db.newWallet.findMany({
         where: {
           ownerAddress: input.address,
@@ -163,6 +307,18 @@ export const walletRouter = createTRPCRouter({
   getUserNewWalletsNotOwner: publicProcedure
     .input(z.object({ address: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const addresses = sessionWallets.length
+        ? sessionWallets
+        : ctx.sessionAddress
+          ? [ctx.sessionAddress]
+          : [];
+      // If user has an active session, validate that the requested address is authorized
+      // Throw error if address doesn't match (security: prevent unauthorized access)
+      if (addresses.length > 0 && !addresses.includes(input.address)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
+      // Query new wallets where user is a signer but not the owner
       return ctx.db.newWallet.findMany({
         where: {
           signersAddresses: {
@@ -175,9 +331,11 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  getNewWallet: publicProcedure
+  getNewWallet: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertNewWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.newWallet.findUnique({
         where: {
           id: input.walletId,
@@ -185,11 +343,11 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  createNewWallet: publicProcedure
+  createNewWallet: protectedProcedure
     .input(
       z.object({
-        name: z.string(),
-        description: z.string(),
+        name: z.string().min(1).max(256),
+        description: z.string().max(2000),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
@@ -201,6 +359,17 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      
+      // Allow ownerAddress to be either the sessionAddress or any address in sessionWallets
+      const isAuthorized = 
+        sessionAddress === input.ownerAddress || 
+        sessionWallets.includes(input.ownerAddress);
+      
+      if (!isAuthorized) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Owner address mismatch" });
+      }
       const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.create({
         data: {
@@ -218,12 +387,12 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateNewWallet: publicProcedure
+  updateNewWallet: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
-        name: z.string(),
-        description: z.string(),
+        name: z.string().min(1).max(256),
+        description: z.string().max(2000),
         signersAddresses: z.array(z.string()),
         signersDescriptions: z.array(z.string()),
         signersStakeKeys: z.array(z.string()),
@@ -234,6 +403,9 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      // Only owners can update the entire wallet
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
       return ctx.db.newWallet.update({
         where: {
@@ -253,7 +425,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateNewWalletSigners: publicProcedure
+  updateNewWalletSigners: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -264,6 +436,9 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      // Only owners can update all signers
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -277,7 +452,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateNewWalletSignersDescriptions: publicProcedure
+  updateNewWalletSignersDescriptions: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -285,6 +460,35 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const wallet = await assertNewWalletSignerAccess(ctx, input.walletId, sessionAddress);
+      
+      // Check if user is the owner - owners can update all descriptions
+      const isOwner = wallet.ownerAddress === sessionAddress;
+      
+      if (!isOwner) {
+        // Non-owners can only update their own description
+        // Find the signer's index in the signersAddresses array
+        const signerIndex = wallet.signersAddresses.indexOf(sessionAddress);
+        if (signerIndex < 0) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You are not a signer of this wallet" });
+        }
+        
+        // Verify that only the signer's own description is being changed
+        // All other descriptions must remain the same
+        for (let i = 0; i < wallet.signersDescriptions.length; i++) {
+          if (i !== signerIndex && wallet.signersDescriptions[i] !== input.signersDescriptions[i]) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You can only update your own description" });
+          }
+        }
+        
+        // Verify the array lengths match
+        if (input.signersDescriptions.length !== wallet.signersDescriptions.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Descriptions array length mismatch" });
+        }
+      }
+      
+      // Owners can update all, signers can only update their own (validated above)
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -295,7 +499,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateNewWalletOwner: publicProcedure
+  updateNewWalletOwner: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -303,6 +507,8 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const requester = sessionAddress;
       // Look up user's stake address for stake-key membership check
       const user = await ctx.db.user.findUnique({ where: { address: input.ownerAddress } });
       const stakeAddr = user?.stakeAddress || "";
@@ -315,6 +521,7 @@ export const walletRouter = createTRPCRouter({
           OR: [
             { signersAddresses: { has: input.ownerAddress } },
             stakeAddr ? { signersStakeKeys: { has: stakeAddr } } : { id: "__never__" },
+            { signersAddresses: { has: requester } },
           ],
         },
         data: { ownerAddress: input.ownerAddress },
@@ -328,9 +535,12 @@ export const walletRouter = createTRPCRouter({
       return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
     }),
 
-  deleteNewWallet: publicProcedure
+  deleteNewWallet: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      // Only owners can delete the wallet
+      await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.newWallet.delete({
         where: {
           id: input.walletId,
@@ -338,7 +548,7 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  updateWalletClarityApiKey: publicProcedure
+  updateWalletClarityApiKey: protectedProcedure
     .input(
       z.object({
         walletId: z.string(),
@@ -346,6 +556,8 @@ export const walletRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -356,12 +568,14 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  setMigrationTarget: publicProcedure
+  setMigrationTarget: protectedProcedure
     .input(z.object({ 
       walletId: z.string(),
       migrationTargetWalletId: z.string()
     }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -372,9 +586,13 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  clearMigrationTarget: publicProcedure
+  clearMigrationTarget: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionAddress = requireSessionAddress(ctx);
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      await assertWalletAccess(ctx, input.walletId, requesters);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -385,12 +603,14 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  abortMigration: publicProcedure
+  abortMigration: protectedProcedure
     .input(z.object({ 
       walletId: z.string(),
       newWalletId: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.walletId, sessionAddress);
       // Try to delete the new wallet if it exists (it might be a NewWallet or Wallet)
       if (input.newWalletId) {
         try {
@@ -436,9 +656,13 @@ export const walletRouter = createTRPCRouter({
       });
     }),
 
-  archiveWallet: publicProcedure
+  archiveWallet: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionAddress = requireSessionAddress(ctx);
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      await assertWalletAccess(ctx, input.walletId, requesters);
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,

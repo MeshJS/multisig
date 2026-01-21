@@ -2,31 +2,45 @@ import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasi
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
-import useUserWallets from "@/hooks/useUserWallets";
 import { Badge } from "@/components/ui/badge";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import usePendingSignables from "@/hooks/usePendingSignables";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 
-export default function MenuWallet() {
+interface MenuWalletProps {
+  walletId?: string;
+  stakingEnabled?: boolean;
+}
+
+export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps) {
   const router = useRouter();
-  const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
-  const { wallets } = useUserWallets();
+  const effectiveWalletId = walletId || (router.query.wallet as string | undefined);
+  const baseUrl = `/wallets/${effectiveWalletId}/`;
   const { transactions } = usePendingTransactions();
   const { signables } = usePendingSignables();
   const { multisigWallet } = useMultisigWallet();
-  if (!wallets) return;
+
+  // Use fallback staking enabled if provided, otherwise check multisigWallet
+  const showStaking = stakingEnabled !== undefined
+    ? stakingEnabled
+    : (multisigWallet ? multisigWallet.stakingEnabled() : false);
+
   return (
-    <nav className="grid h-full items-start px-2 text-sm font-medium lg:px-4">
-      <div className="grid items-start">
+    <div className="grid items-start px-2 font-medium lg:px-4">
+      <div className="grid items-start space-y-1">
+        {/* Wallet Items */}
+        <div className="mt-1 pt-1 space-y-1">
+          <div className="px-3 py-1 text-xs font-medium text-muted-foreground">
+            Wallet
+          </div>
         <MenuLink
-          href={`${baseUrl}governance`}
+          href={`${baseUrl}`}
           className={
-            router.pathname == "/wallets/[wallet]/governance" ? "text-white" : ""
+            router.pathname == "/wallets/[wallet]" || router.pathname == "/wallets/[wallet]/info" ? "text-white" : ""
           }
         >
-          <Landmark className="h-5 w-5" />
-          <div className="flex items-center gap-2">Governance</div>
+          <Info className="h-5 w-5" />
+          Overview
         </MenuLink>
         <MenuLink
           href={`${baseUrl}transactions`}
@@ -37,14 +51,21 @@ export default function MenuWallet() {
           }
         >
           <List className="h-5 w-5" />
-          <div className="flex items-center gap-2">
-            Transactions
-            {transactions && transactions.length > 0 && (
-              <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
-                {transactions.length}
-              </Badge>
-            )}
-          </div>
+          <span className="flex-1">Transactions</span>
+          {transactions && transactions.length > 0 && (
+            <Badge className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+              {transactions.length}
+            </Badge>
+          )}
+        </MenuLink>
+        <MenuLink
+          href={`${baseUrl}governance`}
+          className={
+            router.pathname == "/wallets/[wallet]/governance" ? "text-white" : ""
+          }
+        >
+          <Landmark className="h-5 w-5" />
+          Governance
         </MenuLink>
         <MenuLink
           href={`${baseUrl}signing`}
@@ -53,33 +74,24 @@ export default function MenuWallet() {
           }
         >
           <UserRoundPen className="h-5 w-5" />
-          <div className="flex items-center gap-2">
-            Signing
-            {signables && signables.length > 0 && (
-              <Badge className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
-                {signables.length}
-              </Badge>
-            )}
-          </div>
+          <span className="flex-1">Signing</span>
+          {signables && signables.length > 0 && (
+            <Badge className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+              {signables.length}
+            </Badge>
+          )}
         </MenuLink>
-        {multisigWallet && multisigWallet.stakingEnabled() && <MenuLink
-          href={`${baseUrl}staking`}
-          className={
-            router.pathname == "/wallets/[wallet]/staking" ? "text-white" : ""
-          }
-        >
-          <ChartNoAxesColumnIncreasing className="h-6 w-6" />
-          Staking
-        </MenuLink>}
-        <MenuLink
-          href={`${baseUrl}dapps`}
-          className={
-            router.pathname == "/wallets/[wallet]/dapps" ? "text-white" : ""
-          }
-        >
-          <FileCode2 className="h-5 w-5" />
-          <div className="flex items-center gap-2">Dapps</div>
-        </MenuLink>
+        {showStaking && (
+          <MenuLink
+            href={`${baseUrl}staking`}
+            className={
+              router.pathname == "/wallets/[wallet]/staking" ? "text-white" : ""
+            }
+          >
+            <ChartNoAxesColumnIncreasing className="h-5 w-5" />
+            Staking
+          </MenuLink>
+        )}
         <MenuLink
           href={`${baseUrl}assets`}
           className={
@@ -87,7 +99,7 @@ export default function MenuWallet() {
           }
         >
           <Banknote className="h-5 w-5" />
-          <div className="flex items-center gap-2">Assets</div>
+          Assets
         </MenuLink>
         <MenuLink
           href={`${baseUrl}chat`}
@@ -96,23 +108,19 @@ export default function MenuWallet() {
           }
         >
           <ChatBubbleIcon className="h-5 w-5" />
-          <div className="flex items-center gap-2">Chat</div>
+          Chat
         </MenuLink>
         <MenuLink
-          href={`${baseUrl}info`}
+          href={`${baseUrl}dapps`}
           className={
-            router.pathname == "/wallets/[wallet]/info" ? "text-white" : ""
+            router.pathname == "/wallets/[wallet]/dapps" ? "text-white" : ""
           }
         >
-          <Info className="h-5 w-5" />
-          <div className="flex items-center gap-2">Info</div>
+          <FileCode2 className="h-5 w-5" />
+          Dapps
         </MenuLink>
+        </div>
       </div>
-
-      {/* <MenuLink href={`/`} className={"self-end"}>
-        <ArrowLeft className="h-4 w-4" />
-        <div className="flex items-center gap-2">Back</div>
-      </MenuLink> */}
-    </nav>
+    </div>
   );
 }

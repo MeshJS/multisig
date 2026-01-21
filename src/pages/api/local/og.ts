@@ -130,6 +130,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const proxiedImage = resolvedImage ? `/api/local/proxy?src=${encodeURIComponent(resolvedImage)}` : null;
     const proxiedFavicon = resolvedFavicon ? `/api/local/proxy?src=${encodeURIComponent(resolvedFavicon)}` : null;
 
+    // Set cache headers for OG metadata (1 hour cache)
+    res.setHeader(
+      "Cache-Control",
+      "public, s-maxage=3600, stale-while-revalidate=7200",
+    );
     return res.status(200).json({
       title: title ?? null,
       description: description ?? null,

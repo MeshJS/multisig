@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useProxyData, useProxyActions } from "@/lib/zustand/proxy";
+import { useProxyData, useProxyActions, useProxyStore } from "@/lib/zustand/proxy";
 import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 
@@ -26,7 +26,8 @@ export default function ProxyDataLoader() {
     { 
       enabled: !!appWallet?.id,
       refetchOnWindowFocus: false,
-      staleTime: 30000, // 30 seconds
+      staleTime: 2 * 60 * 1000, // 2 minutes (proxy data changes moderately)
+      gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
     }
   );
 
@@ -46,19 +47,27 @@ export default function ProxyDataLoader() {
       
       setProxies(appWallet.id, proxyData);
     }
-  }, [apiProxies, appWallet?.id, setProxies]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiProxies, appWallet?.id]); // setProxies is stable from Zustand, no need to include
 
-  // Fetch additional data for each proxy
+  // Fetch additional data for each proxy in parallel
   useEffect(() => {
     if (proxies.length > 0 && appWallet?.id && appWallet?.scriptCbor) {
       void (async () => {
-        for (const proxy of proxies) {
-          // Only fetch if we don't have recent data (older than 5 minutes)
-          const isStale = !proxy.lastUpdated || (Date.now() - proxy.lastUpdated) > 5 * 60 * 1000;
-          if (isStale) {
-            try {
-              await fetchProxyBalance(appWallet.id, proxy.id, proxy.proxyAddress, network.toString());
-              await fetchProxyDrepInfo(
+        // Filter proxies that need data refresh
+        const staleProxies = proxies.filter(
+          (proxy) => !proxy.lastUpdated || (Date.now() - proxy.lastUpdated) > 5 * 60 * 1000
+        );
+
+        if (staleProxies.length === 0) return;
+
+        // Fetch all proxy data in parallel
+        const fetchPromises = staleProxies.map(async (proxy) => {
+          try {
+            // Fetch balance and DRep info in parallel for each proxy
+            await Promise.all([
+              fetchProxyBalance(appWallet.id, proxy.id, proxy.proxyAddress, network.toString()),
+              fetchProxyDrepInfo(
                 appWallet.id,
                 proxy.id,
                 proxy.proxyAddress,
@@ -67,7 +76,17 @@ export default function ProxyDataLoader() {
                 network.toString(),
                 proxy.paramUtxo,
                 true,
-              );
+              ),
+            ]);
+
+            // Check if DRep is registered after fetching DRep info
+            // We need to wait a bit for the state to update, then check
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const currentProxies = useProxyStore.getState().proxies[appWallet.id] || [];
+            const currentProxy = currentProxies.find((p) => p.id === proxy.id);
+            
+            // Only fetch delegators if DRep is registered
+            if (currentProxy?.drepInfo !== null && currentProxy?.drepInfo !== undefined) {
               await fetchProxyDelegatorsInfo(
                 appWallet.id,
                 proxy.id,
@@ -78,14 +97,21 @@ export default function ProxyDataLoader() {
                 proxy.paramUtxo,
                 true,
               );
-            } catch (error) {
-              console.error(`Error fetching data for proxy ${proxy.id}:`, error);
+            } else {
+              console.log(`Skipping delegators fetch for proxy ${proxy.id} - DRep not registered`);
             }
+          } catch (error) {
+            console.error(`Error fetching data for proxy ${proxy.id}:`, error);
+            // Continue processing other proxies even if one fails
           }
-        }
+        });
+
+        // Execute all fetches in parallel
+        await Promise.all(fetchPromises);
       })();
     }
-  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network, fetchProxyBalance, fetchProxyDrepInfo, fetchProxyDelegatorsInfo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxies, appWallet?.id, appWallet?.scriptCbor, network]); // Zustand actions are stable, no need to include them
 
   // Clear proxy data when wallet changes
   useEffect(() => {

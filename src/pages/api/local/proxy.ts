@@ -65,7 +65,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    // Optimize cache headers for CDN/edge caching
+    res.setHeader("Cache-Control", "public, s-maxage=3600, max-age=3600, stale-while-revalidate=7200");
     const arrayBuffer = await response.arrayBuffer();
     res.send(Buffer.from(arrayBuffer));
   } catch {

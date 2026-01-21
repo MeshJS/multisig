@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { put } from "@vercel/blob";
+// import { put } from "@vercel/blob";
 import fs from "fs";
 import { env } from "@/env";
 import formidable, { Fields, Files, File } from "formidable";
@@ -69,13 +69,16 @@ export default async function handler(
         ? file.mimetype
         : "application/octet-stream";
 
-    const response = await put(storagePath, fileStream, {
-      access: "public",
-      token: env.BLOB_READ_WRITE_TOKEN,
-      contentType,
-    });
+    // Vercel blob storage is not currently configured
+    return res.status(501).json({ error: "Vercel blob storage not configured" });
+    
+    // const response = await put(storagePath, fileStream, {
+    //   access: "public",
+    //   token: env.BLOB_READ_WRITE_TOKEN,
+    //   contentType,
+    // });
 
-    return res.status(200).json({ url: response.url });
+    // return res.status(200).json({ url: response.url });
   } catch (err) {
     console.error("File upload error:", err);
     return res

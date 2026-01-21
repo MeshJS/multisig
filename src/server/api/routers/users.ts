@@ -1,10 +1,19 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
+
+const requireSessionAddress = (ctx: any) => {
+  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (!address) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return address;
+};
 
 export const userRouter = createTRPCRouter({
   getUserByAddress: publicProcedure
-    .input(z.object({ address: z.string() }))
+    .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
       return await ctx.db.user.findUnique({
         where: {
@@ -13,13 +22,14 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
+  // Keep createUser public for onboarding flows, but bind address when session exists
   createUser: publicProcedure
     .input(
       z.object({
-        address: z.string(),
-        stakeAddress: z.string(),
-        drepKeyHash: z.string(),
-        nostrKey: z.string(),
+        address: z.string().min(1, "address required"),
+        stakeAddress: z.string().min(1, "stakeAddress required"),
+        drepKeyHash: z.string().min(1, "drepKeyHash required"),
+        nostrKey: z.string().min(1, "nostrKey required"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -41,15 +51,16 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  updateUser: publicProcedure
+  updateUser: protectedProcedure
     .input(
       z.object({
-        address: z.string().optional(),
-        stakeAddress: z.string().optional(),
-        drepKeyHash: z.string().optional(),
+        address: z.string().min(1).optional(),
+        stakeAddress: z.string().min(1).optional(),
+        drepKeyHash: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
       const { address, stakeAddress, drepKeyHash } = input;
 
       if (!address && !stakeAddress && !drepKeyHash) {
@@ -70,6 +81,10 @@ export const userRouter = createTRPCRouter({
         throw new Error("User not found.");
       }
 
+      if (user.address !== sessionAddress) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not allowed to update this user" });
+      }
+
       const data: Record<string, string> = {};
       if (address && address !== user.address) data.address = address;
       if (stakeAddress && stakeAddress !== user.stakeAddress) data.stakeAddress = stakeAddress;
@@ -86,7 +101,7 @@ export const userRouter = createTRPCRouter({
     }),
 
   getNostrKeysByAddresses: publicProcedure
-    .input(z.object({ addresses: z.array(z.string()) }))
+    .input(z.object({ addresses: z.array(z.string().min(1)).min(1) }))
     .query(async ({ ctx, input }) => {
       return await ctx.db.user.findMany({
         where: {
@@ -101,9 +116,13 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  unlinkDiscord: publicProcedure
+  unlinkDiscord: protectedProcedure
     .input(z.object({ address: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      if (sessionAddress !== input.address) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
       return await ctx.db.user.update({
         where: {
           address: input.address,
@@ -117,7 +136,7 @@ export const userRouter = createTRPCRouter({
   getDiscordIds: publicProcedure
     .input(
       z.object({
-        addresses: z.array(z.string()),
+        addresses: z.array(z.string().min(1)).min(1),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -146,7 +165,7 @@ export const userRouter = createTRPCRouter({
     }),
 
   getUserDiscordId: publicProcedure
-    .input(z.object({ address: z.string() }))
+    .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
       const user = await ctx.db.user.findUnique({
         where: {

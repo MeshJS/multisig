@@ -22,7 +22,7 @@ export default function RowLabelInfo({
     <div className={`flex gap-4 ${allowOverflow ? 'flex-col sm:flex-row sm:items-start' : 'items-center'}`}>
       <div className={`flex max-w-full ${allowOverflow ? 'flex-col gap-1 flex-1 min-w-0' : 'items-center justify-center gap-2'}`}>
         {label && (
-          <div className={`text-sm font-medium leading-none ${allowOverflow ? '' : 'text-nowrap min-w-20'}`}>
+          <div className={`text-sm font-medium leading-none ${allowOverflow ? '' : 'text-nowrap min-w-20'} text-muted-foreground`}>
             {label}
           </div>
         )}
@@ -37,7 +37,7 @@ export default function RowLabelInfo({
                 duration: 5000,
               });
             }}
-            className={`m-0 h-auto max-w-full justify-start p-0 ${allowOverflow ? '' : 'truncate'}`}
+            className={`m-0 h-auto max-w-full justify-start p-0 ${allowOverflow ? '' : 'truncate'} text-left font-mono text-xs sm:text-sm`}
           >
             <Value
               value={value}

@@ -22,7 +22,7 @@ import {
   serializeNativeScript,
   serializeRewardAddress,
 } from "@meshsdk/core";
-import { getDRepIds } from "@meshsdk/core-cst";
+import { DRepID, getDRepIds } from "@meshsdk/core-cst";
 
 /**
  * Extracts the payment key hash from a Cardano address.
@@ -283,17 +283,14 @@ export class MultisigWallet {
   }
 
   getDRepScript(): string | undefined {
-    let dRepScript = this.buildScript(3);
-
-    if(!dRepScript) {
-      dRepScript = this.buildScript(0);
-    }
+    // Check if governance is enabled - if not, use payment script to match getDRepId105()
+    // This ensures consistency: both DRep ID and DRep script CBOR come from the same script
+    const dRepScript = this.drepEnabled() ? this.buildScript(3) : this.buildScript(0);
 
     if (!dRepScript) {
       console.warn("MultisigWallet keys:", this.keys);
-      console.warn("buildScript(3) result:", dRepScript);
       console.error(
-        "Cannot build multisig script: no valid DRep keys provided.",
+        "Cannot build multisig script: no valid keys provided.",
       );
       return undefined;
     }
@@ -520,9 +517,6 @@ export class MultisigWallet {
     const paymentKeys = this.getKeysByRole(0);
     const dRepKeys = this.getKeysByRole(3);
     if (!paymentKeys || !dRepKeys || dRepKeys.length === 0) return false;
-    console.log(
-      `Governance enabled: ${dRepKeys.length} dRep keys and ${paymentKeys.length} payment keys`
-    );
     return dRepKeys.length === paymentKeys.length;
   }
 
@@ -539,6 +533,39 @@ export class MultisigWallet {
     const script = this.drepEnabled() ? this.buildScript(3) : this.buildScript(0);
     if (!script) return undefined;
     return resolveScriptHashDRepId(resolveNativeScriptHash(script));
+  }
+
+  /**
+   * Gets both DRep ID and DRep script CBOR.
+   * Returns values from this multisig wallet if it has role-3 (DRep) keys,
+   * otherwise falls back to the provided app wallet.
+   * 
+   * @param appWallet - Optional app wallet to use as fallback if this wallet doesn't have DRep keys
+   * @returns Object containing dRepId and drepCbor, or undefined if not available
+   * 
+   * @example
+   * ```typescript
+   * const wallet = new MultisigWallet("Wallet", keys);
+   * const appWallet = { dRepId: "drep1...", scriptCbor: "..." };
+   * 
+   * const drepData = wallet.getDRep(appWallet);
+   * if (drepData) {
+   *   console.log("DRep ID:", drepData.dRepId);
+   *   console.log("DRep Script:", drepData.drepCbor);
+   * }
+   * ```
+   */
+  getDRep(appWallet?: { dRepId: string; scriptCbor: string }): { dRepId: string; drepCbor: string } | undefined {
+    
+    const dRepCbor = this.getDRepScript();
+    const dRepId = this.getDRepId();
+    if (dRepId && dRepCbor) {
+      return { dRepId, drepCbor: dRepCbor };
+    }
+    if (appWallet && appWallet.dRepId && appWallet.scriptCbor) {
+      return { dRepId: appWallet.dRepId, drepCbor: appWallet.scriptCbor };
+    }
+    return undefined;
   }
   /**
    * Returns the unique key roles (types) available in the wallet.

@@ -3,8 +3,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // For Supabase + Vercel serverless optimization:
+  // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
+  //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
+  // - DIRECT_URL: Use Supabase's direct connection URL (for migrations)
+  //   Example: postgresql://user:pass@host:5432/db
+  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL
+  //   This separation improves performance and prevents connection pool exhaustion
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -33,6 +41,7 @@ model Wallet {
   clarityApiKey           String?
   rawImportBodies         Json?
   migrationTargetWalletId String?
+  profileImageIpfsUrl     String?
 }
 
 model Transaction {
@@ -47,6 +56,10 @@ model Transaction {
   txHash            String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([state])
+  @@index([walletId, state])
 }
 
 model Signable {
@@ -97,6 +110,8 @@ model Ballot {
   items            String[]
   itemDescriptions String[]
   choices          String[]
+  anchorUrls       String[] @default([])
+  anchorHashes     String[] @default([])
   type             Int
   createdAt        DateTime @default(now())
 }
@@ -112,6 +127,11 @@ model Proxy {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   userId       String?
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([walletId, isActive])
+  @@index([userId, isActive])
 }
 
 model BalanceSnapshot {
@@ -143,4 +163,18 @@ model Migration {
   @@index([originalWalletId])
   @@index([status])
   @@index([createdAt])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  walletId    String // The multisig wallet that owns this contact
+  name        String
+  address     String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([walletId, address])
+  @@index([walletId])
+  @@index([address])
 }

@@ -81,7 +81,7 @@ export default function Metadata({
   });
 
   //  Icon Mapping for Social Media
-  const iconMap: Record<string, JSX.Element> = {
+  const iconMap: Record<string, React.ReactElement> = {
     "x.com": <Twitter className="h-7 w-7 text-gray-200 hover:text-blue-400" />,
     "twitter.com": (
       <Twitter className="h-7 w-7 text-gray-200 hover:text-blue-400" />

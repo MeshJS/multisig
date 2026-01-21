@@ -21,26 +21,22 @@ const WalletNavLink = React.forwardRef<HTMLSpanElement, WalletNavLinkProps>(
       <span ref={ref} className="block">
         <MenuLink
           href={`/wallets/${wallet.id}`}
-          className={`border-x px-4 py-2 ${
+          className={`${
             isActive
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:border-secondary"
+              ? "text-white"
+              : ""
           }`}
         >
-          <div className="flex items-start gap-1">
-            <Wallet2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="break-words">
-                {wallet.name}
-                {wallet.isArchived && " (Archived)"}
-              </div>
-            </div>
-            {transactions && transactions.length > 0 && (
-              <Badge className="ml-2 flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0">
-                {transactions.length}
-              </Badge>
-            )}
-          </div>
+          <Wallet2 className="h-5 w-5 flex-shrink-0" />
+          <span className="flex-1 min-w-0 truncate">
+            {wallet.name}
+            {wallet.isArchived && " (Archived)"}
+          </span>
+          {transactions && transactions.length > 0 && (
+            <Badge className="flex h-4 w-4 items-center justify-center rounded-full flex-shrink-0">
+              {transactions.length}
+            </Badge>
+          )}
         </MenuLink>
       </span>
     );

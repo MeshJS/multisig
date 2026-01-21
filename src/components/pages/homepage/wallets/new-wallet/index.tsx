@@ -239,6 +239,14 @@ export default function PageNewWallet() {
 
   async function handleCreateNewWallet() {
     if (router.pathname == "/wallets/new-wallet") {
+      if (!userAddress) {
+        toast({
+          title: "Error",
+          description: "Please connect your wallet before creating a wallet.",
+          variant: "destructive",
+        });
+        return;
+      }
       setLoading(true);
       createNewWallet({
         name: name,
@@ -247,7 +255,7 @@ export default function PageNewWallet() {
         signersDescriptions: signersDescriptions,
         signersStakeKeys: signersStakeKeys,
         signersDRepKeys: signersDRepKeys,
-        ownerAddress: userAddress!,
+        ownerAddress: userAddress,
         numRequiredSigners: numRequiredSigners,
         stakeCredentialHash: stakeKey || undefined,
         scriptType: nativeScriptType,

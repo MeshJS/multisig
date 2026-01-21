@@ -53,15 +53,18 @@ export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
         <div className="flex flex-col gap-1">
           {childrenWithProps.map((child, index) => {
             if (React.isValidElement(child)) {
+              // Type guard for props with className
+              const props = child.props as { className?: string };
+              
               // Check if this is a separator
-              if (child.props.className?.includes('h-px')) {
+              if (props.className?.includes('h-px')) {
                 return React.cloneElement(child, {
                   key: `separator-${index}`,
                 });
               }
               
               // Check if child already has hover styling
-              const hasHoverClass = child.props.className?.includes('hover:bg-accent');
+              const hasHoverClass = props.className?.includes('hover:bg-accent');
               
               // If it already has hover styling, don't wrap it
               if (hasHoverClass) {
@@ -80,10 +83,12 @@ export function MobileActionsMenu({ children }: MobileActionsMenuProps) {
                 </div>
               );
             }
-            // For non-React elements, provide a fallback key
-            return React.cloneElement(child as React.ReactElement, {
-              key: `fallback-${index}`,
-            });
+            // For non-React elements, render as-is with a key wrapper
+            return (
+              <React.Fragment key={`fallback-${index}`}>
+                {child}
+              </React.Fragment>
+            );
           })}
         </div>
       </DropdownMenuContent>

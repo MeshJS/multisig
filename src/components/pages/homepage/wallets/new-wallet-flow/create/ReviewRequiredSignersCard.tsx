@@ -36,10 +36,12 @@ const ReviewRequiredSignersCard: React.FC<ReviewRequiredSignersCardProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [tempNumRequired, setTempNumRequired] = useState(numRequiredSigners);
   
-  // Update temp states when props change
+  // Update temp states when props change (but not when editing)
   useEffect(() => {
-    setTempNumRequired(numRequiredSigners);
-  }, [numRequiredSigners]);
+    if (!isEditing) {
+      setTempNumRequired(numRequiredSigners);
+    }
+  }, [numRequiredSigners, isEditing]);
 
   // Exit edit mode if script type changes from atLeast to something else
   useEffect(() => {
@@ -102,9 +104,14 @@ const ReviewRequiredSignersCard: React.FC<ReviewRequiredSignersCardProps> = ({
                       <div className="w-full overflow-x-auto pb-2">
                         <ToggleGroup
                           type="single"
-                          value={tempNumRequired.toString()}
+                          value={tempNumRequired > 0 ? tempNumRequired.toString() : undefined}
                           onValueChange={(v) => {
-                            if (v) setTempNumRequired(Number(v));
+                            if (v && v !== "" && !isNaN(Number(v))) {
+                              const newValue = Number(v);
+                              if (newValue > 0 && newValue <= signersCount) {
+                                setTempNumRequired(newValue);
+                              }
+                            }
                           }}
                           className="justify-start flex-nowrap"
                         >

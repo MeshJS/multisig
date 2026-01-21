@@ -6,6 +6,18 @@ export function getFirstAndLast(
   return `${value.slice(0, firstN)}...${value.slice(-lastN)}`;
 }
 
+export function truncateTokenSymbol(
+  symbol: string,
+  maxLength: number = 20,
+  firstN: number = 8,
+  lastN: number = 6,
+): string {
+  if (symbol.length <= maxLength) {
+    return symbol;
+  }
+  return `${symbol.slice(0, firstN)}...${symbol.slice(-lastN)}`;
+}
+
 export function numberWithCommas(x: number) {
   return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }

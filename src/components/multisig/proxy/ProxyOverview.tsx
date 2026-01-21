@@ -1,4 +1,5 @@
 import React, { memo, useState, useEffect } from "react";
+import { truncateTokenSymbol } from "@/utils/strings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -270,7 +271,7 @@ const ProxyCard = memo(function ProxyCard({
                     <div className="text-sm space-y-1">
                       {displayBalance.map((asset: any, index: number) => (
                         <div key={index} className="flex justify-between">
-                          <span>{asset.unit === "lovelace" ? "ADA" : asset.unit}:</span>
+                          <span>{asset.unit === "lovelace" ? "ADA" : truncateTokenSymbol(asset.unit)}:</span>
                           <span className="font-mono">
                             {asset.unit === "lovelace" 
                               ? `${(parseFloat(asset.quantity) / 1000000).toFixed(6)} ADA`

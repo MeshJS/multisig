@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,6 +52,11 @@ export default function FundTransferStep({
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferComplete, setTransferComplete] = useState(false);
   const [transferTxId, setTransferTxId] = useState<string | null>(null);
+  const [waitingForTransaction, setWaitingForTransaction] = useState(false);
+  const [lastSeenPendingCount, setLastSeenPendingCount] = useState<number>(0);
+  
+  // Monitor pending transactions
+  const { transactions: pendingTransactions } = usePendingTransactions({ walletId: appWallet.id });
 
   // Get current wallet data
   const currentUtxos = walletsUtxos[appWallet.id] || [];
@@ -257,17 +263,15 @@ export default function FundTransferStep({
         toastMessage: "Fund transfer transaction created successfully",
       });
 
-      setTransferComplete(true);
+      // Set waiting state - we'll monitor the transaction status
+      setWaitingForTransaction(true);
+      setIsTransferring(false);
+      
       toast({
         title: "Transfer Initiated",
         description:
           "Fund transfer transaction has been created and is pending signatures.",
       });
-
-      // Automatically proceed to the next step after a short delay
-      setTimeout(() => {
-        onContinue();
-      }, 2000); // 2 second delay to show the success message
     } catch (error) {
       console.error("Failed to transfer funds:", error);
       toast({
@@ -279,6 +283,54 @@ export default function FundTransferStep({
       setIsTransferring(false);
     }
   };
+
+  // Monitor pending transactions to detect when transfer is complete
+  useEffect(() => {
+    if (!waitingForTransaction) return;
+
+    // Track pending count to detect when transaction disappears (completed)
+    const currentPendingCount = pendingTransactions?.length || 0;
+    
+    // If we saw pending transactions before and now there are fewer, transaction might be completed
+    if (lastSeenPendingCount > 0 && currentPendingCount < lastSeenPendingCount) {
+      // Transaction likely completed and moved out of pending
+      setTransferComplete(true);
+      setWaitingForTransaction(false);
+      toast({
+        title: "Transfer Complete",
+        description: "Fund transfer transaction has been completed successfully.",
+      });
+      setTimeout(() => {
+        onContinue();
+      }, 2000);
+      return;
+    }
+
+    if (pendingTransactions && pendingTransactions.length > 0) {
+      setLastSeenPendingCount(pendingTransactions.length);
+      
+      // Find the most recent migration transfer transaction
+      const migrationTx = pendingTransactions
+        .filter((tx: any) => tx.description?.includes("Migration: Transfer all funds"))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (migrationTx) {
+        // Transaction is complete if it has a txHash (submitted) or state is 1 (completed)
+        if (migrationTx.txHash || migrationTx.state === 1) {
+          setTransferComplete(true);
+          setWaitingForTransaction(false);
+          toast({
+            title: "Transfer Complete",
+            description: "Fund transfer transaction has been completed successfully.",
+          });
+          // Proceed to next step after a short delay
+          setTimeout(() => {
+            onContinue();
+          }, 2000);
+        }
+      }
+    }
+  }, [pendingTransactions, waitingForTransaction, onContinue, lastSeenPendingCount]);
 
   if (isLoadingNewWalletData || isLoadingNewWalletDataFallback) {
     return (
@@ -295,6 +347,34 @@ export default function FundTransferStep({
     );
   }
 
+  // Show waiting card after transaction is created
+  if (waitingForTransaction) {
+    return (
+      <CardUI
+        title="Waiting for Transaction"
+        description="Fund transfer transaction is pending signatures"
+        cardClassName="col-span-2"
+      >
+        <div className="space-y-4">
+          <Alert className="border-blue-200/50 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-900/20">
+            <Loader className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              <strong>Transaction Created</strong>
+              <p className="mt-2">
+                The fund transfer transaction has been created and is waiting for required signatures.
+                Once all signers have signed and the transaction is submitted, you will automatically proceed to the next step.
+              </p>
+            </AlertDescription>
+          </Alert>
+          
+          <div className="flex items-center justify-center py-4">
+            <Loader className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </div>
+      </CardUI>
+    );
+  }
+
   if (newWalletError) {
     return (
       <CardUI
@@ -302,7 +382,7 @@ export default function FundTransferStep({
         description="Unable to load the new wallet information"
         cardClassName="col-span-2"
       >
-        <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
+        <Alert className="border-red-200/50 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20">
           <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
           <AlertDescription className="text-red-800 dark:text-red-200">
             The new wallet could not be loaded. This might happen if the wallet
@@ -366,7 +446,7 @@ export default function FundTransferStep({
         description="Funds to be transferred"
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="flex items-center justify-between rounded-lg border border-border/30 p-4">
             <div>
               <h4 className="font-medium">ADA Balance</h4>
               <p className="text-sm text-muted-foreground">Native currency</p>
@@ -386,7 +466,7 @@ export default function FundTransferStep({
               {nonAdaAssets.map((asset, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="flex items-center justify-between rounded-lg border border-border/30 p-3"
                 >
                   <div>
                     <p className="font-medium">{asset.unit}</p>
@@ -403,7 +483,7 @@ export default function FundTransferStep({
           )}
 
           {currentUtxos.length === 0 && (
-            <div className="flex items-center gap-3 rounded-lg border bg-blue-50 p-4 dark:bg-blue-900/20">
+            <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-blue-50 p-4 dark:bg-blue-900/20">
               <CheckCircle className="h-5 w-5 text-blue-500 dark:text-blue-400" />
               <div>
                 <h4 className="font-medium">No Funds to Transfer</h4>
@@ -419,7 +499,7 @@ export default function FundTransferStep({
       {/* New Wallet Information */}
       <CardUI title="New Wallet" description="Destination for the funds">
         <div className="space-y-4">
-          <div className="rounded-lg border p-4">
+          <div className="rounded-lg border border-border/30 p-4">
             <h4 className="mb-2 font-medium">Wallet Details</h4>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -458,7 +538,7 @@ export default function FundTransferStep({
           title="Transfer Complete"
           description="Fund transfer has been initiated"
         >
-          <div className="flex items-center gap-3 rounded-lg border bg-green-50 p-4 dark:bg-green-900/20">
+          <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-green-50 p-4 dark:bg-green-900/20">
             <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
             <div>
               <h4 className="font-medium">Transfer Initiated</h4>
@@ -477,7 +557,7 @@ export default function FundTransferStep({
         description="Complete the fund transfer"
         cardClassName="col-span-2"
       >
-        <div className="flex gap-3 border-t pt-4">
+        <div className="flex gap-3 border-t border-border/30 pt-4">
           <Button variant="outline" onClick={onBack} className="flex-1">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Proxy Setup

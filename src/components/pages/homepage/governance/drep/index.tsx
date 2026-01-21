@@ -13,7 +13,7 @@ import ScriptIndicator from "./scriptIndicator";
 
 export default function DrepOverviewPage() {
   const [drepList, setDrepList] = useState<
-    Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata }>
+    Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata | null }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { wallet, connected } = useWallet();
@@ -54,7 +54,7 @@ export default function DrepOverviewPage() {
         if (response) {
           const initialList = response.map((drep: BlockfrostDrepInfo) => ({
             details: { ...drep },
-            metadata: {},
+            metadata: null,
           }));
   
           setDrepList(initialList);
@@ -85,17 +85,30 @@ export default function DrepOverviewPage() {
       const details: BlockfrostDrepInfo = await blockchainProvider.get(
         `/governance/dreps/${drepId}`,
       );
-      const metadata: BlockfrostDrepMetadata = await blockchainProvider.get(
-        `/governance/dreps/${drepId}/metadata/`,
-      );
+      
+      let metadata: BlockfrostDrepMetadata | null = null;
+      try {
+        metadata = await blockchainProvider.get(
+          `/governance/dreps/${drepId}/metadata/`,
+        );
+      } catch (err: any) {
+        // 404 is expected if metadata doesn't exist - silently ignore
+        const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
+        if (!is404) {
+          console.warn(`Failed to fetch metadata for DRep ${drepId}:`, err);
+        }
+      }
 
       setDrepList((prevList) =>
         prevList.map((drep) =>
-          drep.details.drep_id === drepId ? { details, metadata } : drep,
+          drep.details.drep_id === drepId ? { details, metadata: metadata || null } : drep,
         ),
       );
-    } catch (error) {
-      console.error(`Failed to fetch details for DREP ${drepId}:`, error);
+    } catch (error: any) {
+      const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
+      if (!is404) {
+        console.error(`Failed to fetch details for DREP ${drepId}:`, error);
+      }
     }
   };
 
