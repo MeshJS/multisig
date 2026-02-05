@@ -27,8 +27,51 @@ export const isCollateralError = (error: any): boolean => {
   );
 };
 
+/**
+ * Utility function to wait for a transaction to be confirmed on-chain
+ * @param txHash - The transaction hash to wait for
+ * @param networkId - The network ID (0 for mainnet, 1 for testnet)
+ * @param maxWaitTime - Maximum time to wait in milliseconds (default: 120000 = 2 minutes)
+ * @param checkInterval - Interval between checks in milliseconds (default: 2000 = 2 seconds)
+ * @returns Promise that resolves when transaction is confirmed, or rejects if timeout
+ */
+export async function waitForTransactionConfirmation(
+  txHash: string,
+  networkId: number,
+  maxWaitTime: number = 120000,
+  checkInterval: number = 2000
+): Promise<void> {
+  const provider = getProvider(networkId);
+  const startTime = Date.now();
+  
+  return new Promise((resolve, reject) => {
+    const checkTx = async () => {
+      try {
+        const txInfo = await provider.fetchTxInfo(txHash);
+        if (txInfo) {
+          resolve();
+          return;
+        }
+      } catch (e) {
+        // Tx not found yet, continue waiting
+        const elapsed = Date.now() - startTime;
+        if (elapsed >= maxWaitTime) {
+          reject(new Error(`Transaction ${txHash.substring(0, 16)}... not confirmed within ${maxWaitTime}ms`));
+          return;
+        }
+      }
+      
+      // Schedule next check
+      setTimeout(checkTx, checkInterval);
+    };
+    
+    // Start checking immediately
+    checkTx();
+  });
+}
+
 // Component to show transaction confirmation progress
-function TxConfirmationProgress({ 
+export function TxConfirmationProgress({ 
   txHash, 
   networkId,
   onConfirmed,

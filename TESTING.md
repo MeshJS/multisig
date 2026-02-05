@@ -246,6 +246,50 @@ npx tsc --noEmit
 npx prettier --write .
 ```
 
+## Test Agent + Private Faucet (Dev Only)
+
+This project includes a dev-only smoke test agent for the crowdfund contract. It creates a Mesh wallet, requests funds from a private faucet, and executes a smoke flow (setup → contribute → withdraw) while streaming events to the debug UI panel.
+
+### Required Environment Variables
+
+Add these to `.env.local` (values shown are examples):
+
+```env
+# Enable the test agent panel in non-dev environments (optional)
+NEXT_PUBLIC_ENABLE_TEST_AGENT=true
+
+# Faucet wallet (used to fund the agent)
+FAUCET_MAX_SEND_LOVELACE=200000000
+FAUCET_MIN_BALANCE_LOVELACE=50000000
+
+# Agent config
+TEST_AGENT_POOL_ID="pool1..."
+
+# Reference script address (required by crowdfund setup)
+NEXT_PUBLIC_REF_ADDR="addr_test1..."
+```
+
+### Usage
+
+1. Run `npm run dev`.
+2. Open the app and connect a wallet (network is taken from the connected wallet).
+3. The first time you open the panel, the app will create `./.local/test-agent-mnemonics.json` in the repo with auto-generated mnemonics for the faucet + agent wallets.
+4. Use the floating **Test Agent** panel (bottom-right) to copy the faucet address and fund it once.
+5. Start a run and watch the event log and React Flow state graph update in real time.
+
+### Dev Agent Info Endpoint
+
+`GET /api/dev/agent/info?networkId=0`
+
+Returns:
+```json
+{
+  "faucetAddress": "addr_test1...",
+  "agentAddress": "addr_test1...",
+  "networkId": 0
+}
+```
+
 ## Next Steps
 
 Once the server is running locally:
@@ -265,4 +309,3 @@ If you encounter issues:
 3. Verify all environment variables are set correctly
 4. Ensure database is running and accessible
 5. Check the README.md for additional setup instructions
-

@@ -66,35 +66,45 @@ fn mock_register_cert_tx(test_case: RegisterCertsTestCase) -> Transaction {
       expiry_buffer: 3600 * 24,
       min_charge: 10,
     }
+  // RegisterCerts: output keeps Crowdfund datum, deducts only stake + drep; value must be clean (lovelace + auth only, value_length == 2)
   let output_value =
     if is_output_value_correct {
       from_lovelace(
-        mock_funds_controlled - mock_stake_register_deposit - mock_drep_register_deposit - mock_gov_deposit,
+        mock_funds_controlled - mock_stake_register_deposit - mock_drep_register_deposit,
       )
-        |> add(mock_stake_hash, "", 1)
         |> add(mock_auth_token, "", 1)
     } else {
       from_lovelace(
-        mock_funds_controlled - mock_stake_register_deposit - mock_drep_register_deposit - mock_gov_deposit + 10,
+        mock_funds_controlled - mock_stake_register_deposit - mock_drep_register_deposit + 10,
       )
-        |> add(mock_stake_hash, "", 1)
         |> add(mock_auth_token, "", 1)
     }
 
+  // RegisterCerts: output datum stays Crowdfund (same as input), not Proposed
   let output_datum: CrowdfundGovDatum =
     if is_output_datum_correct {
-      Proposed {
+      Crowdfund {
         stake_hash: mock_stake_hash,
         share_token: mock_share_token,
-        funds_controlled: mock_funds_controlled,
+        crowdfund_address: mock_crowdfund_address,
+        fundraise_target: mock_fundraise_target,
+        current_fundraised_amount: mock_funds_controlled,
+        allow_over_subscription: False,
         deadline: mock_deadline + mock_gov_action_period,
+        expiry_buffer: 3600 * 24,
+        min_charge: 10,
       }
     } else {
-      Proposed {
+      Crowdfund {
         stake_hash: mock_stake_hash,
         share_token: mock_share_token,
-        funds_controlled: mock_funds_controlled + 10,
+        crowdfund_address: mock_crowdfund_address,
+        fundraise_target: mock_fundraise_target,
+        current_fundraised_amount: mock_funds_controlled + 10,
+        allow_over_subscription: False,
         deadline: mock_deadline + mock_gov_action_period,
+        expiry_buffer: 3600 * 24,
+        min_charge: 10,
       }
     }
 

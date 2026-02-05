@@ -49,6 +49,7 @@ import { api } from "@/utils/api";
 import { dateToFormatted } from "@/utils/strings";
 import DRepSetupForm from "./DRepSetupForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { waitForTransactionConfirmation } from "./useCollateralToast";
 
 interface CrowdfundInfoProps {
   crowdfund: any;
@@ -1219,8 +1220,27 @@ export function CrowdfundInfo({
         // Update stakeRefScript for use below
         stakeRefScript = { txHash: stakeRefTxHash, outputIndex: 0 };
         
-        // Wait a bit for the transaction to be confirmed
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Wait for the transaction to be confirmed on-chain before proceeding
+        toast({
+          title: "Waiting for transaction confirmation",
+          description: `Waiting for stake reference script transaction to be confirmed...`,
+        });
+        
+        try {
+          await waitForTransactionConfirmation(stakeRefTxHash, network, 120000, 2000);
+          toast({
+            title: "Transaction confirmed",
+            description: "Stake reference script is now available. Proceeding with certificate registration...",
+          });
+        } catch (error: any) {
+          console.error("[handleCompleteCrowdfund] Error waiting for transaction confirmation:", error);
+          toast({
+            title: "Transaction confirmation timeout",
+            description: "The stake reference script transaction may still be pending. Please wait a moment and try again.",
+            variant: "destructive",
+          });
+          throw new Error("Stake reference script transaction not confirmed in time");
+        }
       }
 
       // Now proceed with registerCerts (certificate registration only)
@@ -1453,6 +1473,19 @@ export function CrowdfundInfo({
                 )}
 
               </>
+            )}
+
+            {/* RegisteredCerts phase - show withdrawal option (DEV ONLY) */}
+            {govState === 1 && crowdfundData.totalRaised > 0 && (
+              <Button 
+                onClick={onWithdraw} 
+                variant="outline" 
+                className="w-full" 
+                size="lg"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Withdraw Funds (Dev: Registered State)
+              </Button>
             )}
 
             {/* Refundable phase - show withdrawal option */}

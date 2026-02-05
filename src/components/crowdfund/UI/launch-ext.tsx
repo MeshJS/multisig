@@ -140,6 +140,14 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
   const { toast } = useToast();
   const { wallet, connected } = useWallet();
   const { user } = useUser();
+  const [networkId, setNetworkId] = useState<number | null>(null);
+
+  // Get network ID from wallet
+  useEffect(() => {
+    if (wallet && connected) {
+      wallet.getNetworkId().then(id => setNetworkId(id)).catch(() => {});
+    }
+  }, [wallet, connected]);
   const [govData, setGovData] = useState<GovData>({
     gov_action_period: initialData?.gov_action_period || 6,
     delegate_pool_id: initialData?.delegate_pool_id || "",
@@ -214,11 +222,33 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
     }));
   };
 
-  const isValidPaymentAddress = (address: string) => {
+  const isValidRewardAddress = (address: string) => {
     if (!address) return false;
+    
+    // Check if it's a reward address (stake address)
+    const isTestnetAddress = address.startsWith('stake_test1');
+    const isMainnetAddress = address.startsWith('stake1');
+    
+    if (!isTestnetAddress && !isMainnetAddress) {
+      return false;
+    }
+    
+    // Validate network match if networkId is available
+    if (networkId !== null) {
+      // networkId 0 = testnet, 1 = mainnet
+      if (networkId === 0 && !isTestnetAddress) {
+        return false; // Testnet network requires stake_test1... address
+      }
+      if (networkId === 1 && !isMainnetAddress) {
+        return false; // Mainnet network requires stake1... address
+      }
+    }
+    
     try {
-      const decoded = deserializeAddress(address);
-      return !!decoded?.pubKeyHash || !!decoded?.scriptHash;
+      // Validate it's a properly formatted reward address by attempting to deserialize it
+      // Reward addresses don't have stakeCredentialHash/stakeScriptHash fields - those are for payment addresses
+      deserializeAddress(address);
+      return true; // If deserialization succeeds, it's a valid reward address
     } catch (error) {
       return false;
     }
@@ -244,7 +274,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
         if (
           beneficiary.address &&
           beneficiary.amount &&
-          isValidPaymentAddress(beneficiary.address)
+          isValidRewardAddress(beneficiary.address)
         ) {
           acc.totalLovelace += Number(beneficiary.amount);
           acc.withdrawals[beneficiary.address] = beneficiary.amount;
@@ -689,8 +719,8 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
 
             {/* Action-specific metadata could be added here based on the selected type */}
             {govData.gov_action?.type === 'protocol_parameter_changes' && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/40 dark:border-blue-800/50">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
                   <strong>Note:</strong> For protocol parameter changes, you may need to specify which parameters will be modified and their new values in the metadata section.
                 </p>
               </div>
@@ -721,17 +751,28 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
               }, 0);
 
               return (
-                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-950/40 dark:border-yellow-800/50">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">
-                      Beneficiaries (Payment Addresses) *
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      Beneficiaries (Reward Addresses) *
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-3 w-3 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Treasury withdrawals require reward addresses (stake1... or stake_test1...), not payment addresses. Reward addresses are associated with stake credentials and are used for receiving treasury funds.</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <div className="space-y-3">
                       {beneficiaryInputs.map((beneficiary, index) => {
-                        const addressError =
-                          beneficiary.address && !isValidPaymentAddress(beneficiary.address)
-                            ? "Enter a valid payment address (addr/addr_test)."
-                            : "";
+                        const addressError = beneficiary.address && !isValidRewardAddress(beneficiary.address)
+                          ? networkId === null
+                            ? "Enter a valid reward address (stake1... or stake_test1...). Treasury withdrawals require reward addresses, not payment addresses."
+                            : networkId === 0
+                            ? "Enter a valid testnet reward address (stake_test1...). The address must match the current network (testnet)."
+                            : "Enter a valid mainnet reward address (stake1...). The address must match the current network (mainnet)."
+                          : "";
 
                         return (
                           <div key={`${beneficiary.address}-${index}`} className="space-y-2">
@@ -743,7 +784,8 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                                   next[index] = { ...next[index], address: e.target.value };
                                   syncTreasuryBeneficiaries(next);
                                 }}
-                                placeholder="addr1..."
+                                placeholder="stake1... or stake_test1..."
+                                className="dark:bg-zinc-900/50 dark:border-zinc-700"
                               />
                               <Input
                                 type="number"
@@ -756,6 +798,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                                 placeholder="1.0"
                                 min="0"
                                 step="0.1"
+                                className="dark:bg-zinc-900/50 dark:border-zinc-700"
                               />
                               <Button
                                 type="button"
@@ -771,7 +814,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                               </Button>
                             </div>
                             {addressError && (
-                              <p className="text-xs text-red-600">{addressError}</p>
+                              <p className="text-xs text-red-600 dark:text-red-400">{addressError}</p>
                             )}
                           </div>
                         );
@@ -883,7 +926,7 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
               <Button
                 onClick={handleUploadMetadata}
                 disabled={isUploadingMetadata || !connected || !wallet || !user?.address || !govData.gov_action?.title || !govData.gov_action?.abstract || !govData.gov_action?.motivation || !govData.gov_action?.rationale}
-                className="w-full"
+                className="w-full dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700 dark:border dark:border-blue-500"
               >
                 {isUploadingMetadata ? (
                   <>

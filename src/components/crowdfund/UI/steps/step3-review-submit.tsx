@@ -284,19 +284,42 @@ export function Step3ReviewSubmit({
             throw new Error(`Treasury beneficiary at index ${index} is missing address`);
           }
 
-          let decoded;
-          try {
-            decoded = deserializeAddress(address);
-          } catch (error) {
+          // Validate that it's a reward address (stake address)
+          const isTestnetAddress = address.startsWith('stake_test1');
+          const isMainnetAddress = address.startsWith('stake1');
+          
+          if (!isTestnetAddress && !isMainnetAddress) {
             throw new Error(
-              `Treasury beneficiary at index ${index} has invalid payment address: ${address}`,
+              `Treasury beneficiary at index ${index} must be a reward address (stake1... or stake_test1...). ` +
+                `Treasury withdrawals require reward addresses, not payment addresses. ` +
+                `Payment addresses cannot be used for treasury withdrawals.`,
             );
           }
 
-          if (!decoded?.pubKeyHash && !decoded?.scriptHash) {
+          // Validate network match if networkId is available
+          if (networkId !== null) {
+            // networkId 0 = testnet, 1 = mainnet
+            if (networkId === 0 && !isTestnetAddress) {
+              throw new Error(
+                `Treasury beneficiary at index ${index} must be a testnet reward address (stake_test1...). ` +
+                  `The address must match the current network (testnet).`
+              );
+            }
+            if (networkId === 1 && !isMainnetAddress) {
+              throw new Error(
+                `Treasury beneficiary at index ${index} must be a mainnet reward address (stake1...). ` +
+                  `The address must match the current network (mainnet).`
+              );
+            }
+          }
+
+          // Validate the reward address format by attempting to deserialize it
+          // Reward addresses don't have stakeCredentialHash/stakeScriptHash fields - those are for payment addresses
+          try {
+            deserializeAddress(address);
+          } catch (error) {
             throw new Error(
-              `Treasury beneficiary at index ${index} must be a payment address (addr/addr_test). ` +
-                `Reward addresses are not supported.`,
+              `Treasury beneficiary at index ${index} has invalid reward address: ${address}`,
             );
           }
 

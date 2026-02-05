@@ -4,6 +4,7 @@
 declare global {
   interface Array<T> {
     chunk?(size: number): T[][];
+    shuffle?(): T[];
   }
 }
 
@@ -22,6 +23,19 @@ if (!Object.prototype.hasOwnProperty.call(Array.prototype, "chunk")) {
   });
 }
 
-export {};
+if (!Object.prototype.hasOwnProperty.call(Array.prototype, "shuffle")) {
+  Object.defineProperty(Array.prototype, "shuffle", {
+    value: function <T>(this: T[]): T[] {
+      return this
+        .map((item) => ({ item, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map((entry) => entry.item);
+    },
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
+}
 
+export {};
 

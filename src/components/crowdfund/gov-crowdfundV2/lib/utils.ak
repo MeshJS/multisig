@@ -1,6 +1,9 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/collection/pairs.{get_first}
+use aiken/crypto.{ScriptHash}
+use aiken/option
 use cardano/address.{
   Address, Credential, Inline, Script, VerificationKey, from_script,
 }
@@ -13,13 +16,15 @@ use cardano/certificate.{
   UnregisterDelegateRepresentative,
 }
 use cardano/governance.{
-  GovernanceAction, GovernanceActionId, ProposalProcedure, Vote, Voter, Yes,
+  GovernanceAction, GovernanceActionId, NicePoll, ProposalProcedure,
+  TreasuryWithdrawal, Vote, Voter, Yes,
 }
 use cardano/transaction.{Input, Output, Redeemer, ScriptPurpose, Spend}
 use cocktail.{
   inputs_at, inputs_at_with, inputs_with_policy, output_inline_datum,
   outputs_at_with, value_length,
 }
+use gov.{VGovernanceAction, VNicePoll, VTreasuryWithdrawal}
 use types.{CrowdfundGovDatum, CrowdfundGovRedeemer}
 
 pub fn check_fundraise_target(
@@ -317,9 +322,258 @@ pub fn check_auth_token_input_redeemer(
   only_input_redeemer == redeemer
 }
 
+// Decode Plutus Data (parametrized gov_action bytes) into VGovernanceAction.
+// Supports constructor 2 (VTreasuryWithdrawal) and 6 (VNicePoll) only.
+fn decode_vgov(bytes: ByteArray) -> Option<VGovernanceAction> {
+  let none_vgov: Option<VGovernanceAction> = None
+  cbor.deserialise(bytes)
+    |> option.and_then(
+        fn(d) {
+          builtin.choose_data(
+            d,
+            {
+              let Pair(ix, fields) = builtin.un_constr_data(d)
+              if ix == 2 {
+                when fields is {
+                  [beneficiaries_data, guardrails_data] ->
+                    decode_beneficiaries_list(beneficiaries_data)
+                      |> option.and_then(
+                          fn(bens) {
+                            decode_option_script_hash(guardrails_data)
+                              |> option.map(
+                                  fn(guard) {
+                                    VTreasuryWithdrawal {
+                                      beneficiaries: bens,
+                                      guardrails: guard,
+                                    }
+                                  },
+                                )
+                          },
+                        )
+                  _ -> none_vgov
+                }
+              } else if ix == 6 {
+                when fields is {
+                  [] -> Some(VNicePoll)
+                  _ -> none_vgov
+                }
+              } else {
+                none_vgov
+              }
+            },
+            { none_vgov },
+            { none_vgov },
+            { none_vgov },
+            { none_vgov },
+          )
+        },
+      )
+}
+
+fn decode_credential(d: Data) -> Option<Credential> {
+  let none_cred: Option<Credential> = None
+  builtin.choose_data(
+    d,
+    {
+      let Pair(ix, fields) = builtin.un_constr_data(d)
+      when fields is {
+        [h] ->
+          if ix == 0 {
+            // Only call un_b_data(h) when h is confirmed bytearray (defensive guard).
+            builtin.choose_data(
+              h,
+              { none_cred },
+              { none_cred },
+              { none_cred },
+              { none_cred },
+              {
+                builtin.choose_data(
+                  h,
+                  { none_cred },
+                  { none_cred },
+                  { none_cred },
+                  { none_cred },
+                  { Some(VerificationKey(builtin.un_b_data(h))) },
+                )
+              },
+            )
+          } else if ix == 1 {
+            builtin.choose_data(
+              h,
+              { none_cred },
+              { none_cred },
+              { none_cred },
+              { none_cred },
+              {
+                builtin.choose_data(
+                  h,
+                  { none_cred },
+                  { none_cred },
+                  { none_cred },
+                  { none_cred },
+                  { Some(Script(builtin.un_b_data(h))) },
+                )
+              },
+            )
+          } else {
+            none_cred
+          }
+        _ -> none_cred
+      }
+    },
+    { none_cred },
+    { none_cred },
+    { none_cred },
+    { none_cred },
+  )
+}
+
+fn decode_lovelace(d: Data) -> Option<Lovelace> {
+  let none_lov: Option<Lovelace> = None
+  builtin.choose_data(
+    d,
+    { none_lov },
+    { none_lov },
+    { none_lov },
+    { Some(builtin.un_i_data(d)) },
+    { none_lov },
+  )
+}
+
+// Only call un_b_data when d is confirmed bytearray (nested choose_data) to avoid
+// unBData(Constr) if runtime branch order differs from (constr, map, list, int, bytearray).
+fn decode_script_hash(d: Data) -> Option<ScriptHash> {
+  let none_hash: Option<ScriptHash> = None
+  builtin.choose_data(
+    d,
+    { none_hash },
+    { none_hash },
+    { none_hash },
+    { none_hash },
+    {
+      builtin.choose_data(
+        d,
+        { none_hash },
+        { none_hash },
+        { none_hash },
+        { none_hash },
+        { Some(builtin.un_b_data(d)) },
+      )
+    },
+  )
+}
+
+fn decode_option_script_hash(d: Data) -> Option<Option<ScriptHash>> {
+  let none_opt: Option<Option<ScriptHash>> = None
+  builtin.choose_data(
+    d,
+    {
+      let Pair(ix, fields) = builtin.un_constr_data(d)
+      when fields is {
+        [] ->
+          if ix == 1 {
+            Some(None)
+          } else {
+            none_opt
+          }
+        [x] ->
+          if ix == 0 {
+            decode_script_hash(x) |> option.map(fn(h) { Some(h) })
+          } else {
+            none_opt
+          }
+        _ -> none_opt
+      }
+    },
+    { none_opt },
+    { none_opt },
+    { none_opt },
+    { none_opt },
+  )
+}
+
+fn decode_beneficiary_pair(d: Data) -> Option<Pair<Credential, Lovelace>> {
+  let none_pair: Option<Pair<Credential, Lovelace>> = None
+  builtin.choose_data(
+    d,
+    {
+      let Pair(ix, fields) = builtin.un_constr_data(d)
+      if ix == 0 {
+        when fields is {
+          [c_data, l_data] ->
+            decode_credential(c_data)
+              |> option.and_then(
+                  fn(c) {
+                    decode_lovelace(l_data)
+                      |> option.map(fn(l) { Pair(c, l) })
+                  },
+                )
+          _ -> none_pair
+        }
+      } else {
+        none_pair
+      }
+    },
+    { none_pair },
+    { none_pair },
+    { none_pair },
+    { none_pair },
+  )
+}
+
+fn decode_beneficiaries_list_impl(
+  lst: List<Data>,
+) -> Option<List<Pair<Credential, Lovelace>>> {
+  when lst is {
+    [] -> Some([])
+    [x, ..rest] ->
+      decode_beneficiary_pair(x)
+        |> option.and_then(
+            fn(p) {
+              decode_beneficiaries_list_impl(rest)
+                |> option.map(fn(ps) { [p, ..ps] })
+            },
+          )
+  }
+}
+
+fn decode_beneficiaries_list(
+  d: Data,
+) -> Option<List<Pair<Credential, Lovelace>>> {
+  let none_list: Option<List<Pair<Credential, Lovelace>>> = None
+  builtin.choose_data(
+    d,
+    { none_list },
+    { none_list },
+    { decode_beneficiaries_list_impl(builtin.un_list_data(d)) },
+    { none_list },
+    { none_list },
+  )
+}
+
+/// Convert tx GovernanceAction to VGovernanceAction for supported variants only.
+fn governance_action_to_vgov(
+  agov: GovernanceAction,
+) -> Option<VGovernanceAction> {
+  when agov is {
+    TreasuryWithdrawal { beneficiaries, guardrails } ->
+      Some(VTreasuryWithdrawal { beneficiaries, guardrails })
+    NicePoll -> Some(VNicePoll)
+    _ -> None
+  }
+}
+
+/// Compare parametrized gov_action (Plutus Data bytes) with tx proposal (GovernanceAction) structurally.
 pub fn compare_gov_action(agov: GovernanceAction, vgov: ByteArray) {
-  let se_agov = cbor.serialise(agov)
-  se_agov == vgov
+  let v_from_param = decode_vgov(vgov)
+  let v_from_tx = governance_action_to_vgov(agov)
+  option.or_else(
+    v_from_param
+      |> option.and_then(
+          fn(vp) { v_from_tx |> option.map(fn(vt) { vp == vt }) },
+        ),
+    False,
+  )
 }
 
 pub fn check_proposal_procedure(

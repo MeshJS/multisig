@@ -46,6 +46,11 @@ const ConnectWallet = dynamic(
   }
 );
 
+const TestAgentPanel = dynamic(
+  () => import("@/components/debug/TestAgentPanel"),
+  { ssr: false },
+);
+
 // Enhanced error boundary component for wallet errors
 class WalletErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode },
@@ -143,6 +148,9 @@ export default function RootLayout({
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const ctx = api.useUtils();
+  const enableTestAgent =
+    process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_ENABLE_TEST_AGENT === "true";
   
   // State for wallet authorization modal
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -698,6 +706,7 @@ export default function RootLayout({
           autoAuthorize={true}
         />
       )}
+      {enableTestAgent && <TestAgentPanel />}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+use aiken/collection/list
 use cardano/address.{Script, VerificationKey}
 use cardano/assets.{Lovelace, PolicyId, lovelace_of}
 use cardano/certificate.{Registered}
@@ -257,7 +258,10 @@ validator gCf_spend(
             let delegate_check =
               delegate_vote_check? && delegate_stake_check? || delegate_both_check
 
-            credential_matches_datum? && lovelace_check? && output_datum_check? && is_value_clean? && reg_stake_cert_check? && reg_drep_cert_check? && delegate_check?
+            // RegisterCerts must be used with a proposal (same tx must include proposal_procedures)
+            let proposal_present = !list.is_empty(proposal_procedures)
+
+            credential_matches_datum? && lovelace_check? && output_datum_check? && is_value_clean? && reg_stake_cert_check? && reg_drep_cert_check? && delegate_check? && proposal_present?
           }
           _ -> False
         }

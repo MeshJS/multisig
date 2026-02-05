@@ -28,8 +28,7 @@ export function getProvider(network: number) {
     console.log("[getProvider] Using KoiosProvider (client-side):", koiosUrl);
     return new KoiosProvider(koiosUrl);
   }
-  // Server-side: use direct Koios URL (no CORS issues)
-  const koiosUrl = "https://sancho.koios.rest/api/v1";
-  console.log("[getProvider] Using KoiosProvider (server-side):", koiosUrl);
-  return new KoiosProvider(koiosUrl);
+  // Server-side: use network constructor to avoid Authorization header
+  console.log("[getProvider] Using KoiosProvider (server-side): sancho");
+  return new KoiosProvider("sancho");
 }

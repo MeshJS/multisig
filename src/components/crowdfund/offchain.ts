@@ -26,8 +26,8 @@ import {
   deserializeAddress,
   resolveScriptHash,
   resolveScriptHashDRepId,
-  serializeData,
   serializePlutusScript,
+  serializeData,
 } from "@meshsdk/core";
 import { bech32 } from "bech32";
 import { resolveTxHash, scriptHashToRewardAddress } from "@meshsdk/core-cst";
@@ -204,8 +204,8 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
   private ref_stake_txhash?: string; // Stake reference script transaction hash
   private ref_stake_outputIndex?: number; // Stake reference script output index
   private refAddress?: string; // Address where reference scripts are stored
-  private govActionType?: 'InfoAction' | 'TreasuryWithdrawalsAction';
-  private treasuryBeneficiaries?: TreasuryBeneficiary[];
+  public readonly govActionType: 'InfoAction' | 'TreasuryWithdrawalsAction';
+  public readonly treasuryBeneficiaries?: TreasuryBeneficiary[];
 
   constructor(
     inputs: MeshTxInitiatorInput,
@@ -352,20 +352,95 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     isScript: boolean;
   } {
     try {
-      const decoded = deserializeAddress(address);
-      if (decoded?.scriptHash) {
-        return { hash: decoded.scriptHash, isScript: true };
+      const decoded = deserializeAddress(address) as any;
+      
+      // Check if it's a reward address (stake address)
+      const isRewardAddress = address.startsWith('stake1') || address.startsWith('stake_test1');
+      
+      if (isRewardAddress) {
+        // For reward addresses, extract stake credential hash
+        // Reward addresses encode the stake credential directly
+        if (decoded?.stakeScriptHash) {
+          return { hash: decoded.stakeScriptHash, isScript: true };
+        }
+        if (decoded?.stakeCredentialHash) {
+          return { hash: decoded.stakeCredentialHash, isScript: false };
+        }
+        // If MeshJS doesn't expose these properties, decode the bech32 address directly
+        // Reward addresses encode the stake credential hash in the bech32 data
+        const bech32Decoded = bech32.decode(address);
+        const bytes = bech32.fromWords(bech32Decoded.words);
+        // The first byte is the header, the next 28 bytes are the stake credential hash
+        if (bytes.length >= 29 && bytes[0] !== undefined) {
+          const stakeCredentialHash = Buffer.from(bytes.slice(1, 29)).toString('hex');
+          // Check header byte to determine if it's script (0xE0) or key (0xE1)
+          const header = bytes[0];
+          const isScript = (header & 0xF0) === 0xE0;
+          return { hash: stakeCredentialHash, isScript };
+        }
+        throw new Error("Reward address does not contain a valid stake credential");
+      } else {
+        // For payment addresses, extract payment credential hash
+        if (decoded?.scriptHash) {
+          return { hash: decoded.scriptHash, isScript: true };
+        }
+        if (decoded?.pubKeyHash) {
+          return { hash: decoded.pubKeyHash, isScript: false };
+        }
+        throw new Error("Address does not contain a payment credential");
       }
-      if (decoded?.pubKeyHash) {
-        return { hash: decoded.pubKeyHash, isScript: false };
-      }
-      throw new Error("Address does not contain a payment credential");
     } catch (error) {
       throw new Error(
-        `Invalid payment address for treasury beneficiary: ${address}. ` +
-          `Expected a payment address (addr/addr_test).`,
+        `Invalid address for treasury beneficiary: ${address}. ` +
+          `Expected a payment address (addr/addr_test) or reward address (stake1.../stake_test1...). ` +
+          `Error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Normalize governance action to canonical form (withdrawals sorted by address).
+   * Ensures the same bytes are produced for parametrization and for the tx proposal.
+   */
+  private normalizeGovernanceAction(action: GovernanceAction): GovernanceAction {
+    if (action.kind !== "TreasuryWithdrawalsAction") {
+      return action;
+    }
+    const withdrawals = action.action?.withdrawals;
+    if (!withdrawals || Object.keys(withdrawals).length === 0) {
+      return action;
+    }
+    const sorted = Object.entries(withdrawals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .reduce((acc, [addr, amount]) => {
+        acc[addr] = amount;
+        return acc;
+      }, {} as Record<string, string>);
+    return {
+      kind: "TreasuryWithdrawalsAction",
+      action: { ...action.action, withdrawals: sorted },
+    };
+  }
+
+  /**
+   * Return the canonical governance action for this contract (for use in both
+   * script parametrization and in proposeGovAction).
+   */
+  private getCanonicalGovernanceAction(): GovernanceAction {
+    const raw =
+      this.governance.governanceAction ??
+      ({ kind: "InfoAction" as const, action: {} });
+    return this.normalizeGovernanceAction(raw);
+  }
+
+  /**
+   * Serialize governance action to Cardano CBOR (same encoding as the tx uses).
+   * The validator compares cbor.serialise(proposal_procedure.governance_action) == gov_action,
+   * so we must use this encoding for the script parameter, not Plutus Data.
+   */
+  private getGovernanceActionCborHex(): string {
+    // Encode the VGovernanceAction parameter as Plutus Data CBOR.
+    return serializeData(this.getGovActionParam());
   }
 
   /**
@@ -466,7 +541,12 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         });
 
         // Create credential - use Script type for script-derived addresses
-        const credential = mCredential(credentialHashHex, isScriptCredential);
+        // Construct credential manually to ensure hash is treated as bytearray
+        // For VerificationKey: Constr 0 [ByteArray]
+        // For Script: Constr 1 [ByteArray]
+        const credential = isScriptCredential
+          ? mConStr1([credentialHashHex])  // Script credential
+          : mConStr0([credentialHashHex]); // VerificationKey credential
 
         // #region agent log
         fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:421',message:'mCredential result',data:{index,credentialHashHex,isScriptCredential,credentialType:typeof credential,credentialAlternative:credential?.alternative,credentialFields:credential?.fields,credentialFieldsTypes:credential?.fields?.map((f:any)=>typeof f),hasUndefined:credential?.fields?.some((f:any)=>f===undefined)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
@@ -548,21 +628,32 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       
       // VTreasuryWithdrawal: constructor 2 with [beneficiariesList, guardrailsOption]
       // beneficiariesList is an array of pairs, guardrailsOption is an Option
-      // Return raw Data object - applyParamsToScript handles serialization
+      // IMPORTANT: The second field is always mNone() (Option::None). Never pass the full
+      // gov action or any Constr 2 value here; on-chain decode_option_script_hash expects
+      // guardrails_data to be Constr 1 [] (None) or Constr 0 [bytearray] (Some script hash).
       const finalStructure = mConStr(2, [beneficiariesList as any, guardrailsOption]);
       
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/18581f75-925e-4598-bb51-86be65d552be',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'offchain.ts:488',message:'finalStructure created',data:{alternative:finalStructure?.alternative,fieldsCount:finalStructure?.fields?.length,field0Type:typeof finalStructure?.fields?.[0],field1Type:typeof finalStructure?.fields?.[1],field0Keys:finalStructure?.fields?.[0]?Object.keys(finalStructure.fields[0]):null,field1Keys:finalStructure?.fields?.[1]?Object.keys(finalStructure.fields[1]):null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       console.log(`[getGovActionParam] Final structure (raw Data):`, finalStructure);
-      
+      console.log(
+        "[getGovActionParam] param structure for logging: constructor 2,",
+        withdrawalEntries.length,
+        "withdrawals, keys (sorted):",
+        withdrawalEntries.map(([addr]) => addr),
+      );
+
       return finalStructure;
     }
-    
+
     if (this.govActionType === "InfoAction") {
       // InfoAction: NicePoll (constructor 6) with no fields
       // This must match the governanceAction passed to proposeGovAction()
       // Return raw Data object - applyParamsToScript handles serialization
+      console.log(
+        "[getGovActionParam] param structure for logging: constructor 6, 0 withdrawals, keys: []",
+      );
       return mConStr(6, []);
     }
 
@@ -594,23 +685,36 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
   private getCrowdfundSpendCbor() {
     const compiled = findValidator(VALIDATOR_TITLES.SPEND);
-    const govActionParam = this.getGovActionParam();
-    // Serialize the Data object to CBOR bytes (hex string) since the validator expects ByteArray
-    // The validator parameter gov_action is typed as ByteArray, so we need to serialize it explicitly
-    const govActionParamSerialized = serializeData(govActionParam);
-    
+
+    // Encode the VGovernanceAction parameter as Plutus Data CBOR.
+    // The validator compares the proposal's GovernanceAction against this parameter.
+    const canonicalAction = this.getCanonicalGovernanceAction();
+    const govActionBytes = this.getGovernanceActionCborHex();
+
+    const withdrawalKeys =
+      canonicalAction.kind === "TreasuryWithdrawalsAction"
+        ? Object.keys(canonicalAction.action?.withdrawals || {})
+        : [];
+    console.log(
+      "[gov_action_param] Plutus Data CBOR (used in script parametrization), kind:",
+      canonicalAction.kind,
+      ", withdrawals:",
+      withdrawalKeys.length,
+      ", keys (sorted):",
+      withdrawalKeys,
+      ", CBOR hex:",
+      govActionBytes,
+    );
+
     return applyParamsToScript(compiled, [
       this.getAuthTokenPolicyId(),
       stringToHex(this.proposerKeyHash),
-      govActionParamSerialized, // Pass serialized CBOR bytes instead of Data object
-      this.decodePoolIdToHex(this.governance.delegatePoolId), // Decode bech32 pool ID to hex hash
+      govActionBytes,  // Cardano CBOR bytes (not Plutus Data)
+      this.decodePoolIdToHex(this.governance.delegatePoolId),
       this.governance.stakeRegisterDeposit,
       this.governance.drepRegisterDeposit,
       this.governance.govDeposit,
     ]);
-    
-    console.log("[getCrowdfundSpendCbor] Cached CBOR computed");
-    return this.cachedCrowdfundSpendCbor;
   }
 
   private getCrowdfundSpendHash() {
@@ -1088,41 +1192,96 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     }
 
     this.mesh.reset();
-    const tx = await this.mesh
-      .spendingPlutusScriptV3()
-      .txIn(
-        authTokenUtxo.input.txHash,
-        authTokenUtxo.input.outputIndex,
-        authTokenUtxo.output.amount,
-        authTokenUtxo.output.address,
-      )
-      .txInScript(this.getCrowdfundSpendCbor())
-      .txInInlineDatumPresent()
-      .spendingTxInReference(refSpendUtxo, refSpendOutputIndex)
-      .txInRedeemerValue(
-        this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ContributeFund),
-      )
-      .mintPlutusScriptV3()
-      .mint(
-        contributionAmount.toString(),
-        datum.share_token || this.getShareTokenPolicyId(),
-        "",
-      )
-      .mintingScript(this.getShareTokenCbor())
-      .mintRedeemerValue(this.buildMintRedeemer(MintPolarityTag.Mint))
-      .txOut(this.ensureCrowdfundAddress(), newScriptValue)
-      .txOutInlineDatumValue(updatedDatum, "Mesh")
-      .txInCollateral(
-        collateral.input.txHash,
-        collateral.input.outputIndex,
-        collateral.output.amount,
-        collateral.output.address,
-      )
-      .changeAddress(walletAddress)
-      .selectUtxosFrom(utxos)
-      .invalidHereafter(Number(slot))
-      .setFee('1700000')
-      .complete();
+    let tx: string;
+    try {
+      tx = await this.mesh
+        .spendingPlutusScriptV3()
+        .txIn(
+          authTokenUtxo.input.txHash,
+          authTokenUtxo.input.outputIndex,
+          authTokenUtxo.output.amount,
+          authTokenUtxo.output.address,
+        )
+        .txInScript(this.getCrowdfundSpendCbor())
+        .txInInlineDatumPresent()
+        .spendingTxInReference(refSpendUtxo, refSpendOutputIndex)
+        .txInRedeemerValue(
+          this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ContributeFund),
+        )
+        .mintPlutusScriptV3()
+        .mint(
+          contributionAmount.toString(),
+          datum.share_token || this.getShareTokenPolicyId(),
+          "",
+        )
+        .mintingScript(this.getShareTokenCbor())
+        .mintRedeemerValue(this.buildMintRedeemer(MintPolarityTag.Mint))
+        .txOut(this.ensureCrowdfundAddress(), newScriptValue)
+        .txOutInlineDatumValue(updatedDatum, "Mesh")
+        .txInCollateral(
+          collateral.input.txHash,
+          collateral.input.outputIndex,
+          collateral.output.amount,
+          collateral.output.address,
+        )
+        .changeAddress(walletAddress)
+        .selectUtxosFrom(utxos)
+        .invalidHereafter(Number(slot))
+        .setFee("1700000")
+        .complete();
+    } catch (error) {
+      const err = new Error(
+        `contributeCrowdfund tx build failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      const errorType = typeof error;
+      const errorProps =
+        error && typeof error === "object"
+          ? Object.getOwnPropertyNames(error)
+          : undefined;
+      const builderBody = (this.mesh as any)?.meshTxBuilderBody;
+      const builderSnapshot = builderBody
+        ? {
+            fee: builderBody.fee,
+            changeAddress: builderBody.changeAddress,
+            validityRange: builderBody.validityRange,
+            inputs: builderBody.inputs,
+            outputs: builderBody.outputs,
+            mints: builderBody.mints,
+            collaterals: builderBody.collaterals,
+            requiredSignatures: builderBody.requiredSignatures,
+            referenceInputs: builderBody.referenceInputs,
+            withdrawals: builderBody.withdrawals,
+            votes: builderBody.votes,
+          }
+        : undefined;
+
+      (err as { details?: Record<string, unknown> }).details = {
+        stage: "contribute.complete",
+        contributionAmount,
+        walletAddress,
+        hasEvaluator: Boolean((this.mesh as any)?.evaluator),
+        utxoCount: utxos?.length ?? 0,
+        collateral: {
+          txHash: collateral.input.txHash,
+          outputIndex: collateral.input.outputIndex,
+        },
+        authTokenUtxo: {
+          txHash: authTokenUtxo.input.txHash,
+          outputIndex: authTokenUtxo.input.outputIndex,
+          address: authTokenUtxo.output.address,
+          amount: authTokenUtxo.output.amount,
+        },
+        refSpend: { txHash: refSpendUtxo, outputIndex: refSpendOutputIndex },
+        networkId: this.networkId,
+        originalError: error,
+        originalErrorType: errorType,
+        originalErrorProps: errorProps,
+        builderSnapshot,
+      };
+      throw err;
+    }
 
     const evaluateTx = await this.mesh.evaluator?.evaluateTx(tx);
     console.log("evaluateTx:", evaluateTx);
@@ -1384,6 +1543,21 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     console.log("outputDatum:", outputDatum);
 
     console.log(utxos);
+
+    // Get governance action and anchor for the proposal
+    // RegisterCerts must include a proposal in the same transaction (validator line 261-264)
+    const canonicalAction = this.getCanonicalGovernanceAction();
+    const govAnchor = ensureAnchor(
+      "governance",
+      undefined,
+      this.governance.anchorGovAction,
+    );
+
+    console.log("[registerCerts] Including proposal with governance action:", {
+      kind: canonicalAction.kind,
+      anchor: govAnchor,
+    });
+
     // Build transaction matching validator structure (lines 231-286)
     this.mesh.reset();
     const tx = await this.mesh
@@ -1452,6 +1626,15 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         undefined,
         { mem: 200000, steps: 200000000 },
       )
+      // Add governance proposal (required by validator line 261-264)
+      .proposal(
+        canonicalAction,
+        {
+          anchorUrl: govAnchor.url,
+          anchorDataHash: govAnchor.hash,
+        } as Anchor,
+        rewardAddress,
+      )
       // RegisterCerts only registers certificates and keeps the Crowdfund state
       .txInCollateral(
         collateral.input.txHash,
@@ -1459,7 +1642,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         collateral.output.amount,
         collateral.output.address,
       )
-      .txOut(walletAddress, [{ unit: "lovelace", quantity: "5000000" }])
       .requiredSignerHash(this.proposerKeyHash)
       .selectUtxosFrom(utxos)
       .changeAddress(walletAddress)
@@ -1522,11 +1704,14 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     );
 
     // Get the governance action (defaults to InfoAction if not provided)
-    const proposalAction = governanceAction ||
+    const rawProposalAction =
+      governanceAction ||
       this.governance.governanceAction || {
         kind: "InfoAction",
         action: {},
       };
+    // Use canonical form (sorted withdrawals) so tx bytes match parametrized bytes
+    const proposalAction = this.normalizeGovernanceAction(rawProposalAction);
 
     // Validate governance action matches the configured type
     if (this.govActionType === 'TreasuryWithdrawalsAction') {
@@ -1589,7 +1774,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     ).toString();
 
     this.mesh.reset();
-    const tx = await this.mesh
+    const txBuilder = this.mesh
       .spendingPlutusScriptV3()
       .txIn(
         authTokenUtxo.input.txHash,
@@ -1603,10 +1788,27 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         this.buildSpendRedeemer(CrowdfundGovRedeemerTag.ProposeGovAction),
       )
       .txOut(this.ensureCrowdfundAddress(), updatedValue)
-      .txOutInlineDatumValue(proposedDatum, "Mesh")
+      .txOutInlineDatumValue(proposedDatum, "Mesh");
+
+    const normalizedWithdrawals =
+      proposalAction.kind === "TreasuryWithdrawalsAction"
+        ? Object.entries(
+            proposalAction.action?.withdrawals || {},
+          ).sort(([a], [b]) => a.localeCompare(b))
+        : [];
+    console.log("[proposeGovAction] Proposal passed to .proposal():", {
+      raw: proposalAction,
+      kind: proposalAction.kind,
+      normalizedWithdrawalsSorted: normalizedWithdrawals,
+    });
+    console.log(
+      "[proposeGovAction] raw proposalAction JSON:",
+      JSON.stringify(proposalAction),
+    );
+
+    const tx = await txBuilder
       //adds governance proposal to the transaction
       // proposalAction is already a proper GovernanceAction type from MeshJS
-
       .proposal(
         proposalAction,
         {
@@ -1615,16 +1817,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         } as Anchor,
         rewardAddress,
       )
-      // .proposalTxInReference(
-      //   refStakeUtxo,
-      //   refStakeOutputIndex,
-      //   refStakeCborLength,
-      //   this.getStakePublishHash(),
-      //   "V3",
-      // )
-      // .proposalRedeemerValue(
-      //   mConStr(0, []),
-      // )
       .txInCollateral(
         collateral.input.txHash,
         collateral.input.outputIndex,
@@ -1640,6 +1832,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
 
     const completeTx = await tx.complete();
     console.log("completeTx:", completeTx);
+    console.log(
+      "[proposeGovAction] Compare [gov_action_param] serialized hex with the proposal in the tx; if they differ, the validator's proposal_check will fail.",
+    );
     const evaluateTx = await this.mesh.evaluator?.evaluateTx(completeTx);
     console.log("evaluateTx:", evaluateTx);
 

@@ -15,8 +15,9 @@ use tests/test_utils.{
   add_proposal_procedure, mock_auth_token, mock_crowdfund_address, mock_deadline,
   mock_delegate_pool_id, mock_drep_register_deposit, mock_fundraise_target,
   mock_funds_controlled, mock_gov_action, mock_gov_action_period,
-  mock_gov_address, mock_gov_deposit, mock_proposer_key_hash, mock_share_token,
-  mock_stake_hash, mock_stake_register_deposit,
+  mock_gov_address, mock_gov_address_with_stake, mock_gov_deposit,
+  mock_proposer_key_hash, mock_share_token, mock_stake_hash,
+  mock_stake_register_deposit,
 }
 use types.{Crowdfund, CrowdfundGovDatum, RegisterCerts}
 
@@ -140,8 +141,7 @@ test register_certs_with_crowdfund_output() {
   )
 }
 
-// Test RegisterCerts WITHOUT proposal (separated flow)
-// This should fail with current validator but helps measure memory
+// Test RegisterCerts WITHOUT proposal (validator requires proposal_procedures; this must fail)
 test register_certs_without_proposal() {
   let input_datum: CrowdfundGovDatum =
     Crowdfund {
@@ -157,7 +157,6 @@ test register_certs_without_proposal() {
     }
   let tx = mock_register_certs_tx_realistic(False)
 
-  // This will fail because validator checks for proposal (line 278-284)
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
@@ -205,8 +204,7 @@ test register_certs_with_proposal_memory_test() {
   )
 }
 
-// Test to measure memory usage for RegisterCerts without proposal
-// This helps identify if proposal check is causing high memory usage
+// Test to measure memory usage for RegisterCerts without proposal (validator fails)
 test register_certs_without_proposal_memory_test() {
   let input_datum: CrowdfundGovDatum =
     Crowdfund {
@@ -222,7 +220,6 @@ test register_certs_without_proposal_memory_test() {
     }
   let tx = mock_register_certs_tx_realistic(False)
 
-  // This will fail but we can measure memory usage
   !gcf_spend_validator.gCf_spend.spend(
     mock_auth_token,
     mock_proposer_key_hash,
@@ -268,9 +265,9 @@ test register_certs_realistic_datum_values() {
       |> add(realistic_stake_hash, "", 1)
       |> add(mock_auth_token, "", 1)
 
+  // RegisterCerts deducts only stake + drep (no gov_deposit); output value must be clean (lovelace + auth only)
   let deposits =
-    mock_stake_register_deposit + mock_drep_register_deposit + mock_gov_deposit
-  // Output should only have lovelace + auth token (value_length == 2)
+    mock_stake_register_deposit + mock_drep_register_deposit
   let output_value =
     from_lovelace(realistic_funds - deposits)
       |> add(mock_auth_token, "", 1)
@@ -289,11 +286,14 @@ test register_certs_realistic_datum_values() {
       min_charge: 0,
     }
 
+  // Use address whose stake credential matches datum.stake_hash so credential_matches_datum passes
+  let realistic_address = mock_gov_address_with_stake(realistic_stake_hash)
+
   let tx =
     mocktail_tx()
-      |> tx_in(True, mock_tx_hash(0), 0, input_value, mock_gov_address)
+      |> tx_in(True, mock_tx_hash(0), 0, input_value, realistic_address)
       |> tx_in_inline_datum(True, input_datum)
-      |> tx_out(True, mock_gov_address, output_value)
+      |> tx_out(True, realistic_address, output_value)
       |> tx_out_inline_datum(True, output_datum)
       |> complete()
       |> add_certificate(
@@ -380,8 +380,7 @@ test register_certs_realistic_memory_test() {
       |> add(mock_auth_token, "", 1)
 
   let deposits =
-    mock_stake_register_deposit + mock_drep_register_deposit + mock_gov_deposit
-  // Output should only have lovelace + auth token (value_length == 2)
+    mock_stake_register_deposit + mock_drep_register_deposit
   let output_value =
     from_lovelace(realistic_funds - deposits)
       |> add(mock_auth_token, "", 1)
@@ -400,11 +399,13 @@ test register_certs_realistic_memory_test() {
       min_charge: 0,
     }
 
+  let realistic_address = mock_gov_address_with_stake(realistic_stake_hash)
+
   let tx =
     mocktail_tx()
-      |> tx_in(True, mock_tx_hash(0), 0, input_value, mock_gov_address)
+      |> tx_in(True, mock_tx_hash(0), 0, input_value, realistic_address)
       |> tx_in_inline_datum(True, input_datum)
-      |> tx_out(True, mock_gov_address, output_value)
+      |> tx_out(True, realistic_address, output_value)
       |> tx_out_inline_datum(True, output_datum)
       |> complete()
       |> add_certificate(

@@ -7,7 +7,7 @@ use tests/test_utils.{
   mock_stake_hash,
 }
 use types.{Deregister,
-  DeregisterCerts, Register, RegisterCerts, VoteOnGovAction}
+  DeregisterCerts, ProposeGovAction, Register, RegisterCerts, VoteOnGovAction}
 
 type StartTestCase {
   is_only_one_spend_inputed: Bool,
@@ -99,7 +99,8 @@ test s2_fail_publish_with_more_than_one_input_from_hash() fail {
 }
 
 test s2_success_propose() {
-  let only_input_redeemer: Data = RegisterCerts
+  // Stake validator propose() expects the auth-token spend redeemer to be ProposeGovAction
+  let only_input_redeemer: Data = ProposeGovAction
 
   let tx =
     mock_start_tx(

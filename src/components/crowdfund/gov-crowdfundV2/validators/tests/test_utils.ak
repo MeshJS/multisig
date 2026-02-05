@@ -71,6 +71,14 @@ pub const mock_gov_address =
     stake_credential: Some(Inline(Script(mock_stake_hash))),
   }
 
+/// Address with same payment script as mock_gov_address but custom stake credential (for credential_matches_datum).
+pub fn mock_gov_address_with_stake(stake_hash: ByteArray) -> Address {
+  Address {
+    payment_credential: Script(mock_spend_script_hash),
+    stake_credential: Some(Inline(Script(stake_hash))),
+  }
+}
+
 pub const mock_gov_action_period = 3600
 
 pub const mock_delegate_pool_id = mock_script_hash(3)

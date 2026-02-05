@@ -2,11 +2,10 @@ use aiken/cbor
 use cardano/address.{Script}
 use cardano/assets.{Lovelace}
 use cardano/governance.{
-  GovernanceAction, GovernanceActionId, NicePoll as GovNicePoll, NoConfidence,
-  ProposalProcedure,
+  GovernanceAction, NicePoll as GovNicePoll, NoConfidence, ProposalProcedure,
 }
-use gov.{VGovernanceAction, VNicePoll, VNoConfidence}
-use mocktail.{mock_script_hash, mock_tx_hash}
+use gov.{VGovernanceAction, VNicePoll}
+use mocktail.{mock_script_hash}
 use utils.{check_proposal_procedure, compare_gov_action}
 
 // Test constants
@@ -18,31 +17,14 @@ pub const mock_other_return_address_credential = Script(mock_script_hash(1))
 
 pub const mock_other_deposit: Lovelace = 10000000
 
-pub const mock_ancestor_id =
-  GovernanceActionId { transaction: mock_tx_hash(1), proposal_procedure: 0 }
+// compare_gov_action: validator decodes vgov as Plutus Data (same encoding as cbor.serialise)
+// and compares structurally with governance_action_to_vgov(agov). Only NicePoll and TreasuryWithdrawal supported.
 
-// Test compare_gov_action function
-test compare_gov_action_matching_no_confidence() {
-  let agov: GovernanceAction = NoConfidence { ancestor: None }
-  let vgov: VGovernanceAction = VNoConfidence { ancestor: None }
+test compare_gov_action_matching_nice_poll() {
+  let agov: GovernanceAction = GovNicePoll
+  let vgov: VGovernanceAction = VNicePoll
   let vgov_bytes = cbor.serialise(vgov)
   compare_gov_action(agov, vgov_bytes)
-}
-
-test compare_gov_action_matching_no_confidence_with_ancestor() {
-  let agov: GovernanceAction = NoConfidence { ancestor: Some(mock_ancestor_id) }
-  let vgov: VGovernanceAction =
-    VNoConfidence { ancestor: Some(mock_ancestor_id) }
-  let vgov_bytes = cbor.serialise(vgov)
-  compare_gov_action(agov, vgov_bytes)
-}
-
-test compare_gov_action_non_matching_ancestor() {
-  let agov: GovernanceAction = NoConfidence { ancestor: None }
-  let vgov: VGovernanceAction =
-    VNoConfidence { ancestor: Some(mock_ancestor_id) }
-  let vgov_bytes = cbor.serialise(vgov)
-  !compare_gov_action(agov, vgov_bytes)
 }
 
 test compare_gov_action_different_types() {
@@ -124,10 +106,10 @@ test check_proposal_procedure_no_match_wrong_governance_action() {
     ProposalProcedure {
       deposit: mock_deposit,
       return_address: mock_return_address_credential,
-      governance_action: NoConfidence { ancestor: Some(mock_ancestor_id) },
+      governance_action: NoConfidence { ancestor: None },
     }
   let proposal_procedures = [proposal_procedure]
-  let vgovernance_action: VGovernanceAction = VNoConfidence { ancestor: None }
+  let vgovernance_action: VGovernanceAction = VNicePoll
   let vgovernance_action_bytes = cbor.serialise(vgovernance_action)
   !check_proposal_procedure(
     proposal_procedures,
@@ -184,25 +166,6 @@ test check_proposal_procedure_one_match_among_multiple() {
   let proposal_procedures =
     [matching_proposal, non_matching_proposal1, non_matching_proposal2]
   let vgovernance_action: VGovernanceAction = VNicePoll
-  let vgovernance_action_bytes = cbor.serialise(vgovernance_action)
-  check_proposal_procedure(
-    proposal_procedures,
-    mock_deposit,
-    mock_return_address_credential,
-    vgovernance_action_bytes,
-  )
-}
-
-test check_proposal_procedure_with_ancestor_match() {
-  let proposal_procedure =
-    ProposalProcedure {
-      deposit: mock_deposit,
-      return_address: mock_return_address_credential,
-      governance_action: NoConfidence { ancestor: Some(mock_ancestor_id) },
-    }
-  let proposal_procedures = [proposal_procedure]
-  let vgovernance_action: VGovernanceAction =
-    VNoConfidence { ancestor: Some(mock_ancestor_id) }
   let vgovernance_action_bytes = cbor.serialise(vgovernance_action)
   check_proposal_procedure(
     proposal_procedures,

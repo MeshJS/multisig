@@ -18,6 +18,9 @@ export const env = createEnv({
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
     PINATA_API_KEY: z.string().optional(),
     PINATA_SECRET_API_KEY: z.string().optional(),
+    FAUCET_MAX_SEND_LOVELACE: z.coerce.number().optional(),
+    FAUCET_MIN_BALANCE_LOVELACE: z.coerce.number().optional(),
+    TEST_AGENT_POOL_ID: z.string().optional(),
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -49,6 +52,10 @@ export const env = createEnv({
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: z.string().optional(),
     NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
     NEXT_PUBLIC_REF_ADDR: z.string().optional(),
+    NEXT_PUBLIC_ENABLE_TEST_AGENT: z.preprocess(
+      (val) => val === "true" || val === true,
+      z.boolean().optional().default(false),
+    ),
   },
 
   /**
@@ -72,18 +79,23 @@ export const env = createEnv({
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: process.env.NEXT_PUBLIC_CUSTOM_SLOT_CONFIG,
     NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
     NEXT_PUBLIC_REF_ADDR: process.env.NEXT_PUBLIC_REF_ADDR,
+    NEXT_PUBLIC_ENABLE_TEST_AGENT: process.env.NEXT_PUBLIC_ENABLE_TEST_AGENT,
     PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     PINATA_API_KEY: process.env.PINATA_API_KEY,
     PINATA_SECRET_API_KEY: process.env.PINATA_SECRET_API_KEY,
+    FAUCET_MAX_SEND_LOVELACE: process.env.FAUCET_MAX_SEND_LOVELACE,
+    FAUCET_MIN_BALANCE_LOVELACE: process.env.FAUCET_MIN_BALANCE_LOVELACE,
+    TEST_AGENT_POOL_ID: process.env.TEST_AGENT_POOL_ID,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
    * useful for Docker builds.
    */
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  skipValidation:
+    !!process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === "development",
   /**
    * Makes it so that empty strings are treated as undefined. `SOME_VAR: z.string()` and
    * `SOME_VAR=''` will throw an error.

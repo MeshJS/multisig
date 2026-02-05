@@ -8,13 +8,14 @@ use mocktail.{
 }
 use share_token/mint as share_token_mint
 use tests/test_utils.{
-  mock_auth_token, mock_completion_script, mock_crowdfund_address,
+  mock_auth_token, mock_completion_script,
   mock_crowdfund_datum, mock_current_fundraised_amount, mock_delegate_pool_id,
   mock_drep_register_deposit, mock_fee_address, mock_fundraise_target,
   mock_gov_action, mock_gov_address, mock_gov_deposit, mock_min_charge,
   mock_proposer_key_hash, mock_share_token, mock_stake_hash,
   mock_stake_register_deposit,
 }
+// Spend validator uses own_input.address; RegisterCerts needs stake_credential (get_inline_credential)
 use types.{CrowdfundGovRedeemer, RMint, RegisterCerts}
 
 // Note: CompleteCrowdfund has been removed from V2
@@ -68,8 +69,9 @@ fn mock_complete_crowdfund_tx(
 
   let output_value = from_lovelace(mock_min_charge)
 
+  // Use mock_gov_address so get_inline_credential(own_input.output.address) has stake_credential (RegisterCerts path)
   mocktail_tx()
-    |> tx_in(True, mock_tx_hash(0), 0, input_value, mock_crowdfund_address)
+    |> tx_in(True, mock_tx_hash(0), 0, input_value, mock_gov_address)
     |> tx_in_inline_datum(
         True,
         mock_crowdfund_datum(current_fundraised_amount, False),
@@ -79,7 +81,7 @@ fn mock_complete_crowdfund_tx(
         mock_tx_hash(0),
         1,
         input_value,
-        mock_crowdfund_address,
+        mock_gov_address,
       )
     |> tx_out(is_output_to_fee_address_correct, mock_fee_address, output_value)
     |> tx_out(
@@ -90,6 +92,9 @@ fn mock_complete_crowdfund_tx(
       )
     |> tx_out(is_fundraise_target_sent, mock_gov_address, fundraise_output)
     |> tx_out_inline_datum(is_fundraise_target_sent, fundraise_output_datum)
+    // One auth output at same address so get_single_auth_io passes; wrong value so lovelace_check fails (RegisterCerts expects deduction)
+    |> tx_out(True, mock_gov_address, input_value)
+    |> tx_out_inline_datum(True, mock_crowdfund_datum(current_fundraised_amount, False))
     |> script_withdrawal(
         is_completion_script_executed,
         mock_completion_script,

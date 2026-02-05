@@ -11,6 +11,7 @@ import type { GovernanceAction } from "@meshsdk/common";
 import { api } from "@/utils/api";
 import { useCollateralToast } from "../useCollateralToast";
 import { getProvider } from "@/utils/get-provider";
+import { deserializeAddress, serializeRewardAddress } from "@meshsdk/core";
 
 type GovernanceAnchor = {
   url: string;
@@ -69,10 +70,160 @@ export function ProposeGovAction({
         throw new Error("Governance anchor is required");
       }
 
-      const normalizedGovAction: GovernanceAction = {
-        kind: "InfoAction",
-        action: {},
-      };
+      // Determine the governance action based on contract configuration
+      let normalizedGovAction: GovernanceAction;
+      
+      if (contract.govActionType === 'TreasuryWithdrawalsAction') {
+        // Use provided governanceAction if available, otherwise construct from treasuryBeneficiaries
+        if (governanceAction && governanceAction.kind === 'TreasuryWithdrawalsAction') {
+          // Convert payment addresses to reward addresses in the provided action
+          const withdrawals: Record<string, string> = {};
+          const networkId = await wallet.getNetworkId();
+          
+          for (const [address, amount] of Object.entries(governanceAction.action?.withdrawals || {})) {
+            try {
+              // Check if address is already a reward address (stake address)
+              const isRewardAddress = address.startsWith('stake1') || address.startsWith('stake_test1');
+              
+              if (isRewardAddress) {
+                // Already a reward address, use as-is
+                withdrawals[address] = String(amount);
+                console.log(`[ProposeGovAction] Using reward address as-is: ${address.substring(0, 20)}...`);
+              } else {
+                // Convert payment address to reward address
+                console.log(`[ProposeGovAction] Converting payment address to reward address: ${address.substring(0, 20)}...`);
+                const decoded = deserializeAddress(address);
+                
+                if (!decoded.stakeCredentialHash) {
+                  throw new Error(
+                    `Payment address ${address.substring(0, 30)}... does not have a stake credential (it's an enterprise address). ` +
+                    `Treasury withdrawals require reward addresses (stake addresses). ` +
+                    `Please use a payment address that includes a stake credential, or provide a reward address directly.`
+                  );
+                }
+                
+                // Check if stake credential is script-based
+                const isScriptStake = decoded.stakeScriptHash !== undefined;
+                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptHash;
+                
+                if (!stakeHash) {
+                  throw new Error(`Failed to extract stake credential hash from address ${address.substring(0, 30)}...`);
+                }
+                
+                const rewardAddress = serializeRewardAddress(
+                  stakeHash,
+                  isScriptStake,
+                  networkId
+                );
+                
+                if (!rewardAddress) {
+                  throw new Error(`Failed to serialize reward address from stake hash ${stakeHash.substring(0, 20)}...`);
+                }
+                
+                console.log(`[ProposeGovAction] Converted ${address.substring(0, 20)}... to ${rewardAddress.substring(0, 20)}...`);
+                withdrawals[rewardAddress] = String(amount);
+              }
+            } catch (error: any) {
+              throw new Error(
+                `Failed to process address ${address.substring(0, 30)}... for treasury withdrawal: ${error.message}`
+              );
+            }
+          }
+          
+          normalizedGovAction = {
+            kind: 'TreasuryWithdrawalsAction',
+            action: {
+              withdrawals,
+            },
+          };
+        } else if (contract.treasuryBeneficiaries && contract.treasuryBeneficiaries.length > 0) {
+          // Construct TreasuryWithdrawalsAction from stored beneficiaries
+          // Convert payment addresses to reward addresses
+          const withdrawals: Record<string, string> = {};
+          const networkId = await wallet.getNetworkId();
+          
+          for (const beneficiary of contract.treasuryBeneficiaries) {
+            try {
+              // Check if address is already a reward address (stake address)
+              const isRewardAddress = beneficiary.address.startsWith('stake1') || beneficiary.address.startsWith('stake_test1');
+              
+              if (isRewardAddress) {
+                // Already a reward address, use as-is
+                withdrawals[beneficiary.address] = beneficiary.amount;
+                console.log(`[ProposeGovAction] Using reward address as-is: ${beneficiary.address.substring(0, 20)}...`);
+              } else {
+                // Convert payment address to reward address
+                console.log(`[ProposeGovAction] Converting payment address to reward address: ${beneficiary.address.substring(0, 20)}...`);
+                const decoded = deserializeAddress(beneficiary.address);
+                
+                if (!decoded.stakeCredentialHash && !decoded.stakeScriptHash) {
+                  throw new Error(
+                    `Payment address ${beneficiary.address.substring(0, 30)}... does not have a stake credential (it's an enterprise address). ` +
+                    `Treasury withdrawals require reward addresses (stake addresses). ` +
+                    `Please use a payment address that includes a stake credential, or provide a reward address directly.`
+                  );
+                }
+                
+                // Check if stake credential is script-based
+                const isScriptStake = decoded.stakeScriptHash !== undefined;
+                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptHash;
+                
+                if (!stakeHash) {
+                  throw new Error(`Failed to extract stake credential hash from address ${beneficiary.address.substring(0, 30)}...`);
+                }
+                
+                const rewardAddress = serializeRewardAddress(
+                  stakeHash,
+                  isScriptStake,
+                  networkId
+                );
+                
+                if (!rewardAddress) {
+                  throw new Error(`Failed to serialize reward address from stake hash ${stakeHash.substring(0, 20)}...`);
+                }
+                
+                console.log(`[ProposeGovAction] Converted ${beneficiary.address.substring(0, 20)}... to ${rewardAddress.substring(0, 20)}...`);
+                withdrawals[rewardAddress] = beneficiary.amount;
+              }
+            } catch (error: any) {
+              throw new Error(
+                `Failed to process address ${beneficiary.address.substring(0, 30)}... for treasury withdrawal: ${error.message}`
+              );
+            }
+          }
+          
+          normalizedGovAction = {
+            kind: 'TreasuryWithdrawalsAction',
+            action: {
+              withdrawals,
+            },
+          };
+        } else {
+          throw new Error(
+            'TreasuryWithdrawalsAction requires either a governanceAction prop or treasuryBeneficiaries in the contract configuration'
+          );
+        }
+      } else {
+        // Default to InfoAction (NicePoll)
+        normalizedGovAction = governanceAction || {
+          kind: "InfoAction",
+          action: {},
+        };
+      }
+
+      const normalizedWithdrawalsSorted =
+        normalizedGovAction.kind === "TreasuryWithdrawalsAction"
+          ? Object.entries(
+              normalizedGovAction.action?.withdrawals || {},
+            ).sort(([a], [b]) => a.localeCompare(b))
+          : [];
+      console.log(
+        "[ProposeGovAction] normalizedGovAction passed to proposeGovAction:",
+        {
+          kind: normalizedGovAction.kind,
+          normalizedWithdrawalsSorted,
+        },
+      );
 
       const { tx } = await contract.proposeGovAction({
         datum,

@@ -13,7 +13,7 @@ import { Coins, Send, AlertCircle, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { LargestFirstInputSelector, MeshTxBuilder } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/core";
 import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";
@@ -176,7 +176,6 @@ export function ContributeToCrowdfund({
       fetcher: provider,
       evaluator: provider,
       submitter: provider,
-      selector: new LargestFirstInputSelector(),
       verbose: true,
     });
   }, [provider]);
@@ -376,6 +375,11 @@ export function ContributeToCrowdfund({
         spendRefScript,
         hasSpendRefScript: !!spendRefScript,
       });
+
+      // Validate minimum contribution amount (2 ADA = 2,000,000 lovelace)
+      if (contributionAmount < 2_000_000) {
+        throw new Error('Minimum contribution is 2 ADA (2,000,000 lovelace)');
+      }
 
       console.log("[handleContribute] Building transaction...");
       const { tx } = await contract.contributeCrowdfund(
