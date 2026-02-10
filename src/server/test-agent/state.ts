@@ -4,6 +4,8 @@ import path from "path";
 
 const MAX_EVENTS = 500;
 const STORE_PATH = path.resolve(process.cwd(), ".local", "test-agent-store.json");
+const jsonReplacer = (_key: string, value: unknown) =>
+  typeof value === "bigint" ? value.toString() : value;
 
 type EventSubscriber = (event: AgentEvent) => void;
 
@@ -60,6 +62,34 @@ const loadStore = (): AgentStore => {
   return store;
 };
 
+export const loadStoreSnapshot = (): {
+  runs: RunRecord[];
+  events: Record<string, AgentEvent[]>;
+} => {
+  try {
+    if (!fs.existsSync(STORE_PATH)) {
+      return { runs: [], events: {} };
+    }
+    const raw = fs.readFileSync(STORE_PATH, "utf-8");
+    const data = JSON.parse(raw) as {
+      runs?: RunRecord[];
+      events?: Record<string, AgentEvent[]>;
+    };
+    const runs = Array.isArray(data.runs) ? data.runs : [];
+    const events: Record<string, AgentEvent[]> = {};
+    if (data.events) {
+      Object.entries(data.events).forEach(([runId, runEvents]) => {
+        if (Array.isArray(runEvents)) {
+          events[runId] = runEvents.slice(-MAX_EVENTS);
+        }
+      });
+    }
+    return { runs, events };
+  } catch {
+    return { runs: [], events: {} };
+  }
+};
+
 let persistTimer: NodeJS.Timeout | null = null;
 
 const persistStore = (store: AgentStore) => {
@@ -69,7 +99,7 @@ const persistStore = (store: AgentStore) => {
       runs: Array.from(store.runs.values()),
       events: Object.fromEntries(store.events),
     };
-    fs.writeFileSync(STORE_PATH, JSON.stringify(payload, null, 2));
+    fs.writeFileSync(STORE_PATH, JSON.stringify(payload, jsonReplacer, 2));
   } catch {
     // Ignore persistence failures in dev
   }

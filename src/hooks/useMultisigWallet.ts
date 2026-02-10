@@ -5,10 +5,12 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useUserStore } from "@/lib/zustand/user";
 import { buildMultisigWallet } from "@/utils/common";
 import { DbWalletWithLegacy } from "@/types/wallet";
+import useSodiumReady from "@/hooks/useSodiumReady";
 
 export default function useMultisigWallet() {
   const router = useRouter();
   const walletId = router.query.wallet as string;
+  const sodiumReady = useSodiumReady();
 
   const network = useSiteStore((state) => state.network);
   const userAddress = useUserStore((state) => state.userAddress);
@@ -19,6 +21,10 @@ export default function useMultisigWallet() {
       enabled: walletId !== undefined && userAddress !== undefined,
     },
   );
+  if (!sodiumReady) {
+    return { multisigWallet: undefined, wallet: undefined, isLoading: true };
+  }
+
   if (wallet) {
     return { multisigWallet: buildMultisigWallet(wallet as DbWalletWithLegacy, network), wallet, isLoading };
   }

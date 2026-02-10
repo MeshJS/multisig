@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   CheckCircle2, 
@@ -79,8 +80,10 @@ export function GovActionLifecycleWizard({
   const [stakeRefScriptSet, setStakeRefScriptSet] = useState(false);
   const [certsRegistered, setCertsRegistered] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [resumeAfterRatification, setResumeAfterRatification] = useState(false);
 
   const isFundingTargetReached = fundingTarget && currentRaised ? currentRaised >= fundingTarget : false;
+  const isTreasuryFlow = contract.govActionType === "TreasuryWithdrawalsAction";
 
   // Check on-chain state for cert registration and votes
   useEffect(() => {
@@ -206,6 +209,12 @@ export function GovActionLifecycleWizard({
     onStateChange?.(state);
   }, [datum, govStateFromDb, govActionIdParsed, certsRegistered, hasVoted, onStateChange]);
 
+  useEffect(() => {
+    if (!isTreasuryFlow || currentState !== "Proposed") {
+      setResumeAfterRatification(false);
+    }
+  }, [isTreasuryFlow, currentState]);
+
   // Get the index of the NEXT step to take (not the step that resulted in current state)
   const getStepIndex = (state: GovState): number => {
     switch (state) {
@@ -219,6 +228,7 @@ export function GovActionLifecycleWizard({
   };
 
   const currentStepIndex = getStepIndex(currentState);
+  const allowPostProposalSteps = !isTreasuryFlow || resumeAfterRatification;
 
   const handleStepComplete = () => {
     setCertsRegistered(true);
@@ -338,12 +348,33 @@ export function GovActionLifecycleWizard({
               anchorGovAction={anchorGovAction}
               governanceAction={governanceAction}
               crowdfundId={crowdfundId}
+              govActionId={govActionIdFromDb}
               onSuccess={handleStepComplete}
             />
           )}
 
+          {/* Waiting for ratification (treasury withdrawals) */}
+          {isTreasuryFlow && currentState === "Proposed" && !resumeAfterRatification && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700">
+              <div className="text-[10px] font-semibold uppercase tracking-wide">
+                Waiting for ratification
+              </div>
+              <div className="mt-1 text-amber-800">
+                This treasury-withdrawal proposal should be ratified on-chain before voting or
+                deregistering. Resume manually once ratification is complete.
+              </div>
+              <Button
+                size="sm"
+                className="mt-3"
+                onClick={() => setResumeAfterRatification(true)}
+              >
+                Resume After Ratification
+              </Button>
+            </div>
+          )}
+
           {/* Vote */}
-          {currentState === "Proposed" && (
+          {currentState === "Proposed" && allowPostProposalSteps && (
             <VoteOnGovAction
               contract={contract}
               datum={datum as ProposedDatumTS}
@@ -353,7 +384,7 @@ export function GovActionLifecycleWizard({
           )}
 
           {/* Deregister */}
-          {currentState === "Voted" && (
+          {currentState === "Voted" && allowPostProposalSteps && (
             <DeregisterCerts
               contract={contract}
               datum={datum as VotedDatumTS}

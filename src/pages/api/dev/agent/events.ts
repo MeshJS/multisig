@@ -38,13 +38,18 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   res.write("retry: 2000\n\n");
 
+  const safeStringify = (value: unknown) =>
+    JSON.stringify(value, (_key, val) =>
+      typeof val === "bigint" ? val.toString() : val,
+    );
+
   const existing = getEvents(runId);
   existing.forEach((event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    res.write(`data: ${safeStringify(event)}\n\n`);
   });
 
   const unsubscribe = subscribeToEvents(runId, (event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    res.write(`data: ${safeStringify(event)}\n\n`);
   });
 
   req.on("close", () => {

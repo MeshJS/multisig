@@ -1,3 +1,6 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially useful
  * for Docker builds.
@@ -11,6 +14,16 @@ if (!process.env.SKIP_ENV_VALIDATION) {
     console.error("Failed to load env validation:", err);
   });
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const meshReactStub = path.join(
+  __dirname,
+  "src",
+  "stubs",
+  "meshsdk-react.tsx",
+);
+const meshReactStubTurbopack = "src/stubs/meshsdk-react.tsx";
 
 /** @type {import("next").NextConfig} */
 const config = {
@@ -54,7 +67,16 @@ const config = {
   // Turbopack configuration (Next.js 16+)
   // Empty config silences the warning about webpack/turbopack conflict
   // WebAssembly support is enabled by default in Turbopack
-  turbopack: {},
+  turbopack: {
+    root: __dirname,
+    resolveAlias: {
+      "@meshsdk/react": {
+        node: meshReactStubTurbopack,
+        browser: "@meshsdk/react",
+        default: meshReactStubTurbopack,
+      },
+    },
+  },
   
   // Webpack config for builds that explicitly use webpack (e.g., with --webpack flag)
   webpack: function (config, options) {
@@ -77,6 +99,14 @@ const config = {
         ".js": [".js", ".ts", ".tsx"],
       },
     };
+
+    if (options.isServer) {
+      config.resolve = config.resolve || {};
+      config.resolve.alias = {
+        ...(config.resolve.alias || {}),
+        "@meshsdk/react": meshReactStub,
+      };
+    }
     
     return config;
   },

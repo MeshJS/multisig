@@ -5,10 +5,12 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useRouter } from "next/router";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { DbWalletWithLegacy } from "@/types/wallet";
+import useSodiumReady from "@/hooks/useSodiumReady";
 
 export default function useAppWallet() {
   const router = useRouter();
   const walletId = router.query.wallet as string;
+  const sodiumReady = useSodiumReady();
 
   const network = useSiteStore((state) => state.network);
   const userAddress = useUserStore((state) => state.userAddress);
@@ -20,6 +22,10 @@ export default function useAppWallet() {
       enabled: walletId !== undefined && userAddress !== undefined,
     },
   );
+
+  if (!sodiumReady) {
+    return { appWallet: undefined, isLoading: true };
+  }
 
   if (wallet) {
     return { appWallet: buildWallet(wallet as DbWalletWithLegacy, network, walletsUtxos[walletId]), isLoading };

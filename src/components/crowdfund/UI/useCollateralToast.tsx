@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Loader2, ShieldAlert, Coins, CheckCircle2, Clock } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useWallet } from "@meshsdk/react";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 import { getProvider } from "@/utils/get-provider";
 import { MeshCrowdfundContract, GovernanceConfig } from "../offchain";
 import { useSiteStore } from "@/lib/zustand/site";

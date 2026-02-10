@@ -52,7 +52,7 @@ export interface RefundableDatumTS {
 }
 
 export interface TreasuryBeneficiary {
-  address: string;  // Bech32 payment address (addr/addr_test)
+  address: string;  // Bech32 reward address (stake1/stake_test1)
   amount: string;   // Lovelace as string
 }
 

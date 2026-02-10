@@ -24,6 +24,7 @@ interface ProposeGovActionProps {
   anchorGovAction?: GovernanceAnchor;
   governanceAction?: GovernanceAction;
   crowdfundId?: string;
+  govActionId?: string;
   onSuccess?: () => void;
 }
 
@@ -33,11 +34,14 @@ export function ProposeGovAction({
   anchorGovAction,
   governanceAction,
   crowdfundId,
+  govActionId,
   onSuccess,
 }: ProposeGovActionProps) {
   const { toast } = useToast();
   const { wallet } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
+  const hasExistingProposal =
+    contract.govActionType === "TreasuryWithdrawalsAction" && Boolean(govActionId);
 
   const { handleError: handleCollateralError, ensureCollateral } = useCollateralToast({
     proposerKeyHash: "",
@@ -281,12 +285,17 @@ export function ProposeGovAction({
 
   return (
     <div className="space-y-3">
+      {hasExistingProposal && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700">
+          Proposal already submitted for this treasury-withdrawal action.
+        </div>
+      )}
       <div className="text-xs text-muted-foreground text-center">
         Deposit: {deposit.toFixed(0)} ADA
       </div>
       <Button 
         onClick={handleProposeGovAction} 
-        disabled={isLoading} 
+        disabled={isLoading || hasExistingProposal} 
         className="w-full"
         variant="default"
       >

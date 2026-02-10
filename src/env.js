@@ -52,6 +52,7 @@ export const env = createEnv({
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: z.string().optional(),
     NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
     NEXT_PUBLIC_REF_ADDR: z.string().optional(),
+    NEXT_PUBLIC_GUARDRAILS_POLICY_HASH: z.string().optional(),
     NEXT_PUBLIC_ENABLE_TEST_AGENT: z.preprocess(
       (val) => val === "true" || val === true,
       z.boolean().optional().default(false),
@@ -79,6 +80,8 @@ export const env = createEnv({
     NEXT_PUBLIC_CUSTOM_SLOT_CONFIG: process.env.NEXT_PUBLIC_CUSTOM_SLOT_CONFIG,
     NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
     NEXT_PUBLIC_REF_ADDR: process.env.NEXT_PUBLIC_REF_ADDR,
+    NEXT_PUBLIC_GUARDRAILS_POLICY_HASH:
+      process.env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH,
     NEXT_PUBLIC_ENABLE_TEST_AGENT: process.env.NEXT_PUBLIC_ENABLE_TEST_AGENT,
     PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,

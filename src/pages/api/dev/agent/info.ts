@@ -76,12 +76,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       0n,
     );
+    const agentUtxos = await fetchAddressUtxos({
+      address: agentAddress,
+      provider,
+      providerHint,
+    });
+    const agentBalanceLovelace = (agentUtxos || []).reduce(
+      (sum: bigint, utxo: any) => {
+        const lovelace = utxo.output?.amount?.find((a: any) => a.unit === "lovelace");
+        return sum + BigInt(lovelace?.quantity || "0");
+      },
+      0n,
+    );
 
     res.status(200).json({
       faucetAddress,
       agentAddress,
       networkId,
       faucetBalanceLovelace: faucetBalanceLovelace.toString(),
+      agentBalanceLovelace: agentBalanceLovelace.toString(),
       configDefaults: {
         poolId: env.TEST_AGENT_POOL_ID,
         refAddress: env.NEXT_PUBLIC_REF_ADDR,

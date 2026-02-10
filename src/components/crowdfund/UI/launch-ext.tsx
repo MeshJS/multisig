@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@meshsdk/react";
 import useUser from "@/hooks/useUser";
 import { deserializeAddress, resolveScriptHash, applyParamsToScript, serializePlutusScript } from "@meshsdk/core";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 import blueprint from "../../gov-crowdfundV2/plutus.json";
 import { stringToHex } from "@meshsdk/common";
 

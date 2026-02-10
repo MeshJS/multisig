@@ -36,8 +36,9 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { CrowdfundDatumTS } from "../crowdfund";
-import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, MeshTxBuilder, deserializeAddress, resolveScriptHashDRepId } from "@meshsdk/core";
+import { SLOT_CONFIG_NETWORK, slotToBeginUnixTime, deserializeAddress, resolveScriptHashDRepId } from "@meshsdk/core";
 import { scriptHashToRewardAddress } from "@meshsdk/core-cst";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
 import { MeshCrowdfundContract } from "../offchain";

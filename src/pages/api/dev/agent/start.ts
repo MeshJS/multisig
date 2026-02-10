@@ -21,10 +21,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const {
     networkId,
     amountLovelace,
+    fundraiseTargetLovelace,
     poolId,
     refAddress,
     providerHint,
     resumeRunId,
+    govActionType,
+    treasuryWithdrawals,
+    stopAfterPropose,
   } = req.body ?? {};
 
   if (typeof resumeRunId === "string" && resumeRunId.trim()) {
@@ -47,10 +51,22 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const run = startTestRun({
     networkId,
     amountLovelace: typeof amountLovelace === "number" ? amountLovelace : undefined,
+    fundraiseTargetLovelace:
+      typeof fundraiseTargetLovelace === "number" ? fundraiseTargetLovelace : undefined,
     poolId: typeof poolId === "string" && poolId.trim() ? poolId.trim() : undefined,
     refAddress:
       typeof refAddress === "string" && refAddress.trim() ? refAddress.trim() : undefined,
     providerHint: normalizeProviderHint(providerHint),
+    govActionType:
+      govActionType === "TreasuryWithdrawalsAction" || govActionType === "InfoAction"
+        ? govActionType
+        : undefined,
+    treasuryWithdrawals:
+      treasuryWithdrawals && typeof treasuryWithdrawals === "object"
+        ? (treasuryWithdrawals as Record<string, string>)
+        : undefined,
+    stopAfterPropose:
+      typeof stopAfterPropose === "boolean" ? stopAfterPropose : undefined,
   });
 
   res.status(200).json({ runId: run.id });

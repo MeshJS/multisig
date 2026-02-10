@@ -4,13 +4,13 @@ import {
   IFetcher,
   IWallet,
   LanguageVersion,
-  MeshTxBuilder,
   MeshWallet,
   OfflineFetcher,
   serializePlutusScript,
   UTxO,
 } from "@meshsdk/core";
 import { OfflineEvaluator } from "@meshsdk/core-csl";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 
 export type MeshTxInitiatorInput = {
   mesh: MeshTxBuilder;
@@ -73,6 +73,66 @@ export class MeshTxInitiator {
     if (stakeCredential) {
       this.stakeCredential = stakeCredential;
     }
+
+    const meshAny = this.mesh as {
+      complete?: (...args: unknown[]) => Promise<string>;
+      meshTxBuilderBody?: { proposals?: unknown };
+      txInCollateral?: (...args: unknown[]) => MeshTxBuilder;
+      collateralQueueItem?: { txIn?: { scriptSize?: number } };
+    };
+    if (meshAny?.complete) {
+      const originalComplete = meshAny.complete.bind(meshAny);
+      meshAny.complete = async (...args: unknown[]) => {
+        if (meshAny.meshTxBuilderBody) {
+          if (!Array.isArray(meshAny.meshTxBuilderBody.proposals)) {
+            meshAny.meshTxBuilderBody.proposals = [];
+          }
+          if (!Array.isArray(meshAny.meshTxBuilderBody.scriptMetadata)) {
+            meshAny.meshTxBuilderBody.scriptMetadata = [];
+          }
+        }
+        return originalComplete(...args);
+      };
+    }
+
+    if (meshAny?.txInCollateral) {
+      const originalTxInCollateral = meshAny.txInCollateral.bind(meshAny);
+      meshAny.txInCollateral = (...args: unknown[]) => {
+        const result = originalTxInCollateral(...args);
+        try {
+          if (meshAny.collateralQueueItem?.txIn) {
+            if (meshAny.collateralQueueItem.txIn.scriptSize === undefined) {
+              meshAny.collateralQueueItem.txIn.scriptSize = 0;
+            }
+          }
+          const body = meshAny.meshTxBuilderBody as
+            | { collaterals?: Array<{ txIn?: { scriptSize?: number } }> }
+            | undefined;
+          if (body?.collaterals && Array.isArray(body.collaterals)) {
+            for (const item of body.collaterals) {
+              if (item?.txIn && item.txIn.scriptSize === undefined) {
+                item.txIn.scriptSize = 0;
+              }
+            }
+          }
+        } catch {
+          // Best effort: avoid blocking tx build if collateral patching fails.
+        }
+        return result;
+      };
+    }
+
+    if (typeof meshAny?.selectUtxos === "function") {
+      const originalSelectUtxos = meshAny.selectUtxos.bind(meshAny);
+      meshAny.selectUtxos = async (...args: unknown[]) => {
+        try {
+          meshAny._lastImplicitDeposit = meshAny.getTotalDeposit?.();
+        } catch {
+          // best effort only
+        }
+        return originalSelectUtxos(...args);
+      };
+    }
   }
 
   getScriptAddress = (scriptCbor: string) => {
@@ -87,8 +147,23 @@ export class MeshTxInitiator {
   protected signSubmitReset = async () => {
     const signedTx = this.mesh.completeSigning();
     const txHash = await this.mesh.submitTx(signedTx);
-    this.mesh.reset();
+    this.resetBuilder();
     return txHash;
+  };
+
+  protected resetBuilder = () => {
+    this.mesh.reset();
+    this.mesh.setNetwork(this.networkId === 1 ? "mainnet" : "preprod");
+    const body = (this.mesh as { meshTxBuilderBody?: { proposals?: unknown } })
+      .meshTxBuilderBody;
+    if (body) {
+      if (!Array.isArray(body.proposals)) {
+        body.proposals = [];
+      }
+      if (!Array.isArray((body as { scriptMetadata?: unknown }).scriptMetadata)) {
+        (body as { scriptMetadata?: unknown }).scriptMetadata = [];
+      }
+    }
   };
 
   protected queryUtxos = async (walletAddress: string): Promise<UTxO[]> => {
@@ -200,7 +275,24 @@ export class MeshTxInitiator {
     if (!walletAddress) {
       throw new Error("No wallet address found");
     }
-    return { utxos, collateral, walletAddress };
+    const MAX_UTXOS = 20;
+    const trimmedUtxos =
+      utxos.length > MAX_UTXOS
+        ? [...utxos]
+            .sort((a, b) => {
+              const aLovelace = BigInt(
+                a.output.amount.find((amt) => amt.unit === "lovelace")?.quantity ??
+                  "0",
+              );
+              const bLovelace = BigInt(
+                b.output.amount.find((amt) => amt.unit === "lovelace")?.quantity ??
+                  "0",
+              );
+              return aLovelace === bLovelace ? 0 : aLovelace > bLovelace ? -1 : 1;
+            })
+            .slice(0, MAX_UTXOS)
+        : utxos;
+    return { utxos: trimmedUtxos, collateral, walletAddress };
   };
 
   protected _getUtxoByTxHash = async (

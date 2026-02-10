@@ -13,7 +13,7 @@ import { Coins, Send, AlertCircle, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProvider } from "@/utils/get-provider";
 import { useWallet } from "@meshsdk/react";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 import { MeshCrowdfundContract } from "../offchain";
 import { CrowdfundDatumTS } from "../crowdfund";
 import { api } from "@/utils/api";

@@ -116,9 +116,16 @@ export function RegisterCerts({
 
       if (crowdfundId) {
         try {
+          const isTreasury = contract.govActionType === "TreasuryWithdrawalsAction";
           await updateCrowdfund.mutateAsync({
             id: crowdfundId,
-            govState: 1,
+            govState: isTreasury ? 2 : 1,
+            ...(isTreasury && {
+              govActionId: JSON.stringify({
+                txHash,
+                index: 0,
+              }),
+            }),
           });
         } catch (error) {
           console.error("[RegisterCerts] Failed to update govState:", error);

@@ -1,6 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { cancelRun, resumeTestRun } from "@/server/test-agent/runner";
-import { getEvents, getRun, listRuns } from "@/server/test-agent/state";
+import {
+  getEvents,
+  getRun,
+  listRuns,
+  loadStoreSnapshot,
+} from "@/server/test-agent/state";
 import type { AgentEvent, RunRecord, RunStatus } from "@/server/test-agent/types";
 
 const isDevEnabled = () =>
@@ -9,6 +14,12 @@ const isDevEnabled = () =>
 
 const MAX_EVENT_LIMIT = 500;
 const DEFAULT_EVENT_LIMIT = 100;
+const toJsonSafe = <T,>(value: T): T =>
+  JSON.parse(
+    JSON.stringify(value, (_key, val) =>
+      typeof val === "bigint" ? val.toString() : val,
+    ),
+  );
 
 const normalizeEventLimit = (raw: unknown) => {
   if (typeof raw === "string" && raw.trim()) {
@@ -31,7 +42,13 @@ const parseStatusFilter = (raw: string | string[] | undefined): RunStatus[] | nu
     .map((entry) => entry.trim())
     .filter(Boolean);
   if (tokens.length === 0) return null;
-  const allowed: RunStatus[] = ["running", "completed", "failed", "cancelled"];
+  const allowed: RunStatus[] = [
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+    "waiting",
+  ];
   const selected = tokens.filter((token): token is RunStatus =>
     (allowed as string[]).includes(token),
   );
@@ -40,7 +57,8 @@ const parseStatusFilter = (raw: string | string[] | undefined): RunStatus[] | nu
 
 const getAvailableActions = (status?: RunStatus) => {
   if (status === "running") return ["cancel"];
-  if (status === "failed" || status === "cancelled") return ["resume"];
+  if (status === "failed" || status === "cancelled" || status === "waiting")
+    return ["resume"];
   return [];
 };
 
@@ -61,10 +79,10 @@ const buildRunSnapshot = (
 ) => {
   const limitedEvents = eventLimit < events.length ? events.slice(-eventLimit) : events;
   return {
-    run,
-    events: limitedEvents,
-    lastEvent: getLastEvent(events),
-    lastError: getLastError(events),
+    run: toJsonSafe(run),
+    events: toJsonSafe(limitedEvents),
+    lastEvent: toJsonSafe(getLastEvent(events)),
+    lastError: toJsonSafe(getLastError(events)),
     availableActions: getAvailableActions(run.status),
   };
 };
@@ -83,24 +101,33 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         : req.query.eventLimit,
     );
 
+    const snapshot = loadStoreSnapshot();
+    const snapshotRuns = new Map(
+      (snapshot.runs ?? []).map((run) => [run.id, run]),
+    );
+    const snapshotEvents = snapshot.events ?? {};
+
     if (runId) {
-      const run = getRun(runId);
+      const run = snapshotRuns.get(runId) ?? getRun(runId);
       if (!run) {
         res.status(404).json({ error: "Run not found" });
         return;
       }
-      const events = getEvents(runId);
+      const events = snapshotEvents[runId] ?? getEvents(runId);
       res.status(200).json(buildRunSnapshot(run, events, eventLimit));
       return;
     }
 
     const statusFilter = parseStatusFilter(req.query.status);
-    const runs = listRuns().filter((run) =>
-      statusFilter ? statusFilter.includes(run.status) : true,
-    );
+    const runsSource =
+      snapshot.runs && snapshot.runs.length > 0 ? snapshot.runs : listRuns();
+    const runs = runsSource
+      .slice()
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .filter((run) => (statusFilter ? statusFilter.includes(run.status) : true));
 
     const summaries = runs.map((run) => {
-      const events = getEvents(run.id);
+      const events = snapshotEvents[run.id] ?? getEvents(run.id);
       return buildRunSnapshot(run, events, eventLimit);
     });
 
@@ -128,7 +155,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (action === "resume") {
-      if (run.status !== "failed" && run.status !== "cancelled") {
+      if (run.status !== "failed" && run.status !== "cancelled" && run.status !== "waiting") {
         res.status(409).json({ error: "Run is not resumable" });
         return;
       }

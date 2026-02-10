@@ -10,10 +10,10 @@ import { useToast } from "@/hooks/use-toast";
 import useUser from "@/hooks/useUser";
 import {
   deserializeAddress,
-  MeshTxBuilder,
   deserializePoolId,
   resolveSlotNo,
 } from "@meshsdk/core";
+import { MeshTxBuilder } from "@meshsdk/transaction";
 import { MeshCrowdfundContract, GovernanceConfig } from "../../offchain";
 import { mapGovExtensionToConfig } from "../utils";
 import { getProvider } from "@/utils/get-provider";

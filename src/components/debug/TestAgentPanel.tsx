@@ -48,6 +48,13 @@ type AgentEvent = {
   data?: Record<string, unknown>;
 };
 
+type RunProgress = {
+  govActionTxHash?: string;
+  govActionId?: { txHash: string; index: number };
+  govActionType?: "InfoAction" | "TreasuryWithdrawalsAction";
+  treasuryWithdrawals?: Record<string, string>;
+};
+
 type RunSummary = {
   run: {
     id: string;
@@ -55,7 +62,8 @@ type RunSummary = {
     startedAt: number;
     endedAt?: number;
     currentState?: string;
-    config?: { networkId?: number };
+    config?: { networkId?: number; govActionType?: RunProgress["govActionType"] };
+    progress?: RunProgress;
   };
   lastEvent?: AgentEvent | null;
   lastError?: AgentEvent | null;
@@ -80,7 +88,7 @@ type JobStep = StepDefinition & {
   error: AgentEvent | null;
 };
 
-const STEP_DEFINITIONS: StepDefinition[] = [
+const BASE_STEP_DEFINITIONS: StepDefinition[] = [
   {
     key: "init-wallet",
     label: "Initialize wallet",
@@ -109,6 +117,9 @@ const STEP_DEFINITIONS: StepDefinition[] = [
     end: "Crowdfund setup confirmed",
     help: "Create the crowdfund UTxO and record metadata.",
   },
+];
+
+const STANDARD_STEP_DEFINITIONS: StepDefinition[] = [
   {
     key: "contribute",
     label: "Contribute to crowdfund",
@@ -122,6 +133,37 @@ const STEP_DEFINITIONS: StepDefinition[] = [
     start: "Withdraw from crowdfund",
     end: "Withdrawal confirmed",
     help: "Withdraw from the crowdfund and update balances.",
+  },
+];
+
+const TREASURY_STEP_DEFINITIONS: StepDefinition[] = [
+  {
+    key: "stake-ref-script",
+    label: "Setup stake ref script",
+    start: "Setup stake ref script",
+    end: "Stake ref script confirmed",
+    help: "Create the stake reference script needed for governance actions.",
+  },
+  {
+    key: "register-certs",
+    label: "Register certs",
+    start: "Register certs",
+    end: "Register certs confirmed",
+    help: "Register stake + DRep certs and submit the governance proposal.",
+  },
+  {
+    key: "vote",
+    label: "Vote on gov action",
+    start: "Vote on gov action",
+    end: "Vote confirmed",
+    help: "Vote on the proposed governance action.",
+  },
+  {
+    key: "deregister",
+    label: "Deregister certs",
+    start: "Deregister certs",
+    end: "Deregister confirmed",
+    help: "Deregister certs after the governance period.",
   },
 ];
 
@@ -198,6 +240,8 @@ const getStatusClasses = (status: string) => {
       return "bg-red-500/10 text-red-600 border-red-500/20";
     case "cancelled":
       return "bg-amber-500/10 text-amber-600 border-amber-500/20";
+    case "waiting":
+      return "bg-amber-500/10 text-amber-700 border-amber-500/30";
     case "starting":
       return "bg-sky-500/10 text-sky-600 border-sky-500/20";
     default:
@@ -232,6 +276,8 @@ const getEventClasses = (type: string) => {
       return "bg-emerald-500/10 text-emerald-600";
     case "run_cancelled":
       return "bg-amber-500/10 text-amber-600";
+    case "run_waiting":
+      return "bg-amber-500/10 text-amber-700";
     case "error":
       return "bg-red-500/10 text-red-600";
     case "state_changed":
@@ -241,14 +287,18 @@ const getEventClasses = (type: string) => {
   }
 };
 
-const StateNode = ({ data }: NodeProps<{ label: string; active?: boolean }>) => {
+const StateNode = ({
+  data,
+}: NodeProps<{ label: string; active?: boolean; visited?: boolean }>) => {
   return (
     <div
       className={cn(
         "rounded-md border px-3 py-2 text-xs font-semibold shadow-sm",
         data.active
           ? "border-emerald-400 bg-emerald-500 text-white"
-          : "border-border bg-muted/70 text-foreground",
+          : data.visited
+            ? "border-emerald-300 bg-emerald-500/10 text-emerald-700"
+            : "border-border bg-muted/70 text-foreground",
       )}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" />
@@ -270,10 +320,13 @@ export default function TestAgentPanel() {
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
+  const [runConfig, setRunConfig] = useState<RunSummary["run"]["config"] | null>(null);
   const [activeState, setActiveState] = useState<GovState>("Init Wallet");
   const [faucetAddress, setFaucetAddress] = useState<string | null>(null);
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
   const [faucetBalance, setFaucetBalance] = useState<string | null>(null);
+  const [agentBalance, setAgentBalance] = useState<string | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [configDefaults, setConfigDefaults] = useState<{
     poolId?: string;
@@ -291,6 +344,7 @@ export default function TestAgentPanel() {
   const [fundConfirmingTxHash, setFundConfirmingTxHash] = useState<string | null>(null);
   const [fundError, setFundError] = useState<string | null>(null);
   const [faucetBalanceLoading, setFaucetBalanceLoading] = useState(false);
+  const [agentBalanceLoading, setAgentBalanceLoading] = useState(false);
   const [showEventData, setShowEventData] = useState(false);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [runEndedAt, setRunEndedAt] = useState<number | null>(null);
@@ -305,6 +359,7 @@ export default function TestAgentPanel() {
     startWidth: number;
     startHeight: number;
   } | null>(null);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -365,6 +420,22 @@ export default function TestAgentPanel() {
   const refAddressWarning =
     trimmedRefAddress.length > 0 && !trimmedRefAddress.startsWith("addr");
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  const lastEventId = lastEvent?.id ?? null;
+  const visitedStates = useMemo(() => {
+    const visited = new Set<GovState>();
+    for (const evt of events) {
+      if (evt.type !== "state_changed") continue;
+      const rawState =
+        typeof evt.data?.state === "string" ? evt.data.state : undefined;
+      if (rawState && GOV_STATES.includes(rawState as GovState)) {
+        visited.add(rawState as GovState);
+      }
+    }
+    if (activeState) {
+      visited.add(activeState);
+    }
+    return visited;
+  }, [events, activeState]);
   const canResumeCandidate = resumeCandidate?.availableActions
     ? resumeCandidate.availableActions.includes("resume")
     : true;
@@ -383,11 +454,25 @@ export default function TestAgentPanel() {
     }
     return undefined;
   }, [networkId]);
+  const isTreasuryFlow =
+    runProgress?.govActionType === "TreasuryWithdrawalsAction" ||
+    runConfig?.govActionType === "TreasuryWithdrawalsAction";
+  const stepDefinitions = useMemo(
+    () =>
+      isTreasuryFlow
+        ? [...BASE_STEP_DEFINITIONS, ...TREASURY_STEP_DEFINITIONS]
+        : [...BASE_STEP_DEFINITIONS, ...STANDARD_STEP_DEFINITIONS],
+    [isTreasuryFlow],
+  );
+  const treasuryWithdrawalsEntries = useMemo(() => {
+    if (!runProgress?.treasuryWithdrawals) return [];
+    return Object.entries(runProgress.treasuryWithdrawals);
+  }, [runProgress?.treasuryWithdrawals]);
   const minWidth = 420;
   const minHeight = 560;
 
   const jobSteps = useMemo<JobStep[]>(() => {
-    const steps = STEP_DEFINITIONS.map((def) => ({
+    const steps = stepDefinitions.map((def) => ({
       ...def,
       status: "pending" as StepStatus,
       startedAt: null,
@@ -395,8 +480,8 @@ export default function TestAgentPanel() {
       logs: [] as AgentEvent[],
       error: null as AgentEvent | null,
     }));
-    const byStart = new Map(STEP_DEFINITIONS.map((def) => [def.start, def.key]));
-    const byEnd = new Map(STEP_DEFINITIONS.map((def) => [def.end, def.key]));
+    const byStart = new Map(stepDefinitions.map((def) => [def.start, def.key]));
+    const byEnd = new Map(stepDefinitions.map((def) => [def.end, def.key]));
     const byKey = new Map(steps.map((step, index) => [step.key, index]));
     let currentKey: string | null = null;
 
@@ -443,7 +528,7 @@ export default function TestAgentPanel() {
     }
 
     return steps;
-  }, [events]);
+  }, [events, stepDefinitions]);
 
   const lastErrorEvent = useMemo(
     () => [...events].reverse().find((evt) => evt.type === "error"),
@@ -465,6 +550,9 @@ export default function TestAgentPanel() {
     push("Agent address", data.walletAddress);
     push("Tx hash", data.txHash);
     push("Crowdfund ID", data.crowdfundId);
+    push("Target amount", data.targetAmount);
+    push("Already funded", data.alreadyFunded);
+    push("Total funded", data.totalLovelace);
 
     const requested = data.requestedAmount ?? data.amountLovelace;
     const requestedLov = parseLovelace(requested);
@@ -537,9 +625,10 @@ export default function TestAgentPanel() {
       data: {
         label: state,
         active: state === activeState,
+        visited: visitedStates.has(state),
       },
     }));
-  }, [activeState]);
+  }, [activeState, visitedStates]);
 
   const refreshInfo = useCallback(async () => {
     if (typeof networkId !== "number") return;
@@ -557,12 +646,14 @@ export default function TestAgentPanel() {
         faucetAddress: string;
         agentAddress: string;
         faucetBalanceLovelace?: string;
+        agentBalanceLovelace?: string;
         configDefaults?: { poolId?: string; refAddress?: string };
       };
       if (!cancelledRef.current) {
         setFaucetAddress(data.faucetAddress);
         setAgentAddress(data.agentAddress);
         setFaucetBalance(data.faucetBalanceLovelace ?? null);
+        setAgentBalance(data.agentBalanceLovelace ?? null);
         setInfoError(null);
         setConfigDefaults(data.configDefaults ?? null);
       }
@@ -576,7 +667,7 @@ export default function TestAgentPanel() {
   const refreshRuns = useCallback(async () => {
     try {
       const res = await fetch(
-        "/api/dev/agent/supervise?status=running,failed,cancelled&eventLimit=5",
+        "/api/dev/agent/supervise?status=running,failed,cancelled,waiting&eventLimit=5",
       );
       if (!res.ok) return;
       const data = (await res.json()) as { runs?: RunSummary[] };
@@ -587,23 +678,28 @@ export default function TestAgentPanel() {
           ? eligible.filter((entry) => entry.run?.config?.networkId === networkId)
           : eligible;
       const running = matchingNetwork.find((entry) => entry.run?.status === "running");
+      const waiting = matchingNetwork.find((entry) => entry.run?.status === "waiting");
       const candidate = matchingNetwork.find(
         (entry) =>
+          entry.run?.status === "waiting" ||
           entry.run?.status === "failed" ||
           entry.run?.status === "cancelled" ||
           entry.run?.status === "running",
       );
       setResumeCandidate(candidate ?? null);
-      if (running) {
-        const nextRunId = running.run.id;
-        if (!runId || status !== "running" || runId !== nextRunId) {
+      const next = running ?? waiting;
+      if (next) {
+        const nextRunId = next.run.id;
+        if (!runId || status !== next.run.status || runId !== nextRunId) {
           setRunId(nextRunId);
-          setStatus("running");
-          setRunStartedAt(running.run.startedAt ?? null);
-          setRunEndedAt(running.run.endedAt ?? null);
-          if (running.run.currentState) {
-            setActiveState(running.run.currentState as GovState);
+          setStatus(next.run.status ?? "idle");
+          setRunStartedAt(next.run.startedAt ?? null);
+          setRunEndedAt(next.run.endedAt ?? null);
+          if (next.run.currentState) {
+            setActiveState(next.run.currentState as GovState);
           }
+          setRunProgress(next.run.progress ?? null);
+          setRunConfig(next.run.config ?? null);
           setEvents([]);
         }
       }
@@ -626,6 +722,8 @@ export default function TestAgentPanel() {
       if (!data.run || cancelledRef.current) return;
 
       setStatus(data.run.status ?? "idle");
+      setRunProgress(data.run.progress ?? null);
+      setRunConfig(data.run.config ?? null);
       if (data.run.currentState) {
         setActiveState(data.run.currentState as GovState);
       }
@@ -669,15 +767,47 @@ export default function TestAgentPanel() {
     }
   }, [networkId, faucetAddress, toast]);
 
+  const refreshAgentBalance = useCallback(async () => {
+    if (typeof networkId !== "number") return;
+    if (!agentAddress) return;
+    setAgentBalanceLoading(true);
+    try {
+      const provider = getProvider(networkId);
+      const utxos = await provider.fetchAddressUTxOs(agentAddress);
+      const total = sumLovelaceFromUtxos(utxos || []);
+      if (!cancelledRef.current) {
+        setAgentBalance(total.toString());
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch agent balance";
+      if (!cancelledRef.current) {
+        setFundError(message);
+      }
+      toast({
+        title: "Balance refresh failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      if (!cancelledRef.current) setAgentBalanceLoading(false);
+    }
+  }, [networkId, agentAddress, toast]);
+
   const edges = useMemo<Edge[]>(() => {
-    return GOV_STATES.slice(0, -1).map((state, index) => ({
-      id: `${state}-${GOV_STATES[index + 1]}`,
-      source: state,
-      target: GOV_STATES[index + 1],
-      type: "smoothstep",
-      animated: state === activeState,
-    }));
-  }, [activeState]);
+    return GOV_STATES.slice(0, -1).map((state, index) => {
+      const nextState = GOV_STATES[index + 1];
+      const completed = visitedStates.has(state) && visitedStates.has(nextState);
+      return {
+        id: `${state}-${nextState}`,
+        source: state,
+        target: nextState,
+        type: "smoothstep",
+        animated: state === activeState,
+        style: completed ? { stroke: "#10b981", strokeWidth: 2 } : undefined,
+      };
+    });
+  }, [activeState, visitedStates]);
 
   useEffect(() => {
     void refreshInfo();
@@ -729,6 +859,10 @@ export default function TestAgentPanel() {
         setStatus("cancelled");
         setRunEndedAt(parsed.ts);
       }
+      if (parsed.type === "run_waiting") {
+        setStatus("waiting");
+        setRunEndedAt(null);
+      }
       if (parsed.type === "error") {
         setStatus("failed");
         setRunEndedAt(parsed.ts);
@@ -745,10 +879,23 @@ export default function TestAgentPanel() {
   }, [runId]);
 
   useEffect(() => {
-    if (status === "completed" || status === "failed" || status === "cancelled") {
+    if (
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "waiting"
+    ) {
       void refreshRuns();
     }
   }, [status, refreshRuns]);
+
+  useEffect(() => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [lastEventId]);
 
   const startRun = async () => {
     if (typeof networkId !== "number") {
@@ -797,6 +944,10 @@ export default function TestAgentPanel() {
     setActiveState("Init Wallet");
     setRunStartedAt(null);
     setRunEndedAt(null);
+    setRunProgress(null);
+    setRunConfig(null);
+    setRunProgress(null);
+    setRunConfig(null);
 
     const res = await fetch("/api/dev/agent/start", {
       method: "POST",
@@ -885,6 +1036,8 @@ export default function TestAgentPanel() {
     setEvents([]);
     setStatus("idle");
     setRunId(null);
+    setRunProgress(null);
+    setRunConfig(null);
     setActiveState("Init Wallet");
     setRunStartedAt(null);
     setRunEndedAt(null);
@@ -1192,6 +1345,23 @@ export default function TestAgentPanel() {
                               </Button>
                             )}
                           </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              Agent balance: {formatAdaFromLovelace(agentBalance)}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void refreshAgentBalance()}
+                              disabled={agentBalanceLoading}
+                            >
+                              {agentBalanceLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
                               <Input
@@ -1341,6 +1511,86 @@ export default function TestAgentPanel() {
                     </div>
                   </div>
 
+                  {status === "waiting" && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700">
+                      Waiting for ratification (manual resume required).
+                    </div>
+                  )}
+
+                  {(runProgress?.govActionTxHash ||
+                    runProgress?.govActionId ||
+                    treasuryWithdrawalsEntries.length > 0) && (
+                    <div className="rounded-md border bg-muted/10 p-2 text-xs">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Governance Action
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {runProgress?.govActionType && (
+                          <div className="text-[11px] text-muted-foreground">
+                            Type:{" "}
+                            <span className="font-medium text-foreground">
+                              {runProgress.govActionType}
+                            </span>
+                          </div>
+                        )}
+                        {runProgress?.govActionTxHash && (
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="truncate">
+                              Proposal tx: {runProgress.govActionTxHash}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyText(runProgress.govActionTxHash!)}
+                            >
+                              Copy
+                            </Button>
+                          </div>
+                        )}
+                        {runProgress?.govActionId && (
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="truncate">
+                              Gov action id: {runProgress.govActionId.txHash}#
+                              {runProgress.govActionId.index}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                copyText(
+                                  `${runProgress.govActionId?.txHash}#${runProgress.govActionId?.index}`,
+                                )
+                              }
+                            >
+                              Copy
+                            </Button>
+                          </div>
+                        )}
+                        {treasuryWithdrawalsEntries.length > 0 && (
+                          <div className="space-y-2 text-[11px] text-muted-foreground">
+                            <div className="uppercase text-[10px] text-muted-foreground/70">
+                              Treasury withdrawals
+                            </div>
+                            {treasuryWithdrawalsEntries.map(([address, amount]) => (
+                              <div
+                                key={address}
+                                className="space-y-1 rounded border border-border/60 bg-background/60 p-2"
+                              >
+                                <div className="truncate text-foreground">{address}</div>
+                                <div>
+                                  Amount:{" "}
+                                  <span className="text-foreground">
+                                    {formatAdaFromLovelace(amount)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="h-[120px] rounded-md border bg-muted/40">
                     <ReactFlow
                       nodes={nodes}
@@ -1381,7 +1631,10 @@ export default function TestAgentPanel() {
                         </label>
                       </div>
 
-                      <div className="max-h-48 overflow-auto rounded-md border bg-muted/20 p-2 text-xs">
+                      <div
+                        ref={logContainerRef}
+                        className="max-h-48 overflow-auto rounded-md border bg-muted/20 p-2 text-xs"
+                      >
                         {events.length === 0 ? (
                           <div className="text-muted-foreground">No events yet.</div>
                         ) : (
