@@ -4,7 +4,7 @@ import { Wallet } from "@/types/wallet";
 import { getProvider } from "@/utils/get-provider";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletBalancesStore } from "@/lib/zustand/wallet-balances";
 
@@ -53,6 +53,40 @@ export default function useWalletBalances(
     }
   }, [clearExpiredBalances]);
 
+  const getCanonicalWalletAddress = useCallback(
+    (wallet: Wallet): string => {
+      // Goal: get the address we should query Blockfrost with, without throwing for
+      // legacy/summon wallets (which do not have an SDK MultisigWallet).
+      try {
+        const walletType = getWalletType(wallet);
+
+        // Prefer deriving network from the best available address.
+        const fallbackAddress =
+          wallet.rawImportBodies?.multisig?.address ||
+          wallet.signersAddresses?.find((a) => !!a) ||
+          wallet.address;
+        const walletNetwork = fallbackAddress
+          ? addressToNetwork(fallbackAddress)
+          : network;
+
+        if (walletType === "sdk") {
+          const mWallet = buildMultisigWallet(wallet, walletNetwork);
+          return mWallet?.getScript().address || wallet.address;
+        }
+
+        if (walletType === "summon") {
+          return wallet.rawImportBodies?.multisig?.address || wallet.address;
+        }
+
+        // legacy
+        return buildWallet(wallet, walletNetwork).address;
+      } catch {
+        return wallet.address;
+      }
+    },
+    [network],
+  );
+
   const fetchWalletBalance = useCallback(
     async (wallet: Wallet): Promise<void> => {
       // Skip if already fetched in this session
@@ -74,20 +108,11 @@ export default function useWalletBalances(
       setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loading" }));
 
       try {
-        // Rebuild the multisig wallet to get the correct address
-        // This ensures we use the canonical script address, not the potentially wrong wallet.address
-        // Determine network from signer addresses or use the current network
-        const walletNetwork = wallet.signersAddresses.length > 0 
-          ? addressToNetwork(wallet.signersAddresses[0]!)
-          : network;
-        
-        const mWallet = buildMultisigWallet(wallet, walletNetwork);
-        if (!mWallet) {
-          throw new Error("Failed to build multisig wallet");
-        }
-
-        // Get the correct address from the multisig wallet script
-        const walletAddress = mWallet.getScript().address;
+        // Use a canonical address depending on wallet type.
+        // SDK wallets: script address from MultisigWallet
+        // Summon wallets: stored rawImportBodies.multisig.address
+        // Legacy wallets: derived script address from payment keys
+        const walletAddress = getCanonicalWalletAddress(wallet);
         
         // Use the network determined from the address
         const addressNetwork = addressToNetwork(walletAddress);
@@ -131,11 +156,8 @@ export default function useWalletBalances(
         
         if (is404) {
           // 404 is expected for unused addresses - set balance to 0 (not null) and mark as loaded
-          const walletNetwork = wallet.signersAddresses.length > 0 
-            ? addressToNetwork(wallet.signersAddresses[0]!)
-            : network;
-          const mWallet = buildMultisigWallet(wallet, walletNetwork);
-          const walletAddress = mWallet?.getScript().address || wallet.address;
+          const walletAddress = getCanonicalWalletAddress(wallet);
+          console.log("Using wallet address for 404 handling:", walletAddress);
           
           setBalances((prev) => ({ ...prev, [wallet.id]: 0 }));
           setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
@@ -154,7 +176,7 @@ export default function useWalletBalances(
         }
       }
     },
-    [network, getCachedBalance, setBalance],
+    [network, getCachedBalance, setBalance, getCanonicalWalletAddress],
   );
 
   const processQueue = useCallback(async () => {

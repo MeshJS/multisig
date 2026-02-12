@@ -10,6 +10,10 @@ import {
 } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
+import {
+  decodeNativeScriptFromCbor,
+  decodedToNativeScript,
+} from "@/utils/nativeScriptUtils";
 
 function addressToNetwork(address: string): number {
   return address.includes("test") ? 0 : 1;
@@ -201,19 +205,26 @@ export function buildWallet(
     // Extract stake script from rawImportBodies
     const stakeScriptCbor = multisig.stake_script;
 
-    // For rawImportBodies wallets, we need a minimal nativeScript for type compatibility
-    // This won't be used for actual script derivation, but is required by the Wallet type
+    // Decode actual script structure from stored CBOR for display/inspection.
+    // The scriptCbor itself (used for address derivation and signing) remains unchanged.
     const scriptType = (wallet.type as "all" | "any" | "atLeast") ?? "atLeast";
-    const nativeScript: NativeScript = scriptType === "atLeast"
-      ? {
-          type: "atLeast",
-          required: wallet.numRequiredSigners ?? 1,
-          scripts: [],
-        }
-      : {
-          type: scriptType,
-          scripts: [],
-        };
+    let nativeScript: NativeScript;
+    try {
+      const decoded = decodeNativeScriptFromCbor(scriptCbor);
+      nativeScript = decodedToNativeScript(decoded);
+    } catch {
+      // Fallback to placeholder if decoding fails
+      nativeScript = scriptType === "atLeast"
+        ? {
+            type: "atLeast",
+            required: wallet.numRequiredSigners ?? 1,
+            scripts: [],
+          }
+        : {
+            type: scriptType,
+            scripts: [],
+          };
+    }
 
     // For rawImportBodies wallets, dRepId cannot be easily derived from stored CBOR
     // Set to empty string - it can be derived later if needed from the actual script

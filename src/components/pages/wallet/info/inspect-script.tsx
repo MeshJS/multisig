@@ -1,21 +1,39 @@
 import Code from "@/components/ui/code";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, Code2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Code2 } from "lucide-react";
 import { useState } from "react";
 import { Wallet } from "@/types/wallet";
+import { getWalletType } from "@/utils/common";
 
 export function NativeScriptSection({ appWallet }: { appWallet: Wallet }) {
   const [isOpen, setIsOpen] = useState(false);
-  const isLegacyWallet = !!appWallet.rawImportBodies?.multisig;
-  
-  // For legacy wallets, the nativeScript is just a placeholder
-  // The actual script is stored as CBOR in scriptCbor
-  const hasValidNativeScript = !isLegacyWallet || 
-    (appWallet.nativeScript && 
-     'scripts' in appWallet.nativeScript && 
-     Array.isArray(appWallet.nativeScript.scripts) && 
-     appWallet.nativeScript.scripts.length > 0);
+  const walletType = getWalletType(appWallet);
+  const isImportedWallet = !!appWallet.rawImportBodies?.multisig;
+  const isLegacyWallet = walletType === "legacy";
+
+  const isLogicalGroupType =
+    appWallet.nativeScript?.type === "all" ||
+    appWallet.nativeScript?.type === "any" ||
+    appWallet.nativeScript?.type === "atLeast";
+
+  const hasScriptsArray =
+    !!appWallet.nativeScript &&
+    "scripts" in appWallet.nativeScript &&
+    Array.isArray((appWallet.nativeScript as any).scripts);
+
+  const hasNativeScript = !!appWallet.nativeScript;
+
+  // We only treat it as a placeholder when it's an imported wallet AND the script is
+  // one of the logical group types with an empty scripts array (our known fallback shape).
+  const isPlaceholder =
+    isImportedWallet &&
+    isLogicalGroupType &&
+    hasScriptsArray &&
+    (appWallet.nativeScript as any).scripts.length === 0;
+
+  // If it's not the placeholder, we consider it decoded/real for display purposes.
+  const hasDecodedScript = isImportedWallet ? !isPlaceholder : hasNativeScript;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -23,6 +41,11 @@ export function NativeScriptSection({ appWallet }: { appWallet: Wallet }) {
         <div className="flex items-center gap-2">
           <Code2 className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Native Script</span>
+          {isImportedWallet && (
+            <Badge variant="outline" className="text-xs">
+              Imported
+            </Badge>
+          )}
           {isLegacyWallet && (
             <Badge variant="outline" className="text-xs">
               Legacy
@@ -36,38 +59,48 @@ export function NativeScriptSection({ appWallet }: { appWallet: Wallet }) {
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-3 space-y-4">
-        {isLegacyWallet && (
+        {isPlaceholder && (
           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200/50 dark:border-amber-800/50">
             <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200">
-              <strong>Legacy Wallet:</strong> This wallet was imported and doesn't use the SDK. 
-              The Native Script JSON below is a placeholder. The actual script is stored as CBOR.
+              <strong>Imported Wallet:</strong> The Native Script JSON could not be decoded from CBOR.
+              The actual script is available as CBOR below.
             </p>
           </div>
         )}
-        
-        {hasValidNativeScript && (
+
+        {(hasDecodedScript || !isImportedWallet) && (
           <div className="flex flex-col gap-2 sm:gap-3">
             <div className="text-xs sm:text-sm font-medium text-muted-foreground">
               Native Script JSON
-              {isLegacyWallet && <span className="ml-2 text-xs text-muted-foreground/70">(placeholder)</span>}
+              {isImportedWallet && <span className="ml-2 text-xs text-muted-foreground/70">(decoded from CBOR)</span>}
+              {isLegacyWallet && <span className="ml-2 text-xs text-muted-foreground/70">(generated from wallet signers)</span>}
             </div>
             <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6">
               <Code className="block text-xs sm:text-sm">{JSON.stringify(appWallet.nativeScript, null, 2)}</Code>
             </div>
           </div>
         )}
-        
-        <div className="flex flex-col gap-2 sm:gap-3">
-          <div className="text-xs sm:text-sm font-medium text-muted-foreground">
-            Script CBOR
-            {isLegacyWallet && <span className="ml-2 text-xs text-muted-foreground/70">(actual script)</span>}
+
+        {!hasNativeScript && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200/50 dark:border-amber-800/50">
+            <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200">
+              Native Script JSON is not available for this wallet.
+            </p>
           </div>
-          <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6">
-            <Code className="block text-xs sm:text-sm break-all">{appWallet.scriptCbor}</Code>
+        )}
+
+        {appWallet.scriptCbor && (
+          <div className="flex flex-col gap-2 sm:gap-3">
+            <div className="text-xs sm:text-sm font-medium text-muted-foreground">
+              Script CBOR
+            </div>
+            <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6">
+              <Code className="block text-xs sm:text-sm break-all">{appWallet.scriptCbor}</Code>
+            </div>
           </div>
-        </div>
-        
-        {isLegacyWallet && appWallet.stakeScriptCbor && (
+        )}
+
+        {isImportedWallet && appWallet.stakeScriptCbor && (
           <div className="flex flex-col gap-2 sm:gap-3">
             <div className="text-xs sm:text-sm font-medium text-muted-foreground">Stake Script CBOR</div>
             <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6">

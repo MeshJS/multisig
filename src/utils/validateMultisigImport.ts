@@ -1,8 +1,15 @@
 import { checkValidAddress, addressToNetwork, stakeKeyHash, paymentKeyHash } from "@/utils/multisigSDK";
-import { serializeRewardAddress, pubKeyAddress } from "@meshsdk/core";
-import type { csl } from "@meshsdk/core-csl";
-import { deserializeNativeScript } from "@meshsdk/core-csl";
+import { serializeRewardAddress } from "@meshsdk/core";
 import { getProvider } from "@/utils/get-provider";
+import {
+    type SigMatch,
+    normalizeCborHex,
+    decodeNativeScriptFromCbor,
+    collectSigKeyHashes,
+    isHierarchicalScript,
+    computeRequiredSigners,
+    detectTypeFromSigParents,
+} from "@/utils/nativeScriptUtils";
 
 export type ImportedMultisigRow = {
     multisig_id?: string;
@@ -551,38 +558,7 @@ async function fetchStakePaymentAddresses(stakeKey: string, network: number): Pr
     return unique;
 }
 
-// Returns the signature rule type for storage by inspecting parents of "sig" leaves:
-// - If any signature's parent is "atLeast", return "atLeast"
-// - Else if any signature's parent is "all", return "all"
-// - Else if any signature's parent is "any", return "any"
-// - Else fall back to the root type if it is "all" or "any"; otherwise return "atLeast" (1 of 1)
-function detectTypeFromSigParents(script: DecodedNativeScript): "all" | "any" | "atLeast" {
-    const parentTypes = new Set<"all" | "any" | "atLeast">();
-    collectSigParentTypes(script, null, parentTypes);
-    if (parentTypes.has("atLeast")) return "atLeast";
-    if (parentTypes.has("all")) return "all";
-    if (parentTypes.has("any")) return "any";
-    if (script.type === "all" || script.type === "any") return script.type;
-    return "atLeast";
-}
-
-function collectSigParentTypes(
-    node: DecodedNativeScript,
-    parentType: "all" | "any" | "atLeast" | null,
-    out: Set<"all" | "any" | "atLeast">
-): void {
-    if (node.type === "sig") {
-        if (parentType) out.add(parentType);
-        return;
-    }
-    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
-        for (const child of node.scripts) {
-            collectSigParentTypes(child, node.type, out);
-        }
-        return;
-    }
-    // timelock nodes: nothing to traverse further
-}
+// detectTypeFromSigParents is now imported from @/utils/nativeScriptUtils
 
 function buildStakeAddressesFromHashes(stakeKeys: string[], network: number | undefined): string[] {
     const out: string[] = [];
@@ -607,156 +583,7 @@ function buildStakeAddressesFromHashes(stakeKeys: string[], network: number | un
     return Array.from(new Set(out));
 }
 
-// --- Native script decoding helpers ---
-
-type DecodedNativeScript =
-    | { type: "sig"; keyHash: string }
-    | { type: "all"; scripts: DecodedNativeScript[] }
-    | { type: "any"; scripts: DecodedNativeScript[] }
-    | { type: "atLeast"; required: number; scripts: DecodedNativeScript[] }
-    | { type: "timelockStart" }
-    | { type: "timelockExpiry" };
-
-type SigMatch = {
-    sigKeyHash: string;
-    matched: boolean;
-    matchedBy?: "paymentAddress" | "stakeKey";
-    signerIndex?: number;
-    signerAddress?: string;
-    signerStakeKey?: string;
-};
-
-function normalizeCborHex(cborHex: string): string {
-    const trimmed = (cborHex || "").trim();
-    if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
-        return trimmed.slice(2);
-    }
-    return trimmed;
-}
-
-function decodeNativeScriptFromCbor(cborHex: string): DecodedNativeScript {
-    const ns = deserializeNativeScript(normalizeCborHex(cborHex));
-    return decodeNativeScriptFromCsl(ns);
-}
-
-function decodeNativeScriptFromCsl(ns: csl.NativeScript): DecodedNativeScript {
-    const sp = ns.as_script_pubkey();
-    if (sp) {
-        const keyHash = sp.addr_keyhash().to_hex();
-        return { type: "sig", keyHash };
-    }
-
-    const tls = ns.as_timelock_start?.();
-    if (tls) {
-        return { type: "timelockStart" };
-    }
-
-    const tle = ns.as_timelock_expiry?.();
-    if (tle) {
-        return { type: "timelockExpiry" };
-    }
-
-    const saAll = ns.as_script_all();
-    if (saAll) {
-        const list = saAll.native_scripts();
-        const scripts: DecodedNativeScript[] = [];
-        for (let i = 0; i < list.len(); i++) {
-            const child = list.get(i);
-            scripts.push(decodeNativeScriptFromCsl(child));
-        }
-        return { type: "all", scripts };
-    }
-
-    const saAny = ns.as_script_any();
-    if (saAny) {
-        const list = saAny.native_scripts();
-        const scripts: DecodedNativeScript[] = [];
-        for (let i = 0; i < list.len(); i++) {
-            const child = list.get(i);
-            scripts.push(decodeNativeScriptFromCsl(child));
-        }
-        return { type: "any", scripts };
-    }
-
-    const sn = ns.as_script_n_of_k();
-    if (sn) {
-        const list = sn.native_scripts();
-        const scripts: DecodedNativeScript[] = [];
-        for (let i = 0; i < list.len(); i++) {
-            const child = list.get(i);
-            scripts.push(decodeNativeScriptFromCsl(child));
-        }
-        const n = sn.n();
-        const required = typeof n === "number" ? n : Number((n as unknown as { to_str?: () => string }).to_str?.() ?? n as unknown as number);
-        return { type: "atLeast", required, scripts };
-    }
-
-    // Unknown variant; default to requiring 1 signature
-    return { type: "atLeast", required: 1, scripts: [] };
-}
-
-function computeRequiredSigners(script: DecodedNativeScript): number {
-    switch (script.type) {
-        case "sig":
-            return 1;
-        case "timelockStart":
-        case "timelockExpiry":
-            return 0;
-        case "any":
-            if (script.scripts.length === 0) return 0;
-            return Math.min(...script.scripts.map((s) => computeRequiredSigners(s)));
-        case "all": {
-            let total = 0;
-            for (const s of script.scripts) total += computeRequiredSigners(s);
-            return total;
-        }
-        case "atLeast":
-            if (script.scripts.length === 0) return Math.max(0, script.required);
-            const childReqs = script.scripts.map((s) => computeRequiredSigners(s)).sort((a, b) => a - b);
-            const need = Math.max(0, Math.min(script.required, childReqs.length));
-            let sum = 0;
-            for (let i = 0; i < need; i++) sum += childReqs[i]!;
-            return sum;
-        default:
-            return 0;
-    }
-}
-
-// A script is considered hierarchical ONLY if some signature node is nested under
-// two or more logical groups (all/any/atLeast). Examples:
-// - atLeast(sig, sig) -> NOT hierarchical (sig depth = 1)
-// - all(any(sig, ...), ...) -> hierarchical (sig depth = 2)
-// Timelock nodes are ignored and do not contribute to depth.
-function isHierarchicalScript(script: DecodedNativeScript): boolean {
-    return hasSigWithLogicalDepth(script, 0);
-}
-
-function hasSigWithLogicalDepth(node: DecodedNativeScript, logicalDepth: number): boolean {
-    if (node.type === "sig") {
-        // Require depth >= 2: root logical group -> child logical group -> sig
-        return logicalDepth >= 2;
-    }
-    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
-        for (const child of node.scripts) {
-            if (hasSigWithLogicalDepth(child, logicalDepth + 1)) return true;
-        }
-        return false;
-    }
-    // Timelock nodes do not count towards logical depth and have no children to traverse
-    return false;
-}
-
-// Collect all sig key hashes from a decoded native script tree
-function collectSigKeyHashes(node: DecodedNativeScript): string[] {
-    if (node.type === "sig") return [node.keyHash.toLowerCase()];
-    if (node.type === "all" || node.type === "any" || node.type === "atLeast") {
-        const out: string[] = [];
-        for (const child of node.scripts) out.push(...collectSigKeyHashes(child));
-        // De-duplicate in case of repeated leaves
-        return Array.from(new Set(out));
-    }
-    return [];
-}
+// Native script decoding helpers are now imported from @/utils/nativeScriptUtils
 
 // Match payment script sig key hashes to signer payment addresses
 function matchPaymentSigs(sigKeyHashes: string[], signerAddresses: string[]): SigMatch[] {

@@ -8,6 +8,10 @@ import { db } from "@/server/db";
 import { DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
+import {
+  decodeNativeScriptFromCbor,
+  decodedToNativeScript,
+} from "@/utils/nativeScriptUtils";
 
 export default async function handler(
   req: NextApiRequest,
@@ -71,10 +75,48 @@ export default async function handler(
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
-    const mWallet = buildMultisigWallet(walletFetch as DbWalletWithLegacy);
+    const dbWallet = walletFetch as DbWalletWithLegacy;
+    const mWallet = buildMultisigWallet(dbWallet);
+
+    // If SDK wallet not available, try to decode from stored CBOR (imported wallets)
     if (!mWallet) {
-      return res.status(500).json({ error: "Wallet could not be constructed" });
+      const multisig = dbWallet.rawImportBodies?.multisig;
+      const paymentCbor = multisig?.payment_script;
+      const stakeCbor = multisig?.stake_script;
+
+      const decodedScripts: Array<{ type: string; script: unknown }> = [];
+
+      if (paymentCbor) {
+        try {
+          const decoded = decodeNativeScriptFromCbor(paymentCbor);
+          decodedScripts.push({ type: "payment", script: decodedToNativeScript(decoded) });
+        } catch {
+          // keep going; stake script may still decode
+        }
+      }
+
+      if (stakeCbor) {
+        try {
+          const decoded = decodeNativeScriptFromCbor(stakeCbor);
+          decodedScripts.push({ type: "stake", script: decodedToNativeScript(decoded) });
+        } catch {
+          // ignore
+        }
+      }
+
+      if (decodedScripts.length > 0) {
+        res.setHeader(
+          "Cache-Control",
+          "private, max-age=300, stale-while-revalidate=600",
+        );
+        return res.status(200).json(decodedScripts);
+      }
+
+      return res.status(500).json({
+        error: "Wallet could not be constructed",
+      });
     }
+
     const types = mWallet.getAvailableTypes();
     if (!types) {
       return res.status(500).json({ error: "Wallet could not be constructed" });
