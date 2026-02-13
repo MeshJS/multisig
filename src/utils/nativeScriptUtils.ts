@@ -31,6 +31,21 @@ export function normalizeCborHex(cborHex: string): string {
   return trimmed;
 }
 
+export function normalizeHex(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  return value.trim().toLowerCase().replace(/^0x/, "");
+}
+
+export function scriptHashFromCbor(cborHex?: string | null): string | undefined {
+  if (!cborHex?.trim()) return undefined;
+  try {
+    const script = deserializeNativeScript(normalizeCborHex(cborHex));
+    return normalizeHex(script.hash().to_hex());
+  } catch {
+    return undefined;
+  }
+}
+
 // --- Decoding from CBOR / CSL ---
 
 export function decodeNativeScriptFromCbor(

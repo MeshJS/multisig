@@ -1,5 +1,6 @@
 import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
 import {
+  deserializeAddress,
   NativeScript,
   resolveNativeScriptHash,
   resolvePaymentKeyHash,
@@ -13,10 +14,52 @@ import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 import {
   decodeNativeScriptFromCbor,
   decodedToNativeScript,
+  normalizeHex,
+  scriptHashFromCbor,
 } from "@/utils/nativeScriptUtils";
 
 function addressToNetwork(address: string): number {
   return address.includes("test") ? 0 : 1;
+}
+
+function resolveSummonScriptCbors(args: {
+  address: string;
+  paymentScript?: string | null;
+  stakeScript?: string | null;
+}): { paymentScriptCbor?: string; stakeScriptCbor?: string } {
+  const paymentScript = args.paymentScript?.trim() || undefined;
+  const stakeScript = args.stakeScript?.trim() || undefined;
+
+  if (!paymentScript && !stakeScript) {
+    return {};
+  }
+
+  const paymentScriptHash = scriptHashFromCbor(paymentScript);
+  const stakeScriptHash = scriptHashFromCbor(stakeScript);
+
+  let addressScriptHash: string | undefined;
+  try {
+    const parsed = deserializeAddress(args.address) as {
+      scriptHash?: string;
+      scriptCredentialHash?: string;
+    };
+    addressScriptHash = normalizeHex(
+      parsed.scriptHash || parsed.scriptCredentialHash,
+    );
+  } catch {
+    addressScriptHash = undefined;
+  }
+
+  if (addressScriptHash) {
+    if (paymentScriptHash === addressScriptHash) {
+      return { paymentScriptCbor: paymentScript, stakeScriptCbor: stakeScript };
+    }
+    if (stakeScriptHash === addressScriptHash) {
+      return { paymentScriptCbor: stakeScript, stakeScriptCbor: paymentScript };
+    }
+  }
+
+  return { paymentScriptCbor: paymentScript, stakeScriptCbor: stakeScript };
 }
 
 /**
@@ -196,14 +239,17 @@ export function buildWallet(
       throw new Error("rawImportBodies.multisig.address is required");
     }
 
-    // Always use stored payment script from rawImportBodies
-    const scriptCbor = multisig.payment_script;
-    if (!scriptCbor) {
-      throw new Error("rawImportBodies.multisig.payment_script is required");
-    }
+    const { paymentScriptCbor, stakeScriptCbor } = resolveSummonScriptCbors({
+      address,
+      paymentScript: multisig.payment_script,
+      stakeScript: multisig.stake_script,
+    });
 
-    // Extract stake script from rawImportBodies
-    const stakeScriptCbor = multisig.stake_script;
+    // Always use the script that matches the address payment credential hash
+    const scriptCbor = paymentScriptCbor;
+    if (!scriptCbor) {
+      throw new Error("A valid payment script is required in rawImportBodies.multisig");
+    }
 
     // Decode actual script structure from stored CBOR for display/inspection.
     // The scriptCbor itself (used for address derivation and signing) remains unchanged.

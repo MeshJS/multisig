@@ -6,12 +6,19 @@ import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "./useAppWallet";
 import { MeshTxBuilder } from "@meshsdk/core";
 import useActiveWallet from "./useActiveWallet";
+import {
+  mergeSignerWitnesses,
+  shouldSubmitMultisigTx,
+  submitTxWithScriptRecovery,
+} from "@/utils/txSignUtils";
+import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
   const ctx = api.useUtils();
   const { toast } = useToast();
   const { activeWallet, userAddress } = useActiveWallet();
   const setLoading = useSiteStore((state) => state.setLoading);
+  const network = useSiteStore((state) => state.network);
   const { appWallet } = useAppWallet();
 
   const { mutateAsync: createTransaction } =
@@ -102,7 +109,11 @@ export default function useTransaction() {
         throw new Error("No wallet available for signing transaction");
       }
 
-      const signedTx = await activeWallet.signTx(unsignedTx, true);
+      const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
+      let signedTx = mergeSignerWitnesses(
+        unsignedTx,
+        signerWitnessPayload,
+      );
       
 
       const signedAddresses = [];
@@ -112,24 +123,18 @@ export default function useTransaction() {
 
       //Todo refactor to as util with Signable.
 
-      let submitTx = false;
-
-      if (appWallet.type == "any") {
-        submitTx = true;
-      } else if (
-        appWallet.type == "atLeast" &&
-        appWallet.numRequiredSigners == signedAddresses.length
-      ) {
-        submitTx = true;
-      } else if (
-        appWallet.type == "all" &&
-        appWallet.signersAddresses.length == signedAddresses.length
-      ) {
-        submitTx = true;
-      }
+      const submitTx = shouldSubmitMultisigTx(appWallet, signedAddresses.length);
 
       if (submitTx) {
-        txHash = await activeWallet.submitTx(signedTx);
+        const blockchainProvider = getProvider(network);
+        const submitResult = await submitTxWithScriptRecovery({
+          txHex: signedTx,
+          submitter: blockchainProvider,
+          appWallet,
+          network,
+        });
+        txHash = submitResult.txHash;
+        signedTx = submitResult.txHex;
       }
 
       await createTransaction({
@@ -150,7 +155,7 @@ export default function useTransaction() {
         duration: 10000,
       });
     },
-    [appWallet, userAddress, activeWallet, createTransaction, setLoading, toast],
+    [appWallet, userAddress, activeWallet, createTransaction, setLoading, toast, network],
   );
 
   return { newTransaction };

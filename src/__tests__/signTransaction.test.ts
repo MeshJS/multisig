@@ -25,6 +25,34 @@ jest.mock(
   { virtual: true },
 );
 
+const applyRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
+>();
+const enforceBodySizeMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean
+>();
+
+jest.mock(
+  '@/lib/security/requestGuards',
+  () => ({
+    __esModule: true,
+    applyRateLimit: applyRateLimitMock,
+    enforceBodySize: enforceBodySizeMock,
+  }),
+  { virtual: true },
+);
+
+const getClientIPMock = jest.fn<(req: NextApiRequest) => string>();
+
+jest.mock(
+  '@/lib/security/rateLimit',
+  () => ({
+    __esModule: true,
+    getClientIP: getClientIPMock,
+  }),
+  { virtual: true },
+);
+
 const createCallerMock = jest.fn();
 
 jest.mock(
@@ -78,6 +106,40 @@ jest.mock(
   () => ({
     __esModule: true,
     addressToNetwork: addressToNetworkMock,
+  }),
+  { virtual: true },
+);
+
+const shouldSubmitMultisigTxMock = jest.fn<
+  (wallet: unknown, signedAddressesCount: number) => boolean
+>();
+const submitTxWithScriptRecoveryMock = jest.fn<
+  (args: { txHex: string; submitter: { submitTx: (txHex: string) => Promise<string> } }) => Promise<{ txHash: string; txHex: string; repaired: boolean }>
+>();
+const createVkeyWitnessFromHexMock = jest.fn<
+  (keyHex: string, signatureHex: string) => {
+    publicKey: MockPublicKey;
+    signature: MockEd25519Signature;
+    witness: MockVkeywitness;
+    keyHashHex: string;
+  }
+>();
+const addUniqueVkeyWitnessToTxMock = jest.fn<
+  (originalTxHex: string, witnessToAdd: MockVkeywitness) => {
+    txHex: string;
+    witnessAdded: boolean;
+    vkeyWitnesses: MockVkeywitnesses;
+  }
+>();
+
+jest.mock(
+  '@/utils/txSignUtils',
+  () => ({
+    __esModule: true,
+    createVkeyWitnessFromHex: createVkeyWitnessFromHexMock,
+    addUniqueVkeyWitnessToTx: addUniqueVkeyWitnessToTxMock,
+    shouldSubmitMultisigTx: shouldSubmitMultisigTxMock,
+    submitTxWithScriptRecovery: submitTxWithScriptRecoveryMock,
   }),
   { virtual: true },
 );
@@ -348,12 +410,19 @@ beforeEach(() => {
   dbTransactionUpdateManyMock.mockReset();
   getProviderMock.mockReset();
   addressToNetworkMock.mockReset();
+  shouldSubmitMultisigTxMock.mockReset();
+  submitTxWithScriptRecoveryMock.mockReset();
+  createVkeyWitnessFromHexMock.mockReset();
+  addUniqueVkeyWitnessToTxMock.mockReset();
   resolvePaymentKeyHashMock.mockReset();
   calculateTxHashMock.mockReset();
   corsMock.mockReset();
   addCorsCacheBustingHeadersMock.mockReset();
   createCallerMock.mockReset();
   verifyJwtMock.mockReset();
+  applyRateLimitMock.mockReset();
+  enforceBodySizeMock.mockReset();
+  getClientIPMock.mockReset();
 
   corsMock.mockResolvedValue(undefined);
   addCorsCacheBustingHeadersMock.mockImplementation(() => {
@@ -362,6 +431,57 @@ beforeEach(() => {
   calculateTxHashMock.mockReturnValue('deadbeef');
   resolvePaymentKeyHashMock.mockReturnValue(witnessKeyHashHex);
   addressToNetworkMock.mockReturnValue(0);
+  applyRateLimitMock.mockReturnValue(true);
+  enforceBodySizeMock.mockReturnValue(true);
+  getClientIPMock.mockReturnValue('127.0.0.1');
+  shouldSubmitMultisigTxMock.mockReturnValue(true);
+  createVkeyWitnessFromHexMock.mockImplementation((keyHex, signatureHex) => {
+    const publicKey = MockPublicKey.from_hex(keyHex);
+    const signature = MockEd25519Signature.from_hex(signatureHex);
+    const witness = MockVkeywitness.new(MockVkey.new(publicKey), signature);
+    return {
+      publicKey,
+      signature,
+      witness,
+      keyHashHex: witnessKeyHashHex,
+    };
+  });
+  addUniqueVkeyWitnessToTxMock.mockImplementation((originalTxHex, witnessToAdd) => {
+    const mergedWitnesses = MockVkeywitnesses.from_bytes();
+    const incomingKeyHash = Buffer.from(
+      witnessToAdd.vkey().public_key().hash().to_bytes(),
+    ).toString('hex').toLowerCase();
+
+    const existingWitnessCount = mergedWitnesses.len();
+    for (let i = 0; i < existingWitnessCount; i++) {
+      const existingWitness = mergedWitnesses.get(i);
+      const existingKeyHash = Buffer.from(
+        existingWitness.vkey().public_key().hash().to_bytes(),
+      ).toString('hex').toLowerCase();
+
+      if (existingKeyHash === incomingKeyHash) {
+        return {
+          txHex: originalTxHex,
+          witnessAdded: false,
+          vkeyWitnesses: mergedWitnesses,
+        };
+      }
+    }
+
+    mergedWitnesses.add(witnessToAdd);
+    mergedWitnesses.to_bytes();
+
+    return {
+      txHex: 'updated-tx-hex',
+      witnessAdded: true,
+      vkeyWitnesses: mergedWitnesses,
+    };
+  });
+  submitTxWithScriptRecoveryMock.mockImplementation(async ({ txHex, submitter }) => ({
+    txHash: await submitter.submitTx(txHex),
+    txHex,
+    repaired: false,
+  }));
 
   createCallerMock.mockReturnValue({
     wallet: { getWallet: walletGetWalletMock },
@@ -445,13 +565,15 @@ describe('signTransaction API route', () => {
     expect(addCorsCacheBustingHeadersMock).toHaveBeenCalledWith(res);
     expect(corsMock).toHaveBeenCalledWith(req, res);
     expect(verifyJwtMock).toHaveBeenCalledWith('valid-token');
-    expect(createCallerMock).toHaveBeenCalledWith({
-      db: dbMock,
-      session: expect.objectContaining({
-        user: { id: address },
-        expires: expect.any(String),
+    expect(createCallerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db: dbMock,
+        session: expect.objectContaining({
+          user: { id: address },
+          expires: expect.any(String),
+        }),
       }),
-    });
+    );
     expect(walletGetWalletMock).toHaveBeenCalledWith({ walletId, address });
     expect(dbTransactionFindUniqueMock).toHaveBeenNthCalledWith(1, {
       where: { id: transactionId },
@@ -692,6 +814,106 @@ describe('signTransaction API route', () => {
       error: 'Stored transaction is missing txCbor',
     });
     expect(dbTransactionUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('persists repaired tx hex when script recovery succeeds', async () => {
+    const address = 'addr_test1qprecoverysuccess';
+    const walletId = 'wallet-id-recovery';
+    const transactionId = 'transaction-id-recovery';
+    const signatureHex = 'aa'.repeat(64);
+    const keyHex = 'bb'.repeat(64);
+
+    verifyJwtMock.mockReturnValue({ address });
+
+    walletGetWalletMock.mockResolvedValue({
+      id: walletId,
+      type: 'atLeast',
+      numRequiredSigners: 1,
+      signersAddresses: [address],
+    });
+
+    const transactionRecord = {
+      id: transactionId,
+      walletId,
+      state: 0,
+      signedAddresses: [] as string[],
+      rejectedAddresses: [] as string[],
+      txCbor: 'stored-tx-hex',
+      txHash: null as string | null,
+      txJson: '{}',
+    };
+
+    const updatedTransaction = {
+      ...transactionRecord,
+      signedAddresses: [address],
+      txCbor: 'repaired-tx-hex',
+      state: 1,
+      txHash: 'recovered-hash',
+      txJson: '{"multisig":{"state":1}}',
+    };
+
+    dbTransactionFindUniqueMock
+      .mockResolvedValueOnce(transactionRecord)
+      .mockResolvedValueOnce(updatedTransaction);
+
+    dbTransactionUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const submitTxMock = jest.fn<(txHex: string) => Promise<string>>();
+    submitTxMock.mockResolvedValue('should-not-be-used-directly');
+    getProviderMock.mockReturnValue({ submitTx: submitTxMock });
+
+    submitTxWithScriptRecoveryMock.mockResolvedValueOnce({
+      txHash: 'recovered-hash',
+      txHex: 'repaired-tx-hex',
+      repaired: true,
+    });
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        walletId,
+        transactionId,
+        address,
+        signature: signatureHex,
+        key: keyHex,
+      },
+    } as unknown as NextApiRequest;
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(submitTxWithScriptRecoveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHex: 'updated-tx-hex',
+        submitter: expect.objectContaining({
+          submitTx: expect.any(Function),
+        }),
+      }),
+    );
+    expect(dbTransactionUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: transactionId,
+        signedAddresses: { equals: [] },
+        rejectedAddresses: { equals: [] },
+        txCbor: 'stored-tx-hex',
+        txJson: '{}',
+      },
+      data: expect.objectContaining({
+        signedAddresses: { set: [address] },
+        rejectedAddresses: { set: [] },
+        txCbor: 'repaired-tx-hex',
+        state: 1,
+        txHash: 'recovered-hash',
+      }),
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      transaction: updatedTransaction,
+      submitted: true,
+      txHash: 'recovered-hash',
+    });
   });
 
 });
