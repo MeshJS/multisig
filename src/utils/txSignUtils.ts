@@ -5,25 +5,40 @@ import {
   serializeNativeScript,
 } from "@meshsdk/core";
 import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
-import type { Wallet } from "@/types/wallet";
+import type {
+  MultisigSubmissionWallet,
+  ScriptRecoveryWallet,
+  SubmitTxWithRecoveryArgs,
+  SubmitTxWithRecoveryResult,
+} from "@/types/txSign";
 import { normalizeHex, scriptHashFromCbor } from "@/utils/nativeScriptUtils";
 
-type TxSubmitter = {
-  submitTx: (txHex: string) => Promise<string>;
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
-type SubmitTxWithRecoveryArgs = {
-  txHex: string;
-  submitter: TxSubmitter;
-  appWallet?: Wallet;
-  network?: number;
-};
+function resolveMultisigScripts(rawImportBodies: unknown): {
+  paymentScript?: string;
+  stakeScript?: string;
+} {
+  if (!isRecord(rawImportBodies)) {
+    return {};
+  }
 
-type SubmitTxWithRecoveryResult = {
-  txHash: string;
-  txHex: string;
-  repaired: boolean;
-};
+  const multisig = rawImportBodies.multisig;
+  if (!isRecord(multisig)) {
+    return {};
+  }
+
+  const paymentScript = typeof multisig.payment_script === "string"
+    ? multisig.payment_script
+    : undefined;
+  const stakeScript = typeof multisig.stake_script === "string"
+    ? multisig.stake_script
+    : undefined;
+
+  return { paymentScript, stakeScript };
+}
 
 function toKeyHashHex(publicKey: csl.PublicKey): string {
   return Array.from(publicKey.hash().to_bytes())
@@ -243,7 +258,7 @@ export function extractMissingScriptHashFromError(error: unknown): string | unde
 }
 
 export function buildLegacyStylePaymentScriptCbor(
-  appWallet: Wallet,
+  appWallet: ScriptRecoveryWallet,
   network: number,
 ): string | undefined {
   if (!appWallet?.signersAddresses?.length) return undefined;
@@ -276,7 +291,7 @@ export function buildLegacyStylePaymentScriptCbor(
 }
 
 export function buildSerializedNativeScriptCbor(
-  appWallet: Wallet,
+  appWallet: ScriptRecoveryWallet,
   network: number,
 ): string | undefined {
   if (!appWallet?.nativeScript) return undefined;
@@ -288,13 +303,20 @@ export function buildSerializedNativeScriptCbor(
   }
 }
 
-export function resolveExpectedPaymentScriptCbor(appWallet: Wallet): string | undefined {
-  const multisig = appWallet.rawImportBodies?.multisig;
-  const candidatePayment = multisig?.payment_script?.trim();
-  const candidateStake = multisig?.stake_script?.trim();
+export function resolveExpectedPaymentScriptCbor(
+  appWallet: ScriptRecoveryWallet,
+): string | undefined {
+  const { paymentScript, stakeScript } = resolveMultisigScripts(
+    appWallet.rawImportBodies,
+  );
+  const candidatePayment = paymentScript?.trim();
+  const candidateStake = stakeScript?.trim();
 
   let addressScriptHash: string | undefined;
   try {
+    if (!appWallet.address) {
+      throw new Error("Missing wallet address");
+    }
     const parsed = deserializeAddress(appWallet.address) as {
       scriptHash?: string;
       scriptCredentialHash?: string;
@@ -326,15 +348,19 @@ export function resolveExpectedPaymentScriptCbor(appWallet: Wallet): string | un
 }
 
 function findCandidateScriptByHash(
-  appWallet: Wallet,
+  appWallet: ScriptRecoveryWallet,
   targetHash?: string,
 ): string | undefined {
   if (!targetHash) return undefined;
 
+  const { paymentScript, stakeScript } = resolveMultisigScripts(
+    appWallet.rawImportBodies,
+  );
+
   const candidates = [
     appWallet.scriptCbor,
-    appWallet.rawImportBodies?.multisig?.payment_script,
-    appWallet.rawImportBodies?.multisig?.stake_script,
+    paymentScript,
+    stakeScript,
   ].filter((value): value is string => !!value && value.trim().length > 0);
 
   for (const candidate of candidates) {
@@ -363,7 +389,7 @@ function dedupeScriptCbors(candidates: Array<string | undefined>): string[] {
 }
 
 export function shouldSubmitMultisigTx(
-  appWallet: Wallet,
+  appWallet: MultisigSubmissionWallet,
   signedAddressesCount: number,
 ): boolean {
   if (appWallet.type === "any") {
@@ -392,12 +418,15 @@ export async function submitTxWithScriptRecovery({
 
     const missingScriptHash = extractMissingScriptHashFromError(submitError);
     const preferredScript = findCandidateScriptByHash(appWallet, missingScriptHash);
+    const { paymentScript, stakeScript } = resolveMultisigScripts(
+      appWallet.rawImportBodies,
+    );
 
     const candidateScripts = dedupeScriptCbors([
       preferredScript,
       resolveExpectedPaymentScriptCbor(appWallet),
-      appWallet.rawImportBodies?.multisig?.payment_script,
-      appWallet.rawImportBodies?.multisig?.stake_script,
+      paymentScript,
+      stakeScript,
       buildSerializedNativeScriptCbor(appWallet, network),
       buildLegacyStylePaymentScriptCbor(appWallet, network),
       appWallet.scriptCbor,
