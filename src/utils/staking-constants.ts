@@ -1,0 +1,2 @@
+export const STAKE_KEY_DEPOSIT = 2_000_000;
+export const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
