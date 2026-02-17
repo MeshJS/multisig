@@ -474,11 +474,20 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
       });
       reset();
 
-      // send discord message
-      await sendDiscordMessage(
-        discordIds,
-        `**NEW MULTISIG TRANSACTION:** A new Multisig transaction has been created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
-      );
+      // Best-effort notification; creation success should not depend on Discord.
+      try {
+        await sendDiscordMessage(
+          discordIds,
+          `**NEW MULTISIG TRANSACTION:** A new Multisig transaction has been created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
+        );
+      } catch (discordError) {
+        console.error("Discord notification failed:", discordError);
+      }
+
+      if (onSuccess) {
+        onSuccess();
+        return;
+      }
 
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {

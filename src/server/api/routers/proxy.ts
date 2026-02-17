@@ -10,15 +10,23 @@ const requireSessionAddress = (ctx: any) => {
   return address;
 };
 
-const assertWalletAccess = async (ctx: any, walletId: string, requester: string) => {
+const assertWalletAccess = async (
+  ctx: any,
+  walletId: string,
+  requester: string | string[],
+) => {
   const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
+  const requesters = Array.isArray(requester) ? requester : [requester];
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const allRequesters = [...requesters, ...sessionWallets];
   const isSigner =
-    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
-  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
-  if (!isSigner && !isOwner) {
+    Array.isArray(wallet.signersAddresses) &&
+    wallet.signersAddresses.some((addr: string) => allRequesters.includes(addr));
+  // Wallet model does not include ownerAddress; signer membership is the access control source.
+  if (!isSigner) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
   }
   return wallet;

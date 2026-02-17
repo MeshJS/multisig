@@ -898,10 +898,13 @@ export default function TransactionCard({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="text-sm font-medium break-words">
-                              {appWallet.signersDescriptions[index] &&
-                              appWallet.signersDescriptions[index].length > 0
-                                ? appWallet.signersDescriptions[index]
-                                : getFirstAndLast(signerAddress)}
+                              {(() => {
+                                const signerDescription =
+                                  appWallet.signersDescriptions?.[index];
+                                return signerDescription && signerDescription.length > 0
+                                  ? signerDescription
+                                  : getFirstAndLast(signerAddress);
+                              })()}
                             </div>
                             {isYou && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold border border-primary/30">
