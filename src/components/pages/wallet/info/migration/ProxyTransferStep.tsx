@@ -120,7 +120,7 @@ export default function ProxyTransferStep({
         <div className="space-y-4">
           {hasProxies ? (
             <div className="space-y-3">
-              {(existingProxies ?? []).map((proxy, index) => (
+              {(existingProxies ?? []).map((proxy: NonNullable<typeof existingProxies>[number], index: number) => (
                 <div key={proxy.id} className="flex items-center justify-between p-4 border border-border/30 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Users className="h-5 w-5 text-blue-500" />

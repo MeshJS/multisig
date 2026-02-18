@@ -1,7 +1,6 @@
 import type { NativeScript } from "@meshsdk/core";
 import {
   deserializeAddress,
-  resolvePaymentKeyHash,
   serializeNativeScript,
 } from "@meshsdk/core";
 import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
@@ -11,7 +10,11 @@ import type {
   SubmitTxWithRecoveryArgs,
   SubmitTxWithRecoveryResult,
 } from "@/types/txSign";
-import { normalizeHex, scriptHashFromCbor } from "@/utils/nativeScriptUtils";
+import {
+  buildPaymentSigScriptsFromAddresses,
+  normalizeHex,
+  scriptHashFromCbor,
+} from "@/utils/nativeScriptUtils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -208,12 +211,7 @@ export function buildLegacyStylePaymentScriptCbor(
 ): string | undefined {
   if (!appWallet?.signersAddresses?.length) return undefined;
   try {
-    const scripts = appWallet.signersAddresses
-      .filter((addr): addr is string => !!addr)
-      .map((addr) => ({
-        type: "sig" as const,
-        keyHash: resolvePaymentKeyHash(addr),
-      }));
+    const scripts = buildPaymentSigScriptsFromAddresses(appWallet.signersAddresses);
 
     if (scripts.length === 0) return undefined;
 

@@ -1,4 +1,5 @@
 import type { NativeScript } from "@meshsdk/core";
+import { resolvePaymentKeyHash } from "@meshsdk/core";
 import type { csl } from "@meshsdk/core-csl";
 import { deserializeNativeScript } from "@meshsdk/core-csl";
 
@@ -20,6 +21,28 @@ export type SigMatch = {
   signerAddress?: string;
   signerStakeKey?: string;
 };
+
+export type PaymentSigScript = { type: "sig"; keyHash: string };
+
+export function buildPaymentSigScriptsFromAddresses(
+  signersAddresses: Array<string | null | undefined>,
+  onInvalidAddress?: (address: string) => void,
+): PaymentSigScript[] {
+  return signersAddresses
+    .filter((addr): addr is string => !!addr)
+    .map((addr) => {
+      try {
+        return {
+          type: "sig" as const,
+          keyHash: resolvePaymentKeyHash(addr),
+        };
+      } catch {
+        onInvalidAddress?.(addr);
+        return null;
+      }
+    })
+    .filter((script): script is PaymentSigScript => script !== null);
+}
 
 // --- CBOR normalization ---
 

@@ -13,6 +13,7 @@ import { getDRepIds } from "@meshsdk/core-cst";
 import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 import {
   decodeNativeScriptFromCbor,
+  buildPaymentSigScriptsFromAddresses,
   decodedToNativeScript,
   normalizeHex,
   scriptHashFromCbor,
@@ -20,6 +21,63 @@ import {
 
 function addressToNetwork(address: string): number {
   return address.includes("test") ? 0 : 1;
+}
+
+function resolveWalletNetwork(wallet: DbWalletWithLegacy, network?: number): number {
+  if (network !== undefined) {
+    return network;
+  }
+
+  if (wallet.signersAddresses.length > 0) {
+    return addressToNetwork(wallet.signersAddresses[0]!);
+  }
+
+  if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
+    const stakeAddr = wallet.signersStakeKeys.find((s) => !!s);
+    if (stakeAddr) {
+      return addressToNetwork(stakeAddr);
+    }
+  }
+
+  // Default to mainnet when we cannot infer from stored addresses.
+  return 1;
+}
+
+function buildPaymentSigScripts(
+  wallet: DbWalletWithLegacy,
+): Array<{ type: "sig"; keyHash: string }> {
+  return buildPaymentSigScriptsFromAddresses(
+    wallet.signersAddresses,
+    (addr) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Invalid payment address in buildWallet:", addr);
+      }
+    },
+  );
+}
+
+function buildNativeScriptFromPaymentSigners(
+  wallet: DbWalletWithLegacy,
+  validScripts: Array<{ type: "sig"; keyHash: string }>,
+): NativeScript {
+  const nativeScript = {
+    type: (wallet.type as "all" | "any" | "atLeast") || "atLeast",
+    scripts: validScripts,
+  } as NativeScript;
+  if (nativeScript.type === "atLeast") {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - Mesh NativeScript "atLeast" variant requires "required".
+    nativeScript.required = wallet.numRequiredSigners!;
+  }
+  return nativeScript;
+}
+
+function buildDRepIdFromScript(nativeScript: NativeScript): string {
+  const dRepIdCip105 = resolveScriptHashDRepId(
+    resolveNativeScriptHash(nativeScript),
+  );
+  const drepids = getDRepIds(dRepIdCip105);
+  return drepids.cip129;
 }
 
 function resolveSummonScriptCbors(args: {
@@ -99,22 +157,7 @@ export function buildMultisigWallet(
   }
 
   const keys: MultisigKey[] = [];
-  
-  // Determine network from address if not provided
-  if (network === undefined) {
-    if (wallet.signersAddresses.length > 0) {
-      network = addressToNetwork(wallet.signersAddresses[0]!);
-    } else if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
-      const stakeAddr = wallet.signersStakeKeys.find((s) => !!s);
-      if (stakeAddr) {
-        network = addressToNetwork(stakeAddr);
-      } else {
-        network = 1; // Default to mainnet if we can't determine
-      }
-    } else {
-      network = 1; // Default to mainnet if we can't determine
-    }
-  }
+  const resolvedNetwork = resolveWalletNetwork(wallet, network);
   
   // Add payment keys (role 0)
   if (wallet.signersAddresses.length > 0) {
@@ -178,30 +221,14 @@ export function buildMultisigWallet(
     );
     return undefined;
   }
-  
-  // Ensure network is set - determine from address if not provided
-  if (network === undefined) {
-    if (wallet.signersAddresses.length > 0) {
-      network = addressToNetwork(wallet.signersAddresses[0]!);
-    } else if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
-      const stakeAddr = wallet.signersStakeKeys.find((s) => !!s);
-      if (stakeAddr) {
-        network = addressToNetwork(stakeAddr);
-      } else {
-        network = 1; // Default to mainnet if we can't determine
-      }
-    } else {
-      network = 1; // Default to mainnet if we can't determine
-    }
-  }
-  
+
   const stakeCredentialHash = wallet.stakeCredentialHash as undefined | string;
   const multisigWallet = new MultisigWallet(
     wallet.name,
     keys,
     wallet.description ?? "",
     wallet.numRequiredSigners ?? 1,
-    network,
+    resolvedNetwork,
     stakeCredentialHash,
     (wallet.type as "all" | "any" | "atLeast") ?? "atLeast",
   );
@@ -288,37 +315,14 @@ export function buildWallet(
 
   // Type 0 (Legacy): Build native script directly from payment keys in input order
   if (walletType === 'legacy') {
-    // Build native script from payment keys in exact input order
-    const validScripts = wallet.signersAddresses
-      .filter((addr) => addr) // Filter out null/undefined addresses
-      .map((addr) => {
-        try {
-          return {
-            type: "sig" as const,
-            keyHash: resolvePaymentKeyHash(addr!),
-          };
-        } catch (e) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn(`Invalid payment address in buildWallet:`, addr);
-          }
-          return null;
-        }
-      })
-      .filter((script): script is { type: "sig"; keyHash: string } => script !== null);
+    const validScripts = buildPaymentSigScripts(wallet);
 
     if (validScripts.length === 0) {
       console.error("buildWallet: No valid payment addresses found");
       throw new Error("Failed to build wallet: No valid payment addresses");
     }
 
-    const nativeScript = {
-      type: (wallet.type as "all" | "any" | "atLeast") || "atLeast",
-      scripts: validScripts,
-    };
-    if (nativeScript.type === "atLeast") {
-      //@ts-ignore
-      nativeScript.required = wallet.numRequiredSigners!;
-    }
+    const nativeScript = buildNativeScriptFromPaymentSigners(wallet, validScripts);
 
     // Build address from payment script with external stake credential hash if available
     // Legacy wallets can have external stake key hash but no individual stake keys
@@ -328,12 +332,7 @@ export function buildWallet(
       network,
     ).address;
 
-    // Compute DRep ID from payment script hash
-    const dRepIdCip105 = resolveScriptHashDRepId(
-      resolveNativeScriptHash(nativeScript as NativeScript),
-    );
-    const drepids = getDRepIds(dRepIdCip105);
-    const dRepIdCip129 = drepids.cip129;
+    const dRepIdCip129 = buildDRepIdFromScript(nativeScript);
 
     return {
       ...wallet,
@@ -351,36 +350,14 @@ export function buildWallet(
   }
 
   // Build native script from payment keys for compatibility
-  const validScripts = wallet.signersAddresses
-    .filter((addr) => addr)
-    .map((addr) => {
-      try {
-        return {
-          type: "sig" as const,
-          keyHash: resolvePaymentKeyHash(addr!),
-        };
-      } catch (e) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn(`Invalid payment address in buildWallet:`, addr);
-        }
-        return null;
-      }
-    })
-    .filter((script): script is { type: "sig"; keyHash: string } => script !== null);
+  const validScripts = buildPaymentSigScripts(wallet);
 
   if (validScripts.length === 0) {
     console.error("buildWallet: No valid payment addresses found");
     throw new Error("Failed to build wallet: No valid payment addresses");
   }
 
-  const nativeScript = {
-    type: (wallet.type as "all" | "any" | "atLeast") || "atLeast",
-    scripts: validScripts,
-  };
-  if (nativeScript.type === "atLeast") {
-    //@ts-ignore
-    nativeScript.required = wallet.numRequiredSigners!;
-  }
+  const nativeScript = buildNativeScriptFromPaymentSigners(wallet, validScripts);
 
   // Use SDK address (prefer stakeable address if staking is enabled)
   const paymentAddress = serializeNativeScript(
@@ -399,11 +376,7 @@ export function buildWallet(
   }
 
   // Compute DRep ID from payment script hash (SDK can override this via getDRepId)
-  const dRepIdCip105 = resolveScriptHashDRepId(
-    resolveNativeScriptHash(nativeScript as NativeScript),
-  );
-  const drepids = getDRepIds(dRepIdCip105);
-  const dRepIdCip129 = drepids.cip129;
+  const dRepIdCip129 = buildDRepIdFromScript(nativeScript);
 
   return {
     ...wallet,

@@ -34,7 +34,7 @@ export default function ProxyDataLoader() {
   // Update store when API data changes
   useEffect(() => {
     if (apiProxies && appWallet?.id) {
-      const proxyData = apiProxies.map(proxy => ({
+      const proxyData = apiProxies.map((proxy: NonNullable<typeof apiProxies>[number]) => ({
         id: proxy.id,
         proxyAddress: proxy.proxyAddress,
         authTokenId: proxy.authTokenId,

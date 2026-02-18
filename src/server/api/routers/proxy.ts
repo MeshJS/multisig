@@ -40,6 +40,100 @@ const getUserIdForAddress = async (ctx: any, address: string) => {
   return user.id;
 };
 
+const assertProxyAccess = async (
+  ctx: any,
+  proxy: { walletId: string | null; userId: string | null },
+  requesterAddresses: string[],
+) => {
+  if (proxy.walletId) {
+    let hasWalletAccess = false;
+    for (const addr of requesterAddresses) {
+      try {
+        await assertWalletAccess(ctx, proxy.walletId, addr);
+        hasWalletAccess = true;
+        break;
+      } catch {
+        // Continue checking with remaining addresses
+      }
+    }
+    if (hasWalletAccess) return;
+  }
+
+  if (proxy.userId) {
+    for (const addr of requesterAddresses) {
+      try {
+        const requesterUserId = await getUserIdForAddress(ctx, addr);
+        if (requesterUserId === proxy.userId) {
+          return;
+        }
+      } catch {
+        // Continue checking with remaining addresses
+      }
+    }
+  }
+
+  throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this proxy" });
+};
+
+const getRequesterAddresses = (ctx: any): string[] => {
+  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  return sessionWallets.length ? sessionWallets : [requireSessionAddress(ctx)];
+};
+
+const assertWalletAccessForAnyAddress = async (
+  ctx: any,
+  walletId: string,
+  addresses: string[],
+) => {
+  for (const addr of addresses) {
+    try {
+      await assertWalletAccess(ctx, walletId, addr);
+      return;
+    } catch {
+      // continue checking next address
+    }
+  }
+  throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
+};
+
+const listActiveProxiesByUserAddress = async (ctx: any, userAddress: string) => {
+  return ctx.db.$queryRaw<Array<{
+    id: string;
+    walletId: string | null;
+    proxyAddress: string;
+    authTokenId: string;
+    paramUtxo: string;
+    description: string | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    userId: string | null;
+  }>>`
+    SELECT p.*
+    FROM "Proxy" p
+    INNER JOIN "User" u ON p."userId" = u.id
+    WHERE u.address = ${userAddress}
+      AND p."isActive" = true
+    ORDER BY p."createdAt" DESC
+  `;
+};
+
+const assertProxyManageAccess = async (
+  ctx: any,
+  proxy: { walletId: string | null; userId: string | null },
+  sessionAddress: string,
+) => {
+  if (proxy.walletId) {
+    await assertWalletAccess(ctx, proxy.walletId, sessionAddress);
+  }
+  if (proxy.userId) {
+    const sessionUserId = await getUserIdForAddress(ctx, sessionAddress);
+    if (sessionUserId !== proxy.userId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "User mismatch" });
+    }
+  }
+};
+
 export const proxyRouter = createTRPCRouter({
   getUserByAddress: protectedProcedure
     .input(z.object({ address: z.string() }))
@@ -113,36 +207,11 @@ export const proxyRouter = createTRPCRouter({
   getProxiesByUser: protectedProcedure
     .input(z.object({ userAddress: z.string() }))
     .query(async ({ ctx, input }) => {
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
-      const addresses = sessionWallets.length
-        ? sessionWallets
-        : [requireSessionAddress(ctx)];
+      const addresses = getRequesterAddresses(ctx);
       if (!addresses.includes(input.userAddress)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
-      // Optimized: Use a single query with raw SQL to avoid N+1
-      // This performs a JOIN in a single database round trip
-      const proxies = await ctx.db.$queryRaw<Array<{
-        id: string;
-        walletId: string | null;
-        proxyAddress: string;
-        authTokenId: string;
-        paramUtxo: string;
-        description: string | null;
-        isActive: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        userId: string | null;
-      }>>`
-        SELECT p.*
-        FROM "Proxy" p
-        INNER JOIN "User" u ON p."userId" = u.id
-        WHERE u.address = ${input.userAddress}
-          AND p."isActive" = true
-        ORDER BY p."createdAt" DESC
-      `;
-
-      return proxies;
+      return listActiveProxiesByUserAddress(ctx, input.userAddress);
     }),
 
   getProxiesByUserOrWallet: protectedProcedure
@@ -151,26 +220,10 @@ export const proxyRouter = createTRPCRouter({
       userAddress: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
-      const addresses = sessionWallets.length
-        ? sessionWallets
-        : [requireSessionAddress(ctx)];
+      const addresses = getRequesterAddresses(ctx);
       // Prefer fetching by walletId when available (already optimized with index)
       if (input.walletId) {
-        // Any authorized wallet that is a signer/owner grants access
-        let authorized = false;
-        for (const addr of addresses) {
-          try {
-            await assertWalletAccess(ctx, input.walletId, addr);
-            authorized = true;
-            break;
-          } catch {
-            // try next address
-          }
-        }
-        if (!authorized) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
-        }
+        await assertWalletAccessForAnyAddress(ctx, input.walletId, addresses);
         return ctx.db.proxy.findMany({
           where: {
             walletId: input.walletId,
@@ -186,27 +239,7 @@ export const proxyRouter = createTRPCRouter({
         if (!addresses.includes(input.userAddress)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
         }
-        const proxies = await ctx.db.$queryRaw<Array<{
-          id: string;
-          walletId: string | null;
-          proxyAddress: string;
-          authTokenId: string;
-          paramUtxo: string;
-          description: string | null;
-          isActive: boolean;
-          createdAt: Date;
-          updatedAt: Date;
-          userId: string | null;
-        }>>`
-          SELECT p.*
-          FROM "Proxy" p
-          INNER JOIN "User" u ON p."userId" = u.id
-          WHERE u.address = ${input.userAddress}
-            AND p."isActive" = true
-          ORDER BY p."createdAt" DESC
-        `;
-
-        return proxies;
+        return listActiveProxiesByUserAddress(ctx, input.userAddress);
       }
 
       // No criteria provided
@@ -216,11 +249,19 @@ export const proxyRouter = createTRPCRouter({
   getProxyById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.proxy.findUnique({
+      const proxy = await ctx.db.proxy.findUnique({
         where: {
           id: input.id,
         },
       });
+      if (!proxy) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
+      }
+
+      const addresses = getRequesterAddresses(ctx);
+      await assertProxyAccess(ctx, proxy, addresses);
+
+      return proxy;
     }),
 
   updateProxy: protectedProcedure
@@ -239,15 +280,16 @@ export const proxyRouter = createTRPCRouter({
       if (!proxy) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
       }
-      if (proxy.walletId) {
-        await assertWalletAccess(ctx, proxy.walletId, sessionAddress);
+      await assertProxyManageAccess(ctx, proxy, sessionAddress);
+
+      if (input.walletId !== undefined || input.userId !== undefined) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Changing proxy ownership is not allowed in updateProxy. Use transferProxies or recreate the proxy.",
+        });
       }
-      if (proxy.userId) {
-        const sessionUserId = await getUserIdForAddress(ctx, sessionAddress);
-        if (sessionUserId !== proxy.userId) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "User mismatch" });
-        }
-      }
+
       return ctx.db.proxy.update({
         where: {
           id: input.id,
@@ -255,8 +297,6 @@ export const proxyRouter = createTRPCRouter({
         data: {
           description: input.description,
           isActive: input.isActive,
-          walletId: input.walletId,
-          userId: input.userId,
         },
       });
     }),
@@ -269,15 +309,7 @@ export const proxyRouter = createTRPCRouter({
       if (!proxy) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
       }
-      if (proxy.walletId) {
-        await assertWalletAccess(ctx, proxy.walletId, sessionAddress);
-      }
-      if (proxy.userId) {
-        const sessionUserId = await getUserIdForAddress(ctx, sessionAddress);
-        if (sessionUserId !== proxy.userId) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "User mismatch" });
-        }
-      }
+      await assertProxyManageAccess(ctx, proxy, sessionAddress);
       return ctx.db.proxy.delete({
         where: {
           id: input.id,
@@ -293,15 +325,7 @@ export const proxyRouter = createTRPCRouter({
       if (!proxy) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
       }
-      if (proxy.walletId) {
-        await assertWalletAccess(ctx, proxy.walletId, sessionAddress);
-      }
-      if (proxy.userId) {
-        const sessionUserId = await getUserIdForAddress(ctx, sessionAddress);
-        if (sessionUserId !== proxy.userId) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "User mismatch" });
-        }
-      }
+      await assertProxyManageAccess(ctx, proxy, sessionAddress);
       return ctx.db.proxy.update({
         where: {
           id: input.id,

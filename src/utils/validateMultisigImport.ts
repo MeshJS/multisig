@@ -404,7 +404,8 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             const m = lowerMatches.get(sig.toLowerCase());
             if (m?.matched && typeof m.signerIndex === "number") {
                 const idx = m.signerIndex;
-                return typeof signerNames[idx] === "string" ? signerNames[idx] : "";
+                const signerName = signerNames[idx];
+                return typeof signerName === "string" ? signerName : "";
             }
             return ""; // unknown when no address match
         });

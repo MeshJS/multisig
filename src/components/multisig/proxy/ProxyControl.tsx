@@ -94,13 +94,13 @@ export default function ProxyControl() {
     }
 
     const storeById = new Map(storeProxies.map((proxy) => [proxy.id, proxy]));
-    const merged = apiList.map((proxy) => {
+    const merged = apiList.map((proxy: NonNullable<typeof apiProxies>[number]) => {
       const enriched = storeById.get(proxy.id);
       return enriched ? { ...enriched, ...proxy } : proxy;
     });
 
     // Keep any locally cached proxies that have not reached API yet.
-    const apiIds = new Set(apiList.map((proxy) => proxy.id));
+    const apiIds = new Set(apiList.map((proxy: NonNullable<typeof apiProxies>[number]) => proxy.id));
     const storeOnly = storeProxies.filter((proxy) => !apiIds.has(proxy.id));
 
     return [...merged, ...storeOnly];
