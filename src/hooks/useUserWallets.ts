@@ -3,6 +3,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 import { buildWallet } from "@/utils/common";
 import { DbWalletWithLegacy } from "@/types/wallet";
+import { useMemo } from "react";
 
 export default function useUserWallets() {
   const network = useSiteStore((state) => state.network);
@@ -52,16 +53,13 @@ export default function useUserWallets() {
     },
   );
 
-  let _wallets = wallets;
+  const mappedWallets = useMemo(() => {
+    if (!wallets) return undefined;
 
-  if (wallets) {
-    _wallets = wallets
+    return wallets
       .filter((wallet): wallet is DbWalletWithLegacy => wallet != null)
-      .map((wallet) => {
-        return buildWallet(wallet, network);
-      });
-    return { wallets: _wallets, isLoading };
-  }
+      .map((wallet) => buildWallet(wallet, network));
+  }, [wallets, network]);
 
-  return { wallets: undefined, isLoading };
+  return { wallets: mappedWallets, isLoading };
 }

@@ -103,10 +103,15 @@ export default function PageWallets() {
       },
     );
 
-  // Filter wallets for balance fetching (only non-archived or all if showing archived)
-  const walletsForBalance = wallets?.filter(
-    (wallet) => showArchived || !wallet.isArchived,
-  ) as Wallet[] | undefined;
+  // Keep a stable wallets array for balance fetching to avoid restarting the queue
+  // on unrelated rerenders.
+  const walletsForBalance = useMemo(
+    () =>
+      wallets?.filter((wallet) => showArchived || !wallet.isArchived) as
+        | Wallet[]
+        | undefined,
+    [wallets, showArchived],
+  );
 
   // Fetch balances with rate limiting
   const { balances, loadingStates } = useWalletBalances(walletsForBalance);

@@ -83,6 +83,16 @@ export default function useWalletBalances(
     }
   }, [clearExpiredBalances]);
 
+  // Abort any in-flight processing only when the hook unmounts.
+  // Avoid aborting on every render/dependency update.
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   const getCanonicalWalletAddress = useCallback(
     (wallet: Wallet): string => {
       // Goal: get the address we should query Blockfrost with, without throwing for
@@ -107,31 +117,32 @@ export default function useWalletBalances(
         if (walletType === "summon") {
           const importedAddress =
             wallet.rawImportBodies?.multisig?.address || wallet.address;
+          const importedPaymentCbor =
+            wallet.rawImportBodies?.multisig?.payment_script;
           const summonWallet = buildWallet(wallet, walletNetwork);
 
-          // Rebuild the summon wallet address from script data so we can verify
-          // it matches the imported address from rawImportBodies.
-          const stakeCredentialHash = scriptHashFromCbor(
-            summonWallet.stakeScriptCbor,
-          );
-          const derivedAddress = serializeNativeScript(
+          // Build payment CBOR from the wallet's native script and compare hashes
+          // with imported payment CBOR to ensure we are checking the same script.
+          const builtPaymentCbor = serializeNativeScript(
             summonWallet.nativeScript,
-            stakeCredentialHash,
+            undefined,
             walletNetwork,
-          ).address;
+          ).scriptCbor;
+          const importedPaymentHash = scriptHashFromCbor(importedPaymentCbor);
+          const builtPaymentHash = scriptHashFromCbor(builtPaymentCbor);
 
           if (
-            importedAddress &&
-            derivedAddress &&
-            importedAddress !== derivedAddress
+            importedPaymentHash &&
+            builtPaymentHash &&
+            importedPaymentHash !== builtPaymentHash
           ) {
             console.warn(
-              `[useWalletBalances] Summon address mismatch for wallet ${wallet.id}: imported=${importedAddress}, derived=${derivedAddress}`,
+              `[useWalletBalances] Summon payment script mismatch for wallet ${wallet.id}: importedHash=${importedPaymentHash}, builtHash=${builtPaymentHash}`,
             );
-            return importedAddress;
+            return importedAddress || summonWallet.address;
           }
 
-          return derivedAddress || importedAddress;
+          return summonWallet.address || importedAddress;
         }
 
         // legacy
@@ -352,12 +363,6 @@ export default function useWalletBalances(
       });
     }
 
-    // Cleanup on unmount
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
   }, [wallets, processQueue]);
 
   return {
