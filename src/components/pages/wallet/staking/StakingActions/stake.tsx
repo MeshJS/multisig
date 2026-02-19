@@ -8,7 +8,7 @@ import { MultisigWallet } from "@/utils/multisigSDK";
 import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { STAKE_KEY_DEPOSIT } from "@/utils/staking-constants";
+import { STAKE_KEY_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import useTransaction from "@/hooks/useTransaction";
 
 type StakingAction = "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";

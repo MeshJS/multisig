@@ -12,11 +12,35 @@ import {
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
 import { getProvider } from "@/utils/get-provider";
-import { STAKE_KEY_DEPOSIT_LOVELACE } from "@/utils/staking-constants";
+import {
+  DREP_DEPOSIT_LOVELACE,
+  STAKE_KEY_DEPOSIT_LOVELACE,
+} from "@/utils/protocol-deposit-constants";
 
-function getStakeKeyDepositDelta(txBuilder: MeshTxBuilder): bigint {
+function parseCoinToBigInt(value: unknown, fallback: bigint): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return BigInt(Math.trunc(value));
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    try {
+      return BigInt(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function getCertificateCoinDelta(txBuilder: MeshTxBuilder): bigint {
   const body = txBuilder.meshTxBuilderBody as {
-    certificates?: Array<{ certType?: { type?: string } }>;
+    certificates?: Array<{
+      certType?: {
+        type?: string;
+        coin?: string | number | bigint;
+        deposit?: string | number | bigint;
+      };
+    }>;
   };
   const certs = body.certificates ?? [];
 
@@ -24,17 +48,29 @@ function getStakeKeyDepositDelta(txBuilder: MeshTxBuilder): bigint {
   for (const cert of certs) {
     const certType = cert?.certType?.type ?? "";
     const normalized = certType.toLowerCase();
-    const isDeregister =
-      normalized.includes("deregister") || normalized.includes("unregister");
-    const isRegister =
-      !isDeregister &&
-      (normalized.includes("registerstake") || normalized.includes("registration"));
+    const certCoin = cert?.certType?.coin ?? cert?.certType?.deposit;
 
-    if (isRegister) {
+    if (normalized.includes("drepregistration")) {
+      delta -= parseCoinToBigInt(certCoin, DREP_DEPOSIT_LOVELACE);
+      continue;
+    }
+    if (normalized.includes("drepderegistration")) {
+      delta += parseCoinToBigInt(certCoin, DREP_DEPOSIT_LOVELACE);
+      continue;
+    }
+
+    const isStakeRegister =
+      normalized.includes("registerstake") || normalized.includes("stakeregistration");
+    const isStakeDeregister =
+      normalized.includes("deregisterstake") ||
+      normalized.includes("unregisterstake") ||
+      normalized.includes("stakederegistration");
+
+    if (isStakeRegister) {
       delta -= STAKE_KEY_DEPOSIT_LOVELACE;
       continue;
     }
-    if (isDeregister) {
+    if (isStakeDeregister) {
       delta += STAKE_KEY_DEPOSIT_LOVELACE;
     }
   }
@@ -190,13 +226,13 @@ export default function useTransaction() {
 
       let unsignedTx = await data.txBuilder.complete();
 
-      // Workaround for stake cert txs where builder-produced change may not
-      // fully account for stake key deposit charge/refund in downstream validation.
-      const stakeDepositDelta = getStakeKeyDepositDelta(data.txBuilder);
-      if (stakeDepositDelta !== 0n) {
+      // Workaround for certificate txs where builder-produced change may not
+      // fully account for deposit charge/refund in downstream validation.
+      const certificateCoinDelta = getCertificateCoinDelta(data.txBuilder);
+      if (certificateCoinDelta !== 0n) {
         unsignedTx = adjustTxForStakeKeyDeposit(
           unsignedTx,
-          stakeDepositDelta,
+          certificateCoinDelta,
           appWallet.address,
         );
       }

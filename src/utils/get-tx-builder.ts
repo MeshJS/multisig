@@ -1,6 +1,6 @@
 import { MeshTxBuilder } from "@meshsdk/core";
 import { getProvider } from "@/utils/get-provider";
-import { STAKE_KEY_DEPOSIT } from "@/utils/staking-constants";
+import { STAKE_KEY_DEPOSIT } from "@/utils/protocol-deposit-constants";
 // import { CSLSerializer } from "@meshsdk/core-csl";
 
 export function getTxBuilder(network: number) {
