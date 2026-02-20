@@ -82,10 +82,7 @@ export default function DRepSetupForm({
     setIsCreatingAnchor(true);
     try {
       // Generate DRep metadata
-      const drepMetadata = (await getDRepMetadata(
-        formState,
-        appWallet,
-      )) as Record<string, unknown>;
+      const drepMetadata = await getDRepMetadata(formState, appWallet);
 
       console.log("DRep metadata:", drepMetadata);
 

@@ -1,4 +1,5 @@
 import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
+import { SocialLoginInfoModal } from "@/components/common/modals/SocialLoginInfoModal";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
@@ -124,6 +125,10 @@ export function PageHomepage() {
 
   // Scroll detection for aurora fade-out
   const [scrollY, setScrollY] = useState(0);
+  const [socialLoginInfoOpen, setSocialLoginInfoOpen] = useState(false);
+
+  const openSocialLoginInfo = () => setSocialLoginInfoOpen(true);
+  const closeSocialLoginInfo = () => setSocialLoginInfoOpen(false);
 
   useEffect(() => {
     const handleScroll = (e: Event) => {
@@ -211,7 +216,22 @@ export function PageHomepage() {
             )}
           </div>
 
-          <p className="mt-6 text-sm text-muted-foreground">
+          {!user && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              No wallet? No problem.{" "}
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={openSocialLoginInfo}
+                className="underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+              >
+                Use social login
+              </button>
+              .
+            </p>
+          )}
+
+          <p className="mt-4 text-sm text-muted-foreground">
             Secure Treasuries • Participate in Governance • Collaborate
           </p>
         </div>
@@ -461,6 +481,21 @@ export function PageHomepage() {
                 <ConnectWallet />
               )}
             </div>
+
+            {!user && (
+              <p className="mt-4 text-sm text-muted-foreground">
+                No wallet? No problem.{" "}
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={openSocialLoginInfo}
+                  className="underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+                >
+                  Use social login
+                </button>
+                .
+              </p>
+            )}
           </div>
       </section>
 
@@ -523,6 +558,8 @@ export function PageHomepage() {
           </div>
         </div>
       </footer>
+
+      <SocialLoginInfoModal open={socialLoginInfoOpen} onClose={closeSocialLoginInfo} />
     </div>
   );
 }

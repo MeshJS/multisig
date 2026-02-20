@@ -7,7 +7,11 @@
 
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import type { BlockfrostProvider } from "@meshsdk/core";
+import type { BlockfrostProvider, UTxO } from "@meshsdk/core";
+
+type FetchAddressUtxosProvider = {
+  fetchAddressUTxOs: (address: string) => Promise<UTxO[]>;
+};
 
 /**
  * Cache configuration for different types of blockchain data
@@ -103,7 +107,7 @@ export async function cachedGet<T>(
  * @param network - Network ID (0 = preprod, 1 = mainnet)
  */
 export async function cachedFetchAddressUTxOs(
-  provider: BlockfrostProvider,
+  provider: FetchAddressUtxosProvider,
   address: string,
   network: number,
 ) {
@@ -214,4 +218,3 @@ export async function cachedGetAddressTransactions(
     { address, page, order },
   );
 }
-

@@ -80,8 +80,8 @@ export function convertUIGovActionToGovernanceAction(
   const kind = typeToKindMap[uiType] || 'InfoAction';
 
   // Create the proper GovernanceAction structure per MeshJS spec
-  // For most actions, we use empty action objects as placeholders
-  // The actual action data would need to be provided separately
+  // For actions that require structured fields, we provide minimal placeholders.
+  // Real governance actions should supply meaningful values from the UI.
   switch (kind) {
     case 'NoConfidenceAction':
       return {
@@ -91,22 +91,36 @@ export function convertUIGovActionToGovernanceAction(
     case 'UpdateCommitteeAction':
       return {
         kind: 'UpdateCommitteeAction',
-        action: {},
+        action: {
+          committee: {
+            members: [],
+            quorumThreshold: { numerator: "0", denominator: "1" },
+          },
+          membersToRemove: [],
+        },
       };
     case 'NewConstitutionAction':
       return {
         kind: 'NewConstitutionAction',
-        action: {},
+        action: {
+          constitution: {
+            anchor: { anchorUrl: "", anchorDataHash: "" },
+          },
+        },
       };
     case 'HardForkInitiationAction':
       return {
         kind: 'HardForkInitiationAction',
-        action: {},
+        action: {
+          protocolVersion: { major: 0, minor: 0 },
+        },
       };
     case 'ParameterChangeAction':
       return {
         kind: 'ParameterChangeAction',
-        action: {},
+        action: {
+          protocolParamUpdates: {},
+        },
       };
     case 'TreasuryWithdrawalsAction':
       // Extract withdrawals from UI action metadata or use empty object
@@ -241,4 +255,3 @@ export const getGovStateFromDatum = (datum: any): number => {
   // Default to Crowdfund
   return 0;
 };
-

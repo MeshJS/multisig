@@ -2214,6 +2214,7 @@ export function CrowdfundInfo({
                 clarityApiKey: null,
                 rawImportBodies: null,
                 migrationTargetWalletId: null,
+                profileImageIpfsUrl: null,
                 nativeScript: { type: "all", scripts: [] },
                 address: "",
                 dRepId: "",

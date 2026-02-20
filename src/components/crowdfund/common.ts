@@ -74,11 +74,16 @@ export class MeshTxInitiator {
       this.stakeCredential = stakeCredential;
     }
 
-    const meshAny = this.mesh as {
+    // MeshTxBuilder's internal shape differs between Mesh versions, and some fields are protected.
+    // We intentionally cast through `unknown` so we can apply best-effort patches without blocking builds.
+    const meshAny = this.mesh as unknown as {
       complete?: (...args: unknown[]) => Promise<string>;
-      meshTxBuilderBody?: { proposals?: unknown };
+      meshTxBuilderBody?: { proposals?: unknown; scriptMetadata?: unknown };
       txInCollateral?: (...args: unknown[]) => MeshTxBuilder;
       collateralQueueItem?: { txIn?: { scriptSize?: number } };
+      selectUtxos?: (...args: unknown[]) => Promise<unknown>;
+      getTotalDeposit?: (...args: unknown[]) => unknown;
+      _lastImplicitDeposit?: unknown;
     };
     if (meshAny?.complete) {
       const originalComplete = meshAny.complete.bind(meshAny);

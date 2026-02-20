@@ -8,6 +8,7 @@ interface ShortenResponse {
 
 interface ErrorResponse {
   error: string;
+  details?: string;
 }
 
 // Generate a short ID (8 characters)

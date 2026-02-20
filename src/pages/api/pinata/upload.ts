@@ -20,6 +20,8 @@ interface ErrorResponse {
   error: string;
   details?: string;
   pinataError?: unknown;
+  responseStructure?: string[];
+  rawResponse?: unknown;
 }
 
 export default async function handler(

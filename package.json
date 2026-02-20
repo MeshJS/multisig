@@ -13,7 +13,7 @@
     "db:update": "prisma format && prisma db push && prisma generate",
     "dev": "next dev",
     "postinstall": "prisma generate",
-    "lint": "next lint",
+    "lint": "eslint .",
     "start": "next start",
     "test": "jest",
     "test:watch": "jest --watch",

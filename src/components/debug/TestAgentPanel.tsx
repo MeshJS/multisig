@@ -475,8 +475,8 @@ export default function TestAgentPanel() {
     const steps = stepDefinitions.map((def) => ({
       ...def,
       status: "pending" as StepStatus,
-      startedAt: null,
-      endedAt: null,
+      startedAt: null as number | null,
+      endedAt: null as number | null,
       logs: [] as AgentEvent[],
       error: null as AgentEvent | null,
     }));
@@ -489,7 +489,9 @@ export default function TestAgentPanel() {
       if (evt.type === "step_started" && evt.message) {
         const key = byStart.get(evt.message);
         if (key !== undefined) {
-          const step = steps[byKey.get(key)!];
+          const index = byKey.get(key);
+          const step = index !== undefined ? steps[index] : undefined;
+          if (!step) continue;
           step.status = "running";
           step.startedAt = step.startedAt ?? evt.ts;
           currentKey = key;
@@ -499,7 +501,9 @@ export default function TestAgentPanel() {
       if (evt.type === "step_completed" && evt.message) {
         const key = byEnd.get(evt.message);
         if (key !== undefined) {
-          const step = steps[byKey.get(key)!];
+          const index = byKey.get(key);
+          const step = index !== undefined ? steps[index] : undefined;
+          if (!step) continue;
           step.status = "completed";
           step.endedAt = evt.ts;
           if (currentKey === key) currentKey = null;
@@ -507,14 +511,24 @@ export default function TestAgentPanel() {
       }
 
       if (evt.type === "run_cancelled" && currentKey) {
-        const step = steps[byKey.get(currentKey)!];
+        const index = byKey.get(currentKey);
+        const step = index !== undefined ? steps[index] : undefined;
+        if (!step) {
+          currentKey = null;
+          continue;
+        }
         step.status = "cancelled";
         step.endedAt = evt.ts;
         currentKey = null;
       }
 
       if (evt.type === "error" && currentKey) {
-        const step = steps[byKey.get(currentKey)!];
+        const index = byKey.get(currentKey);
+        const step = index !== undefined ? steps[index] : undefined;
+        if (!step) {
+          currentKey = null;
+          continue;
+        }
         step.status = "failed";
         step.endedAt = evt.ts;
         step.error = evt;
@@ -522,7 +536,9 @@ export default function TestAgentPanel() {
       }
 
       if (currentKey && (evt.type === "log" || evt.type === "error")) {
-        const step = steps[byKey.get(currentKey)!];
+        const index = byKey.get(currentKey);
+        const step = index !== undefined ? steps[index] : undefined;
+        if (!step) continue;
         step.logs.push(evt);
       }
     }
@@ -733,7 +749,8 @@ export default function TestAgentPanel() {
       setRunEndedAt(data.run.endedAt ?? null);
 
       if (Array.isArray(data.events)) {
-        setEvents((prev) => mergeEventsById(prev, data.events));
+        const nextEvents = data.events as AgentEvent[];
+        setEvents((prev) => mergeEventsById(prev, nextEvents));
       }
     } catch {
       // Ignore supervision refresh failures
@@ -796,7 +813,7 @@ export default function TestAgentPanel() {
 
   const edges = useMemo<Edge[]>(() => {
     return GOV_STATES.slice(0, -1).map((state, index) => {
-      const nextState = GOV_STATES[index + 1];
+      const nextState = GOV_STATES[index + 1]!;
       const completed = visitedStates.has(state) && visitedStates.has(nextState);
       return {
         id: `${state}-${nextState}`,
@@ -1043,12 +1060,14 @@ export default function TestAgentPanel() {
     setRunEndedAt(null);
   };
 
-  const resolveWalletAddress = async () => {
+  const resolveWalletAddress = async (): Promise<string> => {
     if (!wallet) throw new Error("Wallet not available");
     const used = await wallet.getUsedAddresses();
-    if (used?.length) return used[0];
+    const usedAddress = used?.[0];
+    if (usedAddress) return usedAddress;
     const unused = await wallet.getUnusedAddresses();
-    if (unused?.length) return unused[0];
+    const unusedAddress = unused?.[0];
+    if (unusedAddress) return unusedAddress;
     throw new Error("No wallet address found");
   };
 

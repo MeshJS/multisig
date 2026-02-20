@@ -13,7 +13,7 @@ export const normalizeProviderHint = (value: unknown): ProviderHint | undefined 
 
 const isGovTestnet = (hint?: ProviderHint) => {
   if (hint) return hint === "koios";
-  return env.NEXT_PUBLIC_GOV_TESTNET === true || env.NEXT_PUBLIC_GOV_TESTNET === "true";
+  return env.NEXT_PUBLIC_GOV_TESTNET === true;
 };
 
 export const getTestAgentProvider = (networkId: number, hint?: ProviderHint) => {

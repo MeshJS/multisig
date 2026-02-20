@@ -465,37 +465,44 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     const sorted = this.normalizeTreasuryWithdrawals(withdrawals);
     const policyHash = action.action?.policyHash;
     let normalizedPolicyHash = policyHash;
-    if (typeof policyHash === "string" || (policyHash && typeof policyHash === "object" && "bytes" in policyHash)) {
-      const raw =
-        typeof policyHash === "string"
-          ? policyHash.trim()
-          : String((policyHash as { bytes?: string }).bytes ?? "").trim();
-      if (raw) {
-        if (!isHexString(raw)) {
-          throw new Error(
-            `Treasury withdrawal guardrails policyHash must be hex. Got: ${policyHash}`,
-          );
-        }
-        if (raw.length === 64) {
-          if (this.preservePolicyHash) {
-            normalizedPolicyHash = raw;
-          } else {
-            const guardrails = env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH;
-            if (
-              typeof guardrails === "string" &&
-              guardrails.trim().length === 56 &&
-              isHexString(guardrails.trim())
-            ) {
-              normalizedPolicyHash = scriptHash(guardrails.trim());
-            } else {
-              throw new Error(
-                `Legacy guardrails policyHash detected (${raw}). Provide a 56-hex NEXT_PUBLIC_GUARDRAILS_POLICY_HASH to proceed.`,
-              );
-            }
-          }
-        } else {
+
+    // `policyHash` is a Mesh `ScriptHash` (ByteString) but some callers may still pass strings.
+    // Normalize to a canonical ScriptHash representation.
+    const policyHashUnknown = action.action?.policyHash as unknown;
+    const raw =
+      typeof policyHashUnknown === "string"
+        ? policyHashUnknown.trim()
+        : typeof policyHashUnknown === "object" &&
+          policyHashUnknown !== null &&
+          "bytes" in policyHashUnknown
+          ? String((policyHashUnknown as { bytes?: string }).bytes ?? "").trim()
+          : "";
+
+    if (raw) {
+      if (!isHexString(raw)) {
+        throw new Error(
+          `Treasury withdrawal guardrails policyHash must be hex. Got: ${policyHash}`,
+        );
+      }
+      if (raw.length === 64) {
+        if (this.preservePolicyHash) {
           normalizedPolicyHash = scriptHash(raw);
+        } else {
+          const guardrails = env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH;
+          if (
+            typeof guardrails === "string" &&
+            guardrails.trim().length === 56 &&
+            isHexString(guardrails.trim())
+          ) {
+            normalizedPolicyHash = scriptHash(guardrails.trim());
+          } else {
+            throw new Error(
+              `Legacy guardrails policyHash detected (${raw}). Provide a 56-hex NEXT_PUBLIC_GUARDRAILS_POLICY_HASH to proceed.`,
+            );
+          }
         }
+      } else {
+        normalizedPolicyHash = scriptHash(raw);
       }
     }
     return {
@@ -703,10 +710,18 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       
       // Guardrails: None for now (can be enhanced later if policyHash is provided)
       const policyHash = governanceAction.action?.policyHash;
-      let guardrailsOption = mNone();
+      let guardrailsOption: ReturnType<typeof mNone> | ReturnType<typeof mSome<string>> =
+        mNone();
       if (policyHash) {
+        const policyHashUnknown = policyHash as unknown;
         const trimmedPolicy =
-          typeof policyHash === "string" ? policyHash.trim() : policyHash.bytes;
+          typeof policyHashUnknown === "string"
+            ? policyHashUnknown.trim()
+            : typeof policyHashUnknown === "object" &&
+              policyHashUnknown !== null &&
+              "bytes" in policyHashUnknown
+            ? String((policyHashUnknown as { bytes?: string }).bytes ?? "").trim()
+            : "";
         if (!isHexString(trimmedPolicy)) {
           throw new Error(
             `Treasury withdrawal guardrails policyHash must be hex. Got: ${policyHash}`,
@@ -860,7 +875,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
     this.cachedCrowdfundAddress = address;
   }
 
-  private ensureCrowdfundAddress() {
+  private ensureCrowdfundAddress(): string {
     if (!this.cachedCrowdfundAddress) {
       const stakeScriptHash = resolveScriptHash(
         this.getStakePublishCbor(),
@@ -873,6 +888,9 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         true,
       );
       this.cachedCrowdfundAddress = address;
+    }
+    if (!this.cachedCrowdfundAddress) {
+      throw new Error("Failed to derive crowdfund address");
     }
     return this.cachedCrowdfundAddress;
   }
@@ -2019,6 +2037,15 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
       const proposalMethodExists =
         typeof (txBuilder as { proposal?: unknown }).proposal === "function";
       let proposalItemType = "BasicProposal";
+      const proposalItem = {
+        type: "BasicProposal" as const,
+        proposalType: {
+          governanceAction: canonicalAction,
+          anchor: proposalAnchor,
+          rewardAccount: rewardAddress,
+          deposit: proposalDeposit,
+        },
+      };
       if (proposalMethodExists) {
         txBuilder = (txBuilder as any).proposal(
           canonicalAction,
@@ -2036,15 +2063,6 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         if (!Array.isArray(txAny.meshTxBuilderBody.proposals)) {
           txAny.meshTxBuilderBody.proposals = [];
         }
-        const proposalItem = {
-          type: "BasicProposal",
-          proposalType: {
-            governanceAction: canonicalAction,
-            anchor: proposalAnchor,
-            rewardAccount: rewardAddress,
-            deposit: proposalDeposit,
-          },
-        };
         txAny.meshTxBuilderBody.proposals.push(proposalItem);
         proposalItemType = proposalItem.type;
       }
@@ -2256,7 +2274,7 @@ export class MeshCrowdfundContract extends MeshTxInitiator {
         proposalAction,
         proposalAnchor,
         builderBody: (this.mesh as { meshTxBuilderBody?: unknown }).meshTxBuilderBody,
-        proposalItem: (this.mesh as { proposalItem?: unknown }).proposalItem,
+        proposalItem: (this.mesh as unknown as { proposalItem?: unknown }).proposalItem,
         rawErrorProps,
         rawErrorSnapshot,
         originalError:

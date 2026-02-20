@@ -20,6 +20,9 @@ interface UploadResponse {
 
 interface ErrorResponse {
   error: string;
+  details?: string;
+  responseStructure?: string[];
+  rawResponse?: unknown;
 }
 
 // Disable Next.js body parsing for file uploads

@@ -3,7 +3,8 @@ import { BlockfrostProvider, KoiosProvider } from "@meshsdk/core";
 
 export function getProvider(network: number) {
   // Check if GOV_TESTNET is enabled
-  const isGovTestnet = env.NEXT_PUBLIC_GOV_TESTNET === true || env.NEXT_PUBLIC_GOV_TESTNET === "true";
+  // env schema normalizes this to a boolean (defaults to false).
+  const isGovTestnet = env.NEXT_PUBLIC_GOV_TESTNET;
   
   console.log("[getProvider] Configuration:", {
     network,

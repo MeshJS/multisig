@@ -21,7 +21,7 @@ import { useWallet } from "@meshsdk/react";
 import useUser from "@/hooks/useUser";
 import { deserializeAddress, resolveScriptHash, applyParamsToScript, serializePlutusScript } from "@meshsdk/core";
 import { MeshTxBuilder } from "@meshsdk/transaction";
-import blueprint from "../../gov-crowdfundV2/plutus.json";
+import blueprint from "../gov-crowdfundV2/plutus.json";
 import { stringToHex } from "@meshsdk/common";
 
 // Static deposit values (in lovelace)
@@ -781,7 +781,8 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                                 value={beneficiary.address}
                                 onChange={(e) => {
                                   const next = [...beneficiaryInputs];
-                                  next[index] = { ...next[index], address: e.target.value };
+                                  const current = next[index] ?? { address: "", amountAda: "" };
+                                  next[index] = { ...current, address: e.target.value };
                                   syncTreasuryBeneficiaries(next);
                                 }}
                                 placeholder="stake1... or stake_test1..."
@@ -792,7 +793,8 @@ export function LaunchExt({ onGovDataUpdate, initialData }: LaunchExtProps) {
                                 value={beneficiary.amountAda}
                                 onChange={(e) => {
                                   const next = [...beneficiaryInputs];
-                                  next[index] = { ...next[index], amountAda: e.target.value };
+                                  const current = next[index] ?? { address: "", amountAda: "" };
+                                  next[index] = { ...current, amountAda: e.target.value };
                                   syncTreasuryBeneficiaries(next);
                                 }}
                                 placeholder="1.0"

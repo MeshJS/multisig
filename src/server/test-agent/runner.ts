@@ -266,12 +266,13 @@ const resolveWalletAddress = async (wallet: any): Promise<string> => {
 
 const resolveRewardAddress = (address: string, networkId: number): string => {
   const decoded = deserializeAddress(address);
-  const stakeHash = decoded.stakeCredentialHash ?? decoded.stakeScriptHash;
-  const isScriptStake = decoded.stakeScriptHash !== undefined;
+  const stakeHash =
+    decoded.stakeCredentialHash || decoded.stakeScriptCredentialHash;
+  const isScriptStake = Boolean(decoded.stakeScriptCredentialHash);
   if (!stakeHash) {
     throw new Error("Unable to resolve stake credential from wallet address");
   }
-  const reward = serializeRewardAddress(stakeHash, isScriptStake, networkId);
+  const reward = serializeRewardAddress(stakeHash, isScriptStake, networkId as 0 | 1);
   if (!reward) {
     throw new Error("Unable to build reward address from stake credential");
   }
@@ -723,7 +724,7 @@ const runTestFlow = async (
           progress.faucetPendingAmountLovelace ??
           Math.min(faucetAmount - confirmedTotal, faucetMaxSend);
         await waitForConfirmation(progress.faucetTxHash, provider, {
-          addresses: [progress.walletAddress],
+          addresses: [walletAddress],
         });
         confirmedTotal = (progress.faucetAmountLovelace ?? confirmedTotal) + pendingAmount;
         updateProgress(runId, {
@@ -803,8 +804,10 @@ const runTestFlow = async (
   });
 
   const treasuryPolicyHash =
-    govActionType === "TreasuryWithdrawalsAction"
-      ? env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH
+    govActionType === "TreasuryWithdrawalsAction" &&
+    typeof env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH === "string" &&
+    env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH.trim().length > 0
+      ? scriptHash(env.NEXT_PUBLIC_GUARDRAILS_POLICY_HASH.trim())
       : undefined;
 
   const ensureTreasuryReturnAccounts = async () => {
@@ -959,7 +962,12 @@ const runTestFlow = async (
 
   if (!isStepCompleted(runId, STEP_KEYS.collateral)) {
     emit(runId, { type: "step_started", message: STEP_KEYS.collateral });
-    const { collateral } = await contract.ensureWalletInfo();
+    let collateral: unknown[] = [];
+    try {
+      collateral = (await (walletAdapter as any).getCollateral?.()) ?? [];
+    } catch {
+      collateral = [];
+    }
     if (collateral && collateral.length > 0) {
       emit(runId, {
         type: "step_completed",
@@ -983,7 +991,7 @@ const runTestFlow = async (
       }
       if (progress.collateralTxHash) {
         await waitForConfirmation(progress.collateralTxHash, provider, {
-          addresses: [progress.walletAddress],
+          addresses: [walletAddress],
         });
         emit(runId, { type: "step_completed", message: "Collateral confirmed" });
         markStepCompleted(runId, STEP_KEYS.collateral);
@@ -994,35 +1002,39 @@ const runTestFlow = async (
 
   ensureNotCancelled(runId);
 
-  let crowdfundRecord = null as null | {
+  type CrowdfundRecord = {
     id: string;
+    proposerKeyHashR0: string;
     datum: string | null;
     govDatum: string | null;
     paramUtxo: string | null;
     spendRefScript: string | null;
+    stakeRefScript: string | null;
     address: string | null;
     authTokenId: string | null;
   };
 
-  const loadCrowdfundRecord = async (): Promise<typeof crowdfundRecord> => {
+  let crowdfundRecord: CrowdfundRecord | null = null;
+
+  const loadCrowdfundRecord = async (): Promise<CrowdfundRecord | null> => {
     const current = getProgress(runId);
     if (current.crowdfundId) {
       const record = await db.crowdfund.findUnique({
         where: { id: current.crowdfundId },
       });
-      return record as typeof crowdfundRecord;
+      return record as CrowdfundRecord | null;
     }
     if (current.paramUtxo) {
       const record = await db.crowdfund.findFirst({
         where: { paramUtxo: JSON.stringify(current.paramUtxo) },
       });
-      return record as typeof crowdfundRecord;
+      return record as CrowdfundRecord | null;
     }
     if (current.crowdfundAddress) {
       const record = await db.crowdfund.findFirst({
         where: { address: current.crowdfundAddress },
       });
-      return record as typeof crowdfundRecord;
+      return record as CrowdfundRecord | null;
     }
     return null;
   };
@@ -1398,7 +1410,9 @@ const runTestFlow = async (
     progress = getProgress(runId);
     if (progress.crowdfundSetupTxHash) {
       await waitForConfirmation(progress.crowdfundSetupTxHash, provider, {
-        addresses: [progress.crowdfundAddress, refAddress],
+        addresses: [progress.crowdfundAddress, refAddress].filter(
+          (addr): addr is string => typeof addr === "string" && addr.length > 0,
+        ),
       });
       crowdfundRecord = await loadCrowdfundRecord();
       if (!crowdfundRecord) {
@@ -1422,7 +1436,7 @@ const runTestFlow = async (
             refAddress,
           },
         });
-        crowdfundRecord = record as typeof crowdfundRecord;
+        crowdfundRecord = record as CrowdfundRecord;
         updateProgress(runId, { crowdfundId: record.id });
       } else if (progress.crowdfundId !== crowdfundRecord.id) {
         updateProgress(runId, { crowdfundId: crowdfundRecord.id });
@@ -1540,8 +1554,13 @@ const runTestFlow = async (
       if (progress.contributeTxHash) {
         const appliedAmount =
           progress.treasuryInitialContributeAmount ?? initialContributeAmount;
+        const crowdfundAddress =
+          progress.crowdfundAddress ?? contract.crowdfundAddress;
+        if (!crowdfundAddress) {
+          throw new Error("Missing crowdfund address for contribution confirmation");
+        }
         await waitForConfirmation(progress.contributeTxHash, provider, {
-          addresses: [progress.crowdfundAddress],
+          addresses: [crowdfundAddress],
         });
         const contributedDatum: CrowdfundDatumTS = {
           ...currentDatum,
@@ -1587,8 +1606,13 @@ const runTestFlow = async (
 
       if (progress.withdrawTxHash) {
         const appliedAmount = progress.treasuryWithdrawAmount ?? treasuryWithdrawAmount;
+        const crowdfundAddress =
+          progress.crowdfundAddress ?? contract.crowdfundAddress;
+        if (!crowdfundAddress) {
+          throw new Error("Missing crowdfund address for withdrawal confirmation");
+        }
         await waitForConfirmation(progress.withdrawTxHash, provider, {
-          addresses: [progress.crowdfundAddress],
+          addresses: [crowdfundAddress],
         });
         if (!currentDatum) {
           throw new Error("Missing crowdfund datum after withdrawal");
@@ -1637,8 +1661,13 @@ const runTestFlow = async (
       if (progress.treasuryFinalContributeTxHash) {
         const appliedAmount =
           progress.treasuryFinalContributeAmount ?? remainingToTarget;
+        const crowdfundAddress =
+          progress.crowdfundAddress ?? contract.crowdfundAddress;
+        if (!crowdfundAddress) {
+          throw new Error("Missing crowdfund address for final contribution confirmation");
+        }
         await waitForConfirmation(progress.treasuryFinalContributeTxHash, provider, {
-          addresses: [progress.crowdfundAddress],
+          addresses: [crowdfundAddress],
         });
         const finalDatum: CrowdfundDatumTS = {
           ...currentDatum!,
@@ -1763,8 +1792,13 @@ const runTestFlow = async (
       }
 
       if (progress.govActionTxHash) {
+        const crowdfundAddress =
+          progress.crowdfundAddress ?? contract.crowdfundAddress;
+        if (!crowdfundAddress) {
+          throw new Error("Missing crowdfund address for register certs confirmation");
+        }
         await waitForConfirmation(progress.govActionTxHash, provider, {
-          addresses: [progress.crowdfundAddress],
+          addresses: [crowdfundAddress],
         });
         emit(runId, { type: "step_completed", message: "Register certs confirmed" });
         markStepCompleted(runId, STEP_KEYS.registerCerts);
@@ -1808,8 +1842,12 @@ const runTestFlow = async (
       const voteSigned = await walletAdapter.signTx(voteResult.tx, true);
       const voteHash = await walletAdapter.submitTx(voteSigned);
       emit(runId, { type: "log", message: `Vote tx submitted: ${voteHash}` });
+      const crowdfundAddress = progress.crowdfundAddress ?? contract.crowdfundAddress;
+      if (!crowdfundAddress) {
+        throw new Error("Missing crowdfund address for vote confirmation");
+      }
       await waitForConfirmation(voteHash, provider, {
-        addresses: [progress.crowdfundAddress],
+        addresses: [crowdfundAddress],
       });
       emit(runId, { type: "step_completed", message: "Vote confirmed" });
       markStepCompleted(runId, STEP_KEYS.vote);
@@ -1835,8 +1873,13 @@ const runTestFlow = async (
       const deregisterSigned = await walletAdapter.signTx(deregisterResult.tx, true);
       const deregisterHash = await walletAdapter.submitTx(deregisterSigned);
       emit(runId, { type: "log", message: `Deregister tx submitted: ${deregisterHash}` });
+      const crowdfundAddress =
+        progress.crowdfundAddress ?? contract.crowdfundAddress;
+      if (!crowdfundAddress) {
+        throw new Error("Missing crowdfund address for deregister confirmation");
+      }
       await waitForConfirmation(deregisterHash, provider, {
-        addresses: [progress.crowdfundAddress],
+        addresses: [crowdfundAddress],
       });
       emit(runId, { type: "step_completed", message: "Deregister confirmed" });
       markStepCompleted(runId, STEP_KEYS.deregister);
@@ -1876,8 +1919,13 @@ const runTestFlow = async (
     }
 
     if (progress.contributeTxHash) {
+      const crowdfundAddress =
+        progress.crowdfundAddress ?? contract.crowdfundAddress;
+      if (!crowdfundAddress) {
+        throw new Error("Missing crowdfund address for contribution confirmation");
+      }
       await waitForConfirmation(progress.contributeTxHash, provider, {
-        addresses: [progress.crowdfundAddress],
+        addresses: [crowdfundAddress],
       });
       if (currentDatum) {
         const contributedDatum: CrowdfundDatumTS = {
@@ -1923,8 +1971,13 @@ const runTestFlow = async (
     }
 
     if (progress.withdrawTxHash) {
+      const crowdfundAddress =
+        progress.crowdfundAddress ?? contract.crowdfundAddress;
+      if (!crowdfundAddress) {
+        throw new Error("Missing crowdfund address for withdrawal confirmation");
+      }
       await waitForConfirmation(progress.withdrawTxHash, provider, {
-        addresses: [progress.crowdfundAddress],
+        addresses: [crowdfundAddress],
       });
       if (currentDatum) {
         const withdrawnDatum: CrowdfundDatumTS = {

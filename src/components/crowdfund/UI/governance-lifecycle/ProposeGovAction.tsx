@@ -82,7 +82,7 @@ export function ProposeGovAction({
         if (governanceAction && governanceAction.kind === 'TreasuryWithdrawalsAction') {
           // Convert payment addresses to reward addresses in the provided action
           const withdrawals: Record<string, string> = {};
-          const networkId = await wallet.getNetworkId();
+          const networkId = (await wallet.getNetworkId()) as 0 | 1;
           
           for (const [address, amount] of Object.entries(governanceAction.action?.withdrawals || {})) {
             try {
@@ -98,7 +98,7 @@ export function ProposeGovAction({
                 console.log(`[ProposeGovAction] Converting payment address to reward address: ${address.substring(0, 20)}...`);
                 const decoded = deserializeAddress(address);
                 
-                if (!decoded.stakeCredentialHash) {
+                if (!decoded.stakeCredentialHash && !decoded.stakeScriptCredentialHash) {
                   throw new Error(
                     `Payment address ${address.substring(0, 30)}... does not have a stake credential (it's an enterprise address). ` +
                     `Treasury withdrawals require reward addresses (stake addresses). ` +
@@ -107,8 +107,8 @@ export function ProposeGovAction({
                 }
                 
                 // Check if stake credential is script-based
-                const isScriptStake = decoded.stakeScriptHash !== undefined;
-                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptHash;
+                const isScriptStake = Boolean(decoded.stakeScriptCredentialHash);
+                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptCredentialHash;
                 
                 if (!stakeHash) {
                   throw new Error(`Failed to extract stake credential hash from address ${address.substring(0, 30)}...`);
@@ -144,7 +144,7 @@ export function ProposeGovAction({
           // Construct TreasuryWithdrawalsAction from stored beneficiaries
           // Convert payment addresses to reward addresses
           const withdrawals: Record<string, string> = {};
-          const networkId = await wallet.getNetworkId();
+          const networkId = (await wallet.getNetworkId()) as 0 | 1;
           
           for (const beneficiary of contract.treasuryBeneficiaries) {
             try {
@@ -160,7 +160,7 @@ export function ProposeGovAction({
                 console.log(`[ProposeGovAction] Converting payment address to reward address: ${beneficiary.address.substring(0, 20)}...`);
                 const decoded = deserializeAddress(beneficiary.address);
                 
-                if (!decoded.stakeCredentialHash && !decoded.stakeScriptHash) {
+                if (!decoded.stakeCredentialHash && !decoded.stakeScriptCredentialHash) {
                   throw new Error(
                     `Payment address ${beneficiary.address.substring(0, 30)}... does not have a stake credential (it's an enterprise address). ` +
                     `Treasury withdrawals require reward addresses (stake addresses). ` +
@@ -169,8 +169,8 @@ export function ProposeGovAction({
                 }
                 
                 // Check if stake credential is script-based
-                const isScriptStake = decoded.stakeScriptHash !== undefined;
-                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptHash;
+                const isScriptStake = Boolean(decoded.stakeScriptCredentialHash);
+                const stakeHash = decoded.stakeCredentialHash || decoded.stakeScriptCredentialHash;
                 
                 if (!stakeHash) {
                   throw new Error(`Failed to extract stake credential hash from address ${beneficiary.address.substring(0, 30)}...`);

@@ -43,7 +43,7 @@ function getTTL(path: string): number {
   for (const [key, ttl] of Object.entries(CACHE_TTL)) {
     if (path.includes(key)) return ttl;
   }
-  return CACHE_TTL.default;
+  return CACHE_TTL.default ?? 15000;
 }
 
 function shouldCache(path: string): boolean {
@@ -66,8 +66,10 @@ function setCache(key: string, data: unknown, contentType: string): void {
     // Delete oldest entries
     const entries = Array.from(cache.entries());
     entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-    for (let i = 0; i < 100; i++) {
-      cache.delete(entries[i][0]);
+    for (let i = 0; i < Math.min(100, entries.length); i++) {
+      const entry = entries[i];
+      if (!entry) continue;
+      cache.delete(entry[0]);
     }
   }
   cache.set(key, { data, contentType, timestamp: Date.now() });
@@ -219,4 +221,3 @@ export default async function handler(
     });
   }
 }
-
