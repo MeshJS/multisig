@@ -84,8 +84,27 @@ export default function ProxyControl() {
     { enabled: !!appWallet?.id }
   );
 
-  // Use store proxies if available, otherwise fall back to API proxies
-  const proxies = useMemo(() => storeProxies.length > 0 ? storeProxies : (apiProxies ?? []), [storeProxies, apiProxies]);
+  // Merge API proxies with store-enriched data.
+  // API is source of truth for membership; store provides enriched fields (balance, drepInfo, etc).
+  const proxies = useMemo(() => {
+    const apiList = apiProxies ?? [];
+
+    if (apiList.length === 0) {
+      return storeProxies;
+    }
+
+    const storeById = new Map(storeProxies.map((proxy) => [proxy.id, proxy]));
+    const merged = apiList.map((proxy: NonNullable<typeof apiProxies>[number]) => {
+      const enriched = storeById.get(proxy.id);
+      return enriched ? { ...enriched, ...proxy } : proxy;
+    });
+
+    // Keep any locally cached proxies that have not reached API yet.
+    const apiIds = new Set(apiList.map((proxy: NonNullable<typeof apiProxies>[number]) => proxy.id));
+    const storeOnly = storeProxies.filter((proxy) => !apiIds.has(proxy.id));
+
+    return [...merged, ...storeOnly];
+  }, [storeProxies, apiProxies]);
   const proxiesLoading = storeLoading || apiLoading;
 
   const { mutateAsync: createProxy } = api.proxy.createProxy.useMutation({

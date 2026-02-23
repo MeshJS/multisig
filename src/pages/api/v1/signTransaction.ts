@@ -6,8 +6,14 @@ import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
+import {
+  addUniqueVkeyWitnessToTx,
+  createVkeyWitnessFromHex,
+  shouldSubmitMultisigTx,
+  submitTxWithScriptRecovery,
+} from "@/utils/txSignUtils";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
-import { csl, calculateTxHash } from "@meshsdk/core-csl";
+import { calculateTxHash } from "@meshsdk/core-csl";
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 
@@ -179,48 +185,24 @@ export default async function handler(
       return res.status(500).json({ error: "Stored transaction is missing txCbor" });
     }
 
-    let parsedStoredTx: ReturnType<typeof csl.Transaction.from_hex>;
-    try {
-      parsedStoredTx = csl.Transaction.from_hex(storedTxHex);
-    } catch (error: unknown) {
-      console.error("Failed to parse stored transaction", toError(error));
-      return res.status(500).json({ error: "Invalid stored transaction data" });
-    }
-
-    const txBodyClone = csl.TransactionBody.from_bytes(
-      parsedStoredTx.body().to_bytes(),
-    );
-    const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
-      parsedStoredTx.witness_set().to_bytes(),
-    );
-
-    let vkeyWitnesses = witnessSetClone.vkeys();
-    if (!vkeyWitnesses) {
-      vkeyWitnesses = csl.Vkeywitnesses.new();
-      witnessSetClone.set_vkeys(vkeyWitnesses);
-    } else {
-      vkeyWitnesses = csl.Vkeywitnesses.from_bytes(vkeyWitnesses.to_bytes());
-      witnessSetClone.set_vkeys(vkeyWitnesses);
-    }
-
     const signatureHex = normalizeHex(signature, "signature");
     const keyHex = normalizeHex(key, "key");
 
-    let witnessPublicKey: csl.PublicKey;
-    let witnessSignature: csl.Ed25519Signature;
-    let witnessToAdd: csl.Vkeywitness;
+    let witnessPublicKey: ReturnType<typeof createVkeyWitnessFromHex>["publicKey"];
+    let witnessSignature: ReturnType<typeof createVkeyWitnessFromHex>["signature"];
+    let witnessToAdd: ReturnType<typeof createVkeyWitnessFromHex>["witness"];
+    let witnessKeyHash: string;
 
     try {
-      witnessPublicKey = csl.PublicKey.from_hex(keyHex);
-      witnessSignature = csl.Ed25519Signature.from_hex(signatureHex);
-      const vkey = csl.Vkey.new(witnessPublicKey);
-      witnessToAdd = csl.Vkeywitness.new(vkey, witnessSignature);
+      const witnessDetails = createVkeyWitnessFromHex(keyHex, signatureHex);
+      witnessPublicKey = witnessDetails.publicKey;
+      witnessSignature = witnessDetails.signature;
+      witnessToAdd = witnessDetails.witness;
+      witnessKeyHash = witnessDetails.keyHashHex;
     } catch (error: unknown) {
       console.error("Invalid signature payload", toError(error));
       return res.status(400).json({ error: "Invalid signature payload" });
     }
-
-    const witnessKeyHash = toHex(witnessPublicKey.hash().to_bytes()).toLowerCase();
 
     let addressKeyHash: string;
     try {
@@ -236,7 +218,14 @@ export default async function handler(
         .json({ error: "Signature public key does not match address" });
     }
 
-    const txHashHex = calculateTxHash(parsedStoredTx.to_hex()).toLowerCase();
+    let txHashHex: string;
+    try {
+      txHashHex = calculateTxHash(storedTxHex).toLowerCase();
+    } catch (error: unknown) {
+      console.error("Failed to hash stored transaction", toError(error));
+      return res.status(500).json({ error: "Invalid stored transaction data" });
+    }
+
     const txHashBytes = Buffer.from(txHashHex, "hex");
     const isSignatureValid = witnessPublicKey.verify(txHashBytes, witnessSignature);
 
@@ -244,39 +233,28 @@ export default async function handler(
       return res.status(401).json({ error: "Invalid signature for transaction" });
     }
 
-    const existingWitnessCount = vkeyWitnesses.len();
-    for (let i = 0; i < existingWitnessCount; i++) {
-      const existingWitness = vkeyWitnesses.get(i);
-      const existingKeyHash = toHex(
-        existingWitness.vkey().public_key().hash().to_bytes(),
-      ).toLowerCase();
-      if (existingKeyHash === witnessKeyHash) {
+    let txHexForUpdate = storedTxHex;
+    let vkeyWitnesses: ReturnType<typeof addUniqueVkeyWitnessToTx>["vkeyWitnesses"];
+    try {
+      const mergeResult = addUniqueVkeyWitnessToTx(storedTxHex, witnessToAdd);
+      if (!mergeResult.witnessAdded) {
         return res
           .status(409)
           .json({ error: "Witness for this address already exists" });
       }
+      txHexForUpdate = mergeResult.txHex;
+      vkeyWitnesses = mergeResult.vkeyWitnesses;
+    } catch (error: unknown) {
+      console.error("Failed to merge witness into transaction", toError(error));
+      return res.status(500).json({ error: "Invalid stored transaction data" });
     }
-
-    vkeyWitnesses.add(witnessToAdd);
-
-    const updatedTx = csl.Transaction.new(
-      txBodyClone,
-      witnessSetClone,
-      parsedStoredTx.auxiliary_data(),
-    );
-    if (!parsedStoredTx.is_valid()) {
-      updatedTx.set_is_valid(false);
-    }
-    const txHexForUpdate = updatedTx.to_hex();
 
     const witnessSummaries: {
       keyHashHex: string;
       publicKeyBech32: string;
       signatureHex: string;
     }[] = [];
-    const witnessSetForExport = csl.Vkeywitnesses.from_bytes(
-      vkeyWitnesses.to_bytes(),
-    );
+    const witnessSetForExport = vkeyWitnesses;
     const witnessCountForExport = witnessSetForExport.len();
     for (let i = 0; i < witnessCountForExport; i++) {
       const witness = witnessSetForExport.get(i);
@@ -290,19 +268,6 @@ export default async function handler(
     }
 
     const shouldAttemptBroadcast = coerceBoolean(rawBroadcast, true);
-
-    const threshold = (() => {
-      switch (wallet.type) {
-        case "atLeast":
-          return wallet.numRequiredSigners ?? wallet.signersAddresses.length;
-        case "all":
-          return wallet.signersAddresses.length;
-        case "any":
-          return 1;
-        default:
-          return wallet.numRequiredSigners ?? 1;
-      }
-    })();
 
     let nextState = transaction.state;
     let finalTxHash = transaction.txHash ?? undefined;
@@ -337,14 +302,19 @@ export default async function handler(
 
     if (
       shouldAttemptBroadcast &&
-      threshold > 0 &&
-      updatedSignedAddresses.length >= threshold
+      shouldSubmitMultisigTx(wallet, updatedSignedAddresses.length)
     ) {
       try {
         const network = resolveNetworkId();
         const provider = getProvider(network);
-        const submittedHash = await provider.submitTx(txHexForUpdate);
-        finalTxHash = submittedHash;
+        const submitResult = await submitTxWithScriptRecovery({
+          txHex: txHexForUpdate,
+          submitter: provider,
+          appWallet: wallet,
+          network,
+        });
+        finalTxHash = submitResult.txHash;
+        txHexForUpdate = submitResult.txHex;
         nextState = 1;
       } catch (error: unknown) {
         const err = toError(error);

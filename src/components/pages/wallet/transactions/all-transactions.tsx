@@ -29,6 +29,7 @@ import useTransaction from "@/hooks/useTransaction";
 import React, { useEffect, useMemo, useState } from "react";
 import ResponsiveTransactionsTable from "./responsive-transactions-table";
 import type { LucideIcon } from "lucide-react";
+import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
 
 type CertificateInfo = {
   type: string;
@@ -290,12 +291,12 @@ function TransactionRow({
           <>
             {dbTransaction.description == "DRep registration" && (
                 <div className="text-red-400 font-medium text-sm">
-                  -{lovelaceToAda(500000000)} ₳
+                  -{lovelaceToAda(DREP_DEPOSIT)} ₳
               </div>
             )}
             {dbTransaction.description == "DRep retirement" && (
                 <div className="text-green-400 font-medium text-sm">
-                  +{lovelaceToAda(500000000)} ₳
+                  +{lovelaceToAda(DREP_DEPOSIT)} ₳
               </div>
             )}
           </>

@@ -3,13 +3,78 @@ import { Button } from "@/components/ui/button";
 import { Loader } from "lucide-react";
 import { StakingInfo } from "../stakingInfoCard";
 import { Wallet } from "@/types/wallet";
-import { deserializePoolId, UTxO } from "@meshsdk/core";
+import { UTxO } from "@meshsdk/core";
 import { MultisigWallet } from "@/utils/multisigSDK";
 import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { getProvider } from "@/utils/get-provider";
+import { STAKE_KEY_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import useTransaction from "@/hooks/useTransaction";
+
+type StakingAction = "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";
+
+type StakingActionConfig = {
+  execute: () => void;
+  description: string;
+  successTitle: string;
+  successMessage: string;
+};
+
+function shouldApplyStakeDeposit(action: StakingAction): boolean {
+  return action === "register" || action === "registerAndDelegate";
+}
+
+function buildStakingActionConfigs({
+  txBuilder,
+  rewardAddress,
+  stakingScript,
+  poolHex,
+  rewards,
+}: {
+  txBuilder: ReturnType<typeof getTxBuilder>;
+  rewardAddress: string;
+  stakingScript: string;
+  poolHex: string;
+  rewards: string;
+}): Record<StakingAction, StakingActionConfig> {
+  return {
+    register: {
+      execute: () => txBuilder.registerStakeCertificate(rewardAddress).certificateScript(stakingScript),
+      description: "Register stake.",
+      successTitle: "Stake Registered",
+      successMessage: "Your stake address has been registered.",
+    },
+    deregister: {
+      execute: () => txBuilder.deregisterStakeCertificate(rewardAddress).certificateScript(stakingScript),
+      description: "Deregister stake.",
+      successTitle: "Stake Deregistered",
+      successMessage: "Your stake address has been deregistered.",
+    },
+    delegate: {
+      execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript),
+      description: "Delegate stake.",
+      successTitle: "Stake Delegated",
+      successMessage: "Your stake has been delegated.",
+    },
+    withdrawal: {
+      execute: () => txBuilder.withdrawal(rewardAddress, rewards),
+      description: "Withdraw rewards.",
+      successTitle: "Rewards Withdrawn",
+      successMessage: "Your staking rewards have been withdrawn.",
+    },
+    registerAndDelegate: {
+      execute: () => {
+        txBuilder
+          .registerStakeCertificate(rewardAddress)
+          .certificateScript(stakingScript);
+        txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript);
+      },
+      description: "Register & delegate stake.",
+      successTitle: "Stake Registered & Delegated",
+      successMessage: "Your stake address has been registered and delegated.",
+    },
+  };
+}
 export default function StakeButton({
   stakingInfo,
   appWallet,
@@ -25,12 +90,12 @@ export default function StakeButton({
   utxos: UTxO[];
   network: number;
   poolHex: string;
-  action: "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";
+  action: StakingAction;
 }) {
   const { newTransaction } = useTransaction();
   const [loading, setLoading] = useState(false);
 
-  async function Stake() {
+  async function handleStake() {
     setLoading(true);
     try {
       if (!mWallet) throw new Error("Multisig Wallet could not be built.");
@@ -57,45 +122,17 @@ export default function StakeButton({
           .txInScript(appWallet.scriptCbor);
       }
 
-      const actionsMap = {
-        register: {
-          execute: () => txBuilder.registerStakeCertificate(rewardAddress).certificateScript(stakingScript),
-          description: "Register stake.",
-          successTitle: "Stake Registered",
-          successMessage: "Your stake address has been registered.",
-        },
-        deregister: {
-          execute: () => txBuilder.deregisterStakeCertificate(rewardAddress).certificateScript(stakingScript),
-          description: "Deregister stake.",
-          successTitle: "Stake Deregistered",
-          successMessage: "Your stake address has been deregistered.",
-        },
-        delegate: {
-          execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript),
-          description: "Delegate stake.",
-          successTitle: "Stake Delegated",
-          successMessage: "Your stake has been delegated.",
-        },
-        withdrawal: {
-          execute: () => txBuilder.withdrawal(rewardAddress, stakingInfo.rewards),
-          description: "Withdraw rewards.",
-          successTitle: "Rewards Withdrawn",
-          successMessage: "Your staking rewards have been withdrawn.",
-        },
-        registerAndDelegate: {
-          execute: () => {
-            txBuilder.registerStakeCertificate(rewardAddress);
-            txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript);
-          },
-          description: "Register & delegate stake.",
-          successTitle: "Stake Registered & Delegated",
-          successMessage: "Your stake address has been registered and delegated.",
-        },
-      };
+      const actionConfigs = buildStakingActionConfigs({
+        txBuilder,
+        rewardAddress,
+        stakingScript,
+        poolHex,
+        rewards: stakingInfo.rewards,
+      });
+      const actionConfig = actionConfigs[action];
 
-      const actionConfig = actionsMap[action];
-      if (!actionConfig) {
-        throw new Error("Invalid staking action.");
+      if (shouldApplyStakeDeposit(action)) {
+        txBuilder.protocolParams({ keyDeposit: STAKE_KEY_DEPOSIT });
       }
 
       actionConfig.execute();
@@ -152,7 +189,7 @@ export default function StakeButton({
   }
 
   return (
-    <Button variant="outline" onClick={Stake} disabled={loading}>
+    <Button variant="outline" onClick={handleStake} disabled={loading}>
       {loading ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : null}
       {action.charAt(0).toUpperCase() + action.slice(1)}
     </Button>

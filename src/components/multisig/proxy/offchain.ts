@@ -7,6 +7,7 @@ import {
 } from "@meshsdk/core";
 import type { UTxO, MeshTxBuilder } from "@meshsdk/core";
 // import { parseDatumCbor } from "@meshsdk/core-cst";
+import { DREP_DEPOSIT_STRING } from "@/utils/protocol-deposit-constants";
 
 import { MeshTxInitiator } from "./common";
 import type { MeshTxInitiatorInput } from "./common";
@@ -501,7 +502,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         anchorDataHash: anchorHash!,
       });
     } else if (action === "deregister") {
-      txHex.drepDeregistrationCertificate(drepId, "500000000");
+      txHex.drepDeregistrationCertificate(drepId, DREP_DEPOSIT_STRING);
     } else if (action === "update") {
       txHex.drepUpdateCertificate(drepId, {
         anchorUrl: anchorUrl!,

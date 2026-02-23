@@ -14,6 +14,7 @@ import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { api } from "@/utils/api";
 import { useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { DREP_DEPOSIT_STRING } from "@/utils/protocol-deposit-constants";
 
 export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
@@ -250,7 +251,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       txBuilder
         .txInScript(scriptCbor)
         .changeAddress(changeAddress)
-        .drepDeregistrationCertificate(dRepId, "500000000");
+        .drepDeregistrationCertificate(dRepId, DREP_DEPOSIT_STRING);
       
       // Only add certificateScript if it's different from the spending script
       // to avoid "extraneous scripts" error

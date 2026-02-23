@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { UTxO } from "@meshsdk/core";
+import { serializeNativeScript } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
 import { getProvider } from "@/utils/get-provider";
-import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
+import { scriptHashFromCbor } from "@/utils/nativeScriptUtils";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletBalancesStore } from "@/lib/zustand/wallet-balances";
 
@@ -18,6 +18,36 @@ interface UseWalletBalancesResult {
 
 interface UseWalletBalancesOptions {
   cooldownMs?: number;
+}
+
+function isKnown404Error(error: unknown): boolean {
+  const maybeError = error as {
+    response?: { status?: unknown; data?: { status_code?: unknown } };
+    status?: unknown;
+    data?: { status_code?: unknown };
+  };
+
+  const responseStatus = maybeError.response?.status;
+  if (typeof responseStatus === "number") {
+    return responseStatus === 404;
+  }
+
+  const responseDataStatus = maybeError.response?.data?.status_code;
+  if (typeof responseDataStatus === "number") {
+    return responseDataStatus === 404;
+  }
+
+  const topLevelStatus = maybeError.status;
+  if (typeof topLevelStatus === "number") {
+    return topLevelStatus === 404;
+  }
+
+  const topLevelDataStatus = maybeError.data?.status_code;
+  if (typeof topLevelDataStatus === "number") {
+    return topLevelDataStatus === 404;
+  }
+
+  return false;
 }
 
 export default function useWalletBalances(
@@ -53,6 +83,77 @@ export default function useWalletBalances(
     }
   }, [clearExpiredBalances]);
 
+  // Abort any in-flight processing only when the hook unmounts.
+  // Avoid aborting on every render/dependency update.
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const getCanonicalWalletAddress = useCallback(
+    (wallet: Wallet): string => {
+      // Goal: get the address we should query Blockfrost with, without throwing for
+      // legacy/summon wallets (which do not have an SDK MultisigWallet).
+      try {
+        const walletType = getWalletType(wallet);
+
+        // Prefer deriving network from the best available address.
+        const fallbackAddress =
+          wallet.rawImportBodies?.multisig?.address ||
+          wallet.signersAddresses?.find((a) => !!a) ||
+          wallet.address;
+        const walletNetwork = fallbackAddress
+          ? addressToNetwork(fallbackAddress)
+          : network;
+
+        if (walletType === "sdk") {
+          const mWallet = buildMultisigWallet(wallet, walletNetwork);
+          return mWallet?.getScript().address || wallet.address;
+        }
+
+        if (walletType === "summon") {
+          const importedAddress =
+            wallet.rawImportBodies?.multisig?.address || wallet.address;
+          const importedPaymentCbor =
+            wallet.rawImportBodies?.multisig?.payment_script;
+          const summonWallet = buildWallet(wallet, walletNetwork);
+
+          // Build payment CBOR from the wallet's native script and compare hashes
+          // with imported payment CBOR to ensure we are checking the same script.
+          const builtPaymentCbor = serializeNativeScript(
+            summonWallet.nativeScript,
+            undefined,
+            walletNetwork,
+          ).scriptCbor;
+          const importedPaymentHash = scriptHashFromCbor(importedPaymentCbor);
+          const builtPaymentHash = scriptHashFromCbor(builtPaymentCbor);
+
+          if (
+            importedPaymentHash &&
+            builtPaymentHash &&
+            importedPaymentHash !== builtPaymentHash
+          ) {
+            console.warn(
+              `[useWalletBalances] Summon payment script mismatch for wallet ${wallet.id}: importedHash=${importedPaymentHash}, builtHash=${builtPaymentHash}`,
+            );
+            return importedAddress || summonWallet.address;
+          }
+
+          return summonWallet.address || importedAddress;
+        }
+
+        // legacy
+        return buildWallet(wallet, walletNetwork).address;
+      } catch {
+        return wallet.address;
+      }
+    },
+    [network],
+  );
+
   const fetchWalletBalance = useCallback(
     async (wallet: Wallet): Promise<void> => {
       // Skip if already fetched in this session
@@ -72,23 +173,13 @@ export default function useWalletBalances(
 
       // Mark as loading
       setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loading" }));
+      const walletAddress = getCanonicalWalletAddress(wallet);
 
       try {
-        // Rebuild the multisig wallet to get the correct address
-        // This ensures we use the canonical script address, not the potentially wrong wallet.address
-        // Determine network from signer addresses or use the current network
-        const walletNetwork = wallet.signersAddresses.length > 0 
-          ? addressToNetwork(wallet.signersAddresses[0]!)
-          : network;
-        
-        const mWallet = buildMultisigWallet(wallet, walletNetwork);
-        if (!mWallet) {
-          throw new Error("Failed to build multisig wallet");
-        }
-
-        // Get the correct address from the multisig wallet script
-        const walletAddress = mWallet.getScript().address;
-        
+        // Use a canonical address depending on wallet type.
+        // SDK wallets: script address from MultisigWallet
+        // Summon wallets: stored rawImportBodies.multisig.address
+        // Legacy wallets: derived script address from payment keys
         // Use the network determined from the address
         const addressNetwork = addressToNetwork(walletAddress);
         const provider = getProvider(addressNetwork);
@@ -119,32 +210,16 @@ export default function useWalletBalances(
         setBalance(wallet.id, balance, walletAddress);
         
         fetchedWalletsRef.current.add(wallet.id);
-      } catch (error: any) {
-        // Handle 404 errors gracefully (address doesn't exist yet - this is normal for unused addresses)
-        // Check multiple possible error formats from Blockfrost API
-        const is404 = 
-          error?.response?.status === 404 || 
-          error?.data?.status_code === 404 ||
-          error?.status === 404 ||
-          (error?.message && error.message.includes("404")) ||
-          (error?.message && error.message.includes("Not Found"));
-        
+      } catch (error: unknown) {
+        // 404 is expected for never-used addresses.
+        const is404 = isKnown404Error(error);
+
         if (is404) {
-          // 404 is expected for unused addresses - set balance to 0 (not null) and mark as loaded
-          const walletNetwork = wallet.signersAddresses.length > 0 
-            ? addressToNetwork(wallet.signersAddresses[0]!)
-            : network;
-          const mWallet = buildMultisigWallet(wallet, walletNetwork);
-          const walletAddress = mWallet?.getScript().address || wallet.address;
-          
+          // Set balance to 0 and cache to avoid repeated lookups for fresh addresses.
           setBalances((prev) => ({ ...prev, [wallet.id]: 0 }));
           setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
-          
-          // Cache 404 results too (balance = 0) to avoid repeated requests
           setBalance(wallet.id, 0, walletAddress);
-          
           fetchedWalletsRef.current.add(wallet.id);
-          // Don't log 404 errors - they're expected for unused addresses
         } else {
           // Only log non-404 errors
           console.error(`Error fetching balance for wallet ${wallet.id}:`, error);
@@ -154,7 +229,7 @@ export default function useWalletBalances(
         }
       }
     },
-    [network, getCachedBalance, setBalance],
+    [network, getCachedBalance, setBalance, getCanonicalWalletAddress],
   );
 
   const processQueue = useCallback(async () => {
@@ -288,12 +363,6 @@ export default function useWalletBalances(
       });
     }
 
-    // Cleanup on unmount
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
   }, [wallets, processQueue]);
 
   return {

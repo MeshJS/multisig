@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 
-import { checkSignature, generateNonce } from "@meshsdk/core";
+import {
+  checkSignature,
+  generateNonce,
+} from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "@/hooks/useActiveWallet";
@@ -53,7 +56,11 @@ import {
 import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
-
+import {
+  mergeSignerWitnesses,
+  shouldSubmitMultisigTx,
+  submitTxWithScriptRecovery,
+} from "@/utils/txSignUtils";
 export default function TransactionCard({
   walletId,
   transaction,
@@ -236,7 +243,12 @@ export default function TransactionCard({
     try {
       setLoading(true);
 
-      const signedTx = await activeWallet.signTx(transaction.txCbor, true);
+      const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
+
+      let signedTx = mergeSignerWitnesses(
+        transaction.txCbor,
+        signerWitnessPayload,
+      );
 
       // sanity check
       const tx = csl.Transaction.from_hex(signedTx);
@@ -253,29 +265,25 @@ export default function TransactionCard({
           duration: 5000,
           variant: "destructive",
         });
+        return;
       }
 
-      const signedAddresses = transaction.signedAddresses;
-      signedAddresses.push(userAddress);
+      const signedAddresses = Array.from(
+        new Set([...transaction.signedAddresses, userAddress]),
+      );
 
       let txHash = "";
-      let submitTx = false;
-
-      if (
-        appWallet.type == "atLeast" &&
-        appWallet.numRequiredSigners == signedAddresses.length
-      ) {
-        submitTx = true;
-      } else if (
-        appWallet.type == "all" &&
-        appWallet.signersAddresses.length == signedAddresses.length
-      ) {
-        submitTx = true;
-      }
+      const submitTx = shouldSubmitMultisigTx(appWallet, signedAddresses.length);
 
       if (submitTx) {
-        // Use BlockfrostProvider to submit transaction (works with both regular and UTXOS wallets)
-        txHash = await blockchainProvider.submitTx(signedTx);
+        const submitResult = await submitTxWithScriptRecovery({
+          txHex: signedTx,
+          submitter: blockchainProvider,
+          appWallet,
+          network,
+        });
+        txHash = submitResult.txHash;
+        signedTx = submitResult.txHex;
       }
 
       updateTransaction({
@@ -890,10 +898,13 @@ export default function TransactionCard({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="text-sm font-medium break-words">
-                              {appWallet.signersDescriptions[index] &&
-                              appWallet.signersDescriptions[index].length > 0
-                                ? appWallet.signersDescriptions[index]
-                                : getFirstAndLast(signerAddress)}
+                              {(() => {
+                                const signerDescription =
+                                  appWallet.signersDescriptions?.[index];
+                                return signerDescription && signerDescription.length > 0
+                                  ? signerDescription
+                                  : getFirstAndLast(signerAddress);
+                              })()}
                             </div>
                             {isYou && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold border border-primary/30">
