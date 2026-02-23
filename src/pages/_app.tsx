@@ -4,8 +4,11 @@ import { GeistSans } from "geist/font/sans";
 import { type Session } from "next-auth";
 import { SessionProvider } from "next-auth/react";
 import { type AppType } from "next/app";
+import Script from "next/script";
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
+
+import { env } from "@/env";
 
 import { api } from "@/utils/api";
 
@@ -50,8 +53,19 @@ const MyApp: AppType<{ session: Session | null }> = ({
     return () => mediaQuery.removeEventListener('change', updateTheme);
   }, []);
 
+  const umamiWebsiteId = env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+  const umamiScriptUrl =
+    env.NEXT_PUBLIC_UMAMI_SCRIPT_URL ?? "https://cloud.umami.is/script.js";
+
   return (
     <MeshProviderNoSSR>
+      {umamiWebsiteId && (
+        <Script
+          src={umamiScriptUrl}
+          data-website-id={umamiWebsiteId}
+          strategy="afterInteractive"
+        />
+      )}
       <SessionProvider session={session}>
         <NostrChatProvider>
           <div className={GeistSans.className}>

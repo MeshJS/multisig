@@ -15,7 +15,7 @@ export default async function handler(
   // Add cache-busting headers for CORS
   addCorsCacheBustingHeaders(res);
   
-  if (!applyRateLimit(req, res, { keySuffix: "v1/authSigner" })) {
+  if (!applyRateLimit(req, res, { keySuffix: "v1/authSigner", maxRequests: 20 })) {
     return;
   }
 
@@ -63,8 +63,18 @@ export default async function handler(
     if (!jwtSecret) {
       throw new Error("JWT_SECRET is not defined in environment variables");
     }
-    const token = sign({ address }, jwtSecret, { expiresIn: "1h" });
 
+    const botUser = await db.botUser.findUnique({ where: { paymentAddress: address } });
+    if (botUser) {
+      const token = sign(
+        { address: botUser.paymentAddress, botId: botUser.id, type: "bot" as const },
+        jwtSecret,
+        { expiresIn: "1h" },
+      );
+      return res.status(200).json({ token });
+    }
+
+    const token = sign({ address }, jwtSecret, { expiresIn: "1h" });
     return res.status(200).json({ token });
   }
 

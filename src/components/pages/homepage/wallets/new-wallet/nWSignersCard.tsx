@@ -20,6 +20,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PlusCircle } from "lucide-react";
 
 
+// Bot key with registered bot user (from listBotKeys, filtered to botUser present)
+export type BotWithAddress = {
+  id: string;
+  name: string;
+  botUser: { paymentAddress: string; stakeAddress: string | null };
+};
+
 // Define the prop type for signerConfig
 interface SignerConfig {
   signersAddresses: string[];
@@ -41,6 +48,9 @@ interface SignerConfig {
   }) => void;
   handleCreateNewWallet: () => void;
   loading: boolean;
+  /** Bots owned by the user that have a registered payment address (for "Add my bot") */
+  botsWithAddress?: BotWithAddress[];
+  addBotAsSigner?: (bot: BotWithAddress) => void;
 }
 
 interface NWSignersCardProps {
@@ -64,6 +74,8 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
     toast,
     handleCreateNewWallet,
     loading,
+    botsWithAddress = [],
+    addBotAsSigner,
   } = signerConfig;
 
   function checkValidAddress(address: string) {
@@ -243,15 +255,35 @@ const NWSignersCard: React.FC<NWSignersCardProps> = ({ signerConfig }) => {
                 {/* Add Signer Row */}
                 <TableRow>
                   <TableCell colSpan={2}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={addSigner}
-                      className="w-full"
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Add Signer
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={addSigner}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Add Signer
+                      </Button>
+                      {botsWithAddress.length > 0 && addBotAsSigner && (
+                        <>
+                          <span className="text-muted-foreground text-sm">or add your bot:</span>
+                          {botsWithAddress.map((bot) => {
+                            const alreadyAdded = signersAddresses.includes(bot.botUser.paymentAddress);
+                            return (
+                              <Button
+                                key={bot.id}
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => addBotAsSigner(bot)}
+                                disabled={alreadyAdded}
+                              >
+                                {alreadyAdded ? `${bot.name} (added)` : `Add "${bot.name}"`}
+                              </Button>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               </TableBody>

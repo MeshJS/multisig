@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJwt";
+import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
-import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { assertBotWalletAccess } from "@/lib/auth/botAccess";
 
 export default async function handler(
   req: NextApiRequest,
@@ -40,6 +41,10 @@ export default async function handler(
   const payload = verifyJwt(token);
   if (!payload) {
     return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
+    return;
   }
 
   const session = {
@@ -88,13 +93,24 @@ export default async function handler(
     return res.status(401).json({ error: "Invalid signature" });
   }
 
-  const wallet = await db.wallet.findUnique({ where: { id: walletId } });
-  const signers = wallet?.signersAddresses ?? [];
-  const isSigner = Array.isArray(signers) && signers.includes(address);
-  if (!wallet || !isSigner) {
-    return res.status(403).json({ error: "Not authorized for this wallet" });
+  let wallet: { id: string } | null;
+  if (isBotJwt(payload)) {
+    try {
+      const result = await assertBotWalletAccess(db, walletId, payload, true);
+      wallet = result.wallet;
+    } catch {
+      return res.status(403).json({ error: "Not authorized for this wallet" });
+    }
+  } else {
+    const w = await db.wallet.findUnique({ where: { id: walletId } });
+    const signers = w?.signersAddresses ?? [];
+    const isSigner = Array.isArray(signers) && signers.includes(address);
+    if (!w || !isSigner) {
+      return res.status(403).json({ error: "Not authorized for this wallet" });
+    }
+    wallet = w;
   }
-  
+
   try {
     const newSignable = await db.signable.create({
       data: {

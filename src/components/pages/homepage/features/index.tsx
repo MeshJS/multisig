@@ -5,6 +5,13 @@ import Image from "next/image";
 export function PageFeature() {
   const features = [
     {
+      title: "Multi-signature security",
+      description:
+        "M-of-N signing: require multiple signers to approve every transaction. Choose at least, all, or any threshold per wallet.",
+      skeleton: <Skeleton image={"/features/multi-wallets.png"} />,
+      className: "lg:col-span-3",
+    },
+    {
       title: "Manage all your wallets",
       description:
         "Multisig wallets for every collaboration, project, or team you are part of.",

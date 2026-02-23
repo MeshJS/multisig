@@ -36,6 +36,11 @@ yarn-error.log*
 .env
 .env*.local
 
+# bot ref client config (contains secret)
+scripts/bot-ref/bot-config.json
+# generated bot wallet for testing (mnemonic + address)
+scripts/bot-ref/bot-wallet.json
+
 # vercel
 .vercel
 

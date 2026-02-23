@@ -156,30 +156,26 @@ export const walletRouter = createTRPCRouter({
         stakeCredentialHash: z.string().optional(),
         type: z.enum(["atLeast", "all", "any"]),
         rawImportBodies: z.any().optional().nullable(),
+        ownerAddress: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       requireSessionAddress(ctx);
       try {
         const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
-        
-        // Convert null/undefined values to empty strings to match Prisma schema
-        // Keep array length to match signersAddresses
-        const signersStakeKeys = (input.signersStakeKeys || []).map(key => 
+
+        const signersStakeKeys = (input.signersStakeKeys || []).map(key =>
           key === null || key === undefined ? "" : key
         );
-        const signersDRepKeys = (input.signersDRepKeys || []).map(key => 
+        const signersDRepKeys = (input.signersDRepKeys || []).map(key =>
           key === null || key === undefined ? "" : key
         );
-        
-        // Ensure rawImportBodies is properly serialized if present
+
         let rawImportBodiesValue: Prisma.InputJsonValue | undefined = undefined;
         if (input.rawImportBodies) {
-          // If it's already a plain object, use it directly
-          // Otherwise, serialize it to ensure it's JSON-compatible
           rawImportBodiesValue = JSON.parse(JSON.stringify(input.rawImportBodies)) as Prisma.InputJsonValue;
         }
-        
+
         const data: Prisma.WalletCreateInput = {
           name: input.name,
           description: input.description,
@@ -192,6 +188,7 @@ export const walletRouter = createTRPCRouter({
           stakeCredentialHash: input.stakeCredentialHash,
           type: input.type,
           rawImportBodies: rawImportBodiesValue,
+          ...(input.ownerAddress != null && { ownerAddress: input.ownerAddress }),
         };
 
         return ctx.db.wallet.create({ data });

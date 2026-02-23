@@ -1,10 +1,11 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJwt";
+import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { applyRateLimit } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
+import { getWalletIdsForBot } from "@/lib/auth/botAccess";
 
 export default async function handler(
   req: NextApiRequest,
@@ -38,6 +39,10 @@ export default async function handler(
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
+  if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
+    return;
+  }
+
   const session = {
     user: { id: payload.address },
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -61,21 +66,30 @@ export default async function handler(
   }
 
   try {
-    const wallets = await caller.wallet.getUserWallets({ address });
-    if (!wallets) {
-      return res.status(404).json({ error: "Wallets not found" });
+    let walletIds: { walletId: string; walletName: string }[];
+    if (isBotJwt(payload)) {
+      walletIds = await getWalletIdsForBot(db, payload.botId);
+    } else {
+      const caller = createCaller({
+        db,
+        session,
+        sessionAddress: payload.address,
+        sessionWallets: [payload.address],
+        primaryWallet: payload.address,
+        ip: getClientIP(req),
+      });
+      const wallets = await caller.wallet.getUserWallets({ address });
+      if (!wallets) {
+        return res.status(404).json({ error: "Wallets not found" });
+      }
+      walletIds = wallets.map((w) => ({ walletId: w.id, walletName: w.name }));
     }
-    const walletIds = wallets.map((w) => ({
-      walletId: w.id,
-      walletName: w.name,
-    }));
 
     if (walletIds.length === 0) {
       return res.status(404).json({ error: "Wallets not found" });
     }
 
-    // Cache wallet IDs for 2 minutes (they change when wallets are added/removed)
-    res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
+    res.setHeader("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
     res.status(200).json(walletIds);
   } catch (error) {
     console.error("Error fetching wallet IDs:", error);

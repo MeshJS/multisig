@@ -113,6 +113,37 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Array of wallet objects with ID and name
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 500 (server)
 
+#### `botMe.ts` - GET `/api/v1/botMe`
+
+- **Purpose**: Return the authenticated bot's own info, including its owner's address (bot JWT only)
+- **Authentication**: Required (bot JWT Bearer token)
+- **Features**:
+  - Bot can discover "my owner's address" (the human who created the bot key) for flows like creating a 2-of-2 with the owner
+- **Response**: `{ botId, paymentAddress, displayName, botName, ownerAddress }` (200)
+- **Error Handling**: 401 (auth), 403 (not a bot token), 404 (bot not found), 500 (server)
+
+#### `createWallet.ts` - POST `/api/v1/createWallet`
+
+- **Purpose**: Create a new multisig wallet (bot-only; requires bot JWT and `multisig:create` scope)
+- **Authentication**: Required (bot JWT Bearer token from POST `/api/v1/botAuth`)
+- **Features**:
+  - Builds native script from signer payment/stake/DRep addresses
+  - Sets wallet owner to the bot’s payment address and grants the bot cosigner access
+  - Supports `atLeast` / `all` / `any` script types and optional external stake credential
+- **Request Body**:
+  - `name`: string (required, 1–256 chars)
+  - `description`: string (optional)
+  - `signersAddresses`: string[] (required, Cardano payment addresses)
+  - `signersDescriptions`: string[] (optional, same length as signersAddresses)
+  - `signersStakeKeys`: (string | null)[] (optional)
+  - `signersDRepKeys`: (string | null)[] (optional)
+  - `numRequiredSigners`: number (optional, default 1; ignored for `all`/`any`)
+  - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
+  - `stakeCredentialHash`: string (optional, external stake)
+  - `network`: 0 | 1 (optional, default 1 = mainnet)
+- **Response**: `{ walletId, address, name }` (201)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (not bot or insufficient scope), 429 (rate limit), 500 (server)
+
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
 - **Purpose**: Generate native scripts for multisig wallet operations

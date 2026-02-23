@@ -10,7 +10,7 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Database, Sparkles, Info } from "lucide-react";
+import { Database, Sparkles, Bot, Code, Download } from "lucide-react";
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -228,9 +228,24 @@ export function PageHomepage() {
           <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
 
+            {/* Multisig */}
+            <CardUI
+              title="Multi-signature security"
+              description="M-of-N signing: require multiple signers to approve every transaction. Choose at least, all, or any threshold per wallet."
+              cardClassName="overflow-hidden"
+            >
+              <div className="mt-4 rounded-lg border border-border p-2">
+                <Image
+                  src="/features/multi-wallets.png"
+                  alt="Multi-signature"
+                  width={400}
+                  height={300}
+                  className="h-auto w-full rounded object-contain"
+                />
+              </div>
+            </CardUI>
+
             {/* Wallet Management */}
-
-
             <CardUI
               title="Invite and Verify Signers"
               description="Invite signers to your multisig wallet by sharing a link. Ensure all signers are verified and have access to the wallet."
@@ -437,6 +452,104 @@ export function PageHomepage() {
         </div>
       </section>
 
+      <Separator className="my-8" />
+
+      {/* Developers & Bots – machine- and bot-friendly docs */}
+      <section id="developers-and-bots" className="container mx-auto px-4 py-16">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center text-3xl font-bold">
+            Developers & Bots
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
+            OpenAPI spec, REST v1 endpoints, and bot authentication for integrations and automation.
+          </p>
+
+          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <CardUI
+              title="Multisig skill (download)"
+              description="Cursor/IDE skill for multisig: bot API, v1 endpoints, wallet flows, and conventions. Drop into your project for AI-assisted development."
+              cardClassName="overflow-hidden"
+            >
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm">
+                  <a href="/api/skill" download="multisig-skill.md">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download skill
+                  </a>
+                </Button>
+              </div>
+            </CardUI>
+            <CardUI
+              title="Machine-readable API spec"
+              description="OpenAPI 3.0 JSON for codegen and tooling."
+              cardClassName="overflow-hidden"
+            >
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <code className="rounded bg-muted px-2 py-1 text-sm font-mono">
+                  GET /api/swagger
+                </code>
+                <span className="text-sm text-muted-foreground">→ OpenAPI JSON</span>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Base URL: same origin (e.g. <code className="rounded bg-muted px-1">https://your-domain.com</code> or <code className="rounded bg-muted px-1">http://localhost:3000</code>). Use for client generation and automated tests.
+              </p>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/api-docs">
+                    <Code className="mr-2 h-4 w-4" />
+                    Interactive API docs
+                  </Link>
+                </Button>
+              </div>
+            </CardUI>
+
+            <CardUI
+              title="Bot authentication"
+              description="Authenticate bots with a bot key; use the returned JWT for v1 endpoints."
+              cardClassName="overflow-hidden"
+            >
+              <div className="mt-4 space-y-2 text-sm">
+                <p className="font-medium">POST /api/v1/botAuth</p>
+                <p className="text-muted-foreground">
+                  Body: <code className="rounded bg-muted px-1">botKeyId</code>, <code className="rounded bg-muted px-1">secret</code>, <code className="rounded bg-muted px-1">paymentAddress</code> (Cardano address for this bot). Optional: <code className="rounded bg-muted px-1">stakeAddress</code>.
+                </p>
+                <p className="text-muted-foreground">
+                  Response: <code className="rounded bg-muted px-1">{`{ "token", "botId" }`}</code>. Send <code className="rounded bg-muted px-1">Authorization: Bearer &lt;token&gt;</code> on subsequent requests.
+                </p>
+                <p className="text-muted-foreground">
+                  Bot keys are created in the app (User → Create bot). One bot key maps to one <code className="rounded bg-muted px-1">paymentAddress</code>; that address is used as the caller for <code className="rounded bg-muted px-1">walletIds</code>, <code className="rounded bg-muted px-1">pendingTransactions</code>, <code className="rounded bg-muted px-1">freeUtxos</code>, and other v1 endpoints.
+                </p>
+              </div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href="https://github.com/MeshJS/multisig/tree/main/scripts/bot-ref"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Bot className="mr-2 h-4 w-4" />
+                    Reference bot client
+                  </a>
+                </Button>
+              </div>
+            </CardUI>
+          </div>
+
+          <div className="mt-8">
+            <CardUI
+              title="Quick reference (bots)"
+              description="Same REST v1 as wallet users; identity is the bot's registered payment address."
+            >
+              <ul className="mt-4 list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                <li><code className="rounded bg-muted px-1">GET /api/v1/walletIds?address=&lt;paymentAddress&gt;</code> — list wallets for the bot</li>
+                <li><code className="rounded bg-muted px-1">GET /api/v1/pendingTransactions?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — pending transactions</li>
+                <li><code className="rounded bg-muted px-1">GET /api/v1/freeUtxos?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — free UTxOs</li>
+                <li><code className="rounded bg-muted px-1">POST /api/v1/addTransaction</code>, <code className="rounded bg-muted px-1">POST /api/v1/signTransaction</code> — add/sign transactions (with Bearer token)</li>
+              </ul>
+            </CardUI>
+          </div>
+        </div>
+      </section>
 
       <Separator className="my-8" />
 
@@ -488,7 +601,7 @@ export function PageHomepage() {
       <footer className="mx-auto max-w-4xl px-4 pb-16">
         <div className="flex justify-between items-center">
           <p className="text-sm text-muted-foreground">
-            © 2025 Mesh •{" "}
+            {new Date().getFullYear()} Mesh •{" "}
             <a
               href="https://github.com/MeshJS/multisig/blob/main/LICENSE.md"
               target="_blank"
@@ -499,6 +612,12 @@ export function PageHomepage() {
             </a>
           </p>
           <div className="flex items-center gap-1.5">
+          <Link
+            href="/#developers-and-bots"
+            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Developers & Bots
+          </Link>
           <Link
             href="/features"
             className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"

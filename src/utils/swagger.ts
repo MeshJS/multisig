@@ -701,6 +701,53 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/botAuth": {
+        post: {
+          tags: ["Auth", "Bot"],
+          summary: "Bot authentication",
+          description:
+            "Authenticate a bot using bot key credentials. Register or link the bot's Cardano payment address; returns a JWT for use as Bearer token on v1 endpoints. Bot keys are created in the app (User → Create bot). One bot key maps to one paymentAddress.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    botKeyId: { type: "string", description: "Bot key ID from Create bot" },
+                    secret: { type: "string", description: "Secret from Create bot (shown once)" },
+                    paymentAddress: { type: "string", description: "Cardano payment address for this bot" },
+                    stakeAddress: { type: "string", description: "Optional stake address" },
+                  },
+                  required: ["botKeyId", "secret", "paymentAddress"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Returns JWT and bot ID",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      token: { type: "string" },
+                      botId: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing or invalid botKeyId, secret, or paymentAddress" },
+            401: { description: "Invalid bot key" },
+            403: { description: "Insufficient scope" },
+            409: { description: "paymentAddress already registered to another bot" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
     },
   },
   apis: [],
