@@ -13,7 +13,9 @@ import type { RawImportBodies } from "@/types/wallet";
 
 import PageHeader from "@/components/common/page-header";
 import WalletInfoCard from "@/components/pages/homepage/wallets/new-wallet/nWInfoCard";
-import SignersCard from "@/components/pages/homepage/wallets/new-wallet/nWSignersCard";
+import SignersCard, {
+  type BotWithAddress,
+} from "@/components/pages/homepage/wallets/new-wallet/nWSignersCard";
 import AdvancedOptionsCard from "@/components/pages/homepage/wallets/new-wallet/nWAdvancedOptionsCard";
 import WalletActionButtons from "@/components/pages/homepage/wallets/new-wallet/nWActionButtons";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
@@ -170,7 +172,7 @@ export default function PageNewWallet() {
       !!k.botUser?.paymentAddress,
   );
 
-  function addBotAsSigner(bot: (typeof botsWithAddress)[number]) {
+  function addBotAsSigner(bot: BotWithAddress) {
     const addr = bot.botUser.paymentAddress;
     if (signersAddresses.includes(addr)) return;
     setSignerAddresses([...signersAddresses, addr]);
