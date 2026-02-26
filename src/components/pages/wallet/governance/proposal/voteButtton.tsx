@@ -35,6 +35,7 @@ import { useBallotModal } from "@/hooks/useBallotModal";
 import { Plus, Info, Lock, FileText, CheckCircle2, Vote } from "lucide-react";
 import { ProposalDetails } from "@/types/governance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { getProposalStatus, parseProposalId } from "@/lib/governance";
 
 interface VoteButtonProps {
   appWallet: Wallet;
@@ -99,10 +100,7 @@ export default function VoteButton({
   // Check if proposal is active (only Active proposals can be voted on)
   const isProposalActive = useMemo(() => {
     if (!proposalDetails) return true; // If no details, assume active to not block voting
-    // A proposal is active if it has no enacted, dropped, or expired epoch
-    return !proposalDetails.enacted_epoch && 
-           !proposalDetails.dropped_epoch && 
-           !proposalDetails.expired_epoch;
+    return getProposalStatus(proposalDetails) === "active";
   }, [proposalDetails]);
 
   // Get proxies for proxy mode
@@ -228,8 +226,13 @@ export default function VoteButton({
     setLoading(true);
 
     try {
-      const [txHash, certIndex] = proposalId.split("#");
-      if (txHash === undefined || certIndex === undefined) {
+      let txHash = "";
+      let certIndex = 0;
+      try {
+        const parsed = parseProposalId(proposalId);
+        txHash = parsed.txHash;
+        certIndex = parsed.certIndex;
+      } catch {
         setAlert("Invalid proposal ID format");
         setLoading(false);
         return;
@@ -286,7 +289,7 @@ export default function VoteButton({
           },
           {
             txHash: txHash,
-            txIndex: parseInt(certIndex),
+            txIndex: certIndex,
           },
           {
             voteKind: voteKind,

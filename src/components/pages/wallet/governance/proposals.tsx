@@ -35,6 +35,7 @@ import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Cale
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
+import { getProposalStatus as getProposalStatusValue, parseProposalId } from "@/lib/governance";
 
 type VoteRecord = {
   tx_hash: string;
@@ -52,13 +53,21 @@ type VotingStatistics = {
   abstain: number;
 };
 
-// Helper functions for proposal details
 const getProposalStatus = (details?: ProposalDetails) => {
-  if (!details) return null;
-  if (details.enacted_epoch) return { label: "Enacted", icon: CheckCircle2, color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" };
-  if (details.dropped_epoch) return { label: "Dropped", icon: XCircle, color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" };
-  if (details.expired_epoch) return { label: "Expired", icon: XCircle, color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" };
-  if (details.ratified_epoch) return { label: "Ratified", icon: CheckCircle2, color: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300" };
+  const status = getProposalStatusValue(details);
+  if (!status) return null;
+  if (status === "enacted") {
+    return { label: "Enacted", icon: CheckCircle2, color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" };
+  }
+  if (status === "dropped") {
+    return { label: "Dropped", icon: XCircle, color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" };
+  }
+  if (status === "expired") {
+    return { label: "Expired", icon: XCircle, color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" };
+  }
+  if (status === "ratified") {
+    return { label: "Ratified", icon: CheckCircle2, color: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300" };
+  }
   return { label: "Active", icon: Clock, color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" };
 };
 
@@ -149,7 +158,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
 
 
   const fetchProposalDetails = async (proposalId: string) => {
-    const [txHash, certIndex] = proposalId.split("#");
+    const { txHash, certIndex } = parseProposalId(proposalId);
     setLoadingDetails(prev => new Set(prev).add(proposalId));
     
     try {

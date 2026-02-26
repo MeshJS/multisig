@@ -144,6 +144,46 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: `{ walletId, address, name }` (201)
 - **Error Handling**: 400 (validation), 401 (auth), 403 (not bot or insufficient scope), 429 (rate limit), 500 (server)
 
+#### `governanceActiveProposals.ts` - GET `/api/v1/governanceActiveProposals`
+
+- **Purpose**: Return active governance proposals in a bot-friendly payload
+- **Authentication**: Required (bot JWT Bearer token)
+- **Scope**: `governance:read`
+- **Features**:
+  - Fetches proposals from Blockfrost and filters to active only (`enacted_epoch`, `dropped_epoch`, `expired_epoch`, `ratified_epoch` all null)
+  - Tolerates metadata 404 responses (returns null-safe metadata fields instead of failing)
+  - Optional `details=true` includes extra proposal detail fields
+  - Maps upstream 429/418 rate limits to `503` with retry guidance
+- **Query Parameters**:
+  - `network`: `"0"` (preprod) or `"1"` (mainnet), default `"1"`
+  - `count`: 1..100, default `100`
+  - `page`: default `1`
+  - `order`: `"asc"` or `"desc"`, default `"desc"`
+  - `details`: `"true"` or `"false"`, default `"false"`
+- **Response**: `{ proposals, page, count, order, network, details, sourceCount, activeCount }`
+- **Notes**: Because filtering happens after fetch, `activeCount` may be lower than requested `count`.
+
+#### `botBallotsUpsert.ts` - POST `/api/v1/botBallotsUpsert`
+
+- **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
+- **Authentication**: Required (bot JWT Bearer token)
+- **Scope**: `ballot:write`
+- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Features**:
+  - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
+  - `409` on ambiguous `ballotName` matches
+  - Enforces governance ballot only (`type = 1`)
+  - Upserts proposals and choices while preserving omitted rationale comments on existing entries
+  - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
+  - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+- **Request Body**:
+  - `walletId`: string (required)
+  - `ballotId`: string (optional, recommended when updating existing ballots)
+  - `ballotName`: string (optional)
+  - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
+- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
 - **Purpose**: Generate native scripts for multisig wallet operations

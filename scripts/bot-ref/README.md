@@ -127,3 +127,24 @@ BOT_TOKEN='...' BOT_CONFIG_PATH=bot-config.json npx tsx bot-client.ts walletIds
 ```
 
 The reference client only uses **bot-key auth** (POST /api/v1/botAuth). Wallet-based auth (getNonce + sign + authSigner) would require a real Cardano signer; implement that in your bot if needed.
+
+## Governance bot flow
+
+For governance automation, grant these bot scopes when creating the bot key:
+
+- `governance:read` to call `GET /api/v1/governanceActiveProposals`
+- `ballot:write` to call `POST /api/v1/botBallotsUpsert`
+
+Typical sequence:
+
+1. `POST /api/v1/botAuth` -> get bot JWT
+2. `GET /api/v1/governanceActiveProposals?network=0|1&details=false`
+3. Bot decides `Yes`/`No`/`Abstain` + optional `rationaleComment`
+4. `POST /api/v1/botBallotsUpsert` with `{ walletId, ballotId|ballotName, proposals[] }`
+5. Human reviews draft rationale in UI and uploads to IPFS via the existing "Upload to IPFS & Save" action
+
+Notes:
+
+- `proposalId` format is `<txHash>#<certIndex>`.
+- Bots cannot set `anchorUrl` or `anchorHash`; only `rationaleComment` draft text is accepted.
+- If `ballotName` matches multiple governance ballots, the API returns `409`; use `ballotId` to disambiguate.

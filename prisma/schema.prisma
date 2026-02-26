@@ -113,8 +113,10 @@ model Ballot {
   choices          String[]
   anchorUrls       String[] @default([])
   anchorHashes     String[] @default([])
+  rationaleComments String[] @default([])
   type             Int
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Proxy {

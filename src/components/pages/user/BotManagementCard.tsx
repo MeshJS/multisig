@@ -20,13 +20,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BOT_SCOPES } from "@/lib/auth/botKey";
+import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 
 export default function BotManagementCard() {
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newScopes, setNewScopes] = useState<string[]>([]);
+  const [newScopes, setNewScopes] = useState<BotScope[]>([]);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdBotKeyId, setCreatedBotKeyId] = useState<string | null>(null);
 
@@ -91,7 +91,7 @@ export default function BotManagementCard() {
       });
       return;
     }
-    createBotKey.mutate({ name: newName.trim(), scope: newScopes as ("multisig:create" | "multisig:read" | "multisig:sign")[] });
+    createBotKey.mutate({ name: newName.trim(), scope: newScopes });
   };
 
   const handleCloseCreate = () => {
@@ -102,7 +102,7 @@ export default function BotManagementCard() {
     setCreatedBotKeyId(null);
   };
 
-  const toggleScope = (scope: string) => {
+  const toggleScope = (scope: BotScope) => {
     setNewScopes((prev) =>
       prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
     );

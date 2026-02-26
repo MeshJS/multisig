@@ -32,7 +32,13 @@ export function verifyBotKeySecret(secret: string, keyHash: string): boolean {
   }
 }
 
-export const BOT_SCOPES = ["multisig:create", "multisig:read", "multisig:sign"] as const;
+export const BOT_SCOPES = [
+  "multisig:create",
+  "multisig:read",
+  "multisig:sign",
+  "governance:read",
+  "ballot:write",
+] as const;
 export type BotScope = (typeof BOT_SCOPES)[number];
 
 export function parseScope(scope: string): BotScope[] {

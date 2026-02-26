@@ -748,6 +748,104 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/governanceActiveProposals": {
+        get: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "List active governance proposals for bots",
+          description:
+            "Returns active on-chain governance proposals only (enacted/dropped/expired/ratified are filtered out). Requires bot JWT and governance:read scope.",
+          parameters: [
+            {
+              in: "query",
+              name: "network",
+              required: false,
+              schema: { type: "string", enum: ["0", "1"], default: "1" },
+              description: "0 = preprod, 1 = mainnet",
+            },
+            {
+              in: "query",
+              name: "count",
+              required: false,
+              schema: { type: "integer", default: 100, minimum: 1, maximum: 100 },
+            },
+            {
+              in: "query",
+              name: "page",
+              required: false,
+              schema: { type: "integer", default: 1, minimum: 1 },
+            },
+            {
+              in: "query",
+              name: "order",
+              required: false,
+              schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
+            },
+            {
+              in: "query",
+              name: "details",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"], default: "false" },
+              description: "Set true to include extra per-proposal details fields.",
+            },
+          ],
+          responses: {
+            200: {
+              description: "Active proposals list (after active-status filtering)",
+            },
+            400: { description: "Invalid query parameter" },
+            401: { description: "Unauthorized" },
+            403: { description: "Insufficient scope or not a bot token" },
+            503: { description: "Upstream governance provider rate limited (retryable)" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botBallotsUpsert": {
+        post: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "Create or update governance ballots from bot decisions",
+          description:
+            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. Requires bot JWT, ballot:write scope, and cosigner wallet access.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    ballotId: { type: "string" },
+                    ballotName: { type: "string" },
+                    proposals: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          proposalId: { type: "string", description: "<txHash>#<certIndex>" },
+                          proposalTitle: { type: "string" },
+                          choice: { type: "string", enum: ["Yes", "No", "Abstain"] },
+                          rationaleComment: { type: "string" },
+                        },
+                        required: ["proposalId", "proposalTitle", "choice"],
+                      },
+                    },
+                  },
+                  required: ["walletId", "proposals"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Ballot upserted successfully" },
+            400: { description: "Invalid payload or non-governance ballot mutation attempt" },
+            401: { description: "Unauthorized" },
+            403: { description: "Insufficient scope or wallet mutation access denied" },
+            404: { description: "Ballot not found when ballotId is provided" },
+            409: { description: "Ambiguous ballotName or concurrent write conflict" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
     },
   },
   apis: [],
