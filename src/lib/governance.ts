@@ -5,10 +5,10 @@ export type BallotChoice = "Yes" | "No" | "Abstain";
 
 export function getProposalStatus(details?: ProposalDetails | null): ProposalStatus | null {
   if (!details) return null;
-  if (details.enacted_epoch !== null) return "enacted";
-  if (details.dropped_epoch !== null) return "dropped";
-  if (details.expired_epoch !== null) return "expired";
-  if (details.ratified_epoch !== null) return "ratified";
+  if (details.enacted_epoch != null) return "enacted";
+  if (details.dropped_epoch != null) return "dropped";
+  if (details.expired_epoch != null) return "expired";
+  if (details.ratified_epoch != null) return "ratified";
   return "active";
 }
 

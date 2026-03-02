@@ -19,7 +19,28 @@ type BlockfrostProposalListItem = {
   ratified_epoch: number | null;
 };
 
+type BlockfrostProposalDetailsItem = {
+  proposed_epoch?: number | null;
+  activation_epoch?: number | null;
+  expiration?: number | null;
+  deposit?: string | null;
+  return_address?: string | null;
+  parameters?: unknown;
+  ratified_epoch?: number | null;
+  enacted_epoch?: number | null;
+  dropped_epoch?: number | null;
+  expired_epoch?: number | null;
+};
+
 const getErrorStatus = (error: unknown): number | undefined => {
+  if (typeof error === "string") {
+    try {
+      const parsed = JSON.parse(error) as unknown;
+      return getErrorStatus(parsed);
+    } catch {
+      return undefined;
+    }
+  }
   if (
     error &&
     typeof error === "object" &&
@@ -120,50 +141,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const provider = getProvider(Number(network));
     const list = (await provider.get(
-      `/governance/proposals?count=${count}&page=${page}&order=${order}`,
+      `governance/proposals?count=${count}&page=${page}&order=${order}`,
     )) as BlockfrostProposalListItem[];
 
-    const active = Array.isArray(list)
-      ? list.filter((item) => {
-          const status = getProposalStatus({
-            id: "",
-            tx_hash: item.tx_hash,
-            cert_index: Number(item.cert_index),
-            governance_type: item.governance_type,
-            deposit: "",
-            return_address: "",
-            governance_description: { tag: "" },
-            ratified_epoch: item.ratified_epoch,
-            enacted_epoch: item.enacted_epoch,
-            dropped_epoch: item.dropped_epoch,
-            expired_epoch: item.expired_epoch,
-            expiration: null,
-          });
-          return status === "active";
-        })
-      : [];
+    const statusResolved = await Promise.all(
+      (Array.isArray(list) ? list : []).map(async (item) => {
+        const txHash = item.tx_hash;
+        const certIndex = Number(item.cert_index);
+        let detailsForStatus: BlockfrostProposalDetailsItem | null = null;
+
+        try {
+          detailsForStatus = (await provider.get(
+            `governance/proposals/${txHash}/${certIndex}`,
+          )) as BlockfrostProposalDetailsItem;
+        } catch (error) {
+          const status = getErrorStatus(error);
+          if (status && status !== 404) throw error;
+        }
+
+        const status = getProposalStatus({
+          id: "",
+          tx_hash: txHash,
+          cert_index: certIndex,
+          governance_type: item.governance_type,
+          deposit:
+            typeof detailsForStatus?.deposit === "string"
+              ? detailsForStatus.deposit
+              : "",
+          return_address:
+            typeof detailsForStatus?.return_address === "string"
+              ? detailsForStatus.return_address
+              : "",
+          governance_description: { tag: "" },
+          ratified_epoch:
+            detailsForStatus?.ratified_epoch ?? item.ratified_epoch ?? null,
+          enacted_epoch:
+            detailsForStatus?.enacted_epoch ?? item.enacted_epoch ?? null,
+          dropped_epoch:
+            detailsForStatus?.dropped_epoch ?? item.dropped_epoch ?? null,
+          expired_epoch:
+            detailsForStatus?.expired_epoch ?? item.expired_epoch ?? null,
+          expiration:
+            typeof detailsForStatus?.expiration === "number"
+              ? detailsForStatus.expiration
+              : null,
+        });
+
+        return { item, detailsForStatus, status };
+      }),
+    );
+
+    const active = statusResolved.filter((entry) => entry.status === "active");
 
     const proposals = await Promise.all(
-      active.map(async (item) => {
+      active.map(async ({ item, detailsForStatus }) => {
         const txHash = item.tx_hash;
         const certIndex = Number(item.cert_index);
         let metadata: any = null;
-        let details: any = null;
 
         try {
-          metadata = await provider.get(`/governance/proposals/${txHash}/${certIndex}/metadata`);
+          metadata = await provider.get(`governance/proposals/${txHash}/${certIndex}/metadata`);
         } catch (error) {
           const status = getErrorStatus(error);
           if (status !== 404) throw error;
-        }
-
-        if (includeDetails) {
-          try {
-            details = await provider.get(`/governance/proposals/${txHash}/${certIndex}`);
-          } catch (error) {
-            const status = getErrorStatus(error);
-            if (status && status !== 404) throw error;
-          }
         }
 
         const body = metadata?.json_metadata?.body ?? {};
@@ -187,16 +227,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           details: includeDetails
             ? {
                 proposedEpoch:
-                  typeof details?.proposed_epoch === "number" ? details.proposed_epoch : null,
+                  typeof detailsForStatus?.proposed_epoch === "number"
+                    ? detailsForStatus.proposed_epoch
+                    : null,
                 activationEpoch:
-                  typeof details?.activation_epoch === "number" ? details.activation_epoch : null,
-                expiration: typeof details?.expiration === "number" ? details.expiration : null,
-                deposit: typeof details?.deposit === "string" ? details.deposit : null,
+                  typeof detailsForStatus?.activation_epoch === "number"
+                    ? detailsForStatus.activation_epoch
+                    : null,
+                expiration:
+                  typeof detailsForStatus?.expiration === "number"
+                    ? detailsForStatus.expiration
+                    : null,
+                deposit:
+                  typeof detailsForStatus?.deposit === "string"
+                    ? detailsForStatus.deposit
+                    : null,
                 returnAddress:
-                  typeof details?.return_address === "string" ? details.return_address : null,
+                  typeof detailsForStatus?.return_address === "string"
+                    ? detailsForStatus.return_address
+                    : null,
                 parameters:
-                  details && typeof details === "object" && "parameters" in details
-                    ? details.parameters ?? null
+                  detailsForStatus &&
+                  typeof detailsForStatus === "object" &&
+                  "parameters" in detailsForStatus
+                    ? detailsForStatus.parameters ?? null
                     : null,
               }
             : undefined,

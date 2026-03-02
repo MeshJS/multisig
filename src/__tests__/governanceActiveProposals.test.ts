@@ -147,7 +147,7 @@ describe("governanceActiveProposals API", () => {
 
   it("returns only active proposals and tolerates metadata 404", async () => {
     providerGetMock.mockImplementation(async (path: string) => {
-      if (path.startsWith("/governance/proposals?")) {
+      if (path.startsWith("governance/proposals?")) {
         return [
           {
             tx_hash: "tx-active",
@@ -169,10 +169,37 @@ describe("governanceActiveProposals API", () => {
           },
         ];
       }
-      if (path === "/governance/proposals/tx-active/0/metadata") {
-        const error = new Error("404") as Error & { status?: number };
-        error.status = 404;
-        throw error;
+      if (path === "governance/proposals/tx-active/0") {
+        return {
+          ratified_epoch: null,
+          enacted_epoch: null,
+          dropped_epoch: null,
+          expired_epoch: null,
+          expiration: 999,
+          deposit: "1000000",
+          return_address: "addr_test1...",
+        };
+      }
+      if (path === "governance/proposals/tx-ratified/1") {
+        return {
+          ratified_epoch: 530,
+          enacted_epoch: null,
+          dropped_epoch: null,
+          expired_epoch: null,
+          expiration: 999,
+          deposit: "1000000",
+          return_address: "addr_test1...",
+        };
+      }
+      if (path === "governance/proposals/tx-active/0/metadata") {
+        throw JSON.stringify({
+          data: {
+            error: "Not Found",
+            message: "The requested component has not been found.",
+            status_code: 404,
+          },
+          status: 404,
+        });
       }
       return null;
     });
