@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { hashBotKeySecret, generateBotKeySecret, BOT_SCOPES } from "@/lib/auth/botKey";
+import { hashBotKeySecret, generateBotKeySecret, BOT_SCOPES, parseScope } from "@/lib/auth/botKey";
 import { BotWalletRole } from "@prisma/client";
 
 function requireSessionAddress(ctx: unknown): string {
@@ -39,12 +39,37 @@ export const botRouter = createTRPCRouter({
 
   listBotKeys: protectedProcedure.input(z.object({})).query(async ({ ctx }) => {
     const ownerAddress = requireSessionAddress(ctx);
-    return ctx.db.botKey.findMany({
+    const botKeys = await ctx.db.botKey.findMany({
       where: { ownerAddress },
       include: { botUser: true },
       orderBy: { createdAt: "desc" },
     });
+    return botKeys.map((botKey) => ({
+      ...botKey,
+      scopes: parseScope(botKey.scope),
+    }));
   }),
+
+  updateBotKeyScopes: protectedProcedure
+    .input(
+      z.object({
+        botKeyId: z.string(),
+        scope: z.array(z.enum(BOT_SCOPES as unknown as [string, ...string[]])).min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const ownerAddress = requireSessionAddress(ctx);
+      const botKey = await ctx.db.botKey.findUnique({ where: { id: input.botKeyId } });
+      if (!botKey) throw new TRPCError({ code: "NOT_FOUND", message: "Bot key not found" });
+      if (botKey.ownerAddress !== ownerAddress) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not the owner of this bot key" });
+      }
+      await ctx.db.botKey.update({
+        where: { id: input.botKeyId },
+        data: { scope: JSON.stringify(input.scope) },
+      });
+      return { ok: true };
+    }),
 
   revokeBotKey: protectedProcedure
     .input(z.object({ botKeyId: z.string() }))

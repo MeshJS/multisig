@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Plus, Trash2, Copy, Loader2 } from "lucide-react";
+import { Bot, Plus, Trash2, Copy, Loader2, Pencil } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
+import { Badge } from "@/components/ui/badge";
+
+const READ_SCOPE = "multisig:read" as const;
 
 export default function BotManagementCard() {
   const { toast } = useToast();
@@ -29,9 +32,28 @@ export default function BotManagementCard() {
   const [newScopes, setNewScopes] = useState<BotScope[]>([]);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdBotKeyId, setCreatedBotKeyId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingBotKeyId, setEditingBotKeyId] = useState<string | null>(null);
+  const [editScopes, setEditScopes] = useState<BotScope[]>([]);
 
   const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
+  const editingBotKey = botKeys?.find((key) => key.id === editingBotKeyId) ?? null;
   const utils = api.useUtils();
+
+  const handleCloseCreate = () => {
+    setCreateOpen(false);
+    setNewName("");
+    setNewScopes([]);
+    setCreatedSecret(null);
+    setCreatedBotKeyId(null);
+  };
+
+  const handleCloseEdit = () => {
+    setEditOpen(false);
+    setEditingBotKeyId(null);
+    setEditScopes([]);
+  };
+
   const createBotKey = api.bot.createBotKey.useMutation({
     onSuccess: (data) => {
       setCreatedSecret(data.secret);
@@ -54,7 +76,21 @@ export default function BotManagementCard() {
   const revokeBotKey = api.bot.revokeBotKey.useMutation({
     onSuccess: () => {
       toast({ title: "Bot revoked" });
-      void api.useUtils().bot.listBotKeys.invalidate();
+      void utils.bot.listBotKeys.invalidate();
+    },
+    onError: (err) => {
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+  const updateBotKeyScopes = api.bot.updateBotKeyScopes.useMutation({
+    onSuccess: () => {
+      toast({ title: "Scopes updated" });
+      handleCloseEdit();
+      void utils.bot.listBotKeys.invalidate();
     },
     onError: (err) => {
       toast({
@@ -94,12 +130,15 @@ export default function BotManagementCard() {
     createBotKey.mutate({ name: newName.trim(), scope: newScopes });
   };
 
-  const handleCloseCreate = () => {
-    setCreateOpen(false);
-    setNewName("");
-    setNewScopes([]);
-    setCreatedSecret(null);
-    setCreatedBotKeyId(null);
+  const openEditDialog = (botKeyId: string, scopes: readonly BotScope[]) => {
+    setEditingBotKeyId(botKeyId);
+    setEditScopes([...scopes]);
+    setEditOpen(true);
+  };
+
+  const handleSaveScopes = () => {
+    if (!editingBotKeyId || editScopes.length === 0) return;
+    updateBotKeyScopes.mutate({ botKeyId: editingBotKeyId, scope: editScopes });
   };
 
   const toggleScope = (scope: BotScope) => {
@@ -107,6 +146,15 @@ export default function BotManagementCard() {
       prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
     );
   };
+
+  const toggleEditScope = (scope: BotScope) => {
+    setEditScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  };
+
+  const missingReadScopeInCreate = newScopes.length > 0 && !newScopes.includes(READ_SCOPE);
+  const missingReadScopeInEdit = editScopes.length > 0 && !editScopes.includes(READ_SCOPE);
 
   return (
     <CardUI
@@ -186,16 +234,21 @@ export default function BotManagementCard() {
                       {BOT_SCOPES.map((scope) => (
                         <div key={scope} className="flex items-center space-x-2">
                           <Checkbox
-                            id={scope}
+                            id={`create-scope-${scope}`}
                             checked={newScopes.includes(scope)}
                             onCheckedChange={() => toggleScope(scope)}
                           />
-                          <label htmlFor={scope} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          <label htmlFor={`create-scope-${scope}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                             {scope}
                           </label>
                         </div>
                       ))}
                     </div>
+                    {missingReadScopeInCreate && (
+                      <p className="text-xs text-amber-600">
+                        Warning: without <code className="rounded bg-muted px-1">multisig:read</code>, <code className="rounded bg-muted px-1">POST /api/v1/botAuth</code> authentication will fail for this bot key.
+                      </p>
+                    )}
                   </div>
                   <DialogFooter>
                     <Button
@@ -210,6 +263,57 @@ export default function BotManagementCard() {
             </DialogContent>
           </Dialog>
         </div>
+        <Dialog
+          open={editOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseEdit();
+          }}
+        >
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="h-4 w-4" />
+                Edit scopes
+              </DialogTitle>
+              <DialogDescription>
+                Update API scopes for {editingBotKey?.name ?? "this bot"}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label>Scopes</Label>
+              <div className="flex flex-col gap-2">
+                {BOT_SCOPES.map((scope) => (
+                  <div key={scope} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-scope-${scope}`}
+                      checked={editScopes.includes(scope)}
+                      onCheckedChange={() => toggleEditScope(scope)}
+                    />
+                    <label htmlFor={`edit-scope-${scope}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      {scope}
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {missingReadScopeInEdit && (
+                <p className="text-xs text-amber-600">
+                  Warning: without <code className="rounded bg-muted px-1">multisig:read</code>, <code className="rounded bg-muted px-1">POST /api/v1/botAuth</code> authentication will fail for this bot key.
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCloseEdit}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveScopes}
+                disabled={updateBotKeyScopes.isPending || !editingBotKeyId || editScopes.length === 0}
+              >
+                {updateBotKeyScopes.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -220,51 +324,77 @@ export default function BotManagementCard() {
           <p className="text-sm text-muted-foreground">No bots yet. Create one to allow API access with a bot key or wallet sign-in.</p>
         ) : (
           <ul className="space-y-3 max-h-[280px] overflow-y-auto">
-            {botKeys.map((key) => (
-              <li
-                key={key.id}
-                className="flex flex-col gap-1 rounded-md border p-3 text-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{key.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => {
-                      if (confirm("Revoke this bot? The bot will no longer be able to authenticate.")) {
-                        revokeBotKey.mutate({ botKeyId: key.id });
-                      }
-                    }}
-                    disabled={revokeBotKey.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                <RowLabelInfo
-                  label="Key ID"
-                  value={getFirstAndLast(key.id, 10, 8)}
-                  copyString={key.id}
-                />
-                {key.botUser ? (
-                  <>
-                    <RowLabelInfo
-                      label="Bot address"
-                      value={getFirstAndLast(key.botUser.paymentAddress, 12, 8)}
-                      copyString={key.botUser.paymentAddress}
-                    />
-                    {key.botUser.displayName && (
-                      <RowLabelInfo label="Display name" value={key.botUser.displayName} />
+            {botKeys.map((key) => {
+              const scopes = key.scopes ?? [];
+              return (
+                <li
+                  key={key.id}
+                  className="flex flex-col gap-1 rounded-md border p-3 text-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{key.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(key.id, scopes)}
+                      >
+                        Edit scopes
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm("Revoke this bot? The bot will no longer be able to authenticate.")) {
+                            revokeBotKey.mutate({ botKeyId: key.id });
+                          }
+                        }}
+                        disabled={revokeBotKey.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <RowLabelInfo
+                    label="Key ID"
+                    value={getFirstAndLast(key.id, 10, 8)}
+                    copyString={key.id}
+                  />
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-20 text-sm font-medium text-muted-foreground">Scopes</span>
+                    {scopes.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {scopes.map((scope) => (
+                          <Badge key={scope} variant="secondary">
+                            {scope}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No valid scopes configured.</span>
                     )}
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Not registered yet. Use botAuth with this key to register the bot wallet.</p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Created {new Date(key.createdAt).toLocaleDateString()}
-                </p>
-              </li>
-            ))}
+                  </div>
+                  {key.botUser ? (
+                    <>
+                      <RowLabelInfo
+                        label="Bot address"
+                        value={getFirstAndLast(key.botUser.paymentAddress, 12, 8)}
+                        copyString={key.botUser.paymentAddress}
+                      />
+                      {key.botUser.displayName && (
+                        <RowLabelInfo label="Display name" value={key.botUser.displayName} />
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Not registered yet. Use botAuth with this key to register the bot wallet.</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Created {new Date(key.createdAt).toLocaleDateString()}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
