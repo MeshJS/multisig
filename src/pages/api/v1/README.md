@@ -264,6 +264,24 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: JWT token object
 - **Error Handling**: 400 (validation), 401 (signature), 500 (server)
 
+#### `botAuth.ts` - POST `/api/v1/botAuth`
+
+- **Purpose**: Authenticate a bot key and return a bot-scoped JWT bearer token
+- **Authentication**: Not required (public endpoint; credentials in request body)
+- **Features**:
+  - Bot key secret verification against stored hash
+  - Minimum scope enforcement (`multisig:read`)
+  - BotUser upsert with payment and optional stake address
+  - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Strict rate limiting (15 requests per window) and 2 KB body size cap
+- **Request Body**:
+  - `botKeyId`: Bot key identifier (required)
+  - `secret`: Bot key secret (required)
+  - `paymentAddress`: Bot's Cardano payment address (required, min 20 chars)
+  - `stakeAddress`: Bot's stake address (optional)
+- **Response**: `{ token, botId }` — JWT payload contains `{ address, botId, type: "bot" }`
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 403 (insufficient scope), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
+
 ### Utility Endpoints
 
 #### `og.ts` - GET `/api/v1/og`
