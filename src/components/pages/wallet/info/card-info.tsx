@@ -46,7 +46,7 @@ import { getWalletType } from "@/utils/common";
 
 export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);
-  
+
   // Check if this is a legacy wallet using the centralized detection
   const walletType = getWalletType(appWallet);
   const isLegacyWallet = walletType === 'legacy';
@@ -70,8 +70,8 @@ export default function CardInfo({ appWallet }: { appWallet: Wallet }) {
       headerDom={
         <div className="flex items-center gap-2">
           {isLegacyWallet && (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="text-xs bg-orange-400/10 border-orange-400/30 text-orange-600 dark:text-orange-300"
             >
               <Archive className="h-3 w-3 mr-1" />
@@ -184,7 +184,7 @@ function EditInfo({
           initialUrl={profileImageIpfsUrl}
         />
         <p className="text-xs text-muted-foreground">
-          <strong>Note:</strong> Images will be stored on public IPFS (InterPlanetary File System). 
+          <strong>Note:</strong> Images will be stored on public IPFS (InterPlanetary File System).
           Once uploaded, the image will be publicly accessible and cannot be removed from IPFS.
         </p>
       </div>
@@ -220,17 +220,17 @@ function EditInfo({
           onClick={() => editWallet()}
           disabled={
             loading ||
-            (appWallet.name === name && 
-             appWallet.description === description && 
-             appWallet.isArchived === isArchived &&
-             appWallet.profileImageIpfsUrl === profileImageIpfsUrl)
+            (appWallet.name === name &&
+              appWallet.description === description &&
+              appWallet.isArchived === isArchived &&
+              appWallet.profileImageIpfsUrl === profileImageIpfsUrl)
           }
           className="flex-1 sm:flex-initial"
         >
           {loading ? "Updating Wallet..." : "Update"}
         </Button>
-        <Button 
-          onClick={() => setShowEdit(false)} 
+        <Button
+          onClick={() => setShowEdit(false)}
           variant="outline"
           className="flex-1 sm:flex-initial"
         >
@@ -246,7 +246,7 @@ function MultisigScriptSection({ mWallet }: { mWallet: MultisigWallet }) {
   const { appWallet } = useAppWallet();
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const [balance, setBalance] = useState<number>(0);
-  
+
   useEffect(() => {
     if (!appWallet) return;
     const utxos = walletsUtxos[appWallet.id];
@@ -266,7 +266,7 @@ function MultisigScriptSection({ mWallet }: { mWallet: MultisigWallet }) {
           <Code className="block text-xs sm:text-sm whitespace-pre">{JSON.stringify(mWallet?.getJsonMetadata(), null, 2)}</Code>
         </div>
       </div>
-      
+
       {/* Register Wallet Section */}
       <div className="pt-3 border-t border-border/30">
         <div className="mb-2">
@@ -377,7 +377,7 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   const { multisigWallet } = useMultisigWallet();
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const [balance, setBalance] = useState<number>(0);
-  
+
   useEffect(() => {
     if (!appWallet) return;
     const utxos = walletsUtxos[appWallet.id];
@@ -390,18 +390,12 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
   // Check if this is a legacy wallet using the centralized detection
   const walletType = getWalletType(appWallet);
   const isLegacyWallet = walletType === 'legacy';
-  
-  // For legacy wallets, multisigWallet will be undefined, so use appWallet.address
-  // For SDK wallets, prefer the address from multisigWallet if staking is enabled
-  const address = multisigWallet?.getKeysByRole(2) ? multisigWallet?.getScript().address : appWallet.address;
-  
-  // Get DRep ID from multisig wallet if available (it handles no DRep keys by using payment script),
-  // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
-  const dRepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
-  
-  // For rawImportBodies wallets, dRepId may not be available
-  const showDRepId = dRepId && dRepId.length > 0;
-  
+
+  // Use capabilities for address and DRep ID (Type 2 Summon, Type 1 SDK, Type 0 Legacy)
+  const address = appWallet.capabilities?.address || appWallet.address;
+  const dRepId = appWallet.capabilities?.dRepId || appWallet.dRepId;
+  const showDRepId = !!appWallet.capabilities?.canVote && !!dRepId;
+
   // Calculate signers info
   const signersCount = appWallet.signersAddresses.length;
   const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
@@ -414,7 +408,7 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
       return `${requiredSigners} of ${signersCount} signers`;
     }
   };
-  
+
   // Get the number of required signers for visualization
   const getRequiredCount = () => {
     if (appWallet.type === 'all') {
@@ -425,40 +419,39 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
       return requiredSigners;
     }
   };
-  
+
   const requiredCount = getRequiredCount();
-  
+
   return (
     <div className="space-y-6">
       {/* Top Section: Key Info */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-          {/* Signing Threshold */}
-          <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-lg border border-border/40">
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {Array.from({ length: signersCount }).map((_, index) => (
-                <User
-                  key={index}
-                  className={`h-4 w-4 sm:h-5 sm:w-5 ${
-                    index < requiredCount
-                      ? "text-foreground opacity-100"
-                      : "text-muted-foreground opacity-30"
+        {/* Signing Threshold */}
+        <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-lg border border-border/40">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {Array.from({ length: signersCount }).map((_, index) => (
+              <User
+                key={index}
+                className={`h-4 w-4 sm:h-5 sm:w-5 ${index < requiredCount
+                  ? "text-foreground opacity-100"
+                  : "text-muted-foreground opacity-30"
                   }`}
-                />
-              ))}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
-              <div className="text-sm font-semibold">{getSignersText()}</div>
-            </div>
+              />
+            ))}
           </div>
-          
-          {/* Balance */}
-          <div className="flex flex-col justify-center p-4 bg-muted/40 rounded-lg border border-border/40">
-            <div className="text-xs font-medium text-muted-foreground mb-1">Balance</div>
-            <div className="text-2xl sm:text-3xl font-bold">{balance} ₳</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-muted-foreground mb-0.5">Signing Threshold</div>
+            <div className="text-sm font-semibold">{getSignersText()}</div>
           </div>
+        </div>
+
+        {/* Balance */}
+        <div className="flex flex-col justify-center p-4 bg-muted/40 rounded-lg border border-border/40">
+          <div className="text-xs font-medium text-muted-foreground mb-1">Balance</div>
+          <div className="text-2xl sm:text-3xl font-bold">{balance} ₳</div>
+        </div>
       </div>
-      
+
       {/* Addresses Section */}
       <div className="space-y-3 pt-2 border-t border-border/30">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Wallet Details</div>
@@ -470,20 +463,17 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
             copyString={address}
             allowOverflow={false}
           />
-          
-          {/* Stake Address - Show if staking is enabled */}
-          {multisigWallet && multisigWallet.stakingEnabled() && (() => {
-            const stakeAddress = multisigWallet.getStakeAddress();
-            return stakeAddress ? (
-              <RowLabelInfo
-                label="Stake Key"
-                value={getFirstAndLast(stakeAddress, 20, 15)}
-                copyString={stakeAddress}
-                allowOverflow={false}
-              />
-            ) : null;
-          })()}
-          
+
+          {/* Stake Address - Show if staking is supported (Summon or SDK) */}
+          {appWallet.capabilities?.canStake && appWallet.capabilities?.stakeAddress && (
+            <RowLabelInfo
+              label="Stake Key"
+              value={getFirstAndLast(appWallet.capabilities.stakeAddress, 20, 15)}
+              copyString={appWallet.capabilities.stakeAddress}
+              allowOverflow={false}
+            />
+          )}
+
           {/* External Stake Key Hash - Always show if available */}
           {appWallet?.stakeCredentialHash && (
             <RowLabelInfo
@@ -493,7 +483,7 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
               allowOverflow={false}
             />
           )}
-          
+
           {/* DRep ID */}
           {showDRepId && dRepId ? (
             <RowLabelInfo
@@ -511,10 +501,10 @@ function ShowInfo({ appWallet }: { appWallet: Wallet }) {
           ) : null}
         </div>
       </div>
-      
+
       {/* Native Script - Collapsible Pro Feature */}
       <div className="pt-2 border-t border-border/30">
-        {multisigWallet && multisigWallet.stakingEnabled() ? (
+        {multisigWallet && appWallet.capabilities?.canStake ? (
           <MultisigScriptSection mWallet={multisigWallet} />
         ) : (
           <NativeScriptSection appWallet={appWallet} />
