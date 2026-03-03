@@ -8,7 +8,7 @@ import { proxyRouter } from "./routers/proxy";
 import { migrationRouter } from "./routers/migrations";
 import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
-
+import { botRouter } from "./routers/bot";
 
 /**
  * This is the primary router for your server.
@@ -25,6 +25,7 @@ export const appRouter = createTRPCRouter({
   migration: migrationRouter,
   auth: authRouter,
   contact: contactRouter,
+  bot: botRouter,
 });
 
 // export type definition of API

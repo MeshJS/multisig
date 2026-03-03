@@ -113,6 +113,77 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Array of wallet objects with ID and name
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 500 (server)
 
+#### `botMe.ts` - GET `/api/v1/botMe`
+
+- **Purpose**: Return the authenticated bot's own info, including its owner's address (bot JWT only)
+- **Authentication**: Required (bot JWT Bearer token)
+- **Features**:
+  - Bot can discover "my owner's address" (the human who created the bot key) for flows like creating a 2-of-2 with the owner
+- **Response**: `{ botId, paymentAddress, displayName, botName, ownerAddress }` (200)
+- **Error Handling**: 401 (auth), 403 (not a bot token), 404 (bot not found), 500 (server)
+
+#### `createWallet.ts` - POST `/api/v1/createWallet`
+
+- **Purpose**: Create a new multisig wallet (bot-only; requires bot JWT and `multisig:create` scope)
+- **Authentication**: Required (bot JWT Bearer token from POST `/api/v1/botAuth`)
+- **Features**:
+  - Builds native script from signer payment/stake/DRep addresses
+  - Sets wallet owner to the bot’s payment address and grants the bot cosigner access
+  - Supports `atLeast` / `all` / `any` script types and optional external stake credential
+- **Request Body**:
+  - `name`: string (required, 1–256 chars)
+  - `description`: string (optional)
+  - `signersAddresses`: string[] (required, Cardano payment addresses)
+  - `signersDescriptions`: string[] (optional, same length as signersAddresses)
+  - `signersStakeKeys`: (string | null)[] (optional)
+  - `signersDRepKeys`: (string | null)[] (optional)
+  - `numRequiredSigners`: number (optional, default 1; ignored for `all`/`any`)
+  - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
+  - `stakeCredentialHash`: string (optional, external stake)
+  - `network`: 0 | 1 (optional, default 1 = mainnet)
+- **Response**: `{ walletId, address, name }` (201)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (not bot or insufficient scope), 429 (rate limit), 500 (server)
+
+#### `governanceActiveProposals.ts` - GET `/api/v1/governanceActiveProposals`
+
+- **Purpose**: Return active governance proposals in a bot-friendly payload
+- **Authentication**: Required (bot JWT Bearer token)
+- **Scope**: `governance:read`
+- **Features**:
+  - Fetches proposals from Blockfrost and filters to active only (`enacted_epoch`, `dropped_epoch`, `expired_epoch`, `ratified_epoch` all null)
+  - Tolerates metadata 404 responses (returns null-safe metadata fields instead of failing)
+  - Optional `details=true` includes extra proposal detail fields
+  - Maps upstream 429/418 rate limits to `503` with retry guidance
+- **Query Parameters**:
+  - `network`: `"0"` (preprod) or `"1"` (mainnet), default `"1"`
+  - `count`: 1..100, default `100`
+  - `page`: default `1`
+  - `order`: `"asc"` or `"desc"`, default `"desc"`
+  - `details`: `"true"` or `"false"`, default `"false"`
+- **Response**: `{ proposals, page, count, order, network, details, sourceCount, activeCount }`
+- **Notes**: Because filtering happens after fetch, `activeCount` may be lower than requested `count`.
+
+#### `botBallotsUpsert.ts` - POST `/api/v1/botBallotsUpsert`
+
+- **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
+- **Authentication**: Required (bot JWT Bearer token)
+- **Scope**: `ballot:write`
+- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Features**:
+  - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
+  - `409` on ambiguous `ballotName` matches
+  - Enforces governance ballot only (`type = 1`)
+  - Upserts proposals and choices while preserving omitted rationale comments on existing entries
+  - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
+  - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+- **Request Body**:
+  - `walletId`: string (required)
+  - `ballotId`: string (optional, recommended when updating existing ballots)
+  - `ballotName`: string (optional)
+  - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
+- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
 - **Purpose**: Generate native scripts for multisig wallet operations
@@ -192,6 +263,24 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `key`: Public key for verification
 - **Response**: JWT token object
 - **Error Handling**: 400 (validation), 401 (signature), 500 (server)
+
+#### `botAuth.ts` - POST `/api/v1/botAuth`
+
+- **Purpose**: Authenticate a bot key and return a bot-scoped JWT bearer token
+- **Authentication**: Not required (public endpoint; credentials in request body)
+- **Features**:
+  - Bot key secret verification against stored hash
+  - Minimum scope enforcement (`multisig:read`)
+  - BotUser upsert with payment and optional stake address
+  - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Strict rate limiting (15 requests per window) and 2 KB body size cap
+- **Request Body**:
+  - `botKeyId`: Bot key identifier (required)
+  - `secret`: Bot key secret (required)
+  - `paymentAddress`: Bot's Cardano payment address (required, min 20 chars)
+  - `stakeAddress`: Bot's stake address (optional)
+- **Response**: `{ token, botId }` — JWT payload contains `{ address, botId, type: "bot" }`
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 403 (insufficient scope), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
 
 ### Utility Endpoints
 

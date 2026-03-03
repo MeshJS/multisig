@@ -42,6 +42,7 @@ model Wallet {
   rawImportBodies         Json?
   migrationTargetWalletId String?
   profileImageIpfsUrl     String?
+  ownerAddress            String?
 }
 
 model Transaction {
@@ -112,8 +113,10 @@ model Ballot {
   choices          String[]
   anchorUrls       String[] @default([])
   anchorHashes     String[] @default([])
+  rationaleComments String[] @default([])
   type             Int
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Proxy {
@@ -177,4 +180,44 @@ model Contact {
   @@unique([walletId, address])
   @@index([walletId])
   @@index([address])
+}
+
+model BotKey {
+  id           String   @id @default(cuid())
+  ownerAddress String // Human creator
+  name         String
+  keyHash      String
+  scope        String // JSON array e.g. ["multisig:create","multisig:read","multisig:sign"]
+  createdAt    DateTime @default(now())
+  botUser      BotUser?
+
+  @@index([ownerAddress])
+}
+
+model BotUser {
+  id              String   @id @default(cuid())
+  botKeyId        String   @unique
+  paymentAddress  String   @unique // One bot, one address
+  stakeAddress    String?
+  displayName     String?
+  createdAt       DateTime @default(now())
+  botKey          BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
+
+  @@index([paymentAddress])
+}
+
+enum BotWalletRole {
+  cosigner
+  observer
+}
+
+model WalletBotAccess {
+  walletId  String
+  botId      String
+  role       BotWalletRole
+  createdAt  DateTime @default(now())
+
+  @@unique([walletId, botId])
+  @@index([walletId])
+  @@index([botId])
 }

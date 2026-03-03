@@ -10,10 +10,11 @@ import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
-import { verifyJwt } from "@/lib/verifyJwt";
+import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { DbWalletWithLegacy } from "@/types/wallet";
-import { applyRateLimit } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
+import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
 
 export default async function handler(
   req: NextApiRequest,
@@ -46,10 +47,13 @@ export default async function handler(
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
-  // You can now use payload.address for scope checks or logging
+  if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
+    return;
+  }
+
   const session = {
     user: { id: payload.address },
-    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour from now
+    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   };
 
   const caller = createCaller({
@@ -74,19 +78,32 @@ export default async function handler(
   }
 
   try {
-    const pendingTxsResult = await caller.transaction.getPendingTransactions({
-      walletId,
-    });
-    if (!pendingTxsResult) {
-      return res
-        .status(500)
-        .json({ error: "Wallet could not fetch pending Txs" });
+    let pendingTxsResult: Awaited<ReturnType<ReturnType<typeof createCaller>["transaction"]["getPendingTransactions"]>>;
+    let walletFetch: DbWallet | null;
+
+    if (isBotJwt(payload)) {
+      const access = await getBotWalletAccess(db, walletId, payload.botId);
+      if (!access.allowed) {
+        return res.status(403).json({ error: "Not authorized for this wallet" });
+      }
+      pendingTxsResult = await db.transaction.findMany({
+        where: { walletId, state: 0 },
+      });
+      const result = await assertBotWalletAccess(db, walletId, payload, false);
+      walletFetch = result.wallet as DbWallet;
+    } else {
+      pendingTxsResult = await caller.transaction.getPendingTransactions({
+        walletId,
+      });
+      if (!pendingTxsResult) {
+        return res.status(500).json({ error: "Wallet could not fetch pending Txs" });
+      }
+      walletFetch = await caller.wallet.getWallet({
+        walletId,
+        address,
+      });
     }
 
-    const walletFetch: DbWallet | null = await caller.wallet.getWallet({
-      walletId,
-      address,
-    });
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }

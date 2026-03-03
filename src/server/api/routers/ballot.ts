@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { isValidChoice } from "@/lib/governance";
 
 const getSessionAddresses = (ctx: any): string[] => {
   const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
@@ -36,6 +37,40 @@ const assertWalletAccess = async (ctx: any, walletId: string) => {
   return wallet;
 };
 
+type BallotArrays = {
+  items: string[];
+  itemDescriptions: string[];
+  choices: string[];
+  anchorUrls: string[];
+  anchorHashes: string[];
+  rationaleComments: string[];
+};
+
+const ensureStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+
+const alignBallotArrays = (
+  arrays: Partial<BallotArrays>,
+  targetLength?: number,
+): BallotArrays => {
+  const items = ensureStringArray(arrays.items);
+  const length = typeof targetLength === "number" ? targetLength : items.length;
+  const toLength = (arr: unknown, fill: string) => {
+    const next = ensureStringArray(arr).slice(0, length);
+    while (next.length < length) next.push(fill);
+    return next;
+  };
+
+  return {
+    items: items.slice(0, length),
+    itemDescriptions: toLength(arrays.itemDescriptions, ""),
+    choices: toLength(arrays.choices, "Abstain"),
+    anchorUrls: toLength(arrays.anchorUrls, ""),
+    anchorHashes: toLength(arrays.anchorHashes, ""),
+    rationaleComments: toLength(arrays.rationaleComments, ""),
+  };
+};
+
 export const ballotRouter = createTRPCRouter({
   create: protectedProcedure
     .input(
@@ -64,6 +99,9 @@ export const ballotRouter = createTRPCRouter({
         items: z.array(z.string()),
         itemDescriptions: z.array(z.string()),
         choices: z.array(z.string()),
+        anchorUrls: z.array(z.string()).optional(),
+        anchorHashes: z.array(z.string()).optional(),
+        rationaleComments: z.array(z.string()).optional(),
         type: z.number(),
       }),
     )
@@ -73,17 +111,33 @@ export const ballotRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Ballot not found" });
       }
       await assertWalletAccess(ctx, ballot.walletId);
+      const existingAligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(
+        {
+          items: input.items,
+          itemDescriptions: input.itemDescriptions,
+          choices: input.choices.map((choice) => (isValidChoice(choice) ? choice : "Abstain")),
+          anchorUrls: input.anchorUrls ?? existingAligned.anchorUrls,
+          anchorHashes: input.anchorHashes ?? existingAligned.anchorHashes,
+          rationaleComments: input.rationaleComments ?? existingAligned.rationaleComments,
+        },
+        input.items.length,
+      );
+
       return ctx.db.ballot.update({
         where: {
           id: input.ballotId,
         },
         data: {
           description: input.description,
-          items: input.items,
-          itemDescriptions: input.itemDescriptions,
-          choices: input.choices,
+          items: aligned.items,
+          itemDescriptions: aligned.itemDescriptions,
+          choices: aligned.choices,
+          anchorUrls: aligned.anchorUrls,
+          anchorHashes: aligned.anchorHashes,
+          rationaleComments: aligned.rationaleComments,
           type: input.type,
-        },
+        } as any,
       });
     }),
 
@@ -125,6 +179,7 @@ export const ballotRouter = createTRPCRouter({
         choice: z.string(),
         anchorUrl: z.string().optional(),
         anchorHash: z.string().optional(),
+        rationaleComment: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -140,19 +195,19 @@ export const ballotRouter = createTRPCRouter({
       if (Array.isArray(ballot.items) && ballot.items.includes(input.item)) {
         throw new Error("Proposal already exists in this ballot");
       }
-      // Append to arrays, initialize if undefined
-      const updatedItems = Array.isArray(ballot.items) ? [...ballot.items, input.item] : [input.item];
-      const updatedItemDescriptions = Array.isArray(ballot.itemDescriptions)
-        ? [...ballot.itemDescriptions, input.itemDescription]
-        : [input.itemDescription];
-      const updatedChoices = Array.isArray(ballot.choices) ? [...ballot.choices, input.choice] : [input.choice];
-      const ballotWithAnchors = ballot as typeof ballot & { anchorUrls?: string[]; anchorHashes?: string[] };
-      const updatedAnchorUrls = Array.isArray(ballotWithAnchors.anchorUrls) 
-        ? [...ballotWithAnchors.anchorUrls, input.anchorUrl || ""]
-        : [input.anchorUrl || ""];
-      const updatedAnchorHashes = Array.isArray(ballotWithAnchors.anchorHashes)
-        ? [...ballotWithAnchors.anchorHashes, input.anchorHash || ""]
-        : [input.anchorHash || ""];
+      const aligned = alignBallotArrays(ballot as any);
+      const updatedItems = [...aligned.items, input.item];
+      const updatedItemDescriptions = [...aligned.itemDescriptions, input.itemDescription];
+      const updatedChoices = [
+        ...aligned.choices,
+        isValidChoice(input.choice) ? input.choice : "Abstain",
+      ];
+      const updatedAnchorUrls = [...aligned.anchorUrls, input.anchorUrl || ""];
+      const updatedAnchorHashes = [...aligned.anchorHashes, input.anchorHash || ""];
+      const updatedRationaleComments = [
+        ...aligned.rationaleComments,
+        typeof input.rationaleComment === "string" ? input.rationaleComment : "",
+      ];
       return ctx.db.ballot.update({
         where: { id: input.ballotId },
         data: {
@@ -161,6 +216,7 @@ export const ballotRouter = createTRPCRouter({
           choices: updatedChoices,
           anchorUrls: updatedAnchorUrls,
           anchorHashes: updatedAnchorHashes,
+          rationaleComments: updatedRationaleComments,
         } as any,
       });
     }),
@@ -181,22 +237,13 @@ export const ballotRouter = createTRPCRouter({
       }
       await assertWalletAccess(ctx, ballot.walletId);
       // Remove the item at the given index from all arrays
-      const ballotWithAnchors = ballot as typeof ballot & { anchorUrls?: string[]; anchorHashes?: string[] };
-      const updatedItems = Array.isArray(ballot.items)
-        ? ballot.items.filter((_, i) => i !== input.index)
-        : [];
-      const updatedItemDescriptions = Array.isArray(ballot.itemDescriptions)
-        ? ballot.itemDescriptions.filter((_, i) => i !== input.index)
-        : [];
-      const updatedChoices = Array.isArray(ballot.choices)
-        ? ballot.choices.filter((_, i) => i !== input.index)
-        : [];
-      const updatedAnchorUrls = Array.isArray(ballotWithAnchors.anchorUrls)
-        ? ballotWithAnchors.anchorUrls.filter((_: string, i: number) => i !== input.index)
-        : [];
-      const updatedAnchorHashes = Array.isArray(ballotWithAnchors.anchorHashes)
-        ? ballotWithAnchors.anchorHashes.filter((_: string, i: number) => i !== input.index)
-        : [];
+      const aligned = alignBallotArrays(ballot as any);
+      const updatedItems = aligned.items.filter((_, i) => i !== input.index);
+      const updatedItemDescriptions = aligned.itemDescriptions.filter((_, i) => i !== input.index);
+      const updatedChoices = aligned.choices.filter((_, i) => i !== input.index);
+      const updatedAnchorUrls = aligned.anchorUrls.filter((_, i) => i !== input.index);
+      const updatedAnchorHashes = aligned.anchorHashes.filter((_, i) => i !== input.index);
+      const updatedRationaleComments = aligned.rationaleComments.filter((_, i) => i !== input.index);
       return ctx.db.ballot.update({
         where: { id: input.ballotId },
         data: {
@@ -205,6 +252,7 @@ export const ballotRouter = createTRPCRouter({
           choices: updatedChoices,
           anchorUrls: updatedAnchorUrls,
           anchorHashes: updatedAnchorHashes,
+          rationaleComments: updatedRationaleComments,
         } as any,
       });
     }),
@@ -222,14 +270,21 @@ export const ballotRouter = createTRPCRouter({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
-      if (!Array.isArray(ballot.choices) || ballot.choices.length <= input.index)
+      const aligned = alignBallotArrays(ballot as any);
+      if (!Array.isArray(aligned.choices) || aligned.choices.length <= input.index)
         throw new Error("Invalid choice index");
       await assertWalletAccess(ctx, ballot.walletId);
-      const updatedChoices = [...ballot.choices];
-      updatedChoices[input.index] = input.choice;
+      const updatedChoices = [...aligned.choices];
+      updatedChoices[input.index] = isValidChoice(input.choice) ? input.choice : "Abstain";
       return ctx.db.ballot.update({
         where: { id: input.ballotId },
-        data: { choices: updatedChoices },
+        data: {
+          choices: updatedChoices,
+          itemDescriptions: aligned.itemDescriptions,
+          anchorUrls: aligned.anchorUrls,
+          anchorHashes: aligned.anchorHashes,
+          rationaleComments: aligned.rationaleComments,
+        } as any,
       });
     }),
 
@@ -247,34 +302,58 @@ export const ballotRouter = createTRPCRouter({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
-      if (!Array.isArray(ballot.items) || ballot.items.length <= input.index)
+      const aligned = alignBallotArrays(ballot as any);
+      if (!Array.isArray(aligned.items) || aligned.items.length <= input.index)
         throw new Error("Invalid proposal index");
       await assertWalletAccess(ctx, ballot.walletId);
-      
-      const ballotWithAnchors = ballot as any;
-      const updatedAnchorUrls = Array.isArray(ballotWithAnchors.anchorUrls) 
-        ? [...ballotWithAnchors.anchorUrls]
-        : Array(ballot.items.length).fill("");
-      const updatedAnchorHashes = Array.isArray(ballotWithAnchors.anchorHashes)
-        ? [...ballotWithAnchors.anchorHashes]
-        : Array(ballot.items.length).fill("");
-      
-      // Ensure arrays are the right length
-      while (updatedAnchorUrls.length < ballot.items.length) {
-        updatedAnchorUrls.push("");
-      }
-      while (updatedAnchorHashes.length < ballot.items.length) {
-        updatedAnchorHashes.push("");
-      }
-      
+
+      const updatedAnchorUrls = [...aligned.anchorUrls];
+      const updatedAnchorHashes = [...aligned.anchorHashes];
       updatedAnchorUrls[input.index] = input.anchorUrl || "";
       updatedAnchorHashes[input.index] = input.anchorHash || "";
-      
+
       return ctx.db.ballot.update({
         where: { id: input.ballotId },
         data: {
+          itemDescriptions: aligned.itemDescriptions,
+          choices: aligned.choices,
           anchorUrls: updatedAnchorUrls,
           anchorHashes: updatedAnchorHashes,
+          rationaleComments: aligned.rationaleComments,
+        } as any,
+      });
+    }),
+
+  updateProposalRationale: protectedProcedure
+    .input(
+      z.object({
+        ballotId: z.string(),
+        index: z.number(),
+        rationaleComment: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const ballot = await ctx.db.ballot.findUnique({
+        where: { id: input.ballotId },
+      });
+      if (!ballot) throw new Error("Ballot not found");
+      const aligned = alignBallotArrays(ballot as any);
+      if (!Array.isArray(aligned.items) || aligned.items.length <= input.index) {
+        throw new Error("Invalid proposal index");
+      }
+      await assertWalletAccess(ctx, ballot.walletId);
+
+      const updatedRationaleComments = [...aligned.rationaleComments];
+      updatedRationaleComments[input.index] = input.rationaleComment;
+
+      return ctx.db.ballot.update({
+        where: { id: input.ballotId },
+        data: {
+          itemDescriptions: aligned.itemDescriptions,
+          choices: aligned.choices,
+          anchorUrls: aligned.anchorUrls,
+          anchorHashes: aligned.anchorHashes,
+          rationaleComments: updatedRationaleComments,
         } as any,
       });
     }),

@@ -30,6 +30,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ResponsiveTransactionsTable from "./responsive-transactions-table";
 import type { LucideIcon } from "lucide-react";
 import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
+import Pagination from "@/components/common/overall-layout/pagination";
 
 type CertificateInfo = {
   type: string;
@@ -37,6 +38,8 @@ type CertificateInfo = {
   label: string;
   color: string;
 };
+
+const DEFAULT_PAGE_SIZE = 20;
 
 export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   const { transactions: dbTransactions } = useAllTransactions({
@@ -48,6 +51,30 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
   );
 
   const walletTransactions = _walletTransactions[appWallet.id];
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
+
+  const sortedList = useMemo(() => {
+    if (!walletTransactions) return [];
+    return order === "desc"
+      ? [...walletTransactions]
+      : [...walletTransactions].reverse();
+  }, [walletTransactions, order]);
+
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedList.slice(start, start + pageSize);
+  }, [sortedList, currentPage, pageSize]);
+
+  const totalItems = sortedList.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const onLastPage = currentPage >= totalPages;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appWallet.id, walletTransactions?.length]);
 
   if (walletTransactions === undefined)
     return <div className="text-center">No transactions yet</div>;
@@ -70,30 +97,44 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
       }
       cardClassName="w-full"
     >
+      {totalItems > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          order={order}
+          setOrder={setOrder}
+          defaultPageSize={DEFAULT_PAGE_SIZE}
+          maxPageSize={100}
+          stepSize={20}
+          onLastPage={onLastPage}
+        />
+      )}
+
       {/* Mobile & Tablet: Responsive card layout */}
       <div className="lg:hidden">
         <ResponsiveTransactionsTable
-                  appWallet={appWallet}
-          walletTransactions={walletTransactions}
+          appWallet={appWallet}
+          walletTransactions={paginatedList}
           dbTransactions={dbTransactions}
-                />
+        />
       </div>
 
       {/* Desktop: Compact table without horizontal scroll */}
       <div className="hidden lg:block w-full overflow-visible">
         <div className="w-full">
           <Table className="w-full">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[30%]">Transaction</TableHead>
-              <TableHead className="w-[25%]">Amount</TableHead>
-              <TableHead className="w-[35%]">Signers</TableHead>
-              <TableHead className="w-[10%]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {walletTransactions &&
-              walletTransactions.map((tx) => (
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[30%]">Transaction</TableHead>
+                <TableHead className="w-[25%]">Amount</TableHead>
+                <TableHead className="w-[35%]">Signers</TableHead>
+                <TableHead className="w-[10%]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedList.map((tx) => (
                 <TransactionRow
                   key={tx.hash}
                   transaction={tx}
@@ -104,8 +145,8 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
                   }
                 />
               ))}
-          </TableBody>
-        </Table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     </CardUI>

@@ -8,6 +8,7 @@ import {
 import type { UTxO, MeshTxBuilder } from "@meshsdk/core";
 // import { parseDatumCbor } from "@meshsdk/core-cst";
 import { DREP_DEPOSIT_STRING } from "@/utils/protocol-deposit-constants";
+import { parseProposalId } from "@/lib/governance";
 
 import { MeshTxInitiator } from "./common";
 import type { MeshTxInitiatorInput } from "./common";
@@ -912,8 +913,13 @@ export class MeshProxyContract extends MeshTxInitiator {
 
     // 5. Add votes for each proposal
     for (const vote of votes) {
-      const [txHash, certIndex] = vote.proposalId.split("#");
-      if (!txHash || certIndex === undefined) {
+      let txHash = "";
+      let certIndex = 0;
+      try {
+        const parsed = parseProposalId(vote.proposalId);
+        txHash = parsed.txHash;
+        certIndex = parsed.certIndex;
+      } catch {
         throw new Error(`Invalid proposal ID format: ${vote.proposalId}`);
       }
 
@@ -926,7 +932,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         },
         {
           txHash: txHash,
-          txIndex: parseInt(certIndex),
+          txIndex: certIndex,
         },
         {
           voteKind: vote.voteKind,

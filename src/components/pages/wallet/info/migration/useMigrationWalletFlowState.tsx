@@ -531,6 +531,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
           scriptCbor: scriptCbor,
           stakeCredentialHash: stakeKey || undefined,
           type: nativeScriptType,
+          ownerAddress: userAddress ?? undefined,
         }, {
           onSuccess: (data) => {
             

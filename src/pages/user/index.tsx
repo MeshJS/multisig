@@ -13,6 +13,7 @@ import { getFirstAndLast } from "@/utils/strings";
 import useActiveWallet from "@/hooks/useActiveWallet";
 import useUTXOS from "@/hooks/useUTXOS";
 import { Badge } from "@/components/ui/badge";
+import BotManagementCard from "@/components/pages/user/BotManagementCard";
 
 export default function UserInfoPage() {
   const router = useRouter();
@@ -275,6 +276,8 @@ export default function UserInfoPage() {
             </div>
           )}
         </CardUI>
+
+        <BotManagementCard />
 
         <CardUI
           title="Account Details"

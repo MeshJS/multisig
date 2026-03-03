@@ -1,0 +1,16 @@
+{
+  "name": "multisig-bot-ref",
+  "version": "1.0.0",
+  "description": "Reference bot client for multisig v1 API (Cursor agent testing)",
+  "type": "module",
+  "scripts": {
+    "auth": "tsx bot-client.ts auth",
+    "walletIds": "tsx bot-client.ts walletIds",
+    "pending": "tsx bot-client.ts pendingTransactions",
+    "freeUtxos": "tsx bot-client.ts freeUtxos"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0"
+  },
+  "engines": { "node": ">=18.0.0" }
+}

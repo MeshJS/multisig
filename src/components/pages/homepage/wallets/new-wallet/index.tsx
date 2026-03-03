@@ -13,7 +13,9 @@ import type { RawImportBodies } from "@/types/wallet";
 
 import PageHeader from "@/components/common/page-header";
 import WalletInfoCard from "@/components/pages/homepage/wallets/new-wallet/nWInfoCard";
-import SignersCard from "@/components/pages/homepage/wallets/new-wallet/nWSignersCard";
+import SignersCard, {
+  type BotWithAddress,
+} from "@/components/pages/homepage/wallets/new-wallet/nWSignersCard";
 import AdvancedOptionsCard from "@/components/pages/homepage/wallets/new-wallet/nWAdvancedOptionsCard";
 import WalletActionButtons from "@/components/pages/homepage/wallets/new-wallet/nWActionButtons";
 import InspectMultisigScript from "@/components/multisig/inspect-multisig-script";
@@ -161,6 +163,24 @@ export default function PageNewWallet() {
     },
   );
 
+  const { data: botKeys } = api.bot.listBotKeys.useQuery(
+    {},
+    { enabled: !!userAddress && !pathIsWalletInvite },
+  );
+  const botsWithAddress = (botKeys ?? []).filter(
+    (k): k is typeof k & { botUser: NonNullable<typeof k.botUser> } =>
+      !!k.botUser?.paymentAddress,
+  );
+
+  function addBotAsSigner(bot: BotWithAddress) {
+    const addr = bot.botUser.paymentAddress;
+    if (signersAddresses.includes(addr)) return;
+    setSignerAddresses([...signersAddresses, addr]);
+    setSignerDescriptions([...signersDescriptions, bot.name ? `Bot: ${bot.name}` : "My bot"]);
+    setSignerStakeKeys([...signersStakeKeys, bot.botUser.stakeAddress ?? ""]);
+    setSignerDRepKeys([...signersDRepKeys, ""]);
+  }
+
   // Initialize first signer with current user
   useEffect(() => {
     if (!user) return;
@@ -234,6 +254,7 @@ export default function PageNewWallet() {
       rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
+      ownerAddress: userAddress ?? undefined,
     });
   }
 
@@ -331,6 +352,8 @@ export default function PageNewWallet() {
                 toast,
                 handleCreateNewWallet: () => void handleCreateNewWallet(),
                 loading,
+                botsWithAddress,
+                addBotAsSigner,
               }}
             />
           </div>

@@ -444,6 +444,7 @@ export function useWalletFlowState(): WalletFlowState {
       rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
       type: nativeScriptType,
+      ownerAddress: (walletInvite as { ownerAddress?: string } | null)?.ownerAddress,
     });
   }
 

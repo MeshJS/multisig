@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { hashDrepAnchor } from "@meshsdk/core";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { parseProposalId } from "@/lib/governance";
 
 const GovAction = 1;
 
@@ -45,11 +46,13 @@ export type BallotType = {
   description: string | null;
   walletId: string;
   createdAt: Date;
+  updatedAt: Date;
   items: string[];
   itemDescriptions: string[];
   choices: string[];
   anchorUrls: string[];
   anchorHashes: string[];
+  rationaleComments: string[];
 };
 
 // Custom hook for ballot switching logic
@@ -193,7 +196,7 @@ export default function BallotCard({
   // CreateBallot mutation
   const createBallot = api.ballot.create.useMutation();
   // Get ballots for wallet
-  const getBallots = api.ballot.getByWallet.useQuery<BallotType[]>(
+  const getBallots = api.ballot.getByWallet.useQuery(
     { walletId: appWallet?.id },
     { enabled: !!appWallet, refetchOnWindowFocus: false },
   );
@@ -455,9 +458,17 @@ export default function BallotCard({
       for (let i = 0; i < selectedBallot.items.length; ++i) {
         const proposalId = selectedBallot.items[i];
         const voteKind = (selectedBallot.choices?.[i] ?? "Abstain") as "Yes" | "No" | "Abstain";
-        const [txHash, certIndex] = (proposalId || "").split("#");
-        if (!txHash || certIndex === undefined) {
+        if (!proposalId) {
           // Skip invalid proposalId
+          continue;
+        }
+        let txHash = "";
+        let certIndex = 0;
+        try {
+          const parsed = parseProposalId(proposalId);
+          txHash = parsed.txHash;
+          certIndex = parsed.certIndex;
+        } catch {
           continue;
         }
         const anchorUrl = selectedBallot.anchorUrls?.[i];
@@ -469,7 +480,7 @@ export default function BallotCard({
           },
           {
             txHash: txHash,
-            txIndex: parseInt(certIndex),
+            txIndex: certIndex,
           },
           {
             voteKind: voteKind,
@@ -1186,12 +1197,13 @@ function BallotOverviewTable({
     
     ballot.items.forEach((_, idx) => {
       const anchorUrl = ballot.anchorUrls?.[idx] || "";
+      const draftComment = anchorUrl.trim() ? "" : ballot.rationaleComments?.[idx] || "";
       states[idx] = {
         json: "",
         url: anchorUrl,
         hash: ballot.anchorHashes?.[idx] || "",
         loading: !!anchorUrl.trim(), // Set loading if we have a URL to fetch
-        comment: "",
+        comment: draftComment,
       };
       
       // Auto-load rationale if anchor URL exists
@@ -1237,7 +1249,7 @@ function BallotOverviewTable({
     setRationaleStates(states);
     
     // Auto-load will happen asynchronously via the promises
-  }, [ballot.items, ballot.anchorUrls, ballot.anchorHashes, computeHashFromJson]);
+  }, [ballot.items, ballot.anchorUrls, ballot.anchorHashes, ballot.rationaleComments, computeHashFromJson]);
 
   const getChoiceColor = (choice: string) => {
     switch (choice) {
@@ -1436,7 +1448,11 @@ function BallotOverviewTable({
                             {ballot.anchorHashes?.[idx] && ballot.anchorHashes[idx] ? (
                               <Badge variant="outline" className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 flex items-center gap-1">
                                 <Link2 className="h-3 w-3" />
-                                Anchor
+                                Uploaded
+                              </Badge>
+                            ) : ballot.rationaleComments?.[idx] ? (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                Draft rationale
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="text-[10px] text-gray-500 dark:text-gray-400">
@@ -1554,7 +1570,11 @@ function BallotOverviewTable({
                       {ballot.anchorHashes?.[idx] && ballot.anchorHashes[idx] ? (
                         <Badge variant="outline" className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 flex items-center gap-1">
                           <Link2 className="h-3 w-3" />
-                          Anchor
+                          Uploaded
+                        </Badge>
+                      ) : ballot.rationaleComments?.[idx] ? (
+                        <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                          Draft rationale
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[10px] text-gray-500 dark:text-gray-400">

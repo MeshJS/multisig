@@ -1,10 +1,11 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { verifyJwt } from "@/lib/verifyJwt";
+import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { applyRateLimit } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
+import { getBotWalletAccess } from "@/lib/auth/botAccess";
 
 export default async function handler(
   req: NextApiRequest,
@@ -38,6 +39,10 @@ export default async function handler(
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
+  if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
+    return;
+  }
+
   const session = {
     user: { id: payload.address },
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -56,6 +61,17 @@ export default async function handler(
   }
 
   try {
+    if (isBotJwt(payload)) {
+      const access = await getBotWalletAccess(db, walletId, payload.botId);
+      if (!access.allowed) {
+        return res.status(403).json({ error: "Not authorized for this wallet" });
+      }
+      const pendingTransactions = await db.transaction.findMany({
+        where: { walletId, state: 0 },
+      });
+      return res.status(200).json(pendingTransactions);
+    }
+
     const caller = createCaller({
       db,
       session,

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { verifyJwt } from "@/lib/verifyJwt";
+import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { getProvider } from "@/utils/get-provider";
@@ -14,8 +14,9 @@ import {
 } from "@/utils/txSignUtils";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
 import { calculateTxHash } from "@meshsdk/core-csl";
-import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
+import { getBotWalletAccess } from "@/lib/auth/botAccess";
 
 function coerceBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
@@ -80,6 +81,10 @@ export default async function handler(
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
+  if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
+    return;
+  }
+
   const session = {
     user: { id: payload.address },
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -130,16 +135,28 @@ export default async function handler(
   }
 
   try {
-    const caller = createCaller({
-      db,
-      session,
-      sessionAddress: payload.address,
-      sessionWallets: [payload.address],
-      primaryWallet: payload.address,
-      ip: getClientIP(req),
-    });
-
-    const wallet = await caller.wallet.getWallet({ walletId, address });
+    let wallet: Awaited<ReturnType<ReturnType<typeof createCaller>["wallet"]["getWallet"]>>;
+    if (isBotJwt(payload)) {
+      const access = await getBotWalletAccess(db, walletId, payload.botId);
+      if (!access.allowed || access.role !== "cosigner") {
+        return res.status(403).json({ error: "Not authorized for this wallet" });
+      }
+      const w = await db.wallet.findUnique({ where: { id: walletId } });
+      if (!w || !w.signersAddresses.includes(address)) {
+        return res.status(403).json({ error: "Wallet not found or address not a signer" });
+      }
+      wallet = w;
+    } else {
+      const caller = createCaller({
+        db,
+        session,
+        sessionAddress: payload.address,
+        sessionWallets: [payload.address],
+        primaryWallet: payload.address,
+        ip: getClientIP(req),
+      });
+      wallet = await caller.wallet.getWallet({ walletId, address });
+    }
     if (!wallet) {
       return res.status(404).json({ error: "Wallet not found" });
     }
