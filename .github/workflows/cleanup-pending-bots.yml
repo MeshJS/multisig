@@ -1,0 +1,51 @@
+name: Cleanup Pending Bots
+
+# This workflow cleans up expired PendingBot registrations and stale claim tokens.
+# Requires CRON_SECRET secret to be set in GitHub repository settings.
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Run cleanup
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$API_BASE_URL/api/cron/cleanupPendingBots")
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "HTTP $http_code"
+          echo "$body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Cleanup request failed with status $http_code"
+            exit 1
+          fi
+        env:
+          API_BASE_URL: "https://multisig.meshjs.dev"
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Pending bot cleanup job failed"
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data '{"content":"Pending bot cleanup job failed. Check GitHub Actions logs."}' \
+              "$DISCORD_WEBHOOK" || echo "Failed to send Discord notification"
+          else
+            echo "Discord webhook not configured, skipping notification"
+          fi
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.SNAPSHOT_ERROR_DISCORD_WEBHOOK_URL }}

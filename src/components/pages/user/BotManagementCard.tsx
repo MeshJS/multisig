@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Plus, Trash2, Copy, Loader2, Pencil } from "lucide-react";
+import { Bot, Plus, Trash2, Copy, Loader2, Pencil, Link } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,25 @@ export default function BotManagementCard() {
   const [editingBotKeyId, setEditingBotKeyId] = useState<string | null>(null);
   const [editScopes, setEditScopes] = useState<BotScope[]>([]);
 
+  // Claim dialog state
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [claimStep, setClaimStep] = useState<"enterCode" | "review" | "success">("enterCode");
+  const [pendingBotId, setPendingBotId] = useState("");
+  const [claimCode, setClaimCode] = useState("");
+  const [pendingBotInfo, setPendingBotInfo] = useState<{
+    name: string;
+    paymentAddress: string;
+    requestedScopes: string[];
+  } | null>(null);
+  const [approvedScopes, setApprovedScopes] = useState<BotScope[]>([]);
+  const [claimResult, setClaimResult] = useState<{
+    botKeyId: string;
+    botId: string;
+    name: string;
+    scopes: BotScope[];
+  } | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
   const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
   const editingBotKey = botKeys?.find((key) => key.id === editingBotKeyId) ?? null;
   const utils = api.useUtils();
@@ -52,6 +71,17 @@ export default function BotManagementCard() {
     setEditOpen(false);
     setEditingBotKeyId(null);
     setEditScopes([]);
+  };
+
+  const handleCloseClaim = () => {
+    setClaimOpen(false);
+    setClaimStep("enterCode");
+    setPendingBotId("");
+    setClaimCode("");
+    setPendingBotInfo(null);
+    setApprovedScopes([]);
+    setClaimResult(null);
+    setLookupError(null);
   };
 
   const createBotKey = api.bot.createBotKey.useMutation({
@@ -100,6 +130,58 @@ export default function BotManagementCard() {
       });
     },
   });
+
+  const claimBot = api.bot.claimBot.useMutation({
+    onSuccess: (data) => {
+      setClaimResult(data);
+      setClaimStep("success");
+      void utils.bot.listBotKeys.invalidate();
+      toast({
+        title: "Bot claimed",
+        description: `${data.name} is now linked to your account.`,
+      });
+    },
+    onError: (err) => {
+      const messages: Record<string, string> = {
+        bot_not_found: "Bot not found or registration expired.",
+        bot_already_claimed: "This bot has already been claimed.",
+        invalid_or_expired_claim_code: "Invalid or expired claim code.",
+        claim_locked_out: "Too many failed attempts. Ask the bot to re-register.",
+      };
+      toast({
+        title: "Claim failed",
+        description: messages[err.message] ?? err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLookupAndAdvance = async () => {
+    setLookupError(null);
+    try {
+      const info = await utils.bot.lookupPendingBot.fetch({ pendingBotId: pendingBotId.trim() });
+      if (info.status !== "UNCLAIMED") {
+        setLookupError("This bot has already been claimed.");
+        return;
+      }
+      setPendingBotInfo(info);
+      const validScopes = info.requestedScopes.filter(
+        (s): s is BotScope => BOT_SCOPES.includes(s as BotScope),
+      );
+      setApprovedScopes(validScopes);
+      setClaimStep("review");
+    } catch {
+      setLookupError("Bot not found or registration expired.");
+    }
+  };
+
+  const toggleClaimScope = (scope: BotScope) => {
+    setApprovedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  };
+
+  const missingReadScopeInClaim = approvedScopes.length > 0 && !approvedScopes.includes(READ_SCOPE);
 
   const handleCopy = async (text: string, label: string) => {
     try {
@@ -165,13 +247,23 @@ export default function BotManagementCard() {
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">Bots</span>
-          <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) handleCloseCreate(); }}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1">
-                <Plus className="h-4 w-4" />
-                Create bot
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="gap-1"
+              onClick={() => setClaimOpen(true)}
+            >
+              <Link className="h-4 w-4" />
+              Claim a bot
+            </Button>
+            <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) handleCloseCreate(); }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <Plus className="h-4 w-4" />
+                  Create bot
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create bot</DialogTitle>
@@ -262,7 +354,170 @@ export default function BotManagementCard() {
               )}
             </DialogContent>
           </Dialog>
+          </div>
         </div>
+        <Dialog
+          open={claimOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseClaim();
+          }}
+        >
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            {claimStep === "enterCode" && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    Claim a bot
+                  </DialogTitle>
+                  <DialogDescription>
+                    Enter the bot ID and claim code from your bot&apos;s output.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="claim-bot-id">Bot ID</Label>
+                    <Input
+                      id="claim-bot-id"
+                      placeholder="clxyz..."
+                      value={pendingBotId}
+                      onChange={(e) => setPendingBotId(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="claim-code">Claim code</Label>
+                    <Input
+                      id="claim-code"
+                      placeholder="Paste from bot output"
+                      value={claimCode}
+                      onChange={(e) => setClaimCode(e.target.value)}
+                    />
+                  </div>
+                  {lookupError && (
+                    <p className="text-xs text-destructive">{lookupError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={handleCloseClaim}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleLookupAndAdvance}
+                    disabled={!pendingBotId.trim() || !claimCode.trim()}
+                  >
+                    Next
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+
+            {claimStep === "review" && pendingBotInfo && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    Claim a bot
+                  </DialogTitle>
+                  <DialogDescription>
+                    Review the bot&apos;s details and approve its requested permissions.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <RowLabelInfo label="Bot name" value={pendingBotInfo.name} />
+                    <RowLabelInfo
+                      label="Address"
+                      value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
+                      copyString={pendingBotInfo.paymentAddress}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Requested scopes</Label>
+                    <div className="flex flex-col gap-2">
+                      {BOT_SCOPES.map((scope) => {
+                        const requested = pendingBotInfo.requestedScopes.includes(scope);
+                        return (
+                          <div key={scope} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`claim-scope-${scope}`}
+                              checked={approvedScopes.includes(scope)}
+                              onCheckedChange={() => toggleClaimScope(scope)}
+                              disabled={!requested}
+                            />
+                            <label
+                              htmlFor={`claim-scope-${scope}`}
+                              className={`text-sm font-medium leading-none ${!requested ? "text-muted-foreground opacity-50" : ""}`}
+                            >
+                              {scope}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {missingReadScopeInClaim && (
+                      <p className="text-xs text-amber-600">
+                        Warning: without <code className="rounded bg-muted px-1">multisig:read</code>, <code className="rounded bg-muted px-1">POST /api/v1/botAuth</code> authentication will fail for this bot key.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setClaimStep("enterCode")}>
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      claimBot.mutate({
+                        pendingBotId: pendingBotId.trim(),
+                        claimCode: claimCode.trim(),
+                        approvedScopes,
+                      })
+                    }
+                    disabled={claimBot.isPending || approvedScopes.length === 0}
+                  >
+                    {claimBot.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Claim bot"}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+
+            {claimStep === "success" && claimResult && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Bot claimed successfully</DialogTitle>
+                  <DialogDescription>
+                    &ldquo;{claimResult.name}&rdquo; is now linked to your account. The bot will automatically pick up its credentials.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-1">
+                  <RowLabelInfo
+                    label="Bot ID"
+                    value={getFirstAndLast(claimResult.botId, 10, 8)}
+                    copyString={claimResult.botId}
+                  />
+                  <RowLabelInfo
+                    label="Key ID"
+                    value={getFirstAndLast(claimResult.botKeyId, 10, 8)}
+                    copyString={claimResult.botKeyId}
+                  />
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-20 text-sm font-medium text-muted-foreground">Scopes</span>
+                    <div className="flex flex-wrap gap-1">
+                      {claimResult.scopes.map((scope) => (
+                        <Badge key={scope} variant="secondary">
+                          {scope}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleCloseClaim}>Done</Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
         <Dialog
           open={editOpen}
           onOpenChange={(open) => {
