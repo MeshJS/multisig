@@ -1,7 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { hashBotKeySecret, generateBotKeySecret, BOT_SCOPES, parseScope } from "@/lib/auth/botKey";
+import { BOT_SCOPES, parseScope } from "@/lib/auth/botKey";
+import { ClaimError, performClaim } from "@/lib/auth/claimBot";
 import { BotWalletRole } from "@prisma/client";
 
 function requireSessionAddress(ctx: unknown): string {
@@ -12,31 +13,6 @@ function requireSessionAddress(ctx: unknown): string {
 }
 
 export const botRouter = createTRPCRouter({
-  createBotKey: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().min(1).max(256),
-        scope: z.array(z.enum(BOT_SCOPES as unknown as [string, ...string[]])).min(1),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const ownerAddress = requireSessionAddress(ctx);
-      const secret = generateBotKeySecret();
-      const keyHash = hashBotKeySecret(secret);
-      const scopeJson = JSON.stringify(input.scope);
-
-      const botKey = await ctx.db.botKey.create({
-        data: {
-          ownerAddress,
-          name: input.name,
-          keyHash,
-          scope: scopeJson,
-        },
-      });
-
-      return { botKeyId: botKey.id, secret, name: botKey.name };
-    }),
-
   listBotKeys: protectedProcedure.input(z.object({})).query(async ({ ctx }) => {
     const ownerAddress = requireSessionAddress(ctx);
     const botKeys = await ctx.db.botKey.findMany({
@@ -161,5 +137,66 @@ export const botRouter = createTRPCRouter({
       return ctx.db.walletBotAccess.findMany({
         where: { walletId: input.walletId },
       });
+    }),
+
+  lookupPendingBot: protectedProcedure
+    .input(z.object({ pendingBotId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const pendingBot = await ctx.db.pendingBot.findUnique({
+        where: { id: input.pendingBotId },
+      });
+
+      if (!pendingBot) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found or registration expired" });
+      }
+
+      if (pendingBot.expiresAt < new Date()) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot registration has expired" });
+      }
+
+      return {
+        name: pendingBot.name,
+        paymentAddress: pendingBot.paymentAddress,
+        requestedScopes: JSON.parse(pendingBot.requestedScopes) as string[],
+        status: pendingBot.status,
+      };
+    }),
+
+  claimBot: protectedProcedure
+    .input(
+      z.object({
+        pendingBotId: z.string().min(1),
+        claimCode: z.string().min(24),
+        approvedScopes: z.array(z.enum(BOT_SCOPES as unknown as [string, ...string[]])),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const ownerAddress = requireSessionAddress(ctx);
+
+      try {
+        return await ctx.db.$transaction(async (tx) => {
+          return performClaim(tx, {
+            pendingBotId: input.pendingBotId,
+            claimCode: input.claimCode,
+            approvedScopes: input.approvedScopes,
+            ownerAddress,
+          });
+        });
+      } catch (err) {
+        if (err instanceof ClaimError) {
+          const codeMap: Record<string, "NOT_FOUND" | "CONFLICT" | "BAD_REQUEST"> = {
+            bot_not_found: "NOT_FOUND",
+            bot_already_claimed: "CONFLICT",
+            invalid_or_expired_claim_code: "CONFLICT",
+            claim_locked_out: "CONFLICT",
+            invalid_claim_payload: "BAD_REQUEST",
+          };
+          throw new TRPCError({
+            code: codeMap[err.code] ?? "INTERNAL_SERVER_ERROR",
+            message: err.code,
+          });
+        }
+        throw err;
+      }
     }),
 });
