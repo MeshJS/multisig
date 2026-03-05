@@ -4,6 +4,8 @@
  * Used by Cursor agent and local scripts to test bot flows.
  *
  * Usage:
+ *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","paymentAddress":"addr1_..."}' npx tsx bot-client.ts register "Reference Bot" multisig:read
+ *   BOT_CONFIG='{"baseUrl":"http://localhost:3000"}' npx tsx bot-client.ts pickup <pendingBotId>
  *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","botKeyId":"...","secret":"...","paymentAddress":"addr1_..."}' npx tsx bot-client.ts auth
  *   npx tsx bot-client.ts walletIds
  *   npx tsx bot-client.ts pendingTransactions <walletId>
@@ -11,16 +13,20 @@
 
 export type BotConfig = {
   baseUrl: string;
-  botKeyId: string;
-  secret: string;
-  paymentAddress: string;
+  botKeyId?: string;
+  secret?: string;
+  paymentAddress?: string;
 };
 
 export async function loadConfig(): Promise<BotConfig> {
   const fromEnv = process.env.BOT_CONFIG;
   if (fromEnv) {
     try {
-      return JSON.parse(fromEnv) as BotConfig;
+      const parsed = JSON.parse(fromEnv) as BotConfig;
+      if (!parsed.baseUrl || typeof parsed.baseUrl !== "string") {
+        throw new Error("baseUrl is required in config");
+      }
+      return parsed;
     } catch (e) {
       throw new Error("BOT_CONFIG is invalid JSON: " + (e as Error).message);
     }
@@ -31,7 +37,11 @@ export async function loadConfig(): Promise<BotConfig> {
   const fullPath = path.startsWith("/") ? path : join(process.cwd(), path);
   try {
     const raw = readFileSync(fullPath, "utf8");
-    return JSON.parse(raw) as BotConfig;
+    const parsed = JSON.parse(raw) as BotConfig;
+    if (!parsed.baseUrl || typeof parsed.baseUrl !== "string") {
+      throw new Error("baseUrl is required in config");
+    }
+    return parsed;
   } catch (e) {
     throw new Error(`Failed to load config from ${path}: ${(e as Error).message}`);
   }
@@ -43,6 +53,9 @@ function ensureSlash(url: string): string {
 
 /** Authenticate with bot key + payment address; returns JWT. */
 export async function botAuth(config: BotConfig): Promise<{ token: string; botId: string }> {
+  if (!config.botKeyId || !config.secret || !config.paymentAddress) {
+    throw new Error("auth requires botKeyId, secret, and paymentAddress in config");
+  }
   const base = ensureSlash(config.baseUrl);
   const res = await fetch(`${base}/api/v1/botAuth`, {
     method: "POST",
@@ -59,6 +72,45 @@ export async function botAuth(config: BotConfig): Promise<{ token: string; botId
   }
   const data = (await res.json()) as { token: string; botId: string };
   return { token: data.token, botId: data.botId };
+}
+
+/** Register a pending bot and receive a claim code for human claim in UI. */
+export async function registerBot(
+  baseUrl: string,
+  body: {
+    name: string;
+    paymentAddress: string;
+    requestedScopes: string[];
+    stakeAddress?: string;
+  },
+): Promise<{ pendingBotId: string; claimCode: string; claimExpiresAt: string }> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetch(`${base}/api/v1/botRegister`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`botRegister failed ${res.status}: ${text}`);
+  }
+  return (await res.json()) as { pendingBotId: string; claimCode: string; claimExpiresAt: string };
+}
+
+/** Pickup claimed bot credentials once human claim is complete. */
+export async function pickupBotSecret(
+  baseUrl: string,
+  pendingBotId: string,
+): Promise<{ botKeyId: string; secret: string; paymentAddress: string }> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetch(
+    `${base}/api/v1/botPickupSecret?pendingBotId=${encodeURIComponent(pendingBotId)}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`botPickupSecret failed ${res.status}: ${text}`);
+  }
+  return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string };
 }
 
 /** Get wallet IDs for the bot (requires prior auth; pass JWT). */
@@ -190,8 +242,10 @@ async function main() {
   const config = await loadConfig();
   const cmd = process.argv[2];
   if (!cmd) {
-    console.error("Usage: bot-client.ts <auth|walletIds|pendingTransactions|freeUtxos|ownerInfo|createWallet> [args]");
-    console.error("  auth                 - register/login and print token");
+    console.error("Usage: bot-client.ts <register|pickup|auth|walletIds|pendingTransactions|freeUtxos|botMe|ownerInfo|createWallet> [args]");
+    console.error("  register <name> [scope1,scope2,...] [paymentAddress] - create pending bot + claim code");
+    console.error("  pickup <pendingBotId> - pickup botKeyId + secret after human claim");
+    console.error("  auth                 - authenticate and print token");
     console.error("  walletIds            - list wallet IDs (requires auth first; set BOT_TOKEN)");
     console.error("  pendingTransactions <walletId>");
     console.error("  freeUtxos <walletId>");
@@ -202,9 +256,56 @@ async function main() {
     process.exit(1);
   }
 
+  if (cmd === "register") {
+    const name = process.argv[3];
+    const scopesArg = process.argv[4] ?? "multisig:read";
+    const paymentAddress = process.argv[5] ?? config.paymentAddress;
+
+    if (!name) {
+      console.error("Usage: bot-client.ts register <name> [scope1,scope2,...] [paymentAddress]");
+      process.exit(1);
+    }
+
+    if (!paymentAddress) {
+      console.error("paymentAddress is required for register (arg or config).");
+      process.exit(1);
+    }
+
+    const requestedScopes = scopesArg
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (requestedScopes.length === 0) {
+      console.error("At least one scope is required for register.");
+      process.exit(1);
+    }
+
+    const result = await registerBot(config.baseUrl, {
+      name,
+      paymentAddress,
+      requestedScopes,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    console.error("Human must now claim this bot in UI using pendingBotId + claimCode.");
+    return;
+  }
+
+  if (cmd === "pickup") {
+    const pendingBotId = process.argv[3];
+    if (!pendingBotId) {
+      console.error("Usage: bot-client.ts pickup <pendingBotId>");
+      process.exit(1);
+    }
+    const creds = await pickupBotSecret(config.baseUrl, pendingBotId);
+    console.log(JSON.stringify(creds, null, 2));
+    console.error("Store botKeyId + secret in config, then run 'auth'.");
+    return;
+  }
+
   if (cmd === "auth") {
-    if (!config.paymentAddress) {
-      console.error("paymentAddress is required in config for auth.");
+    if (!config.paymentAddress || !config.botKeyId || !config.secret) {
+      console.error("auth requires paymentAddress, botKeyId, and secret in config.");
       process.exit(1);
     }
     const { token, botId } = await botAuth(config);
