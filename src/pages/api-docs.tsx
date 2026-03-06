@@ -26,11 +26,24 @@ export default function ApiDocs() {
     setGeneratedToken(null); // Clear previous token
     setCopied(false); // Reset copy state
     try {
-      // Get the wallet address - try used addresses first, fall back to unused
+      // Resolve a stable active payment address.
+      // Prefer change address, then used, then unused.
       let address: string | undefined;
       try {
-        const usedAddresses = await wallet.getUsedAddresses();
-        address = usedAddresses[0];
+        if (typeof (wallet as any).getChangeAddress === "function") {
+          address = await (wallet as any).getChangeAddress();
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("account changed")) {
+          throw error;
+        }
+      }
+
+      try {
+        if (!address) {
+          const usedAddresses = await wallet.getUsedAddresses();
+          address = usedAddresses[0];
+        }
       } catch (error) {
         if (error instanceof Error && error.message.includes("account changed")) {
           throw error;

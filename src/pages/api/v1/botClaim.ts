@@ -5,6 +5,7 @@ import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 import { ClaimError, performClaim } from "@/lib/auth/claimBot";
+import { getWalletSessionFromReq } from "@/lib/auth/walletSession";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   addCorsCacheBustingHeaders(res);
@@ -42,7 +43,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: "unauthorized", message: "Bot tokens cannot claim bots" });
   }
 
-  const ownerAddress = jwt.address;
+  const walletSession = getWalletSessionFromReq(req);
+  const walletSessionAddress =
+    walletSession?.primaryWallet ?? (walletSession?.wallets?.[0] ?? null);
+  const ownerAddress = walletSessionAddress ?? jwt.address;
+
+  if (walletSessionAddress && walletSessionAddress !== jwt.address) {
+    console.warn("[v1/botClaim] Address source mismatch", {
+      jwtAddress: jwt.address,
+      walletSessionAddress,
+      selectedAddress: ownerAddress,
+    });
+  }
 
   // --- Validate input ---
 
