@@ -132,17 +132,17 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - Supports `atLeast` / `all` / `any` script types and optional external stake credential
 - **Request Body**:
   - `name`: string (required, 1–256 chars)
-  - `description`: string (optional)
+  - `description`: string (optional, truncated to 2000 chars)
   - `signersAddresses`: string[] (required, Cardano payment addresses)
-  - `signersDescriptions`: string[] (optional, same length as signersAddresses)
-  - `signersStakeKeys`: (string | null)[] (optional)
+  - `signersDescriptions`: string[] (optional; missing entries default to `""`)
+  - `signersStakeKeys`: (string | null)[] (optional; used only when `stakeCredentialHash` is not provided)
   - `signersDRepKeys`: (string | null)[] (optional)
-  - `numRequiredSigners`: number (optional, default 1; ignored for `all`/`any`)
+  - `numRequiredSigners`: number (optional, minimum 1, clamped to signer count, default 1; stored as `null` for `all`/`any`)
   - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
   - `stakeCredentialHash`: string (optional, external stake)
   - `network`: 0 | 1 (optional, default 1 = mainnet)
 - **Response**: `{ walletId, address, name }` (201)
-- **Error Handling**: 400 (validation), 401 (auth), 403 (not bot or insufficient scope), 429 (rate limit), 500 (server)
+- **Error Handling**: 400 (validation/script build), 401 (missing/invalid token or bot not found), 403 (not bot token or insufficient scope), 405 (method), 429 (rate limit), 500 (server)
 
 #### `governanceActiveProposals.ts` - GET `/api/v1/governanceActiveProposals`
 
@@ -279,6 +279,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `paymentAddress`: string (required)
   - `stakeAddress`: string (optional)
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
+  - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
 - **Response**: `{ pendingBotId, claimCode, claimExpiresAt }` (201)
 - **Error Handling**: 400 (validation), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
 
@@ -296,8 +297,9 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `pendingBotId`: string (required)
   - `claimCode`: string (required)
   - `approvedScopes`: string[] (optional; must be subset of requested scopes)
+  - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
 - **Response**: `{ botKeyId, botId, name, scopes }` (200)
-- **Error Handling**: 400 (validation), 401 (auth), 405 (method), 409 (invalid claim/already claimed/locked out), 500 (server)
+- **Error Handling**: 400 (validation), 401 (auth), 404 (not found/expired), 405 (method), 409 (invalid claim/already claimed/locked out), 429 (rate limit), 500 (server)
 
 #### `botPickupSecret.ts` - GET `/api/v1/botPickupSecret`
 
@@ -363,6 +365,14 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 2. **Signature Generation**: Client signs nonce with private key
 3. **Token Exchange**: Client exchanges signature for JWT token
 4. **API Access**: Client uses JWT token for authenticated requests
+
+### Bot Onboarding Flow
+
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
+3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
+5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs)
 
 ### Error Handling
 
