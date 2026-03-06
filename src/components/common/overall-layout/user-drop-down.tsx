@@ -137,7 +137,12 @@ export default function UserDropDown() {
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => {
+          onClick={async () => {
+            try {
+              await fetch("/api/auth/wallet-session", { method: "DELETE" });
+            } catch (error) {
+              console.error("[Logout] Failed to clear wallet session cookie:", error);
+            }
             disconnect();
             setPastWallet(undefined);
             router.push("/");

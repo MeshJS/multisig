@@ -26,6 +26,8 @@ import useUserWallets from "@/hooks/useUserWallets";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const READ_SCOPE = "multisig:read" as const;
+const BOT_WALLET_ROLES = ["observer", "cosigner"] as const;
+type BotWalletRole = (typeof BOT_WALLET_ROLES)[number];
 
 export default function BotManagementCard() {
   const { toast } = useToast();
@@ -52,6 +54,7 @@ export default function BotManagementCard() {
   } | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [selectedWalletByBot, setSelectedWalletByBot] = useState<Record<string, string>>({});
+  const [selectedRoleByBot, setSelectedRoleByBot] = useState<Record<string, BotWalletRole>>({});
 
   const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
   const { wallets: userWallets, isLoading: isLoadingWallets } = useUserWallets();
@@ -130,7 +133,8 @@ export default function BotManagementCard() {
 
   const grantBotAccess = api.bot.grantBotAccess.useMutation({
     onSuccess: () => {
-      toast({ title: "Wallet access granted", description: "Bot is now an observer on the selected multisig." });
+      toast({ title: "Wallet access saved", description: "Bot role was updated for the selected multisig." });
+      void utils.bot.listBotKeys.invalidate();
     },
     onError: (err) => {
       toast({
@@ -144,6 +148,7 @@ export default function BotManagementCard() {
   const revokeBotAccess = api.bot.revokeBotAccess.useMutation({
     onSuccess: () => {
       toast({ title: "Wallet access revoked" });
+      void utils.bot.listBotKeys.invalidate();
     },
     onError: (err) => {
       toast({
@@ -515,9 +520,24 @@ export default function BotManagementCard() {
                           <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
                         ) : (
                           <>
-                            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                            <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto_auto] sm:items-center">
+                              {(() => {
+                                const selectedWalletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? "";
+                                const currentAccess = key.botWalletAccesses?.find(
+                                  (access) => access.walletId === selectedWalletId,
+                                );
+                                const selectedWallet = userWallets.find((wallet) => wallet.id === selectedWalletId);
+                                const canBeCosigner = Boolean(
+                                  selectedWallet?.signersAddresses?.includes(botUser.paymentAddress),
+                                );
+                                const selectedRole = selectedRoleByBot[botUser.id] ?? currentAccess?.role ?? "observer";
+                                const effectiveSelectedRole =
+                                  selectedRole === "cosigner" && !canBeCosigner ? "observer" : selectedRole;
+
+                                return (
+                                  <>
                               <Select
-                                value={selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? ""}
+                                value={selectedWalletId}
                                 onValueChange={(value) =>
                                   setSelectedWalletByBot((prev) => ({ ...prev, [botUser.id]: value }))
                                 }
@@ -533,40 +553,84 @@ export default function BotManagementCard() {
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <Select
+                                value={effectiveSelectedRole}
+                                onValueChange={(value: BotWalletRole) =>
+                                  setSelectedRoleByBot((prev) => ({ ...prev, [botUser.id]: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {BOT_WALLET_ROLES.map((role) => (
+                                    <SelectItem
+                                      key={role}
+                                      value={role}
+                                      disabled={role === "cosigner" && !canBeCosigner}
+                                    >
+                                      {role}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  const walletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id;
+                                  const walletId = selectedWalletId;
                                   if (!walletId) return;
                                   grantBotAccess.mutate({
                                     walletId,
                                     botId: botUser.id,
-                                    role: "observer",
+                                    role: effectiveSelectedRole,
                                   });
                                 }}
-                                disabled={grantBotAccess.isPending}
+                                disabled={
+                                  grantBotAccess.isPending ||
+                                  !selectedWalletId ||
+                                  (!!currentAccess && currentAccess.role === effectiveSelectedRole)
+                                }
                               >
-                                {grantBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Grant observer"}
+                                {grantBotAccess.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : currentAccess ? (
+                                  currentAccess.role === effectiveSelectedRole ? "Role already set" : "Update role"
+                                ) : (
+                                  "Grant access"
+                                )}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => {
-                                  const walletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id;
+                                  const walletId = selectedWalletId;
                                   if (!walletId) return;
                                   revokeBotAccess.mutate({
                                     walletId,
                                     botId: botUser.id,
                                   });
                                 }}
-                                disabled={revokeBotAccess.isPending}
+                                disabled={revokeBotAccess.isPending || !selectedWalletId || !currentAccess}
                               >
                                 {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
                               </Button>
+                              <p className="text-xs text-muted-foreground sm:col-span-4">
+                                {currentAccess
+                                  ? `Current access on selected wallet: ${currentAccess.role}`
+                                  : "Current access on selected wallet: none"}
+                              </p>
+                              {!canBeCosigner && (
+                                <p className="text-xs text-amber-600 sm:col-span-4">
+                                  Cosigner is only available when the bot payment address is included in this wallet&apos;s signer list.
+                                </p>
+                              )}
+                            </>
+                                );
+                              })()}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              Grants read-only wallet access for this bot on the selected multisig.
+                              Select a wallet and role to grant or update bot access.
                             </p>
                           </>
                         )}

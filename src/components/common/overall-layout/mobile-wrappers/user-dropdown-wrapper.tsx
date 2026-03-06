@@ -173,6 +173,12 @@ export default function UserDropDownWrapper({
   }
 
   async function handleLogout() {
+    try {
+      await fetch("/api/auth/wallet-session", { method: "DELETE" });
+    } catch (error) {
+      console.error("[UserDropdown] Failed to clear wallet session cookie:", error);
+    }
+
     // Disconnect regular wallet if connected
     if (connected) {
       disconnect();

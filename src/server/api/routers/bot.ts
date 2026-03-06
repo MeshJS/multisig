@@ -1,28 +1,115 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { BOT_SCOPES, parseScope } from "@/lib/auth/botKey";
+import { BOT_SCOPES, parseScope, type BotScope } from "@/lib/auth/botKey";
 import { ClaimError, performClaim } from "@/lib/auth/claimBot";
 import { BotWalletRole } from "@prisma/client";
 
-function requireSessionAddress(ctx: unknown): string {
-  const c = ctx as { session?: { user?: { id?: string } } | null; sessionAddress?: string | null };
-  const address = c.session?.user?.id ?? c.sessionAddress;
+type SessionAddressContext = {
+  session?: { user?: { id?: string } } | null;
+  sessionAddress?: string | null;
+  primaryWallet?: string | null;
+  sessionWallets?: string[];
+};
+
+function requireSessionAddress(
+  ctx: unknown,
+  options?: {
+    // Prefer the most recently wallet-authorized address for wallet-bound operations.
+    preferWalletSession?: boolean;
+    requireWalletSession?: boolean;
+    logMismatchLabel?: string;
+  },
+): string {
+  const c = ctx as SessionAddressContext;
+  const nextAuthAddress = c.session?.user?.id ?? null;
+  const firstSessionWallet = Array.isArray(c.sessionWallets) ? c.sessionWallets[0] : undefined;
+  const walletSessionAddress = c.primaryWallet ?? firstSessionWallet ?? c.sessionAddress ?? null;
+
+  if (options?.requireWalletSession && !walletSessionAddress) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Please authorize your active wallet before claiming a bot",
+    });
+  }
+
+  const address = options?.preferWalletSession
+    ? (walletSessionAddress ?? nextAuthAddress)
+    : (nextAuthAddress ?? walletSessionAddress);
+
+  if (
+    options?.logMismatchLabel &&
+    nextAuthAddress &&
+    walletSessionAddress &&
+    nextAuthAddress !== walletSessionAddress
+  ) {
+    console.warn(`[bot.${options.logMismatchLabel}] Address source mismatch`, {
+      nextAuthAddress,
+      walletSessionAddress,
+      selectedAddress: address,
+    });
+  }
+
   if (!address) throw new TRPCError({ code: "UNAUTHORIZED" });
   return address;
 }
 
 export const botRouter = createTRPCRouter({
   listBotKeys: protectedProcedure.input(z.object({})).query(async ({ ctx }) => {
-    const ownerAddress = requireSessionAddress(ctx);
+    const ownerAddress = requireSessionAddress(ctx, { preferWalletSession: true });
+    const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+    const allRequesters = Array.from(new Set([ownerAddress, ...sessionWallets]));
+
     const botKeys = await ctx.db.botKey.findMany({
       where: { ownerAddress },
       include: { botUser: true },
       orderBy: { createdAt: "desc" },
     });
+
+    const botIds = botKeys.map((botKey) => botKey.botUser?.id).filter((id): id is string => Boolean(id));
+
+    if (botIds.length === 0) {
+      return botKeys.map((botKey) => ({
+        ...botKey,
+        scopes: parseScope(botKey.scope),
+        botWalletAccesses: [],
+      }));
+    }
+
+    const ownedWallets = await ctx.db.wallet.findMany({
+      where: {
+        ownerAddress: {
+          in: [...allRequesters, "all"],
+        },
+      },
+      select: { id: true },
+    });
+
+    const walletIds = ownedWallets.map((wallet) => wallet.id);
+    const walletAccesses = walletIds.length
+      ? await ctx.db.walletBotAccess.findMany({
+        where: {
+          walletId: { in: walletIds },
+          botId: { in: botIds },
+        },
+        select: {
+          walletId: true,
+          botId: true,
+          role: true,
+        },
+      })
+      : [];
+
+    const accessByBotId = walletAccesses.reduce<Record<string, typeof walletAccesses>>((acc, access) => {
+      const existing = acc[access.botId] ?? [];
+      acc[access.botId] = [...existing, access];
+      return acc;
+    }, {});
+
     return botKeys.map((botKey) => ({
       ...botKey,
       scopes: parseScope(botKey.scope),
+      botWalletAccesses: botKey.botUser ? (accessByBotId[botKey.botUser.id] ?? []) : [],
     }));
   }),
 
@@ -34,7 +121,7 @@ export const botRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const ownerAddress = requireSessionAddress(ctx);
+      const ownerAddress = requireSessionAddress(ctx, { preferWalletSession: true });
       const botKey = await ctx.db.botKey.findUnique({ where: { id: input.botKeyId } });
       if (!botKey) throw new TRPCError({ code: "NOT_FOUND", message: "Bot key not found" });
       if (botKey.ownerAddress !== ownerAddress) {
@@ -50,7 +137,7 @@ export const botRouter = createTRPCRouter({
   revokeBotKey: protectedProcedure
     .input(z.object({ botKeyId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const ownerAddress = requireSessionAddress(ctx);
+      const ownerAddress = requireSessionAddress(ctx, { preferWalletSession: true });
       const botKey = await ctx.db.botKey.findUnique({ where: { id: input.botKeyId } });
       if (!botKey) throw new TRPCError({ code: "NOT_FOUND", message: "Bot key not found" });
       if (botKey.ownerAddress !== ownerAddress) {
@@ -69,7 +156,7 @@ export const botRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const requester = requireSessionAddress(ctx);
+      const requester = requireSessionAddress(ctx, { preferWalletSession: true });
       const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
       const allRequesters = [requester, ...sessionWallets];
 
@@ -85,6 +172,16 @@ export const botRouter = createTRPCRouter({
 
       const botUser = await ctx.db.botUser.findUnique({ where: { id: input.botId } });
       if (!botUser) throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+
+      if (
+        input.role === BotWalletRole.cosigner &&
+        !wallet.signersAddresses.includes(botUser.paymentAddress)
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bot payment address must be in wallet signer list to grant cosigner role",
+        });
+      }
 
       await ctx.db.walletBotAccess.upsert({
         where: {
@@ -103,7 +200,7 @@ export const botRouter = createTRPCRouter({
   revokeBotAccess: protectedProcedure
     .input(z.object({ walletId: z.string(), botId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const requester = requireSessionAddress(ctx);
+      const requester = requireSessionAddress(ctx, { preferWalletSession: true });
       const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
       const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -123,7 +220,7 @@ export const botRouter = createTRPCRouter({
   listWalletBotAccess: protectedProcedure
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const requester = requireSessionAddress(ctx);
+      const requester = requireSessionAddress(ctx, { preferWalletSession: true });
       const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
       const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -171,14 +268,18 @@ export const botRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const ownerAddress = requireSessionAddress(ctx);
+      const ownerAddress = requireSessionAddress(ctx, {
+        preferWalletSession: true,
+        requireWalletSession: true,
+        logMismatchLabel: "claimBot",
+      });
 
       try {
         return await ctx.db.$transaction(async (tx) => {
           return performClaim(tx, {
             pendingBotId: input.pendingBotId,
             claimCode: input.claimCode,
-            approvedScopes: input.approvedScopes,
+            approvedScopes: input.approvedScopes as BotScope[],
             ownerAddress,
           });
         });

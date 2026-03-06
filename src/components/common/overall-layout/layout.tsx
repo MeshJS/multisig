@@ -412,9 +412,11 @@ export default function RootLayout({
     if (walletSessionData !== undefined) {
       setHasCheckedSession(true); // Mark as checked to prevent duplicate checks
       const hasSession = walletSessionData.authorized ?? false;
-      
-      if (!hasSession) {
-        // Wallet is connected but doesn't have a session - show authorization modal
+      const isPrimary = walletSessionData.isPrimary ?? false;
+
+      if (!hasSession || !isPrimary) {
+        // Wallet is connected but either missing a session or not the active primary session wallet.
+        // Re-authorize to make the currently connected wallet the primary identity.
         setCheckingSession(true);
         setShowAuthModal(true);
       }
