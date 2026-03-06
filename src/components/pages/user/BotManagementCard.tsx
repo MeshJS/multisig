@@ -22,6 +22,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 import { Badge } from "@/components/ui/badge";
+import useUserWallets from "@/hooks/useUserWallets";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const READ_SCOPE = "multisig:read" as const;
 
@@ -49,8 +51,10 @@ export default function BotManagementCard() {
     scopes: BotScope[];
   } | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [selectedWalletByBot, setSelectedWalletByBot] = useState<Record<string, string>>({});
 
   const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
+  const { wallets: userWallets, isLoading: isLoadingWallets } = useUserWallets();
   const editingBotKey = botKeys?.find((key) => key.id === editingBotKeyId) ?? null;
   const utils = api.useUtils();
 
@@ -119,6 +123,32 @@ export default function BotManagementCard() {
       toast({
         title: "Claim failed",
         description: messages[err.message] ?? err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const grantBotAccess = api.bot.grantBotAccess.useMutation({
+    onSuccess: () => {
+      toast({ title: "Wallet access granted", description: "Bot is now an observer on the selected multisig." });
+    },
+    onError: (err) => {
+      toast({
+        title: "Grant failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const revokeBotAccess = api.bot.revokeBotAccess.useMutation({
+    onSuccess: () => {
+      toast({ title: "Wallet access revoked" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Revoke failed",
+        description: err.message,
         variant: "destructive",
       });
     },
@@ -464,16 +494,86 @@ export default function BotManagementCard() {
                     )}
                   </div>
                   {key.botUser ? (
+                    (() => {
+                      const botUser = key.botUser;
+                      return (
                     <>
                       <RowLabelInfo
                         label="Bot address"
-                        value={getFirstAndLast(key.botUser.paymentAddress, 12, 8)}
-                        copyString={key.botUser.paymentAddress}
+                        value={getFirstAndLast(botUser.paymentAddress, 12, 8)}
+                        copyString={botUser.paymentAddress}
                       />
-                      {key.botUser.displayName && (
-                        <RowLabelInfo label="Display name" value={key.botUser.displayName} />
+                      {botUser.displayName && (
+                        <RowLabelInfo label="Display name" value={botUser.displayName} />
                       )}
+
+                      <div className="mt-2 space-y-2 rounded-md border p-2">
+                        <p className="text-xs font-medium text-muted-foreground">Wallet access</p>
+                        {isLoadingWallets ? (
+                          <p className="text-xs text-muted-foreground">Loading multisigs...</p>
+                        ) : !userWallets?.length ? (
+                          <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
+                        ) : (
+                          <>
+                            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                              <Select
+                                value={selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? ""}
+                                onValueChange={(value) =>
+                                  setSelectedWalletByBot((prev) => ({ ...prev, [botUser.id]: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select multisig wallet" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {userWallets.map((wallet) => (
+                                    <SelectItem key={wallet.id} value={wallet.id}>
+                                      {wallet.name || getFirstAndLast(wallet.id, 8, 6)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const walletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id;
+                                  if (!walletId) return;
+                                  grantBotAccess.mutate({
+                                    walletId,
+                                    botId: botUser.id,
+                                    role: "observer",
+                                  });
+                                }}
+                                disabled={grantBotAccess.isPending}
+                              >
+                                {grantBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Grant observer"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const walletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id;
+                                  if (!walletId) return;
+                                  revokeBotAccess.mutate({
+                                    walletId,
+                                    botId: botUser.id,
+                                  });
+                                }}
+                                disabled={revokeBotAccess.isPending}
+                              >
+                                {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Grants read-only wallet access for this bot on the selected multisig.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </>
+                      );
+                    })()
                   ) : (
                     <p className="text-xs text-muted-foreground">Not registered yet. Use botAuth with this key to register the bot wallet.</p>
                   )}
