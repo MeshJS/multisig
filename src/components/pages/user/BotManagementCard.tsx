@@ -24,6 +24,7 @@ import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 import { Badge } from "@/components/ui/badge";
 import useUserWallets from "@/hooks/useUserWallets";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useUserStore } from "@/lib/zustand/user";
 
 const READ_SCOPE = "multisig:read" as const;
 const BOT_WALLET_ROLES = ["observer", "cosigner"] as const;
@@ -55,8 +56,12 @@ export default function BotManagementCard() {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [selectedWalletByBot, setSelectedWalletByBot] = useState<Record<string, string>>({});
   const [selectedRoleByBot, setSelectedRoleByBot] = useState<Record<string, BotWalletRole>>({});
+  const userAddress = useUserStore((state) => state.userAddress);
 
-  const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
+  const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery(
+    { requesterAddress: userAddress ?? "" },
+    { enabled: !!userAddress },
+  );
   const { wallets: userWallets, isLoading: isLoadingWallets } = useUserWallets();
   const editingBotKey = botKeys?.find((key) => key.id === editingBotKeyId) ?? null;
   const utils = api.useUtils();
@@ -194,7 +199,12 @@ export default function BotManagementCard() {
 
   const handleSaveScopes = () => {
     if (!editingBotKeyId || editScopes.length === 0) return;
-    updateBotKeyScopes.mutate({ botKeyId: editingBotKeyId, scope: editScopes });
+    if (!userAddress) return;
+    updateBotKeyScopes.mutate({
+      botKeyId: editingBotKeyId,
+      requesterAddress: userAddress,
+      scope: editScopes,
+    });
   };
 
   const toggleEditScope = (scope: BotScope) => {
@@ -334,14 +344,16 @@ export default function BotManagementCard() {
                     Back
                   </Button>
                   <Button
-                    onClick={() =>
+                    onClick={() => {
+                      if (!userAddress) return;
                       claimBot.mutate({
+                        requesterAddress: userAddress,
                         pendingBotId: pendingBotId.trim(),
                         claimCode: claimCode.trim(),
                         approvedScopes,
-                      })
-                    }
-                    disabled={claimBot.isPending || approvedScopes.length === 0}
+                      });
+                    }}
+                    disabled={claimBot.isPending || approvedScopes.length === 0 || !userAddress}
                   >
                     {claimBot.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Claim bot"}
                   </Button>
@@ -470,10 +482,11 @@ export default function BotManagementCard() {
                         className="text-destructive hover:text-destructive"
                         onClick={() => {
                           if (confirm("Revoke this bot? The bot will no longer be able to authenticate.")) {
-                            revokeBotKey.mutate({ botKeyId: key.id });
+                            if (!userAddress) return;
+                            revokeBotKey.mutate({ botKeyId: key.id, requesterAddress: userAddress });
                           }
                         }}
-                        disabled={revokeBotKey.isPending}
+                        disabled={revokeBotKey.isPending || !userAddress}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -579,8 +592,9 @@ export default function BotManagementCard() {
                                 variant="outline"
                                 onClick={() => {
                                   const walletId = selectedWalletId;
-                                  if (!walletId) return;
+                                  if (!walletId || !userAddress) return;
                                   grantBotAccess.mutate({
+                                    requesterAddress: userAddress,
                                     walletId,
                                     botId: botUser.id,
                                     role: effectiveSelectedRole,
@@ -588,6 +602,7 @@ export default function BotManagementCard() {
                                 }}
                                 disabled={
                                   grantBotAccess.isPending ||
+                                  !userAddress ||
                                   !selectedWalletId ||
                                   (!!currentAccess && currentAccess.role === effectiveSelectedRole)
                                 }
@@ -605,13 +620,14 @@ export default function BotManagementCard() {
                                 variant="ghost"
                                 onClick={() => {
                                   const walletId = selectedWalletId;
-                                  if (!walletId) return;
+                                  if (!walletId || !userAddress) return;
                                   revokeBotAccess.mutate({
+                                    requesterAddress: userAddress,
                                     walletId,
                                     botId: botUser.id,
                                   });
                                 }}
-                                disabled={revokeBotAccess.isPending || !selectedWalletId || !currentAccess}
+                                disabled={revokeBotAccess.isPending || !userAddress || !selectedWalletId || !currentAccess}
                               >
                                 {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
                               </Button>
