@@ -8,16 +8,12 @@ export const authRouter = createTRPCRouter({
       // Use wallet-session data already decoded into the tRPC context
       const wallets: string[] = (ctx as any).sessionWallets ?? [];
       const authorized = wallets.includes(input.address);
-      const primaryWallet = (ctx as any).primaryWallet ?? null;
-      const isPrimary = primaryWallet === input.address;
 
       return {
         authorized,
         wallets,
-        primaryWallet,
-        isPrimary,
+        primaryWallet: (ctx as any).primaryWallet ?? null,
       };
     }),
 });
-
 

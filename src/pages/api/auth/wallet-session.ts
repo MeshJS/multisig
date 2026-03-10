@@ -6,7 +6,6 @@ import { checkSignature } from "@meshsdk/core-cst";
 import {
   getWalletSessionFromReq,
   setWalletSessionCookie,
-  clearWalletSessionCookie,
   type WalletSessionPayload,
 } from "@/lib/auth/walletSession";
 
@@ -16,11 +15,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
-  }
-
-  if (req.method === "DELETE") {
-    clearWalletSessionCookie(res);
-    return res.status(200).json({ ok: true });
   }
 
   if (req.method !== "POST") {
@@ -79,5 +73,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
-
 
