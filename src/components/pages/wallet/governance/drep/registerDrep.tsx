@@ -1,7 +1,6 @@
 import { Plus } from "lucide-react";
 import { useState, useCallback } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
@@ -14,7 +13,6 @@ import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
-import { getProvider } from "@/utils/get-provider";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/utils/api";
@@ -33,8 +31,7 @@ interface RegisterDRepProps {
 
 export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   const { appWallet } = useAppWallet();
-  const { connected, wallet } = useWallet();
-  const { isAnyWalletConnected, isWalletReady } = useActiveWallet();
+  const { activeWallet } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
@@ -95,16 +92,6 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       });
       throw new Error(errorMessage);
     }
-    if (!multisigWallet) {
-      const errorMessage = "Multisig wallet not connected. Please ensure your multisig wallet is properly configured.";
-      toast({
-        title: "Multisig Wallet Not Connected",
-        description: errorMessage,
-        variant: "destructive",
-        duration: 5000,
-      });
-      throw new Error(errorMessage);
-    }
     // Get metadata with both compacted (for upload) and normalized (for hashing) forms
     const metadataResult = await getDRepMetadata(
       formState,
@@ -133,8 +120,8 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   }
 
   async function registerDrep(): Promise<void> {
-    if (!isWalletReady || !userAddress || !multisigWallet || !appWallet) {
-      const errorMessage = "Multisig wallet not connected. Please ensure your wallet is connected and try again.";
+    if (!activeWallet || !userAddress || !appWallet) {
+      const errorMessage = "Wallet not connected. Please ensure your wallet is connected and try again.";
       toast({
         title: "Wallet Not Connected",
         description: errorMessage,
@@ -263,8 +250,13 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   }
 
   async function registerProxyDrep(): Promise<void> {
-    if (!isWalletReady || !userAddress || !multisigWallet || !appWallet) {
-      const errorMessage = "Multisig wallet not connected. Please ensure your wallet is connected and try again.";
+    if (!hasValidProxy) {
+      // Fall back to standard registration if no valid proxy
+      return registerDrep();
+    }
+
+    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
+      const errorMessage = "Proxy registration requires both connected wallet signer and multisig wallet configuration.";
       toast({
         title: "Wallet Not Connected",
         description: errorMessage,
@@ -272,11 +264,6 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
         duration: 5000,
       });
       throw new Error(errorMessage);
-    }
-
-    if (!hasValidProxy) {
-      // Fall back to standard registration if no valid proxy
-      return registerDrep();
     }
 
     setLoading(true);
@@ -298,7 +285,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
