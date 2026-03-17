@@ -221,3 +221,39 @@ model WalletBotAccess {
   @@index([walletId])
   @@index([botId])
 }
+
+enum PendingBotStatus {
+  UNCLAIMED
+  CLAIMED
+}
+
+model PendingBot {
+  id              String           @id @default(cuid())
+  name            String
+  paymentAddress  String
+  stakeAddress    String?
+  requestedScopes String           // JSON array of requested scopes
+  status          PendingBotStatus @default(UNCLAIMED)
+  claimedBy       String?          // ownerAddress of the claiming human
+  secretCipher    String?          // Encrypted secret (set on claim, cleared on pickup)
+  pickedUp        Boolean          @default(false)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  claimToken      BotClaimToken?
+
+  @@index([paymentAddress])
+  @@index([expiresAt])
+}
+
+model BotClaimToken {
+  id           String     @id @default(cuid())
+  pendingBotId String     @unique
+  pendingBot   PendingBot @relation(fields: [pendingBotId], references: [id], onDelete: Cascade)
+  tokenHash    String     // SHA-256 hash of the claim code
+  attempts     Int        @default(0)
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([tokenHash])
+}

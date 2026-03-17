@@ -4,7 +4,6 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useTransaction from "@/hooks/useTransaction";
@@ -15,10 +14,11 @@ import { api } from "@/utils/api";
 import { useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DREP_DEPOSIT_STRING } from "@/utils/protocol-deposit-constants";
+import useActiveWallet from "@/hooks/useActiveWallet";
 
 export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
-  const { wallet, connected } = useWallet();
+  const { activeWallet } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const { newTransaction } = useTransaction();
@@ -53,17 +53,18 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
   }, [multisigWallet?.getScript().address, manualUtxos]);
 
   async function retireProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !multisigWallet || !appWallet) {
-      toast({
-        title: "Connection Error",
-        description: "Multisig wallet not connected",
-        variant: "destructive",
-      });
-      return;
-    }
     if (!hasValidProxy) {
       // Fall back to standard retire if no valid proxy
       return retireDrep();
+    }
+
+    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
+      toast({
+        title: "Connection Error",
+        description: "Proxy retirement requires both connected wallet signer and multisig wallet configuration.",
+        variant: "destructive",
+      });
+      return;
     }
 
     setLoading(true);
@@ -96,7 +97,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
@@ -127,7 +128,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
   }
 
   async function retireDrep() {
-    if (!connected) {
+    if (!activeWallet) {
       toast({
         title: "Connection Error",
         description: "Not connected to wallet",
@@ -143,15 +144,6 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       });
       return;
     }
-    if (!multisigWallet) {
-      toast({
-        title: "Wallet Error",
-        description: "Multisig Wallet could not be built",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoading(true);
 
     try {

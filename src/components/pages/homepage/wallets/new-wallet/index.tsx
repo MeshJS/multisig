@@ -164,7 +164,7 @@ export default function PageNewWallet() {
   );
 
   const { data: botKeys } = api.bot.listBotKeys.useQuery(
-    {},
+    { requesterAddress: userAddress ?? "" },
     { enabled: !!userAddress && !pathIsWalletInvite },
   );
   const botsWithAddress = (botKeys ?? []).filter(

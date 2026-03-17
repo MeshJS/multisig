@@ -1,6 +1,7 @@
 {
   "baseUrl": "http://localhost:3000",
-  "botKeyId": "",
-  "secret": "",
-  "paymentAddress": ""
+  "paymentAddress": "addr1_your_bot_payment_address_here",
+  "pendingBotId": "optional_pending_bot_id_from_register",
+  "botKeyId": "set_after_pickup",
+  "secret": "set_after_pickup"
 }

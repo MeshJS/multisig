@@ -4,19 +4,30 @@ Minimal client to test the multisig v1 bot API. Use it from the Cursor agent or 
 
 ## Config
 
-One JSON blob (from the "Create bot" UI or manually):
+Use config in two phases:
+
+1. Registration/claim phase (before credentials exist):
 
 ```json
 {
   "baseUrl": "http://localhost:3000",
-  "botKeyId": "<from Create bot>",
-  "secret": "<from Create bot, shown once>",
+  "paymentAddress": "<Cardano payment address for this bot>"
+}
+```
+
+2. Authenticated phase (after pickup):
+
+```json
+{
+  "baseUrl": "http://localhost:3000",
+  "botKeyId": "<from GET /api/v1/botPickupSecret>",
+  "secret": "<from GET /api/v1/botPickupSecret>",
   "paymentAddress": "<Cardano payment address for this bot>"
 }
 ```
 
 - **baseUrl**: API base (e.g. `http://localhost:3000` for dev).
-- **botKeyId** / **secret**: From the Create bot dialog (copy the JSON blob, fill `paymentAddress`).
+- **botKeyId** / **secret**: Returned by `GET /api/v1/botPickupSecret` after a human claims the bot.
 - **paymentAddress**: The bot’s **own** Cardano payment address (a wallet the bot controls, not the owner’s address). One bot, one address. Required for `auth` and for all authenticated calls.
 
 Provide config in one of these ways:
@@ -36,7 +47,29 @@ cd scripts/bot-ref
 npm install
 ```
 
-### 1. Register / get token
+### 1. Register -> claim -> pickup -> auth
+
+1. Bot self-registers and receives a claim code:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/v1/botRegister \
+   -H "Content-Type: application/json" \
+   -d '{"name":"Reference Bot","paymentAddress":"addr1_xxx","scopes":["multisig:read"]}'
+```
+
+Response includes `pendingBotId` and `claimCode`.
+
+2. Human claims the bot in the app by entering `pendingBotId` and `claimCode`.
+
+3. Bot picks up credentials:
+
+```bash
+curl -sS "http://localhost:3000/api/v1/botPickupSecret?pendingBotId=<pendingBotId>"
+```
+
+Response includes `botKeyId` and `secret`.
+
+4. Set config with `botKeyId`, `secret`, and `paymentAddress`, then authenticate to get a JWT:
 
 ```bash
 BOT_CONFIG='{"baseUrl":"http://localhost:3000","botKeyId":"YOUR_KEY","secret":"YOUR_SECRET","paymentAddress":"addr1_xxx"}' npx tsx bot-client.ts auth
@@ -77,7 +110,7 @@ npx tsx bot-client.ts freeUtxos <walletId>
 npx tsx bot-client.ts botMe
 ```
 
-Returns the bot’s own info: `botId`, `paymentAddress`, `displayName`, `botName`, **`ownerAddress`** (the address of the human who created the bot). No `paymentAddress` in config needed for this command.
+Returns the bot’s own info: `botId`, `paymentAddress`, `displayName`, `botName`, **`ownerAddress`** (the address of the human who claimed the bot). No `paymentAddress` in config needed for this command.
 
 ### 6. Owner info
 
@@ -111,13 +144,14 @@ From **repo root**: `npx tsx scripts/bot-ref/generate-bot-wallet.ts` — creates
 cd scripts/bot-ref && npx tsx create-wallet-us.ts
 ```
 
-Uses the owner’s address from `botMe` and the bot’s address from config. **The bot must have its own wallet and address** (not the same as the owner). Set `paymentAddress` in `bot-config.json` to the bot’s Cardano address, register it with POST /api/v1/botAuth, then run the script.
+Uses the owner’s address from `botMe` and the bot’s address from config. **The bot must have its own wallet and address** (not the same as the owner). Set `paymentAddress` in `bot-config.json` to the bot’s Cardano address, complete register -> claim -> pickup, then run `auth` and this script.
 
 ## Cursor agent testing
 
-1. Create a bot in the app (User page → Create bot). Copy the JSON blob and add the bot’s `paymentAddress`.
-2. Save as `scripts/bot-ref/bot-config.json` (or pass via `BOT_CONFIG`).
-3. Run auth and use the token:
+1. Self-register the bot (`POST /api/v1/botRegister`) and capture `pendingBotId` + `claimCode`.
+2. Claim it in the app using that ID/code (User page -> Claim a bot).
+3. Call `GET /api/v1/botPickupSecret?pendingBotId=...` and place `botKeyId` + `secret` in `scripts/bot-ref/bot-config.json` with the bot `paymentAddress`.
+4. Run auth and use the token:
 
 ```bash
 cd /path/to/multisig/scripts/bot-ref
@@ -130,7 +164,7 @@ The reference client only uses **bot-key auth** (POST /api/v1/botAuth). Wallet-b
 
 ## Governance bot flow
 
-For governance automation, grant these bot scopes when creating the bot key:
+For governance automation, request and approve these bot scopes during register/claim:
 
 - `governance:read` to call `GET /api/v1/governanceActiveProposals`
 - `ballot:write` to call `POST /api/v1/botBallotsUpsert`

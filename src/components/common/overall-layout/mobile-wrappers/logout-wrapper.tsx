@@ -17,6 +17,12 @@ export default function LogoutWrapper({ mode, onAction }: LogoutWrapperProps) {
   const setPastUtxosEnabled = useUserStore((state) => state.setPastUtxosEnabled);
 
   async function handleLogout() {
+    try {
+      await fetch("/api/auth/wallet-session", { method: "DELETE" });
+    } catch (error) {
+      console.error("[Logout] Failed to clear wallet session cookie:", error);
+    }
+
     // Disconnect regular wallet if connected
     if (connected) {
       disconnect();

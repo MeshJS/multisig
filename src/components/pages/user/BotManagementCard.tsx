@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Plus, Trash2, Copy, Loader2, Pencil } from "lucide-react";
+import { Bot, Trash2, Loader2, Pencil, Link } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
@@ -22,31 +22,49 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 import { Badge } from "@/components/ui/badge";
+import useUserWallets from "@/hooks/useUserWallets";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useUserStore } from "@/lib/zustand/user";
 
 const READ_SCOPE = "multisig:read" as const;
+const BOT_WALLET_ROLES = ["observer", "cosigner"] as const;
+type BotWalletRole = (typeof BOT_WALLET_ROLES)[number];
 
 export default function BotManagementCard() {
   const { toast } = useToast();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newScopes, setNewScopes] = useState<BotScope[]>([]);
-  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
-  const [createdBotKeyId, setCreatedBotKeyId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editingBotKeyId, setEditingBotKeyId] = useState<string | null>(null);
   const [editScopes, setEditScopes] = useState<BotScope[]>([]);
 
-  const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery({});
+  // Claim dialog state
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [claimStep, setClaimStep] = useState<"enterCode" | "review" | "success">("enterCode");
+  const [pendingBotId, setPendingBotId] = useState("");
+  const [claimCode, setClaimCode] = useState("");
+  const [pendingBotInfo, setPendingBotInfo] = useState<{
+    name: string;
+    paymentAddress: string;
+    requestedScopes: string[];
+  } | null>(null);
+  const [approvedScopes, setApprovedScopes] = useState<BotScope[]>([]);
+  const [claimResult, setClaimResult] = useState<{
+    botKeyId: string;
+    botId: string;
+    name: string;
+    scopes: BotScope[];
+  } | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [selectedWalletByBot, setSelectedWalletByBot] = useState<Record<string, string>>({});
+  const [selectedRoleByBot, setSelectedRoleByBot] = useState<Record<string, BotWalletRole>>({});
+  const userAddress = useUserStore((state) => state.userAddress);
+
+  const { data: botKeys, isLoading } = api.bot.listBotKeys.useQuery(
+    { requesterAddress: userAddress ?? "" },
+    { enabled: !!userAddress },
+  );
+  const { wallets: userWallets, isLoading: isLoadingWallets } = useUserWallets();
   const editingBotKey = botKeys?.find((key) => key.id === editingBotKeyId) ?? null;
   const utils = api.useUtils();
-
-  const handleCloseCreate = () => {
-    setCreateOpen(false);
-    setNewName("");
-    setNewScopes([]);
-    setCreatedSecret(null);
-    setCreatedBotKeyId(null);
-  };
 
   const handleCloseEdit = () => {
     setEditOpen(false);
@@ -54,25 +72,17 @@ export default function BotManagementCard() {
     setEditScopes([]);
   };
 
-  const createBotKey = api.bot.createBotKey.useMutation({
-    onSuccess: (data) => {
-      setCreatedSecret(data.secret);
-      setCreatedBotKeyId(data.botKeyId);
-      void utils.bot.listBotKeys.invalidate();
-      toast({
-        title: "Bot created",
-        description: "Copy the secret now; it will not be shown again.",
-        duration: 5000,
-      });
-    },
-    onError: (err) => {
-      toast({
-        title: "Error",
-        description: err.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const handleCloseClaim = () => {
+    setClaimOpen(false);
+    setClaimStep("enterCode");
+    setPendingBotId("");
+    setClaimCode("");
+    setPendingBotInfo(null);
+    setApprovedScopes([]);
+    setClaimResult(null);
+    setLookupError(null);
+  };
+
   const revokeBotKey = api.bot.revokeBotKey.useMutation({
     onSuccess: () => {
       toast({ title: "Bot revoked" });
@@ -101,34 +111,85 @@ export default function BotManagementCard() {
     },
   });
 
-  const handleCopy = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
+  const claimBot = api.bot.claimBot.useMutation({
+    onSuccess: (data) => {
+      setClaimResult(data);
+      setClaimStep("success");
+      void utils.bot.listBotKeys.invalidate();
       toast({
-        title: "Copied",
-        description: `${label} copied to clipboard`,
-        duration: 3000,
+        title: "Bot claimed",
+        description: `${data.name} is now linked to your account.`,
       });
-    } catch {
+    },
+    onError: (err) => {
+      const messages: Record<string, string> = {
+        bot_not_found: "Bot not found or registration expired.",
+        bot_already_claimed: "This bot has already been claimed.",
+        invalid_or_expired_claim_code: "Invalid or expired claim code.",
+        claim_locked_out: "Too many failed attempts. Ask the bot to re-register.",
+      };
       toast({
-        title: "Error",
-        description: "Failed to copy",
+        title: "Claim failed",
+        description: messages[err.message] ?? err.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const grantBotAccess = api.bot.grantBotAccess.useMutation({
+    onSuccess: () => {
+      toast({ title: "Wallet access saved", description: "Bot role was updated for the selected multisig." });
+      void utils.bot.listBotKeys.invalidate();
+    },
+    onError: (err) => {
+      toast({
+        title: "Grant failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const revokeBotAccess = api.bot.revokeBotAccess.useMutation({
+    onSuccess: () => {
+      toast({ title: "Wallet access revoked" });
+      void utils.bot.listBotKeys.invalidate();
+    },
+    onError: (err) => {
+      toast({
+        title: "Revoke failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLookupAndAdvance = async () => {
+    setLookupError(null);
+    try {
+      const info = await utils.bot.lookupPendingBot.fetch({ pendingBotId: pendingBotId.trim() });
+      if (info.status !== "UNCLAIMED") {
+        setLookupError("This bot has already been claimed.");
+        return;
+      }
+      setPendingBotInfo(info);
+      const validScopes = info.requestedScopes.filter(
+        (s): s is BotScope => BOT_SCOPES.includes(s as BotScope),
+      );
+      setApprovedScopes(validScopes);
+      setClaimStep("review");
+    } catch {
+      setLookupError("Bot not found or registration expired.");
     }
   };
 
-  const handleCreate = () => {
-    if (!newName.trim() || newScopes.length === 0) {
-      toast({
-        title: "Invalid input",
-        description: "Name and at least one scope required",
-        variant: "destructive",
-      });
-      return;
-    }
-    createBotKey.mutate({ name: newName.trim(), scope: newScopes });
+  const toggleClaimScope = (scope: BotScope) => {
+    setApprovedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
   };
+
+  const missingReadScopeInClaim = approvedScopes.length > 0 && !approvedScopes.includes(READ_SCOPE);
 
   const openEditDialog = (botKeyId: string, scopes: readonly BotScope[]) => {
     setEditingBotKeyId(botKeyId);
@@ -138,13 +199,12 @@ export default function BotManagementCard() {
 
   const handleSaveScopes = () => {
     if (!editingBotKeyId || editScopes.length === 0) return;
-    updateBotKeyScopes.mutate({ botKeyId: editingBotKeyId, scope: editScopes });
-  };
-
-  const toggleScope = (scope: BotScope) => {
-    setNewScopes((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
-    );
+    if (!userAddress) return;
+    updateBotKeyScopes.mutate({
+      botKeyId: editingBotKeyId,
+      requesterAddress: userAddress,
+      scope: editScopes,
+    });
   };
 
   const toggleEditScope = (scope: BotScope) => {
@@ -153,116 +213,191 @@ export default function BotManagementCard() {
     );
   };
 
-  const missingReadScopeInCreate = newScopes.length > 0 && !newScopes.includes(READ_SCOPE);
   const missingReadScopeInEdit = editScopes.length > 0 && !editScopes.includes(READ_SCOPE);
 
   return (
     <CardUI
       title="Bot accounts"
-      description="Create and manage bots for API access"
+      description="Claim and manage bots for API access"
       icon={Bot}
     >
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">Bots</span>
-          <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) handleCloseCreate(); }}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1">
-                <Plus className="h-4 w-4" />
-                Create bot
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create bot</DialogTitle>
-                <DialogDescription>
-                  Create a bot key. The secret is shown only once; store it securely.
-                </DialogDescription>
-              </DialogHeader>
-              {createdSecret && createdBotKeyId ? (
+          <Button
+            variant="default"
+            size="sm"
+            className="gap-1"
+            onClick={() => setClaimOpen(true)}
+          >
+            <Link className="h-4 w-4" />
+            Claim a bot
+          </Button>
+        </div>
+        <Dialog
+          open={claimOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseClaim();
+          }}
+        >
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            {claimStep === "enterCode" && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    Claim a bot
+                  </DialogTitle>
+                  <DialogDescription>
+                    Enter the bot ID and claim code from your bot&apos;s output.
+                  </DialogDescription>
+                </DialogHeader>
                 <div className="space-y-3">
-                  <p className="text-sm text-amber-600 font-medium">Copy the JSON blob now. The secret will not be shown again.</p>
-                  <p className="text-xs text-muted-foreground">
-                    Pass this to your bot (or save as <code className="rounded bg-muted px-1">bot-config.json</code>). Set <code className="rounded bg-muted px-1">paymentAddress</code> to the bot&apos;s Cardano address before calling POST /api/v1/botAuth.
-                  </p>
-                  <pre className="rounded border bg-muted p-3 text-xs font-mono overflow-x-auto max-h-28 overflow-y-auto break-all whitespace-pre-wrap">
-                    {JSON.stringify(
-                      { botKeyId: createdBotKeyId, secret: createdSecret, paymentAddress: "" },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2"
-                    onClick={() =>
-                      handleCopy(
-                        JSON.stringify({
-                          botKeyId: createdBotKeyId,
-                          secret: createdSecret,
-                          paymentAddress: "",
-                        }),
-                        "Bot config JSON",
-                      )
-                    }
-                  >
-                    <Copy className="h-4 w-4" />
-                    Copy JSON blob
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Then use POST /api/v1/botAuth with this JSON (with paymentAddress set). The bot can also sign in via getNonce + authSigner using that wallet. See <code className="rounded bg-muted px-1">scripts/bot-ref/</code> for a reference client.
-                  </p>
-                  <DialogFooter>
-                    <Button onClick={handleCloseCreate}>Done</Button>
-                  </DialogFooter>
-                </div>
-              ) : (
-                <>
                   <div className="space-y-2">
-                    <Label htmlFor="bot-name">Name</Label>
+                    <Label htmlFor="claim-bot-id">Bot ID</Label>
                     <Input
-                      id="bot-name"
-                      placeholder="My bot"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
+                      id="claim-bot-id"
+                      placeholder="clxyz..."
+                      value={pendingBotId}
+                      onChange={(e) => setPendingBotId(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Scopes</Label>
+                    <Label htmlFor="claim-code">Claim code</Label>
+                    <Input
+                      id="claim-code"
+                      placeholder="Paste from bot output"
+                      value={claimCode}
+                      onChange={(e) => setClaimCode(e.target.value)}
+                    />
+                  </div>
+                  {lookupError && (
+                    <p className="text-xs text-destructive">{lookupError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={handleCloseClaim}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleLookupAndAdvance}
+                    disabled={!pendingBotId.trim() || !claimCode.trim()}
+                  >
+                    Next
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+
+            {claimStep === "review" && pendingBotInfo && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Link className="h-4 w-4" />
+                    Claim a bot
+                  </DialogTitle>
+                  <DialogDescription>
+                    Review the bot&apos;s details and approve its requested permissions.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <RowLabelInfo label="Bot name" value={pendingBotInfo.name} />
+                    <RowLabelInfo
+                      label="Address"
+                      value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
+                      copyString={pendingBotInfo.paymentAddress}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Requested scopes</Label>
                     <div className="flex flex-col gap-2">
-                      {BOT_SCOPES.map((scope) => (
-                        <div key={scope} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`create-scope-${scope}`}
-                            checked={newScopes.includes(scope)}
-                            onCheckedChange={() => toggleScope(scope)}
-                          />
-                          <label htmlFor={`create-scope-${scope}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            {scope}
-                          </label>
-                        </div>
-                      ))}
+                      {BOT_SCOPES.map((scope) => {
+                        const requested = pendingBotInfo.requestedScopes.includes(scope);
+                        return (
+                          <div key={scope} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`claim-scope-${scope}`}
+                              checked={approvedScopes.includes(scope)}
+                              onCheckedChange={() => toggleClaimScope(scope)}
+                              disabled={!requested}
+                            />
+                            <label
+                              htmlFor={`claim-scope-${scope}`}
+                              className={`text-sm font-medium leading-none ${!requested ? "text-muted-foreground opacity-50" : ""}`}
+                            >
+                              {scope}
+                            </label>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {missingReadScopeInCreate && (
+                    {missingReadScopeInClaim && (
                       <p className="text-xs text-amber-600">
                         Warning: without <code className="rounded bg-muted px-1">multisig:read</code>, <code className="rounded bg-muted px-1">POST /api/v1/botAuth</code> authentication will fail for this bot key.
                       </p>
                     )}
                   </div>
-                  <DialogFooter>
-                    <Button
-                      onClick={handleCreate}
-                      disabled={createBotKey.isPending || !newName.trim() || newScopes.length === 0}
-                    >
-                      {createBotKey.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
-                    </Button>
-                  </DialogFooter>
-                </>
-              )}
-            </DialogContent>
-          </Dialog>
-        </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setClaimStep("enterCode")}>
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!userAddress) return;
+                      claimBot.mutate({
+                        requesterAddress: userAddress,
+                        pendingBotId: pendingBotId.trim(),
+                        claimCode: claimCode.trim(),
+                        approvedScopes,
+                      });
+                    }}
+                    disabled={claimBot.isPending || approvedScopes.length === 0 || !userAddress}
+                  >
+                    {claimBot.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Claim bot"}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+
+            {claimStep === "success" && claimResult && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Bot claimed successfully</DialogTitle>
+                  <DialogDescription>
+                    &ldquo;{claimResult.name}&rdquo; is now linked to your account. The bot will automatically pick up its credentials.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-1">
+                  <RowLabelInfo
+                    label="Bot ID"
+                    value={getFirstAndLast(claimResult.botId, 10, 8)}
+                    copyString={claimResult.botId}
+                  />
+                  <RowLabelInfo
+                    label="Key ID"
+                    value={getFirstAndLast(claimResult.botKeyId, 10, 8)}
+                    copyString={claimResult.botKeyId}
+                  />
+                  <div className="flex items-start gap-2">
+                    <span className="min-w-20 text-sm font-medium text-muted-foreground">Scopes</span>
+                    <div className="flex flex-wrap gap-1">
+                      {claimResult.scopes.map((scope) => (
+                        <Badge key={scope} variant="secondary">
+                          {scope}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleCloseClaim}>Done</Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
         <Dialog
           open={editOpen}
           onOpenChange={(open) => {
@@ -321,7 +456,7 @@ export default function BotManagementCard() {
             Loading bots…
           </div>
         ) : !botKeys?.length ? (
-          <p className="text-sm text-muted-foreground">No bots yet. Create one to allow API access with a bot key or wallet sign-in.</p>
+          <p className="text-sm text-muted-foreground">No bots yet. Register a bot and claim it to enable API access.</p>
         ) : (
           <ul className="space-y-3 max-h-[280px] overflow-y-auto">
             {botKeys.map((key) => {
@@ -347,10 +482,11 @@ export default function BotManagementCard() {
                         className="text-destructive hover:text-destructive"
                         onClick={() => {
                           if (confirm("Revoke this bot? The bot will no longer be able to authenticate.")) {
-                            revokeBotKey.mutate({ botKeyId: key.id });
+                            if (!userAddress) return;
+                            revokeBotKey.mutate({ botKeyId: key.id, requesterAddress: userAddress });
                           }
                         }}
-                        disabled={revokeBotKey.isPending}
+                        disabled={revokeBotKey.isPending || !userAddress}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -376,16 +512,148 @@ export default function BotManagementCard() {
                     )}
                   </div>
                   {key.botUser ? (
+                    (() => {
+                      const botUser = key.botUser;
+                      return (
                     <>
                       <RowLabelInfo
                         label="Bot address"
-                        value={getFirstAndLast(key.botUser.paymentAddress, 12, 8)}
-                        copyString={key.botUser.paymentAddress}
+                        value={getFirstAndLast(botUser.paymentAddress, 12, 8)}
+                        copyString={botUser.paymentAddress}
                       />
-                      {key.botUser.displayName && (
-                        <RowLabelInfo label="Display name" value={key.botUser.displayName} />
+                      {botUser.displayName && (
+                        <RowLabelInfo label="Display name" value={botUser.displayName} />
                       )}
+
+                      <div className="mt-2 space-y-2 rounded-md border p-2">
+                        <p className="text-xs font-medium text-muted-foreground">Wallet access</p>
+                        {isLoadingWallets ? (
+                          <p className="text-xs text-muted-foreground">Loading multisigs...</p>
+                        ) : !userWallets?.length ? (
+                          <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
+                        ) : (
+                          <>
+                            <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto_auto] sm:items-center">
+                              {(() => {
+                                const selectedWalletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? "";
+                                const currentAccess = key.botWalletAccesses?.find(
+                                  (access) => access.walletId === selectedWalletId,
+                                );
+                                const selectedWallet = userWallets.find((wallet) => wallet.id === selectedWalletId);
+                                const canBeCosigner = Boolean(
+                                  selectedWallet?.signersAddresses?.includes(botUser.paymentAddress),
+                                );
+                                const selectedRole = selectedRoleByBot[botUser.id] ?? currentAccess?.role ?? "observer";
+                                const effectiveSelectedRole =
+                                  selectedRole === "cosigner" && !canBeCosigner ? "observer" : selectedRole;
+
+                                return (
+                                  <>
+                              <Select
+                                value={selectedWalletId}
+                                onValueChange={(value) =>
+                                  setSelectedWalletByBot((prev) => ({ ...prev, [botUser.id]: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select multisig wallet" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {userWallets.map((wallet) => (
+                                    <SelectItem key={wallet.id} value={wallet.id}>
+                                      {wallet.name || getFirstAndLast(wallet.id, 8, 6)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={effectiveSelectedRole}
+                                onValueChange={(value: BotWalletRole) =>
+                                  setSelectedRoleByBot((prev) => ({ ...prev, [botUser.id]: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {BOT_WALLET_ROLES.map((role) => (
+                                    <SelectItem
+                                      key={role}
+                                      value={role}
+                                      disabled={role === "cosigner" && !canBeCosigner}
+                                    >
+                                      {role}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const walletId = selectedWalletId;
+                                  if (!walletId || !userAddress) return;
+                                  grantBotAccess.mutate({
+                                    requesterAddress: userAddress,
+                                    walletId,
+                                    botId: botUser.id,
+                                    role: effectiveSelectedRole,
+                                  });
+                                }}
+                                disabled={
+                                  grantBotAccess.isPending ||
+                                  !userAddress ||
+                                  !selectedWalletId ||
+                                  (!!currentAccess && currentAccess.role === effectiveSelectedRole)
+                                }
+                              >
+                                {grantBotAccess.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : currentAccess ? (
+                                  currentAccess.role === effectiveSelectedRole ? "Role already set" : "Update role"
+                                ) : (
+                                  "Grant access"
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const walletId = selectedWalletId;
+                                  if (!walletId || !userAddress) return;
+                                  revokeBotAccess.mutate({
+                                    requesterAddress: userAddress,
+                                    walletId,
+                                    botId: botUser.id,
+                                  });
+                                }}
+                                disabled={revokeBotAccess.isPending || !userAddress || !selectedWalletId || !currentAccess}
+                              >
+                                {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
+                              </Button>
+                              <p className="text-xs text-muted-foreground sm:col-span-4">
+                                {currentAccess
+                                  ? `Current access on selected wallet: ${currentAccess.role}`
+                                  : "Current access on selected wallet: none"}
+                              </p>
+                              {!canBeCosigner && (
+                                <p className="text-xs text-amber-600 sm:col-span-4">
+                                  Cosigner is only available when the bot payment address is included in this wallet&apos;s signer list.
+                                </p>
+                              )}
+                            </>
+                                );
+                              })()}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Select a wallet and role to grant or update bot access.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </>
+                      );
+                    })()
                   ) : (
                     <p className="text-xs text-muted-foreground">Not registered yet. Use botAuth with this key to register the bot wallet.</p>
                   )}

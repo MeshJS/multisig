@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 const BOT_KEY_BYTES = 32;
 const HASH_ENCODING = "hex";
@@ -53,4 +53,14 @@ export function parseScope(scope: string): BotScope[] {
 
 export function scopeIncludes(parsed: BotScope[], required: BotScope): boolean {
   return parsed.includes(required);
+}
+
+/** Generate a random base64url claim code (32 bytes → ~43 chars). */
+export function generateClaimCode(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/** SHA-256 hash (hex). */
+export function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }

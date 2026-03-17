@@ -118,7 +118,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Purpose**: Return the authenticated bot's own info, including its owner's address (bot JWT only)
 - **Authentication**: Required (bot JWT Bearer token)
 - **Features**:
-  - Bot can discover "my owner's address" (the human who created the bot key) for flows like creating a 2-of-2 with the owner
+  - Bot can discover "my owner's address" (the human who claimed the bot) for flows like creating a 2-of-2 with the owner
 - **Response**: `{ botId, paymentAddress, displayName, botName, ownerAddress }` (200)
 - **Error Handling**: 401 (auth), 403 (not a bot token), 404 (bot not found), 500 (server)
 
@@ -132,17 +132,17 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - Supports `atLeast` / `all` / `any` script types and optional external stake credential
 - **Request Body**:
   - `name`: string (required, 1–256 chars)
-  - `description`: string (optional)
+  - `description`: string (optional, truncated to 2000 chars)
   - `signersAddresses`: string[] (required, Cardano payment addresses)
-  - `signersDescriptions`: string[] (optional, same length as signersAddresses)
-  - `signersStakeKeys`: (string | null)[] (optional)
+  - `signersDescriptions`: string[] (optional; missing entries default to `""`)
+  - `signersStakeKeys`: (string | null)[] (optional; used only when `stakeCredentialHash` is not provided)
   - `signersDRepKeys`: (string | null)[] (optional)
-  - `numRequiredSigners`: number (optional, default 1; ignored for `all`/`any`)
+  - `numRequiredSigners`: number (optional, minimum 1, clamped to signer count, default 1; stored as `null` for `all`/`any`)
   - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
   - `stakeCredentialHash`: string (optional, external stake)
   - `network`: 0 | 1 (optional, default 1 = mainnet)
 - **Response**: `{ walletId, address, name }` (201)
-- **Error Handling**: 400 (validation), 401 (auth), 403 (not bot or insufficient scope), 429 (rate limit), 500 (server)
+- **Error Handling**: 400 (validation/script build), 401 (missing/invalid token or bot not found), 403 (not bot token or insufficient scope), 405 (method), 429 (rate limit), 500 (server)
 
 #### `governanceActiveProposals.ts` - GET `/api/v1/governanceActiveProposals`
 
@@ -264,10 +264,62 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: JWT token object
 - **Error Handling**: 400 (validation), 401 (signature), 500 (server)
 
+#### `botRegister.ts` - POST `/api/v1/botRegister`
+
+- **Purpose**: Self-register a bot and issue a short-lived claim code for human approval
+- **Authentication**: Not required (public endpoint)
+- **Features**:
+  - Creates a `PendingBot` record in `UNCLAIMED` state
+  - Generates one-time claim code and hashed claim token
+  - Validates requested scopes against allowed bot scopes
+  - Rejects already-registered bot payment addresses
+  - Strict rate limiting and 2 KB body size cap
+- **Request Body**:
+  - `name`: string (required, 1-100 chars)
+  - `paymentAddress`: string (required)
+  - `stakeAddress`: string (optional)
+  - `requestedScopes`: string[] (required, non-empty, valid scope values)
+  - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
+- **Response**: `{ pendingBotId, claimCode, claimExpiresAt }` (201)
+- **Error Handling**: 400 (validation), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
+
+#### `botClaim.ts` - POST `/api/v1/botClaim`
+
+- **Purpose**: Claim a pending bot as a human user and mint its bot key credentials
+- **Authentication**: Required (human JWT Bearer token; bot tokens are rejected)
+- **Features**:
+  - Verifies claim code using constant-time hash comparison
+  - Enforces claim attempt lockout and expiry
+  - Creates `BotKey` + `BotUser` and links ownership to claimer address
+  - Accepts optional `approvedScopes` to narrow requested scopes
+  - Stores one-time pickup secret on `PendingBot` for retrieval by the bot
+- **Request Body**:
+  - `pendingBotId`: string (required)
+  - `claimCode`: string (required)
+  - `approvedScopes`: string[] (optional; must be subset of requested scopes)
+  - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
+- **Response**: `{ botKeyId, botId, name, scopes }` (200)
+- **Error Handling**: 400 (validation), 401 (auth), 404 (not found/expired), 405 (method), 409 (invalid claim/already claimed/locked out), 429 (rate limit), 500 (server)
+
+#### `botPickupSecret.ts` - GET `/api/v1/botPickupSecret`
+
+- **Purpose**: Allow a claimed bot to retrieve credentials exactly once
+- **Authentication**: Not required (public endpoint; possession of `pendingBotId` is required)
+- **Features**:
+  - Returns `botKeyId` + one-time `secret` once claim is complete
+  - Enforces state checks (`CLAIMED`, not already picked up)
+  - Marks secret as consumed (`pickedUp=true`, clears stored secret)
+  - Includes bot `paymentAddress` in response for convenience
+- **Query Parameters**:
+  - `pendingBotId`: string (required)
+- **Response**: `{ botKeyId, secret, paymentAddress }` (200)
+- **Error Handling**: 400 (validation), 404 (not found/not yet claimed), 405 (method), 410 (already picked up), 429 (rate limit), 500 (server)
+
 #### `botAuth.ts` - POST `/api/v1/botAuth`
 
 - **Purpose**: Authenticate a bot key and return a bot-scoped JWT bearer token
 - **Authentication**: Not required (public endpoint; credentials in request body)
+- **Onboarding Note**: `botKeyId` and `secret` are obtained from the claim flow (`POST /api/v1/botRegister` -> human `POST /api/v1/botClaim` -> `GET /api/v1/botPickupSecret`), not from manual bot creation.
 - **Features**:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
@@ -313,6 +365,14 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 2. **Signature Generation**: Client signs nonce with private key
 3. **Token Exchange**: Client exchanges signature for JWT token
 4. **API Access**: Client uses JWT token for authenticated requests
+
+### Bot Onboarding Flow
+
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
+3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
+5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs)
 
 ### Error Handling
 

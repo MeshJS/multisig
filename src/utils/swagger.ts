@@ -701,12 +701,12 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
-      "/api/v1/botAuth": {
+      "/api/v1/botRegister": {
         post: {
           tags: ["Auth", "Bot"],
-          summary: "Bot authentication",
+          summary: "Self-register a bot for human claim approval",
           description:
-            "Authenticate a bot using bot key credentials. Register or link the bot's Cardano payment address; returns a JWT for use as Bearer token on v1 endpoints. Bot keys are created in the app (User → Create bot). One bot key maps to one paymentAddress.",
+            "Creates a pending bot registration and returns a short-lived claim code for a human owner to approve.",
           requestBody: {
             required: true,
             content: {
@@ -714,8 +714,171 @@ This API uses **Bearer Token** authentication (JWT).
                 schema: {
                   type: "object",
                   properties: {
-                    botKeyId: { type: "string", description: "Bot key ID from Create bot" },
-                    secret: { type: "string", description: "Secret from Create bot (shown once)" },
+                    name: { type: "string", minLength: 1, maxLength: 100 },
+                    paymentAddress: { type: "string", minLength: 20 },
+                    stakeAddress: { type: "string" },
+                    requestedScopes: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                        enum: [
+                          "multisig:read",
+                          "multisig:create",
+                          "multisig:sign",
+                          "governance:read",
+                          "ballot:write",
+                        ],
+                      },
+                      minItems: 1,
+                    },
+                  },
+                  required: ["name", "paymentAddress", "requestedScopes"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: "Pending bot created; claim code issued",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      pendingBotId: { type: "string" },
+                      claimCode: { type: "string" },
+                      claimExpiresAt: { type: "string", format: "date-time" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid registration payload" },
+            405: { description: "Method not allowed" },
+            409: { description: "Address already registered" },
+            429: { description: "Too many requests" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botClaim": {
+        post: {
+          tags: ["Auth", "Bot"],
+          summary: "Claim a pending bot as a human user",
+          description:
+            "Requires a human JWT. Verifies claim code, creates bot credentials, and links ownership to the claimer.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    pendingBotId: { type: "string" },
+                    claimCode: { type: "string", minLength: 24 },
+                    approvedScopes: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                        enum: [
+                          "multisig:read",
+                          "multisig:create",
+                          "multisig:sign",
+                          "governance:read",
+                          "ballot:write",
+                        ],
+                      },
+                    },
+                  },
+                  required: ["pendingBotId", "claimCode"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Bot claimed and credentials minted",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      botKeyId: { type: "string" },
+                      botId: { type: "string" },
+                      name: { type: "string" },
+                      scopes: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid claim payload" },
+            401: { description: "Unauthorized (human JWT required)" },
+            404: { description: "Pending bot not found or expired" },
+            405: { description: "Method not allowed" },
+            409: { description: "Invalid claim code, already claimed, or claim locked" },
+            429: { description: "Too many requests" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botPickupSecret": {
+        get: {
+          tags: ["Auth", "Bot"],
+          summary: "Retrieve one-time bot secret after claim",
+          description:
+            "Returns bot credentials exactly once after a successful claim. Requires pendingBotId query parameter.",
+          parameters: [
+            {
+              in: "query",
+              name: "pendingBotId",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "One-time bot secret",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      botKeyId: { type: "string" },
+                      secret: { type: "string" },
+                      paymentAddress: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing or invalid pendingBotId" },
+            404: { description: "Pending bot not found or not yet claimed" },
+            405: { description: "Method not allowed" },
+            410: { description: "Secret already picked up" },
+            429: { description: "Too many requests" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botAuth": {
+        post: {
+          tags: ["Auth", "Bot"],
+          summary: "Bot authentication",
+          description:
+            "Authenticate a bot key and return a bot JWT. botKeyId and secret are issued by the claim flow: POST /api/v1/botRegister -> human POST /api/v1/botClaim -> GET /api/v1/botPickupSecret.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    botKeyId: { type: "string", description: "Bot key ID from bot claim flow" },
+                    secret: { type: "string", description: "One-time secret from botPickupSecret" },
                     paymentAddress: { type: "string", description: "Cardano payment address for this bot" },
                     stakeAddress: { type: "string", description: "Optional stake address" },
                   },
@@ -744,7 +907,132 @@ This API uses **Bearer Token** authentication (JWT).
             403: { description: "Insufficient scope" },
             409: { description: "paymentAddress already registered to another bot" },
             405: { description: "Method not allowed" },
+            429: { description: "Too many requests" },
             500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botMe": {
+        get: {
+          tags: ["V1", "Bot"],
+          summary: "Get authenticated bot profile",
+          description:
+            "Returns the authenticated bot's own identity and owner address. Requires bot JWT.",
+          responses: {
+            200: {
+              description: "Bot profile",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      botId: { type: "string" },
+                      paymentAddress: { type: "string" },
+                      displayName: { type: "string", nullable: true },
+                      botName: { type: "string" },
+                      ownerAddress: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: "Missing/invalid token" },
+            403: { description: "Not a bot token" },
+            404: { description: "Bot not found" },
+            405: { description: "Method not allowed" },
+            429: { description: "Too many requests" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/createWallet": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Create multisig wallet with bot JWT",
+          description:
+            "Creates a multisig wallet from signer payment/stake/DRep inputs. Requires bot JWT and multisig:create scope.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", minLength: 1, maxLength: 256 },
+                    description: {
+                      type: "string",
+                      description: "Optional free text. Server stores at most 2000 chars.",
+                      maxLength: 2000,
+                    },
+                    signersAddresses: {
+                      type: "array",
+                      items: { type: "string" },
+                      minItems: 1,
+                      description: "Cardano payment addresses used to derive payment key hashes.",
+                    },
+                    signersDescriptions: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Optional per-signer labels. Missing entries default to an empty string.",
+                    },
+                    signersStakeKeys: {
+                      type: "array",
+                      items: {
+                        oneOf: [{ type: "string" }, { type: "null" }],
+                      },
+                      description:
+                        "Optional stake addresses. Ignored when stakeCredentialHash is provided.",
+                    },
+                    signersDRepKeys: {
+                      type: "array",
+                      items: {
+                        oneOf: [{ type: "string" }, { type: "null" }],
+                      },
+                      description: "Optional DRep key hashes (non-empty values are used as provided).",
+                    },
+                    numRequiredSigners: {
+                      type: "integer",
+                      minimum: 1,
+                      default: 1,
+                      description:
+                        "Used for atLeast scripts. Values above signer count are clamped to signer count.",
+                    },
+                    scriptType: {
+                      type: "string",
+                      enum: ["atLeast", "all", "any"],
+                      default: "atLeast",
+                      description: "Unknown values are treated as atLeast.",
+                    },
+                    stakeCredentialHash: { type: "string" },
+                    network: { type: "integer", enum: [0, 1], default: 1 },
+                  },
+                  required: ["name", "signersAddresses"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: "Wallet created",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      walletId: { type: "string" },
+                      address: { type: "string" },
+                      name: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid payload or signer data" },
+            401: { description: "Missing/invalid token or bot not found" },
+            403: { description: "Not a bot token or insufficient scope" },
+            405: { description: "Method not allowed" },
+            429: { description: "Too many requests" },
+            500: { description: "Failed to create wallet" },
           },
         },
       },
