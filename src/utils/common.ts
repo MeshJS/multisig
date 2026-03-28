@@ -273,7 +273,10 @@ export function buildWallet(
       stakeScript: multisig.stake_script,
     });
 
-    // Always use the script that matches the address payment credential hash
+    // Always use the scriptCbor from metadata if available. This is CRITICAL
+    // for backward compatibility with wallets created with "unordered CBOR lists".
+    // Re-deriving the address from a canonicalized script would change the hash
+    // and break existing wallets.
     const scriptCbor = paymentScriptCbor;
     if (!scriptCbor) {
       throw new Error("A valid payment script is required in rawImportBodies.multisig");

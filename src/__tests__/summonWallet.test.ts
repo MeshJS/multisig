@@ -57,4 +57,34 @@ describe("Summon Wallet Capabilities", () => {
         expect(wallet.capabilities!.canStake).toBe(false);
         expect(wallet.capabilities!.stakeAddress).toBeUndefined();
     });
+
+    it("should correctly handle Summon wallets with unordered CBOR lists", () => {
+        // Swap the two sigs in the CBOR string to make it "unordered"
+        // Original: 82 01 82 [sigA] [sigB]
+        // [sigA] = 8200581caf00000000000000000000000000000000000000000000000000000000 (32 bytes = 64 chars)
+        // [sigB] = 8200581cb00000000000000000000000000000000000000000000000000000000 (32 bytes = 64 chars)
+        const sigA = "8200581caf00000000000000000000000000000000000000000000000000000000";
+        const sigB = "8200581cb00000000000000000000000000000000000000000000000000000000";
+        const unorderedCbor = "820182" + sigB + sigA;
+        
+        const mockUnordered = {
+            ...mockSummonWallet,
+            rawImportBodies: {
+                multisig: {
+                    ...mockSummonWallet.rawImportBodies.multisig,
+                    payment_script: unorderedCbor
+                }
+            }
+        };
+        
+        const wallet = buildWallet(mockUnordered, network);
+        
+        // The address should still be the one from metadata, even if we can't decode the "unordered" CBOR correctly
+        // This ensures compatibility with legacy scripts that might not follow modern canonical rules.
+        expect(wallet.capabilities!.address).toBe(mockSummonWallet.rawImportBodies.multisig!.address);
+        expect(wallet.scriptCbor).toBe(unorderedCbor);
+        
+        // Even if decoding fails, we should still have a nativeScript object (fallback)
+        expect(wallet.nativeScript).toBeDefined();
+    });
 });
