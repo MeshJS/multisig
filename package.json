@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
+    "build": "next build --webpack",
     "db:format": "prisma format",
     "db:generate": "prisma migrate dev",
     "db:migrate": "prisma migrate deploy",
