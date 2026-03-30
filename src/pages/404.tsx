@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function Custom404() {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
@@ -19,12 +17,12 @@ export default function Custom404() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-            <Link
+            <a
               href="/"
               className="inline-flex items-center justify-center rounded-md bg-zinc-900 dark:bg-zinc-50 text-zinc-50 dark:text-zinc-900 px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
             >
               Go Home
-            </Link>
+            </a>
           </div>
         </div>
       </div>
