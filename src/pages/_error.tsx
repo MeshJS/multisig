@@ -1,18 +1,21 @@
-export default function Custom404() {
+import type { NextPageContext } from "next";
+
+function Error({ statusCode }: { statusCode?: number }) {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
       <div className="w-full max-w-md border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-sm shadow-lg rounded-lg">
         <div className="flex flex-col items-center text-center p-8 space-y-6">
           <div className="space-y-2">
             <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-              404
+              {statusCode ?? "Error"}
             </h1>
             <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-              Page Not Found
+              {statusCode === 404 ? "Page Not Found" : "Something went wrong"}
             </h2>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-sm">
-              The page you&apos;re looking for doesn&apos;t exist or has been
-              moved.
+              {statusCode === 404
+                ? "The page you're looking for doesn't exist or has been moved."
+                : "An unexpected error has occurred."}
             </p>
           </div>
 
@@ -29,3 +32,10 @@ export default function Custom404() {
     </div>
   );
 }
+
+Error.getInitialProps = ({ res, err }: NextPageContext) => {
+  const statusCode = res ? res.statusCode : err ? err.statusCode : 404;
+  return { statusCode };
+};
+
+export default Error;
