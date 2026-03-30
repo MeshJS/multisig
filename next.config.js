@@ -15,10 +15,6 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  i18n: {
-    locales: ["en"],
-    defaultLocale: "en",
-  },
   transpilePackages: ["geist", "@meshsdk/react"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
