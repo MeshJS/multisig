@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 
+export const getStaticProps = () => ({ props: {} });
+
 export default function Custom404() {
   const router = useRouter();
 
