@@ -139,6 +139,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `signersDRepKeys`: (string | null)[] (optional)
   - `numRequiredSigners`: number (optional, minimum 1, clamped to signer count, default 1; stored as `null` for `all`/`any`)
   - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
+  - `paymentNativeScript`: object (optional; explicit payment script tree with `sig`/`all`/`any`/`atLeast`; sig key hashes must match `signersAddresses` payment key hashes)
   - `stakeCredentialHash`: string (optional, external stake)
   - `network`: 0 | 1 (optional, default 1 = mainnet)
 - **Response**: `{ walletId, address, name }` (201)
@@ -435,6 +436,8 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - `JWT_SECRET`: Secret key for JWT token generation
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD`: Preprod network API key
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`: Mainnet network API key
+- `BLOCKFROST_API_KEY_PREPROD`: Optional server-side override for preprod provider calls
+- `BLOCKFROST_API_KEY_MAINNET`: Optional server-side override for mainnet provider calls
 
 ### Database Configuration
 
@@ -494,3 +497,28 @@ const freeUtxos = await response.json();
 ```
 
 This API v1 directory provides a comprehensive, secure, and well-documented REST API for multisig wallet operations, supporting the entire application ecosystem with robust authentication, transaction management, and blockchain integration.
+
+## PR Route-Chain Smoke (Real-Chain CI)
+
+- Workflow: `.github/workflows/pr-multisig-v1-smoke.yml`
+- Bootstrap script: `scripts/ci/create-wallets.ts` (stable context producer)
+- Route-chain runner: `scripts/ci/run-route-chain.ts`
+- Scenario registry: `scripts/ci/scenarios/manifest.ts`
+
+The CI flow is split into:
+
+1. **Bootstrap**: create deterministic test wallets/context once.
+2. **Route chain**: execute composable v1 route steps against that context.
+
+Signing is always enabled in this route-chain flow, and signing steps run with broadcast enabled to validate real-chain submission behavior.
+
+Current route-chain scenarios include:
+
+- discovery + pending checks
+- per-wallet pending validation
+- route health checks (`freeUtxos`, signing readiness)
+- real transfer flow (`addTransaction` -> `signTransaction` with broadcast)
+- final-state assertions (`pendingTransactions` consistency checks)
+
+To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
+Use `scripts/ci/scenarios/template-route-step.ts` as a starter scaffold.

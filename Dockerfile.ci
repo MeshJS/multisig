@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+# Install PostgreSQL client tools for readiness checks.
+RUN apk add --no-cache postgresql-client
+
+WORKDIR /app
+
+# Install dependencies first for better layer caching.
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci
+
+# Copy full source for containerized CI runs.
+COPY . .
+
+EXPOSE 3000
+

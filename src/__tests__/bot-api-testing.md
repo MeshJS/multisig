@@ -39,3 +39,75 @@
 - `DATABASE_URL=<test Postgres url>`
 - `JWT_SECRET=<32+ char secret>`
 - `SKIP_ENV_VALIDATION=true` (recommended for test-only runs)
+
+## PR Workflow: Containers + CI Wallet Smoke
+
+- Workflow: `.github/workflows/pr-multisig-v1-smoke.yml`
+- Triggers: `pull_request` and `workflow_dispatch` (manual test runs)
+- Compose stack: `docker-compose.ci.yml`
+- CI scripts:
+  - `scripts/ci/create-wallets.ts`
+  - `scripts/ci/run-route-chain.ts` (route-chain runner)
+  - `scripts/ci/run-pending-transactions-smoke.ts` (compatibility wrapper)
+  - `scripts/ci/sign-transaction-preprod.ts` (compatibility wrapper)
+  - `scripts/ci/scenarios/manifest.ts` (scenario registry)
+
+### Required GitHub repository secrets
+
+- `CI_JWT_SECRET` (32+ chars)
+- `CI_MNEMONIC_1` (space-separated words)
+- `CI_MNEMONIC_2` (space-separated words)
+- `CI_MNEMONIC_3` (space-separated words)
+- `CI_BLOCKFROST_PREPROD_API_KEY` (required; transfer and signing scenarios use live preprod data)
+- `CI_BLOCKFROST_MAINNET_API_KEY` (optional; only needed if smoke coverage is expanded to mainnet-dependent routes)
+
+### Runtime flags used by the workflow
+
+- `CI_NETWORK_ID` (default `0` for preprod/testnet)
+- `CI_NUM_REQUIRED_SIGNERS` (default `2`; controls `numRequiredSigners` and hierarchical inner `atLeast.required`)
+- `CI_WALLET_TYPES` (default `legacy,hierarchical,sdk`)
+- `ENABLE_SIGNING_SMOKE` (`true`; signing is always part of route-chain execution)
+- `CI_SIGN_WALLET_TYPE` (which wallet type signing smoke targets: `legacy` | `hierarchical` | `sdk`)
+- `SIGN_BROADCAST` (`true`; broadcast is always enabled for CI route-chain signing)
+- `CI_TRANSFER_LOVELACE` (optional transfer amount for real-transfer scenario, default `2000000`)
+- `CI_ROUTE_SCENARIOS` (optional comma-separated scenario ids for targeted route-chain runs)
+
+Validation behavior:
+
+- Invalid values in `CI_WALLET_TYPES` now fail fast (must be `legacy`, `hierarchical`, `sdk`).
+- Unknown scenario ids in `CI_ROUTE_SCENARIOS` now fail fast with available ids listed.
+
+### What phase 1 validates
+
+- Starts Postgres + app containers on PR.
+- Derives signer addresses from the three mnemonic secrets.
+- Creates selected wallet types (`legacy`, `hierarchical`, `sdk`) through `/api/v1/createWallet`.
+- Uses a nested payment script for `hierarchical` wallets (`all` wrapping `atLeast`) while keeping signer keys payment-only.
+- Verifies route-chain health for bot routes (`walletIds`, `pendingTransactions`, `freeUtxos`, `signTransaction`) using shared bootstrap context.
+- Executes a real transfer flow:
+  - build transfer tx via `/api/v1/addTransaction`
+  - sign and broadcast via `/api/v1/signTransaction`
+  - assert final state via `/api/v1/pendingTransactions`
+- Uploads machine-readable route-chain report artifact from `ci-artifacts/ci-route-chain-report.json`.
+
+### Built-in route-chain scenarios
+
+- `scenario.pending-and-discovery`
+- `scenario.pending-per-wallet`
+- `scenario.ada-route-health`
+- `scenario.real-transfer-and-sign`
+- `scenario.final-assertions`
+
+### Add a new v1 route test step
+
+1. Add a new step module or helper in `scripts/ci/scenarios/`.
+   - You can start from `scripts/ci/scenarios/template-route-step.ts`.
+2. Implement the standard step contract:
+   - `id`
+   - `description`
+   - `execute(ctx)` with deterministic assertions
+   - optional `artifacts` for failure triage
+3. Register the step in `scripts/ci/scenarios/manifest.ts`.
+4. Run the route-chain smoke locally/CI and verify step-level report output.
+
+This keeps wallet bootstrap stable while route coverage grows through small, isolated step additions.

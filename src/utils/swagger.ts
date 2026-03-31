@@ -1003,6 +1003,34 @@ This API uses **Bearer Token** authentication (JWT).
                       default: "atLeast",
                       description: "Unknown values are treated as atLeast.",
                     },
+                    paymentNativeScript: {
+                      type: "object",
+                      description:
+                        "Optional explicit payment script tree. Supported nodes: sig/all/any/atLeast. Sig key hashes must match signersAddresses payment key hashes.",
+                      example: {
+                        type: "all",
+                        scripts: [
+                          {
+                            type: "atLeast",
+                            required: 2,
+                            scripts: [
+                              {
+                                type: "sig",
+                                keyHash: "b8b7d19e...7776dfde7",
+                              },
+                              {
+                                type: "sig",
+                                keyHash: "f4755fe1...0c91faa1",
+                              },
+                              {
+                                type: "sig",
+                                keyHash: "59d8f3f9...bd3360762",
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
                     stakeCredentialHash: { type: "string" },
                     network: { type: "integer", enum: [0, 1], default: 1 },
                   },
