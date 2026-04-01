@@ -60,15 +60,25 @@ The manifest currently covers:
 - pending checks (per-wallet pending scenario)
 - per-wallet pending validations
 - route health and signing checks
-- real transfer + sign path
+- real multisig-wallet ring transfer + sign path
 - final state assertions after transfer/sign progression
 
 Signing is expected to be on, and broadcast is expected to be on, for normal CI route-chain runs.
 
-Current signing chain in the route manifest runs two signer rounds for selected wallets:
+Current transfer/sign chain in the route manifest runs a deterministic ring across multisig wallet addresses:
+
+- `legacy.walletAddress -> hierarchical.walletAddress`
+- `hierarchical.walletAddress -> sdk.walletAddress`
+- `sdk.walletAddress -> legacy.walletAddress`
+
+Each ring leg uses the same `CI_TRANSFER_LOVELACE` amount, so balances remain close after one cycle (differences are fee-driven).
+
+For each ring leg, signing runs two signer rounds:
 
 - signer index 1 (`CI_MNEMONIC_2`) signs with broadcast disabled
 - signer index 2 (`CI_MNEMONIC_3`) signs with broadcast enabled
+
+Each leg is asserted as pending after `addTransaction`, then asserted removed after signer 2 broadcast.
 
 ## Environment and secrets
 
@@ -88,6 +98,7 @@ Primary variables (in workflow/compose):
 Validation notes:
 
 - `CI_WALLET_TYPES` must contain only `legacy`, `hierarchical`, `sdk`; invalid values fail fast.
+- The default full route-chain (including ring transfer scenario) requires all three wallet types (`legacy`, `hierarchical`, `sdk`) to be present.
 - `CI_ROUTE_SCENARIOS` values must exist in `scenarios/manifest.ts`; unknown ids fail fast.
 - `CI_MNEMONIC_2` and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing.
 

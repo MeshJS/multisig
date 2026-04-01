@@ -15,6 +15,9 @@ const buildMultisigWalletMock: jest.Mock = jest.fn();
 const addressToNetworkMock: jest.Mock = jest.fn();
 const getProviderMock: jest.Mock = jest.fn();
 const cachedFetchAddressUTxOsMock: jest.Mock = jest.fn();
+const serializeNativeScriptMock: jest.Mock = jest.fn();
+const decodeNativeScriptFromCborMock: jest.Mock = jest.fn();
+const decodedToNativeScriptMock: jest.Mock = jest.fn();
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -67,6 +70,17 @@ jest.mock("@/utils/blockchain-cache", () => ({
   cachedFetchAddressUTxOs: cachedFetchAddressUTxOsMock,
 }), { virtual: true });
 
+jest.mock("@/utils/nativeScriptUtils", () => ({
+  __esModule: true,
+  decodeNativeScriptFromCbor: decodeNativeScriptFromCborMock,
+  decodedToNativeScript: decodedToNativeScriptMock,
+}), { virtual: true });
+
+jest.mock("@meshsdk/core", () => ({
+  __esModule: true,
+  serializeNativeScript: serializeNativeScriptMock,
+}), { virtual: true });
+
 jest.mock("@/server/api/root", () => ({
   __esModule: true,
   createCaller: () => ({
@@ -99,6 +113,9 @@ beforeEach(() => {
   buildMultisigWalletMock.mockReturnValue({
     getScript: () => ({ address: "addr_test1walletscript" }),
   });
+  decodeNativeScriptFromCborMock.mockReturnValue({ any: "decoded" });
+  decodedToNativeScriptMock.mockReturnValue({ type: "all", scripts: [] });
+  serializeNativeScriptMock.mockReturnValue({ address: "addr_test1canonicalwalletscript" });
   addressToNetworkMock.mockReturnValue(0);
   getProviderMock.mockReturnValue({ get: jest.fn() });
   (cachedFetchAddressUTxOsMock as any).mockResolvedValue([
@@ -130,5 +147,62 @@ describe("freeUtxos bot API", () => {
     expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 } }]);
+  });
+
+  it("falls back to canonical scriptCbor when multisig wallet is unavailable", async () => {
+    buildMultisigWalletMock.mockReturnValue(undefined);
+    (assertBotWalletAccessMock as any).mockResolvedValue({
+      wallet: {
+        id: "wallet-1",
+        scriptCbor: "canonical-cbor",
+        signersAddresses: [BOT_TEST_ADDRESS],
+        stakeCredentialHash: null,
+      },
+      role: "cosigner",
+    });
+
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(decodeNativeScriptFromCborMock).toHaveBeenCalledWith("canonical-cbor");
+    expect(serializeNativeScriptMock).toHaveBeenCalled();
+    expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("returns clear 500 when canonical script fallback cannot decode", async () => {
+    buildMultisigWalletMock.mockReturnValue(undefined);
+    decodeNativeScriptFromCborMock.mockImplementation(() => {
+      throw new Error("invalid canonical cbor");
+    });
+    (assertBotWalletAccessMock as any).mockResolvedValue({
+      wallet: {
+        id: "wallet-1",
+        scriptCbor: "broken-cbor",
+        signersAddresses: [BOT_TEST_ADDRESS],
+        stakeCredentialHash: null,
+      },
+      role: "cosigner",
+    });
+
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Wallet script address resolution failed: invalid canonical cbor",
+    });
   });
 });

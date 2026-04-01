@@ -129,13 +129,17 @@ function resolveSummonScriptCbors(args: {
  */
 export type WalletType = 'legacy' | 'sdk' | 'summon';
 
+function hasNonEmptyEntries(values?: string[] | null): boolean {
+  return !!values?.some((value) => value.trim().length > 0);
+}
+
 export function getWalletType(wallet: DbWalletWithLegacy): WalletType {
   if (wallet.rawImportBodies?.multisig) return 'summon';
   
   // Legacy: only payment keys (no stake keys, no DRep keys)
   // External stake credential hash doesn't make it SDK - it's still legacy if only payment keys
-  const hasStakeKeys = wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0;
-  const hasDRepKeys = wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0;
+  const hasStakeKeys = hasNonEmptyEntries(wallet.signersStakeKeys);
+  const hasDRepKeys = hasNonEmptyEntries(wallet.signersDRepKeys);
   if (!hasStakeKeys && !hasDRepKeys) return 'legacy';
   
   return 'sdk';

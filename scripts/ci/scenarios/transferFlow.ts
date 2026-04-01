@@ -18,8 +18,10 @@ function normalizeWalletType(value: string): CIWalletType {
 }
 
 type TransferSeedResult = {
-  walletType: CIWalletType;
-  walletId: string;
+  fromWalletType: CIWalletType;
+  toWalletType: CIWalletType;
+  fromWalletId: string;
+  toWalletId: string;
   transferFromAddress: string;
   transferToAddress: string;
   transferAmountLovelace: string;
@@ -29,21 +31,31 @@ type TransferSeedResult = {
 export async function seedRealTransferTransaction(args: {
   ctx: CIBootstrapContext;
   fromMnemonic: string;
-  walletType?: string;
+  fromWalletType: string;
+  toWalletType: string;
   transferLovelace?: string;
 }): Promise<TransferSeedResult> {
   const { ctx } = args;
   const defaultBot = getDefaultBot(ctx);
   const defaultBotToken = await authenticateBot({ ctx, bot: defaultBot });
-  const walletType = normalizeWalletType(args.walletType ?? "legacy");
-  const selectedWallet = ctx.wallets.find((w) => w.type === walletType);
-  if (!selectedWallet) {
-    throw new Error(`Unable to find wallet context for type ${walletType}`);
+  const fromWalletType = normalizeWalletType(args.fromWalletType);
+  const toWalletType = normalizeWalletType(args.toWalletType);
+  const fromWallet = ctx.wallets.find((w) => w.type === fromWalletType);
+  if (!fromWallet) {
+    throw new Error(`Unable to find source wallet context for type ${fromWalletType}`);
+  }
+  const toWallet = ctx.wallets.find((w) => w.type === toWalletType);
+  if (!toWallet) {
+    throw new Error(`Unable to find destination wallet context for type ${toWalletType}`);
   }
 
-  const transferToAddress = selectedWallet.signerAddresses?.[2];
+  if (fromWallet.walletId === toWallet.walletId) {
+    throw new Error(`Source and destination wallets must differ for transfer leg ${fromWalletType}`);
+  }
+
+  const transferToAddress = toWallet.walletAddress;
   if (!transferToAddress) {
-    throw new Error(`Wallet ${selectedWallet.walletId} is missing signerAddresses[2]`);
+    throw new Error(`Destination wallet ${toWallet.walletId} is missing walletAddress`);
   }
 
   const transferAmountLovelace = (() => {
@@ -68,9 +80,11 @@ export async function seedRealTransferTransaction(args: {
   });
   await signerWallet.init();
   const transferFromAddress = await signerWallet.getChangeAddress();
-  const expectedFromAddress = selectedWallet.signerAddresses?.[1];
+  const expectedFromAddress = fromWallet.signerAddresses?.[1];
   if (!expectedFromAddress || transferFromAddress !== expectedFromAddress) {
-    throw new Error("Transfer mnemonic does not match expected signerAddresses[1] for selected wallet");
+    throw new Error(
+      `Transfer mnemonic does not match expected signerAddresses[1] for source wallet ${fromWalletType}`,
+    );
   }
 
   const tx = new Transaction({
@@ -91,18 +105,19 @@ export async function seedRealTransferTransaction(args: {
     method: "POST",
     token: defaultBotToken,
     body: {
-      walletId: selectedWallet.walletId,
+      walletId: fromWallet.walletId,
       address: defaultBot.paymentAddress,
       txCbor: unsignedTxHex,
       txJson: JSON.stringify({
         source: "ci-route-chain",
         kind: "real-transfer",
-        walletType,
+        fromWalletType,
+        toWalletType,
         from: transferFromAddress,
         to: transferToAddress,
         amountLovelace: transferAmountLovelace,
       }),
-      description: `CI real transfer route-chain tx (${walletType})`,
+      description: `CI real transfer route-chain tx (${fromWalletType} -> ${toWalletType})`,
     },
   });
   if (addResponse.status !== 201 || !addResponse.data?.id) {
@@ -112,8 +127,10 @@ export async function seedRealTransferTransaction(args: {
   }
 
   return {
-    walletType,
-    walletId: selectedWallet.walletId,
+    fromWalletType,
+    toWalletType,
+    fromWalletId: fromWallet.walletId,
+    toWalletId: toWallet.walletId,
     transferFromAddress,
     transferToAddress,
     transferAmountLovelace,

@@ -8,6 +8,7 @@ import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
+import { serializeNativeScript } from "@meshsdk/core";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
@@ -15,6 +16,37 @@ import { DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
+import {
+  decodeNativeScriptFromCbor,
+  decodedToNativeScript,
+} from "@/utils/nativeScriptUtils";
+
+function resolveWalletScriptAddress(
+  wallet: DbWalletWithLegacy,
+  fallbackAddress: string,
+): string {
+  const mWallet = buildMultisigWallet(wallet);
+  if (mWallet) {
+    return mWallet.getScript().address;
+  }
+
+  const canonicalScriptCbor = wallet.scriptCbor?.trim();
+  if (!canonicalScriptCbor) {
+    throw new Error("Wallet is missing canonical scriptCbor");
+  }
+
+  const decoded = decodeNativeScriptFromCbor(canonicalScriptCbor);
+  const nativeScript = decodedToNativeScript(decoded);
+  const signerAddress = wallet.signersAddresses.find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
+  const network = addressToNetwork(signerAddress ?? fallbackAddress);
+  return serializeNativeScript(
+    nativeScript,
+    wallet.stakeCredentialHash ?? undefined,
+    network,
+  ).address;
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -107,11 +139,18 @@ export default async function handler(
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
-    const mWallet = buildMultisigWallet(walletFetch as DbWalletWithLegacy);
-    if (!mWallet) {
-      return res.status(500).json({ error: "Wallet could not be constructed" });
+    let addr: string;
+    try {
+      addr = resolveWalletScriptAddress(
+        walletFetch as DbWalletWithLegacy,
+        address,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      return res.status(500).json({
+        error: `Wallet script address resolution failed: ${message}`,
+      });
     }
-    const addr = mWallet.getScript().address;
     const network = addressToNetwork(addr);
 
     const blockchainProvider = getProvider(network);

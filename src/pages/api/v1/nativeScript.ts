@@ -76,42 +76,39 @@ export default async function handler(
       return res.status(404).json({ error: "Wallet not found" });
     }
     const dbWallet = walletFetch as DbWalletWithLegacy;
+    const multisig = dbWallet.rawImportBodies?.multisig;
+    const decodedScripts: Array<{ type: string; script: unknown }> = [];
+    const addDecodedScript = (type: "payment" | "stake", scriptCbor?: string | null) => {
+      const cbor = scriptCbor?.trim();
+      if (!cbor) {
+        return;
+      }
+      try {
+        const decoded = decodeNativeScriptFromCbor(cbor);
+        decodedScripts.push({ type, script: decodedToNativeScript(decoded) });
+      } catch {
+        // Fall through to other canonical sources/fallbacks.
+      }
+    };
+
+    // Canonical source for the wallet payment script.
+    addDecodedScript("payment", dbWallet.scriptCbor);
+    if (decodedScripts.length === 0) {
+      // Imported wallets can carry payment script in raw import body.
+      addDecodedScript("payment", multisig?.payment_script);
+    }
+    addDecodedScript("stake", multisig?.stake_script);
+
+    if (decodedScripts.length > 0) {
+      res.setHeader(
+        "Cache-Control",
+        "private, max-age=300, stale-while-revalidate=600",
+      );
+      return res.status(200).json(decodedScripts);
+    }
+
     const mWallet = buildMultisigWallet(dbWallet);
-
-    // If SDK wallet not available, try to decode from stored CBOR (imported wallets)
     if (!mWallet) {
-      const multisig = dbWallet.rawImportBodies?.multisig;
-      const paymentCbor = multisig?.payment_script;
-      const stakeCbor = multisig?.stake_script;
-
-      const decodedScripts: Array<{ type: string; script: unknown }> = [];
-
-      if (paymentCbor) {
-        try {
-          const decoded = decodeNativeScriptFromCbor(paymentCbor);
-          decodedScripts.push({ type: "payment", script: decodedToNativeScript(decoded) });
-        } catch {
-          // keep going; stake script may still decode
-        }
-      }
-
-      if (stakeCbor) {
-        try {
-          const decoded = decodeNativeScriptFromCbor(stakeCbor);
-          decodedScripts.push({ type: "stake", script: decodedToNativeScript(decoded) });
-        } catch {
-          // ignore
-        }
-      }
-
-      if (decodedScripts.length > 0) {
-        res.setHeader(
-          "Cache-Control",
-          "private, max-age=300, stale-while-revalidate=600",
-        );
-        return res.status(200).json(decodedScripts);
-      }
-
       return res.status(500).json({
         error: "Wallet could not be constructed",
       });
