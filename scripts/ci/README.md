@@ -73,6 +73,13 @@ Current transfer/sign chain in the route manifest runs a deterministic ring acro
 
 Each ring leg uses the same `CI_TRANSFER_LOVELACE` amount, so balances remain close after one cycle (differences are fee-driven).
 
+Real transfer construction is script-native:
+
+- route-chain spends UTxOs from the source multisig wallet script address
+- destination is the next multisig wallet script address in the ring
+- change returns to the source multisig wallet script address
+- signer mnemonics are used for witness collection/signing, not as transfer funding inputs
+
 For each ring leg, signing runs two signer rounds:
 
 - signer index 1 (`CI_MNEMONIC_2`) signs with broadcast disabled
@@ -87,7 +94,6 @@ Primary variables (in workflow/compose):
 - `CI_JWT_SECRET`
 - `CI_MNEMONIC_1`, `CI_MNEMONIC_2`, `CI_MNEMONIC_3`
 - `CI_BLOCKFROST_PREPROD_API_KEY`
-- `CI_BLOCKFROST_MAINNET_API_KEY` (optional; only needed if mainnet provider calls are exercised)
 - `CI_NETWORK_ID`
 - `CI_WALLET_TYPES`
 - `CI_SIGN_WALLET_TYPE`
@@ -97,10 +103,14 @@ Primary variables (in workflow/compose):
 
 Validation notes:
 
+- Route-chain transfer scenarios are preprod-only; `CI_NETWORK_ID` must be `0`.
+- Signer/bot/wallet addresses used in context must all be testnet-form (`addr_test` / `stake_test`).
 - `CI_WALLET_TYPES` must contain only `legacy`, `hierarchical`, `sdk`; invalid values fail fast.
 - The default full route-chain (including ring transfer scenario) requires all three wallet types (`legacy`, `hierarchical`, `sdk`) to be present.
 - `CI_ROUTE_SCENARIOS` values must exist in `scenarios/manifest.ts`; unknown ids fail fast.
 - `CI_MNEMONIC_2` and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing.
+- Source multisig wallet script addresses must be funded on preprod for each ring leg (`legacy -> hierarchical -> sdk -> legacy`).
+- `CI_JWT_SECRET` must remain the same between bootstrap and route-chain, because bot auth secrets are deterministically derived from it.
 
 ## Bootstrap context schema
 
@@ -149,15 +159,117 @@ Limitation:
 - Keep step ids stable (helps CI history and triage).
 - Avoid hidden randomness in assertions; use deterministic checks.
 
-## Local execution
+## Local execution (PowerShell, CI-like)
 
-From repo root, inside CI-like environment:
+From repo root:
 
-- `npx --yes tsx scripts/ci/create-wallets.ts`
-- `npx --yes tsx scripts/ci/inspect-context.ts`
-- `npx --yes tsx scripts/ci/run-route-chain.ts`
+- `C:\Users\andru\Documents\GitHub\multisig`
 
-Or run full containerized path via:
+Set required CI variables in your current shell:
 
-- `docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner`
+```powershell
+$env:CI_JWT_SECRET="..."
+$env:CI_MNEMONIC_1="..."
+$env:CI_MNEMONIC_2="..."
+$env:CI_MNEMONIC_3="..."
+$env:CI_BLOCKFROST_PREPROD_API_KEY="..."
+$env:CI_NETWORK_ID="0"
+$env:CI_WALLET_TYPES="legacy,hierarchical,sdk"
+$env:CI_TRANSFER_LOVELACE="2000000"
+$env:SIGN_BROADCAST="true"
+```
+
+Optional (recommended for full flow):
+
+```powershell
+Remove-Item Env:CI_ROUTE_SCENARIOS -ErrorAction SilentlyContinue
+$env:CI_ROUTE_SCENARIOS=""
+```
+
+Start a clean CI-like stack:
+
+```powershell
+docker compose -f docker-compose.ci.yml down -v
+docker compose -f docker-compose.ci.yml up -d postgres app
+```
+
+Bootstrap wallets and write host-mounted artifacts:
+
+```powershell
+docker compose -f docker-compose.ci.yml run --rm `
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
+  ci-runner npx --yes tsx scripts/ci/create-wallets.ts
+```
+
+Run route-chain smoke scenarios:
+
+```powershell
+docker compose -f docker-compose.ci.yml run --rm `
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
+  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json `
+  ci-runner npx --yes tsx scripts/ci/run-route-chain.ts
+```
+
+View generated report on host:
+
+```powershell
+Get-Content ".\ci-artifacts\ci-route-chain-report.json"
+```
+
+## Local execution (Linux/Bash, CI-like)
+
+From repo root:
+
+- `/path/to/multisig`
+
+Set required CI variables in your current shell:
+
+```bash
+export CI_JWT_SECRET="..."
+export CI_MNEMONIC_1="..."
+export CI_MNEMONIC_2="..."
+export CI_MNEMONIC_3="..."
+export CI_BLOCKFROST_PREPROD_API_KEY="..."
+export CI_NETWORK_ID="0"
+export CI_WALLET_TYPES="legacy,hierarchical,sdk"
+export CI_TRANSFER_LOVELACE="2000000"
+export SIGN_BROADCAST="true"
+```
+
+Optional (recommended for full flow):
+
+```bash
+unset CI_ROUTE_SCENARIOS
+export CI_ROUTE_SCENARIOS=""
+```
+
+Start a clean CI-like stack:
+
+```bash
+docker compose -f docker-compose.ci.yml down -v
+docker compose -f docker-compose.ci.yml up -d postgres app
+```
+
+Bootstrap wallets and write host-mounted artifacts:
+
+```bash
+docker compose -f docker-compose.ci.yml run --rm \
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
+  ci-runner npx --yes tsx scripts/ci/create-wallets.ts
+```
+
+Run route-chain smoke scenarios:
+
+```bash
+docker compose -f docker-compose.ci.yml run --rm \
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
+  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json \
+  ci-runner npx --yes tsx scripts/ci/run-route-chain.ts
+```
+
+View generated report on host:
+
+```bash
+cat ./ci-artifacts/ci-route-chain-report.json
+```
 
