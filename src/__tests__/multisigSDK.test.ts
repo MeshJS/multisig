@@ -39,9 +39,9 @@ describe('MultisigWallet', () => {
       ];
       
       const testWallet = new MultisigWallet('Test', unsortedKeys);
-      expect(testWallet.keys[0].keyHash).toBe('aaaa');
-      expect(testWallet.keys[1].keyHash).toBe('mmmm');
-      expect(testWallet.keys[2].keyHash).toBe('zzzz');
+      expect(testWallet.keys[0]!.keyHash).toBe('aaaa');
+      expect(testWallet.keys[1]!.keyHash).toBe('mmmm');
+      expect(testWallet.keys[2]!.keyHash).toBe('zzzz');
     });
 
     it('should filter out invalid keys', () => {
@@ -54,7 +54,7 @@ describe('MultisigWallet', () => {
 
       const testWallet = new MultisigWallet('Test', keysWithInvalid);
       expect(testWallet.keys).toHaveLength(1);
-      expect(testWallet.keys[0].keyHash).toBe(mockKeyHashes.payment1);
+      expect(testWallet.keys[0]!.keyHash).toBe(mockKeyHashes.payment1);
     });
 
     it('should use default values when optional parameters are not provided', () => {
@@ -86,7 +86,7 @@ describe('MultisigWallet', () => {
     it('should return drep keys (role 3)', () => {
       const drepKeys = wallet.getKeysByRole(3);
       expect(drepKeys).toHaveLength(1);
-      expect(drepKeys?.[0].role).toBe(3);
+      expect(drepKeys?.[0]!.role).toBe(3);
     });
 
     it('should return undefined for non-existent role', () => {

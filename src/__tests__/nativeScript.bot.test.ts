@@ -64,10 +64,10 @@ beforeEach(() => {
   applyRateLimitMock.mockReturnValue(true);
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue(makeBotJwtPayload());
-  decodeNativeScriptFromCborMock.mockImplementation((cbor: string) => ({ cbor }));
-  decodedToNativeScriptMock.mockImplementation((decoded: { cbor: string }) => ({
+  decodeNativeScriptFromCborMock.mockImplementation((cbor) => ({ cbor }));
+  decodedToNativeScriptMock.mockImplementation((decoded) => ({
     type: "decoded",
-    cbor: decoded.cbor,
+    cbor: (decoded as { cbor: string }).cbor,
   }));
   createCallerMock.mockReturnValue({
     wallet: {

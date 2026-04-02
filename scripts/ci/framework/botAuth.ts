@@ -72,12 +72,16 @@ export async function authenticateBot(args: {
       break;
     }
     if (attempt < BOT_AUTH_RETRY_DELAYS_MS.length) {
-      await sleep(BOT_AUTH_RETRY_DELAYS_MS[attempt]);
+      const retryDelayMs = BOT_AUTH_RETRY_DELAYS_MS[attempt];
+      if (retryDelayMs !== undefined) {
+        await sleep(retryDelayMs);
+      }
     }
   }
 
   if (!auth || auth.status !== 200 || !auth.data?.token) {
-    throw new Error(`botAuth failed (${auth.status})`);
+    const failedStatus = auth?.status ?? "no-response";
+    throw new Error(`botAuth failed (${failedStatus})`);
   }
 
   const expiresAtMs = decodeJwtExpiryMs(auth.data.token) ?? Date.now() + 55 * 60 * 1000;

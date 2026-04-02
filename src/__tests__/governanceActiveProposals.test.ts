@@ -5,12 +5,12 @@ const addCorsCacheBustingHeadersMock = jest.fn<(res: NextApiResponse) => void>()
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => boolean>();
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
-const verifyJwtMock = jest.fn();
-const isBotJwtMock = jest.fn();
-const findBotUserMock = jest.fn();
-const providerGetMock = jest.fn();
-const parseScopeMock = jest.fn();
-const scopeIncludesMock = jest.fn();
+const verifyJwtMock = jest.fn<() => unknown>();
+const isBotJwtMock = jest.fn<() => boolean>();
+const findBotUserMock = jest.fn<() => Promise<unknown>>();
+const providerGetMock = jest.fn<(path: string) => Promise<unknown>>();
+const parseScopeMock = jest.fn<(scope: string) => string[]>();
+const scopeIncludesMock = jest.fn<(scopes: string[], required: string) => boolean>();
 const getProposalStatusMock = jest.fn();
 
 jest.mock(
@@ -118,8 +118,8 @@ beforeEach(() => {
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_test1", botId: "bot-1", type: "bot" });
   isBotJwtMock.mockReturnValue(true);
-  parseScopeMock.mockImplementation((scope: string) => JSON.parse(scope));
-  scopeIncludesMock.mockImplementation((scopes: string[], required: string) =>
+  parseScopeMock.mockImplementation((scope) => JSON.parse(scope) as string[]);
+  scopeIncludesMock.mockImplementation((scopes, required) =>
     scopes.includes(required),
   );
   getProposalStatusMock.mockImplementation((details: any) => {
@@ -146,7 +146,7 @@ describe("governanceActiveProposals API", () => {
   });
 
   it("returns only active proposals and tolerates metadata 404", async () => {
-    providerGetMock.mockImplementation(async (path: string) => {
+    providerGetMock.mockImplementation(async (path) => {
       if (path.startsWith("governance/proposals?")) {
         return [
           {
@@ -214,7 +214,7 @@ describe("governanceActiveProposals API", () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    const payload = res.json.mock.calls[0]?.[0] as any;
+    const payload = (res.json as jest.Mock).mock.calls[0]?.[0] as any;
     expect(Array.isArray(payload.proposals)).toBe(true);
     expect(payload.proposals).toHaveLength(1);
     expect(payload.proposals[0]).toMatchObject({
