@@ -14,6 +14,7 @@
     "dev": "next dev",
     "postinstall": "prisma generate",
     "lint": "next lint",
+    "prestart": "prisma migrate deploy",
     "start": "next start",
     "test": "jest",
     "test:watch": "jest --watch",
