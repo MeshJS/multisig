@@ -20,6 +20,7 @@ type BlockfrostProposalListItem = {
 };
 
 type BlockfrostProposalDetailsItem = {
+  id?: string;
   proposed_epoch?: number | null;
   activation_epoch?: number | null;
   expiration?: number | null;
@@ -30,6 +31,81 @@ type BlockfrostProposalDetailsItem = {
   enacted_epoch?: number | null;
   dropped_epoch?: number | null;
   expired_epoch?: number | null;
+};
+
+type BlockfrostProposalMetadataItem = {
+  url?: string;
+  json_metadata?: {
+    body?: {
+      title?: unknown;
+      abstract?: unknown;
+      motivation?: unknown;
+      rationale?: unknown;
+    };
+    authors?: unknown;
+  };
+};
+
+const hasUsableJsonMetadata = (value: unknown): boolean =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      "body" in (value as Record<string, unknown>) &&
+      (value as Record<string, unknown>).body &&
+      typeof (value as Record<string, unknown>).body === "object",
+  );
+
+const getAnchorUrls = (anchorUrl: string): string[] => {
+  if (!anchorUrl) return [];
+  if (!anchorUrl.startsWith("ipfs://")) {
+    return [anchorUrl];
+  }
+  const cidPath = anchorUrl.replace("ipfs://", "");
+  return [
+    `https://ipfs.io/ipfs/${cidPath}`,
+    `https://cloudflare-ipfs.com/ipfs/${cidPath}`,
+    `https://dweb.link/ipfs/${cidPath}`,
+  ];
+};
+
+const hydrateMetadataFromAnchor = async (
+  metadata: BlockfrostProposalMetadataItem,
+): Promise<BlockfrostProposalMetadataItem> => {
+  if (hasUsableJsonMetadata(metadata?.json_metadata)) {
+    return metadata;
+  }
+  if (!metadata?.url) {
+    return metadata;
+  }
+
+  const candidates = getAnchorUrls(metadata.url);
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+      const text = await res.text();
+      const parsed = JSON.parse(text) as unknown;
+      const jsonMetadata =
+        parsed && typeof parsed === "object" && "body" in (parsed as Record<string, unknown>)
+          ? parsed
+          : { body: parsed };
+      if (hasUsableJsonMetadata(jsonMetadata)) {
+        return {
+          ...metadata,
+          json_metadata: jsonMetadata as BlockfrostProposalMetadataItem["json_metadata"],
+        };
+      }
+    } catch {
+      // Try next URL candidate.
+    }
+  }
+
+  return metadata;
 };
 
 const getErrorStatus = (error: unknown): number | undefined => {
@@ -197,18 +273,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       active.map(async ({ item, detailsForStatus }) => {
         const txHash = item.tx_hash;
         const certIndex = Number(item.cert_index);
-        let metadata: any = null;
+        const govActionId =
+          typeof detailsForStatus?.id === "string" ? detailsForStatus.id : null;
+        let metadata: BlockfrostProposalMetadataItem | null = null;
 
         try {
-          metadata = await provider.get(`governance/proposals/${txHash}/${certIndex}/metadata`);
+          metadata = (await provider.get(
+            `governance/proposals/${txHash}/${certIndex}/metadata`,
+          )) as BlockfrostProposalMetadataItem;
         } catch (error) {
           const status = getErrorStatus(error);
-          if (status !== 404) throw error;
+          if (govActionId) {
+            try {
+              const fallbackMetadata = (await provider.get(
+                `governance/proposals/${govActionId}/metadata`,
+              )) as BlockfrostProposalMetadataItem;
+              metadata = await hydrateMetadataFromAnchor(fallbackMetadata);
+            } catch (fallbackError) {
+              const fallbackStatus = getErrorStatus(fallbackError);
+              if (fallbackStatus !== 404) throw fallbackError;
+            }
+          } else if (status !== 404) {
+            throw error;
+          }
+        }
+
+        if (metadata) {
+          metadata = await hydrateMetadataFromAnchor(metadata);
         }
 
         const body = metadata?.json_metadata?.body ?? {};
-        const authors = Array.isArray(metadata?.json_metadata?.authors)
-          ? metadata.json_metadata.authors
+        const metadataAuthors = metadata?.json_metadata?.authors;
+        const authors = Array.isArray(metadataAuthors)
+          ? metadataAuthors
               .map((author: any) => (typeof author?.name === "string" ? author.name : null))
               .filter((name: string | null): name is string => !!name)
           : [];

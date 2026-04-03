@@ -49,3 +49,6 @@ scripts/bot-ref/bot-wallet.json
 
 # idea files
 .idea
+
+# CI artifacts
+ci-artifacts/
