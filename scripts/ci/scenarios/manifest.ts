@@ -131,6 +131,44 @@ function createFreeUtxosStep(walletType: string): RouteStep {
   };
 }
 
+function createNativeScriptStep(walletType: string): RouteStep {
+  return {
+    id: `v1.nativeScript.${walletType}`,
+    description: `Fetch native scripts for ${walletType} wallet`,
+    severity: "non-critical",
+    execute: async (ctx) => {
+      const bot = getDefaultBot(ctx);
+      const token = await authenticateBot({ ctx, bot });
+      const wallet = getWalletByType(ctx, walletType);
+      if (!wallet) {
+        throw new Error(`Missing wallet type in context: ${walletType}`);
+      }
+      const response = await requestJson<Array<{ type?: string; script?: unknown }> | { error?: string }>({
+        url: `${ctx.apiBaseUrl}/api/v1/nativeScript?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`,
+        method: "GET",
+        token,
+      });
+      if (response.status !== 200 || !Array.isArray(response.data)) {
+        throw new Error(
+          `nativeScript failed for ${walletType} (${response.status}): ${stringifyRedacted(response.data)}`,
+        );
+      }
+      if (response.data.length === 0) {
+        throw new Error(`nativeScript returned no scripts for ${walletType}`);
+      }
+      return {
+        message: `nativeScript returned ${response.data.length} script entries for ${walletType}`,
+        artifacts: {
+          walletId: wallet.walletId,
+          walletType,
+          scriptCount: response.data.length,
+          nativeScripts: response.data,
+        },
+      };
+    },
+  };
+}
+
 function createSigningStep(args: {
   id: string;
   description: string;
@@ -190,6 +228,7 @@ function createScenarioAdaRouteHealth(ctx: CIBootstrapContext): Scenario {
     description: "Route chain for transfer readiness (freeUtxos + multi-signer signTransaction progression)",
     steps: [
       ...ctx.walletTypes.map((walletType) => createFreeUtxosStep(walletType)),
+      ...ctx.walletTypes.map((walletType) => createNativeScriptStep(walletType)),
       createSigningStep({
         id: "v1.signTransaction.selectedWallet.signer1",
         description: "Signer 1 adds witness without broadcast for selected wallet type",

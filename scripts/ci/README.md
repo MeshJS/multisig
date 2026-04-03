@@ -59,9 +59,11 @@ The manifest currently covers:
 - route discovery (`walletIds`)
 - pending checks (per-wallet pending scenario)
 - per-wallet pending validations
-- route health and signing checks
+- route health checks (`freeUtxos`, `nativeScript`) and signing checks
 - real multisig-wallet ring transfer + sign path
 - final state assertions after transfer/sign progression
+
+For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
 
 Signing is expected to be on, and broadcast is expected to be on, for normal CI route-chain runs.
 

@@ -4,11 +4,6 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      wallet_types:
-        description: "Comma-separated: legacy,hierarchical,sdk"
-        required: false
-        default: "legacy,hierarchical,sdk"
-        type: string
       required_signers:
         description: "Required signatures for CI wallet threshold scripts"
         required: false
@@ -31,6 +26,7 @@ on:
 
 jobs:
   multisig-v1-smoke:
+    if: github.repository == 'MeshJS/multisig'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -41,8 +37,7 @@ jobs:
       CI_BLOCKFROST_PREPROD_API_KEY: ${{ secrets.CI_BLOCKFROST_PREPROD_API_KEY }}
       CI_NETWORK_ID: "0"
       CI_NUM_REQUIRED_SIGNERS: ${{ github.event_name == 'workflow_dispatch' && inputs.required_signers || '2' }}
-      CI_WALLET_TYPES: ${{ github.event_name == 'workflow_dispatch' && inputs.wallet_types || 'legacy,hierarchical,sdk' }}
-      ENABLE_SIGNING_SMOKE: "true"
+      CI_WALLET_TYPES: "legacy,hierarchical,sdk"
       CI_SIGN_WALLET_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_wallet_type || 'legacy' }}
       SIGN_BROADCAST: "true"
       CI_ROUTE_SCENARIOS: ${{ github.event_name == 'workflow_dispatch' && inputs.route_scenarios || '' }}
