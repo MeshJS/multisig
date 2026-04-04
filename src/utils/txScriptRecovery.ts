@@ -188,6 +188,53 @@ function hasValueNotConservedFailure(error: unknown): boolean {
   return extractErrorMessage(error).includes("ValueNotConservedUTxO");
 }
 
+function hasInvalidWitnessFailure(error: unknown): boolean {
+  return extractErrorMessage(error).includes("InvalidWitnessesUTXOW");
+}
+
+function extractInvalidWitnessVKeys(error: unknown): string[] {
+  const message = extractErrorMessage(error);
+  const markerIndex = message.indexOf("InvalidWitnessesUTXOW");
+  if (markerIndex < 0) return [];
+  const tail = message.slice(markerIndex);
+  const matches = tail.matchAll(/VerKeyEd25519DSIGN\s+"([0-9a-fA-F]+)"/g);
+  return Array.from(matches, (m) => m[1]!.toLowerCase());
+}
+
+function removeVKeyWitnessesByPublicKey(
+  txHex: string,
+  publicKeysToRemove: Set<string>,
+): string {
+  const tx = csl.Transaction.from_hex(txHex);
+  const witnessSet = tx.witness_set();
+  const existingVkeys = witnessSet.vkeys();
+  if (!existingVkeys || existingVkeys.len() === 0) return txHex;
+
+  const filteredVkeys = csl.Vkeywitnesses.new();
+  for (let i = 0; i < existingVkeys.len(); i++) {
+    const w = existingVkeys.get(i);
+    const pubKeyHex = bytesToHex(w.vkey().public_key().as_bytes()).toLowerCase();
+    if (!publicKeysToRemove.has(pubKeyHex)) {
+      filteredVkeys.add(w);
+    }
+  }
+
+  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
+    witnessSet.to_bytes(),
+  );
+  witnessSetClone.set_vkeys(filteredVkeys);
+
+  const rebuiltTx = csl.Transaction.new(
+    csl.TransactionBody.from_bytes(tx.body().to_bytes()),
+    witnessSetClone,
+    tx.auxiliary_data(),
+  );
+  if (!tx.is_valid()) {
+    rebuiltTx.set_is_valid(false);
+  }
+  return rebuiltTx.to_hex();
+}
+
 function buildStaleInputError(error: unknown): Error {
   const original = extractErrorMessage(error);
   return new Error(
@@ -450,6 +497,22 @@ export async function submitTxWithScriptRecovery({
     return { txHash, txHex, repaired: false };
   } catch (submitError) {
     throwIfUnrecoverableSubmitError(submitError);
+
+    if (hasInvalidWitnessFailure(submitError)) {
+      const invalidVKeys = extractInvalidWitnessVKeys(submitError);
+      if (invalidVKeys.length > 0) {
+        const repairedTx = removeVKeyWitnessesByPublicKey(
+          txHex,
+          new Set(invalidVKeys),
+        );
+        try {
+          const txHash = await submitter.submitTx(repairedTx);
+          return { txHash, txHex: repairedTx, repaired: true };
+        } catch (retryError) {
+          throwIfUnrecoverableSubmitError(retryError);
+        }
+      }
+    }
 
     if (!appWallet || network === undefined) {
       throw submitError;

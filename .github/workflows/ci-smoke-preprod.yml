@@ -1,0 +1,42 @@
+name: CI Smoke (Preprod)
+
+on:
+  pull_request:
+    branches: [main, preprod]
+  workflow_dispatch:
+
+env:
+  API_BASE_URL: ${{ secrets.SMOKE_API_BASE_URL }}
+  SIGNER_MNEMONIC_1: ${{ secrets.SMOKE_SIGNER_MNEMONIC_1 }}
+  SIGNER_MNEMONIC_2: ${{ secrets.SMOKE_SIGNER_MNEMONIC_2 }}
+  BOT_MNEMONIC: ${{ secrets.SMOKE_BOT_MNEMONIC }}
+  BOT_KEY_ID: ${{ secrets.SMOKE_BOT_KEY_ID }}
+  BOT_SECRET: ${{ secrets.SMOKE_BOT_SECRET }}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stage 1 - Bootstrap wallets
+        run: npx tsx scripts/ci-smoke/create-wallets.ts
+
+      - name: Stage 2 - Run route chain
+        run: npx tsx scripts/ci-smoke/run-route-chain.ts
+
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-report
+          path: ci-artifacts/
+          retention-days: 14
