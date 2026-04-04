@@ -10,8 +10,12 @@ export default {
   ],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
-      useESM: true
+      useESM: true,
+      tsconfig: '<rootDir>/tsconfig.json',
     }],
+  },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
@@ -21,6 +25,7 @@ export default {
     '!src/**/*.stories.{ts,tsx}',
     '!src/__tests__/**',
   ],
+  coverageProvider: 'v8',
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],

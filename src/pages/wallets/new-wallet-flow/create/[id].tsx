@@ -6,6 +6,8 @@
 import PageReviewWallet from "@/components/pages/homepage/wallets/new-wallet-flow/create";
 import GlassMorphismPageWrapper from "@/components/pages/homepage/wallets/new-wallet-flow/shared/GlassMorphismPageWrapper";
 
+export const getServerSideProps = () => ({ props: {} });
+
 export default function Page() {
   return (
     <GlassMorphismPageWrapper>

@@ -9,6 +9,8 @@ import Globe from "./globe";
 const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
 import "swagger-ui-react/swagger-ui.css";
 
+export const getServerSideProps = () => ({ props: {} });
+
 export default function ApiDocs() {
   const { wallet, connected } = useWallet();
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);

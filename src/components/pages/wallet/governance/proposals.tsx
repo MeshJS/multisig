@@ -53,6 +53,204 @@ type VotingStatistics = {
   abstain: number;
 };
 
+type ProposalListItem = {
+  tx_hash: string;
+  cert_index: number | string;
+  governance_type: string;
+};
+
+const createMetadataFallback = (
+  proposal: ProposalListItem,
+  title: string,
+  abstract = "",
+): ProposalMetadata => ({
+  tx_hash: proposal.tx_hash,
+  cert_index: Number(proposal.cert_index),
+  governance_type: proposal.governance_type,
+  hash: "",
+  url: "",
+  bytes: "",
+  json_metadata: {
+    body: {
+      title,
+      abstract,
+      motivation: "",
+      rationale: "",
+      references: [],
+    },
+    authors: [],
+  },
+});
+
+const hasUsableJsonMetadata = (value: any): boolean =>
+  Boolean(value && typeof value === "object" && value.body && typeof value.body === "object");
+
+const getAnchorUrls = (anchorUrl: string): string[] => {
+  if (!anchorUrl) return [];
+  if (!anchorUrl.startsWith("ipfs://")) {
+    return [anchorUrl];
+  }
+  const cidPath = anchorUrl.replace("ipfs://", "");
+  return [
+    `https://ipfs.io/ipfs/${cidPath}`,
+    `https://cloudflare-ipfs.com/ipfs/${cidPath}`,
+    `https://dweb.link/ipfs/${cidPath}`,
+  ];
+};
+
+async function fetchJsonFromUrl(url: string): Promise<any> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+    const text = await res.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function hydrateMetadataFromAnchor(
+  rawMetadata: any,
+  proposal: ProposalListItem,
+): Promise<any> {
+  if (hasUsableJsonMetadata(rawMetadata?.json_metadata)) {
+    return rawMetadata;
+  }
+
+  const anchorUrl =
+    typeof rawMetadata?.url === "string" && rawMetadata.url.length > 0
+      ? rawMetadata.url
+      : null;
+  if (!anchorUrl) {
+    return rawMetadata;
+  }
+
+  const candidateUrls = getAnchorUrls(anchorUrl);
+  for (const url of candidateUrls) {
+    try {
+      const anchorJson = await fetchJsonFromUrl(url);
+      const jsonMetadata = anchorJson?.body ? anchorJson : { body: anchorJson };
+      if (hasUsableJsonMetadata(jsonMetadata)) {
+        return {
+          ...rawMetadata,
+          json_metadata: jsonMetadata,
+        };
+      }
+    } catch {
+      // Try next URL candidate.
+    }
+  }
+
+  return rawMetadata;
+}
+
+const normalizeProposalMetadata = (
+  rawMetadata: any,
+  proposal: ProposalListItem,
+): ProposalMetadata => {
+  const rawBody = rawMetadata?.json_metadata?.body;
+  const body = rawBody && typeof rawBody === "object" ? rawBody : {};
+  const rawAuthors = rawMetadata?.json_metadata?.authors;
+  const authors = Array.isArray(rawAuthors)
+    ? rawAuthors
+        .map((author) =>
+          typeof author?.name === "string" ? { name: author.name } : null,
+        )
+        .filter((author): author is { name: string } => Boolean(author))
+    : [];
+  const references = Array.isArray((body as any).references)
+    ? (body as any).references.filter(
+        (ref: any) =>
+          ref &&
+          typeof ref === "object" &&
+          typeof ref.label === "string" &&
+          typeof ref.uri === "string" &&
+          typeof ref["@type"] === "string",
+      )
+    : [];
+
+  return {
+    tx_hash:
+      typeof rawMetadata?.tx_hash === "string"
+        ? rawMetadata.tx_hash
+        : proposal.tx_hash,
+    cert_index:
+      Number.isFinite(Number(rawMetadata?.cert_index))
+        ? Number(rawMetadata.cert_index)
+        : Number(proposal.cert_index),
+    governance_type: proposal.governance_type,
+    hash: typeof rawMetadata?.hash === "string" ? rawMetadata.hash : "",
+    url: typeof rawMetadata?.url === "string" ? rawMetadata.url : "",
+    bytes: typeof rawMetadata?.bytes === "string" ? rawMetadata.bytes : "",
+    json_metadata: {
+      body: {
+        title:
+          typeof (body as any).title === "string"
+            ? (body as any).title
+            : "Metadata not available",
+        abstract:
+          typeof (body as any).abstract === "string" ? (body as any).abstract : "",
+        motivation:
+          typeof (body as any).motivation === "string"
+            ? (body as any).motivation
+            : "",
+        rationale:
+          typeof (body as any).rationale === "string" ? (body as any).rationale : "",
+        references,
+      },
+      authors,
+    },
+  };
+};
+
+async function fetchProposalMetadataWithFallback({
+  blockchainProvider,
+  proposal,
+  detailsPromise,
+}: {
+  blockchainProvider: ReturnType<typeof getProvider>;
+  proposal: ProposalListItem;
+  detailsPromise: Promise<ProposalDetails | null>;
+}): Promise<ProposalMetadata | null> {
+  const txHash = proposal.tx_hash;
+  const certIndex = Number(proposal.cert_index);
+  const primaryPath = `/governance/proposals/${txHash}/${certIndex}/metadata`;
+  const details = await detailsPromise;
+  const govActionId = typeof details?.id === "string" ? details.id : null;
+
+  // Prefer gov_action_id path when available.
+  if (govActionId) {
+    const fallbackPath = `/governance/proposals/${govActionId}/metadata`;
+    try {
+      const fallback = await hydrateMetadataFromAnchor(
+        await blockchainProvider.get(fallbackPath),
+        proposal,
+      );
+      return normalizeProposalMetadata(fallback, proposal);
+    } catch {
+      // Continue to primary path fallback.
+    }
+  }
+
+  try {
+    const primary = await hydrateMetadataFromAnchor(
+      await blockchainProvider.get(primaryPath),
+      proposal,
+    );
+    return normalizeProposalMetadata(primary, proposal);
+  } catch {
+    return null;
+  }
+}
+
 const getProposalStatus = (details?: ProposalDetails) => {
   const status = getProposalStatusValue(details);
   if (!status) return null;
@@ -305,83 +503,33 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
         setProposals(skeletons);
 
         // Fetch both metadata and details in parallel for all proposals
-        const proposalResponses = await Promise.all(proposalsData.map(async (p: any) => {
+        const proposalResponses = await Promise.all(proposalsData.map(async (p: ProposalListItem) => {
           const proposalId = p.tx_hash + "#" + p.cert_index;
-          try {
-            // Fetch both metadata and details in parallel
-            // 404 for metadata is expected if proposal doesn't have metadata - handle silently
-            const [metadata, details] = await Promise.all([
-              blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}/metadata`).catch((err: any) => {
-                const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
-                if (is404) {
-                  return null; // 404 is expected - proposal has no metadata
-                }
-                throw err; // Re-throw non-404 errors
-              }),
-              blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null)
-            ]);
+          const detailsPromise = blockchainProvider
+            .get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`)
+            .catch(() => null) as Promise<ProposalDetails | null>;
 
-            // If metadata is null (404), use default structure
-            if (!metadata) {
-              return {
-                key: proposalId,
-                metadata: {
-                  tx_hash: p.tx_hash,
-                  cert_index: Number(p.cert_index),
-                  governance_type: p.governance_type,
-                  hash: "",
-                  url: "",
-                  bytes: "",
-                  json_metadata: {
-                    body: {
-                      title: "Metadata not available",
-                      abstract: "",
-                      motivation: "",
-                      rationale: "",
-                      references: []
-                    }
-                  }
-                },
-                details: details as ProposalDetails | null
-              };
-            }
+          const [metadata, details] = await Promise.all([
+            fetchProposalMetadataWithFallback({
+              blockchainProvider,
+              proposal: p,
+              detailsPromise,
+            }),
+            detailsPromise,
+          ]);
 
-            return {
-              key: proposalId,
-              metadata: {
-                ...metadata,
-                governance_type: p.governance_type
-              },
-              details: details as ProposalDetails | null
-            };
-          } catch (e: any) {
-            // If metadata fetch fails with non-404 error, try to still get details
-            const details = await blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null);
-            
-            return {
-              key: proposalId,
-              metadata: {
-                tx_hash: p.tx_hash,
-                cert_index: Number(p.cert_index),
-                governance_type: p.governance_type,
-                hash: "",
-                url: "",
-                bytes: "",
-                json_metadata: {
-                  body: {
-                    title: "Metadata could not be loaded.",
-                    abstract: p.tx_hash + "#" + p.cert_index,
-                    motivation: "",
-                    rationale: ""
-                  },
-                  authors: []
-                }
-              },
-              details: details as ProposalDetails | null
-            };
-          }
+          return {
+            key: proposalId,
+            metadata:
+              metadata ??
+              createMetadataFallback(
+                p,
+                "Metadata could not be loaded.",
+                `${p.tx_hash}#${p.cert_index}`,
+              ),
+            details,
+          };
         }));
-
         // Update proposals with metadata
         setProposals(prev => {
           const updates = new Map(proposalResponses.map(res => [res.key, res.metadata]));
@@ -447,51 +595,33 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
       setProposals(prev => [...prev, ...skeletons]);
 
       // 2. Fetch metadata and details for all proposals in parallel
-      const proposalResponses = await Promise.all(newProposalsData.map(async (p) => {
+      const proposalResponses = await Promise.all(newProposalsData.map(async (p: ProposalListItem) => {
         const proposalId = p.tx_hash + "#" + p.cert_index;
-        try {
-          // Fetch both metadata and details in parallel
-          const [metadata, details] = await Promise.all([
-            blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}/metadata`),
-            blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null)
-          ]);
+        const detailsPromise = blockchainProvider
+          .get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`)
+          .catch(() => null) as Promise<ProposalDetails | null>;
 
-          return {
-            key: proposalId,
-            metadata: {
-              ...metadata,
-              governance_type: p.governance_type
-            },
-            details: details as ProposalDetails | null
-          };
-        } catch (e: any) {
-          // If metadata fetch fails, try to still get details
-          const details = await blockchainProvider.get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`).catch(() => null);
-          
-          return {
-            key: proposalId,
-            metadata: {
-              tx_hash: p.tx_hash,
-              cert_index: Number(p.cert_index),
-              governance_type: p.governance_type,
-              hash: "",
-              url: "",
-              bytes: "",
-              json_metadata: {
-                body: {
-                  title: "Metadata could not be loaded.",
-                  abstract: p.tx_hash + "#" + p.cert_index,
-                  motivation: "",
-                  rationale: ""
-                },
-                authors: []
-              }
-            },
-            details: details as ProposalDetails | null
-          };
-        }
+        const [metadata, details] = await Promise.all([
+          fetchProposalMetadataWithFallback({
+            blockchainProvider,
+            proposal: p,
+            detailsPromise,
+          }),
+          detailsPromise,
+        ]);
+
+        return {
+          key: proposalId,
+          metadata:
+            metadata ??
+            createMetadataFallback(
+              p,
+              "Metadata could not be loaded.",
+              `${p.tx_hash}#${p.cert_index}`,
+            ),
+          details,
+        };
       }));
-
       // 3. Update proposals with metadata
       setProposals(prev => {
         const updates = new Map(proposalResponses.map(res => [res.key, res.metadata]));
