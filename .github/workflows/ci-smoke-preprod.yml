@@ -24,18 +24,31 @@ jobs:
         with:
           node-version: 20
 
+      - name: Check secrets configured
+        id: check-secrets
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Smoke test skipped: SMOKE_* secrets not configured."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
+        if: steps.check-secrets.outputs.configured == 'true'
         run: npm ci
 
       - name: Stage 1 - Bootstrap wallets
+        if: steps.check-secrets.outputs.configured == 'true'
         run: npx tsx scripts/ci-smoke/create-wallets.ts
 
       - name: Stage 2 - Run route chain
+        if: steps.check-secrets.outputs.configured == 'true'
         run: npx tsx scripts/ci-smoke/run-route-chain.ts
 
       - name: Upload smoke artifacts
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.check-secrets.outputs.configured == 'true'
         with:
           name: smoke-report
           path: ci-artifacts/

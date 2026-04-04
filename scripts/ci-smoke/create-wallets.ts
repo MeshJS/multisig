@@ -22,9 +22,25 @@ import { writeContext } from "./lib/context";
 import { botAuth, createWallet } from "../bot-ref/bot-client";
 import type { Context } from "./scenarios/types";
 
+const REQUIRED_ENV_VARS = [
+  "API_BASE_URL",
+  "SIGNER_MNEMONIC_1",
+  "SIGNER_MNEMONIC_2",
+  "BOT_MNEMONIC",
+  "BOT_KEY_ID",
+  "BOT_SECRET",
+];
+
 const NETWORK_ID = 0; // preprod
 
 async function main() {
+  const missing = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+  if (missing.length > 0) {
+    console.error("Smoke test skipped: missing env vars:", missing.join(", "));
+    console.error("Configure the SMOKE_* secrets in GitHub repository settings.");
+    process.exit(0);
+  }
+
   const baseUrl = requireEnv("API_BASE_URL");
 
   console.log("Deriving signer addresses...");
