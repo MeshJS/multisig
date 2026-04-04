@@ -7,6 +7,7 @@ import { MeshTxBuilder } from "@meshsdk/core";
 import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "./useActiveWallet";
 import {
+  filterWitnessesToScripts,
   mergeSignerWitnesses,
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
@@ -242,11 +243,9 @@ export default function useTransaction() {
       }
 
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
-      let signedTx = mergeSignerWitnesses(
-        unsignedTx,
-        signerWitnessPayload,
+      let signedTx = filterWitnessesToScripts(
+        mergeSignerWitnesses(unsignedTx, signerWitnessPayload),
       );
-      
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);

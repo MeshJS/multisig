@@ -1,4 +1,8 @@
 import { csl } from "@meshsdk/core-csl";
+import {
+  decodeNativeScriptFromCsl,
+  collectSigKeyHashes,
+} from "@/utils/nativeScriptUtils";
 
 function toKeyHashHex(publicKey: csl.PublicKey): string {
   return Array.from(publicKey.hash().to_bytes())
@@ -155,6 +159,74 @@ export function mergeSignerWitnesses(
   }
 
   return mergedTx.to_hex();
+}
+
+/**
+ * Removes VKey witnesses whose key hash is not required by any native script
+ * in the transaction's witness set. This prevents `InvalidWitnessesUTXOW`
+ * rejections from the Conway ledger when a wallet returns extraneous witnesses
+ * during partial signing.
+ *
+ * If the transaction contains no native scripts (non-multisig), it is returned
+ * unchanged.
+ */
+export function filterWitnessesToScripts(txHex: string): string {
+  const tx = csl.Transaction.from_hex(txHex);
+  const witnessSet = tx.witness_set();
+
+  const nativeScripts = witnessSet.native_scripts();
+  if (!nativeScripts || nativeScripts.len() === 0) {
+    return txHex;
+  }
+
+  const allowedKeyHashes = new Set<string>();
+  for (let i = 0; i < nativeScripts.len(); i++) {
+    const decoded = decodeNativeScriptFromCsl(nativeScripts.get(i));
+    for (const kh of collectSigKeyHashes(decoded)) {
+      allowedKeyHashes.add(kh.toLowerCase());
+    }
+  }
+
+  if (allowedKeyHashes.size === 0) {
+    return txHex;
+  }
+
+  const existingVkeys = witnessSet.vkeys();
+  if (!existingVkeys || existingVkeys.len() === 0) {
+    return txHex;
+  }
+
+  const filteredVkeys = csl.Vkeywitnesses.new();
+  let removed = 0;
+  for (let i = 0; i < existingVkeys.len(); i++) {
+    const w = existingVkeys.get(i);
+    const kh = toKeyHashHex(w.vkey().public_key());
+    if (allowedKeyHashes.has(kh)) {
+      filteredVkeys.add(w);
+    } else {
+      removed += 1;
+    }
+  }
+
+  if (removed === 0) {
+    return txHex;
+  }
+
+  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
+    witnessSet.to_bytes(),
+  );
+  witnessSetClone.set_vkeys(filteredVkeys);
+
+  const filteredTx = csl.Transaction.new(
+    csl.TransactionBody.from_bytes(tx.body().to_bytes()),
+    witnessSetClone,
+    tx.auxiliary_data(),
+  );
+  if (!tx.is_valid()) {
+    filteredTx.set_is_valid(false);
+  }
+
+  return filteredTx.to_hex();
 }
 
 export {
