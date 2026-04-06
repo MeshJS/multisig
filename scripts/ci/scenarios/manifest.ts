@@ -60,47 +60,6 @@ function createWalletIdsStep(): RouteStep {
   };
 }
 
-function createPendingStep(walletType: string): RouteStep {
-  return {
-    id: `v1.pendingTransactions.${walletType}`,
-    description: `Verify pending transactions for ${walletType} wallet`,
-    severity: "critical",
-    execute: async (ctx) => {
-      const bot = getDefaultBot(ctx);
-      const token = await authenticateBot({ ctx, bot });
-      const wallet = getWalletByType(ctx, walletType);
-      if (!wallet) {
-        throw new Error(`Missing wallet type in context: ${walletType}`);
-      }
-      const route = `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`;
-      const response = await requestJson<Array<{ id?: string }> | { error?: string }>({
-        url: route,
-        method: "GET",
-        token,
-      });
-      if (response.status !== 200 || !Array.isArray(response.data)) {
-        throw new Error(
-          `pendingTransactions failed for ${walletType} (${response.status}): ${stringifyRedacted(response.data)}`,
-        );
-      }
-      const seededFound = response.data.some((tx) => tx.id === wallet.transactionId);
-      if (!seededFound) {
-        throw new Error(
-          `pendingTransactions for ${walletType} did not include seeded tx ${wallet.transactionId}`,
-        );
-      }
-      return {
-        message: `pendingTransactions succeeded for ${walletType} with ${response.data.length} rows`,
-        artifacts: {
-          walletId: wallet.walletId,
-          expectedTransactionId: wallet.transactionId,
-          rowCount: response.data.length,
-        },
-      };
-    },
-  };
-}
-
 function createFreeUtxosStep(walletType: string): RouteStep {
   return {
     id: `v1.freeUtxos.${walletType}`,
@@ -208,43 +167,19 @@ function createSigningStep(args: {
 
 function createScenarioPendingAndDiscovery(): Scenario {
   return {
-    id: "scenario.pending-and-discovery",
-    description: "Wallet discovery and pending transaction checks across bootstrap wallets",
+    id: "scenario.wallet-discovery",
+    description: "Wallet discovery checks across bootstrap wallets",
     steps: [createWalletIdsStep()],
-  };
-}
-
-function createScenarioPendingPerWallet(ctx: CIBootstrapContext): Scenario {
-  return {
-    id: "scenario.pending-per-wallet",
-    description: "Pending transaction validation for each wallet type",
-    steps: ctx.walletTypes.map((walletType) => createPendingStep(walletType)),
   };
 }
 
 function createScenarioAdaRouteHealth(ctx: CIBootstrapContext): Scenario {
   return {
     id: "scenario.ada-route-health",
-    description: "Route chain for transfer readiness (freeUtxos + multi-signer signTransaction progression)",
+    description: "Route chain for transfer readiness (freeUtxos + nativeScript)",
     steps: [
       ...ctx.walletTypes.map((walletType) => createFreeUtxosStep(walletType)),
       ...ctx.walletTypes.map((walletType) => createNativeScriptStep(walletType)),
-      createSigningStep({
-        id: "v1.signTransaction.selectedWallet.signer1",
-        description: "Signer 1 adds witness without broadcast for selected wallet type",
-        signerIndex: 1,
-        mnemonicEnvName: "CI_MNEMONIC_2",
-        signBroadcast: false,
-        requireBroadcastSuccess: false,
-      }),
-      createSigningStep({
-        id: "v1.signTransaction.selectedWallet.signer2",
-        description: "Signer 2 adds witness without broadcast for selected wallet type",
-        signerIndex: 2,
-        mnemonicEnvName: "CI_MNEMONIC_3",
-        signBroadcast: false,
-        requireBroadcastSuccess: false,
-      }),
     ],
   };
 }
@@ -470,7 +405,6 @@ export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
   };
   return [
     createScenarioPendingAndDiscovery(),
-    createScenarioPendingPerWallet(ctx),
     createScenarioAdaRouteHealth(ctx),
     createScenarioRealTransferAndSign(runtime),
     createScenarioFinalAssertions(runtime),

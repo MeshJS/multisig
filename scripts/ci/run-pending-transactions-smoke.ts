@@ -17,11 +17,17 @@ async function main() {
     "/tmp/ci-route-chain-pending-report.json",
   );
   const ctx = await loadBootstrapContext(contextPath);
+  const pendingScenarioIds = new Set([
+    "scenario.real-transfer-and-sign",
+    "scenario.final-assertions",
+  ]);
   const scenarios = getScenarioManifest(ctx).filter((scenario) =>
-    scenario.id.startsWith("scenario.pending"),
+    pendingScenarioIds.has(scenario.id),
   );
   if (!scenarios.length) {
-    throw new Error("No pending scenarios found in manifest");
+    throw new Error(
+      `No pending lifecycle scenarios found in manifest. Expected: ${Array.from(pendingScenarioIds).join(", ")}`,
+    );
   }
 
   const report = await runScenarios({ scenarios, ctx });

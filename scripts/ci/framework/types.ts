@@ -4,7 +4,7 @@ export type CIWalletContext = {
   type: CIWalletType;
   walletId: string;
   walletAddress: string;
-  transactionId: string;
+  transactionId?: string;
   signerAddresses: string[];
 };
 

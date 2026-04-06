@@ -8,6 +8,10 @@ function assertString(name: string, value: unknown): string {
   return value.trim();
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function assertStringArray(name: string, value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`Invalid context: ${name} must be a non-empty array`);
@@ -79,7 +83,7 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
       type: normalizeWalletType(w.type),
       walletId: assertString(`wallets[${idx}].walletId`, w.walletId),
       walletAddress: assertString(`wallets[${idx}].walletAddress`, w.walletAddress),
-      transactionId: assertString(`wallets[${idx}].transactionId`, w.transactionId),
+      transactionId: optionalString(w.transactionId),
       signerAddresses: assertStringArray(`wallets[${idx}].signerAddresses`, w.signerAddresses),
     };
   });
@@ -108,8 +112,7 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
     walletAddress:
       typeof input.walletAddress === "string" ? input.walletAddress : wallets[0]?.walletAddress,
     signerAddresses,
-    transactionId:
-      typeof input.transactionId === "string" ? input.transactionId : wallets[0]?.transactionId,
+    transactionId: optionalString(input.transactionId) ?? wallets[0]?.transactionId,
   };
 }
 

@@ -18,7 +18,6 @@ CI runs these stages in order:
    - Provisions one bot key per signer address.
    - Creates test wallets (`legacy`, `hierarchical`, `sdk`).
    - Grants all signer bots cosigner access to created wallets.
-   - Seeds baseline pending transactions.
    - Writes a versioned context JSON consumed by all later steps.
 
 2. **Route chain** (`run-route-chain.ts`)
@@ -57,10 +56,9 @@ CI runs these stages in order:
 The manifest currently covers:
 
 - route discovery (`walletIds`)
-- pending checks (per-wallet pending scenario)
-- per-wallet pending validations
-- route health checks (`freeUtxos`, `nativeScript`) and signing checks
+- route health checks (`freeUtxos`, `nativeScript`)
 - real multisig-wallet ring transfer + sign path
+- pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
 
 For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
@@ -87,7 +85,7 @@ For each ring leg, signing runs two signer rounds:
 - signer index 1 (`CI_MNEMONIC_2`) signs with broadcast disabled
 - signer index 2 (`CI_MNEMONIC_3`) signs with broadcast enabled
 
-Each leg is asserted as pending after `addTransaction`, then asserted removed after signer 2 broadcast.
+Each leg is asserted as pending immediately after `addTransaction`, then asserted removed after signer 2 broadcast.
 
 ## Environment and secrets
 
@@ -118,8 +116,9 @@ Validation notes:
 
 `create-wallets.ts` writes schema version `2`, with no persisted runtime secrets:
 
+- `wallets[]`: `{ type, walletId, walletAddress, signerAddresses }` (no seeded `transactionId`)
 - `bots[]`: `{ id, paymentAddress, botKeyId, botId }`
-- `defaultBotId`: primary bot used for discovery/pending/freeUtxos assertions
+- `defaultBotId`: primary bot used for discovery/freeUtxos assertions
 
 Security guarantees:
 
@@ -127,12 +126,23 @@ Security guarantees:
 - The context file does not store bot secrets.
 - Route steps authenticate bots on demand at runtime.
 - `docker-compose.ci.yml` removes the context file after route-chain execution.
-- Failure log upload applies token/secret redaction filters.
+- Failure log upload applies token/secret/mnemonic/private-key redaction filters.
 
 Limitation:
 
 - If application code logs sensitive values directly, redaction can miss uncommon formats.
 - Treat uploaded logs as diagnostic artifacts, not as guaranteed zero-leak outputs.
+
+Logging policy (required for contributors):
+
+- It is acceptable to log non-sensitive diagnostics: wallet IDs, transaction hashes, key hashes, and testnet addresses.
+- Never log raw secrets: mnemonics, private keys/signing keys, bot auth secrets, bearer tokens, or API keys.
+- Redaction is best-effort safety net; route steps and helpers must avoid printing sensitive raw values in the first place.
+
+Safe-to-print checklist for new route/scenario code:
+
+- Safe: `walletId`, `transactionId`/tx hash, `paymentAddress`/`stakeAddress` (testnet), `keyHash`, scenario ids/status.
+- Forbidden: any `CI_MNEMONIC_*` value, any `xprv*`/`ed25519*_sk*` material, `Authorization` headers, `secret`/`token` payload fields.
 
 ## How to contribute
 
@@ -190,8 +200,11 @@ $env:CI_ROUTE_SCENARIOS=""
 
 Start a clean CI-like stack:
 
+If you changed local code or Dockerfiles, rebuild `app` and `ci-runner`; otherwise you can skip the `build` command for faster reruns.
+
 ```powershell
 docker compose -f docker-compose.ci.yml down -v
+docker compose -f docker-compose.ci.yml build app ci-runner
 docker compose -f docker-compose.ci.yml up -d postgres app
 ```
 
@@ -247,8 +260,11 @@ export CI_ROUTE_SCENARIOS=""
 
 Start a clean CI-like stack:
 
+If you changed local code or Dockerfiles, rebuild `app` and `ci-runner`; otherwise you can skip the `build` command for faster reruns.
+
 ```bash
 docker compose -f docker-compose.ci.yml down -v
+docker compose -f docker-compose.ci.yml build app ci-runner
 docker compose -f docker-compose.ci.yml up -d postgres app
 ```
 
@@ -274,4 +290,3 @@ View generated report on host:
 ```bash
 cat ./ci-artifacts/ci-route-chain-report.json
 ```
-

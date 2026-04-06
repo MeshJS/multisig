@@ -24,7 +24,7 @@ async function main() {
   });
 
   console.log(
-    `signTransaction succeeded for ${result.walletType} tx ${result.transactionId} (broadcast=${shouldBroadcast})`,
+    `signTransaction succeeded for ${result.walletType} tx ${result.transactionId} (broadcast=${shouldBroadcast}). This helper expects a pending tx to already exist (for example from the ring transfer flow).`,
   );
 }
 

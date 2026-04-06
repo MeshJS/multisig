@@ -143,23 +143,13 @@ async function main() {
     throw new Error("No signer bots were provisioned");
   }
 
-  const { csl } = await import("@meshsdk/core-csl");
   const { resolvePaymentKeyHash } = await import("@meshsdk/core");
   const paymentKeyHashes = signerAddresses.map((addr) => resolvePaymentKeyHash(addr));
-  const txBody = csl.TransactionBody.new(
-    csl.TransactionInputs.new(),
-    csl.TransactionOutputs.new(),
-    csl.BigNum.from_str("0"),
-  );
-  const unsignedTxHex = csl
-    .Transaction.new(txBody, csl.TransactionWitnessSet.new(), undefined)
-    .to_hex();
 
   const createdWallets: Array<{
     type: CIWalletType;
     walletId: string;
     walletAddress: string;
-    transactionId: string;
     signerAddresses: string[];
   }> = [];
 
@@ -226,32 +216,10 @@ async function main() {
       });
     }
 
-    const addTransactionResponse = await fetch(`${apiBaseUrl}/api/v1/addTransaction`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${botAuthByAddress[primaryBot.paymentAddress]}`,
-      },
-      body: JSON.stringify({
-        walletId: createWalletBody.walletId as string,
-        address: primaryBot.paymentAddress,
-        txCbor: unsignedTxHex,
-        txJson: JSON.stringify({ source: "ci-smoke", kind: "minimal-csl-tx", walletType }),
-        description: `CI smoke signing transaction (${walletType})`,
-      }),
-    });
-    const addTransactionBody = await addTransactionResponse.json();
-    if (!addTransactionResponse.ok || !addTransactionBody?.id) {
-      throw new Error(
-        `addTransaction (${walletType}) failed (${addTransactionResponse.status}): ${stringifyRedacted(addTransactionBody)}`,
-      );
-    }
-
     createdWallets.push({
       type: walletType,
       walletId: createWalletBody.walletId as string,
       walletAddress: createWalletBody.address as string,
-      transactionId: addTransactionBody.id as string,
       signerAddresses,
     });
   }
@@ -272,7 +240,6 @@ async function main() {
           walletId: createdWallets[0]?.walletId,
           walletAddress: createdWallets[0]?.walletAddress,
           signerAddresses,
-          transactionId: createdWallets[0]?.transactionId,
         },
         null,
         2,
@@ -283,9 +250,6 @@ async function main() {
 
   console.log(
     `Created wallets: ${createdWallets.map((w) => `${w.type}:${w.walletId}`).join(", ")}`,
-  );
-  console.log(
-    `Seeded pending tx: ${createdWallets.map((w) => `${w.type}:${w.transactionId}`).join(", ")}`,
   );
   console.log(`Saved CI context to ${contextPath}`);
 }

@@ -1,11 +1,28 @@
 function shouldRedactKey(key: string): boolean {
   const k = key.toLowerCase();
+  const sensitiveKeyParts = [
+    "token",
+    "secret",
+    "authorization",
+    "api_key",
+    "apikey",
+    "mnemonic",
+    "privatekey",
+    "private_key",
+    "signingkey",
+    "signing_key",
+    "seed",
+    "xprv",
+    "ed25519e_sk",
+  ];
+
+  if (sensitiveKeyParts.some((part) => k.includes(part))) {
+    return true;
+  }
+
   return (
-    k.includes("token") ||
-    k.includes("secret") ||
-    k.includes("authorization") ||
-    k.includes("api_key") ||
-    k.includes("apikey")
+    (k.includes("private") && k.includes("key")) ||
+    (k.includes("signing") && k.includes("key"))
   );
 }
 

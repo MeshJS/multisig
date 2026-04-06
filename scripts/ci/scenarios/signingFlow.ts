@@ -86,7 +86,6 @@ export async function runSigningFlow(args: {
 
   const tx =
     pendingResponse.data.find((p) => p.id === args.preferredTransactionId) ??
-    pendingResponse.data.find((p) => p.id === selectedWallet.transactionId) ??
     pendingResponse.data.find((p) => typeof p.txCbor === "string" && p.txCbor.length > 0);
   if (!tx?.txCbor) {
     throw new Error("Pending transactions exist but none include txCbor");

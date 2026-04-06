@@ -99,6 +99,13 @@ jobs:
             | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
             | sed -E 's/("token"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
             | sed -E 's/("secret"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
+            | sed -E 's/("mnemonic([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("private([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("signing([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("seed([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("xprv([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/(ed25519e?_sk[[:alnum:]_]+)/[REDACTED]/gI' \
+            | sed -E 's/(xprv[[:alnum:]]+)/[REDACTED]/gI' \
             > docker-compose-ci.log
 
       - name: Upload logs on failure
