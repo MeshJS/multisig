@@ -5,6 +5,13 @@ import { seedRealTransferTransaction } from "./transferFlow";
 import { getDefaultBot } from "../framework/botContext";
 import { authenticateBot } from "../framework/botAuth";
 import { stringifyRedacted } from "../framework/redact";
+import { authenticateSignerWithMnemonic } from "../framework/walletAuth";
+import { signDatumWithMnemonic } from "../framework/datumSign";
+import {
+  buildBallotUpsertPayload,
+  getDeterministicActiveProposals,
+  type ActiveProposal,
+} from "../framework/governance";
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
@@ -180,6 +187,361 @@ function createScenarioAdaRouteHealth(ctx: CIBootstrapContext): Scenario {
     steps: [
       ...ctx.walletTypes.map((walletType) => createFreeUtxosStep(walletType)),
       ...ctx.walletTypes.map((walletType) => createNativeScriptStep(walletType)),
+    ],
+  };
+}
+
+function createScenarioBotIdentity(): Scenario {
+  return {
+    id: "scenario.bot-identity",
+    description: "Bot profile route checks",
+    steps: [
+      {
+        id: "v1.botMe.defaultBot",
+        description: "Verify default bot identity via /api/v1/botMe",
+        severity: "critical",
+        execute: async (ctx) => {
+          const bot = getDefaultBot(ctx);
+          const token = await authenticateBot({ ctx, bot });
+          const response = await requestJson<{
+            botId?: string;
+            paymentAddress?: string;
+            ownerAddress?: string;
+            error?: string;
+          }>({
+            url: `${ctx.apiBaseUrl}/api/v1/botMe`,
+            method: "GET",
+            token,
+          });
+          if (response.status !== 200) {
+            throw new Error(`botMe failed (${response.status}): ${stringifyRedacted(response.data)}`);
+          }
+          if (response.data.botId !== bot.botId) {
+            throw new Error("botMe returned unexpected botId");
+          }
+          if (response.data.paymentAddress !== bot.paymentAddress) {
+            throw new Error("botMe returned unexpected paymentAddress");
+          }
+          return {
+            message: `botMe resolved bot ${response.data.botId}`,
+            artifacts: {
+              botId: response.data.botId,
+              paymentAddress: response.data.paymentAddress,
+            },
+          };
+        },
+      },
+    ],
+  };
+}
+
+function createScenarioAuthPlane(): Scenario {
+  return {
+    id: "scenario.auth-plane",
+    description: "Wallet auth route checks and negative auth assertions",
+    steps: [
+      {
+        id: "v1.authNegative.walletIds.addressMismatch",
+        description: "Assert /api/v1/walletIds rejects mismatched address",
+        severity: "critical",
+        execute: async (ctx) => {
+          const bot = getDefaultBot(ctx);
+          const token = await authenticateBot({ ctx, bot });
+          const mismatchAddress =
+            ctx.bots.find((candidate) => candidate.id !== bot.id)?.paymentAddress ??
+            `${bot.paymentAddress}x`;
+          const response = await requestJson<{ error?: string }>({
+            url: `${ctx.apiBaseUrl}/api/v1/walletIds?address=${encodeURIComponent(mismatchAddress)}`,
+            method: "GET",
+            token,
+          });
+          if (response.status !== 403) {
+            throw new Error(
+              `walletIds address mismatch expected 403, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "walletIds address mismatch correctly rejected with 403",
+          };
+        },
+      },
+      {
+        id: "v1.authNegative.addTransaction.addressMismatch",
+        description: "Assert /api/v1/addTransaction rejects mismatched address",
+        severity: "critical",
+        execute: async (ctx) => {
+          const bot = getDefaultBot(ctx);
+          const token = await authenticateBot({ ctx, bot });
+          const legacyWallet = getWalletByType(ctx, "legacy");
+          if (!legacyWallet) {
+            throw new Error("Missing legacy wallet for addTransaction negative check");
+          }
+          const mismatchAddress =
+            ctx.bots.find((candidate) => candidate.id !== bot.id)?.paymentAddress ??
+            `${bot.paymentAddress}x`;
+          const response = await requestJson<{ error?: string }>({
+            url: `${ctx.apiBaseUrl}/api/v1/addTransaction`,
+            method: "POST",
+            token,
+            body: {
+              walletId: legacyWallet.walletId,
+              address: mismatchAddress,
+              txCbor: "00",
+              txJson: "{}",
+              description: "CI address mismatch negative check",
+            },
+          });
+          if (response.status !== 403) {
+            throw new Error(
+              `addTransaction address mismatch expected 403, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "addTransaction address mismatch correctly rejected with 403",
+            artifacts: { walletId: legacyWallet.walletId },
+          };
+        },
+      },
+      {
+        id: "v1.authNegative.pendingTransactions.missingToken",
+        description: "Assert /api/v1/pendingTransactions rejects missing token",
+        severity: "critical",
+        execute: async (ctx) => {
+          const wallet = getWalletByType(ctx, "legacy") ?? ctx.wallets[0];
+          if (!wallet) {
+            throw new Error("No wallets available for pendingTransactions negative check");
+          }
+          const signerAddress = wallet.signerAddresses[0];
+          if (!signerAddress) {
+            throw new Error("Missing signer address for pendingTransactions negative check");
+          }
+          const response = await requestJson<{ error?: string }>({
+            url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
+            method: "GET",
+          });
+          if (response.status !== 401) {
+            throw new Error(
+              `pendingTransactions missing token expected 401, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "pendingTransactions missing token correctly rejected with 401",
+            artifacts: { walletId: wallet.walletId },
+          };
+        },
+      },
+      {
+        id: "v1.getNonce.authSigner.signer2",
+        description: "Authenticate signer via getNonce + authSigner",
+        severity: "critical",
+        execute: async (ctx) => {
+          const mnemonic = process.env.CI_MNEMONIC_2;
+          if (!mnemonic?.trim()) {
+            throw new Error("CI_MNEMONIC_2 is required for authSigner scenario");
+          }
+          const authResult = await authenticateSignerWithMnemonic({
+            ctx,
+            mnemonic,
+          });
+          return {
+            message: "Signer wallet auth succeeded through getNonce/authSigner",
+            artifacts: {
+              signerAddress: authResult.signerAddress,
+              nonceLength: authResult.nonce.length,
+            },
+          };
+        },
+      },
+    ],
+  };
+}
+
+function createScenarioSubmitDatum(): Scenario {
+  return {
+    id: "scenario.submit-datum",
+    description: "Datum submission route checks",
+    steps: [
+      {
+        id: "v1.submitDatum.legacy.signer2",
+        description: "Submit signed datum using signer auth token",
+        severity: "critical",
+        execute: async (ctx) => {
+          const mnemonic = process.env.CI_MNEMONIC_2;
+          if (!mnemonic?.trim()) {
+            throw new Error("CI_MNEMONIC_2 is required for submitDatum scenario");
+          }
+          const wallet = getWalletByType(ctx, "legacy") ?? ctx.wallets[0];
+          if (!wallet) {
+            throw new Error("Missing wallet for submitDatum scenario");
+          }
+          const auth = await authenticateSignerWithMnemonic({
+            ctx,
+            mnemonic,
+          });
+          const datum = JSON.stringify({
+            source: "ci-route-chain",
+            kind: "submitDatum",
+            walletType: wallet.type,
+            walletId: wallet.walletId,
+            createdAt: new Date().toISOString(),
+          });
+          const signedDatum = await signDatumWithMnemonic({
+            ctx,
+            mnemonic,
+            datum,
+          });
+          if (signedDatum.signerAddress !== auth.signerAddress) {
+            throw new Error("Signer address mismatch between auth and datum signing");
+          }
+          const response = await requestJson<{ id?: string; error?: string }>({
+            url: `${ctx.apiBaseUrl}/api/v1/submitDatum`,
+            method: "POST",
+            token: auth.token,
+            body: {
+              walletId: wallet.walletId,
+              signature: signedDatum.signature,
+              key: signedDatum.key,
+              address: auth.signerAddress,
+              datum,
+              callbackUrl: `${ctx.apiBaseUrl}/api/v1/og`,
+              description: `CI submitDatum for ${wallet.type}`,
+            },
+          });
+          if (response.status !== 201 || !response.data?.id) {
+            throw new Error(
+              `submitDatum failed (${response.status}): ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: `submitDatum created signable ${response.data.id}`,
+            artifacts: {
+              signableId: response.data.id,
+              walletId: wallet.walletId,
+              signerAddress: auth.signerAddress,
+            },
+          };
+        },
+      },
+    ],
+  };
+}
+
+function createScenarioGovernanceRoutes(): Scenario {
+  const runtime: {
+    activeProposals: ActiveProposal[];
+  } = {
+    activeProposals: [],
+  };
+  return {
+    id: "scenario.governance-routes",
+    description: "Governance route checks for active proposals and ballot upsert",
+    steps: [
+      {
+        id: "v1.governanceActiveProposals.preprod",
+        description: "Fetch active governance proposals on preprod",
+        severity: "critical",
+        execute: async (ctx) => {
+          const bot = getDefaultBot(ctx);
+          const token = await authenticateBot({ ctx, bot });
+          const response = await requestJson<{
+            proposals?: unknown[];
+            activeCount?: number;
+            sourceCount?: number;
+            error?: string;
+          }>({
+            url: `${ctx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
+            method: "GET",
+            token,
+          });
+          if (response.status !== 200) {
+            throw new Error(
+              `governanceActiveProposals failed (${response.status}): ${stringifyRedacted(response.data)}`,
+            );
+          }
+          runtime.activeProposals = getDeterministicActiveProposals(response.data, 2);
+          return {
+            message: `governanceActiveProposals returned ${runtime.activeProposals.length} usable active proposal(s)`,
+            artifacts: {
+              activeCount: response.data?.activeCount,
+              sourceCount: response.data?.sourceCount,
+              selectedProposalIds: runtime.activeProposals.map((proposal) => proposal.proposalId),
+            },
+          };
+        },
+      },
+      {
+        id: "v1.botBallotsUpsert.legacy",
+        description: "Upsert governance ballots from active proposals (with idempotent update)",
+        severity: "critical",
+        execute: async (ctx) => {
+          if (!runtime.activeProposals.length) {
+            return {
+              message: "No active proposals available on preprod; ballot upsert route skipped",
+              artifacts: {
+                skipped: true,
+              },
+            };
+          }
+          const bot = getDefaultBot(ctx);
+          const token = await authenticateBot({ ctx, bot });
+          const wallet = getWalletByType(ctx, "legacy") ?? ctx.wallets[0];
+          if (!wallet) {
+            throw new Error("Missing wallet for governance ballot upsert");
+          }
+          const ballotName = `CI governance ballot ${ctx.createdAt}`;
+          const firstPayload = buildBallotUpsertPayload({
+            walletId: wallet.walletId,
+            ballotName,
+            proposals: runtime.activeProposals,
+          });
+          const firstResponse = await requestJson<{
+            ballot?: { id?: string; items?: string[]; choices?: string[] };
+            error?: string;
+          }>({
+            url: `${ctx.apiBaseUrl}/api/v1/botBallotsUpsert`,
+            method: "POST",
+            token,
+            body: firstPayload as unknown as Record<string, unknown>,
+          });
+          if (firstResponse.status !== 200 || !firstResponse.data?.ballot?.id) {
+            throw new Error(
+              `botBallotsUpsert seed failed (${firstResponse.status}): ${stringifyRedacted(firstResponse.data)}`,
+            );
+          }
+          const secondPayload = buildBallotUpsertPayload({
+            walletId: wallet.walletId,
+            ballotName,
+            proposals: runtime.activeProposals,
+            secondPass: true,
+          });
+          const secondResponse = await requestJson<{
+            ballot?: { id?: string; items?: string[]; choices?: string[] };
+            error?: string;
+          }>({
+            url: `${ctx.apiBaseUrl}/api/v1/botBallotsUpsert`,
+            method: "POST",
+            token,
+            body: secondPayload as unknown as Record<string, unknown>,
+          });
+          if (secondResponse.status !== 200 || !secondResponse.data?.ballot?.id) {
+            throw new Error(
+              `botBallotsUpsert update failed (${secondResponse.status}): ${stringifyRedacted(secondResponse.data)}`,
+            );
+          }
+          if (secondResponse.data.ballot.id !== firstResponse.data.ballot.id) {
+            throw new Error("botBallotsUpsert update should target the same ballot");
+          }
+          return {
+            message: `botBallotsUpsert updated ballot ${secondResponse.data.ballot.id}`,
+            artifacts: {
+              walletId: wallet.walletId,
+              ballotId: secondResponse.data.ballot.id,
+              proposalCount: runtime.activeProposals.length,
+              choices: secondResponse.data.ballot.choices ?? [],
+            },
+          };
+        },
+      },
     ],
   };
 }
@@ -406,6 +768,10 @@ export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
   return [
     createScenarioPendingAndDiscovery(),
     createScenarioAdaRouteHealth(ctx),
+    createScenarioBotIdentity(),
+    createScenarioAuthPlane(),
+    createScenarioSubmitDatum(),
+    createScenarioGovernanceRoutes(),
     createScenarioRealTransferAndSign(runtime),
     createScenarioFinalAssertions(runtime),
   ];

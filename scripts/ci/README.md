@@ -44,6 +44,9 @@ CI runs these stages in order:
   - `types.ts`: shared types for context/scenarios/reports.
   - `context.ts`: context loading + validation.
   - `http.ts`: API caller helper with timeout/retry support.
+  - `walletAuth.ts`: nonce + signer auth helper (`getNonce`/`authSigner`) and signer data signing.
+  - `datumSign.ts`: reusable datum signing helper.
+  - `governance.ts`: deterministic governance proposal selection and ballot payload builder.
   - `runner.ts`: scenario/step execution + report writing.
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering.
@@ -57,6 +60,11 @@ The manifest currently covers:
 
 - route discovery (`walletIds`)
 - route health checks (`freeUtxos`, `nativeScript`)
+- bot identity (`botMe`)
+- auth-plane checks (`getNonce`, `authSigner`)
+- explicit auth negative checks (`walletIds`, `addTransaction`, `pendingTransactions`)
+- datum route coverage (`submitDatum`)
+- governance routes (`governanceActiveProposals`, `botBallotsUpsert`)
 - real multisig-wallet ring transfer + sign path
 - pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
@@ -111,6 +119,7 @@ Validation notes:
 - `CI_MNEMONIC_2` and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing.
 - Source multisig wallet script addresses must be funded on preprod for each ring leg (`legacy -> hierarchical -> sdk -> legacy`).
 - `CI_JWT_SECRET` must remain the same between bootstrap and route-chain, because bot auth secrets are deterministically derived from it.
+- CI bot keys are provisioned with scopes: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`.
 
 ## Bootstrap context schema
 
@@ -170,6 +179,7 @@ Safe-to-print checklist for new route/scenario code:
 - Prefer reusable helpers in `framework/` or `scenarios/*Flow.ts`.
 - Keep step ids stable (helps CI history and triage).
 - Avoid hidden randomness in assertions; use deterministic checks.
+- For governance scenarios, derive proposal lists via `framework/governance.ts` so payload shape and proposal selection remain deterministic across step reruns.
 
 ## Local execution (PowerShell, CI-like)
 

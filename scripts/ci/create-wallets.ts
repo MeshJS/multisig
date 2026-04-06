@@ -110,7 +110,13 @@ async function main() {
         ownerAddress: `ci-owner-${Date.now()}-${i}`,
         name: `ci-bot-signer-${i}-${Date.now()}`,
         keyHash: hashBotSecret(botSecret, jwtSecret),
-        scope: JSON.stringify(["multisig:create", "multisig:read", "multisig:sign"]),
+        scope: JSON.stringify([
+          "multisig:create",
+          "multisig:read",
+          "multisig:sign",
+          "governance:read",
+          "ballot:write",
+        ]),
       },
     });
 
