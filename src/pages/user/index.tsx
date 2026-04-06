@@ -15,6 +15,8 @@ import useUTXOS from "@/hooks/useUTXOS";
 import { Badge } from "@/components/ui/badge";
 import BotManagementCard from "@/components/pages/user/BotManagementCard";
 
+export const getServerSideProps = () => ({ props: {} });
+
 export default function UserInfoPage() {
   const router = useRouter();
   const { user, isLoading } = useUser();
