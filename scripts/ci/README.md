@@ -29,6 +29,7 @@ CI runs these stages in order:
 3. **Artifacts**
    - Route-chain JSON report is written to `ci-artifacts/ci-route-chain-report.json`.
    - Workflow uploads it as an artifact for triage.
+   - Report now includes top-level `walletBalanceSummary` with total on-chain balances per wallet.
 
 ## Folder structure
 
@@ -152,6 +153,55 @@ Safe-to-print checklist for new route/scenario code:
 
 - Safe: `walletId`, `transactionId`/tx hash, `paymentAddress`/`stakeAddress` (testnet), `keyHash`, scenario ids/status.
 - Forbidden: any `CI_MNEMONIC_*` value, any `xprv*`/`ed25519*_sk*` material, `Authorization` headers, `secret`/`token` payload fields.
+
+## Wallet balance summary in report
+
+`ci-route-chain-report.json` includes a top-level `walletBalanceSummary` object that captures a single balance snapshot near report finalization:
+
+- Source: direct on-chain UTxO lookup for each `wallet.walletAddress` from bootstrap context.
+- Semantics: **total on-chain balance** (includes UTxOs even if currently referenced by pending multisig transactions).
+- Quantities: stringified integer quantities (lovelace + native assets) to preserve precision.
+
+Shape:
+
+```json
+{
+  "walletBalanceSummary": {
+    "capturedAt": "2026-01-01T00:00:00.000Z",
+    "networkId": 0,
+    "byWalletType": {
+      "legacy": {
+        "walletType": "legacy",
+        "walletId": "wallet-id",
+        "walletAddress": "addr_test...",
+        "utxoCount": 2,
+        "lovelace": "12345678",
+        "assets": {
+          "lovelace": "12345678"
+        },
+        "capturedAt": "2026-01-01T00:00:00.000Z",
+        "networkId": 0
+      }
+    },
+    "byWalletId": {
+      "wallet-id": {
+        "walletType": "legacy",
+        "walletId": "wallet-id",
+        "walletAddress": "addr_test...",
+        "utxoCount": 2,
+        "lovelace": "12345678",
+        "assets": {
+          "lovelace": "12345678"
+        },
+        "capturedAt": "2026-01-01T00:00:00.000Z",
+        "networkId": 0
+      }
+    }
+  }
+}
+```
+
+If balance collection fails, `walletBalanceSummary.error` is populated and the report remains writable for triage.
 
 ## How to contribute
 

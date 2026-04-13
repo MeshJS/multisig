@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import { dirname } from "path";
 import type { CIBootstrapContext, RunReport, Scenario, ScenarioReport, StepReport } from "./types";
+import { collectWalletBalanceSummary } from "./walletBalances";
 
 function now(): number {
   return Date.now();
@@ -73,6 +74,8 @@ export async function runScenarios(args: {
     }
   }
 
+  const walletBalanceSummary = await collectWalletBalanceSummary(ctx);
+
   return {
     createdAt: new Date().toISOString(),
     scenarioIds: scenarios.map((s) => s.id),
@@ -84,6 +87,7 @@ export async function runScenarios(args: {
       walletCount: ctx.wallets.length,
       walletTypes: ctx.walletTypes,
     },
+    walletBalanceSummary,
     scenarios: scenarioReports,
   };
 }

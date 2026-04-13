@@ -69,6 +69,25 @@ export type ScenarioReport = {
   steps: StepReport[];
 };
 
+export type CIWalletBalanceEntry = {
+  walletType: CIWalletType;
+  walletId: string;
+  walletAddress: string;
+  utxoCount: number;
+  lovelace: string;
+  assets: Record<string, string>;
+  capturedAt: string;
+  networkId: 0 | 1;
+};
+
+export type CIWalletBalanceSummary = {
+  capturedAt: string;
+  networkId: 0 | 1;
+  byWalletType: Partial<Record<CIWalletType, CIWalletBalanceEntry>>;
+  byWalletId: Record<string, CIWalletBalanceEntry>;
+  error?: string;
+};
+
 export type RunReport = {
   createdAt: string;
   scenarioIds: string[];
@@ -80,5 +99,6 @@ export type RunReport = {
     walletCount: number;
     walletTypes: CIWalletType[];
   };
+  walletBalanceSummary: CIWalletBalanceSummary;
   scenarios: ScenarioReport[];
 };
