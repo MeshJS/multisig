@@ -22,8 +22,9 @@
 |------|-------|--------|
 | Establish triage cadence for issues and PRs | Quirin + Andre | |
 | Review repository health (CI/CD, dependencies, backlog) | Quirin | |
-| **CI smoke tests on real chain** - Complete the preprod CI system | Quirin | #213 |
-| **Fix transaction loading bug** - API-added transactions break the page | Andre | #211 |
+| **CI smoke tests on real chain** - Complete the preprod CI system | Andre | #213 |
+| **Fix transaction loading bug** - API-added transactions break the page | Quirin | #211 |
+| **Review and handle open external PRs** - Summon API routes and capability-based metadata from kanyuku | Quirin + Andre | PR #212, PR #208 |
 | Address any critical bugs or blockers | Quirin + Andre | |
 
 ---
