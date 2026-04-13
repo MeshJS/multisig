@@ -12,14 +12,14 @@
 
 | # | Feature | Owner | Est. Effort | Issues |
 |---|---------|-------|-------------|--------|
-| 1 | **CI smoke tests on real chain** - Complete the preprod CI system | Quirin or Andre | 2 weeks | #213 |
-| 2 | **Fix transaction loading bug** - API-added transactions break the page | Quirin or Andre | 1 week | #211 |
-| 3 | **Improved authentication** - Nonce-based auth, wallet connection fixes, registration flow | Quirin or Andre | 4 weeks | #135, #53 |
-| 4 | **Summon migration** - Land the Summon API routes + wallet import PRs | Quirin or Andre | 3 weeks | PR #212, PR #208 |
-| 5 | **Full address verification** | Quirin or Andre | 1 week | #196 |
-| 6 | **Transaction pagination** | Quirin or Andre | 1 week | #30 |
-| 7 | **Better 404 page** | Quirin or Andre | 0.5 weeks | #22 |
-| 8 | **Collateral service** - Users pay 22 ADA which is split into 4 UTxOs in a server-controlled wallet, released as collateral for proxy usage | Quirin or Andre | 3 weeks | #221 |
+| 1 | **CI smoke tests on real chain** - Complete the preprod CI system | Quirin | 2 weeks | #213 |
+| 2 | **Fix transaction loading bug** - API-added transactions break the page | Andre | 1 week | #211 |
+| 3 | **Improved authentication** - Nonce-based auth, wallet connection fixes, registration flow | Andre | 4 weeks | #135, #53 |
+| 4 | **Summon migration** - Land the Summon API routes + wallet import PRs | Quirin | 3 weeks | PR #212, PR #208 |
+| 5 | **Full address verification** | Andre | 1 week | #196 |
+| 6 | **Transaction pagination** | Quirin | 1 week | #30 |
+| 7 | **Better 404 page** | Quirin | 0.5 weeks | #22 |
+| 8 | **Collateral service** - Users pay 22 ADA which is split into 4 UTxOs in a server-controlled wallet, released as collateral for proxy usage | Andre | 3 weeks | #221 |
 
 **Quarter goal:** A new user can discover, create, and manage a multi-sig wallet with a stable, tested platform. Summon users can migrate. Collateral service enables proxy transactions.
 
@@ -31,11 +31,11 @@
 
 | # | Feature | Owner | Est. Effort | Issues |
 |---|---------|-------|-------------|--------|
-| 1 | **Aiken crowdfund integration** - Land the long-running PR #164 | Quirin or Andre | 4 weeks | PR #164 |
-| 2 | **Governance metadata fix** - Hash mismatch when fetching metadata | Quirin or Andre | 1 week | #122 |
-| 3 | **Proxy voting polish** - Complete and document the proxy voting system | Quirin or Andre | 3 weeks | |
-| 4 | **Wallet V2 - Registration & discovery** - On-chain wallet registration, searchable directory | Quirin or Andre | 4 weeks | #33 |
-| 5 | **Pending transactions on homepage** | Quirin or Andre | 1 week | #125 |
+| 1 | **Aiken crowdfund integration** - Land the long-running PR #164 | Quirin | 4 weeks | PR #164 |
+| 2 | **Governance metadata fix** - Hash mismatch when fetching metadata | Andre | 1 week | #122 |
+| 3 | **Proxy voting polish** - Complete and document the proxy voting system | Andre | 3 weeks | |
+| 4 | **Wallet V2 - Registration & discovery** - On-chain wallet registration, searchable directory | Quirin | 4 weeks | #33 |
+| 5 | **Pending transactions on homepage** | Quirin | 1 week | #125 |
 
 **Quarter goal:** Users can participate in governance end-to-end, use smart contract features (crowdfund), and discover wallets on-chain.
 
@@ -47,10 +47,10 @@
 
 | # | Feature | Owner | Est. Effort | Issues |
 |---|---------|-------|-------------|--------|
-| 1 | **Hardware wallet support** - Ledger/Trezor signing integration | Quirin or Andre | 5 weeks | #44 |
-| 2 | **Bot platform v2** - Documented bot SDK, webhook system, example bots | Quirin or Andre | 4 weeks | |
-| 3 | **dApp connector** - Allow external dApps to request multi-sig transactions | Quirin or Andre | 3 weeks | |
-| 4 | **API documentation & developer portal** - Expand Swagger docs, add guides, publish SDK | Quirin or Andre | 2 weeks | |
+| 1 | **Hardware wallet support** - Ledger/Trezor signing integration | Quirin | 5 weeks | #44 |
+| 2 | **Bot platform v2** - Documented bot SDK, webhook system, example bots | Andre | 4 weeks | |
+| 3 | **dApp connector** - Allow external dApps to request multi-sig transactions | Andre | 3 weeks | |
+| 4 | **API documentation & developer portal** - Expand Swagger docs, add guides, publish SDK | Quirin | 2 weeks | |
 
 **Quarter goal:** Developers can build on the platform. Hardware wallet users are supported. Bot ecosystem is documented and accessible.
 
@@ -62,11 +62,11 @@
 
 | # | Feature | Owner | Est. Effort | Issues |
 |---|---------|-------|-------------|--------|
-| 1 | **Vesting feature** - Time-locked multi-sig vesting contracts | Quirin or Andre | 5 weeks | #81 |
-| 2 | **User profiles & contacts** - Rich profiles, contact management, notification preferences | Quirin or Andre | 3 weeks | |
-| 3 | **Discover page** - Browse public wallets, DAOs, and governance activity | Quirin or Andre | 3 weeks | #52 |
-| 4 | **Performance & UX audit** - Load times, mobile responsiveness, accessibility | Quirin or Andre | 2 weeks | |
-| 5 | **Invite flow** - Land PR #67, polish wallet sharing/onboarding | Quirin or Andre | 1 week | PR #67 |
+| 1 | **Vesting feature** - Time-locked multi-sig vesting contracts | Quirin | 5 weeks | #81 |
+| 2 | **User profiles & contacts** - Rich profiles, contact management, notification preferences | Quirin | 3 weeks | |
+| 3 | **Discover page** - Browse public wallets, DAOs, and governance activity | Andre | 3 weeks | #52 |
+| 4 | **Performance & UX audit** - Load times, mobile responsiveness, accessibility | Andre | 2 weeks | |
+| 5 | **Invite flow** - Land PR #67, polish wallet sharing/onboarding | Andre | 1 week | PR #67 |
 
 **Quarter goal:** The platform is polished, discoverable, and supports advanced treasury features like vesting.
 
@@ -76,7 +76,7 @@
 
 | Topic | Description | Target Quarter | Owner |
 |-------|-------------|----------------|-------|
-| **FROST multi-sig wallets** | Research FROST (Flexible Round-Optimized Schnorr Threshold) signatures for Cardano. Evaluate feasibility of replacing or complementing native script multi-sig with threshold Schnorr signatures — smaller on-chain footprint, better privacy (single signature on-chain), and flexible threshold schemes. Investigate Cardano-compatible FROST libraries, protocol readiness, and migration path from current native scripts. | Q2-Q3 | Quirin or Andre |
+| **FROST multi-sig wallets** | Research FROST (Flexible Round-Optimized Schnorr Threshold) signatures for Cardano. Evaluate feasibility of replacing or complementing native script multi-sig with threshold Schnorr signatures — smaller on-chain footprint, better privacy (single signature on-chain), and flexible threshold schemes. Investigate Cardano-compatible FROST libraries, protocol readiness, and migration path from current native scripts. | Q2-Q3 | Quirin |
 
 **Research deliverables:**
 - Written summary of FROST vs native script trade-offs
