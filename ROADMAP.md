@@ -71,6 +71,19 @@
 
 ---
 
+## Research Track
+
+| Topic | Description | Target Quarter | Owner |
+|-------|-------------|----------------|-------|
+| **FROST multi-sig wallets** | Research FROST (Flexible Round-Optimized Schnorr Threshold) signatures for Cardano. Evaluate feasibility of replacing or complementing native script multi-sig with threshold Schnorr signatures — smaller on-chain footprint, better privacy (single signature on-chain), and flexible threshold schemes. Investigate Cardano-compatible FROST libraries, protocol readiness, and migration path from current native scripts. | Q2-Q3 | Quirin or Andre |
+
+**Research deliverables:**
+- Written summary of FROST vs native script trade-offs
+- Proof-of-concept if libraries are available
+- Go/no-go recommendation for integration into the platform
+
+---
+
 ## Cross-cutting (ongoing every quarter)
 
 - **Testing:** Add tests alongside every feature (target: key flows have integration tests)
