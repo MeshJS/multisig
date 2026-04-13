@@ -19,8 +19,9 @@
 | 5 | **Full address verification** | Quirin or Andre | 1 week | #196 |
 | 6 | **Transaction pagination** | Quirin or Andre | 1 week | #30 |
 | 7 | **Better 404 page** | Quirin or Andre | 0.5 weeks | #22 |
+| 8 | **Collateral service** - Users pay 22 ADA which is split into 4 UTxOs in a server-controlled wallet, released as collateral for proxy usage | Quirin or Andre | 3 weeks | #221 |
 
-**Quarter goal:** A new user can discover, create, and manage a multi-sig wallet with a stable, tested platform. Summon users can migrate.
+**Quarter goal:** A new user can discover, create, and manage a multi-sig wallet with a stable, tested platform. Summon users can migrate. Collateral service enables proxy transactions.
 
 ---
 
