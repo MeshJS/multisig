@@ -57,6 +57,7 @@ import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
+  filterWitnessesToScripts,
   mergeSignerWitnesses,
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
@@ -245,9 +246,8 @@ export default function TransactionCard({
 
       const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
 
-      let signedTx = mergeSignerWitnesses(
-        transaction.txCbor,
-        signerWitnessPayload,
+      let signedTx = filterWitnessesToScripts(
+        mergeSignerWitnesses(transaction.txCbor, signerWitnessPayload),
       );
 
       // sanity check
