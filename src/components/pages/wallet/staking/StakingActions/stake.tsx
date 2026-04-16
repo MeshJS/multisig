@@ -8,7 +8,6 @@ import { MultisigWallet } from "@/utils/multisigSDK";
 import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { STAKE_KEY_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import useTransaction from "@/hooks/useTransaction";
 
 type StakingAction = "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";
@@ -19,10 +18,6 @@ type StakingActionConfig = {
   successTitle: string;
   successMessage: string;
 };
-
-function shouldApplyStakeDeposit(action: StakingAction): boolean {
-  return action === "register" || action === "registerAndDelegate";
-}
 
 function buildStakingActionConfigs({
   txBuilder,
@@ -130,10 +125,6 @@ export default function StakeButton({
         rewards: stakingInfo.rewards,
       });
       const actionConfig = actionConfigs[action];
-
-      if (shouldApplyStakeDeposit(action)) {
-        txBuilder.protocolParams({ keyDeposit: STAKE_KEY_DEPOSIT });
-      }
 
       actionConfig.execute();
 
