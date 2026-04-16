@@ -1,19 +1,12 @@
-import { loadBootstrapContext } from "./framework/context";
-import { getBotForAddress, getDefaultBot } from "./framework/botContext";
+import { loadBootstrapContext } from "../framework/context";
+import { getBotForAddress, getDefaultBot } from "../framework/botContext";
+import { requireEnv } from "../framework/env";
 
 function maskMiddle(value: string): string {
   if (value.length <= 12) {
     return `${value.slice(0, 4)}...${value.slice(-2)}`;
   }
   return `${value.slice(0, 8)}...${value.slice(-8)}`;
-}
-
-function requireEnv(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (!value || !value.trim()) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value.trim();
 }
 
 async function main() {
@@ -35,9 +28,7 @@ async function main() {
     console.log(`- [${walletIndex}] ${wallet.type} wallet ${wallet.walletId}`);
     wallet.signerAddresses.forEach((address, signerIndex) => {
       const bot = getBotForAddress(ctx, address);
-      console.log(
-        `    signer[${signerIndex}] ${maskMiddle(address)} -> ${bot.id}`,
-      );
+      console.log(`    signer[${signerIndex}] ${maskMiddle(address)} -> ${bot.id}`);
     });
   }
 }

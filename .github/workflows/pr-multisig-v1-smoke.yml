@@ -19,7 +19,7 @@ on:
           - hierarchical
           - sdk
       route_scenarios:
-        description: "Optional comma-separated scenario IDs for run-route-chain"
+        description: "Optional comma-separated scenario IDs for scripts/ci/cli/route-chain.ts"
         required: false
         default: ""
         type: string

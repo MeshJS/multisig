@@ -1,24 +1,14 @@
-import type { CIBootstrapContext, CIWalletType } from "../framework/types";
-import { requestJson } from "../framework/http";
-import { getDefaultBot } from "../framework/botContext";
-import { authenticateBot } from "../framework/botAuth";
-import { stringifyRedacted } from "../framework/redact";
+import type { CIBootstrapContext, CIWalletType } from "../../framework/types";
+import { requestJson } from "../../framework/http";
+import { getDefaultBot } from "../../framework/botContext";
+import { authenticateBot } from "../../framework/botAuth";
+import { stringifyRedacted } from "../../framework/redact";
+import { parseMnemonic } from "../../framework/mnemonic";
+import { normalizeWalletTypeFromLabel } from "../../framework/walletType";
+import { isTestnetAddress } from "../../framework/preprod";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-
-function parseMnemonic(value: string): string[] {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function normalizeWalletType(value: string): CIWalletType {
-  const v = value.trim().toLowerCase();
-  if (v === "hierarchical" || v === "sdk") return v;
-  return "legacy";
-}
 
 type TransferSeedResult = {
   fromWalletType: CIWalletType;
@@ -46,10 +36,6 @@ type ScriptUtxo = {
     amount: UTxOAmount[];
   };
 };
-
-function isTestnetAddress(address: string): boolean {
-  return address.startsWith("addr_test") || address.startsWith("stake_test");
-}
 
 function parseLovelace(amounts: UTxOAmount[]): bigint {
   const lovelace = amounts.find((asset) => asset.unit === "lovelace")?.quantity ?? "0";
@@ -82,8 +68,8 @@ export async function seedRealTransferTransaction(args: {
   const { ctx } = args;
   const defaultBot = getDefaultBot(ctx);
   const defaultBotToken = await authenticateBot({ ctx, bot: defaultBot });
-  const fromWalletType = normalizeWalletType(args.fromWalletType);
-  const toWalletType = normalizeWalletType(args.toWalletType);
+  const fromWalletType = normalizeWalletTypeFromLabel(args.fromWalletType);
+  const toWalletType = normalizeWalletTypeFromLabel(args.toWalletType);
   const fromWallet = ctx.wallets.find((w) => w.type === fromWalletType);
   if (!fromWallet) {
     throw new Error(`Unable to find source wallet context for type ${fromWalletType}`);

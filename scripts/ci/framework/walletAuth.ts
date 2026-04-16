@@ -1,13 +1,7 @@
 import type { CIBootstrapContext } from "./types";
 import { requestJson } from "./http";
 import { stringifyRedacted } from "./redact";
-
-function parseMnemonic(value: string): string[] {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
+import { parseMnemonic } from "./mnemonic";
 
 export async function deriveSignerFromMnemonic(args: {
   ctx: CIBootstrapContext;

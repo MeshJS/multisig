@@ -1,8 +1,8 @@
-import type { CIBootstrapContext, RouteStep, StepRunResult } from "../framework/types";
-import { requestJson } from "../framework/http";
-import { getDefaultBot } from "../framework/botContext";
-import { authenticateBot } from "../framework/botAuth";
-import { stringifyRedacted } from "../framework/redact";
+import type { CIBootstrapContext, RouteStep, StepRunResult } from "../../framework/types";
+import { requestJson } from "../../framework/http";
+import { getDefaultBot } from "../../framework/botContext";
+import { authenticateBot } from "../../framework/botAuth";
+import { stringifyRedacted } from "../../framework/redact";
 
 /**
  * Copy this file when adding a new route step.
@@ -22,20 +22,17 @@ export function createTemplateRouteStep(): RouteStep {
     execute: async (ctx: CIBootstrapContext): Promise<StepRunResult> => {
       const bot = getDefaultBot(ctx);
       const token = await authenticateBot({ ctx, bot });
-      // Example deterministic setup from bootstrap context.
       const wallet = ctx.wallets[0];
       if (!wallet) {
         throw new Error("No wallets available in CI bootstrap context");
       }
 
-      // Example route call. Replace URL/body with your target endpoint contract.
       const response = await requestJson<unknown>({
         url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`,
         method: "GET",
         token,
       });
 
-      // Replace with route-specific assertions.
       if (response.status !== 200) {
         throw new Error(
           `Template step expected 200, got ${response.status}: ${stringifyRedacted(response.data)}`,

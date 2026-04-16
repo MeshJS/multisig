@@ -13,14 +13,14 @@ This folder contains the real-chain CI smoke system used by `.github/workflows/p
 
 CI runs these stages in order:
 
-1. **Bootstrap** (`create-wallets.ts`)
+1. **Bootstrap** (`cli/bootstrap.ts`)
    - Derives signer addresses from mnemonic secrets.
    - Provisions one bot key per signer address.
    - Creates test wallets (`legacy`, `hierarchical`, `sdk`).
    - Grants all signer bots cosigner access to created wallets.
    - Writes a versioned context JSON consumed by all later steps.
 
-2. **Route chain** (`run-route-chain.ts`)
+2. **Route chain** (`cli/route-chain.ts`)
    - Loads and validates bootstrap context.
    - Loads enabled scenarios from `scenarios/manifest.ts`.
    - Executes steps in deterministic order with critical/non-critical failure semantics.
@@ -33,27 +33,34 @@ CI runs these stages in order:
 
 ## Folder structure
 
-- `create-wallets.ts`
-  - Stable setup stage, writes CI context.
-- `run-route-chain.ts`
-  - Main orchestrator for scenario execution.
-- `run-pending-transactions-smoke.ts`
-  - Compatibility wrapper for pending-only checks.
-- `sign-transaction-preprod.ts`
-  - Compatibility wrapper for signing path.
+- `cli/`
+  - `bootstrap.ts`: stable setup stage, writes CI context.
+  - `route-chain.ts`: main orchestrator for scenario execution.
+  - `inspect-context.ts`: print bootstrap context summary (debug).
 - `framework/`
   - `types.ts`: shared types for context/scenarios/reports.
   - `context.ts`: context loading + validation.
+  - `env.ts`, `mnemonic.ts`, `walletType.ts`, `preprod.ts`: shared env and Cardano helpers.
+  - `botProvision.ts`: bot key hashing for bootstrap.
   - `http.ts`: API caller helper with timeout/retry support.
   - `walletAuth.ts`: nonce + signer auth helper (`getNonce`/`authSigner`) and signer data signing.
   - `datumSign.ts`: reusable datum signing helper.
   - `governance.ts`: deterministic governance proposal selection and ballot payload builder.
   - `runner.ts`: scenario/step execution + report writing.
 - `scenarios/`
-  - `manifest.ts`: scenario registry and ordering.
-  - `signingFlow.ts`: reusable sign/broadcast flow helper.
-  - `transferFlow.ts`: real ADA transfer transaction helper.
-  - `template-route-step.ts`: scaffold for new route steps.
+  - `manifest.ts`: scenario registry and ordering only.
+  - `flows/`: `signingFlow.ts`, `transferFlow.ts` (reusable multisig sign and real transfer builders).
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, …) plus `template-route-step.ts` for new steps.
+
+### Subset runs (e.g. pending lifecycle only)
+
+Use a comma-separated `CI_ROUTE_SCENARIOS` filter (same mechanism as the workflow dispatch input). For example, only the ring transfer + final checks:
+
+```bash
+CI_ROUTE_SCENARIOS=scenario.real-transfer-and-sign,scenario.final-assertions
+```
+
+Set `CI_ROUTE_CHAIN_REPORT_PATH` if you want a separate report file for that run.
 
 ## Current scenario intent
 
@@ -124,7 +131,7 @@ Validation notes:
 
 ## Bootstrap context schema
 
-`create-wallets.ts` writes schema version `2`, with no persisted runtime secrets:
+`cli/bootstrap.ts` writes schema version `2`, with no persisted runtime secrets:
 
 - `wallets[]`: `{ type, walletId, walletAddress, signerAddresses }` (no seeded `transactionId`)
 - `bots[]`: `{ id, paymentAddress, botKeyId, botId }`
@@ -207,7 +214,7 @@ If balance collection fails, `walletBalanceSummary.error` is populated and the r
 
 ### Add a new route step
 
-1. Copy `scenarios/template-route-step.ts` into a new step module.
+1. Copy `scenarios/steps/template-route-step.ts` into a new step module under `scenarios/steps/`.
 2. Set a stable `id` and route-specific `description`.
 3. Implement deterministic inputs from context/env.
 4. Call route(s) via `requestJson`.
@@ -226,7 +233,7 @@ If balance collection fails, `walletBalanceSummary.error` is populated and the r
 ### Keep things maintainable
 
 - Do not overload bootstrap with route-specific behavior.
-- Prefer reusable helpers in `framework/` or `scenarios/*Flow.ts`.
+- Prefer reusable helpers in `framework/` or `scenarios/flows/`.
 - Keep step ids stable (helps CI history and triage).
 - Avoid hidden randomness in assertions; use deterministic checks.
 - For governance scenarios, derive proposal lists via `framework/governance.ts` so payload shape and proposal selection remain deterministic across step reruns.
@@ -273,7 +280,7 @@ Bootstrap wallets and write host-mounted artifacts:
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/create-wallets.ts
+  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
 ```
 
 Run route-chain smoke scenarios:
@@ -282,7 +289,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json `
-  ci-runner npx --yes tsx scripts/ci/run-route-chain.ts
+  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
 ```
 
 View generated report on host:
@@ -333,7 +340,7 @@ Bootstrap wallets and write host-mounted artifacts:
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/create-wallets.ts
+  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
 ```
 
 Run route-chain smoke scenarios:
@@ -342,7 +349,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json \
-  ci-runner npx --yes tsx scripts/ci/run-route-chain.ts
+  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
 ```
 
 View generated report on host:

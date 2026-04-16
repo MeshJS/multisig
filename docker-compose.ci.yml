@@ -71,7 +71,6 @@ services:
       CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
       CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
       CI_WALLET_TYPES: ${CI_WALLET_TYPES:-legacy,hierarchical,sdk}
-      ENABLE_SIGNING_SMOKE: ${ENABLE_SIGNING_SMOKE:-false}
       CI_SIGN_WALLET_TYPE: ${CI_SIGN_WALLET_TYPE:-legacy}
       SIGN_BROADCAST: ${SIGN_BROADCAST:-true}
       CI_ROUTE_SCENARIOS: ${CI_ROUTE_SCENARIOS:-}
@@ -89,8 +88,8 @@ services:
     command: >
       sh -c "
         status=0;
-        npx --yes tsx scripts/ci/create-wallets.ts || status=$$?;
-        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/run-route-chain.ts || status=$$?; fi;
+        npx --yes tsx scripts/ci/cli/bootstrap.ts || status=$$?;
+        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/route-chain.ts || status=$$?; fi;
         rm -f \"${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}\";
         exit \"$$status\"
       "

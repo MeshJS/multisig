@@ -46,10 +46,9 @@
 - Triggers: `pull_request` and `workflow_dispatch` (manual test runs)
 - Compose stack: `docker-compose.ci.yml`
 - CI scripts:
-  - `scripts/ci/create-wallets.ts`
-  - `scripts/ci/run-route-chain.ts` (route-chain runner)
-  - `scripts/ci/run-pending-transactions-smoke.ts` (compatibility wrapper)
-  - `scripts/ci/sign-transaction-preprod.ts` (compatibility wrapper)
+  - `scripts/ci/cli/bootstrap.ts`
+  - `scripts/ci/cli/route-chain.ts` (route-chain runner; filter with `CI_ROUTE_SCENARIOS`)
+  - `scripts/ci/cli/sign-transaction.ts` (ad-hoc sign helper)
   - `scripts/ci/scenarios/manifest.ts` (scenario registry)
 
 ### Required GitHub repository secrets
@@ -66,7 +65,6 @@
 - `CI_NETWORK_ID` (default `0` for preprod/testnet)
 - `CI_NUM_REQUIRED_SIGNERS` (default `2`; controls `numRequiredSigners` and hierarchical inner `atLeast.required`)
 - `CI_WALLET_TYPES` (default `legacy,hierarchical,sdk`)
-- `ENABLE_SIGNING_SMOKE` (`true`; signing is always part of route-chain execution)
 - `CI_SIGN_WALLET_TYPE` (which wallet type signing smoke targets: `legacy` | `hierarchical` | `sdk`)
 - `SIGN_BROADCAST` (`true`; broadcast is always enabled for CI route-chain signing)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount for real-transfer scenario, default `2000000`)
@@ -101,7 +99,7 @@ Validation behavior:
 ### Add a new v1 route test step
 
 1. Add a new step module or helper in `scripts/ci/scenarios/`.
-   - You can start from `scripts/ci/scenarios/template-route-step.ts`.
+   - You can start from `scripts/ci/scenarios/steps/template-route-step.ts`.
 2. Implement the standard step contract:
    - `id`
    - `description`

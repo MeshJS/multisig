@@ -501,8 +501,8 @@ This API v1 directory provides a comprehensive, secure, and well-documented REST
 ## PR Route-Chain Smoke (Real-Chain CI)
 
 - Workflow: `.github/workflows/pr-multisig-v1-smoke.yml`
-- Bootstrap script: `scripts/ci/create-wallets.ts` (stable context producer)
-- Route-chain runner: `scripts/ci/run-route-chain.ts`
+- Bootstrap script: `scripts/ci/cli/bootstrap.ts` (stable context producer)
+- Route-chain runner: `scripts/ci/cli/route-chain.ts`
 - Scenario registry: `scripts/ci/scenarios/manifest.ts`
 
 The CI flow is split into:
@@ -521,4 +521,4 @@ Current route-chain scenarios include:
 - final-state assertions (`pendingTransactions` consistency checks)
 
 To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
-Use `scripts/ci/scenarios/template-route-step.ts` as a starter scaffold.
+Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.

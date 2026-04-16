@@ -1,6 +1,9 @@
-import { createHmac } from "crypto";
 import { BotWalletRole, PrismaClient } from "@prisma/client";
-import { stringifyRedacted } from "./framework/redact";
+import { stringifyRedacted } from "../framework/redact";
+import { requireEnv, parseWalletTypesEnv } from "../framework/env";
+import { parseMnemonic } from "../framework/mnemonic";
+import { deriveCiBotSecret } from "../framework/botAuth";
+import { hashBotSecret } from "../framework/botProvision";
 
 const prisma = new PrismaClient();
 
@@ -19,49 +22,6 @@ type CIBotBootstrap = {
   botId: string;
 };
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value || !value.trim()) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value.trim();
-}
-
-function parseMnemonic(value: string): string[] {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function parseWalletTypes(raw: string): CIWalletType[] {
-  const allowed = new Set(["legacy", "hierarchical", "sdk"]);
-  const requested = raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (!requested.length) {
-    throw new Error("CI_WALLET_TYPES must include at least one wallet type");
-  }
-  const invalid = requested.filter((value) => !allowed.has(value));
-  if (invalid.length) {
-    throw new Error(
-      `CI_WALLET_TYPES contains unsupported value(s): ${invalid.join(", ")}. Allowed: legacy,hierarchical,sdk`,
-    );
-  }
-  return requested as CIWalletType[];
-}
-
-function hashBotSecret(secret: string, jwtSecret: string): string {
-  return createHmac("sha256", jwtSecret).update(secret, "utf8").digest("hex");
-}
-
-function deriveCiBotSecret(paymentAddress: string, jwtSecret: string): string {
-  return createHmac("sha256", jwtSecret)
-    .update(`ci-bot-secret:${paymentAddress}`, "utf8")
-    .digest("hex");
-}
-
 async function deriveAddress(words: string[], networkId: 0 | 1): Promise<string> {
   const { MeshWallet } = await import("@meshsdk/core");
   const wallet = new MeshWallet({
@@ -78,7 +38,7 @@ async function main() {
   const mnemonic1 = requireEnv("CI_MNEMONIC_1");
   const mnemonic2 = requireEnv("CI_MNEMONIC_2");
   const mnemonic3 = requireEnv("CI_MNEMONIC_3");
-  const walletTypes = parseWalletTypes(
+  const walletTypes = parseWalletTypesEnv(
     process.env.CI_WALLET_TYPES ?? "legacy,hierarchical,sdk",
   );
   const parsedNetworkId = Number(process.env.CI_NETWORK_ID ?? "0");
@@ -262,10 +222,9 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error("create-wallets failed:", error);
+    console.error("bootstrap failed:", error);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

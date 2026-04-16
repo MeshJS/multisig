@@ -1,21 +1,10 @@
-import type { CIBootstrapContext, CIWalletType } from "../framework/types";
-import { requestJson } from "../framework/http";
-import { getBotForSignerIndex } from "../framework/botContext";
-import { authenticateBot } from "../framework/botAuth";
-import { stringifyRedacted } from "../framework/redact";
-
-function parseMnemonic(value: string): string[] {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function normalizeWalletType(value: string): CIWalletType {
-  const v = value.trim().toLowerCase();
-  if (v === "hierarchical" || v === "sdk") return v;
-  return "legacy";
-}
+import type { CIBootstrapContext, CIWalletType } from "../../framework/types";
+import { requestJson } from "../../framework/http";
+import { getBotForSignerIndex } from "../../framework/botContext";
+import { authenticateBot } from "../../framework/botAuth";
+import { stringifyRedacted } from "../../framework/redact";
+import { parseMnemonic } from "../../framework/mnemonic";
+import { normalizeWalletTypeFromLabel } from "../../framework/walletType";
 
 export async function runSigningFlow(args: {
   ctx: CIBootstrapContext;
@@ -35,7 +24,7 @@ export async function runSigningFlow(args: {
   submitted?: boolean;
 }> {
   const { ctx, mnemonic } = args;
-  const targetWalletType = normalizeWalletType(args.signWalletType ?? "legacy");
+  const targetWalletType = normalizeWalletTypeFromLabel(args.signWalletType ?? "legacy");
   const signerIndex = args.signerIndex ?? 1;
   const signerLabel = args.signerLabel ?? `signer${signerIndex}`;
   const shouldBroadcast = args.signBroadcast ?? true;
