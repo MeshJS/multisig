@@ -4,6 +4,13 @@ import { requireEnv, parseWalletTypesEnv } from "../framework/env";
 import { parseMnemonic } from "../framework/mnemonic";
 import { deriveCiBotSecret } from "../framework/botAuth";
 import { hashBotSecret } from "../framework/botProvision";
+import {
+  deserializeAddress,
+  resolvePaymentKeyHash,
+  resolveStakeKeyHash,
+  serializeRewardAddress,
+} from "@meshsdk/core";
+import { MultisigWallet, type MultisigKey } from "../../../src/utils/multisigSDK";
 
 const prisma = new PrismaClient();
 
@@ -21,6 +28,70 @@ type CIBotBootstrap = {
   botKeyId: string;
   botId: string;
 };
+
+function stakeAddressFromPaymentAddress(paymentAddress: string): string {
+  const stakeHash = deserializeAddress(paymentAddress).stakeCredentialHash;
+  if (!stakeHash) {
+    throw new Error("Expected stake credential on payment address for CI signer");
+  }
+  const network = paymentAddress.includes("test") ? 0 : 1;
+  const stake = serializeRewardAddress(stakeHash, false, network);
+  if (!stake) {
+    throw new Error("Could not serialize stake address from payment address");
+  }
+  return stake;
+}
+
+function buildSdkMultisigStakeAddress(args: {
+  signersAddresses: string[];
+  signerStakeAddresses: string[];
+  signerDescriptions: string[];
+  paymentKeyHashes: string[];
+  numRequiredSigners: number;
+  networkId: 0 | 1;
+}): string {
+  const keys: MultisigKey[] = [];
+  for (let i = 0; i < args.signersAddresses.length; i++) {
+    const addr = args.signersAddresses[i];
+    if (!addr) continue;
+    keys.push({
+      keyHash: resolvePaymentKeyHash(addr),
+      role: 0,
+      name: args.signerDescriptions[i] ?? "",
+    });
+  }
+  for (let i = 0; i < args.signerStakeAddresses.length; i++) {
+    const sk = args.signerStakeAddresses[i];
+    if (!sk) continue;
+    keys.push({
+      keyHash: resolveStakeKeyHash(sk),
+      role: 2,
+      name: args.signerDescriptions[i] ?? "",
+    });
+  }
+  for (let i = 0; i < args.paymentKeyHashes.length; i++) {
+    const drep = args.paymentKeyHashes[i];
+    if (!drep) continue;
+    keys.push({ keyHash: drep, role: 3, name: args.signerDescriptions[i] ?? "" });
+  }
+  const wallet = new MultisigWallet(
+    "ci-sdk-preview",
+    keys,
+    "",
+    args.numRequiredSigners,
+    args.networkId,
+    undefined,
+    "atLeast",
+  );
+  if (!wallet.stakingEnabled()) {
+    throw new Error("CI SDK preview MultisigWallet: staking not enabled (check signer key roles)");
+  }
+  const stakeAddr = wallet.getStakeAddress();
+  if (!stakeAddr) {
+    throw new Error("CI SDK preview MultisigWallet: could not derive multisig stake address");
+  }
+  return stakeAddr;
+}
 
 async function deriveAddress(words: string[], networkId: 0 | 1): Promise<string> {
   const { MeshWallet } = await import("@meshsdk/core");
@@ -50,12 +121,18 @@ async function main() {
       : 2,
   );
   const contextPath = process.env.CI_CONTEXT_PATH ?? "/tmp/ci-wallet-context.json";
+  const stakePoolIdHex =
+    typeof process.env.CI_STAKE_POOL_ID_HEX === "string" && process.env.CI_STAKE_POOL_ID_HEX.trim()
+      ? process.env.CI_STAKE_POOL_ID_HEX.trim()
+      : undefined;
 
   const signerAddresses = await Promise.all([
     deriveAddress(parseMnemonic(mnemonic1), networkId),
     deriveAddress(parseMnemonic(mnemonic2), networkId),
     deriveAddress(parseMnemonic(mnemonic3), networkId),
   ]);
+
+  const signerStakeAddresses = signerAddresses.map((addr) => stakeAddressFromPaymentAddress(addr));
 
   const signerBots: CIBotBootstrap[] = [];
   const botAuthByAddress: Record<string, string> = {};
@@ -109,8 +186,10 @@ async function main() {
     throw new Error("No signer bots were provisioned");
   }
 
-  const { resolvePaymentKeyHash } = await import("@meshsdk/core");
   const paymentKeyHashes = signerAddresses.map((addr) => resolvePaymentKeyHash(addr));
+
+  const signerDescriptions = ["CI Signer 1", "CI Signer 2", "CI Signer 3"];
+  const numRequired = Math.min(requiredSigners, signerAddresses.length);
 
   const createdWallets: Array<{
     type: CIWalletType;
@@ -119,13 +198,15 @@ async function main() {
     signerAddresses: string[];
   }> = [];
 
+  let sdkStakeAddress: string | undefined;
+
   for (const walletType of walletTypes) {
     const basePayload: Record<string, unknown> = {
       name: `CI ${walletType} Wallet ${Date.now()}`,
       description: `CI ${walletType} wallet smoke test`,
       signersAddresses: signerAddresses,
-      signersDescriptions: ["CI Signer 1", "CI Signer 2", "CI Signer 3"],
-      numRequiredSigners: Math.min(requiredSigners, signerAddresses.length),
+      signersDescriptions: signerDescriptions,
+      numRequiredSigners: numRequired,
       scriptType: "atLeast",
       network: networkId,
     };
@@ -146,6 +227,7 @@ async function main() {
 
     if (walletType === "sdk") {
       basePayload.signersDRepKeys = paymentKeyHashes;
+      basePayload.signersStakeKeys = signerStakeAddresses;
     }
 
     const createWalletResponse = await fetch(`${apiBaseUrl}/api/v1/createWallet`, {
@@ -161,6 +243,17 @@ async function main() {
       throw new Error(
         `createWallet (${walletType}) failed (${createWalletResponse.status}): ${stringifyRedacted(createWalletBody)}`,
       );
+    }
+
+    if (walletType === "sdk") {
+      sdkStakeAddress = buildSdkMultisigStakeAddress({
+        signersAddresses: signerAddresses,
+        signerStakeAddresses,
+        signerDescriptions,
+        paymentKeyHashes,
+        numRequiredSigners: numRequired,
+        networkId,
+      });
     }
 
     for (const bot of signerBots.slice(1)) {
@@ -195,7 +288,7 @@ async function main() {
       contextPath,
       JSON.stringify(
         {
-          schemaVersion: 2,
+          schemaVersion: 3,
           createdAt: new Date().toISOString(),
           apiBaseUrl,
           networkId,
@@ -206,6 +299,9 @@ async function main() {
           walletId: createdWallets[0]?.walletId,
           walletAddress: createdWallets[0]?.walletAddress,
           signerAddresses,
+          signerStakeAddresses,
+          sdkStakeAddress,
+          ...(stakePoolIdHex ? { stakePoolIdHex } : {}),
         },
         null,
         2,
@@ -217,7 +313,7 @@ async function main() {
   console.log(
     `Created wallets: ${createdWallets.map((w) => `${w.type}:${w.walletId}`).join(", ")}`,
   );
-  console.log(`Saved CI context to ${contextPath}`);
+  console.log(`Saved CI context (schema 3) to ${contextPath}`);
 }
 
 main()

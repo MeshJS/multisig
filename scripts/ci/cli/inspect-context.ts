@@ -21,6 +21,15 @@ async function main() {
   console.log(`Wallets: ${ctx.wallets.length}`);
   console.log(`Bots: ${ctx.bots.length}`);
   console.log(`Default bot: ${defaultBot.id} (${maskMiddle(defaultBot.paymentAddress)})`);
+  console.log(
+    `Signer stake addresses: ${ctx.signerStakeAddresses.map((a) => maskMiddle(a)).join(", ")}`,
+  );
+  if (ctx.sdkStakeAddress) {
+    console.log(`SDK multisig reward address: ${maskMiddle(ctx.sdkStakeAddress)}`);
+  }
+  if (ctx.stakePoolIdHex) {
+    console.log(`Stake pool id (hex): ${maskMiddle(ctx.stakePoolIdHex)}`);
+  }
   console.log("");
 
   console.log("Signer to bot mapping:");

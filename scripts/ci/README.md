@@ -14,9 +14,10 @@ This folder contains the real-chain CI smoke system used by `.github/workflows/p
 CI runs these stages in order:
 
 1. **Bootstrap** (`cli/bootstrap.ts`)
-   - Derives signer addresses from mnemonic secrets.
+   - Derives signer payment addresses from mnemonic secrets and matching stake (reward) addresses from those base addresses.
    - Provisions one bot key per signer address.
    - Creates test wallets (`legacy`, `hierarchical`, `sdk`).
+   - For **SDK** wallets, always attaches `signersStakeKeys` so the wallet matches production “SDK multisig” staking (native script role `2` alongside payment `0` and DRep `3`).
    - Grants all signer bots cosigner access to created wallets.
    - Writes a versioned context JSON consumed by all later steps.
 
@@ -35,6 +36,7 @@ CI runs these stages in order:
 
 - `cli/`
   - `bootstrap.ts`: stable setup stage, writes CI context.
+  - `wallet-status.ts`: print multisig wallet addresses and on-chain balances (after bootstrap, before route-chain).
   - `route-chain.ts`: main orchestrator for scenario execution.
   - `inspect-context.ts`: print bootstrap context summary (debug).
 - `framework/`
@@ -116,6 +118,7 @@ Primary variables (in workflow/compose):
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount)
+- `CI_STAKE_POOL_ID_HEX` (optional): hex stake pool id for future delegate scenarios; stored in context when set.
 
 Validation notes:
 
@@ -131,11 +134,21 @@ Validation notes:
 
 ## Bootstrap context schema
 
-`cli/bootstrap.ts` writes schema version `2`, with no persisted runtime secrets:
+`cli/bootstrap.ts` writes **`schemaVersion`: `3`** only; route-chain rejects any other version. There are no persisted runtime secrets.
 
 - `wallets[]`: `{ type, walletId, walletAddress, signerAddresses }` (no seeded `transactionId`)
 - `bots[]`: `{ id, paymentAddress, botKeyId, botId }`
 - `defaultBotId`: primary bot used for discovery/freeUtxos assertions
+- `signerStakeAddresses[]`: stake (`stake_test` / `stake1`) addresses aligned with `signerAddresses` (derived from each signer’s payment address).
+- `sdkStakeAddress` (optional): multisig reward address for the CI SDK wallet (same derivation as `MultisigWallet.getStakeAddress()`); omitted if `CI_WALLET_TYPES` did not include `sdk`.
+- `stakePoolIdHex` (optional): copied from `CI_STAKE_POOL_ID_HEX` when set.
+
+### Native scripts and wallet types (for future staking / governance tests)
+
+Cardano “native scripts” here are `sig` / `all` / `any` / `atLeast` trees ([`MultisigWallet`](src/utils/multisigSDK.ts)).
+
+- **Staking (SDK multisig):** UTxOs are witnessed with the **payment** script; stake registration / delegation / deregistration certificates use **`certificateScript`** with the **staking** script (`buildScript(2)` / role `2` keys). Bootstrap always attaches role-2 stake keys for the SDK wallet.
+- **DRep registration / voting:** **Legacy** wallets use a **single** script (payment-only) for both spending and DRep identity. **SDK** wallets with DRep keys use the **payment** script for inputs and a **DRep** script (`buildScript(3)`) for DRep certificates and `voteScript` — see [`registerDrep.tsx`](src/components/pages/wallet/governance/drep/registerDrep.tsx) and ballot voting components.
 
 Security guarantees:
 
@@ -283,6 +296,14 @@ docker compose -f docker-compose.ci.yml run --rm `
   ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
 ```
 
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+
+```powershell
+docker compose -f docker-compose.ci.yml run --rm `
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
+  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+```
+
 Run route-chain smoke scenarios:
 
 ```powershell
@@ -341,6 +362,14 @@ Bootstrap wallets and write host-mounted artifacts:
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
   ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+```
+
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+
+```bash
+docker compose -f docker-compose.ci.yml run --rm \
+  -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
+  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
 ```
 
 Run route-chain smoke scenarios:

@@ -16,7 +16,7 @@ export type CIBotContext = {
 };
 
 export type CIBootstrapContext = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   createdAt: string;
   apiBaseUrl: string;
   networkId: 0 | 1;
@@ -28,6 +28,12 @@ export type CIBootstrapContext = {
   walletAddress?: string;
   signerAddresses: string[];
   transactionId?: string;
+  /** Per-signer stake (reward) addresses aligned with signerAddresses. */
+  signerStakeAddresses: string[];
+  /** Multisig reward address for the SDK wallet (from MultisigWallet.getStakeAddress); present when an SDK wallet was bootstrapped. */
+  sdkStakeAddress?: string;
+  /** Optional preprod stake pool id (hex) for future delegate scenarios. */
+  stakePoolIdHex?: string;
 };
 
 export type StepSeverity = "critical" | "non-critical";

@@ -37,7 +37,7 @@ function normalizeBots(input: Record<string, unknown>): {
 } {
   const botsRaw = input.bots;
   if (!Array.isArray(botsRaw) || botsRaw.length === 0) {
-    throw new Error("Invalid context: bots must be a non-empty array for schemaVersion 2");
+    throw new Error("Invalid context: bots must be a non-empty array");
   }
   const bots = botsRaw.map((bot, idx) => {
     if (!bot || typeof bot !== "object") {
@@ -63,9 +63,9 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
   }
 
   const input = raw as Record<string, unknown>;
-  if (Number(input.schemaVersion) !== 2) {
+  if (Number(input.schemaVersion) !== 3) {
     throw new Error(
-      `Invalid context: unsupported schemaVersion '${String(input.schemaVersion)}' (expected 2)`,
+      `Invalid context: unsupported schemaVersion '${String(input.schemaVersion)}' (expected 3)`,
     );
   }
 
@@ -91,6 +91,14 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
   const walletTypesRaw = Array.isArray(input.walletTypes) ? input.walletTypes : wallets.map((w) => w.type);
   const walletTypes = walletTypesRaw.map((v) => normalizeWalletType(v));
   const signerAddresses = assertStringArray("signerAddresses", input.signerAddresses);
+  const signerStakeAddresses = assertStringArray("signerStakeAddresses", input.signerStakeAddresses);
+  if (signerStakeAddresses.length !== signerAddresses.length) {
+    throw new Error("Invalid context: signerStakeAddresses length must match signerAddresses");
+  }
+
+  const sdkStakeAddress = optionalString(input.sdkStakeAddress);
+  const stakePoolIdHex = optionalString(input.stakePoolIdHex);
+
   const normalizedBots = normalizeBots(input);
   const defaultBot =
     normalizedBots.bots.find((bot) => bot.id === normalizedBots.defaultBotId) ??
@@ -100,7 +108,7 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     createdAt: assertString("createdAt", input.createdAt ?? new Date().toISOString()),
     apiBaseUrl: assertString("apiBaseUrl", input.apiBaseUrl),
     networkId: Number(input.networkId) === 1 ? 1 : 0,
@@ -112,7 +120,10 @@ export function validateBootstrapContext(raw: unknown): CIBootstrapContext {
     walletAddress:
       typeof input.walletAddress === "string" ? input.walletAddress : wallets[0]?.walletAddress,
     signerAddresses,
+    signerStakeAddresses,
     transactionId: optionalString(input.transactionId) ?? wallets[0]?.transactionId,
+    ...(sdkStakeAddress !== undefined ? { sdkStakeAddress } : {}),
+    ...(stakePoolIdHex !== undefined ? { stakePoolIdHex } : {}),
   };
 }
 
