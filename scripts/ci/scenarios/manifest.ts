@@ -24,9 +24,9 @@ export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
     createScenarioPendingAndDiscovery(),
     createScenarioAdaRouteHealth(ctx),
     createScenarioBotIdentity(),
-    createScenarioAuthPlane(),
-    createScenarioSubmitDatum(),
-    createScenarioGovernanceRoutes(),
+    createScenarioAuthPlane(ctx),
+    createScenarioSubmitDatum(ctx),
+    createScenarioGovernanceRoutes(ctx),
     createScenarioRealTransferAndSign(runtime),
     createScenarioFinalAssertions(runtime),
   ];

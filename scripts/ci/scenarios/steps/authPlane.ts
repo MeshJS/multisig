@@ -1,4 +1,4 @@
-import type { Scenario } from "../../framework/types";
+import type { CIBootstrapContext, CIBotContext, Scenario } from "../../framework/types";
 import { requestJson } from "../../framework/http";
 import { getDefaultBot } from "../../framework/botContext";
 import { authenticateBot } from "../../framework/botAuth";
@@ -6,7 +6,7 @@ import { stringifyRedacted } from "../../framework/redact";
 import { authenticateSignerWithMnemonic } from "../../framework/walletAuth";
 import { getWalletByType } from "./helpers";
 
-export function createScenarioAuthPlane(): Scenario {
+export function createScenarioAuthPlane(ctx: CIBootstrapContext): Scenario {
   return {
     id: "scenario.auth-plane",
     description: "Wallet auth route checks and negative auth assertions",
@@ -15,14 +15,14 @@ export function createScenarioAuthPlane(): Scenario {
         id: "v1.authNegative.walletIds.addressMismatch",
         description: "Assert /api/v1/walletIds rejects mismatched address",
         severity: "critical",
-        execute: async (ctx) => {
-          const bot = getDefaultBot(ctx);
-          const token = await authenticateBot({ ctx, bot });
+        execute: async (runCtx) => {
+          const bot = getDefaultBot(runCtx);
+          const token = await authenticateBot({ ctx: runCtx, bot });
           const mismatchAddress =
-            ctx.bots.find((candidate) => candidate.id !== bot.id)?.paymentAddress ??
+            runCtx.bots.find((candidate) => candidate.id !== bot.id)?.paymentAddress ??
             `${bot.paymentAddress}x`;
           const response = await requestJson<{ error?: string }>({
-            url: `${ctx.apiBaseUrl}/api/v1/walletIds?address=${encodeURIComponent(mismatchAddress)}`,
+            url: `${runCtx.apiBaseUrl}/api/v1/walletIds?address=${encodeURIComponent(mismatchAddress)}`,
             method: "GET",
             token,
           });
@@ -36,26 +36,26 @@ export function createScenarioAuthPlane(): Scenario {
           };
         },
       },
-      {
-        id: "v1.authNegative.addTransaction.addressMismatch",
-        description: "Assert /api/v1/addTransaction rejects mismatched address",
-        severity: "critical",
-        execute: async (ctx) => {
-          const bot = getDefaultBot(ctx);
-          const token = await authenticateBot({ ctx, bot });
-          const legacyWallet = getWalletByType(ctx, "legacy");
-          if (!legacyWallet) {
-            throw new Error("Missing legacy wallet for addTransaction negative check");
+      ...ctx.walletTypes.map((walletType) => ({
+        id: `v1.authNegative.addTransaction.addressMismatch.${walletType}`,
+        description: `Assert /api/v1/addTransaction rejects mismatched address (${walletType} walletId)`,
+        severity: "critical" as const,
+        execute: async (runCtx: CIBootstrapContext) => {
+          const bot = getDefaultBot(runCtx);
+          const token = await authenticateBot({ ctx: runCtx, bot });
+          const targetWallet = getWalletByType(runCtx, walletType);
+          if (!targetWallet) {
+            throw new Error(`Missing ${walletType} wallet for addTransaction negative check`);
           }
           const mismatchAddress =
-            ctx.bots.find((candidate) => candidate.id !== bot.id)?.paymentAddress ??
+            runCtx.bots.find((candidate: CIBotContext) => candidate.id !== bot.id)?.paymentAddress ??
             `${bot.paymentAddress}x`;
           const response = await requestJson<{ error?: string }>({
-            url: `${ctx.apiBaseUrl}/api/v1/addTransaction`,
+            url: `${runCtx.apiBaseUrl}/api/v1/addTransaction`,
             method: "POST",
             token,
             body: {
-              walletId: legacyWallet.walletId,
+              walletId: targetWallet.walletId,
               address: mismatchAddress,
               txCbor: "00",
               txJson: "{}",
@@ -69,25 +69,25 @@ export function createScenarioAuthPlane(): Scenario {
           }
           return {
             message: "addTransaction address mismatch correctly rejected with 403",
-            artifacts: { walletId: legacyWallet.walletId },
+            artifacts: { walletId: targetWallet.walletId },
           };
         },
-      },
-      {
-        id: "v1.authNegative.pendingTransactions.missingToken",
-        description: "Assert /api/v1/pendingTransactions rejects missing token",
-        severity: "critical",
-        execute: async (ctx) => {
-          const wallet = getWalletByType(ctx, "legacy") ?? ctx.wallets[0];
+      })),
+      ...ctx.walletTypes.map((walletType) => ({
+        id: `v1.authNegative.pendingTransactions.missingToken.${walletType}`,
+        description: `Assert /api/v1/pendingTransactions rejects missing token (${walletType} wallet)`,
+        severity: "critical" as const,
+        execute: async (runCtx: CIBootstrapContext) => {
+          const wallet = getWalletByType(runCtx, walletType);
           if (!wallet) {
-            throw new Error("No wallets available for pendingTransactions negative check");
+            throw new Error(`Missing ${walletType} wallet for pendingTransactions negative check`);
           }
           const signerAddress = wallet.signerAddresses[0];
           if (!signerAddress) {
             throw new Error("Missing signer address for pendingTransactions negative check");
           }
           const response = await requestJson<{ error?: string }>({
-            url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
+            url: `${runCtx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
             method: "GET",
           });
           if (response.status !== 401) {
@@ -100,18 +100,18 @@ export function createScenarioAuthPlane(): Scenario {
             artifacts: { walletId: wallet.walletId },
           };
         },
-      },
+      })),
       {
         id: "v1.getNonce.authSigner.signer2",
         description: "Authenticate signer via getNonce + authSigner",
         severity: "critical",
-        execute: async (ctx) => {
+        execute: async (runCtx) => {
           const mnemonic = process.env.CI_MNEMONIC_2;
           if (!mnemonic?.trim()) {
             throw new Error("CI_MNEMONIC_2 is required for authSigner scenario");
           }
           const authResult = await authenticateSignerWithMnemonic({
-            ctx,
+            ctx: runCtx,
             mnemonic,
           });
           return {

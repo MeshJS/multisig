@@ -1,4 +1,4 @@
-import type { Scenario } from "../../framework/types";
+import type { CIBootstrapContext, Scenario } from "../../framework/types";
 import { requestJson } from "../../framework/http";
 import { getDefaultBot } from "../../framework/botContext";
 import { authenticateBot } from "../../framework/botAuth";
@@ -10,7 +10,7 @@ import {
 } from "../../framework/governance";
 import { getWalletByType } from "./helpers";
 
-export function createScenarioGovernanceRoutes(): Scenario {
+export function createScenarioGovernanceRoutes(ctx: CIBootstrapContext): Scenario {
   const runtime: {
     activeProposals: ActiveProposal[];
   } = {
@@ -24,16 +24,16 @@ export function createScenarioGovernanceRoutes(): Scenario {
         id: "v1.governanceActiveProposals.preprod",
         description: "Fetch active governance proposals on preprod",
         severity: "critical",
-        execute: async (ctx) => {
-          const bot = getDefaultBot(ctx);
-          const token = await authenticateBot({ ctx, bot });
+        execute: async (runCtx) => {
+          const bot = getDefaultBot(runCtx);
+          const token = await authenticateBot({ ctx: runCtx, bot });
           const response = await requestJson<{
             proposals?: unknown[];
             activeCount?: number;
             sourceCount?: number;
             error?: string;
           }>({
-            url: `${ctx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
+            url: `${runCtx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
             method: "GET",
             token,
           });
@@ -53,11 +53,11 @@ export function createScenarioGovernanceRoutes(): Scenario {
           };
         },
       },
-      {
-        id: "v1.botBallotsUpsert.legacy",
-        description: "Upsert governance ballots from active proposals (with idempotent update)",
-        severity: "critical",
-        execute: async (ctx) => {
+      ...ctx.walletTypes.map((walletType) => ({
+        id: `v1.botBallotsUpsert.${walletType}`,
+        description: `Upsert governance ballots from active proposals (${walletType} wallet, idempotent update)`,
+        severity: "critical" as const,
+        execute: async (runCtx: CIBootstrapContext) => {
           if (!runtime.activeProposals.length) {
             return {
               message: "No active proposals available on preprod; ballot upsert route skipped",
@@ -66,13 +66,13 @@ export function createScenarioGovernanceRoutes(): Scenario {
               },
             };
           }
-          const bot = getDefaultBot(ctx);
-          const token = await authenticateBot({ ctx, bot });
-          const wallet = getWalletByType(ctx, "legacy") ?? ctx.wallets[0];
+          const bot = getDefaultBot(runCtx);
+          const token = await authenticateBot({ ctx: runCtx, bot });
+          const wallet = getWalletByType(runCtx, walletType);
           if (!wallet) {
-            throw new Error("Missing wallet for governance ballot upsert");
+            throw new Error(`Missing ${walletType} wallet for governance ballot upsert`);
           }
-          const ballotName = `CI governance ballot ${ctx.createdAt}`;
+          const ballotName = `CI governance ballot ${runCtx.createdAt} ${walletType}`;
           const firstPayload = buildBallotUpsertPayload({
             walletId: wallet.walletId,
             ballotName,
@@ -82,7 +82,7 @@ export function createScenarioGovernanceRoutes(): Scenario {
             ballot?: { id?: string; items?: string[]; choices?: string[] };
             error?: string;
           }>({
-            url: `${ctx.apiBaseUrl}/api/v1/botBallotsUpsert`,
+            url: `${runCtx.apiBaseUrl}/api/v1/botBallotsUpsert`,
             method: "POST",
             token,
             body: firstPayload as unknown as Record<string, unknown>,
@@ -102,7 +102,7 @@ export function createScenarioGovernanceRoutes(): Scenario {
             ballot?: { id?: string; items?: string[]; choices?: string[] };
             error?: string;
           }>({
-            url: `${ctx.apiBaseUrl}/api/v1/botBallotsUpsert`,
+            url: `${runCtx.apiBaseUrl}/api/v1/botBallotsUpsert`,
             method: "POST",
             token,
             body: secondPayload as unknown as Record<string, unknown>,
@@ -125,7 +125,7 @@ export function createScenarioGovernanceRoutes(): Scenario {
             },
           };
         },
-      },
+      })),
     ],
   };
 }
