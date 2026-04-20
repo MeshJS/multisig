@@ -4,7 +4,7 @@ import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useUserStore } from "@/lib/zustand/user";
 import { buildMultisigWallet } from "@/utils/common";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
 
 export default function useMultisigWallet() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function useMultisigWallet() {
     },
   );
   if (wallet) {
-    return { multisigWallet: buildMultisigWallet(wallet as DbWalletWithLegacy, network), wallet, isLoading };
+    return { multisigWallet: buildMultisigWallet(wallet as DbWalletWithLegacy, network), wallet: wallet as Wallet, isLoading };
   }
 
   return { multisigWallet: undefined, wallet: undefined, isLoading };
