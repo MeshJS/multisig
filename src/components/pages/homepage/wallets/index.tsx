@@ -54,9 +54,9 @@ export default function PageWallets() {
       retry: (failureCount, error) => {
         // Don't retry on authorization errors (403)
         if (error && typeof error === "object") {
-          const err = error as { 
-            code?: string; 
-            message?: string; 
+          const err = error as {
+            code?: string;
+            message?: string;
             data?: { code?: string; httpStatus?: number };
             shape?: { code?: string; message?: string };
           };
@@ -83,9 +83,9 @@ export default function PageWallets() {
         retry: (failureCount, error) => {
           // Don't retry on authorization errors (403)
           if (error && typeof error === "object") {
-            const err = error as { 
-              code?: string; 
-              message?: string; 
+            const err = error as {
+              code?: string;
+              message?: string;
               data?: { code?: string; httpStatus?: number };
               shape?: { code?: string; message?: string };
             };
@@ -108,8 +108,8 @@ export default function PageWallets() {
   const walletsForBalance = useMemo(
     () =>
       wallets?.filter((wallet) => showArchived || !wallet.isArchived) as
-        | Wallet[]
-        | undefined,
+      | Wallet[]
+      | undefined,
     [wallets, showArchived],
   );
 
@@ -257,21 +257,7 @@ function CardWallet({
 
   // Rebuild the multisig wallet to get the correct canonical address for display
   // This ensures we show the correct address even if wallet.address was built incorrectly
-  const displayAddress = useMemo(() => {
-    try {
-      const walletNetwork = wallet.signersAddresses.length > 0 
-        ? addressToNetwork(wallet.signersAddresses[0]!)
-        : network;
-      const mWallet = buildMultisigWallet(wallet, walletNetwork);
-      if (mWallet) {
-        return mWallet.getScript().address;
-      }
-    } catch (error) {
-      console.error(`Error building wallet for display: ${wallet.id}`, error);
-    }
-    // Fallback to wallet.address if rebuild fails (legacy support)
-    return wallet.address;
-  }, [wallet, network]);
+  const displayAddress = wallet.capabilities?.address || wallet.address;
 
   return (
     <Link href={`/wallets/${wallet.id}`}>
@@ -293,8 +279,8 @@ function CardWallet({
         }
         headerDom={
           isSummonWallet ? (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className="text-xs bg-orange-600/10 border-orange-600/30 text-orange-700 dark:text-orange-400"
             >
               <Archive className="h-3 w-3 mr-1" />

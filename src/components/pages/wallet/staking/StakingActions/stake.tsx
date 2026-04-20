@@ -94,13 +94,12 @@ export default function StakeButton({
     setLoading(true);
     try {
       if (!mWallet) throw new Error("Multisig Wallet could not be built.");
-      
-      const rewardAddress = mWallet.getStakeAddress();
+
+      const rewardAddress = appWallet.capabilities?.stakeAddress;
       if (!rewardAddress) throw new Error("Reward Address could not be built.");
 
-      // For wallets with rawImportBodies, use stored stake script
-      // Otherwise, derive from MultisigWallet
-      const stakingScript = appWallet.stakeScriptCbor || mWallet.getStakingScript();
+      // For wallets with rawImportBodies or SDK, use stored stake script or derived
+      const stakingScript = appWallet.stakeScriptCbor || (mWallet ? mWallet.getStakingScript() : undefined);
       if (!stakingScript) throw new Error("Staking Script could not be built.");
 
       const txBuilder = getTxBuilder(network);
