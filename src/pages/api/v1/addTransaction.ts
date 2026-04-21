@@ -2,9 +2,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { getProvider } from "@/utils/get-provider";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 
 export default async function handler(
   req: NextApiRequest,
@@ -98,24 +98,15 @@ export default async function handler(
   const network = address.includes("test") ? 0 : 1;
 
   try {
-    let newTx;
-    //ToDo refactor to more cases.
-    if (reqSigners === 1 || type === "any") {
-      const blockchainProvider = getProvider(network);
-      newTx = blockchainProvider.submitTx(txCbor);
-    } else {
-      newTx = await db.transaction.create({
-        data: {
-          walletId,
-          txJson: typeof txJson === "object" ? JSON.stringify(txJson) : txJson,
-          txCbor,
-          signedAddresses: [address],
-          rejectedAddresses: [],
-          description,
-          state: 0,
-        },
-      });
-    }
+    const newTx = await createPendingMultisigTransaction(db, {
+      walletId,
+      wallet: { numRequiredSigners: reqSigners, type },
+      proposerAddress: address,
+      txCbor,
+      txJson,
+      description,
+      network,
+    });
 
     res.status(201).json(newTx);
   } catch (error) {

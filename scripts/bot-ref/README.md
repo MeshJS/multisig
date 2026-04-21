@@ -134,11 +134,43 @@ echo '{"name":"Me and Bot","signersAddresses":["addr1_your...","addr1_bot..."],"
 
 Optional fields: `description`, `signersDescriptions`, `signersStakeKeys`, `signersDRepKeys`, `numRequiredSigners`, `scriptType` (`atLeast`|`all`|`any`), `stakeCredentialHash`, `network` (0=testnet, 1=mainnet).
 
-### 8. Generate a bot wallet (testing)
+### 8. Stake certificate (SDK multisig)
+
+The bot must have **multisig:sign** and be a **cosigner** on the wallet. The server builds the same Mesh stake certificates as the UI (`register`, `deregister`, `delegate`, `register_and_delegate`). **Legacy and Summon wallets are rejected.**
+
+1. List free UTxOs and pick inputs; each body field is `txHash` + `outputIndex` as returned by the API.
+2. POST `walletId`, `address` (must match JWT / bot payment address), `action`, optional `poolId` (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-char hex), and `utxoRefs`.
+
+```bash
+# stake.json example:
+# {
+#   "walletId": "<uuid>",
+#   "address": "<same as bot paymentAddress>",
+#   "action": "delegate",
+#   "poolId": "pool1...",
+#   "utxoRefs": [{ "txHash": "...", "outputIndex": 0 }],
+#   "description": "Delegate via bot"
+# }
+export BOT_TOKEN='<token>'
+npx tsx bot-client.ts stakeCert stake.json
+```
+
+If `numRequiredSigners > 1`, the response is a pending `Transaction` row; co-sign with `POST /api/v1/signTransaction` as usual.
+
+### 9. DRep certificate (register / retire)
+
+Also requires **multisig:sign**. **Summon** wallets are rejected; **legacy** wallets use payment-script DRep derivation (same as the app). For `register`, set `anchorUrl` to an HTTPS URL returning JSON; the server fetches it, computes `hashDrepAnchor`, and optionally verifies `anchorDataHash`.
+
+```bash
+# drep-register.json — anchorUrl required for register
+npx tsx bot-client.ts drepCert drep-register.json
+```
+
+### 10. Generate a bot wallet (testing)
 
 From **repo root**: `npx tsx scripts/bot-ref/generate-bot-wallet.ts` — creates gitignored `bot-wallet.json` (mnemonic + address) and updates `bot-config.json`.
 
-### 9. Create “Me and Bot” 2-of-2 wallet
+### 11. Create “Me and Bot” 2-of-2 wallet
 
 ```bash
 cd scripts/bot-ref && npx tsx create-wallet-us.ts
