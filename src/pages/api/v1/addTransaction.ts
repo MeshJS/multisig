@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { csl } from "@meshsdk/core-csl";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
@@ -73,6 +74,28 @@ export default async function handler(
   }
   if (!txJson) {
     return res.status(400).json({ error: "Missing required field txJson!" });
+  }
+
+  // Reject unparseable CBOR/JSON up front so we never persist a row that
+  // the transactions page or the Cardano node cannot deserialize (#211).
+  if (typeof txCbor !== "string") {
+    return res.status(400).json({ error: "Invalid txCbor: must be a hex string" });
+  }
+  try {
+    csl.Transaction.from_hex(txCbor);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(400).json({ error: `Invalid transaction CBOR: ${msg}` });
+  }
+  if (typeof txJson === "string") {
+    try {
+      JSON.parse(txJson);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ error: `Invalid txJson: ${msg}` });
+    }
+  } else if (typeof txJson !== "object" || txJson === null) {
+    return res.status(400).json({ error: "Invalid txJson: must be a JSON object or string" });
   }
 
   let wallet: { id: string; signersAddresses: string[]; numRequiredSigners: number | null; type: string };
