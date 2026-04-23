@@ -29,16 +29,16 @@
 
 ### Proof of completion
 
-Status of M1 tasks. Last updated 2026-04-21.
+Status of M1 tasks. Last updated 2026-04-23.
 
 | Task | Status | Evidence |
 |------|--------|----------|
 | Define review process for issues and PRs | Drafted | [`CONTRIBUTING.md`](CONTRIBUTING.md) covers issue template, branch/commit conventions, PR + review process, merge rules. Pending: team sign-off |
 | Improve repository infrastructure — preprod + smoke CI | Done | `preprod` branch active; [PR #218](https://github.com/MeshJS/multisig/pull/218) merged; [`.github/workflows/ci-smoke-preprod.yml`](.github/workflows/ci-smoke-preprod.yml) landed |
-| CI smoke tests on real chain (#213) | Landed, issue open | [PR #217](https://github.com/MeshJS/multisig/pull/217) merged (CI smoke system + VKey witness fix); follow-up `dc49af2` skips gracefully when secrets missing. [Issue #213](https://github.com/MeshJS/multisig/issues/213) still open — close once a green run on a recent PR is linked |
-| Fix transaction loading bug (#211) | Not started | [Issue #211](https://github.com/MeshJS/multisig/issues/211) open, no linked PR |
-| Review and handle open external PRs (PR #212, PR #208) | In progress | [PR #212](https://github.com/MeshJS/multisig/pull/212) and [PR #208](https://github.com/MeshJS/multisig/pull/208) both still open |
-| Fix legacy wallet compatibility bug | Partial | [PR #210](https://github.com/MeshJS/multisig/pull/210) merged (legacy drep retirement). New [Issue #223](https://github.com/MeshJS/multisig/issues/223) "Legacy Wallet drep deregistration bug" still open |
+| CI smoke tests on real chain (#213) | Landed, awaiting secrets | [PR #217](https://github.com/MeshJS/multisig/pull/217) merged (CI smoke system + VKey witness fix); `dc49af2` skips gracefully when secrets missing. All runs since have hit the skip path (~8s) because `SMOKE_*` repo secrets are not yet configured; [Issue #213](https://github.com/MeshJS/multisig/issues/213) stays open until the first real route-chain run is linked |
+| Fix transaction loading bug (#211) | In review | [PR #227](https://github.com/MeshJS/multisig/pull/227) open: validates CBOR + JSON on `POST /api/v1/addTransaction` and renders a degraded "Unreadable transaction" card with Reject & Delete so already-poisoned wallets can free their UTxOs |
+| Review and handle open external PRs (PR #212, PR #208) | Reviewed, awaiting author | Change requests left on [PR #212](https://github.com/MeshJS/multisig/pull/212) (rebase to `preprod`, drop non-null assertion in `useWalletBalances`, Summon `canVote` TODO) and [PR #208](https://github.com/MeshJS/multisig/pull/208) (superset of #212, recommended to close) |
+| Fix legacy wallet compatibility bug | Done | [PR #210](https://github.com/MeshJS/multisig/pull/210) (legacy drep retirement) and [PR #225](https://github.com/MeshJS/multisig/pull/225) (drep deregistration fix, commit `4ae3d10`) merged; [Issue #223](https://github.com/MeshJS/multisig/issues/223) closed |
 
 ---
 
