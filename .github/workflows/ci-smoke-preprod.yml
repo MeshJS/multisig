@@ -3,6 +3,7 @@ name: CI Smoke (Preprod)
 on:
   pull_request:
     branches: [main, preprod]
+  deployment_status:
   workflow_dispatch:
 
 env:
@@ -17,8 +18,18 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # For deployment_status triggers, only run when Railway reports a
+    # successful deploy to the preprod environment. Other events always run.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.creator.login == 'railway-app[bot]' &&
+       contains(github.event.deployment.environment, 'preprod'))
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On deployment_status, check out the exact SHA that was deployed.
+          ref: ${{ github.event.deployment.sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
