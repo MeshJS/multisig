@@ -10,6 +10,10 @@ import {
   createScenarioFinalAssertions,
   type TransferLegRuntime,
 } from "./steps/transferRing";
+import {
+  createScenarioDRepCertificates,
+  createScenarioStakeCertificates,
+} from "./steps/certificates";
 
 export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
   const [legacy, hierarchical, sdk] = getRingWalletTypes(ctx);
@@ -20,14 +24,33 @@ export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
       { fromWalletType: sdk, toWalletType: legacy },
     ],
   };
-  return [
+
+  const hasLegacy = ctx.wallets.some((w) => w.type === "legacy");
+  const hasSdk = ctx.wallets.some((w) => w.type === "sdk");
+
+  const scenarios: Scenario[] = [
     createScenarioPendingAndDiscovery(),
     createScenarioAdaRouteHealth(ctx),
     createScenarioBotIdentity(),
     createScenarioAuthPlane(ctx),
     createScenarioSubmitDatum(ctx),
     createScenarioGovernanceRoutes(ctx),
+  ];
+
+  // Certificate scenarios run before the ring transfer so they use confirmed,
+  // unspent UTxOs. The ring transfer spends wallet UTxOs; running certs after
+  // it creates a race where the cert tx references UTxOs already in the mempool.
+  if (hasLegacy && hasSdk) {
+    scenarios.push(createScenarioDRepCertificates());
+  }
+  if (hasSdk) {
+    scenarios.push(createScenarioStakeCertificates());
+  }
+
+  scenarios.push(
     createScenarioRealTransferAndSign(runtime),
     createScenarioFinalAssertions(runtime),
-  ];
+  );
+
+  return scenarios;
 }

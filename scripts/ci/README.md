@@ -51,8 +51,8 @@ CI runs these stages in order:
   - `runner.ts`: scenario/step execution + report writing.
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering only.
-  - `flows/`: `signingFlow.ts`, `transferFlow.ts` (reusable multisig sign and real transfer builders).
-  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, …) plus `template-route-step.ts` for new steps.
+  - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts` (reusable multisig sign, real transfer builders, and stake-cert signing with dual payment+stake witnesses).
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, …) plus `template-route-step.ts` for new steps.
 
 ### Subset runs (e.g. pending lifecycle only)
 
@@ -75,6 +75,8 @@ The manifest currently covers:
 - explicit auth negative checks (`walletIds`, `addTransaction`, `pendingTransactions`)
 - datum route coverage (`submitDatum`)
 - governance routes (`governanceActiveProposals`, `botBallotsUpsert`)
+- **DRep certificate registration and retirement** (`botDRepCertificate`) — legacy and SDK wallets
+- **stake certificate registration and deregistration** (`botStakeCertificate`) — SDK wallet only
 - real multisig-wallet ring transfer + sign path
 - pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
@@ -82,6 +84,8 @@ The manifest currently covers:
 For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
 
 Signing is expected to be on, and broadcast is expected to be on, for normal CI route-chain runs.
+
+### Ring transfer
 
 Current transfer/sign chain in the route manifest runs a deterministic ring across multisig wallet addresses:
 
@@ -105,6 +109,38 @@ For each ring leg, signing runs two signer rounds:
 
 Each leg is asserted as pending immediately after `addTransaction`, then asserted removed after signer 2 broadcast.
 
+### DRep certificate scenarios (`scenario.drep-certificates`)
+
+Runs when both `legacy` and `sdk` wallets are in context. Requires `CI_DREP_ANCHOR_URL`.
+
+For each wallet type the scenario runs two sequential phases — register then retire — leaving the wallet in its pre-test DRep state:
+
+1. Fetch free UTxOs from the wallet, call `POST /api/v1/botDRepCertificate` with `action: "register"` and `anchorUrl`. The API fetches the anchor document and computes the anchor data hash server-side.
+2. Assert the transaction appears in pending.
+3. Signer 1 (`CI_MNEMONIC_2`, index 1) adds a payment-key witness, no broadcast.
+4. Signer 2 (`CI_MNEMONIC_3`, index 2) adds a payment-key witness and broadcasts.
+5. Assert the transaction is cleared from pending.
+6. Repeat steps 1–5 with `action: "retire"`.
+
+**Why payment-key witnesses are sufficient for DRep cert:**
+
+- **Legacy wallet:** the DRep credential script is the same as the payment script (no separate DRep keys), so the same payment vkeys satisfy both the spending inputs and the DRep certificate.
+- **SDK wallet:** the CI bootstrap sets `signersDRepKeys = paymentKeyHashes`, so the DRep certificate script is also built from payment key hashes. Payment vkeys satisfy both scripts.
+
+### Stake certificate scenarios (`scenario.stake-certificates`)
+
+Runs when the `sdk` wallet is in context. Requires `CI_DREP_ANCHOR_URL` to not be needed (stake only), but `CI_STAKE_POOL_ID_HEX` should be set if delegation tests are added later.
+
+Two sequential phases — register then deregister — leave the wallet in its pre-test staking state.
+
+Each signing step uses **`runStakeCertSigningFlow`** (`scenarios/flows/certificateSigningFlow.ts`) instead of the standard `runSigningFlow`, because the staking certificate script uses **stake key hashes** (role-2 keys) rather than payment key hashes:
+
+1. `MeshWallet.signTx(txCbor, true)` produces both a payment vkey witness and a stake vkey witness.
+2. The flow extracts the payment vkey (matched by `resolvePaymentKeyHash(signerAddress)`) and the stake vkey (matched by `resolveStakeKeyHash(ctx.signerStakeAddresses[signerIndex])`).
+3. Both are submitted in a **single** `POST /api/v1/signTransaction` call via the optional `stakeKey` / `stakeSignature` body fields — this avoids hitting the "address already signed" guard that would block a second call from the same signer.
+
+`signTransaction` validates the stake witness by checking that its key hash is present in `wallet.signersStakeKeys` (resolved to key hashes). The stake witness is merged into the transaction CBOR alongside the payment witness before the broadcast threshold check runs.
+
 ## Environment and secrets
 
 Primary variables (in workflow/compose):
@@ -118,7 +154,8 @@ Primary variables (in workflow/compose):
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount)
-- `CI_STAKE_POOL_ID_HEX` (optional): hex stake pool id for future delegate scenarios; stored in context when set.
+- `CI_DREP_ANCHOR_URL` (required for `scenario.drep-certificates`): publicly reachable URL of a CIP-119 DRep metadata document. The API fetches the document and computes the anchor data hash server-side; only the URL needs to be supplied.
+- `CI_STAKE_POOL_ID_HEX` (optional): hex stake pool id; stored in bootstrap context when set. Required for `delegate` / `register_and_delegate` staking actions if those scenarios are added later.
 
 Validation notes:
 
@@ -143,12 +180,12 @@ Validation notes:
 - `sdkStakeAddress` (optional): multisig reward address for the CI SDK wallet (same derivation as `MultisigWallet.getStakeAddress()`); omitted if `CI_WALLET_TYPES` did not include `sdk`.
 - `stakePoolIdHex` (optional): copied from `CI_STAKE_POOL_ID_HEX` when set.
 
-### Native scripts and wallet types (for future staking / governance tests)
+### Native scripts and wallet types
 
 Cardano “native scripts” here are `sig` / `all` / `any` / `atLeast` trees ([`MultisigWallet`](src/utils/multisigSDK.ts)).
 
-- **Staking (SDK multisig):** UTxOs are witnessed with the **payment** script; stake registration / delegation / deregistration certificates use **`certificateScript`** with the **staking** script (`buildScript(2)` / role `2` keys). Bootstrap always attaches role-2 stake keys for the SDK wallet.
-- **DRep registration / voting:** **Legacy** wallets use a **single** script (payment-only) for both spending and DRep identity. **SDK** wallets with DRep keys use the **payment** script for inputs and a **DRep** script (`buildScript(3)`) for DRep certificates and `voteScript` — see [`registerDrep.tsx`](src/components/pages/wallet/governance/drep/registerDrep.tsx) and ballot voting components.
+- **Staking (SDK multisig):** UTxOs are witnessed with the **payment** script; stake registration / delegation / deregistration certificates use **`certificateScript`** with the **staking** script (`buildScript(2)` / role `2` keys). Bootstrap always attaches role-2 stake keys for the SDK wallet. Because the staking script uses **stake key hashes** (distinct from payment key hashes), `signTransaction` accepts an optional `stakeKey` / `stakeSignature` pair validated against `wallet.signersStakeKeys`.
+- **DRep registration / voting:** **Legacy** wallets use a **single** script (payment-only) for both spending and DRep identity. **SDK** wallets with DRep keys use the **payment** script for inputs and a **DRep** script (`buildScript(3)`) for DRep certificates. In the CI bootstrap `signersDRepKeys` is set to the payment key hashes, so standard payment-key witnesses satisfy the DRep certificate script without any additional witness type.
 
 Security guarantees:
 
@@ -269,6 +306,8 @@ $env:CI_NETWORK_ID="0"
 $env:CI_WALLET_TYPES="legacy,hierarchical,sdk"
 $env:CI_TRANSFER_LOVELACE="2000000"
 $env:SIGN_BROADCAST="true"
+$env:CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates
+$env:CI_STAKE_POOL_ID_HEX="..."         # optional; stored in context for future delegate tests
 ```
 
 Optional (recommended for full flow):
@@ -337,6 +376,8 @@ export CI_NETWORK_ID="0"
 export CI_WALLET_TYPES="legacy,hierarchical,sdk"
 export CI_TRANSFER_LOVELACE="2000000"
 export SIGN_BROADCAST="true"
+export CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates
+export CI_STAKE_POOL_ID_HEX="..."         # optional; stored in context for future delegate tests
 ```
 
 Optional (recommended for full flow):

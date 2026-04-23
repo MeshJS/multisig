@@ -182,6 +182,7 @@ export default async function handler(
   }
 
   const txBuilder = getTxBuilder(network);
+  const spendScriptCbor = mWallet.getScript().scriptCbor || appWallet.scriptCbor;
   for (const utxo of utxos) {
     txBuilder.txIn(
       utxo.input.txHash,
@@ -189,7 +190,7 @@ export default async function handler(
       utxo.output.amount,
       utxo.output.address,
     );
-    txBuilder.txInScript(appWallet.scriptCbor);
+    txBuilder.txInScript(spendScriptCbor);
   }
 
   const certActions = buildStakingCertificateActions({
@@ -199,7 +200,7 @@ export default async function handler(
     poolHex,
   });
   certActions[action].execute();
-  txBuilder.changeAddress(appWallet.address);
+  txBuilder.changeAddress(mWallet.getScript().address);
 
   let txHex: string;
   let txJson: unknown;

@@ -217,14 +217,12 @@ export default async function handler(
         utxo.output.amount,
         utxo.output.address,
       );
+      txBuilder.txInScript(scriptCbor);
     }
     txBuilder
-      .txInScript(scriptCbor)
       .changeAddress(changeAddress)
-      .drepDeregistrationCertificate(dRepId);
-    if (drepCbor !== scriptCbor) {
-      txBuilder.certificateScript(drepCbor);
-    }
+      .drepDeregistrationCertificate(dRepId)
+      .certificateScript(drepCbor);
   }
 
   let txHex: string;

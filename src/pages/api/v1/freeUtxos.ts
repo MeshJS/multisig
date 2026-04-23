@@ -122,17 +122,26 @@ export default async function handler(
     const network = addressToNetwork(addr);
 
     const blockchainProvider = getProvider(network);
+    const fresh = req.query.fresh === "true";
 
-    // Use cached UTxO fetch to reduce Blockfrost API calls
-    const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
-    const utxos: UTxO[] = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    let utxos: UTxO[];
+    if (fresh) {
+      utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+    } else {
+      const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+      utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    }
 
     const blockedUtxos: { hash: string; index: number }[] =
       pendingTxsResult.flatMap((m): { hash: string; index: number }[] => {
         try {
           const txJson: {
             inputs: { txIn: { txHash: string; txIndex: number } }[];
+            multisig?: { submissionError?: string | null };
           } = JSON.parse(m.txJson);
+          // A tx that was broadcast but rejected by the node has a submissionError.
+          // Its inputs are still unspent on-chain — don't block them.
+          if (txJson.multisig?.submissionError) return [];
           return txJson.inputs.map((n) => ({
             hash: n.txIn.txHash,
             index: n.txIn.txIndex,
@@ -152,10 +161,9 @@ export default async function handler(
         ),
     );
 
-    // Set cache headers for CDN/edge caching
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=30, stale-while-revalidate=60",
+      fresh ? "no-store" : "public, s-maxage=30, stale-while-revalidate=60",
     );
     res.status(200).json(freeUtxos);
   } catch (error) {

@@ -42,6 +42,8 @@ jobs:
       SIGN_BROADCAST: "true"
       CI_ROUTE_SCENARIOS: ${{ github.event_name == 'workflow_dispatch' && inputs.route_scenarios || '' }}
       CI_CONTEXT_PATH: /tmp/ci-wallet-context.json
+      CI_DREP_ANCHOR_URL: ${{ secrets.CI_DREP_ANCHOR_URL }}
+      CI_STAKE_POOL_ID_HEX: ${{ secrets.CI_STAKE_POOL_ID_HEX }}
 
     steps:
       - name: Checkout repository
