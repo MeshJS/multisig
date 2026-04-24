@@ -44,15 +44,19 @@ CI runs these stages in order:
   - `context.ts`: context loading + validation.
   - `env.ts`, `mnemonic.ts`, `walletType.ts`, `preprod.ts`: shared env and Cardano helpers.
   - `botProvision.ts`: bot key hashing for bootstrap.
+  - `botAuth.ts`: bot JWT authentication with in-process token caching (10 s expiry margin) and 429-rate-limit retry.
+  - `botContext.ts`: bot selection helpers (`getDefaultBot`, `getBotForAddress`, `getBotForSignerIndex`).
   - `http.ts`: API caller helper with timeout/retry support.
   - `walletAuth.ts`: nonce + signer auth helper (`getNonce`/`authSigner`) and signer data signing.
   - `datumSign.ts`: reusable datum signing helper.
   - `governance.ts`: deterministic governance proposal selection and ballot payload builder.
   - `runner.ts`: scenario/step execution + report writing.
+  - `walletBalances.ts`: on-chain UTxO balance collection via Blockfrost (used by `walletBalanceSummary` in report).
+  - `redact.ts`: recursive sensitive-value redaction for log-safe JSON serialisation.
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering only.
   - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts` (reusable multisig sign, real transfer builders, and stake-cert signing with dual payment+stake witnesses).
-  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, …) plus `template-route-step.ts` for new steps.
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
 
 ### Subset runs (e.g. pending lifecycle only)
 
@@ -113,14 +117,19 @@ Each leg is asserted as pending immediately after `addTransaction`, then asserte
 
 Runs when both `legacy` and `sdk` wallets are in context. Requires `CI_DREP_ANCHOR_URL`.
 
-For each wallet type the scenario runs two sequential phases — register then retire — leaving the wallet in its pre-test DRep state:
+For each wallet type the scenario runs a pre-hygiene step followed by two sequential phases — register then retire — leaving the wallet in its pre-test DRep state:
+
+**Pre-hygiene step** — checks on-chain DRep state via `GET /api/v1/drepInfo`. If the DRep is already registered (e.g. from a previous incomplete run), it proposes a `retire` tx, signs with both signers, and waits for on-chain confirmation. If the broadcast is rejected with `DRepNotRegistered` or similar errors, the credential is treated as already clean (stale Blockfrost cache false-positive) and the step succeeds silently.
+
+**Main test phases:**
 
 1. Fetch free UTxOs from the wallet, call `POST /api/v1/botDRepCertificate` with `action: "register"` and `anchorUrl`. The API fetches the anchor document and computes the anchor data hash server-side.
 2. Assert the transaction appears in pending.
 3. Signer 1 (`CI_MNEMONIC_2`, index 1) adds a payment-key witness, no broadcast.
 4. Signer 2 (`CI_MNEMONIC_3`, index 2) adds a payment-key witness and broadcasts.
 5. Assert the transaction is cleared from pending.
-6. Repeat steps 1–5 with `action: "retire"`.
+6. Poll `freeUtxos?fresh=true` until the spent inputs are no longer unspent on-chain (confirms block inclusion before the next phase). Up to 30 retries × 8 s = 4 minutes.
+7. Repeat steps 1–6 with `action: "retire"`.
 
 **Why payment-key witnesses are sufficient for DRep cert:**
 
@@ -129,14 +138,20 @@ For each wallet type the scenario runs two sequential phases — register then r
 
 ### Stake certificate scenarios (`scenario.stake-certificates`)
 
-Runs when the `sdk` wallet is in context. Requires `CI_DREP_ANCHOR_URL` to not be needed (stake only), but `CI_STAKE_POOL_ID_HEX` should be set if delegation tests are added later.
+Runs when the `sdk` wallet is in context. Does not require `CI_DREP_ANCHOR_URL`. **`CI_STAKE_POOL_ID_HEX` is required** — it is passed as `poolId` in the `register_and_delegate` body.
 
-Two sequential phases — register then deregister — leave the wallet in its pre-test staking state.
+The scenario runs three phases:
+
+**Pre-hygiene step** — before the main test, checks on-chain state via `GET /api/v1/stakeAccountInfo`. If the stake credential is already registered (e.g. from a previous incomplete run), it proposes a `deregister` tx, signs with both signers, and waits for on-chain confirmation. If the broadcast is rejected with `StakeKeyNotRegisteredDELEG` or similar errors, the credential is treated as already clean (stale Blockfrost cache false-positive) and the step succeeds silently.
+
+**Main test: `register_and_delegate`** — uses `register_and_delegate` rather than bare `register` because production `stakingCertificates.ts` includes `.certificateScript()` on the register cert. In Conway era a bare register cert with a script witness causes `ExtraneousScriptWitnessesUTXOW`; `register_and_delegate` avoids this because the delegate cert legitimately requires the same staking script. Each phase follows 6 steps (propose → pending → sign1 → sign2+broadcast → cleared → on-chain confirmation poll).
+
+**Main test: `deregister`** — restores the wallet to its pre-test staking state. Same 6-step flow.
 
 Each signing step uses **`runStakeCertSigningFlow`** (`scenarios/flows/certificateSigningFlow.ts`) instead of the standard `runSigningFlow`, because the staking certificate script uses **stake key hashes** (role-2 keys) rather than payment key hashes:
 
 1. `MeshWallet.signTx(txCbor, true)` produces both a payment vkey witness and a stake vkey witness.
-2. The flow extracts the payment vkey (matched by `resolvePaymentKeyHash(signerAddress)`) and the stake vkey (matched by `resolveStakeKeyHash(ctx.signerStakeAddresses[signerIndex])`).
+2. The flow extracts the payment vkey (matched by `resolvePaymentKeyHash(signerAddress)`) and the stake vkey (matched by `resolveStakeKeyHash(ctx.signerStakeAddresses[signerIndex])`). If the stake vkey cannot be found by key-hash search, the flow falls back to BIP32 derivation at path `m/1852'/1815'/0'/2/0` and signs the tx hash manually.
 3. Both are submitted in a **single** `POST /api/v1/signTransaction` call via the optional `stakeKey` / `stakeSignature` body fields — this avoids hitting the "address already signed" guard that would block a second call from the same signer.
 
 `signTransaction` validates the stake witness by checking that its key hash is present in `wallet.signersStakeKeys` (resolved to key hashes). The stake witness is merged into the transaction CBOR alongside the payment witness before the broadcast threshold check runs.
@@ -150,12 +165,13 @@ Primary variables (in workflow/compose):
 - `CI_BLOCKFROST_PREPROD_API_KEY`
 - `CI_NETWORK_ID`
 - `CI_WALLET_TYPES`
-- `CI_SIGN_WALLET_TYPE`
+- `CI_NUM_REQUIRED_SIGNERS` (default `2`): minimum signature threshold written into each created wallet's native script. Passed as `requiredSigners` during bootstrap.
+- `CI_SIGN_WALLET_TYPE` (default `legacy`): which wallet type is used when `runSigningFlow` resolves a wallet for signing in ring-transfer steps. Overridden per leg in transfer scenarios.
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount)
 - `CI_DREP_ANCHOR_URL` (required for `scenario.drep-certificates`): publicly reachable URL of a CIP-119 DRep metadata document. The API fetches the document and computes the anchor data hash server-side; only the URL needs to be supplied.
-- `CI_STAKE_POOL_ID_HEX` (optional): hex stake pool id; stored in bootstrap context when set. Required for `delegate` / `register_and_delegate` staking actions if those scenarios are added later.
+- `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
 
 Validation notes:
 
@@ -165,6 +181,7 @@ Validation notes:
 - The default full route-chain (including ring transfer scenario) requires all three wallet types (`legacy`, `hierarchical`, `sdk`) to be present.
 - `CI_ROUTE_SCENARIOS` values must exist in `scenarios/manifest.ts`; unknown ids fail fast.
 - `CI_MNEMONIC_2` and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing.
+- `CI_STAKE_POOL_ID_HEX` must be set when running `scenario.stake-certificates`; the scenario throws at proposal time if `ctx.stakePoolIdHex` is absent.
 - Source multisig wallet script addresses must be funded on preprod for each ring leg (`legacy -> hierarchical -> sdk -> legacy`).
 - `CI_JWT_SECRET` must remain the same between bootstrap and route-chain, because bot auth secrets are deterministically derived from it.
 - CI bot keys are provisioned with scopes: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`.

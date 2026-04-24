@@ -352,6 +352,137 @@ function createCertPhaseSteps(args: {
 }
 
 /**
+ * Pre-hygiene step for a single wallet type: checks on-chain DRep state via
+ * GET /api/v1/drepInfo and deregisters if already registered, so the main
+ * register phase starts from a known clean state.
+ *
+ * Handles stale Blockfrost cache gracefully — if the broadcast is rejected
+ * with DRepNotRegistered or similar errors, the credential is confirmed clean
+ * and the step succeeds silently.
+ */
+function createDRepHygieneStep(walletType: CIWalletType): RouteStep {
+  return {
+    id: `v1.botDRepCertificate.${walletType}.hygiene`,
+    description: `Ensure ${walletType} DRep is deregistered before test`,
+    severity: "critical",
+    execute: async (ctx) => {
+      const wallet = ctx.wallets.find((w) => w.type === walletType);
+      if (!wallet) {
+        throw new Error(`Wallet type "${walletType}" not found in CI context`);
+      }
+
+      const bot = getDefaultBot(ctx);
+      const token = await authenticateBot({ ctx, bot });
+
+      // Check on-chain DRep state.
+      const checkResp = await requestJson<{ active?: boolean; dRepId?: string; error?: string }>({
+        url: `${ctx.apiBaseUrl}/api/v1/drepInfo?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`,
+        method: "GET",
+        token,
+      });
+      if (checkResp.status !== 200) {
+        throw new Error(`drepInfo failed (${checkResp.status}): ${stringifyRedacted(checkResp.data)}`);
+      }
+      if (!checkResp.data?.active) {
+        return {
+          message: `${walletType} DRep not registered on-chain; proceeding to main test`,
+          artifacts: { walletId: wallet.walletId, active: false, dRepId: checkResp.data?.dRepId },
+        };
+      }
+
+      // DRep is registered — retire it.
+      const utxoRefs = await fetchUtxoRefs({
+        ctx,
+        walletId: wallet.walletId,
+        token,
+        botAddress: bot.paymentAddress,
+        fresh: true,
+      });
+
+      const proposeResp = await requestJson<{ id?: string; error?: string }>({
+        url: `${ctx.apiBaseUrl}/api/v1/botDRepCertificate`,
+        method: "POST",
+        token,
+        body: {
+          walletId: wallet.walletId,
+          address: bot.paymentAddress,
+          action: "retire",
+          utxoRefs,
+          description: "DRep retirement (hygiene)",
+        },
+      });
+      if (proposeResp.status !== 201 || !proposeResp.data?.id) {
+        throw new Error(`botDRepCertificate (hygiene retire) failed (${proposeResp.status}): ${stringifyRedacted(proposeResp.data)}`);
+      }
+      const txId = proposeResp.data.id;
+
+      const mnemonic1 = process.env.CI_MNEMONIC_2;
+      const mnemonic2 = process.env.CI_MNEMONIC_3;
+      if (!mnemonic1?.trim()) throw new Error("CI_MNEMONIC_2 is required for hygiene signing");
+      if (!mnemonic2?.trim()) throw new Error("CI_MNEMONIC_3 is required for hygiene signing");
+
+      // Signer 1 — no broadcast.
+      const sign1Result = await runSigningFlow({
+        ctx,
+        mnemonic: mnemonic1,
+        signWalletType: walletType,
+        signerIndex: 1,
+        signerLabel: "signer1",
+        signBroadcast: false,
+        preferredTransactionId: txId,
+        requireBroadcastSuccess: false,
+      });
+      console.log(`[drep-hygiene:${walletType}] signer1 sign: status=${sign1Result.status}`);
+
+      // Signer 2 — broadcast. Catch stale-cache rejections: if Blockfrost reported the DRep
+      // as active but it is not actually registered on-chain, the node rejects the retire cert.
+      try {
+        const sign2Result = await runSigningFlow({
+          ctx,
+          mnemonic: mnemonic2,
+          signWalletType: walletType,
+          signerIndex: 2,
+          signerLabel: "signer2",
+          signBroadcast: true,
+          preferredTransactionId: txId,
+          requireBroadcastSuccess: true,
+        });
+        console.log(`[drep-hygiene:${walletType}] signer2 sign: status=${sign2Result.status} submitted=${String(sign2Result.submitted)}`);
+      } catch (err) {
+        const errMsg = String(err);
+        console.log(`[drep-hygiene:${walletType}] signer2 broadcast failed: ${errMsg.slice(0, 300)}`);
+        const isStaleCache =
+          errMsg.includes("DRepNotRegistered") ||
+          errMsg.includes("DRepAlreadyRetired") ||
+          errMsg.includes("VotingDRepsNotRegistered") ||
+          errMsg.includes("ValueNotConservedUTxO") ||
+          errMsg.includes("value is not balanced");
+        if (isStaleCache) {
+          return {
+            message: `Hygiene DRep retire broadcast rejected — credential already deregistered (stale Blockfrost cache)`,
+            artifacts: { walletId: wallet.walletId, txId, staleCache: true },
+          };
+        }
+        throw err;
+      }
+
+      // Broadcast succeeded — wait for on-chain confirmation before the register phase.
+      const { attempts } = await pollUntilUtxosConsumed({
+        ctx,
+        walletId: wallet.walletId,
+        token,
+        botAddress: bot.paymentAddress,
+        spentUtxoRefs: utxoRefs,
+      });
+      return {
+        message: `Hygiene DRep retire confirmed on-chain after ${attempts} poll attempt${attempts === 1 ? "" : "s"}`,
+        artifacts: { walletId: wallet.walletId, txId, attempts },
+      };
+    },
+  };
+}
+
+/**
  * DRep registration and retirement for legacy and SDK wallets.
  *
  * Legacy wallet:  payment script doubles as the DRep credential script, so
@@ -363,14 +494,15 @@ function createCertPhaseSteps(args: {
  *                 Standard payment-key witnesses satisfy both scripts
  *                 → full sign + broadcast.
  *
- * Register then retire so the wallet returns to its pre-test state.
+ * Pre-hygiene deregisters if already registered, then register then retire,
+ * leaving the wallet in its pre-test DRep state.
  * Requires CI_DREP_ANCHOR_URL to be set.
  */
 export function createScenarioDRepCertificates(): Scenario {
-  const legacyReg: { transactionId?: string } = {};
-  const legacyRetire: { transactionId?: string } = {};
-  const sdkReg: { transactionId?: string } = {};
-  const sdkRetire: { transactionId?: string } = {};
+  const legacyReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
+  const legacyRetire: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
+  const sdkReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
+  const sdkRetire: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
 
   function buildDRepRegBody(): Record<string, unknown> {
     const anchorUrl = process.env.CI_DREP_ANCHOR_URL?.trim();
@@ -385,6 +517,8 @@ export function createScenarioDRepCertificates(): Scenario {
     description:
       "Register and retire DRep for legacy and SDK wallets, restoring pre-test state",
     steps: [
+      // Legacy: hygiene (deregister if already registered)
+      createDRepHygieneStep("legacy"),
       // Legacy: register
       ...createCertPhaseSteps({
         idPrefix: "v1.botDRepCertificate.legacy.register",
@@ -406,6 +540,8 @@ export function createScenarioDRepCertificates(): Scenario {
         runtime: legacyRetire,
         requireBroadcastSuccess: true,
       }),
+      // SDK: hygiene (deregister if already registered)
+      createDRepHygieneStep("sdk"),
       // SDK: register
       ...createCertPhaseSteps({
         idPrefix: "v1.botDRepCertificate.sdk.register",
@@ -514,58 +650,34 @@ export function createScenarioStakeCertificates(): Scenario {
           if (!mnemonic1?.trim()) throw new Error("CI_MNEMONIC_2 is required for hygiene signing");
           if (!mnemonic2?.trim()) throw new Error("CI_MNEMONIC_3 is required for hygiene signing");
 
-          // Signer 1 — no broadcast.
+          // Signer 1 — no broadcast (same as main test's deregister phase).
           const sign1Result = await runStakeCertSigningFlow({ ctx, mnemonic: mnemonic1, signerIndex: 1, signBroadcast: false, preferredTransactionId: txId, requireBroadcastSuccess: false });
           console.log(`[hygiene] signer1 sign: status=${sign1Result.status} stakeWitness=${String(sign1Result.stakeWitnessIncluded)}`);
 
-          // Signer 2 — broadcast.
-          const signResult = await runStakeCertSigningFlow({ ctx, mnemonic: mnemonic2, signerIndex: 2, signBroadcast: true, preferredTransactionId: txId, requireBroadcastSuccess: false });
-          console.log(`[hygiene] signer2 sign: status=${signResult.status} submitted=${String(signResult.submitted)} stakeWitness=${String(signResult.stakeWitnessIncluded)} submissionError=${signResult.submissionError ?? "none"}`);
-
-          if (!signResult.submitted) {
-            const submissionErr = signResult.submissionError ?? "";
-
-            // StakeKeyNotRegisteredDELEG: the credential is not registered on-chain
-            // even though Blockfrost reported active=true (stale cache). The tx was
-            // built expecting a 2 ADA deposit refund that doesn't exist, hence the
-            // accompanying ValueNotConservedUTxO. Treat both as "already deregistered".
-            const isAlreadyDeregistered =
-              submissionErr.includes("StakeKeyNotRegisteredDELEG") ||
-              submissionErr.includes("StakeKeyAlreadyDeregistered") ||
-              submissionErr.includes("StakeKeyNotRegistered");
-            if (isAlreadyDeregistered) {
+          // Signer 2 — broadcast with requireBroadcastSuccess: true, matching the
+          // main test's deregister phase. Catch stale-cache errors (the credential
+          // was reported active by Blockfrost but is not actually registered on-chain:
+          // StakeKeyNotRegisteredDELEG + ValueNotConservedUTxO from the missing 2 ADA
+          // deposit refund) and treat them as "already clean".
+          try {
+            const sign2Result = await runStakeCertSigningFlow({ ctx, mnemonic: mnemonic2, signerIndex: 2, signBroadcast: true, preferredTransactionId: txId, requireBroadcastSuccess: true });
+            console.log(`[hygiene] signer2 sign: status=${sign2Result.status} submitted=${String(sign2Result.submitted)} stakeWitness=${String(sign2Result.stakeWitnessIncluded)}`);
+          } catch (err) {
+            const errMsg = String(err);
+            console.log(`[hygiene] signer2 broadcast failed: ${errMsg.slice(0, 300)}`);
+            const isStaleCache =
+              errMsg.includes("StakeKeyNotRegisteredDELEG") ||
+              errMsg.includes("StakeKeyAlreadyDeregistered") ||
+              errMsg.includes("StakeKeyNotRegistered") ||
+              errMsg.includes("ValueNotConservedUTxO") ||
+              errMsg.includes("value is not balanced");
+            if (isStaleCache) {
               return {
-                message: "Chain reports stake key not registered — credential already deregistered (stale Blockfrost cache)",
+                message: "Hygiene deregister broadcast rejected — credential already deregistered (stale Blockfrost cache)",
                 artifacts: { stakeAddress, txId, staleCache: true },
               };
             }
-
-            // ValueNotConservedUTxO with a 2 ADA shortfall on a deregister tx also
-            // indicates the deposit is not there because the key is not registered.
-            const isDepositMissing =
-              submissionErr.includes("ValueNotConservedUTxO") ||
-              submissionErr.includes("value is not balanced");
-            if (isDepositMissing) {
-              return {
-                message: "ValueNotConservedUTxO on deregister tx (2 ADA deposit absent) — credential likely already deregistered (stale Blockfrost cache)",
-                artifacts: { stakeAddress, txId, staleCache: true },
-              };
-            }
-
-            // Generic fallback: re-check via stakeAccountInfo.
-            const recheckResp = await requestJson<{ active?: boolean }>({
-              url: `${ctx.apiBaseUrl}/api/v1/stakeAccountInfo?stakeAddress=${encodeURIComponent(stakeAddress)}`,
-              method: "GET",
-              token,
-            });
-            if (recheckResp.data?.active === false) {
-              return {
-                message: "Hygiene deregister rejected on-chain; re-check confirms credential is already deregistered (stale Blockfrost cache)",
-                artifacts: { stakeAddress, txId, staleCache: true },
-              };
-            }
-            const detail = submissionErr ? `: ${submissionErr}` : "";
-            throw new Error(`Hygiene deregister broadcast failed and credential is still active on re-check${detail}`);
+            throw err;
           }
 
           // Broadcast succeeded — wait for on-chain confirmation.
