@@ -74,7 +74,7 @@ services:
       CI_SIGN_WALLET_TYPE: ${CI_SIGN_WALLET_TYPE:-legacy}
       SIGN_BROADCAST: ${SIGN_BROADCAST:-true}
       CI_ROUTE_SCENARIOS: ${CI_ROUTE_SCENARIOS:-}
-      CI_ROUTE_CHAIN_REPORT_PATH: ${CI_ROUTE_CHAIN_REPORT_PATH:-/artifacts/ci-route-chain-report.json}
+      CI_ROUTE_CHAIN_REPORT_PATH: ${CI_ROUTE_CHAIN_REPORT_PATH:-/artifacts/ci-route-chain-report.md}
       CI_CONTEXT_PATH: ${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}
       CI_DREP_ANCHOR_URL: ${CI_DREP_ANCHOR_URL:-}
       CI_STAKE_POOL_ID_HEX: ${CI_STAKE_POOL_ID_HEX:-}

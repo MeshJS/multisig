@@ -1,12 +1,13 @@
 import { loadBootstrapContext } from "../framework/context";
-import { runScenarios, writeRunReport } from "../framework/runner";
+import { runScenarios } from "../framework/runner";
+import { writeMarkdownReport } from "../framework/markdown";
 import { getScenarioManifest } from "../scenarios/manifest";
 import { requireEnv, parseCommaList } from "../framework/env";
 import { assertPreprodContext } from "../framework/preprod";
 
 async function main() {
   const contextPath = requireEnv("CI_CONTEXT_PATH", "/tmp/ci-wallet-context.json");
-  const reportPath = requireEnv("CI_ROUTE_CHAIN_REPORT_PATH", "/tmp/ci-route-chain-report.json");
+  const reportPath = requireEnv("CI_ROUTE_CHAIN_REPORT_PATH", "/tmp/ci-route-chain-report.md");
   const context = await loadBootstrapContext(contextPath);
   assertPreprodContext(context);
   const allScenarios = getScenarioManifest(context);
@@ -35,7 +36,7 @@ async function main() {
     ctx: context,
     continueOnNonCriticalFailure: true,
   });
-  await writeRunReport(report, reportPath);
+  await writeMarkdownReport(report, reportPath);
 
   for (const scenario of report.scenarios) {
     console.log(`[${scenario.status.toUpperCase()}] ${scenario.id}`);
@@ -47,7 +48,7 @@ async function main() {
       }
     }
   }
-  console.log(`Route-chain report written to ${reportPath}`);
+  console.log(`Route-chain report written to ${reportPath} (markdown)`);
 
   if (report.status !== "passed") {
     throw new Error("Route-chain scenario run failed");

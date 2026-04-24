@@ -28,9 +28,9 @@ CI runs these stages in order:
    - Emits console summary and machine-readable JSON report.
 
 3. **Artifacts**
-   - Route-chain JSON report is written to `ci-artifacts/ci-route-chain-report.json`.
+   - Route-chain Markdown report is written to `ci-artifacts/ci-route-chain-report.md`.
    - Workflow uploads it as an artifact for triage.
-   - Report now includes top-level `walletBalanceSummary` with total on-chain balances per wallet.
+   - Report contains a run summary header, wallet balance table, scenario summary table, and per-scenario step tables. Failed steps include error/artifact code blocks.
 
 ## Folder structure
 
@@ -123,7 +123,7 @@ The manifest currently covers:
 - pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
 
-For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) and the list of script entry types (`artifacts.scriptTypes`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
+For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) and the list of script entry types (`artifacts.scriptTypes`) inside `ci-route-chain-report.md`, so script structure is visible during CI triage.
 
 Signing is expected to be on, and broadcast is expected to be on, for normal CI route-chain runs.
 
@@ -159,7 +159,7 @@ Runs after `scenario.auth-plane`. Requires `multisig:create` scope on the CI bot
 
 **Step 2** — calls `GET /api/v1/walletIds` for the bot and asserts the new `walletId` is present. This confirms the bot's cosigner access was set correctly during wallet creation.
 
-The created wallet is ephemeral (only used within this scenario) and is not cleaned up. It accumulates one wallet per CI run per bot, which is acceptable for preprod.
+**Step 3 (cleanup, non-critical)** — deletes the test wallet directly via Prisma (`WalletBotAccess` rows first, then the `Wallet` row). Marked non-critical so a cleanup failure does not fail the scenario. If cleanup is skipped (e.g. step 1 failed), no orphan wallet is left behind.
 
 ### DRep certificate scenarios (`scenario.drep-certificates`)
 
@@ -276,54 +276,16 @@ Safe-to-print checklist for new route/scenario code:
 - Safe: `walletId`, `transactionId`/tx hash, `paymentAddress`/`stakeAddress` (testnet), `keyHash`, scenario ids/status.
 - Forbidden: any `CI_MNEMONIC_*` value, any `xprv*`/`ed25519*_sk*` material, `Authorization` headers, `secret`/`token` payload fields.
 
-## Wallet balance summary in report
+## Report format
 
-`ci-route-chain-report.json` includes a top-level `walletBalanceSummary` object that captures a single balance snapshot near report finalization:
+`ci-route-chain-report.md` is a Markdown file structured for human triage. It contains:
 
-- Source: direct on-chain UTxO lookup for each `wallet.walletAddress` from bootstrap context.
-- Semantics: **total on-chain balance** (includes UTxOs even if currently referenced by pending multisig transactions).
-- Quantities: stringified integer quantities (lovelace + native assets) to preserve precision.
+1. **Run header** — overall status, timestamp, duration, network, wallet types.
+2. **Wallet balances table** — UTxO count and ADA balance per wallet type at run end. Native asset counts noted when present.
+3. **Scenario summary table** — pass/fail, step pass rate, and duration per scenario.
+4. **Step detail sections** — one subsection per scenario with a step table (step ID, duration, result message). Failed steps include their error and artifacts as code blocks.
 
-Shape:
-
-```json
-{
-  "walletBalanceSummary": {
-    "capturedAt": "2026-01-01T00:00:00.000Z",
-    "networkId": 0,
-    "byWalletType": {
-      "legacy": {
-        "walletType": "legacy",
-        "walletId": "wallet-id",
-        "walletAddress": "addr_test...",
-        "utxoCount": 2,
-        "lovelace": "12345678",
-        "assets": {
-          "lovelace": "12345678"
-        },
-        "capturedAt": "2026-01-01T00:00:00.000Z",
-        "networkId": 0
-      }
-    },
-    "byWalletId": {
-      "wallet-id": {
-        "walletType": "legacy",
-        "walletId": "wallet-id",
-        "walletAddress": "addr_test...",
-        "utxoCount": 2,
-        "lovelace": "12345678",
-        "assets": {
-          "lovelace": "12345678"
-        },
-        "capturedAt": "2026-01-01T00:00:00.000Z",
-        "networkId": 0
-      }
-    }
-  }
-}
-```
-
-If balance collection fails, `walletBalanceSummary.error` is populated and the report remains writable for triage.
+Balance source: direct on-chain UTxO lookup per wallet address from bootstrap context (includes UTxOs referenced by pending transactions). Lovelace values shown as ADA (2 d.p.). If balance collection fails, a warning line replaces the table.
 
 ## How to contribute
 
@@ -413,14 +375,15 @@ Run route-chain smoke scenarios:
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json `
+  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md `
   ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+
 ```
 
 View generated report on host:
 
 ```powershell
-Get-Content ".\ci-artifacts\ci-route-chain-report.json"
+Get-Content ".\ci-artifacts\ci-route-chain-report.md"
 ```
 
 ## Local execution (Linux/Bash, CI-like)
@@ -483,12 +446,12 @@ Run route-chain smoke scenarios:
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.json \
+  -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md \
   ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
 ```
 
 View generated report on host:
 
 ```bash
-cat ./ci-artifacts/ci-route-chain-report.json
+cat ./ci-artifacts/ci-route-chain-report.md
 ```

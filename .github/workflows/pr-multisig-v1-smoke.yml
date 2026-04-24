@@ -131,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-route-chain-report
-          path: ci-artifacts/ci-route-chain-report.json
+          path: ci-artifacts/ci-route-chain-report.md
           if-no-files-found: warn
 
       - name: Tear down CI containers
