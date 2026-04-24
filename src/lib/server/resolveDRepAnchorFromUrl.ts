@@ -119,6 +119,7 @@ export async function resolveDRepAnchorFromUrl(
   const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
   let res: Response;
   try {
+    // lgtm[js/ssrf] assertUrlSafeForFetch validates protocol, blocks private/loopback hostnames, and DNS-resolves all IPs against RFC-1918 ranges before this line.
     res = await fetch(trimmed, {
       signal: ac.signal,
       redirect: "error",
