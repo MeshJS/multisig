@@ -6,6 +6,7 @@ import { getDefaultBot } from "../../framework/botContext";
 import { authenticateBot } from "../../framework/botAuth";
 import { stringifyRedacted } from "../../framework/redact";
 import { boolFromEnv } from "../../framework/env";
+import { hashDrepAnchor } from "@meshsdk/core";
 
 type ScriptUtxo = {
   input: { txHash: string; outputIndex: number };
@@ -165,7 +166,7 @@ function createCertPhaseSteps(args: {
   label: string;
   runtime: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] };
   requireBroadcastSuccess: boolean;
-  buildExtraBody?: (ctx: CIBootstrapContext) => Record<string, unknown>;
+  buildExtraBody?: (ctx: CIBootstrapContext) => Promise<Record<string, unknown>> | Record<string, unknown>;
   /** When true, each signing step uses the stake-cert flow (payment + stake witnesses). */
   useStakeCertFlow?: boolean;
 }): RouteStep[] {
@@ -192,13 +193,14 @@ function createCertPhaseSteps(args: {
           fresh: true,
         });
 
+        const extraBody = args.buildExtraBody ? await args.buildExtraBody(ctx) : {};
         const body: Record<string, unknown> = {
           walletId: wallet.walletId,
           address: bot.paymentAddress,
           action,
           utxoRefs,
           description: label,
-          ...(args.buildExtraBody?.(ctx) ?? {}),
+          ...extraBody,
         };
 
         const response = await requestJson<{ id?: string; error?: string }>({
@@ -504,12 +506,16 @@ export function createScenarioDRepCertificates(): Scenario {
   const sdkReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
   const sdkRetire: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
 
-  function buildDRepRegBody(): Record<string, unknown> {
+  async function buildDRepRegBody(): Promise<Record<string, unknown>> {
     const anchorUrl = process.env.CI_DREP_ANCHOR_URL?.trim();
     if (!anchorUrl) {
       throw new Error("CI_DREP_ANCHOR_URL is required for DRep registration");
     }
-    return { anchorUrl };
+    const res = await fetch(anchorUrl);
+    if (!res.ok) throw new Error(`Failed to fetch DRep anchor URL: HTTP ${res.status}`);
+    const json = await res.json() as object;
+    const anchorDataHash = hashDrepAnchor(json);
+    return { anchorUrl, anchorDataHash };
   }
 
   return {
