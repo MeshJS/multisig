@@ -14,6 +14,7 @@ import {
   createScenarioDRepCertificates,
   createScenarioStakeCertificates,
 } from "./steps/certificates";
+import { createScenarioCreateWallet } from "./steps/walletLifecycle";
 
 export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
   const [legacy, hierarchical, sdk] = getRingWalletTypes(ctx);
@@ -29,10 +30,11 @@ export function getScenarioManifest(ctx: CIBootstrapContext): Scenario[] {
   const hasSdk = ctx.wallets.some((w) => w.type === "sdk");
 
   const scenarios: Scenario[] = [
-    createScenarioPendingAndDiscovery(),
+    createScenarioPendingAndDiscovery(ctx),
     createScenarioAdaRouteHealth(ctx),
     createScenarioBotIdentity(),
     createScenarioAuthPlane(ctx),
+    createScenarioCreateWallet(ctx),
     createScenarioSubmitDatum(ctx),
     createScenarioGovernanceRoutes(ctx),
   ];

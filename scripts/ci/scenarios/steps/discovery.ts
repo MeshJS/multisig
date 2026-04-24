@@ -40,6 +40,70 @@ function createWalletIdsStep(): RouteStep {
   };
 }
 
+function createPendingTransactionsZeroStep(walletType: string): RouteStep {
+  return {
+    id: `v1.pendingTransactions.zero.${walletType}`,
+    description: `Assert no pending transactions at bootstrap for ${walletType} wallet`,
+    severity: "non-critical",
+    execute: async (ctx) => {
+      const bot = getDefaultBot(ctx);
+      const token = await authenticateBot({ ctx, bot });
+      const wallet = getWalletByType(ctx, walletType);
+      if (!wallet) {
+        throw new Error(`Missing wallet type in context: ${walletType}`);
+      }
+      const response = await requestJson<unknown[] | { error?: string }>({
+        url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`,
+        method: "GET",
+        token,
+      });
+      if (response.status !== 200 || !Array.isArray(response.data)) {
+        throw new Error(
+          `pendingTransactions zero-check failed for ${walletType} (${response.status}): ${stringifyRedacted(response.data)}`,
+        );
+      }
+      if (response.data.length !== 0) {
+        throw new Error(
+          `pendingTransactions zero-check: expected 0 pending txs for ${walletType} at bootstrap, found ${response.data.length}. A previous CI run may have left stale state.`,
+        );
+      }
+      return {
+        message: `pendingTransactions confirmed empty for ${walletType} at bootstrap`,
+        artifacts: { walletId: wallet.walletId, pendingCount: 0 },
+      };
+    },
+  };
+}
+
+function createLookupMultisigWalletStep(ctx: CIBootstrapContext): RouteStep {
+  return {
+    id: "v1.lookupMultisigWallet.signerKeyHash",
+    description: "Smoke-test public /api/v1/lookupMultisigWallet with a signer key hash",
+    severity: "non-critical",
+    execute: async (runCtx) => {
+      const signerAddress = runCtx.signerAddresses[0];
+      if (!signerAddress) {
+        throw new Error("lookupMultisigWallet: no signer addresses in bootstrap context");
+      }
+      const { resolvePaymentKeyHash } = await import("@meshsdk/core");
+      const keyHash = resolvePaymentKeyHash(signerAddress);
+      const response = await requestJson<unknown[] | { error?: string }>({
+        url: `${runCtx.apiBaseUrl}/api/v1/lookupMultisigWallet?pubKeyHashes=${encodeURIComponent(keyHash)}&network=${runCtx.networkId}`,
+        method: "GET",
+      });
+      if (response.status !== 200 || !Array.isArray(response.data)) {
+        throw new Error(
+          `lookupMultisigWallet failed (${response.status}): ${stringifyRedacted(response.data)}`,
+        );
+      }
+      return {
+        message: `lookupMultisigWallet returned ${response.data.length} on-chain metadata entries for signer key hash`,
+        artifacts: { keyHash, matchCount: response.data.length },
+      };
+    },
+  };
+}
+
 function createFreeUtxosStep(walletType: string): RouteStep {
   return {
     id: `v1.freeUtxos.${walletType}`,
@@ -73,7 +137,7 @@ function createFreeUtxosStep(walletType: string): RouteStep {
 function createNativeScriptStep(walletType: string): RouteStep {
   return {
     id: `v1.nativeScript.${walletType}`,
-    description: `Fetch native scripts for ${walletType} wallet`,
+    description: `Fetch and validate native scripts for ${walletType} wallet`,
     severity: "non-critical",
     execute: async (ctx) => {
       const bot = getDefaultBot(ctx);
@@ -95,12 +159,33 @@ function createNativeScriptStep(walletType: string): RouteStep {
       if (response.data.length === 0) {
         throw new Error(`nativeScript returned no scripts for ${walletType}`);
       }
+
+      // Assert a payment script entry is present
+      const paymentEntry = response.data.find((entry) => entry.type === "payment");
+      if (!paymentEntry) {
+        throw new Error(
+          `nativeScript: no "payment" type entry for ${walletType}; got types: ${response.data.map((e) => e.type).join(", ")}`,
+        );
+      }
+
+      // If the decoded payment script is an atLeast type, validate the required count
+      const script = paymentEntry.script as Record<string, unknown> | null | undefined;
+      if (script && typeof script === "object" && script.type === "atLeast" && typeof script.required === "number") {
+        const numRequired = parseInt(process.env.CI_NUM_REQUIRED_SIGNERS ?? "2", 10);
+        if (script.required !== numRequired) {
+          throw new Error(
+            `nativeScript: atLeast required=${script.required} does not match CI_NUM_REQUIRED_SIGNERS=${numRequired} for ${walletType}`,
+          );
+        }
+      }
+
       return {
-        message: `nativeScript returned ${response.data.length} script entries for ${walletType}`,
+        message: `nativeScript returned ${response.data.length} script entries for ${walletType} (payment script present)`,
         artifacts: {
           walletId: wallet.walletId,
           walletType,
           scriptCount: response.data.length,
+          scriptTypes: response.data.map((e) => e.type),
           nativeScripts: response.data,
         },
       };
@@ -108,11 +193,15 @@ function createNativeScriptStep(walletType: string): RouteStep {
   };
 }
 
-export function createScenarioPendingAndDiscovery(): Scenario {
+export function createScenarioPendingAndDiscovery(ctx: CIBootstrapContext): Scenario {
   return {
     id: "scenario.wallet-discovery",
     description: "Wallet discovery checks across bootstrap wallets",
-    steps: [createWalletIdsStep()],
+    steps: [
+      createWalletIdsStep(),
+      ...ctx.walletTypes.map((walletType) => createPendingTransactionsZeroStep(walletType)),
+      createLookupMultisigWalletStep(ctx),
+    ],
   };
 }
 

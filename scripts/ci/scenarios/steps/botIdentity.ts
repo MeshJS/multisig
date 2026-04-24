@@ -1,7 +1,7 @@
 import type { Scenario } from "../../framework/types";
 import { requestJson } from "../../framework/http";
 import { getDefaultBot } from "../../framework/botContext";
-import { authenticateBot } from "../../framework/botAuth";
+import { authenticateBot, deriveCiBotSecret, requireCiJwtSecret } from "../../framework/botAuth";
 import { stringifyRedacted } from "../../framework/redact";
 
 export function createScenarioBotIdentity(): Scenario {
@@ -9,6 +9,39 @@ export function createScenarioBotIdentity(): Scenario {
     id: "scenario.bot-identity",
     description: "Bot profile route checks",
     steps: [
+      {
+        id: "v1.botAuth.explicitRouteCheck",
+        description: "Verify /api/v1/botAuth response shape directly (bypasses token cache)",
+        severity: "critical",
+        execute: async (ctx) => {
+          const bot = getDefaultBot(ctx);
+          const secret = deriveCiBotSecret(bot.paymentAddress, requireCiJwtSecret());
+          const response = await requestJson<{ token?: string; error?: string }>({
+            url: `${ctx.apiBaseUrl}/api/v1/botAuth`,
+            method: "POST",
+            body: {
+              botKeyId: bot.botKeyId,
+              secret,
+              paymentAddress: bot.paymentAddress,
+            },
+          });
+          if (response.status !== 200 || typeof response.data?.token !== "string") {
+            throw new Error(
+              `botAuth explicit check failed (${response.status}): ${stringifyRedacted(response.data)}`,
+            );
+          }
+          const parts = response.data.token.split(".");
+          if (parts.length !== 3) {
+            throw new Error(
+              `botAuth: token is not a valid JWT — expected 3 dot-separated segments, got ${parts.length}`,
+            );
+          }
+          return {
+            message: "botAuth explicit route check passed: response contains a well-formed JWT",
+            artifacts: { jwtSegmentCount: parts.length },
+          };
+        },
+      },
       {
         id: "v1.botMe.defaultBot",
         description: "Verify default bot identity via /api/v1/botMe",

@@ -102,6 +102,70 @@ export function createScenarioAuthPlane(ctx: CIBootstrapContext): Scenario {
         },
       })),
       {
+        id: "v1.authNegative.drepInfo.missingToken",
+        description: "Assert /api/v1/drepInfo rejects missing token with 401",
+        severity: "critical",
+        execute: async (runCtx) => {
+          const wallet = runCtx.wallets[0];
+          if (!wallet) {
+            throw new Error("drepInfo negative check: no wallet in context");
+          }
+          const signerAddress = wallet.signerAddresses[0] ?? "";
+          const response = await requestJson<{ error?: string }>({
+            url: `${runCtx.apiBaseUrl}/api/v1/drepInfo?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
+            method: "GET",
+          });
+          if (response.status !== 401) {
+            throw new Error(
+              `drepInfo missing token expected 401, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "drepInfo missing token correctly rejected with 401",
+          };
+        },
+      },
+      {
+        id: "v1.authNegative.stakeAccountInfo.missingToken",
+        description: "Assert /api/v1/stakeAccountInfo rejects missing token with 401",
+        severity: "critical",
+        execute: async (runCtx) => {
+          const stakeAddress = runCtx.signerStakeAddresses[0] ?? runCtx.sdkStakeAddress ?? "stake_test1abc";
+          const response = await requestJson<{ error?: string }>({
+            url: `${runCtx.apiBaseUrl}/api/v1/stakeAccountInfo?stakeAddress=${encodeURIComponent(stakeAddress)}`,
+            method: "GET",
+          });
+          if (response.status !== 401) {
+            throw new Error(
+              `stakeAccountInfo missing token expected 401, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "stakeAccountInfo missing token correctly rejected with 401",
+          };
+        },
+      },
+      {
+        id: "v1.authNegative.createWallet.missingToken",
+        description: "Assert /api/v1/createWallet rejects missing token with 401",
+        severity: "critical",
+        execute: async (runCtx) => {
+          const response = await requestJson<{ error?: string }>({
+            url: `${runCtx.apiBaseUrl}/api/v1/createWallet`,
+            method: "POST",
+            body: { name: "should-be-rejected", signersAddresses: [] },
+          });
+          if (response.status !== 401) {
+            throw new Error(
+              `createWallet missing token expected 401, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "createWallet missing token correctly rejected with 401",
+          };
+        },
+      },
+      {
         id: "v1.getNonce.authSigner.signer2",
         description: "Authenticate signer via getNonce + authSigner",
         severity: "critical",
@@ -120,6 +184,47 @@ export function createScenarioAuthPlane(ctx: CIBootstrapContext): Scenario {
               signerAddress: authResult.signerAddress,
               nonceLength: authResult.nonce.length,
             },
+          };
+        },
+      },
+      {
+        id: "v1.signTransaction.badTransactionId",
+        description: "Assert /api/v1/signTransaction returns 404 for a non-existent transactionId",
+        severity: "non-critical",
+        execute: async (runCtx) => {
+          const mnemonic = process.env.CI_MNEMONIC_2;
+          if (!mnemonic?.trim()) {
+            return {
+              message: "CI_MNEMONIC_2 not set; skipping signTransaction bad-id validation check",
+              artifacts: { skipped: true },
+            };
+          }
+          const wallet = getWalletByType(runCtx, runCtx.walletTypes[0] ?? "legacy");
+          if (!wallet) {
+            throw new Error("signTransaction bad-id: no wallet in context");
+          }
+          const authResult = await authenticateSignerWithMnemonic({ ctx: runCtx, mnemonic });
+          const response = await requestJson<{ error?: string }>({
+            url: `${runCtx.apiBaseUrl}/api/v1/signTransaction`,
+            method: "POST",
+            token: authResult.token,
+            body: {
+              walletId: wallet.walletId,
+              transactionId: "00000000-0000-0000-0000-000000000000",
+              address: authResult.signerAddress,
+              signature: "aabbccdd",
+              key: "eeff0011",
+              broadcast: false,
+            },
+          });
+          if (response.status !== 404) {
+            throw new Error(
+              `signTransaction bad transactionId expected 404, got ${response.status}: ${stringifyRedacted(response.data)}`,
+            );
+          }
+          return {
+            message: "signTransaction non-existent transactionId correctly returns 404",
+            artifacts: { walletId: wallet.walletId },
           };
         },
       },

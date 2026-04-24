@@ -56,11 +56,45 @@ CI runs these stages in order:
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering only.
   - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts` (reusable multisig sign, real transfer builders, and stake-cert signing with dual payment+stake witnesses).
-  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, `walletLifecycle.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
 
-### Subset runs (e.g. pending lifecycle only)
+### Full scenario execution order
 
-Use a comma-separated `CI_ROUTE_SCENARIOS` filter (same mechanism as the workflow dispatch input). For example, only the ring transfer + final checks:
+The manifest runs scenarios in this fixed sequence:
+
+| # | Scenario ID | Conditional |
+|---|-------------|-------------|
+| 1 | `scenario.wallet-discovery` | always |
+| 2 | `scenario.ada-route-health` | always |
+| 3 | `scenario.bot-identity` | always |
+| 4 | `scenario.auth-plane` | always |
+| 5 | `scenario.create-wallet` | always |
+| 6 | `scenario.submit-datum` | always |
+| 7 | `scenario.governance-routes` | always |
+| 8 | `scenario.drep-certificates` | legacy + sdk wallets present |
+| 9 | `scenario.stake-certificates` | sdk wallet present |
+| 10 | `scenario.real-transfer-and-sign` | always (all 3 wallet types required) |
+| 11 | `scenario.final-assertions` | always |
+
+Certificate scenarios (8–9) run before the ring transfer so they spend confirmed UTxOs; the ring transfer would put those UTxOs in the mempool and create a race.
+
+### Subset runs
+
+Use a comma-separated `CI_ROUTE_SCENARIOS` filter (same mechanism as the workflow dispatch input).
+
+Quick auth + discovery smoke (no on-chain transfers, finishes in seconds):
+
+```bash
+CI_ROUTE_SCENARIOS=scenario.wallet-discovery,scenario.ada-route-health,scenario.bot-identity,scenario.auth-plane
+```
+
+Wallet creation API only:
+
+```bash
+CI_ROUTE_SCENARIOS=scenario.create-wallet
+```
+
+Ring transfer + final checks only:
 
 ```bash
 CI_ROUTE_SCENARIOS=scenario.real-transfer-and-sign,scenario.final-assertions
@@ -73,10 +107,14 @@ Set `CI_ROUTE_CHAIN_REPORT_PATH` if you want a separate report file for that run
 The manifest currently covers:
 
 - route discovery (`walletIds`)
-- route health checks (`freeUtxos`, `nativeScript`)
-- bot identity (`botMe`)
+- **pending-transactions zero-check** at bootstrap for each wallet type — catches stale state from a previous incomplete run before the ring transfer begins
+- **public wallet lookup** (`lookupMultisigWallet`) — smoke-tests the unauthenticated on-chain metadata lookup endpoint
+- route health checks (`freeUtxos`, `nativeScript`) — `nativeScript` now asserts a `payment` script entry is present and, when the root type is `atLeast`, that `required` matches `CI_NUM_REQUIRED_SIGNERS`
+- bot identity (`botAuth` explicit response shape, `botMe`)
 - auth-plane checks (`getNonce`, `authSigner`)
-- explicit auth negative checks (`walletIds`, `addTransaction`, `pendingTransactions`)
+- explicit auth negative checks (`walletIds`, `addTransaction`, `pendingTransactions`, `drepInfo`, `stakeAccountInfo`, `createWallet`) — `drepInfo`/`stakeAccountInfo`/`createWallet` check for missing token (401); `walletIds`/`addTransaction` check for address mismatch (403); `pendingTransactions` checks for missing token (401)
+- **`signTransaction` input validation** — asserts a non-existent `transactionId` returns 404, not 500 (requires `CI_MNEMONIC_2`; step is non-critical and skips gracefully if the env var is absent)
+- **wallet creation via API** (`createWallet`) — creates a wallet through the bot-authenticated API path and confirms it appears in `walletIds`
 - datum route coverage (`submitDatum`)
 - governance routes (`governanceActiveProposals`, `botBallotsUpsert`)
 - **DRep certificate registration and retirement** (`botDRepCertificate`) — legacy and SDK wallets
@@ -85,7 +123,7 @@ The manifest currently covers:
 - pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
 
-For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
+For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) and the list of script entry types (`artifacts.scriptTypes`) inside `ci-route-chain-report.json`, so script structure is visible during CI triage.
 
 Signing is expected to be on, and broadcast is expected to be on, for normal CI route-chain runs.
 
@@ -112,6 +150,16 @@ For each ring leg, signing runs two signer rounds:
 - signer index 2 (`CI_MNEMONIC_3`) signs with broadcast enabled
 
 Each leg is asserted as pending immediately after `addTransaction`, then asserted removed after signer 2 broadcast.
+
+### Create-wallet scenario (`scenario.create-wallet`)
+
+Runs after `scenario.auth-plane`. Requires `multisig:create` scope on the CI bot (provisioned by default).
+
+**Step 1** — calls `POST /api/v1/createWallet` with the CI signer addresses and the `CI_NUM_REQUIRED_SIGNERS` threshold. Asserts the response is 201 with a `walletId` and `address`.
+
+**Step 2** — calls `GET /api/v1/walletIds` for the bot and asserts the new `walletId` is present. This confirms the bot's cosigner access was set correctly during wallet creation.
+
+The created wallet is ephemeral (only used within this scenario) and is not cleaned up. It accumulates one wallet per CI run per bot, which is acceptable for preprod.
 
 ### DRep certificate scenarios (`scenario.drep-certificates`)
 
@@ -165,7 +213,7 @@ Primary variables (in workflow/compose):
 - `CI_BLOCKFROST_PREPROD_API_KEY`
 - `CI_NETWORK_ID`
 - `CI_WALLET_TYPES`
-- `CI_NUM_REQUIRED_SIGNERS` (default `2`): minimum signature threshold written into each created wallet's native script. Passed as `requiredSigners` during bootstrap.
+- `CI_NUM_REQUIRED_SIGNERS` (default `2`): minimum signature threshold written into each created wallet's native script. Passed as `requiredSigners` during bootstrap. Also used by the `nativeScript` step to assert that the decoded `atLeast` script's `required` count matches, and by `scenario.create-wallet` as the `numRequiredSigners` parameter.
 - `CI_SIGN_WALLET_TYPE` (default `legacy`): which wallet type is used when `runSigningFlow` resolves a wallet for signing in ring-transfer steps. Overridden per leg in transfer scenarios.
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
