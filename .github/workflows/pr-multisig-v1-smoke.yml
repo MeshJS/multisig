@@ -68,6 +68,15 @@ jobs:
             exit 1
           fi
 
+      - name: Pull base image (with retry)
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            docker pull node:20-alpine && break
+            echo "Pull attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+
       - name: Build CI containers
         shell: bash
         run: docker compose -f docker-compose.ci.yml build

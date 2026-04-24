@@ -121,7 +121,7 @@ export async function resolveDRepAnchorFromUrl(
   try {
     res = await fetch(trimmed, {
       signal: ac.signal,
-      redirect: "follow",
+      redirect: "error",
       headers: { Accept: "application/json, */*" },
     });
   } catch (e) {

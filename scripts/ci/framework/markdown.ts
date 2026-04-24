@@ -12,7 +12,7 @@ function fmtMs(ms: number): string {
 }
 
 function escapeCell(s: string): string {
-  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 function renderSteps(steps: StepReport[]): string {
