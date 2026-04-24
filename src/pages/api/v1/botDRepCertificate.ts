@@ -13,7 +13,6 @@ import { getTxBuilder } from "@/utils/get-tx-builder";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
-import { resolveDRepAnchorFromUrl } from "@/lib/server/resolveDRepAnchorFromUrl";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 import type { Wallet as AppWallet } from "@/types/wallet";
 import type { MultisigWallet } from "@/utils/multisigSDK";
@@ -177,19 +176,10 @@ export default async function handler(
     if (!anchorUrl) {
       return res.status(400).json({ error: "anchorUrl is required for register" });
     }
-    let resolvedAnchorUrl: string;
-    let anchorDataHash: string;
-    try {
-      const r = await resolveDRepAnchorFromUrl(
-        anchorUrl,
-        typeof body.anchorDataHash === "string" ? body.anchorDataHash : undefined,
-      );
-      resolvedAnchorUrl = r.anchorUrl;
-      anchorDataHash = r.anchorDataHash;
-    } catch (e) {
-      return res.status(400).json({
-        error: e instanceof Error ? e.message : "Failed to resolve anchor",
-      });
+    const anchorDataHash =
+      typeof body.anchorDataHash === "string" ? body.anchorDataHash.trim() : "";
+    if (!anchorDataHash) {
+      return res.status(400).json({ error: "anchorDataHash is required for register — compute it from the anchor JSON before calling this endpoint" });
     }
 
     for (const utxo of utxos) {
@@ -204,7 +194,7 @@ export default async function handler(
 
     txBuilder
       .drepRegistrationCertificate(dRepId, {
-        anchorUrl: resolvedAnchorUrl,
+        anchorUrl,
         anchorDataHash,
       })
       .certificateScript(drepCbor)
