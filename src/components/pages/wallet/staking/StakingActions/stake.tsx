@@ -9,67 +9,9 @@ import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
+import { buildStakingActionConfigs, type StakingActionUi } from "@/utils/stakingCertificates";
 
-type StakingAction = "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";
-
-type StakingActionConfig = {
-  execute: () => void;
-  description: string;
-  successTitle: string;
-  successMessage: string;
-};
-
-function buildStakingActionConfigs({
-  txBuilder,
-  rewardAddress,
-  stakingScript,
-  poolHex,
-  rewards,
-}: {
-  txBuilder: ReturnType<typeof getTxBuilder>;
-  rewardAddress: string;
-  stakingScript: string;
-  poolHex: string;
-  rewards: string;
-}): Record<StakingAction, StakingActionConfig> {
-  return {
-    register: {
-      execute: () => txBuilder.registerStakeCertificate(rewardAddress).certificateScript(stakingScript),
-      description: "Register stake.",
-      successTitle: "Stake Registered",
-      successMessage: "Your stake address has been registered.",
-    },
-    deregister: {
-      execute: () => txBuilder.deregisterStakeCertificate(rewardAddress).certificateScript(stakingScript),
-      description: "Deregister stake.",
-      successTitle: "Stake Deregistered",
-      successMessage: "Your stake address has been deregistered.",
-    },
-    delegate: {
-      execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript),
-      description: "Delegate stake.",
-      successTitle: "Stake Delegated",
-      successMessage: "Your stake has been delegated.",
-    },
-    withdrawal: {
-      execute: () => txBuilder.withdrawal(rewardAddress, rewards),
-      description: "Withdraw rewards.",
-      successTitle: "Rewards Withdrawn",
-      successMessage: "Your staking rewards have been withdrawn.",
-    },
-    registerAndDelegate: {
-      execute: () => {
-        txBuilder
-          .registerStakeCertificate(rewardAddress)
-          .certificateScript(stakingScript);
-        txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript);
-      },
-      description: "Register & delegate stake.",
-      successTitle: "Stake Registered & Delegated",
-      successMessage: "Your stake address has been registered and delegated.",
-    },
-  };
-}
+type StakingAction = StakingActionUi;
 export default function StakeButton({
   stakingInfo,
   appWallet,

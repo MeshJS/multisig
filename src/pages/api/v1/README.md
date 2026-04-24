@@ -97,6 +97,42 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Updated transaction object with witness metadata, submission state, and transaction hash
 - **Error Handling**: 400 (validation), 401 (signature), 403 (authorization), 404 (not found), 409 (state conflict), 502 (broadcast failure), 500 (server)
 
+#### `botStakeCertificate.ts` - POST `/api/v1/botStakeCertificate`
+
+- **Purpose**: Server-build a stake certificate transaction (register, deregister, delegate, or register-and-delegate) using the same Mesh patterns as the in-app staking UI, then persist or submit it using the same rules as `addTransaction`.
+- **Authentication**: Required (JWT Bearer token). `address` in the body must match the JWT `address` (human signer or bot payment address).
+- **Bot requirements**: Bot JWTs must include the **`multisig:sign`** scope. The bot must have **cosigner** access to the wallet (`assertBotWalletAccess` with mutating access). Observer bots are rejected.
+- **Wallet support**: **SDK multisig wallets only**, with `stakingEnabled()` true. Legacy and Summon wallets return **400** with a clear reason.
+- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON).
+- **Request Body**:
+  - `walletId`: string (required)
+  - `address`: string (required; must match JWT)
+  - `action`: `"register"` | `"deregister"` | `"delegate"` | `"register_and_delegate"` (required)
+  - `poolId`: string (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-character hex pool id)
+  - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
+  - `description`: string (optional; defaults to a short label for the action)
+- **Response**: Same as `addTransaction` — either a pending `Transaction` row (**201**) when multiple signatures are required, or the immediate **`submitTx`** result when the wallet submits in one step (single signer / `type === "any"`).
+- **Follow-up**: If the transaction is pending, co-signers call **`POST /api/v1/signTransaction`** as usual.
+- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 500 (server)
+
+#### `botDRepCertificate.ts` - POST `/api/v1/botDRepCertificate`
+
+- **Purpose**: Server-build a DRep **registration** or **retirement** transaction (non-proxy flows only), then persist or submit like `addTransaction`.
+- **Authentication**: Same as `botStakeCertificate` (JWT; body `address` must match JWT; bots need **`multisig:sign`** and cosigner access).
+- **Wallet support**: **Summon** wallets return **400** (unsupported in v1). **Legacy** and **SDK** paths mirror `registerDrep` / `retire` in the app (script and change-address selection). If DRep metadata cannot be derived (`getDRep` / `dRepId`), the handler returns **400**.
+- **Register — anchor**: `anchorUrl` is required. The server performs an HTTPS fetch (timeout, size limit, SSRF hardening), expects **JSON**, and computes **`hashDrepAnchor`** from `@meshsdk/core`. Optional `anchorDataHash` must match the computed hash or the request fails (**400**).
+- **UTxOs**: Same `utxoRefs` policy as `botStakeCertificate` (chain-resolved, address-validated).
+- **Request Body**:
+  - `walletId`: string (required)
+  - `address`: string (required; must match JWT)
+  - `action`: `"register"` | `"retire"` (required)
+  - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
+  - `description`: string (optional)
+  - `anchorUrl`: string (required when `action === "register"`)
+  - `anchorDataHash`: string (optional; hex verification only)
+- **Response**: Same pattern as `addTransaction` / `botStakeCertificate` (**201**).
+- **Error Handling**: 400 (validation, anchor fetch/hash mismatch, unsupported wallet), 401 (auth), 403 (signer/bot scope/access), 405 (method), 500 (server)
+
 ### Wallet Management
 
 #### `walletIds.ts` - GET `/api/v1/walletIds`
@@ -139,6 +175,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `signersDRepKeys`: (string | null)[] (optional)
   - `numRequiredSigners`: number (optional, minimum 1, clamped to signer count, default 1; stored as `null` for `all`/`any`)
   - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
+  - `paymentNativeScript`: object (optional; explicit payment script tree with `sig`/`all`/`any`/`atLeast`; sig key hashes must match `signersAddresses` payment key hashes)
   - `stakeCredentialHash`: string (optional, external stake)
   - `network`: 0 | 1 (optional, default 1 = mainnet)
 - **Response**: `{ walletId, address, name }` (201)
@@ -372,7 +409,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
 3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
 4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
-5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs)
+5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs, and certificate builders **`/api/v1/botStakeCertificate`** / **`/api/v1/botDRepCertificate`** when `multisig:sign` is granted)
 
 ### Error Handling
 
@@ -435,6 +472,8 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - `JWT_SECRET`: Secret key for JWT token generation
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD`: Preprod network API key
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`: Mainnet network API key
+- `BLOCKFROST_API_KEY_PREPROD`: Optional server-side override for preprod provider calls
+- `BLOCKFROST_API_KEY_MAINNET`: Optional server-side override for mainnet provider calls
 
 ### Database Configuration
 
@@ -493,4 +532,68 @@ const response = await fetch(
 const freeUtxos = await response.json();
 ```
 
+### Server-built stake / DRep certificates (bots or signers)
+
+Use `freeUtxos` to choose inputs, then pass only `txHash` and `outputIndex` for each UTxO. Bots must use a JWT from `botAuth` with the **`multisig:sign`** scope.
+
+```typescript
+// Stake delegate (SDK wallet; poolId required for delegate / register_and_delegate)
+await fetch("/api/v1/botStakeCertificate", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    walletId,
+    address: botPaymentAddress,
+    action: "delegate",
+    poolId: "pool1...",
+    utxoRefs: [{ txHash: "...", outputIndex: 0 }],
+    description: "Delegate via API",
+  }),
+});
+
+// DRep register (anchorUrl returns JSON; server computes anchor hash)
+await fetch("/api/v1/botDRepCertificate", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    walletId,
+    address: botPaymentAddress,
+    action: "register",
+    utxoRefs: [{ txHash: "...", outputIndex: 0 }],
+    anchorUrl: "https://example.com/metadata.json",
+  }),
+});
+```
+
 This API v1 directory provides a comprehensive, secure, and well-documented REST API for multisig wallet operations, supporting the entire application ecosystem with robust authentication, transaction management, and blockchain integration.
+
+## PR Route-Chain Smoke (Real-Chain CI)
+
+- Workflow: `.github/workflows/pr-multisig-v1-smoke.yml`
+- Bootstrap script: `scripts/ci/cli/bootstrap.ts` (stable context producer)
+- Route-chain runner: `scripts/ci/cli/route-chain.ts`
+- Scenario registry: `scripts/ci/scenarios/manifest.ts`
+
+The CI flow is split into:
+
+1. **Bootstrap**: create deterministic test wallets/context once.
+2. **Route chain**: execute composable v1 route steps against that context.
+
+Signing is always enabled in this route-chain flow, and signing steps run with broadcast enabled to validate real-chain submission behavior.
+
+Current route-chain scenarios include:
+
+- discovery + pending checks
+- per-wallet pending validation
+- route health checks (`freeUtxos`, signing readiness)
+- real transfer flow (`addTransaction` -> `signTransaction` with broadcast)
+- final-state assertions (`pendingTransactions` consistency checks)
+
+To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
+Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.

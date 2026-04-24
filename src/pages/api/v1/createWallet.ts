@@ -5,10 +5,84 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
-import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
+import {
+  collectSigKeyHashes,
+  decodedToNativeScript,
+  type DecodedNativeScript,
+} from "@/utils/nativeScriptUtils";
+import { resolvePaymentKeyHash, resolveStakeKeyHash, serializeNativeScript } from "@meshsdk/core";
 import { BotWalletRole } from "@prisma/client";
 
 const CREATE_SCOPE = "multisig:create";
+
+type PaymentNativeScriptNode =
+  | { type: "sig"; keyHash: string }
+  | { type: "all"; scripts: PaymentNativeScriptNode[] }
+  | { type: "any"; scripts: PaymentNativeScriptNode[] }
+  | { type: "atLeast"; required: number; scripts: PaymentNativeScriptNode[] };
+
+function isSupportedPaymentNativeScript(
+  value: unknown,
+): value is DecodedNativeScript {
+  if (!value || typeof value !== "object") return false;
+  const node = value as { type?: string; keyHash?: string; required?: number; scripts?: unknown };
+
+  if (node.type === "sig") {
+    return typeof node.keyHash === "string" && !!node.keyHash.trim();
+  }
+
+  if (node.type === "all" || node.type === "any") {
+    return (
+      Array.isArray(node.scripts) &&
+      node.scripts.length > 0 &&
+      node.scripts.every((child) => isSupportedPaymentNativeScript(child))
+    );
+  }
+
+  if (node.type === "atLeast") {
+    return (
+      typeof node.required === "number" &&
+      Number.isInteger(node.required) &&
+      node.required >= 1 &&
+      Array.isArray(node.scripts) &&
+      node.scripts.length > 0 &&
+      node.required <= node.scripts.length &&
+      node.scripts.every((child) => isSupportedPaymentNativeScript(child))
+    );
+  }
+
+  return false;
+}
+
+function buildLegacyPaymentNativeScriptInInputOrder(args: {
+  scriptType: "atLeast" | "all" | "any";
+  requiredSigners: number;
+  paymentKeyHashes: string[];
+}): PaymentNativeScriptNode {
+  const sigScripts = args.paymentKeyHashes.map((keyHash) => ({
+    type: "sig" as const,
+    keyHash,
+  }));
+
+  if (args.scriptType === "all" || args.scriptType === "any") {
+    return {
+      type: args.scriptType,
+      scripts: sigScripts,
+    };
+  }
+
+  return {
+    type: "atLeast",
+    required: args.requiredSigners,
+    scripts: sigScripts,
+  };
+}
+
+function isAllRootScript(
+  script: DecodedNativeScript,
+): script is Extract<DecodedNativeScript, { type: "all" }> {
+  return script.type === "all";
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -75,6 +149,7 @@ export default async function handler(
     signersDRepKeys?: (string | null)[];
     numRequiredSigners?: number;
     scriptType?: "atLeast" | "all" | "any";
+    paymentNativeScript?: unknown;
     stakeCredentialHash?: string;
     network?: number;
   };
@@ -130,18 +205,37 @@ export default async function handler(
 
   const description =
     typeof body.description === "string" ? body.description.slice(0, 2000) : "";
+  const paymentNativeScriptRaw = body.paymentNativeScript;
+  const paymentNativeScript = paymentNativeScriptRaw
+    ? isSupportedPaymentNativeScript(paymentNativeScriptRaw)
+      ? paymentNativeScriptRaw
+      : null
+    : undefined;
+  if (paymentNativeScriptRaw && !paymentNativeScript) {
+    return res.status(400).json({
+      error: "paymentNativeScript must be a valid native script tree containing only sig/all/any/atLeast nodes",
+    });
+  }
+  if (paymentNativeScript && !isAllRootScript(paymentNativeScript)) {
+    return res.status(400).json({
+      error: "paymentNativeScript root type must be 'all' for hierarchical wallets",
+    });
+  }
 
   const keys: MultisigKey[] = [];
+  const signerPaymentKeyHashes: string[] = [];
 
   for (let i = 0; i < signersAddresses.length; i++) {
     const addr = signersAddresses[i];
     if (!addr) continue;
     try {
+      const paymentKeyHash = resolvePaymentKeyHash(addr);
       keys.push({
-        keyHash: resolvePaymentKeyHash(addr),
+        keyHash: paymentKeyHash,
         role: 0,
         name: descs[i] ?? "",
       });
+      signerPaymentKeyHashes.push(paymentKeyHash.toLowerCase());
     } catch {
       const hint =
         i === 1
@@ -180,27 +274,81 @@ export default async function handler(
     return res.status(400).json({ error: "No valid signer keys" });
   }
 
+  const effectiveScriptType = paymentNativeScript ? "all" : scriptType;
   const numRequired =
-    scriptType === "all" || scriptType === "any" ? null : numRequiredSigners;
+    effectiveScriptType === "all" || effectiveScriptType === "any"
+      ? null
+      : numRequiredSigners;
 
   let scriptCbor: string;
   let address: string;
   try {
-    const multisigWallet = new MultisigWallet(
-      name,
-      keys,
-      description,
-      numRequiredSigners,
-      network,
-      stakeCredentialHash,
-      scriptType,
-    );
-    const script = multisigWallet.getScript();
-    if (!script.scriptCbor) {
-      return res.status(400).json({ error: "Failed to build multisig script" });
+    if (paymentNativeScript) {
+      const scriptSigHashes = Array.from(
+        new Set(collectSigKeyHashes(paymentNativeScript).map((hash) => hash.toLowerCase())),
+      );
+      const signerSigHashes = Array.from(new Set(signerPaymentKeyHashes));
+      const scriptHasExactSignerSet =
+        scriptSigHashes.length === signerSigHashes.length &&
+        scriptSigHashes.every((hash) => signerSigHashes.includes(hash));
+      if (!scriptHasExactSignerSet) {
+        return res.status(400).json({
+          error: "paymentNativeScript sig keys must match signersAddresses payment keys",
+        });
+      }
+
+      const nativeScript = decodedToNativeScript(paymentNativeScript);
+      const serialized = serializeNativeScript(
+        nativeScript,
+        stakeCredentialHash,
+        network,
+        true,
+      );
+      if (!serialized.scriptCbor) {
+        return res.status(400).json({ error: "Failed to serialize paymentNativeScript" });
+      }
+      scriptCbor = serialized.scriptCbor;
+      address = serialized.address;
+    } else {
+      const isLegacyWallet =
+        !signersStakeKeys.some(Boolean) &&
+        !signersDRepKeys.some(Boolean);
+
+      if (isLegacyWallet) {
+        const legacyScript = buildLegacyPaymentNativeScriptInInputOrder({
+          scriptType,
+          requiredSigners: numRequiredSigners,
+          paymentKeyHashes: signerPaymentKeyHashes,
+        });
+        const serialized = serializeNativeScript(
+          legacyScript,
+          stakeCredentialHash,
+          network,
+          true,
+        );
+        if (!serialized.scriptCbor) {
+          return res.status(400).json({ error: "Failed to build multisig script" });
+        }
+        scriptCbor = serialized.scriptCbor;
+        address = serialized.address;
+      } else {
+        const multisigWallet = new MultisigWallet(
+          name,
+          keys,
+          description,
+          numRequiredSigners,
+          network,
+          stakeCredentialHash,
+          scriptType,
+        );
+        const script = multisigWallet.getScript();
+        if (!script.scriptCbor) {
+          return res.status(400).json({ error: "Failed to build multisig script" });
+        }
+        scriptCbor = script.scriptCbor;
+        address = script.address;
+      }
     }
-    scriptCbor = script.scriptCbor;
-    address = script.address;
   } catch (e) {
     console.error("createWallet script build error:", e);
     return res.status(400).json({
@@ -221,7 +369,7 @@ export default async function handler(
         numRequiredSigners: numRequired,
         scriptCbor,
         stakeCredentialHash: stakeCredentialHash ?? null,
-        type: scriptType,
+        type: effectiveScriptType,
         ownerAddress: payload.address,
       },
     });
