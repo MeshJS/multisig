@@ -171,7 +171,7 @@ For each wallet type the scenario runs a pre-hygiene step followed by two sequen
 
 **Main test phases:**
 
-1. Fetch free UTxOs from the wallet, call `POST /api/v1/botDRepCertificate` with `action: "register"` and `anchorUrl`. The API fetches the anchor document and computes the anchor data hash server-side.
+1. Fetch free UTxOs from the wallet, call `POST /api/v1/botDRepCertificate` with `action: "register"`, `anchorUrl`, and `anchorJson` (the parsed JSON from `CI_DREP_ANCHOR_JSON`). The API computes the anchor data hash server-side from `anchorJson` — no outbound fetch anywhere.
 2. Assert the transaction appears in pending.
 3. Signer 1 (`CI_MNEMONIC_2`, index 1) adds a payment-key witness, no broadcast.
 4. Signer 2 (`CI_MNEMONIC_3`, index 2) adds a payment-key witness and broadcasts.
@@ -218,7 +218,8 @@ Primary variables (in workflow/compose):
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount)
-- `CI_DREP_ANCHOR_URL` (required for `scenario.drep-certificates`): publicly reachable URL of a CIP-119 DRep metadata document. The API fetches the document and computes the anchor data hash server-side; only the URL needs to be supplied.
+- `CI_DREP_ANCHOR_URL` (required for `scenario.drep-certificates`): the URL string stored in the on-chain anchor — passed as-is to the API, never fetched.
+- `CI_DREP_ANCHOR_JSON` (required for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
 
 Validation notes:
@@ -333,9 +334,27 @@ $env:CI_NETWORK_ID="0"
 $env:CI_WALLET_TYPES="legacy,hierarchical,sdk"
 $env:CI_TRANSFER_LOVELACE="2000000"
 $env:SIGN_BROADCAST="true"
-$env:CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates
+$env:CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates; stored as on-chain anchor URL, never fetched
 $env:CI_STAKE_POOL_ID_HEX="..."         # optional; stored in context for future delegate tests
 ```
+
+`CI_DREP_ANCHOR_JSON` contains the full CIP-119 JSON document and must be set separately using a PowerShell here-string so the double quotes are preserved:
+
+```powershell
+$env:CI_DREP_ANCHOR_JSON = @'
+{
+    "@context": {
+        "CIP100": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
+        "CIP119": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0119/README.md#",
+        ...
+    },
+    "hashAlgorithm": "blake2b-256",
+    "body": { ... }
+}
+'@
+```
+
+In GitHub Actions, store the full JSON as a repository secret — the runner injects it verbatim, no quoting required.
 
 Optional (recommended for full flow):
 
@@ -404,9 +423,28 @@ export CI_NETWORK_ID="0"
 export CI_WALLET_TYPES="legacy,hierarchical,sdk"
 export CI_TRANSFER_LOVELACE="2000000"
 export SIGN_BROADCAST="true"
-export CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates
-export CI_STAKE_POOL_ID_HEX="..."         # optional; stored in context for future delegate tests
+export CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates; stored as on-chain anchor URL, never fetched
+export CI_STAKE_POOL_ID_HEX="..."        # optional; stored in context for future delegate tests
 ```
+
+`CI_DREP_ANCHOR_JSON` contains the full CIP-119 JSON document and must be set separately using a heredoc so the double quotes are preserved:
+
+```bash
+export CI_DREP_ANCHOR_JSON=$(cat <<'EOF'
+{
+    "@context": {
+        "CIP100": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
+        "CIP119": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0119/README.md#",
+        ...
+    },
+    "hashAlgorithm": "blake2b-256",
+    "body": { ... }
+}
+EOF
+)
+```
+
+In GitHub Actions, store the full JSON as a repository secret — the runner injects it verbatim, no quoting required.
 
 Optional (recommended for full flow):
 
