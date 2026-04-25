@@ -12,7 +12,7 @@ import {
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
-import { resolvePaymentKeyHash } from "@meshsdk/core";
+import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
 import { calculateTxHash } from "@meshsdk/core-csl";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
@@ -97,6 +97,9 @@ export default async function handler(
     signature?: unknown;
     key?: unknown;
     broadcast?: unknown;
+    /** Optional stake-key witness for transactions that include a staking certificate. */
+    stakeKey?: unknown;
+    stakeSignature?: unknown;
   };
 
   const {
@@ -106,6 +109,8 @@ export default async function handler(
     signature,
     key,
     broadcast: rawBroadcast,
+    stakeKey,
+    stakeSignature,
   } = (req.body ?? {}) as SignTransactionRequestBody;
 
   if (typeof walletId !== "string" || walletId.trim() === "") {
@@ -250,6 +255,57 @@ export default async function handler(
       return res.status(401).json({ error: "Invalid signature for transaction" });
     }
 
+    // ── Optional stake-key witness ──────────────────────────────────────────
+    // Submitted alongside the payment-key witness when the transaction contains
+    // a staking certificate whose script uses stake key hashes (role-2 keys).
+    // The signer's stake key hash must belong to this wallet's signersStakeKeys.
+    let stakeWitnessToAdd: ReturnType<typeof createVkeyWitnessFromHex>["witness"] | null = null;
+
+    const rawStakeKey = typeof stakeKey === "string" ? stakeKey.trim() : "";
+    const rawStakeSignature = typeof stakeSignature === "string" ? stakeSignature.trim() : "";
+
+    if (rawStakeKey && rawStakeSignature) {
+      let stakeWitnessDetails: ReturnType<typeof createVkeyWitnessFromHex>;
+      try {
+        stakeWitnessDetails = createVkeyWitnessFromHex(
+          normalizeHex(rawStakeKey, "stakeKey"),
+          normalizeHex(rawStakeSignature, "stakeSignature"),
+        );
+      } catch (error: unknown) {
+        console.error("Invalid stake witness payload", toError(error));
+        return res.status(400).json({ error: "Invalid stake witness payload" });
+      }
+
+      const isStakeSigValid = stakeWitnessDetails.publicKey.verify(
+        txHashBytes,
+        stakeWitnessDetails.signature,
+      );
+      if (!isStakeSigValid) {
+        return res.status(401).json({ error: "Invalid stake signature for transaction" });
+      }
+
+      // Resolve all staking key hashes for this wallet and check membership.
+      const walletStakeRow = await db.wallet.findUnique({
+        where: { id: walletId },
+        select: { signersStakeKeys: true },
+      });
+      const validStakeKeyHashes = new Set<string>();
+      for (const stakeAddr of (walletStakeRow?.signersStakeKeys ?? [])) {
+        if (typeof stakeAddr === "string" && stakeAddr.trim()) {
+          try {
+            validStakeKeyHashes.add(resolveStakeKeyHash(stakeAddr).toLowerCase());
+          } catch {
+            // skip malformed stake address
+          }
+        }
+      }
+      if (!validStakeKeyHashes.has(stakeWitnessDetails.keyHashHex)) {
+        return res.status(403).json({ error: "Stake key is not a staking key for this wallet" });
+      }
+
+      stakeWitnessToAdd = stakeWitnessDetails.witness;
+    }
+
     let txHexForUpdate = storedTxHex;
     let vkeyWitnesses: ReturnType<typeof addUniqueVkeyWitnessToTx>["vkeyWitnesses"];
     try {
@@ -264,6 +320,18 @@ export default async function handler(
     } catch (error: unknown) {
       console.error("Failed to merge witness into transaction", toError(error));
       return res.status(500).json({ error: "Invalid stored transaction data" });
+    }
+
+    // Merge stake witness into the tx if one was provided and validated.
+    if (stakeWitnessToAdd) {
+      try {
+        const stakeMerge = addUniqueVkeyWitnessToTx(txHexForUpdate, stakeWitnessToAdd);
+        txHexForUpdate = stakeMerge.txHex;
+        vkeyWitnesses = stakeMerge.vkeyWitnesses;
+      } catch (error: unknown) {
+        console.error("Failed to merge stake witness into transaction", toError(error));
+        return res.status(500).json({ error: "Failed to add stake witness to transaction" });
+      }
     }
 
     const witnessSummaries: {

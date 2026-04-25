@@ -67,6 +67,8 @@ describe("wallet router authorization", () => {
       db: baseDb as any,
       session: null,
       sessionAddress: null,
+      sessionWallets: [],
+      primaryWallet: null,
       ip: "3.3.3.3",
     });
 
@@ -99,6 +101,8 @@ describe("wallet router authorization", () => {
       db: baseDb as any,
       session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
       sessionAddress: "addr1",
+      sessionWallets: [],
+      primaryWallet: null,
       ip: "4.4.4.4",
     });
 
@@ -132,6 +136,8 @@ describe("wallet router authorization", () => {
       db: baseDb as any,
       session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
       sessionAddress: "addr1",
+      sessionWallets: [],
+      primaryWallet: null,
       ip: "5.5.5.5",
     });
 

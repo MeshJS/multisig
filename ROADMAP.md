@@ -27,6 +27,19 @@
 | **Review and handle open external PRs** - Summon API routes and capability-based metadata from kanyuku | Quirin + Andre | PR #212, PR #208 |
 | Fix legacy wallet compatibility bug | Quirin + Andre | |
 
+### Proof of completion
+
+Status of M1 tasks. Last updated 2026-04-23.
+
+| Task | Status | Evidence |
+|------|--------|----------|
+| Define review process for issues and PRs | Drafted | [`CONTRIBUTING.md`](CONTRIBUTING.md) covers issue template, branch/commit conventions, PR + review process, merge rules. Pending: team sign-off |
+| Improve repository infrastructure — preprod + smoke CI | Done | `preprod` branch active; [PR #218](https://github.com/MeshJS/multisig/pull/218) merged; [`.github/workflows/ci-smoke-preprod.yml`](.github/workflows/ci-smoke-preprod.yml) landed |
+| CI smoke tests on real chain (#213) | Landed, awaiting secrets | [PR #217](https://github.com/MeshJS/multisig/pull/217) merged (CI smoke system + VKey witness fix); `dc49af2` skips gracefully when secrets missing. All runs since have hit the skip path (~8s) because `SMOKE_*` repo secrets are not yet configured; [Issue #213](https://github.com/MeshJS/multisig/issues/213) stays open until the first real route-chain run is linked |
+| Fix transaction loading bug (#211) | In review | [PR #227](https://github.com/MeshJS/multisig/pull/227) open: validates CBOR + JSON on `POST /api/v1/addTransaction` and renders a degraded "Unreadable transaction" card with Reject & Delete so already-poisoned wallets can free their UTxOs |
+| Review and handle open external PRs (PR #212, PR #208) | Reviewed, awaiting author | Change requests left on [PR #212](https://github.com/MeshJS/multisig/pull/212) (rebase to `preprod`, drop non-null assertion in `useWalletBalances`, Summon `canVote` TODO) and [PR #208](https://github.com/MeshJS/multisig/pull/208) (superset of #212, recommended to close) |
+| Fix legacy wallet compatibility bug | Done | [PR #210](https://github.com/MeshJS/multisig/pull/210) (legacy drep retirement) and [PR #225](https://github.com/MeshJS/multisig/pull/225) (drep deregistration fix, commit `4ae3d10`) merged; [Issue #223](https://github.com/MeshJS/multisig/issues/223) closed |
+
 ---
 
 ## Months 2–3 — June–July 2026
@@ -119,3 +132,46 @@
 - Final summary report in month 12
 
 **GitHub milestones:** Created and issues assigned. View at [Milestones](../../milestones).
+
+---
+
+## Task ownership
+
+Aggregated view of the 12-month roadmap split by contributor. Each task has a single owner; the other contributor reviews the PR.
+
+### Quirin
+
+- [M1] Define review process for issues and PRs
+- [M1] Fix transaction loading bug (#211)
+- [M1] Handle external PR — Summon API routes (PR #212)
+- [M1] Fix legacy wallet compatibility bug
+- [M2–3] Improved authentication — nonce-based auth, wallet connection fixes, registration flow (#135, #53)
+- [M2–3] Full address verification (#196)
+- [M2–3] Transaction pagination (#30)
+- [M4–6] Aiken crowdfund integration (PR #164)
+- [M4–6] Governance metadata fix (#122)
+- [M4–6] Proxy voting polish and documentation
+- [M4–6] FROST research kickoff (#220)
+- [M7–9] dApp connector — external dApps request multi-sig transactions
+- [M7–9] FROST research — deliver findings, PoC, go/no-go (#220)
+- [M10–12] Vesting — time-locked multi-sig contracts (#81)
+- [M10–12] Performance and UX audit
+- [M10–12] Invite flow (PR #67)
+- [M10–12] Final summary report
+
+### Andre
+
+- [M1] Improve repository infrastructure — preprod environment and comprehensive smoke CI
+- [M1] CI smoke tests on real chain (#213)
+- [M1] Handle external PR — capability-based metadata (PR #208)
+- [M2–3] Summon migration — land API routes and wallet import (PR #212, PR #208)
+- [M2–3] Collateral service — 22 ADA → 4 UTxOs for proxy collateral (#221)
+- [M2–3] Better 404 page (#22)
+- [M4–6] Wallet V2 — on-chain registration and discovery (#33)
+- [M4–6] Pending transactions on homepage (#125)
+- [M4–6] Backlog cleanup, dependency/security updates
+- [M7–9] Hardware wallet support — Ledger/Trezor (#44)
+- [M7–9] Bot platform v2 — SDK, webhooks, example bots
+- [M7–9] API documentation and developer portal
+- [M10–12] User profiles and contacts
+- [M10–12] Discover page — browse wallets, DAOs, governance (#52)

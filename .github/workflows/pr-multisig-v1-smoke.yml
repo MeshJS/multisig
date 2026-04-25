@@ -1,0 +1,145 @@
+name: PR Multisig v1 Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+      - preprod
+  workflow_dispatch:
+    inputs:
+      required_signers:
+        description: "Required signatures for CI wallet threshold scripts"
+        required: false
+        default: "2"
+        type: string
+      sign_wallet_type:
+        description: "Which wallet type to sign in smoke"
+        required: false
+        default: "legacy"
+        type: choice
+        options:
+          - legacy
+          - hierarchical
+          - sdk
+      route_scenarios:
+        description: "Optional comma-separated scenario IDs for scripts/ci/cli/route-chain.ts"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  multisig-v1-smoke:
+    if: github.repository == 'MeshJS/multisig'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI_JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+      CI_MNEMONIC_1: ${{ secrets.CI_MNEMONIC_1 }}
+      CI_MNEMONIC_2: ${{ secrets.CI_MNEMONIC_2 }}
+      CI_MNEMONIC_3: ${{ secrets.CI_MNEMONIC_3 }}
+      CI_BLOCKFROST_PREPROD_API_KEY: ${{ secrets.CI_BLOCKFROST_PREPROD_API_KEY }}
+      CI_NETWORK_ID: "0"
+      CI_NUM_REQUIRED_SIGNERS: ${{ github.event_name == 'workflow_dispatch' && inputs.required_signers || '2' }}
+      CI_WALLET_TYPES: "legacy,hierarchical,sdk"
+      CI_SIGN_WALLET_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_wallet_type || 'legacy' }}
+      SIGN_BROADCAST: "true"
+      CI_ROUTE_SCENARIOS: ${{ github.event_name == 'workflow_dispatch' && inputs.route_scenarios || '' }}
+      CI_CONTEXT_PATH: /tmp/ci-wallet-context.json
+      CI_DREP_ANCHOR_URL: ${{ secrets.CI_DREP_ANCHOR_URL }}
+      CI_DREP_ANCHOR_JSON: ${{ secrets.CI_DREP_ANCHOR_JSON }}
+      CI_STAKE_POOL_ID_HEX: ${{ secrets.CI_STAKE_POOL_ID_HEX }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required CI secrets
+        shell: bash
+        run: |
+          missing=()
+          [[ -n "$CI_JWT_SECRET" ]] || missing+=("CI_JWT_SECRET")
+          [[ -n "$CI_MNEMONIC_1" ]] || missing+=("CI_MNEMONIC_1")
+          [[ -n "$CI_MNEMONIC_2" ]] || missing+=("CI_MNEMONIC_2")
+          [[ -n "$CI_MNEMONIC_3" ]] || missing+=("CI_MNEMONIC_3")
+          [[ -n "$CI_BLOCKFROST_PREPROD_API_KEY" ]] || missing+=("CI_BLOCKFROST_PREPROD_API_KEY")
+
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${missing[*]}"
+            echo "Set these in repo settings before running PR multisig smoke workflow."
+            exit 1
+          fi
+
+      - name: Pull base image (with retry)
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            docker pull node:20-alpine && break
+            echo "Pull attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+
+      - name: Build CI containers
+        shell: bash
+        run: docker compose -f docker-compose.ci.yml build
+
+      - name: Start Postgres + App containers
+        shell: bash
+        run: docker compose -f docker-compose.ci.yml up -d postgres app
+
+      - name: Wait for app healthcheck
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$(docker compose -f docker-compose.ci.yml ps -q app)")
+            if [[ "$status" == "healthy" ]]; then
+              echo "App is healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "App failed to become healthy in time."
+          docker compose -f docker-compose.ci.yml ps
+          exit 1
+
+      - name: Run CI wallet bootstrap + v1 route-chain smoke
+        shell: bash
+        run: docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner
+
+      - name: Dump container logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          docker compose -f docker-compose.ci.yml logs --no-color \
+            | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
+            | sed -E 's/("token"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
+            | sed -E 's/("secret"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
+            | sed -E 's/("mnemonic([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("private([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("signing([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("seed([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("xprv([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/(ed25519e?_sk[[:alnum:]_]+)/[REDACTED]/gI' \
+            | sed -E 's/(xprv[[:alnum:]]+)/[REDACTED]/gI' \
+            > docker-compose-ci.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-compose-ci-logs
+          path: docker-compose-ci.log
+
+      - name: Upload route-chain report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-route-chain-report
+          path: ci-artifacts/ci-route-chain-report.md
+          if-no-files-found: warn
+
+      - name: Tear down CI containers
+        if: always()
+        shell: bash
+        run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
+

@@ -282,6 +282,100 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/botStakeCertificate": {
+        post: {
+          tags: ["V1"],
+          summary: "Build stake certificate transaction (SDK multisig)",
+          description:
+            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex).",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string", description: "Must match JWT address" },
+                    action: {
+                      type: "string",
+                      enum: ["register", "deregister", "delegate", "register_and_delegate"],
+                    },
+                    poolId: { type: "string" },
+                    utxoRefs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          txHash: { type: "string" },
+                          outputIndex: { type: "integer" },
+                        },
+                        required: ["txHash", "outputIndex"],
+                      },
+                    },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "action", "utxoRefs"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Transaction created or submitted (same shape as addTransaction)" },
+            400: { description: "Invalid input, wallet type, or staking not enabled" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/botDRepCertificate": {
+        post: {
+          tags: ["V1"],
+          summary: "Build DRep registration or retirement transaction",
+          description:
+            "Server builds DRep register/retire (non-proxy). Bots need multisig:sign. For register, anchorUrl is required; server fetches JSON and computes hashDrepAnchor. Optional anchorDataHash must match computed hash. utxoRefs must list UTxOs at the multisig spend address.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string", description: "Must match JWT address" },
+                    action: { type: "string", enum: ["register", "retire"] },
+                    utxoRefs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          txHash: { type: "string" },
+                          outputIndex: { type: "integer" },
+                        },
+                        required: ["txHash", "outputIndex"],
+                      },
+                    },
+                    description: { type: "string" },
+                    anchorUrl: { type: "string" },
+                    anchorDataHash: { type: "string" },
+                  },
+                  required: ["walletId", "address", "action", "utxoRefs"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Transaction created or submitted" },
+            400: { description: "Invalid input or unsupported wallet" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
       "/api/v1/pendingTransactions": {
         get: {
           tags: ["V1"],
@@ -1002,6 +1096,34 @@ This API uses **Bearer Token** authentication (JWT).
                       enum: ["atLeast", "all", "any"],
                       default: "atLeast",
                       description: "Unknown values are treated as atLeast.",
+                    },
+                    paymentNativeScript: {
+                      type: "object",
+                      description:
+                        "Optional explicit payment script tree. Supported nodes: sig/all/any/atLeast. Sig key hashes must match signersAddresses payment key hashes.",
+                      example: {
+                        type: "all",
+                        scripts: [
+                          {
+                            type: "atLeast",
+                            required: 2,
+                            scripts: [
+                              {
+                                type: "sig",
+                                keyHash: "b8b7d19e...7776dfde7",
+                              },
+                              {
+                                type: "sig",
+                                keyHash: "f4755fe1...0c91faa1",
+                              },
+                              {
+                                type: "sig",
+                                keyHash: "59d8f3f9...bd3360762",
+                              },
+                            ],
+                          },
+                        ],
+                      },
                     },
                     stakeCredentialHash: { type: "string" },
                     network: { type: "integer", enum: [0, 1], default: 1 },

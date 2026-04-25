@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { csl } from "@meshsdk/core-csl";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { getProvider } from "@/utils/get-provider";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 
 export default async function handler(
   req: NextApiRequest,
@@ -75,6 +76,28 @@ export default async function handler(
     return res.status(400).json({ error: "Missing required field txJson!" });
   }
 
+  // Reject unparseable CBOR/JSON up front so we never persist a row that
+  // the transactions page or the Cardano node cannot deserialize (#211).
+  if (typeof txCbor !== "string") {
+    return res.status(400).json({ error: "Invalid txCbor: must be a hex string" });
+  }
+  try {
+    csl.Transaction.from_hex(txCbor);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(400).json({ error: `Invalid transaction CBOR: ${msg}` });
+  }
+  if (typeof txJson === "string") {
+    try {
+      JSON.parse(txJson);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ error: `Invalid txJson: ${msg}` });
+    }
+  } else if (typeof txJson !== "object" || txJson === null) {
+    return res.status(400).json({ error: "Invalid txJson: must be a JSON object or string" });
+  }
+
   let wallet: { id: string; signersAddresses: string[]; numRequiredSigners: number | null; type: string };
   if (isBotJwt(payload)) {
     try {
@@ -98,24 +121,15 @@ export default async function handler(
   const network = address.includes("test") ? 0 : 1;
 
   try {
-    let newTx;
-    //ToDo refactor to more cases.
-    if (reqSigners === 1 || type === "any") {
-      const blockchainProvider = getProvider(network);
-      newTx = blockchainProvider.submitTx(txCbor);
-    } else {
-      newTx = await db.transaction.create({
-        data: {
-          walletId,
-          txJson: typeof txJson === "object" ? JSON.stringify(txJson) : txJson,
-          txCbor,
-          signedAddresses: [address],
-          rejectedAddresses: [],
-          description,
-          state: 0,
-        },
-      });
-    }
+    const newTx = await createPendingMultisigTransaction(db, {
+      walletId,
+      wallet: { numRequiredSigners: reqSigners, type },
+      proposerAddress: address,
+      txCbor,
+      txJson,
+      description,
+      network,
+    });
 
     res.status(201).json(newTx);
   } catch (error) {
