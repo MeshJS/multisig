@@ -16,6 +16,7 @@ import { createPendingMultisigTransaction } from "@/lib/server/createPendingMult
 import type { DbWalletWithLegacy } from "@/types/wallet";
 import type { Wallet as AppWallet } from "@/types/wallet";
 import type { MultisigWallet } from "@/utils/multisigSDK";
+import { hashDrepAnchor } from "@meshsdk/core";
 
 type DRepAction = "register" | "retire";
 
@@ -93,7 +94,7 @@ export default async function handler(
     utxoRefs?: { txHash: string; outputIndex: number }[];
     description?: string;
     anchorUrl?: string;
-    anchorDataHash?: string;
+    anchorJson?: unknown;
   };
 
   const walletId = typeof body.walletId === "string" ? body.walletId : "";
@@ -176,10 +177,15 @@ export default async function handler(
     if (!anchorUrl) {
       return res.status(400).json({ error: "anchorUrl is required for register" });
     }
-    const anchorDataHash =
-      typeof body.anchorDataHash === "string" ? body.anchorDataHash.trim() : "";
-    if (!anchorDataHash) {
-      return res.status(400).json({ error: "anchorDataHash is required for register — compute it from the anchor JSON before calling this endpoint" });
+    const anchorJson = body.anchorJson;
+    if (anchorJson === null || typeof anchorJson !== "object" || Array.isArray(anchorJson)) {
+      return res.status(400).json({ error: "anchorJson is required for register — provide the JSON object at anchorUrl so the server can compute the hash" });
+    }
+    let anchorDataHash: string;
+    try {
+      anchorDataHash = hashDrepAnchor(anchorJson as object);
+    } catch {
+      return res.status(400).json({ error: "Failed to compute anchor data hash from anchorJson" });
     }
 
     for (const utxo of utxos) {

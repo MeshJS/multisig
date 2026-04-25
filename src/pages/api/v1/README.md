@@ -120,7 +120,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Purpose**: Server-build a DRep **registration** or **retirement** transaction (non-proxy flows only), then persist or submit like `addTransaction`.
 - **Authentication**: Same as `botStakeCertificate` (JWT; body `address` must match JWT; bots need **`multisig:sign`** and cosigner access).
 - **Wallet support**: **Summon** wallets return **400** (unsupported in v1). **Legacy** and **SDK** paths mirror `registerDrep` / `retire` in the app (script and change-address selection). If DRep metadata cannot be derived (`getDRep` / `dRepId`), the handler returns **400**.
-- **Register — anchor**: `anchorUrl` is required. The server performs an HTTPS fetch (timeout, size limit, SSRF hardening), expects **JSON**, and computes **`hashDrepAnchor`** from `@meshsdk/core`. Optional `anchorDataHash` must match the computed hash or the request fails (**400**).
+- **Register — anchor**: `anchorUrl` and `anchorJson` are both required. The caller provides the JSON document at `anchorUrl` directly in the request body — the server never fetches any URL. The server computes **`hashDrepAnchor`** from `@meshsdk/core` using the provided `anchorJson` object.
 - **UTxOs**: Same `utxoRefs` policy as `botStakeCertificate` (chain-resolved, address-validated).
 - **Request Body**:
   - `walletId`: string (required)
@@ -129,9 +129,9 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
   - `description`: string (optional)
   - `anchorUrl`: string (required when `action === "register"`)
-  - `anchorDataHash`: string (optional; hex verification only)
+  - `anchorJson`: object (required when `action === "register"`; the JSON document at `anchorUrl` — server computes the hash)
 - **Response**: Same pattern as `addTransaction` / `botStakeCertificate` (**201**).
-- **Error Handling**: 400 (validation, anchor fetch/hash mismatch, unsupported wallet), 401 (auth), 403 (signer/bot scope/access), 405 (method), 500 (server)
+- **Error Handling**: 400 (validation, invalid anchorJson, unsupported wallet), 401 (auth), 403 (signer/bot scope/access), 405 (method), 500 (server)
 
 ### Wallet Management
 
@@ -554,7 +554,7 @@ await fetch("/api/v1/botStakeCertificate", {
   }),
 });
 
-// DRep register (anchorUrl returns JSON; server computes anchor hash)
+// DRep register — caller supplies anchorUrl + anchorJson; server computes the hash
 await fetch("/api/v1/botDRepCertificate", {
   method: "POST",
   headers: {
@@ -566,7 +566,8 @@ await fetch("/api/v1/botDRepCertificate", {
     address: botPaymentAddress,
     action: "register",
     utxoRefs: [{ txHash: "...", outputIndex: 0 }],
-    anchorUrl: "https://example.com/metadata.json",
+    anchorUrl: "https://example.com/drep-metadata.jsonld",
+    anchorJson: { "@context": { ... }, "hashAlgorithm": "blake2b-256", "body": { ... } },
   }),
 });
 ```

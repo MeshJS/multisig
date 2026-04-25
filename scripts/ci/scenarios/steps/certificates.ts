@@ -6,7 +6,6 @@ import { getDefaultBot } from "../../framework/botContext";
 import { authenticateBot } from "../../framework/botAuth";
 import { stringifyRedacted } from "../../framework/redact";
 import { boolFromEnv } from "../../framework/env";
-import { hashDrepAnchor } from "@meshsdk/core";
 
 type ScriptUtxo = {
   input: { txHash: string; outputIndex: number };
@@ -506,16 +505,22 @@ export function createScenarioDRepCertificates(): Scenario {
   const sdkReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
   const sdkRetire: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
 
-  async function buildDRepRegBody(): Promise<Record<string, unknown>> {
+  function buildDRepRegBody(): Record<string, unknown> {
     const anchorUrl = process.env.CI_DREP_ANCHOR_URL?.trim();
     if (!anchorUrl) {
       throw new Error("CI_DREP_ANCHOR_URL is required for DRep registration");
     }
-    const res = await fetch(anchorUrl);
-    if (!res.ok) throw new Error(`Failed to fetch DRep anchor URL: HTTP ${res.status}`);
-    const json = await res.json() as object;
-    const anchorDataHash = hashDrepAnchor(json);
-    return { anchorUrl, anchorDataHash };
+    const anchorJsonRaw = process.env.CI_DREP_ANCHOR_JSON?.trim();
+    if (!anchorJsonRaw) {
+      throw new Error("CI_DREP_ANCHOR_JSON is required for DRep registration");
+    }
+    let anchorJson: object;
+    try {
+      anchorJson = JSON.parse(anchorJsonRaw) as object;
+    } catch {
+      throw new Error("CI_DREP_ANCHOR_JSON is not valid JSON");
+    }
+    return { anchorUrl, anchorJson };
   }
 
   return {
