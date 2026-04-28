@@ -75,6 +75,38 @@ function createPendingTransactionsZeroStep(walletType: string): RouteStep {
   };
 }
 
+function createProxiesListStep(walletType: string): RouteStep {
+  return {
+    id: `v1.proxies.list.${walletType}`,
+    description: `List confirmed proxies for ${walletType} wallet`,
+    severity: "non-critical",
+    execute: async (ctx) => {
+      const bot = getDefaultBot(ctx);
+      const token = await authenticateBot({ ctx, bot });
+      const wallet = getWalletByType(ctx, walletType);
+      if (!wallet) {
+        throw new Error(`Missing wallet type in context: ${walletType}`);
+      }
+
+      const response = await requestJson<unknown[] | { error?: string }>({
+        url: `${ctx.apiBaseUrl}/api/v1/proxies?walletId=${encodeURIComponent(wallet.walletId)}&address=${encodeURIComponent(bot.paymentAddress)}`,
+        method: "GET",
+        token,
+      });
+      if (response.status !== 200 || !Array.isArray(response.data)) {
+        throw new Error(
+          `proxies list failed for ${walletType} (${response.status}): ${stringifyRedacted(response.data)}`,
+        );
+      }
+
+      return {
+        message: `proxies returned ${response.data.length} confirmed proxies for ${walletType}`,
+        artifacts: { walletId: wallet.walletId, proxyCount: response.data.length },
+      };
+    },
+  };
+}
+
 function createLookupMultisigWalletStep(ctx: CIBootstrapContext): RouteStep {
   return {
     id: "v1.lookupMultisigWallet.signerKeyHash",
@@ -200,6 +232,7 @@ export function createScenarioPendingAndDiscovery(ctx: CIBootstrapContext): Scen
     steps: [
       createWalletIdsStep(),
       ...ctx.walletTypes.map((walletType) => createPendingTransactionsZeroStep(walletType)),
+      ...ctx.walletTypes.map((walletType) => createProxiesListStep(walletType)),
       createLookupMultisigWalletStep(ctx),
     ],
   };

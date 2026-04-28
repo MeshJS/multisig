@@ -106,7 +106,7 @@ Set `CI_ROUTE_CHAIN_REPORT_PATH` if you want a separate report file for that run
 
 The manifest currently covers:
 
-- route discovery (`walletIds`)
+- route discovery (`walletIds`, `proxies`)
 - **pending-transactions zero-check** at bootstrap for each wallet type — catches stale state from a previous incomplete run before the ring transfer begins
 - **public wallet lookup** (`lookupMultisigWallet`) — smoke-tests the unauthenticated on-chain metadata lookup endpoint
 - route health checks (`freeUtxos`, `nativeScript`) — `nativeScript` now asserts a `payment` script entry is present and, when the root type is `atLeast`, that `required` matches `CI_NUM_REQUIRED_SIGNERS`

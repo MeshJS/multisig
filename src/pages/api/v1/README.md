@@ -133,6 +133,29 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Same pattern as `addTransaction` / `botStakeCertificate` (**201**).
 - **Error Handling**: 400 (validation, invalid anchorJson, unsupported wallet), 401 (auth), 403 (signer/bot scope/access), 405 (method), 500 (server)
 
+#### Proxy Bot API
+
+Proxy endpoints let bots propose proxy setup, proxy spending, proxy DRep certificates, and proxy votes through the same pending multisig transaction flow. They do not bypass the wallet threshold: bots need **`multisig:sign`** scope and **cosigner** access for all mutating proxy routes, while observer bots may call `GET /api/v1/proxies`.
+
+All Plutus proxy transaction routes accept UTxO references only. Do not send raw UTxO JSON. The server resolves each ref from chain, validates wallet UTxOs are at the multisig spend address, validates proxy spend inputs are at the selected proxy address, and requires `collateralRef` with at least 5 ADA.
+
+Setup lifecycle:
+
+1. Call `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, and optional `description`.
+2. The response includes `{ transaction, setup }`, where `setup` contains `proxyAddress`, `authTokenId`, and `paramUtxo`.
+3. If `transaction` is pending, co-signers call `POST /api/v1/signTransaction` until the transaction is submitted.
+4. After the setup is confirmed on-chain, call `POST /api/v1/proxySetupFinalize` with the setup metadata and `txHash`. The server validates chain state and creates the confirmed `Proxy` row.
+5. Use `GET /api/v1/proxies` to list active confirmed proxies.
+
+Endpoints:
+
+- `GET /api/v1/proxies`: query `walletId`, `address`; returns active confirmed proxies for that wallet.
+- `POST /api/v1/proxySetup`: body `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `description`; returns pending/submitted transaction plus setup metadata.
+- `POST /api/v1/proxySetupFinalize`: body `walletId`, `address`, `txHash`, `proxyAddress`, `authTokenId`, `paramUtxo`, optional `description`; creates or reactivates the confirmed proxy row after chain validation.
+- `POST /api/v1/proxySpend`: body `walletId`, `address`, `proxyId`, `outputs`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `description`; requires one multisig input containing the proxy auth token.
+- `POST /api/v1/proxyDRepCertificate`: body `walletId`, `address`, `proxyId`, `action` (`register`, `update`, `deregister`), `utxoRefs`, `collateralRef`, optional `description`; `anchorUrl` and `anchorJson` are required for `register` and `update`.
+- `POST /api/v1/proxyVote`: body `walletId`, `address`, `proxyId`, `votes`, `utxoRefs`, `collateralRef`, optional `description`; each vote has `proposalId` in `<txHash>#<certIndex>` form and `voteKind` (`Yes`, `No`, `Abstain`).
+
 ### Wallet Management
 
 #### `walletIds.ts` - GET `/api/v1/walletIds`
