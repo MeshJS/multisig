@@ -8,6 +8,7 @@ import Globe from "./globe";
 // Avoid SSR for Swagger UI
 const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
 import "swagger-ui-react/swagger-ui.css";
+import "../styles/swagger-overrides.css";
 
 export const getServerSideProps = () => ({ props: {} });
 
