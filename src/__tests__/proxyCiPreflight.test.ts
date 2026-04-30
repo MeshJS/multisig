@@ -209,24 +209,42 @@ describe("proxy scenario composition", () => {
     const stepIds = scenario.steps.map((step) => step.id);
 
     expect(PROXY_FULL_LIFECYCLE_WALLET_TYPES).toEqual(["legacy", "sdk"]);
+    expect(stepIds).toContain("v1.proxy.full.recoverFromChain.legacy");
+    expect(stepIds).toContain("v1.proxy.full.adoptOrphans.legacy");
     expect(stepIds).toContain("v1.proxy.full.hygiene.legacy");
     expect(stepIds).toContain("v1.proxy.full.utxoShape.legacy");
     expect(stepIds).toContain("v1.proxy.full.preflight.legacy");
+    expect(stepIds.indexOf("v1.proxy.full.recoverFromChain.legacy")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.adoptOrphans.legacy"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.adoptOrphans.legacy")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.hygiene.legacy"),
+    );
     expect(stepIds.indexOf("v1.proxy.full.hygiene.legacy")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.utxoShape.legacy"),
     );
     expect(stepIds.indexOf("v1.proxy.full.utxoShape.legacy")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.preflight.legacy"),
     );
+    expect(stepIds).toContain("v1.proxy.full.recoverFromChain.sdk");
+    expect(stepIds).toContain("v1.proxy.full.adoptOrphans.sdk");
     expect(stepIds).toContain("v1.proxy.full.hygiene.sdk");
     expect(stepIds).toContain("v1.proxy.full.utxoShape.sdk");
     expect(stepIds).toContain("v1.proxy.full.preflight.sdk");
+    expect(stepIds.indexOf("v1.proxy.full.recoverFromChain.sdk")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.adoptOrphans.sdk"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.adoptOrphans.sdk")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.hygiene.sdk"),
+    );
     expect(stepIds.indexOf("v1.proxy.full.hygiene.sdk")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.utxoShape.sdk"),
     );
     expect(stepIds.indexOf("v1.proxy.full.utxoShape.sdk")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.preflight.sdk"),
     );
+    expect(stepIds).not.toContain("v1.proxy.full.recoverFromChain.hierarchical");
+    expect(stepIds).not.toContain("v1.proxy.full.adoptOrphans.hierarchical");
     expect(stepIds).not.toContain("v1.proxy.full.hygiene.hierarchical");
     expect(stepIds).not.toContain("v1.proxy.full.preflight.hierarchical");
   });

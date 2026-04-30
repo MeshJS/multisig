@@ -335,7 +335,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build DRep registration or retirement transaction",
           description:
-            "Server builds DRep register/retire (non-proxy). Bots need multisig:sign. For register, anchorUrl is required; server fetches JSON and computes hashDrepAnchor. Optional anchorDataHash must match computed hash. utxoRefs must list UTxOs at the multisig spend address.",
+            "Server builds DRep register/retire (non-proxy). Bots need multisig:sign. For register, anchorUrl and anchorJson are required; the server does not fetch anchorUrl and computes hashDrepAnchor from the provided anchorJson object. utxoRefs must list UTxOs at the multisig spend address.",
           requestBody: {
             required: true,
             content: {
@@ -359,7 +359,7 @@ This API uses **Bearer Token** authentication (JWT).
                     },
                     description: { type: "string" },
                     anchorUrl: { type: "string" },
-                    anchorDataHash: { type: "string" },
+                    anchorJson: { type: "object" },
                   },
                   required: ["walletId", "address", "action", "utxoRefs"],
                 },
@@ -471,7 +471,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy setup transaction",
           description:
-            "Builds a Plutus proxy setup transaction, persists it through the multisig pending transaction flow, and returns derived setup metadata. Bots need multisig:sign and cosigner access. Proxy rows are not created until POST /api/v1/proxySetupFinalize validates confirmed chain state.",
+            "Builds a Plutus proxy setup transaction, persists it through the multisig pending transaction flow with no initial signed addresses, and returns derived setup metadata. Bots need multisig:sign and cosigner access. Proxy rows are not created until POST /api/v1/proxySetupFinalize validates confirmed chain state.",
           requestBody: {
             required: true,
             content: {
@@ -580,7 +580,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy spend transaction",
           description:
-            "Builds a proxy script spend transaction and persists it through the multisig pending transaction flow. Requires an auth-token UTxO at the multisig wallet address. Bots need multisig:sign and cosigner access.",
+            "Builds a proxy script spend transaction and persists it through the multisig pending transaction flow with no initial signed addresses. Requires an auth-token UTxO at the multisig wallet address. If proxyUtxoRefs is omitted, the server selects enough proxy-address UTxOs for the requested outputs plus fee buffer. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -628,7 +628,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy DRep certificate transaction",
           description:
-            "Registers, updates, or deregisters the proxy script DRep. The server computes hashDrepAnchor(anchorJson) for register/update and requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+            "Registers, updates, or deregisters the proxy script DRep through the pending multisig flow with no initial signed addresses. The server computes hashDrepAnchor(anchorJson) for register/update and requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -666,7 +666,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy DRep vote transaction",
           description:
-            "Builds a governance vote as the proxy DRep. proposalId must use <txHash>#<certIndex>. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex>. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -713,7 +713,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy cleanup transaction",
           description:
-            "Builds the next safe cleanup transaction through the multisig pending transaction flow. If the proxy address still has UTxOs, the transaction sweeps them back to the multisig wallet while preserving an auth token. Once the proxy address is empty, the transaction burns all auth tokens. Bots need multisig:sign and cosigner access. The Proxy row is deactivated only after POST /api/v1/proxyCleanupFinalize validates the confirmed burn transaction hash and current chain state.",
+            "Builds the next safe cleanup transaction through the multisig pending transaction flow with no initial signed addresses. If the proxy address still has UTxOs, the transaction sweeps them back to the multisig wallet while preserving an auth token. Once the proxy address is empty, the transaction burns all auth tokens. Bots need multisig:sign and cosigner access. The Proxy row is deactivated only after POST /api/v1/proxyCleanupFinalize validates the confirmed burn transaction hash and current chain state.",
           requestBody: {
             required: true,
             content: {

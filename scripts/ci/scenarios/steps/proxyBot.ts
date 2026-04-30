@@ -7,6 +7,8 @@ import { stringifyRedacted } from "../../framework/redact";
 import { getDeterministicActiveProposals, type ActiveProposal } from "../../framework/governance";
 import { runSigningFlow } from "../flows/signingFlow";
 import { ensureProxyLifecycleUtxoShape } from "../flows/utxoShapeFlow";
+import { recoverProxyRowsFromChainForWalletType } from "../proxyChainRecovery";
+import { adoptProxyOrphansForWalletType } from "../proxyOrphanAdoption";
 import { getWalletByType } from "./helpers";
 import {
   assertProxyFullLifecyclePreflight,
@@ -1154,6 +1156,40 @@ function createProxyFullLifecycleHygieneStep(walletType: CIWalletType): RouteSte
   };
 }
 
+function createProxyFullLifecycleChainRecoveryStep(walletType: CIWalletType): RouteStep {
+  return {
+    id: `v1.proxy.full.recoverFromChain.${walletType}`,
+    description: "Recover stale proxy rows from on-chain CI wallet evidence",
+    severity: "critical",
+    execute: async (ctx) => {
+      const result = await recoverProxyRowsFromChainForWalletType({ ctx, walletType });
+      return {
+        message: result.recovered.length
+          ? `recovered ${result.recovered.length} proxy row(s) from chain for ${walletType}`
+          : `no proxy rows recovered from chain for ${walletType}`,
+        artifacts: normalizeJsonArtifact(result) as Record<string, unknown>,
+      };
+    },
+  };
+}
+
+function createProxyFullLifecycleAdoptionStep(walletType: CIWalletType): RouteStep {
+  return {
+    id: `v1.proxy.full.adoptOrphans.${walletType}`,
+    description: "Adopt stale proxy rows from historical deterministic CI wallets",
+    severity: "critical",
+    execute: async (ctx) => {
+      const result = await adoptProxyOrphansForWalletType({ ctx, walletType });
+      return {
+        message: result.adopted.length
+          ? `adopted ${result.adopted.length} orphan proxy row(s) for ${walletType}`
+          : `no orphan proxy rows adopted for ${walletType}`,
+        artifacts: normalizeJsonArtifact(result) as Record<string, unknown>,
+      };
+    },
+  };
+}
+
 function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   const runtime: {
     setup?: ProxySetup;
@@ -1172,6 +1208,8 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   } = {};
 
   return [
+    createProxyFullLifecycleChainRecoveryStep(walletType),
+    createProxyFullLifecycleAdoptionStep(walletType),
     createProxyFullLifecycleHygieneStep(walletType),
     {
       id: `v1.proxy.full.utxoShape.${walletType}`,
