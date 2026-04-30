@@ -263,7 +263,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                 </TableHeader>
                 <TableBody>
                   {signersAddresses.map((signer, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={signer}>
                       {/* Signer name */}
                       <TableCell>
                         <span className="flex items-center gap-2">
@@ -374,7 +374,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
             <div className="space-y-3 sm:hidden">
               {signersAddresses.map((signer, index) => (
                 <div
-                  key={index}
+                  key={signer}
                   className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/5"
                 >
                   {/* Top row: Name and Actions */}
