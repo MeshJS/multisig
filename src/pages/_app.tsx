@@ -13,6 +13,7 @@ import { env } from "@/env";
 import { api } from "@/utils/api";
 
 import "@/styles/globals.css";
+import "@/styles/swagger-overrides.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
