@@ -194,6 +194,14 @@ BOT_TOKEN='...' BOT_CONFIG_PATH=bot-config.json npx tsx bot-client.ts walletIds
 
 The reference client only uses **bot-key auth** (POST /api/v1/botAuth). Wallet-based auth (getNonce + sign + authSigner) would require a real Cardano signer; implement that in your bot if needed.
 
+## Proxy bot cleanup
+
+Proxy routes use the normal pending multisig flow and require `multisig:sign` plus cosigner access. `POST /api/v1/proxyCleanup` is safe to call repeatedly during lifecycle cleanup:
+
+1. If the proxy address still has UTxOs, it returns cleanup phase `sweep`; sign and submit that transaction, then wait until the proxy address is empty.
+2. Call `POST /api/v1/proxyCleanup` again. When cleanup phase is `burn`, sign and submit the burn transaction.
+3. After burn confirmation, call `POST /api/v1/proxyCleanupFinalize` to validate that auth tokens are gone and deactivate the proxy row.
+
 ## Governance bot flow
 
 For governance automation, request and approve these bot scopes during register/claim:

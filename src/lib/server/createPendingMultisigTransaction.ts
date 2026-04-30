@@ -19,10 +19,19 @@ export async function createPendingMultisigTransaction(
     txJson: unknown;
     description: string;
     network: number;
+    initialSignedAddresses?: string[];
   },
 ) {
-  const { walletId, wallet, proposerAddress, txCbor, txJson, description, network } =
-    args;
+  const {
+    walletId,
+    wallet,
+    proposerAddress,
+    txCbor,
+    txJson,
+    description,
+    network,
+    initialSignedAddresses = [proposerAddress],
+  } = args;
   const reqSigners = wallet.numRequiredSigners;
   const wtype = wallet.type;
 
@@ -41,7 +50,7 @@ export async function createPendingMultisigTransaction(
       walletId,
       txJson: txJsonStr,
       txCbor,
-      signedAddresses: [proposerAddress],
+      signedAddresses: initialSignedAddresses,
       rejectedAddresses: [],
       description,
       state: 0,

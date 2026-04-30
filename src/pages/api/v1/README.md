@@ -141,7 +141,7 @@ All Plutus proxy transaction routes accept UTxO references only. Do not send raw
 
 Setup lifecycle:
 
-1. Call `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, and optional `description`.
+1. Call `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, and optional `description`.
 2. The response includes `{ transaction, setup }`, where `setup` contains `proxyAddress`, `authTokenId`, and `paramUtxo`.
 3. If `transaction` is pending, co-signers call `POST /api/v1/signTransaction` until the transaction is submitted.
 4. After the setup is confirmed on-chain, call `POST /api/v1/proxySetupFinalize` with the setup metadata and `txHash`. The server validates chain state and creates the confirmed `Proxy` row.
@@ -150,11 +150,14 @@ Setup lifecycle:
 Endpoints:
 
 - `GET /api/v1/proxies`: query `walletId`, `address`; returns active confirmed proxies for that wallet.
-- `POST /api/v1/proxySetup`: body `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `description`; returns pending/submitted transaction plus setup metadata.
+- `GET /api/v1/proxyDRepInfo`: query `walletId`, `address`, `proxyId`; returns `{ active, dRepId }` for the proxy script DRep credential.
+- `POST /api/v1/proxySetup`: body `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, optional `description`; returns pending/submitted transaction plus setup metadata. When omitted, `initialProxyLovelace` defaults to the current minimal proxy output amount.
 - `POST /api/v1/proxySetupFinalize`: body `walletId`, `address`, `txHash`, `proxyAddress`, `authTokenId`, `paramUtxo`, optional `description`; creates or reactivates the confirmed proxy row after chain validation.
 - `POST /api/v1/proxySpend`: body `walletId`, `address`, `proxyId`, `outputs`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `description`; requires one multisig input containing the proxy auth token.
 - `POST /api/v1/proxyDRepCertificate`: body `walletId`, `address`, `proxyId`, `action` (`register`, `update`, `deregister`), `utxoRefs`, `collateralRef`, optional `description`; `anchorUrl` and `anchorJson` are required for `register` and `update`.
 - `POST /api/v1/proxyVote`: body `walletId`, `address`, `proxyId`, `votes`, `utxoRefs`, `collateralRef`, optional `description`; each vote has `proposalId` in `<txHash>#<certIndex>` form and `voteKind` (`Yes`, `No`, `Abstain`).
+- `POST /api/v1/proxyCleanup`: body `walletId`, `address`, `proxyId`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `deactivateProxy`, optional `description`; first sweeps any remaining proxy-address UTxOs back to the multisig wallet while preserving an auth token, then burns the auth tokens on a follow-up call once the proxy address is empty.
+- `POST /api/v1/proxyCleanupFinalize`: body `walletId`, `address`, `proxyId`, `txHash`, optional `deactivateProxy`; validates confirmed cleanup on-chain and marks the proxy inactive only after auth tokens are gone and the proxy address is empty.
 
 ### Wallet Management
 

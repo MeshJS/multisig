@@ -35,6 +35,45 @@ describe("proxyUtxos", () => {
     }
   });
 
+  it("rejects collateral at an unexpected address", async () => {
+    const result = await resolveCollateralRefFromChain({
+      network: 0,
+      collateralRef: { txHash: "aa", outputIndex: 0 },
+      expectedAddress: "addr_test_signer",
+      provider: {
+        fetchUTxOs: async () => [
+          mkUtxo("addr_test_wallet_script", [{ unit: "lovelace", quantity: "6000000" }]),
+        ],
+      },
+    });
+
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toContain("expected address");
+    }
+  });
+
+  it("rejects collateral with native assets", async () => {
+    const result = await resolveCollateralRefFromChain({
+      network: 0,
+      collateralRef: { txHash: "aa", outputIndex: 0 },
+      expectedAddress: "addr_test_signer",
+      provider: {
+        fetchUTxOs: async () => [
+          mkUtxo("addr_test_signer", [
+            { unit: "lovelace", quantity: "6000000" },
+            { unit: "policy.asset", quantity: "1" },
+          ]),
+        ],
+      },
+    });
+
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toContain("ADA-only");
+    }
+  });
+
   it("finds the proxy auth-token UTxO", () => {
     const result = requireAuthTokenUtxo(
       [

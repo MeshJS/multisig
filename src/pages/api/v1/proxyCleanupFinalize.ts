@@ -8,9 +8,9 @@ import {
   enforceBodySize,
 } from "@/lib/security/requestGuards";
 import { authorizeWalletSignerForV1Tx } from "@/lib/server/v1WalletAuth";
+import { loadActiveProxyForWallet } from "@/lib/server/proxyAccess";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
-import { finalizeConfirmedProxySetup } from "@/lib/server/proxySetupFinalization";
-import type { UtxoRef } from "@/lib/server/proxyUtxos";
+import { finalizeConfirmedProxyCleanup } from "@/lib/server/proxyCleanupFinalization";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 export default async function handler(
@@ -19,7 +19,7 @@ export default async function handler(
 ) {
   addCorsCacheBustingHeaders(res);
 
-  if (!applyRateLimit(req, res, { keySuffix: "v1/proxySetupFinalize" })) {
+  if (!applyRateLimit(req, res, { keySuffix: "v1/proxyCleanupFinalize" })) {
     return;
   }
 
@@ -51,21 +51,17 @@ export default async function handler(
   const body = req.body as {
     walletId?: string;
     address?: string;
+    proxyId?: string;
     txHash?: string;
-    proxyAddress?: string;
-    authTokenId?: string;
-    paramUtxo?: UtxoRef;
-    description?: string;
+    deactivateProxy?: boolean;
   };
 
   const walletId = typeof body.walletId === "string" ? body.walletId : "";
   const address = typeof body.address === "string" ? body.address : "";
+  const proxyId = typeof body.proxyId === "string" ? body.proxyId : "";
   const txHash = typeof body.txHash === "string" ? body.txHash.trim() : "";
-  if (!walletId) {
-    return res.status(400).json({ error: "Missing required field walletId" });
-  }
-  if (!address) {
-    return res.status(400).json({ error: "Missing required field address" });
+  if (!walletId || !address || !proxyId) {
+    return res.status(400).json({ error: "walletId, address, and proxyId are required" });
   }
   if (!txHash) {
     return res.status(400).json({ error: "Missing required field txHash" });
@@ -85,6 +81,15 @@ export default async function handler(
     });
   }
 
+  let proxy;
+  try {
+    proxy = await loadActiveProxyForWallet({ db, walletId, proxyId });
+  } catch (error) {
+    return res.status(404).json({
+      error: error instanceof Error ? error.message : "Proxy not found",
+    });
+  }
+
   let walletAddress: string;
   try {
     walletAddress = resolveWalletScriptAddress(
@@ -99,23 +104,18 @@ export default async function handler(
   }
 
   const network = address.includes("test") ? 0 : 1;
-  const result = await finalizeConfirmedProxySetup({
+  const result = await finalizeConfirmedProxyCleanup({
     db,
     network,
-    walletId,
+    proxy,
     walletAddress,
     txHash,
-    setup: {
-      proxyAddress: body.proxyAddress,
-      authTokenId: body.authTokenId,
-      paramUtxo: body.paramUtxo,
-      description: body.description,
-    },
+    deactivateProxy: body.deactivateProxy,
   });
 
   if ("error" in result) {
     return res.status(result.status).json({ error: result.error });
   }
 
-  return res.status(201).json({ proxy: result, txHash });
+  return res.status(201).json({ proxy: result.proxy, txHash });
 }

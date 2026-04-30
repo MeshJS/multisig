@@ -1,4 +1,4 @@
-import { mConStr0, mOutputReference } from "@meshsdk/common";
+import { mConStr0, mConStr1, mOutputReference } from "@meshsdk/common";
 import {
   applyParamsToScript,
   hashDrepAnchor,
@@ -10,6 +10,9 @@ import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import blueprint from "@/components/multisig/proxy/aiken-workspace/plutus.json";
 import { parseProposalId } from "@/lib/governance";
 import { getLovelace, sameUtxoRef } from "@/lib/server/proxyUtxos";
+
+export const DEFAULT_PROXY_SETUP_LOVELACE = "1000000";
+const PROXY_ACTION_MIN_LOVELACE = 2_000_000n;
 
 const DEFAULT_PROXY_STAKE_CREDENTIAL =
   "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575";
@@ -25,6 +28,24 @@ export type ProxyVoteInput = {
   voteKind: "Yes" | "No" | "Abstain";
   metadata?: unknown;
 };
+
+function formatAda(lovelace: bigint): string {
+  const whole = lovelace / 1_000_000n;
+  const fraction = lovelace % 1_000_000n;
+  if (fraction === 0n) return `${whole} ADA`;
+  return `${whole}.${fraction.toString().padStart(6, "0").replace(/0+$/, "")} ADA`;
+}
+
+function assertSelectedLovelace(args: {
+  context: string;
+  selectedLovelace: bigint;
+  requiredLovelace: bigint;
+}) {
+  if (args.selectedLovelace >= args.requiredLovelace) return;
+  throw new Error(
+    `${args.context} requires at least ${formatAda(args.requiredLovelace)} in selected wallet inputs, but only ${formatAda(args.selectedLovelace)} was selected`,
+  );
+}
 
 export function deriveProxyScripts(args: {
   paramUtxo: UTxO["input"];
@@ -94,6 +115,7 @@ export function buildProxySetupTx(args: {
   walletAddress: string;
   collateral: UTxO;
   multisigScriptCbor?: string;
+  initialProxyLovelace?: string;
   stakeCredential?: string;
 }): ProxySetupInfo {
   const paramUtxo = selectParamUtxo(args.walletUtxos);
@@ -114,7 +136,12 @@ export function buildProxySetupTx(args: {
     .mint("10", scripts.authTokenId, "")
     .mintingScript(scripts.authTokenCbor)
     .mintRedeemerValue(mConStr0([]))
-    .txOut(scripts.proxyAddress, [{ unit: "lovelace", quantity: "1000000" }]);
+    .txOut(scripts.proxyAddress, [
+      {
+        unit: "lovelace",
+        quantity: args.initialProxyLovelace ?? DEFAULT_PROXY_SETUP_LOVELACE,
+      },
+    ]);
 
   for (let i = 0; i < 10; i++) {
     args.txBuilder.txOut(args.walletAddress, [
@@ -219,7 +246,7 @@ export function buildProxyDRepCertificateTx(args: {
   addCollateral(args.txBuilder, args.collateral);
 
   const requiredAmount =
-    args.action === "register" ? BigInt(505_000_000) : BigInt(2_000_000);
+    args.action === "register" ? BigInt(505_000_000) : PROXY_ACTION_MIN_LOVELACE;
   let totalAmount = getLovelace(args.authTokenUtxo);
   for (const utxo of args.walletUtxos) {
     if (totalAmount >= requiredAmount) {
@@ -231,6 +258,11 @@ export function buildProxyDRepCertificateTx(args: {
     addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
     totalAmount += getLovelace(utxo);
   }
+  assertSelectedLovelace({
+    context: `proxy DRep ${args.action}`,
+    selectedLovelace: totalAmount,
+    requiredLovelace: requiredAmount,
+  });
 
   args.txBuilder.txOut(args.walletAddress, [
     { unit: scripts.authTokenId, quantity: "1" },
@@ -285,7 +317,7 @@ export function buildProxyVoteTx(args: {
 
   let totalAmount = getLovelace(args.authTokenUtxo);
   for (const utxo of args.walletUtxos) {
-    if (totalAmount >= BigInt(2_000_000)) {
+    if (totalAmount >= PROXY_ACTION_MIN_LOVELACE) {
       break;
     }
     if (sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
@@ -294,6 +326,11 @@ export function buildProxyVoteTx(args: {
     addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
     totalAmount += getLovelace(utxo);
   }
+  assertSelectedLovelace({
+    context: "proxy vote",
+    selectedLovelace: totalAmount,
+    requiredLovelace: PROXY_ACTION_MIN_LOVELACE,
+  });
 
   args.txBuilder.txOut(args.walletAddress, [
     { unit: scripts.authTokenId, quantity: "1" },
@@ -323,4 +360,135 @@ export function buildProxyVoteTx(args: {
   args.txBuilder.changeAddress(args.walletAddress);
 
   return { dRepId: scripts.dRepId };
+}
+
+export function buildProxyCleanupTx(args: {
+  txBuilder: MeshTxBuilder;
+  network: number;
+  paramUtxo: UTxO["input"];
+  walletUtxos: UTxO[];
+  collateral: UTxO;
+  walletAddress: string;
+  authTokenId: string;
+  multisigScriptCbor?: string;
+  stakeCredential?: string;
+}): { burnedAuthTokens: string } {
+  const scripts = deriveProxyScripts({
+    paramUtxo: args.paramUtxo,
+    network: args.network,
+    stakeCredential: args.stakeCredential,
+  });
+  if (scripts.authTokenId !== args.authTokenId) {
+    throw new Error("Stored proxy metadata does not match derived auth token");
+  }
+
+  let authTokenCount = BigInt(0);
+  for (const utxo of args.walletUtxos) {
+    const quantity = utxo.output.amount.find(
+      (asset) => asset.unit === args.authTokenId,
+    )?.quantity;
+    if (quantity) {
+      authTokenCount += BigInt(quantity);
+    }
+    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
+  }
+
+  if (authTokenCount !== BigInt(10)) {
+    throw new Error(
+      `proxy cleanup requires exactly 10 auth tokens, found ${authTokenCount.toString()}`,
+    );
+  }
+
+  args.txBuilder
+    .mintPlutusScriptV3()
+    .mint("-10", scripts.authTokenId, "")
+    .mintingScript(scripts.authTokenCbor)
+    .mintRedeemerValue(mConStr1([]));
+
+  addCollateral(args.txBuilder, args.collateral);
+  args.txBuilder.changeAddress(args.walletAddress);
+
+  return { burnedAuthTokens: "10" };
+}
+
+function aggregateUtxoAmounts(
+  utxos: UTxO[],
+  extraAmounts: UTxO["output"]["amount"] = [],
+): UTxO["output"]["amount"] {
+  const totals = new Map<string, bigint>();
+  for (const amounts of [
+    ...utxos.map((utxo) => utxo.output.amount),
+    extraAmounts,
+  ]) {
+    for (const asset of amounts) {
+      totals.set(asset.unit, (totals.get(asset.unit) ?? BigInt(0)) + BigInt(asset.quantity));
+    }
+  }
+
+  return Array.from(totals.entries()).map(([unit, quantity]) => ({
+    unit,
+    quantity: quantity.toString(),
+  }));
+}
+
+export function buildProxyCleanupSweepTx(args: {
+  txBuilder: MeshTxBuilder;
+  network: number;
+  paramUtxo: UTxO["input"];
+  proxyAddress: string;
+  proxyUtxos: UTxO[];
+  walletUtxos: UTxO[];
+  authTokenUtxo: UTxO;
+  collateral: UTxO;
+  walletAddress: string;
+  multisigScriptCbor?: string;
+  stakeCredential?: string;
+}): { sweptProxyUtxos: string; preservedAuthTokens: string } {
+  if (args.proxyUtxos.length === 0) {
+    throw new Error("proxy cleanup sweep requires at least one proxy UTxO");
+  }
+
+  const scripts = deriveProxyScripts({
+    paramUtxo: args.paramUtxo,
+    network: args.network,
+    stakeCredential: args.stakeCredential,
+  });
+
+  for (const proxyUtxo of args.proxyUtxos) {
+    if (proxyUtxo.output.address !== args.proxyAddress) {
+      throw new Error("proxy cleanup sweep received a UTxO outside the proxy address");
+    }
+    args.txBuilder
+      .spendingPlutusScriptV3()
+      .txIn(
+        proxyUtxo.input.txHash,
+        proxyUtxo.input.outputIndex,
+        proxyUtxo.output.amount,
+        proxyUtxo.output.address,
+      )
+      .txInScript(scripts.proxyCbor)
+      .txInInlineDatumPresent()
+      .txInRedeemerValue(mConStr0([]));
+  }
+
+  addScriptInput(args.txBuilder, args.authTokenUtxo, args.multisigScriptCbor);
+  for (const utxo of args.walletUtxos) {
+    if (!sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
+      addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
+    }
+  }
+
+  addCollateral(args.txBuilder, args.collateral);
+  args.txBuilder.txOut(
+    args.walletAddress,
+    aggregateUtxoAmounts(args.proxyUtxos, [
+      { unit: scripts.authTokenId, quantity: "1" },
+    ]),
+  );
+  args.txBuilder.changeAddress(args.walletAddress);
+
+  return {
+    sweptProxyUtxos: args.proxyUtxos.length.toString(),
+    preservedAuthTokens: "1",
+  };
 }

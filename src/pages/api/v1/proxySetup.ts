@@ -13,12 +13,39 @@ import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain"
 import { resolveCollateralRefFromChain, type UtxoRef } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { buildProxySetupTx } from "@/lib/server/proxyTxBuilders";
+import {
+  buildProxySetupTx,
+  DEFAULT_PROXY_SETUP_LOVELACE,
+} from "@/lib/server/proxyTxBuilders";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
   meshTxBuilderBody: unknown;
 };
+
+function validateInitialProxyLovelace(
+  value: unknown,
+): string | { error: string } | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const initialProxyLovelace = typeof value === "string" ? value.trim() : "";
+  if (!/^[0-9]+$/.test(initialProxyLovelace)) {
+    return { error: "initialProxyLovelace must be a positive integer string" };
+  }
+
+  const lovelace = BigInt(initialProxyLovelace);
+  if (lovelace <= BigInt(0)) {
+    return { error: "initialProxyLovelace must be a positive integer string" };
+  }
+  if (lovelace < BigInt(DEFAULT_PROXY_SETUP_LOVELACE)) {
+    return {
+      error: `initialProxyLovelace must be at least ${DEFAULT_PROXY_SETUP_LOVELACE}`,
+    };
+  }
+
+  return initialProxyLovelace;
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -60,6 +87,7 @@ export default async function handler(
     address?: string;
     utxoRefs?: UtxoRef[];
     collateralRef?: UtxoRef;
+    initialProxyLovelace?: string;
     description?: string;
   };
 
@@ -70,6 +98,13 @@ export default async function handler(
   }
   if (!address) {
     return res.status(400).json({ error: "Missing required field address" });
+  }
+
+  const initialProxyLovelace = validateInitialProxyLovelace(
+    body.initialProxyLovelace,
+  );
+  if (initialProxyLovelace && typeof initialProxyLovelace !== "string") {
+    return res.status(400).json({ error: initialProxyLovelace.error });
   }
 
   let walletRow;
@@ -113,6 +148,7 @@ export default async function handler(
   const resolvedCollateral = await resolveCollateralRefFromChain({
     network,
     collateralRef: body.collateralRef,
+    expectedAddress: address,
   });
   if ("error" in resolvedCollateral) {
     return res
@@ -130,6 +166,7 @@ export default async function handler(
       walletAddress,
       collateral: resolvedCollateral.collateral,
       multisigScriptCbor: walletRow.scriptCbor,
+      initialProxyLovelace,
     });
   } catch (error) {
     return res.status(400).json({
@@ -175,6 +212,7 @@ export default async function handler(
       txJson,
       description,
       network,
+      initialSignedAddresses: [],
     });
     return res.status(201).json({ transaction, setup });
   } catch (error) {

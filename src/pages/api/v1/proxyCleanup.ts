@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { UTxO } from "@meshsdk/core";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
@@ -14,21 +15,26 @@ import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain"
 import {
   requireAuthTokenUtxo,
   resolveCollateralRefFromChain,
+  resolveSingleUtxoRefFromChain,
   type UtxoRef,
 } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
+import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
-  buildProxyVoteTx,
+  buildProxyCleanupSweepTx,
+  buildProxyCleanupTx,
   deriveProxyScripts,
-  type ProxyVoteInput,
 } from "@/lib/server/proxyTxBuilders";
-import { parseProposalId } from "@/lib/governance";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
   meshTxBuilderBody: unknown;
 };
+
+type CleanupMetadata =
+  | { phase: "sweep"; sweptProxyUtxos: string; preservedAuthTokens: string }
+  | { phase: "burn"; burnedAuthTokens: string };
 
 function parseParamUtxo(value: string): UtxoRef | null {
   try {
@@ -46,41 +52,54 @@ function parseParamUtxo(value: string): UtxoRef | null {
   return null;
 }
 
-function validateVotes(votes: unknown): ProxyVoteInput[] | { error: string } {
-  if (!Array.isArray(votes) || votes.length === 0) {
-    return { error: "votes must be a non-empty array" };
+function refKey(ref: UtxoRef): string {
+  return `${ref.txHash}:${ref.outputIndex}`;
+}
+
+async function resolveProxyCleanupUtxos(args: {
+  network: number;
+  proxyAddress: string;
+  proxyUtxoRefs?: UtxoRef[];
+}): Promise<{ utxos: UTxO[] } | { error: string; status: number }> {
+  let visibleUtxos: UTxO[];
+  try {
+    visibleUtxos = await getProvider(args.network).fetchAddressUTxOs(args.proxyAddress);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to fetch proxy UTxOs",
+      status: 400,
+    };
   }
 
-  const normalized: ProxyVoteInput[] = [];
-  for (const vote of votes) {
-    const candidate = vote as Partial<ProxyVoteInput>;
-    const proposalId =
-      typeof candidate.proposalId === "string" ? candidate.proposalId.trim() : "";
-    if (!proposalId) {
-      return { error: "Each vote requires proposalId" };
-    }
-    try {
-      parseProposalId(proposalId);
-    } catch (error) {
+  if (!Array.isArray(args.proxyUtxoRefs) || args.proxyUtxoRefs.length === 0) {
+    return { utxos: visibleUtxos };
+  }
+
+  const visibleRefs = new Set(visibleUtxos.map((utxo) => refKey(utxo.input)));
+  const requestedRefs = new Set(args.proxyUtxoRefs.map(refKey));
+  for (const visibleRef of visibleRefs) {
+    if (!requestedRefs.has(visibleRef)) {
       return {
-        error: error instanceof Error ? error.message : "Invalid proposalId",
+        error: "proxyUtxoRefs must include every currently visible proxy UTxO for cleanup",
+        status: 400,
       };
     }
-    if (
-      candidate.voteKind !== "Yes" &&
-      candidate.voteKind !== "No" &&
-      candidate.voteKind !== "Abstain"
-    ) {
-      return { error: "voteKind must be Yes, No, or Abstain" };
-    }
-    normalized.push({
-      proposalId,
-      voteKind: candidate.voteKind,
-      metadata: candidate.metadata,
-    });
   }
 
-  return normalized;
+  const utxos: UTxO[] = [];
+  for (const ref of args.proxyUtxoRefs) {
+    const resolved = await resolveSingleUtxoRefFromChain({
+      network: args.network,
+      ref,
+      expectedAddress: args.proxyAddress,
+    });
+    if ("error" in resolved) {
+      return resolved;
+    }
+    utxos.push(resolved.utxo);
+  }
+
+  return { utxos };
 }
 
 export default async function handler(
@@ -89,7 +108,7 @@ export default async function handler(
 ) {
   addCorsCacheBustingHeaders(res);
 
-  if (!applyRateLimit(req, res, { keySuffix: "v1/proxyVote" })) {
+  if (!applyRateLimit(req, res, { keySuffix: "v1/proxyCleanup" })) {
     return;
   }
 
@@ -122,9 +141,10 @@ export default async function handler(
     walletId?: string;
     address?: string;
     proxyId?: string;
-    votes?: unknown;
     utxoRefs?: UtxoRef[];
+    proxyUtxoRefs?: UtxoRef[];
     collateralRef?: UtxoRef;
+    deactivateProxy?: boolean;
     description?: string;
   };
 
@@ -133,11 +153,6 @@ export default async function handler(
   const proxyId = typeof body.proxyId === "string" ? body.proxyId : "";
   if (!walletId || !address || !proxyId) {
     return res.status(400).json({ error: "walletId, address, and proxyId are required" });
-  }
-
-  const votes = validateVotes(body.votes);
-  if ("error" in votes) {
-    return res.status(400).json({ error: votes.error });
   }
 
   let walletRow;
@@ -193,14 +208,6 @@ export default async function handler(
     return res.status(resolvedWalletUtxos.status).json({ error: resolvedWalletUtxos.error });
   }
 
-  const authTokenUtxo = requireAuthTokenUtxo(
-    resolvedWalletUtxos.utxos,
-    proxy.authTokenId,
-  );
-  if ("error" in authTokenUtxo) {
-    return res.status(authTokenUtxo.status).json({ error: authTokenUtxo.error });
-  }
-
   const resolvedCollateral = await resolveCollateralRefFromChain({
     network,
     collateralRef: body.collateralRef,
@@ -210,23 +217,59 @@ export default async function handler(
     return res.status(resolvedCollateral.status).json({ error: resolvedCollateral.error });
   }
 
+  const proxyUtxosResult = await resolveProxyCleanupUtxos({
+    network,
+    proxyAddress: proxy.proxyAddress,
+    proxyUtxoRefs: body.proxyUtxoRefs,
+  });
+  if ("error" in proxyUtxosResult) {
+    return res.status(proxyUtxosResult.status).json({ error: proxyUtxosResult.error });
+  }
+
   const txBuilder = getTxBuilder(network) as MeshTxBuilderWithBody;
-  let details: { dRepId: string };
+  let cleanup: CleanupMetadata;
   try {
-    details = buildProxyVoteTx({
-      txBuilder,
-      network,
-      paramUtxo,
-      walletUtxos: resolvedWalletUtxos.utxos,
-      authTokenUtxo,
-      collateral: resolvedCollateral.collateral,
-      walletAddress,
-      votes,
-      multisigScriptCbor: walletRow.scriptCbor,
-    });
+    if (proxyUtxosResult.utxos.length > 0) {
+      const authTokenUtxo = requireAuthTokenUtxo(
+        resolvedWalletUtxos.utxos,
+        proxy.authTokenId,
+      );
+      if ("error" in authTokenUtxo) {
+        return res.status(authTokenUtxo.status).json({ error: authTokenUtxo.error });
+      }
+      cleanup = {
+        phase: "sweep",
+        ...buildProxyCleanupSweepTx({
+          txBuilder,
+          network,
+          paramUtxo,
+          proxyAddress: proxy.proxyAddress,
+          proxyUtxos: proxyUtxosResult.utxos,
+          walletUtxos: resolvedWalletUtxos.utxos,
+          authTokenUtxo,
+          collateral: resolvedCollateral.collateral,
+          walletAddress,
+          multisigScriptCbor: walletRow.scriptCbor,
+        }),
+      };
+    } else {
+      cleanup = {
+        phase: "burn",
+        ...buildProxyCleanupTx({
+          txBuilder,
+          network,
+          paramUtxo,
+          walletUtxos: resolvedWalletUtxos.utxos,
+          collateral: resolvedCollateral.collateral,
+          walletAddress,
+          authTokenId: proxy.authTokenId,
+          multisigScriptCbor: walletRow.scriptCbor,
+        }),
+      };
+    }
   } catch (error) {
     return res.status(400).json({
-      error: error instanceof Error ? error.message : "Failed to build proxy vote",
+      error: error instanceof Error ? error.message : "Failed to build proxy cleanup",
     });
   }
 
@@ -234,7 +277,7 @@ export default async function handler(
   try {
     txCbor = await txBuilder.complete();
   } catch (error) {
-    console.error("proxyVote complete error:", error);
+    console.error("proxyCleanup complete error:", error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
@@ -243,7 +286,20 @@ export default async function handler(
   const description =
     typeof body.description === "string" && body.description.trim()
       ? body.description.trim()
-      : "Proxy governance vote";
+      : "Proxy cleanup transaction";
+  const txJson = {
+    ...(typeof txBuilder.meshTxBuilderBody === "object" &&
+    txBuilder.meshTxBuilderBody !== null
+      ? (txBuilder.meshTxBuilderBody as Record<string, unknown>)
+      : {}),
+    proxyBot: {
+      kind: "proxyCleanup",
+      proxyId,
+      cleanup,
+      deactivateProxy: body.deactivateProxy !== false,
+      description,
+    },
+  };
 
   try {
     const transaction = await createPendingMultisigTransaction(db, {
@@ -254,25 +310,14 @@ export default async function handler(
       },
       proposerAddress: address,
       txCbor,
-      txJson: {
-        ...(typeof txBuilder.meshTxBuilderBody === "object" &&
-        txBuilder.meshTxBuilderBody !== null
-          ? (txBuilder.meshTxBuilderBody as Record<string, unknown>)
-          : {}),
-        proxyBot: {
-          kind: "proxyVote",
-          proxyId,
-          dRepId: details.dRepId,
-          votes,
-        },
-      },
+      txJson,
       description,
       network,
       initialSignedAddresses: [],
     });
-    return res.status(201).json(transaction);
+    return res.status(201).json({ transaction, cleanup });
   } catch (error) {
-    console.error("proxyVote persist error:", error);
+    console.error("proxyCleanup persist error:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }

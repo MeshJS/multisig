@@ -229,6 +229,7 @@ export default async function handler(
   const resolvedCollateral = await resolveCollateralRefFromChain({
     network,
     collateralRef: body.collateralRef,
+    expectedAddress: address,
   });
   if ("error" in resolvedCollateral) {
     return res.status(resolvedCollateral.status).json({ error: resolvedCollateral.error });
@@ -301,6 +302,7 @@ export default async function handler(
       txJson: txBuilder.meshTxBuilderBody,
       description,
       network,
+      initialSignedAddresses: [],
     });
     return res.status(201).json(transaction);
   } catch (error) {

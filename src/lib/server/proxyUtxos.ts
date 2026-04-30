@@ -108,6 +108,12 @@ export async function resolveCollateralRefFromChain(args: {
       status: 400,
     };
   }
+  if (resolved.utxo.output.amount.some((asset) => asset.unit !== "lovelace")) {
+    return {
+      error: "collateralRef must resolve to an ADA-only UTxO",
+      status: 400,
+    };
+  }
 
   return { collateral: resolved.utxo };
 }

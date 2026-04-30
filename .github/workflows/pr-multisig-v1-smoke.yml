@@ -31,7 +31,7 @@ jobs:
   multisig-v1-smoke:
     if: github.repository == 'MeshJS/multisig'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       CI_JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
       CI_MNEMONIC_1: ${{ secrets.CI_MNEMONIC_1 }}
@@ -62,6 +62,27 @@ jobs:
           [[ -n "$CI_MNEMONIC_2" ]] || missing+=("CI_MNEMONIC_2")
           [[ -n "$CI_MNEMONIC_3" ]] || missing+=("CI_MNEMONIC_3")
           [[ -n "$CI_BLOCKFROST_PREPROD_API_KEY" ]] || missing+=("CI_BLOCKFROST_PREPROD_API_KEY")
+
+          route_scenarios=",${CI_ROUTE_SCENARIOS//[[:space:]]/},"
+          default_route_chain=false
+          if [[ -z "${CI_ROUTE_SCENARIOS//[[:space:]]/}" ]]; then
+            default_route_chain=true
+          fi
+
+          scenario_enabled() {
+            local scenario_id="$1"
+            [[ "$default_route_chain" == "true" || "$route_scenarios" == *",$scenario_id,"* ]]
+          }
+
+          if scenario_enabled "scenario.drep-certificates" || scenario_enabled "scenario.proxy-full-lifecycle"; then
+            [[ -n "$CI_DREP_ANCHOR_URL" ]] || missing+=("CI_DREP_ANCHOR_URL")
+          fi
+          if scenario_enabled "scenario.drep-certificates"; then
+            [[ -n "$CI_DREP_ANCHOR_JSON" ]] || missing+=("CI_DREP_ANCHOR_JSON")
+          fi
+          if scenario_enabled "scenario.stake-certificates"; then
+            [[ -n "$CI_STAKE_POOL_ID_HEX" ]] || missing+=("CI_STAKE_POOL_ID_HEX")
+          fi
 
           if [[ "${#missing[@]}" -gt 0 ]]; then
             echo "Missing required secrets: ${missing[*]}"
