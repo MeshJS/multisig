@@ -17,6 +17,9 @@ export const env = createEnv({
     JWT_SECRET: z.string().min(32),
     BLOCKFROST_API_KEY_PREPROD: z.string().optional(),
     BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
+    // NEXTAUTH_SECRET / NEXTAUTH_URL / DISCORD_* are intentionally commented.
+    // NextAuth runs with PrismaAdapter only — no auth providers configured yet.
+    // Uncomment and add to runtimeEnv below when adding an OAuth provider.
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
