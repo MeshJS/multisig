@@ -1,7 +1,7 @@
 import { loadBootstrapContext } from "../framework/context";
 import { runScenarios } from "../framework/runner";
 import { writeMarkdownReport } from "../framework/markdown";
-import { getScenarioManifest } from "../scenarios/manifest";
+import { getScenarioManifest, ROUTE_SCENARIO_IDS } from "../scenarios/manifest";
 import { requireEnv, parseCommaList } from "../framework/env";
 import { assertPreprodContext } from "../framework/preprod";
 
@@ -10,18 +10,15 @@ async function main() {
   const reportPath = requireEnv("CI_ROUTE_CHAIN_REPORT_PATH", "/tmp/ci-route-chain-report.md");
   const context = await loadBootstrapContext(contextPath);
   assertPreprodContext(context);
-  const allScenarios = getScenarioManifest(context);
   const requestedScenarioIds = parseCommaList(process.env.CI_ROUTE_SCENARIOS);
-  const allScenarioIds = new Set(allScenarios.map((scenario) => scenario.id));
+  const allScenarioIds = new Set<string>(ROUTE_SCENARIO_IDS);
   const unknownScenarioIds = requestedScenarioIds.filter((id) => !allScenarioIds.has(id));
   if (unknownScenarioIds.length) {
     throw new Error(
       `Unknown scenario id(s) in CI_ROUTE_SCENARIOS: ${unknownScenarioIds.join(", ")}. Available: ${Array.from(allScenarioIds).join(", ")}`,
     );
   }
-  const scenarios = requestedScenarioIds.length
-    ? allScenarios.filter((scenario) => requestedScenarioIds.includes(scenario.id))
-    : allScenarios;
+  const scenarios = getScenarioManifest(context, requestedScenarioIds);
 
   if (!scenarios.length) {
     throw new Error(

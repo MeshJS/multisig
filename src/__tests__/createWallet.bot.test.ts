@@ -209,7 +209,7 @@ describe("createWallet bot API", () => {
         data: expect.objectContaining({
           scriptCbor: "explicit-script-cbor",
           type: "all",
-          numRequiredSigners: null,
+          numRequiredSigners: 1,
         }),
       }),
     );
@@ -238,6 +238,81 @@ describe("createWallet bot API", () => {
             },
           ],
         },
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(createWalletMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "all",
+          numRequiredSigners: 1,
+        }),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("persists the computed threshold for explicit hierarchical scripts", async () => {
+    resolvePaymentKeyHashMock
+      .mockReturnValueOnce("hash-1")
+      .mockReturnValueOnce("hash-2")
+      .mockReturnValueOnce("hash-3");
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        name: "Wallet",
+        signersAddresses: [
+          "addr_test1qpsigner0000000000000000000000000000000000",
+          "addr_test1qpsigner1111111111111111111111111111111111",
+          "addr_test1qpsigner2222222222222222222222222222222222",
+        ],
+        scriptType: "all",
+        paymentNativeScript: {
+          type: "all",
+          scripts: [
+            {
+              type: "atLeast",
+              required: 2,
+              scripts: [
+                { type: "sig", keyHash: "hash-1" },
+                { type: "sig", keyHash: "hash-2" },
+                { type: "sig", keyHash: "hash-3" },
+              ],
+            },
+          ],
+        },
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(createWalletMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "all",
+          numRequiredSigners: 2,
+        }),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("keeps flat all wallets without explicit scripts as all-of-N metadata", async () => {
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        name: "Wallet",
+        signersAddresses: [
+          "addr_test1qpsigner0000000000000000000000000000000000",
+          "addr_test1qpsigner1111111111111111111111111111111111",
+        ],
+        scriptType: "all",
       },
     } as unknown as NextApiRequest;
     const res = createMockResponse();

@@ -11,6 +11,7 @@ const verifyJwtMock: jest.Mock = jest.fn();
 const isBotJwtMock: jest.Mock = jest.fn();
 const assertBotWalletAccessMock: jest.Mock = jest.fn();
 const createTransactionMock: jest.Mock = jest.fn();
+const transactionFromHexMock: jest.Mock = jest.fn();
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -41,6 +42,15 @@ jest.mock("@/utils/get-provider", () => ({
   getProvider: () => ({ submitTx: jest.fn() }),
 }), { virtual: true });
 
+jest.mock("@meshsdk/core-csl", () => ({
+  __esModule: true,
+  csl: {
+    Transaction: {
+      from_hex: transactionFromHexMock,
+    },
+  },
+}), { virtual: true });
+
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {
@@ -63,6 +73,7 @@ beforeEach(() => {
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue(makeBotJwtPayload());
   isBotJwtMock.mockReturnValue(true);
+  transactionFromHexMock.mockReturnValue({});
   (assertBotWalletAccessMock as any).mockResolvedValue({
     wallet: { id: "wallet-1", signersAddresses: [BOT_TEST_ADDRESS], numRequiredSigners: 2, type: "atLeast" },
     role: "cosigner",

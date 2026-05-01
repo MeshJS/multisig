@@ -4,6 +4,11 @@ import { getBotForSignerIndex } from "../../framework/botContext";
 import { authenticateBot } from "../../framework/botAuth";
 import { stringifyRedacted } from "../../framework/redact";
 import { parseMnemonic } from "../../framework/mnemonic";
+import {
+  SIGN_TRANSACTION_REQUEST_OPTIONS,
+  selectPendingTransactionForSigning,
+  type PendingTransactionForSigning,
+} from "./signingFlow";
 
 /**
  * Signs a pending certificate transaction using BOTH the signer's payment key
@@ -71,7 +76,7 @@ export async function runStakeCertSigningFlow(args: {
 
   const signerToken = await authenticateBot({ ctx, bot: signerBot });
 
-  const pendingResponse = await requestJson<Array<{ id: string; txCbor?: string }> | { error?: string }>({
+  const pendingResponse = await requestJson<PendingTransactionForSigning[] | { error?: string }>({
     url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(selectedWallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
     method: "GET",
     token: signerToken,
@@ -85,12 +90,7 @@ export async function runStakeCertSigningFlow(args: {
     throw new Error("No pending transactions to sign for sdk wallet");
   }
 
-  const tx =
-    pendingResponse.data.find((p) => p.id === args.preferredTransactionId) ??
-    pendingResponse.data.find((p) => typeof p.txCbor === "string" && p.txCbor.length > 0);
-  if (!tx?.txCbor) {
-    throw new Error("Pending transactions exist but none include txCbor");
-  }
+  const tx = selectPendingTransactionForSigning(pendingResponse.data, args.preferredTransactionId);
 
   const signedPayloadHex = await signerWallet.signTx(tx.txCbor, true);
 
@@ -204,6 +204,7 @@ export async function runStakeCertSigningFlow(args: {
     url: `${ctx.apiBaseUrl}/api/v1/signTransaction`,
     method: "POST",
     token: signerToken,
+    ...SIGN_TRANSACTION_REQUEST_OPTIONS,
     body: signBody,
   });
 

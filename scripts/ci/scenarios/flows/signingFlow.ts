@@ -6,6 +6,40 @@ import { stringifyRedacted } from "../../framework/redact";
 import { parseMnemonic } from "../../framework/mnemonic";
 import { normalizeWalletTypeFromLabel } from "../../framework/walletType";
 
+export type PendingTransactionForSigning = { id: string; txCbor?: string };
+
+// signTransaction mutates the pending tx before broadcast. Retrying a 502 can
+// turn the useful submission error into a duplicate-signature 409.
+export const SIGN_TRANSACTION_REQUEST_OPTIONS = {
+  retries: 0,
+} as const;
+
+export function selectPendingTransactionForSigning(
+  pendingTransactions: PendingTransactionForSigning[],
+  preferredTransactionId?: string,
+): PendingTransactionForSigning & { txCbor: string } {
+  if (preferredTransactionId) {
+    const tx = pendingTransactions.find((p) => p.id === preferredTransactionId);
+    if (!tx) {
+      throw new Error(`Preferred pending transaction ${preferredTransactionId} was not found`);
+    }
+    if (!tx.txCbor) {
+      throw new Error(`Preferred pending transaction ${preferredTransactionId} does not include txCbor`);
+    }
+    return { ...tx, txCbor: tx.txCbor };
+  }
+
+  const tx = pendingTransactions.find((p) => typeof p.txCbor === "string" && p.txCbor.length > 0);
+  if (!tx) {
+    throw new Error("Pending transactions exist but none include txCbor");
+  }
+  const txCbor = tx.txCbor;
+  if (!txCbor) {
+    throw new Error("Pending transactions exist but none include txCbor");
+  }
+  return { ...tx, txCbor };
+}
+
 export async function runSigningFlow(args: {
   ctx: CIBootstrapContext;
   mnemonic: string;
@@ -22,6 +56,7 @@ export async function runSigningFlow(args: {
   signerAddress: string;
   status: number;
   submitted?: boolean;
+  txHash?: string;
 }> {
   const { ctx, mnemonic } = args;
   const targetWalletType = normalizeWalletTypeFromLabel(args.signWalletType ?? "legacy");
@@ -59,7 +94,7 @@ export async function runSigningFlow(args: {
 
   const signerToken = await authenticateBot({ ctx, bot: signerBot });
 
-  const pendingResponse = await requestJson<Array<{ id: string; txCbor?: string }> | { error?: string }>({
+  const pendingResponse = await requestJson<PendingTransactionForSigning[] | { error?: string }>({
     url: `${ctx.apiBaseUrl}/api/v1/pendingTransactions?walletId=${encodeURIComponent(selectedWallet.walletId)}&address=${encodeURIComponent(signerAddress)}`,
     method: "GET",
     token: signerToken,
@@ -73,12 +108,7 @@ export async function runSigningFlow(args: {
     throw new Error(`No pending transactions to sign for wallet type ${targetWalletType}`);
   }
 
-  const tx =
-    pendingResponse.data.find((p) => p.id === args.preferredTransactionId) ??
-    pendingResponse.data.find((p) => typeof p.txCbor === "string" && p.txCbor.length > 0);
-  if (!tx?.txCbor) {
-    throw new Error("Pending transactions exist but none include txCbor");
-  }
+  const tx = selectPendingTransactionForSigning(pendingResponse.data, args.preferredTransactionId);
 
   const signedPayloadHex = await signerWallet.signTx(tx.txCbor, true);
 
@@ -116,6 +146,7 @@ export async function runSigningFlow(args: {
     url: `${ctx.apiBaseUrl}/api/v1/signTransaction`,
     method: "POST",
     token: signerToken,
+    ...SIGN_TRANSACTION_REQUEST_OPTIONS,
     body: {
       walletId: selectedWallet.walletId,
       transactionId: tx.id,
@@ -144,5 +175,6 @@ export async function runSigningFlow(args: {
     signerAddress,
     status: signResponse.status,
     submitted: signResponse.data?.submitted,
+    txHash: signResponse.data?.txHash,
   };
 }

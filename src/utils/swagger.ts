@@ -335,7 +335,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build DRep registration or retirement transaction",
           description:
-            "Server builds DRep register/retire (non-proxy). Bots need multisig:sign. For register, anchorUrl is required; server fetches JSON and computes hashDrepAnchor. Optional anchorDataHash must match computed hash. utxoRefs must list UTxOs at the multisig spend address.",
+            "Server builds DRep register/retire (non-proxy). Bots need multisig:sign. For register, anchorUrl and anchorJson are required; the server does not fetch anchorUrl and computes hashDrepAnchor from the provided anchorJson object. utxoRefs must list UTxOs at the multisig spend address.",
           requestBody: {
             required: true,
             content: {
@@ -359,7 +359,7 @@ This API uses **Bearer Token** authentication (JWT).
                     },
                     description: { type: "string" },
                     anchorUrl: { type: "string" },
-                    anchorDataHash: { type: "string" },
+                    anchorJson: { type: "object" },
                   },
                   required: ["walletId", "address", "action", "utxoRefs"],
                 },
@@ -373,6 +373,417 @@ This API uses **Bearer Token** authentication (JWT).
             403: { description: "Forbidden or insufficient bot scope" },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/proxies": {
+        get: {
+          tags: ["V1", "Bot"],
+          summary: "List active confirmed proxies for a wallet",
+          description:
+            "Returns active Proxy rows for a wallet. Human callers must be wallet signers. Bot callers may use observer or cosigner wallet access.",
+          parameters: [
+            { in: "query", name: "walletId", required: true, schema: { type: "string" } },
+            {
+              in: "query",
+              name: "address",
+              required: true,
+              schema: { type: "string" },
+              description: "Must match JWT address",
+            },
+          ],
+          responses: {
+            200: {
+              description: "Active proxy records",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        walletId: { type: "string" },
+                        proxyAddress: { type: "string" },
+                        authTokenId: { type: "string" },
+                        paramUtxo: { type: "string" },
+                        description: { type: "string", nullable: true },
+                        isActive: { type: "boolean" },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid query parameters" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden" },
+            404: { description: "Wallet not found" },
+          },
+        },
+      },
+      "/api/v1/proxyDRepInfo": {
+        get: {
+          tags: ["V1", "Bot"],
+          summary: "Get proxy DRep registration status",
+          description:
+            "Returns the on-chain active status for the DRep credential derived from a confirmed proxy. Human callers must be wallet signers. Bot callers may use observer or cosigner wallet access.",
+          parameters: [
+            { in: "query", name: "walletId", required: true, schema: { type: "string" } },
+            {
+              in: "query",
+              name: "address",
+              required: true,
+              schema: { type: "string" },
+              description: "Must match JWT address",
+            },
+            { in: "query", name: "proxyId", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            200: {
+              description: "Proxy DRep status",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      active: { type: "boolean" },
+                      dRepId: { type: "string" },
+                    },
+                    required: ["active", "dRepId"],
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid query parameters" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden" },
+            404: { description: "Wallet or proxy not found" },
+            409: { description: "Stored proxy metadata mismatch" },
+            500: { description: "Blockfrost or server error" },
+          },
+        },
+      },
+      "/api/v1/proxySetup": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Build a proxy setup transaction",
+          description:
+            "Builds a Plutus proxy setup transaction, persists it through the multisig pending transaction flow with no initial signed addresses, and returns derived setup metadata. Bots need multisig:sign and cosigner access. Proxy rows are not created until POST /api/v1/proxySetupFinalize validates confirmed chain state.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string", description: "Must match JWT address" },
+                    utxoRefs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          txHash: { type: "string" },
+                          outputIndex: { type: "integer" },
+                        },
+                        required: ["txHash", "outputIndex"],
+                      },
+                    },
+                    collateralRef: {
+                      type: "object",
+                      properties: {
+                        txHash: { type: "string" },
+                        outputIndex: { type: "integer" },
+                      },
+                      required: ["txHash", "outputIndex"],
+                    },
+                    initialProxyLovelace: {
+                      type: "string",
+                      description:
+                        "Optional positive integer lovelace amount to place at the proxy address during setup. Defaults to 1000000 when omitted.",
+                      example: "5000000",
+                    },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "utxoRefs", "collateralRef"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Pending/submitted transaction plus setup metadata" },
+            400: { description: "Invalid input or UTxO refs" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            500: { description: "Build or persistence failure" },
+          },
+        },
+      },
+      "/api/v1/proxySetupFinalize": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Finalize a confirmed proxy setup",
+          description:
+            "Creates the confirmed Proxy row after setup is on-chain. The server validates that txHash created a proxy-address output and returned the auth token to the multisig wallet, then validates current chain state before creating or reactivating the row.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string", description: "Must match JWT address" },
+                    txHash: {
+                      type: "string",
+                      description:
+                        "Confirmed setup transaction hash. The transaction outputs must include the proxy address and the auth token at the multisig wallet address.",
+                    },
+                    proxyAddress: { type: "string" },
+                    authTokenId: { type: "string" },
+                    paramUtxo: {
+                      type: "object",
+                      properties: {
+                        txHash: { type: "string" },
+                        outputIndex: { type: "integer" },
+                      },
+                      required: ["txHash", "outputIndex"],
+                    },
+                    description: { type: "string" },
+                  },
+                  required: [
+                    "walletId",
+                    "address",
+                    "txHash",
+                    "proxyAddress",
+                    "authTokenId",
+                    "paramUtxo",
+                  ],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Confirmed Proxy row" },
+            400: { description: "Missing metadata or chain validation failed" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Wallet not found" },
+          },
+        },
+      },
+      "/api/v1/proxySpend": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Build a proxy spend transaction",
+          description:
+            "Builds a proxy script spend transaction and persists it through the multisig pending transaction flow with no initial signed addresses. Requires an auth-token UTxO at the multisig wallet address. If proxyUtxoRefs is omitted, the server selects enough proxy-address UTxOs for the requested outputs plus fee buffer. Bots need multisig:sign and cosigner access.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string" },
+                    proxyId: { type: "string" },
+                    outputs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          address: { type: "string" },
+                          unit: { type: "string" },
+                          amount: { type: "string" },
+                        },
+                        required: ["address", "unit", "amount"],
+                      },
+                    },
+                    utxoRefs: { type: "array", items: { type: "object" } },
+                    proxyUtxoRefs: { type: "array", items: { type: "object" } },
+                    collateralRef: { type: "object" },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "proxyId", "outputs", "utxoRefs", "collateralRef"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Transaction created or submitted" },
+            400: { description: "Invalid input, UTxO refs, collateral, or missing auth token" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Proxy not found" },
+            409: { description: "Stored proxy metadata mismatch" },
+          },
+        },
+      },
+      "/api/v1/proxyDRepCertificate": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Build a proxy DRep certificate transaction",
+          description:
+            "Registers, updates, or deregisters the proxy script DRep through the pending multisig flow with no initial signed addresses. The server computes hashDrepAnchor(anchorJson) for register/update and requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string" },
+                    proxyId: { type: "string" },
+                    action: { type: "string", enum: ["register", "update", "deregister"] },
+                    utxoRefs: { type: "array", items: { type: "object" } },
+                    collateralRef: { type: "object" },
+                    anchorUrl: { type: "string" },
+                    anchorJson: { type: "object" },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "proxyId", "action", "utxoRefs", "collateralRef"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Transaction created or submitted" },
+            400: { description: "Invalid input, anchor payload, UTxO refs, or collateral" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Proxy not found" },
+            409: { description: "Stored proxy metadata mismatch" },
+          },
+        },
+      },
+      "/api/v1/proxyVote": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Build a proxy DRep vote transaction",
+          description:
+            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex>. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string" },
+                    proxyId: { type: "string" },
+                    votes: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          proposalId: { type: "string" },
+                          voteKind: { type: "string", enum: ["Yes", "No", "Abstain"] },
+                          metadata: {},
+                        },
+                        required: ["proposalId", "voteKind"],
+                      },
+                    },
+                    utxoRefs: { type: "array", items: { type: "object" } },
+                    collateralRef: { type: "object" },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "proxyId", "votes", "utxoRefs", "collateralRef"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Transaction created or submitted" },
+            400: { description: "Invalid input, proposal id, UTxO refs, or collateral" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Proxy not found" },
+            409: { description: "Stored proxy metadata mismatch" },
+          },
+        },
+      },
+      "/api/v1/proxyCleanup": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Build a proxy cleanup transaction",
+          description:
+            "Builds the next safe cleanup transaction through the multisig pending transaction flow with no initial signed addresses. If the proxy address still has UTxOs, the transaction sweeps them back to the multisig wallet while preserving an auth token. Once the proxy address is empty, the transaction burns all auth tokens. Bots need multisig:sign and cosigner access. The Proxy row is deactivated only after POST /api/v1/proxyCleanupFinalize validates the confirmed burn transaction hash and current chain state.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string" },
+                    proxyId: { type: "string" },
+                    utxoRefs: { type: "array", items: { type: "object" } },
+                    proxyUtxoRefs: {
+                      type: "array",
+                      items: { type: "object" },
+                      description:
+                        "Optional explicit proxy-address UTxOs to sweep. When provided, it must include every currently visible proxy UTxO.",
+                    },
+                    collateralRef: { type: "object" },
+                    deactivateProxy: { type: "boolean", default: true },
+                    description: { type: "string" },
+                  },
+                  required: ["walletId", "address", "proxyId", "utxoRefs", "collateralRef"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Pending/submitted cleanup transaction plus cleanup metadata" },
+            400: { description: "Invalid input, UTxO refs, collateral, or auth-token count" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Proxy not found" },
+            409: { description: "Stored proxy metadata mismatch" },
+          },
+        },
+      },
+      "/api/v1/proxyCleanupFinalize": {
+        post: {
+          tags: ["V1", "Bot"],
+          summary: "Finalize a confirmed proxy cleanup",
+          description:
+            "Deactivates a Proxy row after cleanup is confirmed on-chain. The server validates that txHash spent the auth token without recreating it or a proxy-address output, then checks that auth tokens are no longer visible at the multisig wallet or proxy address and the proxy address has no remaining UTxOs.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    address: { type: "string" },
+                    proxyId: { type: "string" },
+                    txHash: {
+                      type: "string",
+                      description:
+                        "Confirmed cleanup burn transaction hash. The transaction must spend the auth token without recreating auth-token or proxy-address outputs.",
+                    },
+                    deactivateProxy: { type: "boolean", default: true },
+                  },
+                  required: ["walletId", "address", "proxyId", "txHash"],
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: "Deactivated Proxy row" },
+            400: { description: "Missing metadata or chain validation failed" },
+            401: { description: "Unauthorized" },
+            403: { description: "Forbidden or insufficient bot scope" },
+            404: { description: "Proxy not found" },
           },
         },
       },

@@ -7,6 +7,7 @@ import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
 import {
   collectSigKeyHashes,
+  computeRequiredSigners,
   decodedToNativeScript,
   type DecodedNativeScript,
 } from "@/utils/nativeScriptUtils";
@@ -276,9 +277,11 @@ export default async function handler(
 
   const effectiveScriptType = paymentNativeScript ? "all" : scriptType;
   const numRequired =
-    effectiveScriptType === "all" || effectiveScriptType === "any"
-      ? null
-      : numRequiredSigners;
+    paymentNativeScript
+      ? computeRequiredSigners(paymentNativeScript)
+      : effectiveScriptType === "all" || effectiveScriptType === "any"
+        ? null
+        : numRequiredSigners;
 
   let scriptCbor: string;
   let address: string;

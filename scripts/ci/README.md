@@ -55,8 +55,9 @@ CI runs these stages in order:
   - `redact.ts`: recursive sensitive-value redaction for log-safe JSON serialisation.
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering only.
-  - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts` (reusable multisig sign, real transfer builders, and stake-cert signing with dual payment+stake witnesses).
-  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, `walletLifecycle.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
+  - `proxyLifecyclePreflight.ts`: proxy lifecycle ADA/UTxO budget constants and shape analysis.
+  - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts`, `utxoShapeFlow.ts` (reusable multisig sign, real transfer builders, stake-cert signing with dual payment+stake witnesses, and proxy lifecycle self-split shaping).
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, `walletLifecycle.ts`, `proxyBot.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
 
 ### Full scenario execution order
 
@@ -66,17 +67,19 @@ The manifest runs scenarios in this fixed sequence:
 |---|-------------|-------------|
 | 1 | `scenario.wallet-discovery` | always |
 | 2 | `scenario.ada-route-health` | always |
-| 3 | `scenario.bot-identity` | always |
-| 4 | `scenario.auth-plane` | always |
-| 5 | `scenario.create-wallet` | always |
-| 6 | `scenario.submit-datum` | always |
-| 7 | `scenario.governance-routes` | always |
-| 8 | `scenario.drep-certificates` | legacy + sdk wallets present |
-| 9 | `scenario.stake-certificates` | sdk wallet present |
-| 10 | `scenario.real-transfer-and-sign` | always (all 3 wallet types required) |
-| 11 | `scenario.final-assertions` | always |
+| 3 | `scenario.create-wallet` | always |
+| 4 | `scenario.bot-identity` | always |
+| 5 | `scenario.auth-plane` | always |
+| 6 | `scenario.proxy-smoke` | always |
+| 7 | `scenario.submit-datum` | always |
+| 8 | `scenario.governance-routes` | always |
+| 9 | `scenario.drep-certificates` | legacy + sdk wallets present |
+| 10 | `scenario.stake-certificates` | sdk wallet present |
+| 11 | `scenario.proxy-full-lifecycle` | legacy, hierarchical, and/or sdk wallets present |
+| 12 | `scenario.real-transfer-and-sign` | always (all 3 wallet types required) |
+| 13 | `scenario.final-assertions` | always |
 
-Certificate scenarios (8–9) run before the ring transfer so they spend confirmed UTxOs; the ring transfer would put those UTxOs in the mempool and create a race.
+Certificate scenarios (9–10) run before the ring transfer so they spend confirmed UTxOs; the ring transfer would put those UTxOs in the mempool and create a race.
 
 ### Subset runs
 
@@ -85,7 +88,7 @@ Use a comma-separated `CI_ROUTE_SCENARIOS` filter (same mechanism as the workflo
 Quick auth + discovery smoke (no on-chain transfers, finishes in seconds):
 
 ```bash
-CI_ROUTE_SCENARIOS=scenario.wallet-discovery,scenario.ada-route-health,scenario.bot-identity,scenario.auth-plane
+CI_ROUTE_SCENARIOS=scenario.wallet-discovery,scenario.ada-route-health,scenario.bot-identity,scenario.auth-plane,scenario.proxy-smoke
 ```
 
 Wallet creation API only:
@@ -106,15 +109,16 @@ Set `CI_ROUTE_CHAIN_REPORT_PATH` if you want a separate report file for that run
 
 The manifest currently covers:
 
-- route discovery (`walletIds`)
+- route discovery (`walletIds`, `proxies`)
 - **pending-transactions zero-check** at bootstrap for each wallet type — catches stale state from a previous incomplete run before the ring transfer begins
 - **public wallet lookup** (`lookupMultisigWallet`) — smoke-tests the unauthenticated on-chain metadata lookup endpoint
 - route health checks (`freeUtxos`, `nativeScript`) — `nativeScript` now asserts a `payment` script entry is present and, when the root type is `atLeast`, that `required` matches `CI_NUM_REQUIRED_SIGNERS`
+- **wallet creation via API** (`createWallet`) — creates a wallet through the bot-authenticated API path and confirms it appears in `walletIds`; runs early to avoid prior default-bot smoke checks consuming the shared bot rate-limit budget
 - bot identity (`botAuth` explicit response shape, `botMe`)
 - auth-plane checks (`getNonce`, `authSigner`)
 - explicit auth negative checks (`walletIds`, `addTransaction`, `pendingTransactions`, `drepInfo`, `stakeAccountInfo`, `createWallet`) — `drepInfo`/`stakeAccountInfo`/`createWallet` check for missing token (401); `walletIds`/`addTransaction` check for address mismatch (403); `pendingTransactions` checks for missing token (401)
+- proxy smoke checks (`proxies`, malformed proxy mutating routes) plus full proxy lifecycle coverage (`proxySetup`, `proxySpend`, proxy DRep register/deregister, optional proxy vote, cleanup, finalization)
 - **`signTransaction` input validation** — asserts a non-existent `transactionId` returns 404, not 500 (requires `CI_MNEMONIC_2`; step is non-critical and skips gracefully if the env var is absent)
-- **wallet creation via API** (`createWallet`) — creates a wallet through the bot-authenticated API path and confirms it appears in `walletIds`
 - datum route coverage (`submitDatum`)
 - governance routes (`governanceActiveProposals`, `botBallotsUpsert`)
 - **DRep certificate registration and retirement** (`botDRepCertificate`) — legacy and SDK wallets
@@ -122,6 +126,26 @@ The manifest currently covers:
 - real multisig-wallet ring transfer + sign path
 - pending lifecycle assertions for ring transfer txs only
 - final state assertions after transfer/sign progression
+
+### Proxy bot scenarios
+
+`scenario.proxy-smoke` runs by default and performs authenticated `proxies` read checks plus negative validation checks that should fail before chain mutation.
+
+`scenario.proxy-full-lifecycle` runs by default in PR smoke for `legacy`, `hierarchical`, and `sdk` wallets when present. The hierarchical coverage reuses the wallet already created for route-chain context and the ring transfer; it does not add a new bootstrap wallet path. It starts each eligible wallet type with three pre-hygiene steps before normal setup: chain recovery reconstructs missing `Proxy` rows from proxy auth tokens still visible at the current CI wallet address, row adoption reattaches valid rows from historical deterministic CI wallets, and hygiene cleans any active rows before the new lifecycle begins. It then runs UTxO shaping and a funding preflight that fetches fresh `freeUtxos`. The hardcoded lifecycle budget is 536 ADA per eligible wallet: 505 ADA DRep registration, 10 ADA initial proxy funding, 1 ADA planned proxy spend, and a 20 ADA fee buffer. Because collateral is reserved outside selected spend inputs, the practical minimum post-shape layout is at least 536 ADA selectable at the multisig wallet address plus a separate ADA-only bot payment-address collateral UTxO. The self-split path needs enough total ADA to leave that 536 ADA selectable budget, create a 6 ADA collateral output, and cover a 2 ADA self-split fee buffer. Adding hierarchical means default PR smoke needs that budget available for one more wallet. Proxy DRep registration uses `CI_DREP_ANCHOR_URL` as the on-chain anchor URL and sends an inline route-chain `anchorJson`; it does not use `CI_DREP_ANCHOR_JSON`.
+
+The first full-lifecycle steps for each eligible wallet type are ordered as:
+
+1. `v1.proxy.full.recoverFromChain.<walletType>`
+2. `v1.proxy.full.adoptOrphans.<walletType>`
+3. `v1.proxy.full.hygiene.<walletType>`
+4. `v1.proxy.full.utxoShape.<walletType>`
+5. `v1.proxy.full.preflight.<walletType>`
+
+Chain recovery is CI-only and evidence-based. It scans non-lovelace assets at the current bootstrap `walletAddress`, asks Blockfrost for each asset's mint transaction, tests the mint transaction inputs as candidate `paramUtxo` values with `deriveProxyScripts`, and only creates or reactivates a `Proxy` row when the derived `authTokenId` exactly matches the observed asset unit. This handles clean-database rebuilds where old proxy auth tokens and proxy DReps remain on-chain but the app has no `Proxy` rows. It cannot recover a proxy if the auth token is no longer discoverable at the current CI wallet address.
+
+When preflight passes, each eligible wallet lifecycle creates its own proxy, finalizes the confirmed setup, exercises proxy spend, proxy DRep register/deregister, optional proxy voting when active governance proposals exist, then runs safe cleanup and asserts the proxy no longer appears in `GET /api/v1/proxies`. Proxy actions always use bot payment-address collateral that is distinct from selected wallet spend inputs; DRep registration selects an auth-token input plus additional wallet inputs when needed to meet the registration budget. The proposer/collateral owner is signer index 0 (`CI_MNEMONIC_1`), and signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 proxy actions. After each broadcasted proxy action, the route-chain waits for the selected wallet inputs to disappear from fresh `freeUtxos` before proposing the next action. Cleanup may require two submitted transactions: a sweep transaction that empties the proxy address while preserving an auth token, followed by a burn transaction and cleanup finalization. If the initial cleanup call already returns a burn transaction, the optional burn proposal is skipped after that transaction is signed. Because this scenario runs on every PR, the default CI legacy, hierarchical, and SDK wallets must stay funded; one-UTxO shape problems are repaired by the self-split step, while true budget failures still fail the route-chain rather than skipping proxy lifecycle coverage.
+
+Runtime expectation: `scenario.proxy-smoke` is the quick, non-mutating proxy subset. `scenario.proxy-full-lifecycle` is a real-chain scenario with multiple broadcasts per eligible wallet and can dominate default PR smoke duration during slow preprod/Blockfrost periods. The GitHub Actions job timeout is intentionally higher than the nominal happy path to leave room for confirmation polling.
 
 For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) and the list of script entry types (`artifacts.scriptTypes`) inside `ci-route-chain-report.md`, so script structure is visible during CI triage.
 
@@ -153,7 +177,7 @@ Each leg is asserted as pending immediately after `addTransaction`, then asserte
 
 ### Create-wallet scenario (`scenario.create-wallet`)
 
-Runs after `scenario.auth-plane`. Requires `multisig:create` scope on the CI bot (provisioned by default).
+Runs after the early discovery and ADA route-health checks, before request-heavy default-bot scenarios. This keeps the app's rate-limit behavior intact while avoiding earlier smoke checks consuming the shared bot rate-limit budget before the positive wallet creation assertion. Requires `multisig:create` scope on the CI bot (provisioned by default).
 
 **Step 1** — calls `POST /api/v1/createWallet` with the CI signer addresses and the `CI_NUM_REQUIRED_SIGNERS` threshold. Asserts the response is 201 with a `walletId` and `address`.
 
@@ -218,9 +242,10 @@ Primary variables (in workflow/compose):
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
 - `CI_TRANSFER_LOVELACE` (optional transfer amount)
-- `CI_DREP_ANCHOR_URL` (required for `scenario.drep-certificates`): the URL string stored in the on-chain anchor — passed as-is to the API, never fetched.
-- `CI_DREP_ANCHOR_JSON` (required for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
+- `CI_DREP_ANCHOR_URL` (required by the default run for `scenario.drep-certificates` and `scenario.proxy-full-lifecycle`): the URL string stored in the on-chain anchor — passed as-is to the API, never fetched.
+- `CI_DREP_ANCHOR_JSON` (required by the default run for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
+- `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`429`, `418`, and selected `5xx`). Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
 
 Validation notes:
 
@@ -229,8 +254,9 @@ Validation notes:
 - `CI_WALLET_TYPES` must contain only `legacy`, `hierarchical`, `sdk`; invalid values fail fast.
 - The default full route-chain (including ring transfer scenario) requires all three wallet types (`legacy`, `hierarchical`, `sdk`) to be present.
 - `CI_ROUTE_SCENARIOS` values must exist in `scenarios/manifest.ts`; unknown ids fail fast.
-- `CI_MNEMONIC_2` and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing.
+- `CI_MNEMONIC_1`, `CI_MNEMONIC_2`, and `CI_MNEMONIC_3` must derive signer addresses from bootstrap context for multi-signer route-chain signing. Signer indexes are zero-based relative to `wallet.signerAddresses`.
 - `CI_STAKE_POOL_ID_HEX` must be set when running `scenario.stake-certificates`; the scenario throws at proposal time if `ctx.stakePoolIdHex` is absent.
+- Proxy full lifecycle runs by default for legacy, hierarchical, and SDK wallets when present. Before new proxy setup, route-chain first recovers any chain-discoverable proxy rows, adopts historical rows for the same deterministic wallet script, and runs hygiene so stale proxy DReps/auth tokens are cleaned centrally. Those CI wallets must each have enough selectable multisig-wallet ADA for initial proxy funding, the planned proxy spend, DRep registration, and fee headroom, plus an ADA-only collateral UTxO at `bot.paymentAddress`. If total ADA is sufficient but the UTxO shape is not, route-chain self-splits it before proxy preflight by creating a 6 ADA collateral output at `bot.paymentAddress`. The proxy collateral is selected from `bot.paymentAddress`, which is signer index 0 in the bootstrap wallet context.
 - Source multisig wallet script addresses must be funded on preprod for each ring leg (`legacy -> hierarchical -> sdk -> legacy`).
 - `CI_JWT_SECRET` must remain the same between bootstrap and route-chain, because bot auth secrets are deterministically derived from it.
 - CI bot keys are provisioned with scopes: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`.
@@ -284,9 +310,21 @@ Safe-to-print checklist for new route/scenario code:
 1. **Run header** — overall status, timestamp, duration, network, wallet types.
 2. **Wallet balances table** — UTxO count and ADA balance per wallet type at run end. Native asset counts noted when present.
 3. **Scenario summary table** — pass/fail, step pass rate, and duration per scenario.
-4. **Step detail sections** — one subsection per scenario with a step table (step ID, duration, result message). Failed steps include their error and artifacts as code blocks.
+4. **Step detail sections** — one subsection per scenario with a step table (step ID, duration, result message). Failed steps include their error and artifacts as code blocks. Passing step artifacts are intentionally omitted from Markdown, so use the step message and rerun targeted scenarios when detailed recovery diagnostics are needed.
 
 Balance source: direct on-chain UTxO lookup per wallet address from bootstrap context (includes UTxOs referenced by pending transactions). Lovelace values shown as ADA (2 d.p.). If balance collection fails, a warning line replaces the table.
+
+## Proxy Full Lifecycle UTxO Shaping
+
+`scenario.proxy-full-lifecycle` needs a wallet script UTxO for proxy setup/spend and a separate key-address collateral UTxO at `bot.paymentAddress` for each eligible wallet type (`legacy`, `hierarchical`, `sdk`). When a funded wallet has enough ADA but lacks the required wallet/key UTxO shape, the route-chain now performs an idempotent self-split before the proxy preflight:
+
+- If fresh `freeUtxos` plus fresh `bot.paymentAddress` UTxOs already satisfy the lifecycle budget and key collateral shape, the shaping step is a no-op.
+- If wallet ADA is sufficient but the shape is not, the step submits a real preprod self-split through `/api/v1/addTransaction`, creating a 6 ADA collateral output at `bot.paymentAddress` and returning the rest as change to the wallet script address. The split requires the 536 ADA lifecycle budget plus the 6 ADA collateral output and a 2 ADA self-split fee buffer.
+- The self-split is signed by signer 1 and signer 2 using the existing `CI_MNEMONIC_2` / `CI_MNEMONIC_3` route-chain signing path, then waits for the original inputs to disappear from fresh `freeUtxos`.
+- Server-built proxy transactions are persisted with no initial signed addresses. Because key-address collateral lives at `bot.paymentAddress`, proxy setup and action transactions first add signer index 0 (`CI_MNEMONIC_1`) as a real collateral witness, then signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 wallet.
+- Manual funding is still required when the wallet does not have enough total ADA for the proxy lifecycle budget plus the 6 ADA collateral output and fee buffer.
+
+Because the self-split is an on-chain transaction, it can add one confirmation wait per wallet type, but only when the current UTxO shape needs repair.
 
 ## How to contribute
 
@@ -334,8 +372,8 @@ $env:CI_NETWORK_ID="0"
 $env:CI_WALLET_TYPES="legacy,hierarchical,sdk"
 $env:CI_TRANSFER_LOVELACE="2000000"
 $env:SIGN_BROADCAST="true"
-$env:CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates; stored as on-chain anchor URL, never fetched
-$env:CI_STAKE_POOL_ID_HEX="..."         # optional; stored in context for future delegate tests
+$env:CI_DREP_ANCHOR_URL="https://..."   # required for the default full flow; stored as on-chain anchor URL, never fetched
+$env:CI_STAKE_POOL_ID_HEX="..."         # required for the default full flow (scenario.stake-certificates)
 ```
 
 `CI_DREP_ANCHOR_JSON` contains the full CIP-119 JSON document and must be set separately using a PowerShell here-string so the double quotes are preserved:
@@ -423,8 +461,8 @@ export CI_NETWORK_ID="0"
 export CI_WALLET_TYPES="legacy,hierarchical,sdk"
 export CI_TRANSFER_LOVELACE="2000000"
 export SIGN_BROADCAST="true"
-export CI_DREP_ANCHOR_URL="https://..."   # required for scenario.drep-certificates; stored as on-chain anchor URL, never fetched
-export CI_STAKE_POOL_ID_HEX="..."        # optional; stored in context for future delegate tests
+export CI_DREP_ANCHOR_URL="https://..."   # required for the default full flow; stored as on-chain anchor URL, never fetched
+export CI_STAKE_POOL_ID_HEX="..."        # required for the default full flow (scenario.stake-certificates)
 ```
 
 `CI_DREP_ANCHOR_JSON` contains the full CIP-119 JSON document and must be set separately using a heredoc so the double quotes are preserved:
