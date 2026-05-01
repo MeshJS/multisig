@@ -389,6 +389,9 @@ export function shouldSubmitMultisigTx(
     const required = appWallet.numRequiredSigners ?? 1;
     return signedAddressesCount >= required;
   }
+  if (appWallet.type === "all" && typeof appWallet.numRequiredSigners === "number") {
+    return signedAddressesCount >= appWallet.numRequiredSigners;
+  }
   return signedAddressesCount >= appWallet.signersAddresses.length;
 }
 

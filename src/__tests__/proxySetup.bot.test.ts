@@ -152,7 +152,10 @@ describe("proxySetup bot API", () => {
       }),
     );
     expect(buildProxySetupTxMock).toHaveBeenCalledWith(
-      expect.objectContaining({ initialProxyLovelace: "5000000" }),
+      expect.objectContaining({
+        initialProxyLovelace: "5000000",
+        multisigScriptCbor: "script",
+      }),
     );
     expect(createPendingMultisigTransactionMock).toHaveBeenCalledWith(
       expect.anything(),

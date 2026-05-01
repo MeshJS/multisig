@@ -9,6 +9,7 @@ import {
   getProxyDRepAnchorUrl,
   LIFECYCLE_PROXY_LOVELACE,
   PROXY_FULL_LIFECYCLE_WALLET_TYPES,
+  requireSetupTxHash,
   runProxyFullLifecycleHygiene,
 } from "../../scripts/ci/scenarios/steps/proxyBot";
 import type { CIBootstrapContext, CIWalletType } from "../../scripts/ci/framework/types";
@@ -204,11 +205,11 @@ describe("proxy scenario composition", () => {
     expect(stepIds).toContain("v1.proxyCleanupFinalize.malformedBody");
   });
 
-  it("runs full lifecycle for legacy and SDK wallets only", () => {
+  it("runs full lifecycle for legacy, hierarchical, and SDK wallets", () => {
     const scenario = createScenarioProxyFullLifecycle(mkContext(["legacy", "hierarchical", "sdk"]));
     const stepIds = scenario.steps.map((step) => step.id);
 
-    expect(PROXY_FULL_LIFECYCLE_WALLET_TYPES).toEqual(["legacy", "sdk"]);
+    expect(PROXY_FULL_LIFECYCLE_WALLET_TYPES).toEqual(["legacy", "hierarchical", "sdk"]);
     expect(stepIds).toContain("v1.proxy.full.recoverFromChain.legacy");
     expect(stepIds).toContain("v1.proxy.full.adoptOrphans.legacy");
     expect(stepIds).toContain("v1.proxy.full.hygiene.legacy");
@@ -225,6 +226,23 @@ describe("proxy scenario composition", () => {
     );
     expect(stepIds.indexOf("v1.proxy.full.utxoShape.legacy")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.preflight.legacy"),
+    );
+    expect(stepIds).toContain("v1.proxy.full.recoverFromChain.hierarchical");
+    expect(stepIds).toContain("v1.proxy.full.adoptOrphans.hierarchical");
+    expect(stepIds).toContain("v1.proxy.full.hygiene.hierarchical");
+    expect(stepIds).toContain("v1.proxy.full.utxoShape.hierarchical");
+    expect(stepIds).toContain("v1.proxy.full.preflight.hierarchical");
+    expect(stepIds.indexOf("v1.proxy.full.recoverFromChain.hierarchical")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.adoptOrphans.hierarchical"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.adoptOrphans.hierarchical")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.hygiene.hierarchical"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.hygiene.hierarchical")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.utxoShape.hierarchical"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.utxoShape.hierarchical")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.preflight.hierarchical"),
     );
     expect(stepIds).toContain("v1.proxy.full.recoverFromChain.sdk");
     expect(stepIds).toContain("v1.proxy.full.adoptOrphans.sdk");
@@ -243,10 +261,6 @@ describe("proxy scenario composition", () => {
     expect(stepIds.indexOf("v1.proxy.full.utxoShape.sdk")).toBeLessThan(
       stepIds.indexOf("v1.proxy.full.preflight.sdk"),
     );
-    expect(stepIds).not.toContain("v1.proxy.full.recoverFromChain.hierarchical");
-    expect(stepIds).not.toContain("v1.proxy.full.adoptOrphans.hierarchical");
-    expect(stepIds).not.toContain("v1.proxy.full.hygiene.hierarchical");
-    expect(stepIds).not.toContain("v1.proxy.full.preflight.hierarchical");
   });
 
   it("signs proxy lifecycle transactions with signer index 0 before the broadcaster", () => {
@@ -268,14 +282,22 @@ describe("proxy scenario composition", () => {
     expect(stepIds).not.toContain("v1.proxy.full.spend.legacy.sign1");
   });
 
+  it("fails clearly instead of using a setup transaction id as a txHash", () => {
+    expect(() =>
+      requireSetupTxHash({
+        setupTransactionId: "database-transaction-id",
+      }),
+    ).toThrow(/proxy setup was not broadcast; signer step returned submitted=false/);
+  });
+
   it("fails clearly when full lifecycle has no eligible wallet type", async () => {
-    const ctx = mkContext(["hierarchical"]);
+    const ctx = mkContext([]);
     const scenario = createScenarioProxyFullLifecycle(ctx);
 
     expect(scenario.steps).toHaveLength(1);
     expect(scenario.steps[0]?.id).toBe("v1.proxy.full.precondition");
     await expect(scenario.steps[0]?.execute(ctx)).rejects.toThrow(
-      /scenario\.proxy-full-lifecycle requires at least one of legacy, sdk/,
+      /scenario\.proxy-full-lifecycle requires at least one of legacy, hierarchical, sdk/,
     );
   });
 });

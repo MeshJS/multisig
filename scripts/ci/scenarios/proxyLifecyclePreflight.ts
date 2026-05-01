@@ -20,7 +20,7 @@ export const COLLATERAL_REQUIRED_LOVELACE = 5_000_000n;
 export const PROXY_SPEND_LOVELACE = 1_000_000n;
 export const PROXY_LIFECYCLE_COLLATERAL_SPLIT_LOVELACE = 6_000_000n;
 export const SELF_SPLIT_FEE_BUFFER_LOVELACE = 2_000_000n;
-export const PROXY_FULL_LIFECYCLE_WALLET_TYPES = ["legacy", "sdk"] as const;
+export const PROXY_FULL_LIFECYCLE_WALLET_TYPES = ["legacy", "hierarchical", "sdk"] as const;
 
 export function parseLovelace(utxo: ScriptUtxo): bigint {
   return BigInt(utxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ?? "0");

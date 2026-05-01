@@ -12,6 +12,7 @@ const setup = {
   paramUtxo: { txHash: "aa", outputIndex: 0 },
   description: "CI proxy setup",
 };
+const validTxHash = "a".repeat(64);
 
 const mkUtxo = (
   address: string,
@@ -84,7 +85,7 @@ describe("finalizeConfirmedProxySetup", () => {
       network: 0,
       walletId: "wallet-1",
       walletAddress: "addr_test_wallet",
-      txHash: "setup-tx",
+      txHash: validTxHash,
       setup,
       provider,
     });
@@ -109,7 +110,7 @@ describe("finalizeConfirmedProxySetup", () => {
       network: 0,
       walletId: "wallet-1",
       walletAddress: "addr_test_wallet",
-      txHash: "setup-tx",
+      txHash: validTxHash,
       setup,
       provider: createProvider({
         walletUtxos: [
@@ -136,7 +137,7 @@ describe("finalizeConfirmedProxySetup", () => {
       network: 0,
       walletId: "wallet-1",
       walletAddress: "addr_test_wallet",
-      txHash: "setup-tx",
+      txHash: validTxHash,
       setup,
       provider: createProvider({
         walletUtxos: [
@@ -162,7 +163,7 @@ describe("finalizeConfirmedProxySetup", () => {
       network: 0,
       walletId: "wallet-1",
       walletAddress: "addr_test_wallet",
-      txHash: "wrong-tx",
+      txHash: validTxHash,
       setup,
       provider: {
         fetchAddressUTxOs: jest.fn(async () => []),
@@ -176,5 +177,29 @@ describe("finalizeConfirmedProxySetup", () => {
     if ("error" in result) {
       expect(result.error).toContain("txHash does not match confirmed proxy setup outputs");
     }
+  });
+
+  it("rejects malformed txHash before provider lookup", async () => {
+    const { finalizeConfirmedProxySetup } = await import("@/lib/server/proxySetupFinalization");
+    const provider = createProvider({
+      walletUtxos: [],
+      proxyUtxos: [],
+    });
+
+    const result = await finalizeConfirmedProxySetup({
+      db: createDb() as never,
+      network: 0,
+      walletId: "wallet-1",
+      walletAddress: "addr_test_wallet",
+      txHash: "transaction-row-id",
+      setup,
+      provider,
+    });
+
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toContain("txHash must be a 64-character hex string");
+    }
+    expect(provider.get).not.toHaveBeenCalled();
   });
 });

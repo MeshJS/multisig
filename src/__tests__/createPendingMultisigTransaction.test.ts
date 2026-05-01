@@ -66,6 +66,23 @@ describe("createPendingMultisigTransaction", () => {
     });
   });
 
+  it("keeps one-signer server-built transactions pending until a witness exists", async () => {
+    const db = makeDb();
+
+    await createPendingMultisigTransaction(db, {
+      ...baseArgs,
+      wallet: { numRequiredSigners: 1, type: "all" },
+      initialSignedAddresses: [],
+    });
+
+    expect(db.transaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        signedAddresses: [],
+      }),
+    });
+    expect(submitTxMock).not.toHaveBeenCalled();
+  });
+
   it("submits single-signer transactions without creating a pending row", async () => {
     const db = makeDb();
 

@@ -845,6 +845,18 @@ function createSignStep(args: {
   };
 }
 
+export function requireSetupTxHash(runtime: {
+  setupTransactionId?: string;
+  setupTxHash?: string;
+}): string {
+  const txHash = runtime.setupTxHash?.trim();
+  if (txHash) return txHash;
+
+  throw new Error(
+    `proxy setup was not broadcast; signer step returned submitted=false for transaction ${runtime.setupTransactionId ?? "unknown"}`,
+  );
+}
+
 function createSetupLifecycleSteps(args: {
   walletType: CIWalletType;
   runtime: {
@@ -934,6 +946,7 @@ function createSetupLifecycleSteps(args: {
         if (!wallet || !runtime.setup) throw new Error("Missing wallet or proxy setup metadata");
         const bot = getDefaultBot(ctx);
         const token = await authenticateBot({ ctx, bot });
+        const setupTxHash = requireSetupTxHash(runtime);
         if (runtime.setupUtxoRefs?.length && runtime.setupTransactionId) {
           await pollUntilUtxosConsumed({ ctx, walletId: wallet.walletId, token, address: bot.paymentAddress, spentUtxoRefs: runtime.setupUtxoRefs });
         }
@@ -944,7 +957,7 @@ function createSetupLifecycleSteps(args: {
           body: {
             walletId: wallet.walletId,
             address: bot.paymentAddress,
-            txHash: runtime.setupTxHash ?? runtime.setupTransactionId ?? "submitted",
+            txHash: setupTxHash,
             ...runtime.setup,
             description: `CI proxy setup (${walletType})`,
           },
@@ -1522,7 +1535,7 @@ export function createScenarioProxyFullLifecycle(ctx: CIBootstrapContext): Scena
 
   return {
     id: "scenario.proxy-full-lifecycle",
-    description: "Proxy spend, governance, and cleanup lifecycle for legacy and SDK wallets",
+    description: "Proxy spend, governance, and cleanup lifecycle for legacy, hierarchical, and SDK wallets",
     steps,
   };
 }

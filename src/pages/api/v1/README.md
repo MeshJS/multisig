@@ -618,7 +618,7 @@ Current route-chain scenarios include:
 
 - discovery and route health checks (`walletIds`, `proxies`, `freeUtxos`, `nativeScript`, public wallet lookup)
 - create-wallet, bot identity, auth-plane, and explicit auth-negative checks
-- proxy smoke checks plus full proxy lifecycle coverage for eligible legacy/SDK wallets (`proxySetup` -> `proxySetupFinalize` -> `proxySpend` -> proxy DRep register/deregister -> optional `proxyVote` -> `proxyCleanup` -> `proxyCleanupFinalize`)
+- proxy smoke checks plus full proxy lifecycle coverage for eligible CI wallets (`legacy`, `hierarchical`, `sdk`: `proxySetup` -> `proxySetupFinalize` -> `proxySpend` -> proxy DRep register/deregister -> optional `proxyVote` -> `proxyCleanup` -> `proxyCleanupFinalize`)
 - DRep and stake certificate builders, including payment/stake witness signing paths
 - real transfer flow (`addTransaction` -> `signTransaction` with broadcast)
 - final-state assertions (`pendingTransactions` consistency checks)

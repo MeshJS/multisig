@@ -101,6 +101,10 @@ function normalizeSetupMetadata(
   };
 }
 
+function isTxHashHex(value: string): boolean {
+  return /^[0-9a-fA-F]{64}$/.test(value);
+}
+
 export async function finalizeConfirmedProxySetup(args: {
   db: PrismaClient;
   network: number;
@@ -120,6 +124,12 @@ export async function finalizeConfirmedProxySetup(args: {
   if (!txHash) {
     return {
       error: "txHash is required",
+      status: 400,
+    };
+  }
+  if (!isTxHashHex(txHash)) {
+    return {
+      error: "txHash must be a 64-character hex string",
       status: 400,
     };
   }
