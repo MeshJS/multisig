@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: multisig
+    volumes:
+      - postgres-ci-data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - multisig-ci-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+    environment:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      SKIP_ENV_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      JWT_SECRET: ${CI_JWT_SECRET}
+      NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_MAINNET_API_KEY:-}
+      BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - multisig-ci-network
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL to be ready...' &&
+        until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done &&
+        echo 'Running Prisma migrations...' &&
+        npx prisma migrate deploy || npx prisma db push &&
+        echo 'Starting application...' &&
+        npm run dev -- --hostname 0.0.0.0 --port 3000
+      "
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://localhost:3000/api/swagger').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  ci-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+    environment:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      SKIP_ENV_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      API_BASE_URL: http://app:3000
+      CI_NETWORK_ID: ${CI_NETWORK_ID:-0}
+      CI_NUM_REQUIRED_SIGNERS: ${CI_NUM_REQUIRED_SIGNERS:-2}
+      CI_JWT_SECRET: ${CI_JWT_SECRET}
+      CI_MNEMONIC_1: ${CI_MNEMONIC_1:-}
+      CI_MNEMONIC_2: ${CI_MNEMONIC_2:-}
+      CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
+      CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      CI_WALLET_TYPES: ${CI_WALLET_TYPES:-legacy,hierarchical,sdk}
+      CI_SIGN_WALLET_TYPE: ${CI_SIGN_WALLET_TYPE:-legacy}
+      SIGN_BROADCAST: ${SIGN_BROADCAST:-true}
+      CI_ROUTE_SCENARIOS: ${CI_ROUTE_SCENARIOS:-}
+      CI_ROUTE_CHAIN_REPORT_PATH: ${CI_ROUTE_CHAIN_REPORT_PATH:-/artifacts/ci-route-chain-report.md}
+      CI_CONTEXT_PATH: ${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}
+      CI_DREP_ANCHOR_URL: ${CI_DREP_ANCHOR_URL:-}
+      CI_DREP_ANCHOR_JSON: ${CI_DREP_ANCHOR_JSON:-}
+      CI_STAKE_POOL_ID_HEX: ${CI_STAKE_POOL_ID_HEX:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - multisig-ci-network
+    volumes:
+      - ./ci-artifacts:/artifacts
+    profiles:
+      - ci-test
+    command: >
+      sh -c "
+        status=0;
+        npx --yes tsx scripts/ci/cli/bootstrap.ts || status=$$?;
+        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/wallet-status.ts || status=$$?; fi;
+        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/route-chain.ts || status=$$?; fi;
+        rm -f \"${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}\";
+        exit \"$$status\"
+      "
+
+volumes:
+  postgres-ci-data:
+
+networks:
+  multisig-ci-network:
+    driver: bridge
+

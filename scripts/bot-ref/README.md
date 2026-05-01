@@ -54,7 +54,7 @@ npm install
 ```bash
 curl -sS -X POST http://localhost:3000/api/v1/botRegister \
    -H "Content-Type: application/json" \
-   -d '{"name":"Reference Bot","paymentAddress":"addr1_xxx","scopes":["multisig:read"]}'
+   -d '{"name":"Reference Bot","paymentAddress":"addr1_xxx","requestedScopes":["multisig:read","multisig:sign"]}'
 ```
 
 Response includes `pendingBotId` and `claimCode`.
@@ -134,11 +134,43 @@ echo '{"name":"Me and Bot","signersAddresses":["addr1_your...","addr1_bot..."],"
 
 Optional fields: `description`, `signersDescriptions`, `signersStakeKeys`, `signersDRepKeys`, `numRequiredSigners`, `scriptType` (`atLeast`|`all`|`any`), `stakeCredentialHash`, `network` (0=testnet, 1=mainnet).
 
-### 8. Generate a bot wallet (testing)
+### 8. Stake certificate (SDK multisig)
+
+The bot must have **multisig:sign** and be a **cosigner** on the wallet. The server builds the same Mesh stake certificates as the UI (`register`, `deregister`, `delegate`, `register_and_delegate`). **Legacy and Summon wallets are rejected.**
+
+1. List free UTxOs and pick inputs; each body field is `txHash` + `outputIndex` as returned by the API.
+2. POST `walletId`, `address` (must match JWT / bot payment address), `action`, optional `poolId` (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-char hex), and `utxoRefs`.
+
+```bash
+# stake.json example:
+# {
+#   "walletId": "<uuid>",
+#   "address": "<same as bot paymentAddress>",
+#   "action": "delegate",
+#   "poolId": "pool1...",
+#   "utxoRefs": [{ "txHash": "...", "outputIndex": 0 }],
+#   "description": "Delegate via bot"
+# }
+export BOT_TOKEN='<token>'
+npx tsx bot-client.ts stakeCert stake.json
+```
+
+If `numRequiredSigners > 1`, the response is a pending `Transaction` row; co-sign with `POST /api/v1/signTransaction` as usual.
+
+### 9. DRep certificate (register / retire)
+
+Also requires **multisig:sign**. **Summon** wallets are rejected; **legacy** wallets use payment-script DRep derivation (same as the app). For `register`, send both `anchorUrl` and `anchorJson`; the server does not fetch the URL and computes `hashDrepAnchor(anchorJson)` from the object you provide.
+
+```bash
+# drep-register.json — anchorUrl and anchorJson required for register
+npx tsx bot-client.ts drepCert drep-register.json
+```
+
+### 10. Generate a bot wallet (testing)
 
 From **repo root**: `npx tsx scripts/bot-ref/generate-bot-wallet.ts` — creates gitignored `bot-wallet.json` (mnemonic + address) and updates `bot-config.json`.
 
-### 9. Create “Me and Bot” 2-of-2 wallet
+### 11. Create “Me and Bot” 2-of-2 wallet
 
 ```bash
 cd scripts/bot-ref && npx tsx create-wallet-us.ts
@@ -161,6 +193,40 @@ BOT_TOKEN='...' BOT_CONFIG_PATH=bot-config.json npx tsx bot-client.ts walletIds
 ```
 
 The reference client only uses **bot-key auth** (POST /api/v1/botAuth). Wallet-based auth (getNonce + sign + authSigner) would require a real Cardano signer; implement that in your bot if needed.
+
+## Proxy bot API
+
+Proxy routes use the normal pending multisig flow and require `multisig:sign` plus **cosigner** access for mutating calls. `GET /api/v1/proxies` and `GET /api/v1/proxyDRepInfo` allow bot observer access. The reference CLI does not wrap these routes yet; call them directly with `BOT_TOKEN`.
+
+All proxy transaction builders accept UTxO references, not raw UTxO JSON:
+
+```json
+{ "txHash": "<transaction hash>", "outputIndex": 0 }
+```
+
+Use `GET /api/v1/freeUtxos?walletId=...&address=...&fresh=true` to select wallet inputs. `collateralRef` must be an ADA-only UTxO with at least 5 ADA at the bot payment address. Proxy actions also require a wallet input containing the proxy auth token, returned from setup/finalization metadata as `authTokenId`.
+
+### Setup and finalize
+
+1. `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, and optional `description`.
+2. Sign the returned pending transaction with the required wallet signers. Proxy transactions are persisted with no initial signed addresses, so the proposer still needs to sign through `signTransaction`.
+3. After the setup transaction is confirmed, call `POST /api/v1/proxySetupFinalize` with `walletId`, `address`, `txHash`, `proxyAddress`, `authTokenId`, and `paramUtxo` from the setup response. The server validates the confirmed setup outputs and creates or reactivates the `Proxy` row.
+4. `GET /api/v1/proxies?walletId=...&address=...` lists active confirmed proxies.
+
+### Spend, DRep, and vote
+
+- `POST /api/v1/proxySpend`: sends proxy-held assets to `outputs[]`. If `proxyUtxoRefs` is omitted, the server selects proxy-address UTxOs sufficient for the requested outputs plus fee buffer.
+- `POST /api/v1/proxyDRepCertificate`: `action` is `register`, `update`, or `deregister`. `register` and `update` require both `anchorUrl` and `anchorJson`; the server computes the anchor hash from `anchorJson`.
+- `GET /api/v1/proxyDRepInfo`: returns `{ active, dRepId }` for the proxy script DRep credential.
+- `POST /api/v1/proxyVote`: votes as the proxy DRep. Each vote uses `proposalId` in `<txHash>#<certIndex>` form and `voteKind` of `Yes`, `No`, or `Abstain`.
+
+### Cleanup
+
+`POST /api/v1/proxyCleanup` is safe to call repeatedly during lifecycle cleanup:
+
+1. If the proxy address still has UTxOs, it returns cleanup phase `sweep`; sign and submit that transaction, then wait until the proxy address is empty. When `proxyUtxoRefs` is provided, it must include every currently visible proxy UTxO.
+2. Call `POST /api/v1/proxyCleanup` again. When cleanup phase is `burn`, sign and submit the burn transaction.
+3. After burn confirmation, call `POST /api/v1/proxyCleanupFinalize` with the confirmed burn `txHash`. The server validates that the auth token was spent and not recreated, that the proxy address has no UTxOs, and deactivates the proxy row unless `deactivateProxy` is `false`.
 
 ## Governance bot flow
 

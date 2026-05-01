@@ -455,6 +455,9 @@ beforeEach(() => {
     const existingWitnessCount = mergedWitnesses.len();
     for (let i = 0; i < existingWitnessCount; i++) {
       const existingWitness = mergedWitnesses.get(i);
+      if (!existingWitness) {
+        continue;
+      }
       const existingKeyHash = Buffer.from(
         existingWitness.vkey().public_key().hash().to_bytes(),
       ).toString('hex').toLowerCase();

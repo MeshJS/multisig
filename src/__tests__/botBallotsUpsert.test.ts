@@ -6,22 +6,24 @@ const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<
 const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => boolean>();
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
 const enforceBodySizeMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean>();
-const verifyJwtMock = jest.fn();
-const isBotJwtMock = jest.fn();
-const assertBotWalletAccessMock = jest.fn();
-const findBotUserMock = jest.fn();
-const transactionMock = jest.fn();
-const parseScopeMock = jest.fn();
-const scopeIncludesMock = jest.fn();
+const verifyJwtMock = jest.fn<() => unknown>();
+const isBotJwtMock = jest.fn<() => boolean>();
+const assertBotWalletAccessMock = jest.fn<() => Promise<unknown>>();
+const findBotUserMock = jest.fn<() => Promise<unknown>>();
+const transactionMock = jest.fn<(cb: (tx: typeof txMock) => Promise<unknown>) => Promise<unknown>>();
+const parseScopeMock = jest.fn<(scope: string) => string[]>();
+const scopeIncludesMock = jest.fn<(scopes: string[], required: string) => boolean>();
 const isValidChoiceMock = jest.fn();
-const parseProposalIdMock = jest.fn();
+const parseProposalIdMock = jest.fn<
+  (value: string) => { txHash: string; certIndex: number }
+>();
 
 const txMock = {
   ballot: {
-    findUnique: jest.fn(),
-    findMany: jest.fn(),
-    create: jest.fn(),
-    updateMany: jest.fn(),
+    findUnique: jest.fn<() => Promise<unknown>>(),
+    findMany: jest.fn<() => Promise<unknown[]>>(),
+    create: jest.fn<() => Promise<unknown>>(),
+    updateMany: jest.fn<() => Promise<unknown>>(),
   },
 };
 
@@ -132,14 +134,14 @@ beforeEach(() => {
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_test1", botId: "bot-1", type: "bot" });
   isBotJwtMock.mockReturnValue(true);
-  parseScopeMock.mockImplementation((scope: string) => JSON.parse(scope));
-  scopeIncludesMock.mockImplementation((scopes: string[], required: string) =>
+  parseScopeMock.mockImplementation((scope) => JSON.parse(scope) as string[]);
+  scopeIncludesMock.mockImplementation((scopes, required) =>
     scopes.includes(required),
   );
   isValidChoiceMock.mockReturnValue(true);
-  parseProposalIdMock.mockImplementation((value: string) => {
+  parseProposalIdMock.mockImplementation((value) => {
     const [txHash, certIndex] = value.split("#");
-    return { txHash, certIndex: Number(certIndex) };
+    return { txHash: txHash ?? "", certIndex: Number(certIndex) };
   });
   findBotUserMock.mockResolvedValue({
     id: "bot-1",

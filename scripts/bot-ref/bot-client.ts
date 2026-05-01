@@ -238,11 +238,68 @@ export async function createWallet(
   return (await res.json()) as { walletId: string; address: string; name: string };
 }
 
+/** Build stake certificate tx (SDK wallets; bot needs multisig:sign). */
+export async function botStakeCertificate(
+  baseUrl: string,
+  token: string,
+  body: {
+    walletId: string;
+    address: string;
+    action: "register" | "deregister" | "delegate" | "register_and_delegate";
+    poolId?: string;
+    utxoRefs: { txHash: string; outputIndex: number }[];
+    description?: string;
+  },
+): Promise<unknown> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetch(`${base}/api/v1/botStakeCertificate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`botStakeCertificate failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+/** Build DRep register/retire tx (bot needs multisig:sign). */
+export async function botDRepCertificate(
+  baseUrl: string,
+  token: string,
+  body: {
+    walletId: string;
+    address: string;
+    action: "register" | "retire";
+    utxoRefs: { txHash: string; outputIndex: number }[];
+    description?: string;
+    anchorUrl?: string;
+    anchorDataHash?: string;
+  },
+): Promise<unknown> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetch(`${base}/api/v1/botDRepCertificate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`botDRepCertificate failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
 async function main() {
   const config = await loadConfig();
   const cmd = process.argv[2];
   if (!cmd) {
-    console.error("Usage: bot-client.ts <register|pickup|auth|walletIds|pendingTransactions|freeUtxos|botMe|ownerInfo|createWallet> [args]");
+    console.error("Usage: bot-client.ts <register|pickup|auth|walletIds|pendingTransactions|freeUtxos|botMe|ownerInfo|createWallet|stakeCert|drepCert> [args]");
     console.error("  register <name> [scope1,scope2,...] [paymentAddress] - create pending bot + claim code");
     console.error("  pickup <pendingBotId> - pickup botKeyId + secret after human claim");
     console.error("  auth                 - authenticate and print token");
@@ -252,6 +309,8 @@ async function main() {
     console.error("  ownerInfo <walletId> - get wallet owner info");
     console.error("  botMe               - get bot's own info (incl. owner address)");
     console.error("  createWallet [file]   - create wallet via API (body from file or stdin); bot needs multisig:create");
+    console.error("  stakeCert [file]      - POST /api/v1/botStakeCertificate (JSON body file or stdin); needs multisig:sign");
+    console.error("  drepCert [file]       - POST /api/v1/botDRepCertificate (JSON body file or stdin); needs multisig:sign");
     console.error("Env: BOT_CONFIG (JSON), BOT_CONFIG_PATH, BOT_TOKEN (after auth).");
     process.exit(1);
   }
@@ -399,6 +458,44 @@ async function main() {
         stakeCredentialHash: body.stakeCredentialHash as string | undefined,
         network: body.network as number | undefined,
       });
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+    case "stakeCert": {
+      const fileArg = process.argv[3];
+      let raw: string;
+      if (fileArg) {
+        const { readFileSync } = await import("fs");
+        const { join } = await import("path");
+        raw = readFileSync(fileArg.startsWith("/") ? fileArg : join(process.cwd(), fileArg), "utf8");
+      } else {
+        const { createInterface } = await import("readline");
+        const rl = createInterface({ input: process.stdin, terminal: false });
+        const lines: string[] = [];
+        for await (const line of rl) lines.push(line);
+        raw = lines.join("\n");
+      }
+      const body = JSON.parse(raw) as Parameters<typeof botStakeCertificate>[2];
+      const result = await botStakeCertificate(config.baseUrl, token, body);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+    case "drepCert": {
+      const fileArg = process.argv[3];
+      let raw: string;
+      if (fileArg) {
+        const { readFileSync } = await import("fs");
+        const { join } = await import("path");
+        raw = readFileSync(fileArg.startsWith("/") ? fileArg : join(process.cwd(), fileArg), "utf8");
+      } else {
+        const { createInterface } = await import("readline");
+        const rl = createInterface({ input: process.stdin, terminal: false });
+        const lines: string[] = [];
+        for await (const line of rl) lines.push(line);
+        raw = lines.join("\n");
+      }
+      const body = JSON.parse(raw) as Parameters<typeof botDRepCertificate>[2];
+      const result = await botDRepCertificate(config.baseUrl, token, body);
       console.log(JSON.stringify(result, null, 2));
       break;
     }
