@@ -13,13 +13,11 @@ import { env } from "@/env";
 import { api } from "@/utils/api";
 
 import "@/styles/globals.css";
+import "@/styles/swagger-overrides.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
 import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
-
-import "swagger-ui-react/swagger-ui.css";
-import "../styles/swagger-overrides.css";
 
 // MeshProvider pulls in dependencies that assume a browser/webpack env.
 // Load it client-side only (including its styles) to avoid SSR/runtime issues.

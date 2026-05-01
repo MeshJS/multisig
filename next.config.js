@@ -75,6 +75,24 @@ const config = {
   
   // External packages for server components to avoid bundling issues
   serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
+
+  // Basic security headers applied to all routes.
+  // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
+  // omitted — CSP would break inline scripts/styles and HSTS locks browsers to
+  // HTTPS for max-age and should only be enabled after team review.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
 };
 
 // Bundle analyzer - only enable when ANALYZE env var is set
