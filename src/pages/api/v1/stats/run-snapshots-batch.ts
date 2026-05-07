@@ -272,43 +272,10 @@ export default async function handler(
           }
         }
 
-        // Build wallet conditionally: use MultisigSDK ordering if signersStakeKeys exist
         let walletAddress: string;
         try {
-          const hasStakeKeys = !!(wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0);
-          if (hasStakeKeys) {
-            // Build MultisigSDK wallet with ordered keys
-            const keys: MultisigKey[] = [];
-            wallet.signersAddresses.forEach((addr: string, i: number) => {
-              if (!addr) return;
-              try {
-                keys.push({ keyHash: resolvePaymentKeyHash(addr), role: 0, name: wallet.signersDescriptions[i] || "" });
-              } catch {}
-            });
-            wallet.signersStakeKeys?.forEach((stakeKey: string, i: number) => {
-              if (!stakeKey) return;
-              try {
-                keys.push({ keyHash: resolveStakeKeyHash(stakeKey), role: 2, name: wallet.signersDescriptions[i] || "" });
-              } catch {}
-            });
-            if (keys.length === 0 && !wallet.stakeCredentialHash) {
-              throw new Error("No valid keys or stakeCredentialHash provided");
-            }
-            const mWallet = new MultisigWallet(
-              wallet.name,
-              keys,
-              wallet.description ?? "",
-              wallet.numRequiredSigners ?? 1,
-              network,
-              wallet.stakeCredentialHash as undefined | string,
-              (wallet.type as any) || "atLeast"
-            );
-            walletAddress = mWallet.getScript().address;
-          } else {
-            // Fallback: build the wallet without enforcing key ordering (legacy payment-script build)
-            const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
-            walletAddress = builtWallet.address;
-          }
+          const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
+          walletAddress = builtWallet.capabilities?.address ?? builtWallet.address;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown wallet build error';
           console.error(`Failed to build wallet for ${wallet.id.slice(0, 8)}...:`, errorMessage);
