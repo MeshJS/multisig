@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const requireSessionAddress = (ctx: any) => {
+const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
   if (!address) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -11,7 +12,7 @@ const requireSessionAddress = (ctx: any) => {
 };
 
 const assertWalletAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   walletId: string,
   requester: string | string[],
 ) => {
@@ -20,7 +21,7 @@ const assertWalletAccess = async (
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
   const requesters = Array.isArray(requester) ? requester : [requester];
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const sessionWallets: string[] = ctx.sessionWallets ?? [];
   const allRequesters = [...requesters, ...sessionWallets];
   const isSigner =
     Array.isArray(wallet.signersAddresses) &&
@@ -32,7 +33,7 @@ const assertWalletAccess = async (
   return wallet;
 };
 
-const getUserIdForAddress = async (ctx: any, address: string) => {
+const getUserIdForAddress = async (ctx: AuthCtx, address: string) => {
   const user = await ctx.db.user.findUnique({ where: { address } });
   if (!user) {
     throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
@@ -41,7 +42,7 @@ const getUserIdForAddress = async (ctx: any, address: string) => {
 };
 
 const assertProxyAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   proxy: { walletId: string | null; userId: string | null },
   requesterAddresses: string[],
 ) => {
@@ -75,13 +76,13 @@ const assertProxyAccess = async (
   throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this proxy" });
 };
 
-const getRequesterAddresses = (ctx: any): string[] => {
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+const getRequesterAddresses = (ctx: AuthCtx): string[] => {
+  const sessionWallets: string[] = ctx.sessionWallets ?? [];
   return sessionWallets.length ? sessionWallets : [requireSessionAddress(ctx)];
 };
 
 const assertWalletAccessForAnyAddress = async (
-  ctx: any,
+  ctx: AuthCtx,
   walletId: string,
   addresses: string[],
 ) => {
@@ -96,7 +97,7 @@ const assertWalletAccessForAnyAddress = async (
   throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
 };
 
-const listActiveProxiesByUserAddress = async (ctx: any, userAddress: string) => {
+const listActiveProxiesByUserAddress = async (ctx: AuthCtx, userAddress: string) => {
   return ctx.db.$queryRaw<Array<{
     id: string;
     walletId: string | null;
@@ -119,7 +120,7 @@ const listActiveProxiesByUserAddress = async (ctx: any, userAddress: string) => 
 };
 
 const assertProxyManageAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   proxy: { walletId: string | null; userId: string | null },
   sessionAddress: string,
 ) => {

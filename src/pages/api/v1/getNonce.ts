@@ -44,21 +44,21 @@ export default async function handler(
         console.warn("[getNonce] User lookup failed (table may not exist yet):", (userLookupError as Error).message);
       }
 
-      // Check if a nonce already exists for this address in the database
+      // Always rotate the nonce on issue. Reusing a stored nonce is a
+      // replay risk: a leaked sig-with-old-nonce stays valid until that row
+      // is consumed. Mint a fresh value every call.
+      const nonce = randomBytes(16).toString("hex");
       const existing = await db.nonce.findFirst({ where: { address } });
       if (existing) {
-        console.debug("[getNonce] Reusing existing nonce for address:", address);
-        return res.status(200).json({ nonce: existing.value });
+        await db.nonce.update({
+          where: { id: existing.id },
+          data: { value: nonce },
+        });
+      } else {
+        await db.nonce.create({
+          data: { address, value: nonce },
+        });
       }
-
-      const nonce = randomBytes(16).toString("hex");
-      await db.nonce.create({
-        data: {
-          address,
-          value: nonce,
-        },
-      });
-      console.debug("[getNonce] Created new nonce for address:", address);
       return res.status(200).json({ nonce });
     } catch (error) {
       console.error("[getNonce] Error:", error);

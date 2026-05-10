@@ -4,47 +4,73 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 const addCorsCacheBustingHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/cors',
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-const verifyJwtMock = jest.fn<(token: string | undefined) => { address: string } | null>();
+type JwtPayloadLike = { address: string; botId?: string; type?: string };
+const verifyJwtMock = jest.fn<(token: string | undefined) => JwtPayloadLike | null>();
+const isBotJwtMock = jest.fn<(payload: JwtPayloadLike) => boolean>(
+  (payload) => Boolean(payload && (payload as JwtPayloadLike).type === "bot"),
+);
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/verifyJwt',
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
+    isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
+);
+
+const applyRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
+>(() => true);
+const applyBotRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, botId: string, maxRequests?: number) => boolean
+>(() => true);
+const applyStrictRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
+>(() => true);
+const enforceBodySizeMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean
+>(() => true);
+
+jest.unstable_mockModule(
+  '@/lib/security/requestGuards',
+  () => ({
+    __esModule: true,
+    applyRateLimit: applyRateLimitMock,
+    applyBotRateLimit: applyBotRateLimitMock,
+    applyStrictRateLimit: applyStrictRateLimitMock,
+    enforceBodySize: enforceBodySizeMock,
+    isBodyTooLarge: jest.fn(() => false),
+  }),
 );
 
 const createCallerMock = jest.fn();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/server/api/root',
   () => ({
     __esModule: true,
     createCaller: createCallerMock,
   }),
-  { virtual: true },
 );
 
 const dbMock = { __type: 'dbMock' };
 
-jest.mock(
+jest.unstable_mockModule(
   '@/server/db',
   () => ({
     __esModule: true,
     db: dbMock,
   }),
-  { virtual: true },
 );
 
 type ResponseMock = NextApiResponse & { statusCode?: number };
@@ -164,13 +190,16 @@ describe('pendingTransactions API route', () => {
     expect(addCorsCacheBustingHeadersMock).toHaveBeenCalledWith(res);
     expect(corsMock).toHaveBeenCalledWith(req, res);
     expect(verifyJwtMock).toHaveBeenCalledWith(token);
-    expect(createCallerMock).toHaveBeenCalledWith({
-      db: dbMock,
-      session: expect.objectContaining({
-        user: { id: address },
-        expires: expect.any(String),
+    expect(createCallerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db: dbMock,
+        session: expect.objectContaining({
+          user: { id: address },
+          expires: expect.any(String),
+        }),
+        sessionAddress: address,
       }),
-    });
+    );
     expect(walletGetWalletMock).toHaveBeenCalledWith({ walletId, address });
     expect(transactionGetPendingTransactionsMock).toHaveBeenCalledWith({ walletId });
     expect(res.status).toHaveBeenCalledWith(200);

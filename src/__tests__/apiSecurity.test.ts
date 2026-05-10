@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { TRPCError } from "@trpc/server";
 
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
@@ -67,6 +68,8 @@ describe("wallet router authorization", () => {
       db: baseDb as any,
       session: null,
       sessionAddress: null,
+      sessionWallets: [],
+      primaryWallet: null,
       ip: "3.3.3.3",
     });
 
@@ -93,12 +96,14 @@ describe("wallet router authorization", () => {
       isArchived: false,
       verified: [],
       migrationTargetWalletId: null,
-    });
+    } as never);
 
     const caller = createCaller({
       db: baseDb as any,
       session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
       sessionAddress: "addr1",
+      sessionWallets: ["addr1"],
+      primaryWallet: "addr1",
       ip: "4.4.4.4",
     });
 
@@ -126,12 +131,14 @@ describe("wallet router authorization", () => {
       verified: [],
       migrationTargetWalletId: null,
     };
-    baseDb.wallet.findUnique.mockResolvedValueOnce(wallet);
+    baseDb.wallet.findUnique.mockResolvedValueOnce(wallet as never);
 
     const caller = createCaller({
       db: baseDb as any,
       session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
       sessionAddress: "addr1",
+      sessionWallets: ["addr1"],
+      primaryWallet: "addr1",
       ip: "5.5.5.5",
     });
 

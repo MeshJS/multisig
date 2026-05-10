@@ -6,36 +6,35 @@ const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<
 const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => boolean>();
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
 const enforceBodySizeMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean>();
-const verifyJwtMock = jest.fn();
-const isBotJwtMock = jest.fn();
-const assertBotWalletAccessMock = jest.fn();
-const findBotUserMock = jest.fn();
-const transactionMock = jest.fn();
-const parseScopeMock = jest.fn();
-const scopeIncludesMock = jest.fn();
-const isValidChoiceMock = jest.fn();
-const parseProposalIdMock = jest.fn();
+const verifyJwtMock = jest.fn<(...args: any[]) => any>();
+const isBotJwtMock = jest.fn<(...args: any[]) => any>();
+const assertBotWalletAccessMock = jest.fn<(...args: any[]) => any>();
+const findBotUserMock = jest.fn<(...args: any[]) => any>();
+const transactionMock = jest.fn<(...args: any[]) => any>();
+const parseScopeMock = jest.fn<(...args: any[]) => any>();
+const scopeIncludesMock = jest.fn<(...args: any[]) => any>();
+const isValidChoiceMock = jest.fn<(...args: any[]) => any>();
+const parseProposalIdMock = jest.fn<(...args: any[]) => any>();
 
 const txMock = {
   ballot: {
-    findUnique: jest.fn(),
-    findMany: jest.fn(),
-    create: jest.fn(),
-    updateMany: jest.fn(),
+    findUnique: jest.fn<(...args: any[]) => any>(),
+    findMany: jest.fn<(...args: any[]) => any>(),
+    create: jest.fn<(...args: any[]) => any>(),
+    updateMany: jest.fn<(...args: any[]) => any>(),
   },
 };
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/cors",
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/security/requestGuards",
   () => ({
     __esModule: true,
@@ -43,49 +42,44 @@ jest.mock(
     applyBotRateLimit: applyBotRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/verifyJwt",
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/governance",
   () => ({
     __esModule: true,
     isValidChoice: isValidChoiceMock,
     parseProposalId: parseProposalIdMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botKey",
   () => ({
     __esModule: true,
     parseScope: parseScopeMock,
     scopeIncludes: scopeIncludesMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botAccess",
   () => ({
     __esModule: true,
     assertBotWalletAccess: assertBotWalletAccessMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/server/db",
   () => ({
     __esModule: true,
@@ -96,7 +90,6 @@ jest.mock(
       $transaction: transactionMock,
     },
   }),
-  { virtual: true },
 );
 
 type ResponseMock = NextApiResponse & { statusCode?: number };
