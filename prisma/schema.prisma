@@ -43,6 +43,9 @@ model Wallet {
   migrationTargetWalletId String?
   profileImageIpfsUrl     String?
   ownerAddress            String?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Transaction {
@@ -77,6 +80,10 @@ model Signable {
   updatedAt         DateTime @updatedAt
   callbackUrl       String?
   remoteOrigin      String?
+
+  @@index([walletId])
+  @@index([state])
+  @@index([walletId, state])
 }
 
 model NewWallet {
@@ -95,6 +102,9 @@ model NewWallet {
   paymentCbor         String?
   stakeCbor           String?
   rawImportBodies     Json?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Nonce {
@@ -105,18 +115,36 @@ model Nonce {
 }
 
 model Ballot {
-  id               String   @id @default(cuid())
-  walletId         String
-  description      String?
-  items            String[]
-  itemDescriptions String[]
-  choices          String[]
-  anchorUrls       String[] @default([])
-  anchorHashes     String[] @default([])
+  id                String   @id @default(cuid())
+  walletId          String
+  description       String?
+  items             String[]
+  itemDescriptions  String[]
+  choices           String[]
+  anchorUrls        String[] @default([])
+  anchorHashes      String[] @default([])
   rationaleComments String[] @default([])
-  type             Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  type              Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([walletId])
+}
+
+// Retained to preserve the existing production table; feature is currently unused
+// in app code. Do not drop without an explicit data-migration plan.
+model Crowdfund {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+  paramUtxo         String?
+  govDatum          String?
+  govAddress        String?
+  createdAt         DateTime @default(now())
 }
 
 model Proxy {
@@ -146,6 +174,9 @@ model BalanceSnapshot {
   assetBalances Json
   isArchived    Boolean
   snapshotDate  DateTime @default(now())
+
+  @@index([walletId])
+  @@index([walletId, snapshotDate])
 }
 
 model Migration {
@@ -195,13 +226,13 @@ model BotKey {
 }
 
 model BotUser {
-  id              String   @id @default(cuid())
-  botKeyId        String   @unique
-  paymentAddress  String   @unique // One bot, one address
-  stakeAddress    String?
-  displayName     String?
-  createdAt       DateTime @default(now())
-  botKey          BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  botKeyId       String   @unique
+  paymentAddress String   @unique // One bot, one address
+  stakeAddress   String?
+  displayName    String?
+  createdAt      DateTime @default(now())
+  botKey         BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
 
   @@index([paymentAddress])
 }
@@ -213,11 +244,11 @@ enum BotWalletRole {
 
 model WalletBotAccess {
   walletId  String
-  botId      String
-  role       BotWalletRole
-  createdAt  DateTime @default(now())
+  botId     String
+  role      BotWalletRole
+  createdAt DateTime      @default(now())
 
-  @@unique([walletId, botId])
+  @@id([walletId, botId])
   @@index([walletId])
   @@index([botId])
 }
@@ -232,10 +263,10 @@ model PendingBot {
   name            String
   paymentAddress  String
   stakeAddress    String?
-  requestedScopes String           // JSON array of requested scopes
+  requestedScopes String // JSON array of requested scopes
   status          PendingBotStatus @default(UNCLAIMED)
-  claimedBy       String?          // ownerAddress of the claiming human
-  secretCipher    String?          // Encrypted secret (set on claim, cleared on pickup)
+  claimedBy       String? // ownerAddress of the claiming human
+  secretCipher    String? // Encrypted secret (set on claim, cleared on pickup)
   pickedUp        Boolean          @default(false)
   expiresAt       DateTime
   createdAt       DateTime         @default(now())
@@ -249,11 +280,35 @@ model BotClaimToken {
   id           String     @id @default(cuid())
   pendingBotId String     @unique
   pendingBot   PendingBot @relation(fields: [pendingBotId], references: [id], onDelete: Cascade)
-  tokenHash    String     // SHA-256 hash of the claim code
+  tokenHash    String // SHA-256 hash of the claim code
   attempts     Int        @default(0)
   expiresAt    DateTime
   consumedAt   DateTime?
   createdAt    DateTime   @default(now())
 
   @@index([tokenHash])
+}
+
+// Append-only security audit trail. Writers should never UPDATE existing rows.
+// Events are emitted from auth flows, wallet/transaction mutations, and
+// privilege-changing actions (bot grants, signer changes, ownership transfers).
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorAddress String? // Wallet address that performed the action (null for system/anonymous)
+  actorType    String // "user" | "bot" | "system"
+  action       String // e.g. "wallet.create", "tx.sign", "bot.grant", "auth.login"
+  resourceType String? // "wallet" | "transaction" | "bot" | "ballot" | etc.
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  outcome      String // "success" | "denied" | "error"
+  reason       String? // Short reason on denied/error
+  metadata     Json? // Additional context (no secrets, redacted)
+  createdAt    DateTime @default(now())
+
+  @@index([actorAddress])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@index([actorAddress, createdAt])
 }

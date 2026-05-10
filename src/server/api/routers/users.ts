@@ -2,8 +2,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const requireSessionAddress = (ctx: any) => {
+const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
   if (!address) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -22,8 +23,10 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  // Keep createUser public for onboarding flows, but bind address when session exists
-  createUser: publicProcedure
+  // Onboarding upsert. Authenticated only — the session address must match
+  // the address being created/updated to prevent any unauthenticated caller
+  // from creating User rows or overwriting another user's stake/nostr/drep keys.
+  createUser: protectedProcedure
     .input(
       z.object({
         address: z.string().min(1, "address required"),
@@ -34,6 +37,13 @@ export const userRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      if (sessionAddress !== input.address) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Cannot create or modify a user other than yourself",
+        });
+      }
       return ctx.db.user.upsert({
         where: {
           address: input.address,
@@ -134,10 +144,10 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  getDiscordIds: publicProcedure
+  getDiscordIds: protectedProcedure
     .input(
       z.object({
-        addresses: z.array(z.string().min(1)).min(1),
+        addresses: z.array(z.string().min(1)).min(1).max(50),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -165,7 +175,7 @@ export const userRouter = createTRPCRouter({
       );
     }),
 
-  getUserDiscordId: publicProcedure
+  getUserDiscordId: protectedProcedure
     .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
       const user = await ctx.db.user.findUnique({

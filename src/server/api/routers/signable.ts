@@ -2,28 +2,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-
-const requireSessionAddress = (ctx: any) => {
-  const address = ctx.session?.user?.id ?? ctx.sessionAddress;
-  if (!address) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-  return address;
-};
-
-const assertWalletAccess = async (ctx: any, walletId: string, requester: string) => {
-  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
-  if (!wallet) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
-  }
-  const isSigner =
-    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
-  const isOwner = wallet.ownerAddress === requester || wallet.ownerAddress === "all";
-  if (!isSigner && !isOwner) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
-  }
-  return wallet;
-};
+import { audit } from "@/lib/observability/audit";
+import { requireSessionAddress, assertWalletAccess } from "@/server/api/auth";
 
 export const signableRouter = createTRPCRouter({
   createSignable: protectedProcedure
@@ -72,7 +52,7 @@ export const signableRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Signable not found" });
       }
       await assertWalletAccess(ctx, signable.walletId, sessionAddress);
-      return ctx.db.signable.update({
+      const updated = await ctx.db.signable.update({
         where: {
           id: input.signableId,
         },
@@ -83,6 +63,30 @@ export const signableRouter = createTRPCRouter({
           state: input.state,
         },
       });
+      const justSigned = input.signedAddresses.includes(sessionAddress) &&
+        !signable.signedAddresses.includes(sessionAddress);
+      const justRejected = input.rejectedAddresses.includes(sessionAddress) &&
+        !signable.rejectedAddresses.includes(sessionAddress);
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: justRejected
+          ? "signable.reject"
+          : justSigned
+            ? "signable.sign"
+            : "signable.update",
+        resourceType: "signable",
+        resourceId: input.signableId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: signable.walletId,
+          state: input.state,
+          signersCount: input.signedAddresses.length,
+          rejectionsCount: input.rejectedAddresses.length,
+        },
+      });
+      return updated;
     }),
 
   deleteSignable: protectedProcedure
@@ -94,11 +98,22 @@ export const signableRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Signable not found" });
       }
       await assertWalletAccess(ctx, signable.walletId, sessionAddress);
-      return ctx.db.signable.delete({
+      const deleted = await ctx.db.signable.delete({
         where: {
           id: input.signableId,
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "signable.delete",
+        resourceType: "signable",
+        resourceId: input.signableId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { walletId: signable.walletId },
+      });
+      return deleted;
     }),
 
   // Read-only queries require authenticated session whose address is a signer/owner

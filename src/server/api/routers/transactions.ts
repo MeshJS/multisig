@@ -7,6 +7,8 @@ import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { audit } from "@/lib/observability/audit";
+import { assertWalletAccess } from "@/server/api/auth";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -19,40 +21,6 @@ function normalizeHex(value: string): string {
   }
   return trimmed;
 }
-
-const getSessionAddresses = (ctx: any): string[] => {
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
-  if (Array.isArray(sessionWallets) && sessionWallets.length > 0) {
-    return sessionWallets;
-  }
-  const single = ctx.session?.user?.id ?? ctx.sessionAddress;
-  return single ? [single] : [];
-};
-
-const assertWalletAccess = async (ctx: any, walletId: string) => {
-  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
-  if (!wallet) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
-  }
-
-  const addresses = getSessionAddresses(ctx);
-  if (addresses.length === 0) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-
-  const authorized = addresses.some((addr: string) => {
-    const isSigner =
-      Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr);
-    const isOwner = wallet.ownerAddress === addr || wallet.ownerAddress === "all";
-    return isSigner || isOwner;
-  });
-
-  if (!authorized) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
-  }
-
-  return wallet;
-};
 
 export const transactionRouter = createTRPCRouter({
   createTransaction: protectedProcedure
@@ -69,7 +37,8 @@ export const transactionRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await assertWalletAccess(ctx, input.walletId);
-      return ctx.db.transaction.create({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const tx = await ctx.db.transaction.create({
         data: {
           walletId: input.walletId,
           txJson: input.txJson,
@@ -80,6 +49,22 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.create",
+        resourceType: "transaction",
+        resourceId: tx.id,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: input.walletId,
+          state: input.state,
+          txHash: input.txHash ?? null,
+          initialSigners: input.signedAddresses.length,
+        },
+      });
+      return tx;
     }),
 
   updateTransaction: protectedProcedure
@@ -99,7 +84,8 @@ export const transactionRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
       await assertWalletAccess(ctx, tx.walletId);
-      return ctx.db.transaction.update({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const updated = await ctx.db.transaction.update({
         where: {
           id: input.transactionId,
         },
@@ -111,6 +97,38 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      const justSigned =
+        sessionAddress !== null &&
+        input.signedAddresses.includes(sessionAddress) &&
+        !tx.signedAddresses.includes(sessionAddress);
+      const justRejected =
+        sessionAddress !== null &&
+        input.rejectedAddresses.includes(sessionAddress) &&
+        !tx.rejectedAddresses.includes(sessionAddress);
+      const submitted = !tx.txHash && Boolean(input.txHash);
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: submitted
+          ? "transaction.submit"
+          : justRejected
+            ? "transaction.reject"
+            : justSigned
+              ? "transaction.sign"
+              : "transaction.update",
+        resourceType: "transaction",
+        resourceId: input.transactionId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: tx.walletId,
+          state: input.state,
+          signersCount: input.signedAddresses.length,
+          rejectionsCount: input.rejectedAddresses.length,
+          txHash: input.txHash ?? null,
+        },
+      });
+      return updated;
     }),
 
   deleteTransaction: protectedProcedure
@@ -121,11 +139,23 @@ export const transactionRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
       await assertWalletAccess(ctx, tx.walletId);
-      return ctx.db.transaction.delete({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const deleted = await ctx.db.transaction.delete({
         where: {
           id: input.transactionId,
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.delete",
+        resourceType: "transaction",
+        resourceId: input.transactionId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { walletId: tx.walletId },
+      });
+      return deleted;
     }),
 
   // Read-only queries require authenticated session whose address is a signer/owner
@@ -489,7 +519,8 @@ export const transactionRouter = createTRPCRouter({
       };
 
       // Create pending transaction
-      return await ctx.db.transaction.create({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const created = await ctx.db.transaction.create({
         data: {
           walletId: input.walletId,
           txJson: JSON.stringify(txJson),
@@ -500,5 +531,19 @@ export const transactionRouter = createTRPCRouter({
           description: input.description || "Imported transaction",
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.import",
+        resourceType: "transaction",
+        resourceId: created.id,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: input.walletId,
+          existingSigners: signedAddresses.length,
+        },
+      });
+      return created;
     }),
 });

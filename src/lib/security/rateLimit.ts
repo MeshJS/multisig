@@ -44,5 +44,5 @@ export function getClientIP(req: any): string {
     return realIP;
   }
   
-  return req.socket.remoteAddress ?? 'unknown';
+  return req.socket?.remoteAddress ?? 'unknown';
 }
