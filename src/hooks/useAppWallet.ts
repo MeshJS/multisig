@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
 import { buildWallet } from "@/utils/common";
@@ -21,9 +22,11 @@ export default function useAppWallet() {
     },
   );
 
-  if (wallet) {
-    return { appWallet: buildWallet(wallet as DbWalletWithLegacy, network, walletsUtxos[walletId]), isLoading };
-  }
+  const utxos = walletsUtxos[walletId];
+  const appWallet = useMemo(() => {
+    if (!wallet) return undefined;
+    return buildWallet(wallet as DbWalletWithLegacy, network, utxos);
+  }, [wallet, network, utxos]);
 
-  return { appWallet: undefined, isLoading };
+  return { appWallet, isLoading };
 }

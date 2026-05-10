@@ -185,7 +185,7 @@ function SignableCard({
 
       const signatures = signable.signatures;
       signatures.push(
-        `signature: ${signature.signature}, key: ${signature.key}`,
+        JSON.stringify({ signature: signature.signature, key: signature.key }),
       );
 
       let submitTx = false;
@@ -342,9 +342,22 @@ function SignableCard({
                 </TableHeader>
                 <TableBody>
                   {signable.signatures.map((sigStr, idx) => {
-                    const [sigPart = "", keyPart = ""] =
-                      sigStr.split(", key: ");
-                    const signature = sigPart.replace("signature: ", "");
+                    // New format: JSON {signature, key}.
+                    // Legacy format: "signature: <sig>, key: <key>".
+                    let signature = "";
+                    let keyPart = "";
+                    try {
+                      const parsed = JSON.parse(sigStr) as {
+                        signature?: unknown;
+                        key?: unknown;
+                      };
+                      if (typeof parsed.signature === "string") signature = parsed.signature;
+                      if (typeof parsed.key === "string") keyPart = parsed.key;
+                    } catch {
+                      const [sigPart = "", k = ""] = sigStr.split(", key: ");
+                      signature = sigPart.replace("signature: ", "");
+                      keyPart = k;
+                    }
                     return (
                       <TableRow key={idx}>
                         <TableCell>

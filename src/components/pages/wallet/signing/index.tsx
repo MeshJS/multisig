@@ -86,7 +86,7 @@ export default function WalletSigning() {
     const signedAddresses = [];
     signedAddresses.push(userAddress);
     const signatures = [];
-    signatures.push(`signature: ${signature.signature}, key: ${signature.key}`);
+    signatures.push(JSON.stringify({ signature: signature.signature, key: signature.key }));
 
     let submitTx = false;
 

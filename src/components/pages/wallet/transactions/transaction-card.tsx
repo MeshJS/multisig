@@ -53,7 +53,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -73,7 +72,7 @@ export default function TransactionCard({
   const { activeWallet, isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
-  const txJson = JSON.parse(transaction.txJson);
+  const txJson = useMemo(() => JSON.parse(transaction.txJson), [transaction.txJson]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   const { toast } = useToast();
