@@ -25,7 +25,7 @@ export const userRouter = createTRPCRouter({
 
   // Onboarding upsert. Authenticated only — the session address must match
   // the address being created/updated to prevent any unauthenticated caller
-  // from creating User rows or overwriting another user's stake/nostr/drep keys.
+  // from creating User rows or overwriting another user's stake/drep keys.
   createUser: protectedProcedure
     .input(
       z.object({
@@ -33,7 +33,6 @@ export const userRouter = createTRPCRouter({
         stakeAddress: z.string().min(1, "stakeAddress required"),
         // DRep key hash is optional (not all wallets / networks expose it)
         drepKeyHash: z.string().optional().default(""),
-        nostrKey: z.string().min(1, "nostrKey required"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -51,13 +50,11 @@ export const userRouter = createTRPCRouter({
         update: {
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
-          nostrKey: input.nostrKey,
         },
         create: {
           address: input.address,
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
-          nostrKey: input.nostrKey,
         },
       });
     }),
@@ -108,22 +105,6 @@ export const userRouter = createTRPCRouter({
       return ctx.db.user.update({
         where: { id: user.id },
         data,
-      });
-    }),
-
-  getNostrKeysByAddresses: publicProcedure
-    .input(z.object({ addresses: z.array(z.string().min(1)).min(1) }))
-    .query(async ({ ctx, input }) => {
-      return await ctx.db.user.findMany({
-        where: {
-          address: {
-            in: input.addresses,
-          },
-        },
-        select: {
-          address: true,
-          nostrKey: true,
-        },
       });
     }),
 
