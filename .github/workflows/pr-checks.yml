@@ -29,20 +29,19 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      # Lint stays non-blocking until the rule set is cleaned up; tracked separately.
       - name: Lint
         run: npm run lint
         continue-on-error: true
 
+      # Typecheck, test, and build are gates — failures must fail the PR.
       - name: Type check
         run: npx tsc --noEmit
-        continue-on-error: true
 
       - name: Test
         run: npm run test:ci
-        continue-on-error: true
 
       - name: Build
         run: npm run build
         env:
           SKIP_ENV_VALIDATION: 'true'
-        continue-on-error: true
