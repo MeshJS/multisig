@@ -52,9 +52,19 @@ interface SignerConfig {
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
   signersDRepKeys: string[];
   setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
+  signerIds?: string[];
   addSigner: () => void;
   removeSigner?: (index: number) => void;
 }
+
+// Synthetic React-key helper. The on-chain address is unique per signer in the
+// happy path, but during edits or paste flows it can briefly collide; using
+// the address as a key triggers React reconciliation bugs (lost focus,
+// duplicated DOM nodes). `signerIds` is kept index-aligned by the host hook
+// (`useWalletFlowState` / `useMigrationWalletFlowState`); this fallback runs
+// only when a caller hasn't wired it through yet.
+const rowKey = (signerIds: string[] | undefined, index: number): string =>
+  signerIds?.[index] ?? `signer-row-${index}`;
 
 interface ReviewSignersCardProps {
   signerConfig: SignerConfig;
@@ -85,6 +95,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
     setSignerStakeKeys,
     signersDRepKeys = [],
     setSignerDRepKeys,
+    signerIds,
     addSigner,
     removeSigner,
   } = signerConfig;
@@ -263,7 +274,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                 </TableHeader>
                 <TableBody>
                   {signersAddresses.map((signer, index) => (
-                    <TableRow key={signer}>
+                    <TableRow key={rowKey(signerIds, index)}>
                       {/* Signer name */}
                       <TableCell>
                         <span className="flex items-center gap-2">
@@ -374,7 +385,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
             <div className="space-y-3 sm:hidden">
               {signersAddresses.map((signer, index) => (
                 <div
-                  key={signer}
+                  key={rowKey(signerIds, index)}
                   className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/5"
                 >
                   {/* Top row: Name and Actions */}
