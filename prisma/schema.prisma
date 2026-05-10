@@ -16,12 +16,12 @@ datasource db {
 }
 
 model User {
-  id           String @id @default(cuid())
-  address      String @unique
-  stakeAddress String @unique
-  drepKeyHash  String @default("")
-  nostrKey     String @unique
-  discordId    String @default("")
+  id           String  @id @default(cuid())
+  address      String  @unique
+  stakeAddress String  @unique
+  drepKeyHash  String  @default("")
+  nostrKey     String? @unique
+  discordId    String  @default("")
 }
 
 model Wallet {

@@ -331,22 +331,6 @@ export function PageHomepage() {
               </div>
             </CardUI>
 
-            {/* Chat and Collaborate */}
-            <CardUI
-              title="Chat and Collaborate"
-              description="Built-in Nostr chat to discuss transactions and governance with your team"
-              cardClassName="overflow-hidden"
-            >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/chat.png"
-                  alt="Team chat"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
-              </div>
-            </CardUI>
           </div>
         </div>
       </section>

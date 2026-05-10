@@ -18,7 +18,6 @@ import "@/styles/swagger-overrides.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
-import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
 
 // MeshProvider pulls in dependencies that assume a browser/webpack env.
 // Load it client-side only (including its styles) to avoid SSR/runtime issues.
@@ -66,17 +65,15 @@ const MyApp: AppType<{ session: Session | null }> = ({
         />
       )}
       <SessionProvider session={session}>
-        <NostrChatProvider>
-          <div className={GeistSans.className}>
-            <div className="flex min-h-screen w-full flex-col">
-              <RootLayout>
-                <Component {...pageProps} />
-              </RootLayout>
-            </div>
-            <Toaster />
-            <Metatags />
+        <div className={GeistSans.className}>
+          <div className="flex min-h-screen w-full flex-col">
+            <RootLayout>
+              <Component {...pageProps} />
+            </RootLayout>
           </div>
-        </NostrChatProvider>
+          <Toaster />
+          <Metatags />
+        </div>
       </SessionProvider>
     </MeshProviderNoSSR>
   );
