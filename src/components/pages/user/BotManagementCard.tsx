@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { Bot, Trash2, Loader2, Pencil, Link } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
