@@ -122,7 +122,6 @@ export default function ProxyControl() {
   // State management
   const [proxyContract, setProxyContract] = useState<MeshProxyContract | null>(null);
   const [isProxySetup, setIsProxySetup] = useState<boolean>(false);
-  const [, setLocalLoading] = useState<boolean>(false);
   const [tvlLoading, setTvlLoading] = useState<boolean>(false);
 
   // Setup flow state
@@ -148,10 +147,6 @@ export default function ProxyControl() {
   const [spendOutputs, setSpendOutputs] = useState<ProxyOutput[]>([
     { address: "", unit: "lovelace", amount: "" }
   ]);
-
-  // UTxO selection state (UI only). We will still pass all UTxOs from provider to contract.
-  const [, setSelectedUtxos] = useState<UTxO[]>([]);
-  const [, setManualSelected] = useState<boolean>(false);
 
   // Helper to resolve inputs for multisig controlled txs
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
@@ -264,8 +259,7 @@ export default function ProxyControl() {
 
     try {
       setSetupLoading(true);
-      setLocalLoading(true);
-      
+
       // Reset setup data to prevent conflicts with previous attempts
       setSetupData({});
       setSetupStep(0);
@@ -301,7 +295,6 @@ export default function ProxyControl() {
       });
     } finally {
       setSetupLoading(false);
-      setLocalLoading(false);
     }
   }, [proxyContract, isWalletReady, getMsInputs, newTransaction, toast]);
 
@@ -318,7 +311,6 @@ export default function ProxyControl() {
 
     try {
       setSetupLoading(true);
-      setLocalLoading(true);
 
       // If msCbor is set, route through useTransaction hook to create a signable
       if (appWallet?.scriptCbor && setupData.txHex) {
@@ -395,7 +387,6 @@ export default function ProxyControl() {
       });
     } finally {
       setSetupLoading(false);
-      setLocalLoading(false);
     }
   }, [setupData, activeWallet, appWallet, createProxy, refetchProxies, getMsInputs, newTransaction, userAddress, toast]);
 
@@ -600,7 +591,6 @@ export default function ProxyControl() {
 
     try {
       setSpendLoading(true);
-      setLocalLoading(true);
 
       // Get the selected proxy
       const proxy = proxies?.find((p: { id: string }) => p.id === selectedProxyId);
@@ -672,7 +662,6 @@ export default function ProxyControl() {
       });
     } finally {
       setSpendLoading(false);
-      setLocalLoading(false);
     }
   }, [proxyContract, isWalletReady, spendOutputs, selectedProxyId, proxies, network, activeWallet, handleProxySelection, getMsInputs, newTransaction, appWallet?.scriptCbor, toast]);
 
@@ -840,9 +829,9 @@ export default function ProxyControl() {
                   <UTxOSelector
                     appWallet={appWallet}
                     network={network}
-                    onSelectionChange={(utxos, manual) => {
-                      setSelectedUtxos(utxos);
-                      setManualSelected(manual);
+                    onSelectionChange={() => {
+                      // Selection is for user visibility only;
+                      // contract uses all UTxOs from the multisig wallet.
                     }}
                   />
                 </div>
