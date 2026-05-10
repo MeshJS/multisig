@@ -55,13 +55,16 @@ const config = {
       layers: true,
     };
     
-    // Optimize tree-shaking by ensuring proper module resolution
+    // Optimize tree-shaking by ensuring proper module resolution.
+    // Note: do NOT set `sideEffects: false` globally — it tells webpack that
+    // every file is side-effect-free, which silently strips CSS imports,
+    // polyfills, and other modules that exist purely for their side effects.
+    // Per-package sideEffects flags in package.json are the correct surface.
     config.optimization = {
       ...config.optimization,
       usedExports: true,
-      sideEffects: false,
     };
-    
+
     // Handle CommonJS modules that don't support named exports
     config.resolve = {
       ...config.resolve,
