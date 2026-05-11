@@ -99,7 +99,7 @@
     "@react-three/fiber": "^8.17.7",
     "@types/cors": "^2.8.18",
     "@types/eslint": "^8.56.10",
-    "@types/formidable": "^3.4.5",
+    "@types/formidable": "^3.5.1",
     "@types/jest": "^30.0.0",
     "@types/jsonld": "^1.5.15",
     "@types/jsonwebtoken": "^9.0.9",
