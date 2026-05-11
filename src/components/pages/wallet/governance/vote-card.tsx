@@ -4,9 +4,15 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import VoteButton from "./proposal/voteButtton";
 import type { UTxO } from "@meshsdk/core";
+import {
+  RationaleEditor,
+  type RationaleEditorValue,
+} from "./rationale/RationaleEditor";
+import { FileText } from "lucide-react";
 
 interface VoteCardProps {
   appWallet: Wallet;
@@ -27,6 +33,11 @@ export default function VoteCard({
   const [localProposalId, setLocalProposalId] = useState<string>(proposalId ?? "");
   const [description, setDescription] = useState<string>("");
   const [metadata, setMetadata] = useState<string>("");
+  const [showRationale, setShowRationale] = useState(false);
+  const [rationale, setRationale] = useState<RationaleEditorValue>({
+    comment: "",
+    anchor: null,
+  });
 
   return (
     <CardUI title="Vote for proposal" description="" cardClassName="col-span-2">
@@ -67,6 +78,40 @@ export default function VoteCard({
           />
         </div>
 
+        <div className="space-y-2">
+          {showRationale ? (
+            <RationaleEditor
+              initial={rationale}
+              onChange={setRationale}
+              allowClear
+            />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRationale(true)}
+              className="w-full sm:w-auto"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Attach voting rationale (optional)
+            </Button>
+          )}
+          {showRationale && (
+            <div className="flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowRationale(false);
+                  setRationale({ comment: "", anchor: null });
+                }}
+              >
+                Hide rationale
+              </Button>
+            </div>
+          )}
+        </div>
+
         {!drepInfo?.active && (
           <p className="text-xs sm:text-sm text-muted-foreground">
             * Please register DRep before creating a vote transaction
@@ -82,6 +127,7 @@ export default function VoteCard({
             utxos={utxos}
             selectedBallotId={selectedBallotId}
             proposalTitle={proposalTitle}
+            anchor={rationale.anchor}
           />
         </div>
       </fieldset>

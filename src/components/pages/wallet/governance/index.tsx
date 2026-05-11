@@ -1,4 +1,5 @@
 import CardInfo from "./card-info";
+import GovernanceOverviewSummary from "./overview-summary";
 import { useSiteStore } from "@/lib/zustand/site";
 import AllProposals from "./proposals";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -35,6 +36,9 @@ function PageGovernanceContent() {
   return (
     <>
       <main className="flex flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8 max-w-7xl mx-auto w-full">
+        {/* Dashboard summary at the top */}
+        <GovernanceOverviewSummary appWallet={appWallet} />
+
         {/* Info section */}
         <CardInfo appWallet={appWallet} manualUtxos={manualUtxos} />
         

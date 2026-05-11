@@ -549,6 +549,122 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
         </CardUI>
       )}
 
+      {/* Your ballot entry - shows the user's rationale + anchor for this proposal */}
+      {(() => {
+        if (!ballots || !proposalMetadata) return null;
+        const proposalId = `${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`;
+        for (const b of ballots) {
+          const idx = Array.isArray(b.items) ? b.items.indexOf(proposalId) : -1;
+          if (idx === -1) continue;
+          const choice = b.choices?.[idx] ?? "";
+          const rationale = b.rationaleComments?.[idx] ?? "";
+          const anchorUrl = b.anchorUrls?.[idx] ?? "";
+          const anchorHash = b.anchorHashes?.[idx] ?? "";
+          if (!choice && !rationale && !anchorUrl && !anchorHash) continue;
+          return (
+            <CardUI title="Your ballot entry" cardClassName="w-full" key={b.id}>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Ballot: </span>
+                  <span className="font-medium">{b.description || "Untitled ballot"}</span>
+                </div>
+                {choice && (
+                  <div>
+                    <span className="text-muted-foreground">Choice: </span>
+                    <Badge variant="secondary">{choice}</Badge>
+                  </div>
+                )}
+                {rationale && (
+                  <div>
+                    <div className="text-muted-foreground mb-1">Rationale:</div>
+                    <div className="rounded bg-muted/30 p-3 text-xs sm:text-sm whitespace-pre-wrap">
+                      {rationale}
+                    </div>
+                  </div>
+                )}
+                {(anchorUrl || anchorHash) && (
+                  <div className="space-y-1 text-xs">
+                    {anchorUrl && (
+                      <div className="break-all">
+                        <span className="text-muted-foreground">Anchor URL: </span>
+                        <a
+                          className="text-blue-600 dark:text-blue-400 underline"
+                          href={anchorUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {anchorUrl}
+                        </a>
+                      </div>
+                    )}
+                    {anchorHash && (
+                      <div className="break-all font-mono">
+                        <span className="text-muted-foreground">Anchor hash: </span>
+                        {anchorHash}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardUI>
+          );
+        }
+        return null;
+      })()}
+
+      {/* Technical details - fetched fields not surfaced elsewhere */}
+      {proposalDetails && (
+        <CardUI title="Technical details" cardClassName="w-full">
+          <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+            {proposalDetails.governance_description?.tag && (
+              <div>
+                <div className="text-muted-foreground">Action tag</div>
+                <div className="font-mono break-all">
+                  {proposalDetails.governance_description.tag}
+                </div>
+              </div>
+            )}
+            {proposalDetails.return_address && (
+              <div>
+                <div className="text-muted-foreground">Return address (deposit refund)</div>
+                <div className="font-mono break-all">{proposalDetails.return_address}</div>
+              </div>
+            )}
+            {proposalMetadata?.url && (
+              <div>
+                <div className="text-muted-foreground">Metadata anchor URL</div>
+                <a
+                  href={proposalMetadata.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 dark:text-blue-400 underline break-all"
+                >
+                  {proposalMetadata.url}
+                </a>
+              </div>
+            )}
+            {proposalMetadata?.hash && (
+              <div>
+                <div className="text-muted-foreground">Metadata anchor hash</div>
+                <div className="font-mono break-all">{proposalMetadata.hash}</div>
+              </div>
+            )}
+            <div>
+              <div className="text-muted-foreground">Proposal ID</div>
+              <div className="font-mono break-all">
+                {proposalDetails.tx_hash}#{proposalDetails.cert_index}
+              </div>
+            </div>
+            {proposalDetails.id && (
+              <div>
+                <div className="text-muted-foreground">Governance action ID</div>
+                <div className="font-mono break-all">{proposalDetails.id}</div>
+              </div>
+            )}
+          </div>
+        </CardUI>
+      )}
+
       {/* Withdrawals Card - Show for treasury withdrawal proposals */}
       {proposalWithdrawals && proposalWithdrawals.length > 0 && (
         <CardUI

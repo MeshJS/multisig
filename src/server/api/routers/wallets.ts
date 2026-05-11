@@ -6,6 +6,16 @@ import type { AuthCtx } from "@/server/api/trpc";
 import type { RawImportBodies } from "@/types/wallet";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/lib/observability/audit";
+import {
+  WALLET_TRANSFER_FORMAT,
+  WALLET_TRANSFER_VERSION,
+  type WalletTransferBallot,
+  type WalletTransferContact,
+  type WalletTransferPayloadV1,
+  type WalletTransferType,
+} from "@/types/walletTransfer";
+
+const TRANSFER_ALLOWED_TYPES: WalletTransferType[] = ["atLeast", "all", "any"];
 
 const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
@@ -754,5 +764,116 @@ export const walletRouter = createTRPCRouter({
         outcome: "success",
       });
       return updated;
+    }),
+
+  exportTransferPayload: protectedProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        includeContacts: z.boolean().default(false),
+        includeBallots: z.boolean().default(false),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+
+      const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
+      if (!wallet) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+      }
+      const isOwner = requesters.some((a) => wallet.ownerAddress === a);
+      if (!isOwner) {
+        void audit(ctx.db, {
+          actorAddress: sessionAddress,
+          actorType: "user",
+          action: "wallet.transfer.export",
+          resourceType: "wallet",
+          resourceId: input.walletId,
+          ip: ctx.ip ?? null,
+          outcome: "denied",
+          reason: "not_owner",
+        });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the wallet owner can export this wallet",
+        });
+      }
+
+      const type: WalletTransferType = TRANSFER_ALLOWED_TYPES.includes(
+        wallet.type as WalletTransferType,
+      )
+        ? (wallet.type as WalletTransferType)
+        : "atLeast";
+
+      const payload: WalletTransferPayloadV1 = {
+        format: WALLET_TRANSFER_FORMAT,
+        version: WALLET_TRANSFER_VERSION,
+        exportedAt: new Date().toISOString(),
+        exportedFromOrigin: "",
+        exporterAddress: sessionAddress,
+        wallet: {
+          name: wallet.name,
+          description: wallet.description ?? "",
+          type,
+          signersAddresses: wallet.signersAddresses ?? [],
+          signersStakeKeys: wallet.signersStakeKeys ?? [],
+          signersDRepKeys: wallet.signersDRepKeys ?? [],
+          signersDescriptions: wallet.signersDescriptions ?? [],
+          numRequiredSigners: wallet.numRequiredSigners ?? null,
+          scriptCbor: wallet.scriptCbor,
+          stakeCredentialHash: wallet.stakeCredentialHash ?? null,
+          profileImageIpfsUrl: wallet.profileImageIpfsUrl ?? null,
+        },
+      };
+
+      if (input.includeContacts) {
+        const contacts = await ctx.db.contact.findMany({
+          where: { walletId: input.walletId },
+          orderBy: { createdAt: "asc" },
+          take: 500,
+        });
+        payload.contacts = contacts.map<WalletTransferContact>((c) => ({
+          name: c.name,
+          address: c.address,
+          description: c.description ?? null,
+        }));
+      }
+
+      if (input.includeBallots) {
+        const ballots = await ctx.db.ballot.findMany({
+          where: { walletId: input.walletId },
+          orderBy: { createdAt: "asc" },
+          take: 200,
+        });
+        payload.ballots = ballots.map<WalletTransferBallot>((b) => ({
+          description: b.description ?? null,
+          items: b.items ?? [],
+          itemDescriptions: b.itemDescriptions ?? [],
+          choices: b.choices ?? [],
+          anchorUrls: b.anchorUrls ?? [],
+          anchorHashes: b.anchorHashes ?? [],
+          rationaleComments: b.rationaleComments ?? [],
+          type: b.type,
+        }));
+      }
+
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "wallet.transfer.export",
+        resourceType: "wallet",
+        resourceId: input.walletId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          includeContacts: input.includeContacts,
+          includeBallots: input.includeBallots,
+          signerCount: payload.wallet.signersAddresses.length,
+        },
+      });
+
+      return payload;
     }),
 });

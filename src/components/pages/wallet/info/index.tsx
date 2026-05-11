@@ -4,6 +4,7 @@ import CardInfo from "./card-info";
 import CardSigners from "./signers/card-signers";
 import { ManageContacts } from "./manage-contacts";
 import { MigrateWallet } from "./migrate-wallet";
+import { TransferWallet } from "./transfer-wallet";
 import { ArchiveWallet } from "./archive-wallet";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
 import ProxyControlCard from "./proxy-control";
@@ -22,6 +23,7 @@ export default function WalletInfo() {
         <CardSigners appWallet={appWallet} />
         <ManageContacts appWallet={appWallet} />
         <MigrateWallet appWallet={appWallet} />
+        <TransferWallet appWallet={appWallet} />
         <ProxyControlCard />
         {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
         {multisigWallet && <UpgradeGovernanceWallet mWallet={multisigWallet} />}

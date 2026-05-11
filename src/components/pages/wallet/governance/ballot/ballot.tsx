@@ -32,10 +32,15 @@ import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { CheckCircle2, XCircle, MinusCircle, Loader2, Trash2, Plus, FileText, Vote as VoteIcon, Link2, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { hashDrepAnchor } from "@meshsdk/core";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { parseProposalId } from "@/lib/governance";
+import {
+  buildRationaleJsonLd,
+  computeAnchorHash,
+  loadRationaleFromUrl as loadRationale,
+  uploadRationaleToPinata,
+} from "@/lib/governance/rationale";
 
 const GovAction = 1;
 
@@ -164,6 +169,14 @@ export default function BallotCard({
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
     ballotId: string;
     ballotDescription: string;
+  } | null>(null);
+
+  const [moveConfirm, setMoveConfirm] = useState<{
+    proposalId: string;
+    proposalTitle: string;
+    targetBallotId: string;
+    targetBallotName: string;
+    sourceBallots: Array<{ id: string; description: string; index: number }>;
   } | null>(null);
 
   const { toast } = useToast();
@@ -611,45 +624,29 @@ export default function BallotCard({
         b.items.includes(currentProposalId),
     );
 
-    // If in another ballot, automatically move it
+    // If in another ballot, ask the user before moving — moving wipes the
+    // existing choice/rationale on the source ballot, which is destructive.
     if (ballotsWithProposal.length > 0) {
-      Promise.all(
-        ballotsWithProposal.map(async (b) => {
-          const index = b.items.findIndex((item: string) => item === currentProposalId);
-          if (index >= 0) {
-            await moveRemoveProposalMutation.mutateAsync({
-              ballotId: b.id,
-              index,
-            });
-          }
-        })
-      ).then(() => {
-        addProposalMutation.mutate({
-          ballotId: selectedBallotId,
-          itemDescription: currentProposalTitle || "Untitled proposal",
-          item: currentProposalId,
-          choice: "Abstain",
-        }, {
-          onSuccess: () => {
-            handledProposalRef.current.add(currentProposalId);
-            isProcessingRef.current = false;
-            toast({
-              title: "Moved to Ballot",
-              description: "Proposal moved to the selected ballot.",
-              duration: 2000,
-            });
-            getBallots.refetch();
-            onBallotChanged?.();
-          },
-          onError: () => {
-            isProcessingRef.current = false;
-            autoHandleRef.current = null; // Reset on error
-          },
-        });
-      }).catch(() => {
-        isProcessingRef.current = false;
-        autoHandleRef.current = null;
+      const targetBallot = getBallots.data.find((b) => b.id === selectedBallotId);
+      setMoveConfirm({
+        proposalId: currentProposalId,
+        proposalTitle: currentProposalTitle ?? "Untitled proposal",
+        targetBallotId: selectedBallotId,
+        targetBallotName: targetBallot?.description ?? "this ballot",
+        sourceBallots: ballotsWithProposal
+          .map((b) => {
+            const idx = b.items.findIndex((item: string) => item === currentProposalId);
+            return {
+              id: b.id,
+              description: b.description ?? "Untitled ballot",
+              index: idx,
+            };
+          })
+          .filter((b) => b.index >= 0),
       });
+      // Mark as handled so we don't re-trigger; the user resolves via dialog.
+      handledProposalRef.current.add(currentProposalId);
+      isProcessingRef.current = false;
       return;
     }
 
@@ -686,14 +683,26 @@ export default function BallotCard({
   // Calculate vote summary
   const voteSummary = useMemo(() => {
     if (!selectedBallot || !Array.isArray(selectedBallot.items)) {
-      return { total: 0, yes: 0, no: 0, abstain: 0 };
+      return { total: 0, yes: 0, no: 0, abstain: 0, withRationale: 0, drafts: 0 };
     }
     const choices = selectedBallot.choices || [];
+    const anchorHashes = selectedBallot.anchorHashes || [];
+    const rationaleComments = selectedBallot.rationaleComments || [];
+    let withRationale = 0;
+    let drafts = 0;
+    for (let i = 0; i < selectedBallot.items.length; i++) {
+      const hasAnchor = Boolean(anchorHashes[i]?.trim());
+      const hasDraft = Boolean(rationaleComments[i]?.trim());
+      if (hasAnchor) withRationale += 1;
+      else if (hasDraft) drafts += 1;
+    }
     return {
       total: selectedBallot.items.length,
       yes: choices.filter((c: string) => c === "Yes").length,
       no: choices.filter((c: string) => c === "No").length,
       abstain: choices.filter((c: string) => c === "Abstain").length,
+      withRationale,
+      drafts,
     };
   }, [selectedBallot]);
 
@@ -821,7 +830,7 @@ export default function BallotCard({
                       {voteSummary.total} {voteSummary.total === 1 ? 'proposal' : 'proposals'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 flex-wrap">
                     <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
                       Yes: {voteSummary.yes}
                     </Badge>
@@ -832,6 +841,15 @@ export default function BallotCard({
                       Abstain: {voteSummary.abstain}
                     </Badge>
                   </div>
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <FileText className="h-3 w-3" />
+                    Rationale uploaded: {voteSummary.withRationale}/{voteSummary.total}
+                  </span>
+                  {voteSummary.drafts > 0 && (
+                    <span>· {voteSummary.drafts} draft{voteSummary.drafts === 1 ? "" : "s"} pending upload</span>
+                  )}
                 </div>
               </div>
 
@@ -982,6 +1000,117 @@ export default function BallotCard({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation dialog for moving a proposal between ballots */}
+      <Dialog
+        open={!!moveConfirm}
+        onOpenChange={(open) => {
+          if (!open) setMoveConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move proposal to this ballot?</DialogTitle>
+            <DialogDescription>
+              {moveConfirm && (
+                <span>
+                  &ldquo;{moveConfirm.proposalTitle}&rdquo; is already on{" "}
+                  {moveConfirm.sourceBallots.length === 1
+                    ? `the ballot "${moveConfirm.sourceBallots[0]?.description}"`
+                    : `${moveConfirm.sourceBallots.length} other ballots`}
+                  . Moving it to &ldquo;{moveConfirm.targetBallotName}&rdquo; will
+                  remove it from the source ballot(s) — including any choice and
+                  rationale you set there.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setMoveConfirm(null)}
+              disabled={addProposalMutation.isPending || moveRemoveProposalMutation.isPending}
+            >
+              Keep where it is
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!moveConfirm) return;
+                try {
+                  await addProposalMutation.mutateAsync({
+                    ballotId: moveConfirm.targetBallotId,
+                    itemDescription: moveConfirm.proposalTitle,
+                    item: moveConfirm.proposalId,
+                    choice: "Abstain",
+                  });
+                  setMoveConfirm(null);
+                  toast({
+                    title: "Added to this ballot",
+                    description: "Proposal now exists on both ballots.",
+                    duration: 2000,
+                  });
+                  await getBallots.refetch();
+                  onBallotChanged?.();
+                } catch (error: unknown) {
+                  toast({
+                    title: "Error",
+                    description: error instanceof Error ? error.message : "Failed to add proposal.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={addProposalMutation.isPending}
+            >
+              Add to both
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!moveConfirm) return;
+                try {
+                  for (const src of moveConfirm.sourceBallots) {
+                    await moveRemoveProposalMutation.mutateAsync({
+                      ballotId: src.id,
+                      index: src.index,
+                    });
+                  }
+                  await addProposalMutation.mutateAsync({
+                    ballotId: moveConfirm.targetBallotId,
+                    itemDescription: moveConfirm.proposalTitle,
+                    item: moveConfirm.proposalId,
+                    choice: "Abstain",
+                  });
+                  setMoveConfirm(null);
+                  toast({
+                    title: "Moved",
+                    description: "Proposal moved to this ballot.",
+                    duration: 2000,
+                  });
+                  await getBallots.refetch();
+                  onBallotChanged?.();
+                } catch (error: unknown) {
+                  toast({
+                    title: "Error",
+                    description: error instanceof Error ? error.message : "Failed to move proposal.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={addProposalMutation.isPending || moveRemoveProposalMutation.isPending}
+              className="bg-gray-700 hover:bg-gray-800 text-white"
+            >
+              {addProposalMutation.isPending || moveRemoveProposalMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Moving...
+                </>
+              ) : (
+                "Move here"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1004,75 +1133,14 @@ function ProposalRationaleEditor({
 }) {
   const state = rationaleState || { json: "", url: "", hash: "", loading: false, comment: "" };
 
-  // Construct JSON-LD from comment following CIP-100 structure
-  const constructJsonLdFromComment = useCallback((comment: string) => {
-    const jsonLd = {
-      "@context": {
-        "CIP100": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md#",
-        "hashAlgorithm": "CIP100:hashAlgorithm",
-        "body": {
-          "@id": "CIP100:body",
-          "@context": {
-            "references": {
-              "@id": "CIP100:references",
-              "@container": "@set",
-              "@context": {
-                "GovernanceMetadata": "CIP100:GovernanceMetadataReference",
-                "Other": "CIP100:OtherReference",
-                "label": "CIP100:reference-label",
-                "uri": "CIP100:reference-uri",
-                "referenceHash": {
-                  "@id": "CIP100:referenceHash",
-                  "@context": {
-                    "hashDigest": "CIP100:hashDigest",
-                    "hashAlgorithm": "CIP100:hashAlgorithm"
-                  }
-                }
-              }
-            },
-            "comment": "CIP100:comment",
-            "externalUpdates": {
-              "@id": "CIP100:externalUpdates",
-              "@context": {
-                "title": "CIP100:update-title",
-                "uri": "CIP100:uri"
-              }
-            }
-          }
-        },
-        "authors": {
-          "@id": "CIP100:authors",
-          "@container": "@set",
-          "@context": {
-            "name": "http://xmlns.com/foaf/0.1/name",
-            "witness": {
-              "@id": "CIP100:witness",
-              "@context": {
-                "witnessAlgorithm": "CIP100:witnessAlgorithm",
-                "publicKey": "CIP100:publicKey",
-                "signature": "CIP100:signature"
-              }
-            }
-          }
-        }
-      },
-      "authors": [],
-      "body": {
-        "comment": comment.trim()
-      },
-      "hashAlgorithm": "blake2b-256"
-    };
-    return JSON.stringify(jsonLd, null, 2);
-  }, []);
-
   const handleCommentChange = useCallback((comment: string) => {
     if (comment.trim()) {
-      const jsonLd = constructJsonLdFromComment(comment);
+      const jsonLd = JSON.stringify(buildRationaleJsonLd(comment), null, 2);
       onStateChange({ comment, json: jsonLd });
     } else {
       onStateChange({ comment, json: "" });
     }
-  }, [constructJsonLdFromComment, onStateChange]);
+  }, [onStateChange]);
 
   return (
     <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
@@ -1187,7 +1255,7 @@ function BallotOverviewTable({
   } = useProposalRemoval(ballotId, refetchBallots, onBallotChanged);
 
   const computeHashFromJson = useCallback((jsonData: unknown) => {
-    return hashDrepAnchor(jsonData as Record<string, unknown>);
+    return computeAnchorHash(jsonData);
   }, []);
 
   // Initialize rationale states from ballot data and auto-load existing anchors
@@ -1310,38 +1378,22 @@ function BallotOverviewTable({
     }
     setRationaleStates(prev => ({ ...prev, [idx]: { ...prev[idx]!, loading: true } }));
     try {
-      const parsed = JSON.parse(state.json);
-      const response = await fetch("/api/pinata-storage/put", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+      const parsed = JSON.parse(state.json) as Record<string, unknown>;
+      const anchor = await uploadRationaleToPinata(parsed);
+      setRationaleStates(prev => ({
+        ...prev,
+        [idx]: {
+          ...prev[idx]!,
+          url: anchor.url,
+          hash: anchor.hash,
+          loading: false,
         },
-        body: JSON.stringify({
-          pathname: `rationale/rationale-${Date.now()}.jsonld`,
-          value: JSON.stringify(parsed, null, 2),
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err?.error || "Upload failed");
-      }
-      const res = await response.json();
-      const hash = computeHashFromJson(parsed);
-      setRationaleStates(prev => ({ 
-        ...prev, 
-        [idx]: { 
-          ...prev[idx]!, 
-          url: res.url, 
-          hash,
-          loading: false 
-        } 
       }));
       await updateAnchorMutation.mutateAsync({
         ballotId,
         index: idx,
-        anchorUrl: res.url,
-        anchorHash: hash,
+        anchorUrl: anchor.url,
+        anchorHash: anchor.hash,
       });
       await refetchBallots();
       toast({
@@ -1356,7 +1408,7 @@ function BallotOverviewTable({
         variant: "destructive",
       });
     }
-  }, [rationaleStates, computeHashFromJson, ballotId, updateAnchorMutation, refetchBallots, toast]);
+  }, [rationaleStates, ballotId, updateAnchorMutation, refetchBallots, toast]);
 
   const loadRationaleFromUrl = useCallback(async (idx: number, overrideUrl?: string) => {
     const state = rationaleStates[idx];
@@ -1371,28 +1423,23 @@ function BallotOverviewTable({
     }
     setRationaleStates(prev => ({ ...prev, [idx]: { ...prev[idx]!, loading: true } }));
     try {
-      const res = await fetch(targetUrl);
-      if (!res.ok) throw new Error("Failed to fetch rationale");
-      const data = await res.json();
-      const hash = computeHashFromJson(data);
-      // Extract comment from loaded JSON-LD if present
-      const comment = data?.body?.comment || "";
-      setRationaleStates(prev => ({ 
-        ...prev, 
-        [idx]: { 
-          ...prev[idx]!, 
-          json: JSON.stringify(data, null, 2),
+      const res = await loadRationale(targetUrl);
+      setRationaleStates(prev => ({
+        ...prev,
+        [idx]: {
+          ...prev[idx]!,
+          json: JSON.stringify(res.json, null, 2),
           url: targetUrl,
-          hash,
-          comment,
-          loading: false 
-        } 
+          hash: res.hash,
+          comment: res.comment,
+          loading: false,
+        },
       }));
       await updateAnchorMutation.mutateAsync({
         ballotId,
         index: idx,
         anchorUrl: targetUrl,
-        anchorHash: hash,
+        anchorHash: res.hash,
       });
       await refetchBallots();
       toast({
@@ -1407,7 +1454,7 @@ function BallotOverviewTable({
         variant: "destructive",
       });
     }
-  }, [rationaleStates, computeHashFromJson, ballotId, updateAnchorMutation, refetchBallots, toast]);
+  }, [rationaleStates, ballotId, updateAnchorMutation, refetchBallots, toast]);
 
   return (
     <>

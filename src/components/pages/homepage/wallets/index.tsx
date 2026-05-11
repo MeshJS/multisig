@@ -25,6 +25,7 @@ import SectionExplanation from "./SectionExplanation";
 import WalletCardSkeleton from "./WalletCardSkeleton";
 import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
 import IPFSImage from "@/components/common/ipfs-image";
+import { ImportTransferDialog } from "./import-transfer-dialog";
 
 
 export default function PageWallets() {
@@ -123,6 +124,7 @@ export default function PageWallets() {
           <Button size="sm" asChild>
             <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
           </Button>
+          <ImportTransferDialog />
           {wallets && wallets.some((wallet) => wallet.isArchived) && (
             <Button
               variant={showArchived ? "default" : "secondary"}

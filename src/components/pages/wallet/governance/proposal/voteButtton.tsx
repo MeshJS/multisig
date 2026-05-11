@@ -52,6 +52,11 @@ interface VoteButtonProps {
    * open the ballot card instead of mutating ballots directly.
    */
   onOpenBallotSidebar?: () => void;
+  /**
+   * Optional anchor (CIP-100 rationale URL + Blake2b-256 hash) attached
+   * to the on-chain vote. When provided, the vote tx carries this anchor.
+   */
+  anchor?: { url: string; hash: string } | null;
 }
 
 export default function VoteButton({
@@ -64,6 +69,7 @@ export default function VoteButton({
   proposalTitle,
   proposalDetails,
   onOpenBallotSidebar,
+  anchor = null,
 }: VoteButtonProps) {
   // Use the custom hook for ballots (still used for proxy / context where needed)
   const { ballots } = useBallot(appWallet?.id);
@@ -281,6 +287,16 @@ export default function VoteButton({
           )
           .txInScript(scriptCbor);
       }
+      const voteOptions: {
+        voteKind: "Yes" | "No" | "Abstain";
+        anchor?: { anchorUrl: string; anchorDataHash: string };
+      } = { voteKind };
+      if (anchor?.url && anchor?.hash) {
+        voteOptions.anchor = {
+          anchorUrl: anchor.url,
+          anchorDataHash: anchor.hash,
+        };
+      }
       txBuilder
         .vote(
           {
@@ -291,22 +307,21 @@ export default function VoteButton({
             txHash: txHash,
             txIndex: certIndex,
           },
-          {
-            voteKind: voteKind,
-          },
+          voteOptions,
         )
         .voteScript(drepCbor)
         .changeAddress(changeAddress);
         
+      const withRationale = voteOptions.anchor ? " with rationale" : "";
       await newTransaction({
         txBuilder,
-        description: `Vote: ${voteKind} - ${description}`,
+        description: `Vote: ${voteKind}${withRationale} - ${description}`,
         metadataValue: metadata ? { label: "674", value: metadata } : undefined,
       });
 
       toast({
         title: "Transaction Successful",
-        description: `Your vote (${voteKind}) has been recorded.`,
+        description: `Your vote (${voteKind}${withRationale}) has been recorded.`,
         duration: 5000,
       });
 
@@ -416,9 +431,19 @@ export default function VoteButton({
             {loading
               ? "Voting..."
               : utxos.length > 0
-                ? `Vote${hasValidProxy ? " (Proxy)" : ""}`
+                ? `Vote${hasValidProxy ? " (Proxy)" : ""}${anchor?.hash ? " + rationale" : ""}`
                 : "No UTxOs Available"}
           </Button>
+          {anchor?.hash && !hasValidProxy && (
+            <p className="text-center text-xs text-muted-foreground">
+              Rationale will be attached on-chain.
+            </p>
+          )}
+          {anchor?.hash && hasValidProxy && (
+            <p className="text-center text-xs text-yellow-700 dark:text-yellow-300">
+              Note: proxy voting does not yet carry rationale on-chain.
+            </p>
+          )}
         </>
       )}
 

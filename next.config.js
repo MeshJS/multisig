@@ -79,6 +79,12 @@ const config = {
   // External packages for server components to avoid bundling issues
   serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
 
+  async rewrites() {
+    return [
+      { source: "/llms.txt", destination: "/api/llms-txt" },
+    ];
+  },
+
   // Basic security headers applied to all routes.
   // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
   // omitted — CSP would break inline scripts/styles and HSTS locks browsers to
