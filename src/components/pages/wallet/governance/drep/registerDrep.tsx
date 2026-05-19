@@ -20,6 +20,7 @@ import { useProxy } from "@/hooks/useProxy";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import useActiveWallet from "@/hooks/useActiveWallet";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 interface PutResponse {
   url: string;
@@ -186,24 +187,15 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
         return;
       }
 
-      for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(scriptCbor);
-      }
-
-      txBuilder
-        .drepRegistrationCertificate(dRepId, {
-          anchorUrl: anchorUrl,
-          anchorDataHash: anchorHash,
-        })
-        .certificateScript(drepCbor)
-        .changeAddress(changeAddress);
+      applyDRepCert(txBuilder, {
+        action: "register",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+        anchor: { anchorUrl, anchorDataHash: anchorHash },
+      });
 
       await newTransaction({
         txBuilder,

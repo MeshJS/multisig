@@ -17,6 +17,7 @@ import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { api } from "@/utils/api";
 import { getProvider } from "@/utils/get-provider";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 interface PutResponse {
   url: string;
@@ -230,30 +231,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
         return;
       }
 
-      for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(scriptCbor);
-      }
-
-      txBuilder
-        .drepUpdateCertificate(dRepId, {
-          anchorUrl: anchorUrl,
-          anchorDataHash: anchorHash,
-        });
-      
-      // Only add certificateScript if it's different from the spending script
-      // to avoid "extraneous scripts" error
-      if (drepCbor !== scriptCbor) {
-        txBuilder.certificateScript(drepCbor);
-      }
-      
-      txBuilder.changeAddress(changeAddress);
+      applyDRepCert(txBuilder, {
+        action: "update",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+        anchor: { anchorUrl, anchorDataHash: anchorHash },
+      });
 
       await newTransaction({
         txBuilder,

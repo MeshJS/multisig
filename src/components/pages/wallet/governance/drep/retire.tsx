@@ -14,6 +14,7 @@ import { api } from "@/utils/api";
 import { useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import useActiveWallet from "@/hooks/useActiveWallet";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
@@ -230,25 +231,14 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         return;
       }
       
-      for (const utxo of selectedUtxos) {
-        txBuilder.txIn(
-          utxo.input.txHash,
-          utxo.input.outputIndex,
-          utxo.output.amount,
-          utxo.output.address,
-        );
-      }
-
-      txBuilder
-        .txInScript(scriptCbor)
-        .changeAddress(changeAddress)
-        .drepDeregistrationCertificate(dRepId);
-      
-      // Only add certificateScript if it's different from the spending script
-      // to avoid "extraneous scripts" error
-      if (drepCbor !== scriptCbor) {
-        txBuilder.certificateScript(drepCbor);
-      }
+      applyDRepCert(txBuilder, {
+        action: "retire",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+      });
 
       await newTransaction({
         txBuilder,
