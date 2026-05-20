@@ -19,6 +19,7 @@ import {
   type UtxoRef,
 } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
+import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
@@ -226,7 +227,7 @@ export default async function handler(
     return res.status(proxyUtxosResult.status).json({ error: proxyUtxosResult.error });
   }
 
-  const txBuilder = getTxBuilder(network) as MeshTxBuilderWithBody;
+  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
   let cleanup: CleanupMetadata;
   try {
     if (proxyUtxosResult.utxos.length > 0) {
@@ -275,7 +276,7 @@ export default async function handler(
 
   let txCbor: string;
   try {
-    txCbor = await txBuilder.complete();
+    txCbor = await completeTxWithFreshCostModels(txBuilder, network);
   } catch (error) {
     console.error("proxyCleanup complete error:", error);
     return res.status(500).json({

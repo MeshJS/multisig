@@ -17,6 +17,7 @@ import {
   type UtxoRef,
 } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
+import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
   buildProxyVoteTx,
@@ -210,7 +211,7 @@ export default async function handler(
     return res.status(resolvedCollateral.status).json({ error: resolvedCollateral.error });
   }
 
-  const txBuilder = getTxBuilder(network) as MeshTxBuilderWithBody;
+  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
   let details: { dRepId: string };
   try {
     details = buildProxyVoteTx({
@@ -232,7 +233,7 @@ export default async function handler(
 
   let txCbor: string;
   try {
-    txCbor = await txBuilder.complete();
+    txCbor = await completeTxWithFreshCostModels(txBuilder, network);
   } catch (error) {
     console.error("proxyVote complete error:", error);
     return res.status(500).json({
