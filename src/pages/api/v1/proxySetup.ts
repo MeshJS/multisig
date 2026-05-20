@@ -12,6 +12,7 @@ import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
 import { resolveCollateralRefFromChain, type UtxoRef } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
+import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
   buildProxySetupTx,
@@ -156,7 +157,7 @@ export default async function handler(
       .json({ error: resolvedCollateral.error });
   }
 
-  const txBuilder = getTxBuilder(network) as MeshTxBuilderWithBody;
+  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
   let setup;
   try {
     setup = buildProxySetupTx({
@@ -176,7 +177,7 @@ export default async function handler(
 
   let txCbor: string;
   try {
-    txCbor = await txBuilder.complete();
+    txCbor = await completeTxWithFreshCostModels(txBuilder, network);
   } catch (error) {
     console.error("proxySetup complete error:", error);
     return res.status(500).json({

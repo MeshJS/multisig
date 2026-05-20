@@ -192,6 +192,10 @@ function hasInvalidWitnessFailure(error: unknown): boolean {
   return extractErrorMessage(error).includes("InvalidWitnessesUTXOW");
 }
 
+function hasPPViewHashMismatch(error: unknown): boolean {
+  return extractErrorMessage(error).includes("PPViewHashesDontMatch");
+}
+
 function extractInvalidWitnessVKeys(error: unknown): string[] {
   const message = extractErrorMessage(error);
   const markerIndex = message.indexOf("InvalidWitnessesUTXOW");
@@ -500,6 +504,15 @@ export async function submitTxWithScriptRecovery({
     return { txHash, txHex, repaired: false };
   } catch (submitError) {
     throwIfUnrecoverableSubmitError(submitError);
+
+    if (hasPPViewHashMismatch(submitError)) {
+      throw new Error(
+        "Transaction rejected: scriptIntegrityHash mismatch (PPViewHashesDontMatch). " +
+        "The Plutus V3 cost model used at build time does not match the current node. " +
+        "This transaction cannot be repaired — it must be rebuilt. " +
+        "Original error: " + String(submitError),
+      );
+    }
 
     if (hasInvalidWitnessFailure(submitError)) {
       const invalidVKeys = extractInvalidWitnessVKeys(submitError);

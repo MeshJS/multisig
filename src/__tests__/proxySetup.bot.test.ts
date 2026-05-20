@@ -15,6 +15,7 @@ const resolveCollateralRefFromChainMock: jest.Mock = jest.fn();
 const resolveWalletScriptAddressMock: jest.Mock = jest.fn();
 const buildProxySetupTxMock: jest.Mock = jest.fn();
 const createPendingMultisigTransactionMock: jest.Mock = jest.fn();
+const completeTxWithFreshCostModelsMock: jest.Mock = jest.fn();
 const completeMock: jest.Mock = jest.fn();
 const getTxBuilderMock: jest.Mock = jest.fn();
 
@@ -67,6 +68,11 @@ jest.mock("@/lib/server/createPendingMultisigTransaction", () => ({
   createPendingMultisigTransaction: createPendingMultisigTransactionMock,
 }), { virtual: true });
 
+jest.mock("@/lib/server/completeTxWithFreshCostModels", () => ({
+  __esModule: true,
+  completeTxWithFreshCostModels: completeTxWithFreshCostModelsMock,
+}), { virtual: true });
+
 jest.mock("@/utils/get-tx-builder", () => ({
   __esModule: true,
   getTxBuilder: getTxBuilderMock,
@@ -104,7 +110,9 @@ beforeEach(() => {
     paramUtxo: { txHash: "aa", outputIndex: 0 },
   });
   (completeMock as any).mockResolvedValue("tx-cbor");
-  getTxBuilderMock.mockReturnValue({ complete: completeMock, meshTxBuilderBody: {} });
+  const txBuilder = { complete: completeMock, meshTxBuilderBody: {} };
+  getTxBuilderMock.mockReturnValue(txBuilder);
+  (completeTxWithFreshCostModelsMock as any).mockResolvedValue("fresh-tx-cbor");
   (createPendingMultisigTransactionMock as any).mockResolvedValue({ id: "tx-1" });
 });
 
@@ -161,9 +169,15 @@ describe("proxySetup bot API", () => {
       expect.anything(),
       expect.objectContaining({
         proposerAddress: makeBotJwtPayload().address,
+        txCbor: "fresh-tx-cbor",
         initialSignedAddresses: [],
       }),
     );
+    expect(completeTxWithFreshCostModelsMock).toHaveBeenCalledWith(
+      getTxBuilderMock.mock.results[0]?.value,
+      0,
+    );
+    expect(completeMock).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(201);
   });
 });
