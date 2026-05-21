@@ -11,6 +11,7 @@ import {
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
@@ -103,7 +104,7 @@ export default function useTransaction() {
         });
       }
 
-      const unsignedTx = await data.txBuilder.complete();
+      const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");

@@ -122,24 +122,21 @@ describe("refreshScriptDataHash", () => {
   });
 
   it("leaves transactions without redeemers unchanged", async () => {
-    const { refreshScriptDataHash } = await import("@/lib/server/completeTxWithFreshCostModels");
+    const { refreshScriptDataHash } = await import("@/lib/completeTxWithFreshCostModels");
 
     expect(refreshScriptDataHash("unsigned-tx-hex", {}, {})).toBe("unsigned-tx-hex");
     expect(hashScriptDataMock).not.toHaveBeenCalled();
     expect(setScriptDataHashMock).not.toHaveBeenCalled();
   });
 
-  it("recomputes script data hash with current Plutus V3 cost model", async () => {
+  it("recomputes script data hash with Plutus V3 cost_models_raw arrays", async () => {
     MockTransaction.configure({ redeemerCount: 1, updatedHex: "fresh-tx-hex" });
-    const { refreshScriptDataHash } = await import("@/lib/server/completeTxWithFreshCostModels");
+    const { refreshScriptDataHash } = await import("@/lib/completeTxWithFreshCostModels");
 
     const refreshed = refreshScriptDataHash(
       "unsigned-tx-hex",
       {
-        PlutusV3: {
-          "builtin-a": 10,
-          "builtin-b": 20,
-        },
+        PlutusV3: [10, 20],
       },
       {
         mints: [
@@ -156,5 +153,56 @@ describe("refreshScriptDataHash", () => {
     expect(costModelValues).toEqual([[10, 20]]);
     expect(hashScriptDataMock).toHaveBeenCalled();
     expect(setScriptDataHashMock).toHaveBeenCalledWith({ hash: "fresh-script-data-hash" });
+  });
+
+  it("orders indexed cost model objects by numeric key", async () => {
+    MockTransaction.configure({ redeemerCount: 1, updatedHex: "fresh-tx-hex" });
+    const { refreshScriptDataHash } = await import("@/lib/completeTxWithFreshCostModels");
+
+    refreshScriptDataHash(
+      "unsigned-tx-hex",
+      {
+        PlutusV3: {
+          "2": 30,
+          "0": 10,
+          "1": 20,
+        },
+      },
+      {
+        mints: [
+          {
+            type: "Plutus",
+            scriptSource: { script: { version: "V3" } },
+          },
+        ],
+      },
+    );
+
+    expect(costModelValues).toEqual([[10, 20, 30]]);
+  });
+
+  it("rejects named cost_models objects that are not in ledger order", async () => {
+    MockTransaction.configure({ redeemerCount: 1 });
+    const { refreshScriptDataHash } = await import("@/lib/completeTxWithFreshCostModels");
+
+    expect(() =>
+      refreshScriptDataHash(
+        "unsigned-tx-hex",
+        {
+          PlutusV3: {
+            "addInteger-cpu-arguments-intercept": 10,
+            "addInteger-cpu-arguments-slope": 20,
+          },
+        },
+        {
+          mints: [
+            {
+              type: "Plutus",
+              scriptSource: { script: { version: "V3" } },
+            },
+          ],
+        },
+      ),
+    ).toThrow(/cost_models_raw/);
   });
 });
