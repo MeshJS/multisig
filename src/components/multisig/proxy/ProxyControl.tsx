@@ -11,6 +11,10 @@ import ProxySetup from "./ProxySetup";
 import ProxySpend from "./ProxySpend";
 import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
 import { getProvider } from "@/utils/get-provider";
+import {
+  extractBlockedUtxoRefsFromPendingTxJson,
+  filterBlockedUtxos,
+} from "@/lib/server/proxyUtxos";
 import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
@@ -119,6 +123,23 @@ export default function ProxyControl() {
     },
   });
 
+  const { data: pendingTransactions } = api.transaction.getPendingTransactions.useQuery(
+    { walletId: appWallet?.id ?? "" },
+    {
+      enabled: !!appWallet?.id,
+      staleTime: 30 * 1000,
+      refetchOnWindowFocus: false,
+    },
+  );
+
+  const blockedUtxoRefs = useMemo(
+    () =>
+      (pendingTransactions ?? []).flatMap((transaction) =>
+        extractBlockedUtxoRefsFromPendingTxJson(transaction.txJson),
+      ),
+    [pendingTransactions],
+  );
+
   // State management
   const [proxyContract, setProxyContract] = useState<MeshProxyContract | null>(null);
   const [isProxySetup, setIsProxySetup] = useState<boolean>(false);
@@ -163,9 +184,14 @@ export default function ProxyControl() {
     if (!utxos || utxos.length === 0) {
       throw new Error("No UTxOs found at multisig wallet address");
     }
+
+    const freeUtxos = filterBlockedUtxos(utxos, blockedUtxoRefs);
+    if (freeUtxos.length === 0) {
+      throw new Error("No free UTxOs found at multisig wallet address");
+    }
     
-    return { utxos, walletAddress: appWallet.address };
-  }, [appWallet?.address, network]);
+    return { utxos: freeUtxos, walletAddress: appWallet.address };
+  }, [appWallet?.address, blockedUtxoRefs, network]);
 
   // Initialize proxy contract
   const contractInitializedRef = useRef(false);
@@ -176,7 +202,7 @@ export default function ProxyControl() {
       // Only initialize once
       if (!contractInitializedRef.current) {
         try {
-          const txBuilder = getTxBuilder(network);
+          const txBuilder = getTxBuilder(network, true);
           const contract = new MeshProxyContract(
             {
               mesh: txBuilder,
@@ -615,7 +641,7 @@ export default function ProxyControl() {
       
       const selectedProxyContract = new MeshProxyContract(
         {
-          mesh: getTxBuilder(network),
+          mesh: getTxBuilder(network, true),
           wallet: activeWallet,
           networkId: network,
         },
@@ -628,7 +654,12 @@ export default function ProxyControl() {
 
       // Pass multisig inputs to spend as well
       const { utxos, walletAddress } = await getMsInputs();
-      const txHex = await selectedProxyContract.spendProxySimple(validOutputs, utxos, walletAddress);
+      const txHex = await selectedProxyContract.spendProxySimple(
+        validOutputs,
+        utxos,
+        walletAddress,
+        blockedUtxoRefs,
+      );
       if (appWallet?.scriptCbor) {
         await newTransaction({
           txBuilder: txHex,

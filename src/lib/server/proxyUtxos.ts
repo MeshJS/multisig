@@ -118,14 +118,80 @@ export async function resolveCollateralRefFromChain(args: {
   return { collateral: resolved.utxo };
 }
 
+export function filterBlockedUtxos(
+  utxos: UTxO[],
+  blockedRefs: UtxoRef[],
+): UTxO[] {
+  if (blockedRefs.length === 0) {
+    return utxos;
+  }
+
+  const blocked = new Set(
+    blockedRefs.map((ref) => `${ref.txHash}#${ref.outputIndex}`),
+  );
+
+  return utxos.filter(
+    (utxo) => !blocked.has(`${utxo.input.txHash}#${utxo.input.outputIndex}`),
+  );
+}
+
+export function extractBlockedUtxoRefsFromPendingTxJson(txJson: string): UtxoRef[] {
+  try {
+    const parsed = JSON.parse(txJson) as {
+      inputs?: Array<{ txIn?: { txHash?: string; txIndex?: number } }>;
+    };
+    if (!Array.isArray(parsed.inputs)) {
+      return [];
+    }
+
+    return parsed.inputs
+      .map((input) => ({
+        txHash: typeof input.txIn?.txHash === "string" ? input.txIn.txHash : "",
+        outputIndex:
+          typeof input.txIn?.txIndex === "number" && Number.isInteger(input.txIn.txIndex)
+            ? input.txIn.txIndex
+            : -1,
+      }))
+      .filter((ref) => ref.txHash.length > 0 && ref.outputIndex >= 0);
+  } catch {
+    return [];
+  }
+}
+
+export function selectFreeAuthTokenUtxo(
+  utxos: UTxO[],
+  authTokenId: string,
+  blockedRefs: UtxoRef[] = [],
+): UTxO | { error: string } {
+  const freeUtxos = filterBlockedUtxos(utxos, blockedRefs);
+  const authTokenUtxos = freeUtxos.filter((utxo) => hasAsset(utxo, authTokenId));
+  if (authTokenUtxos.length === 0) {
+    return {
+      error:
+        "No free proxy auth-token UTxO found at the multisig wallet address. Cancel or complete pending transactions that use the auth token, then try again.",
+    };
+  }
+
+  return authTokenUtxos.sort((left, right) => {
+    const lovelaceDelta = Number(getLovelace(right) - getLovelace(left));
+    if (lovelaceDelta !== 0) {
+      return lovelaceDelta;
+    }
+    if (left.input.txHash !== right.input.txHash) {
+      return left.input.txHash.localeCompare(right.input.txHash);
+    }
+    return left.input.outputIndex - right.input.outputIndex;
+  })[0]!;
+}
+
 export function requireAuthTokenUtxo(
   utxos: UTxO[],
   authTokenId: string,
 ): UTxO | { error: string; status: number } {
-  const authTokenUtxo = utxos.find((utxo) => hasAsset(utxo, authTokenId));
-  if (!authTokenUtxo) {
+  const authTokenUtxo = selectFreeAuthTokenUtxo(utxos, authTokenId);
+  if ("error" in authTokenUtxo) {
     return {
-      error: "No proxy auth-token UTxO found at the multisig wallet address",
+      error: authTokenUtxo.error,
       status: 400,
     };
   }

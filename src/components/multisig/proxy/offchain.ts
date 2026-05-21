@@ -8,6 +8,13 @@ import {
 import type { UTxO, MeshTxBuilder } from "@meshsdk/core";
 // import { parseDatumCbor } from "@meshsdk/core-cst";
 import { parseProposalId } from "@/lib/governance";
+import { buildProxySpendTx } from "@/lib/server/proxyTxBuilders";
+import {
+  selectFreeAuthTokenUtxo,
+  selectProxyUtxosForOutputs,
+  type UtxoRef,
+} from "@/lib/server/proxyUtxos";
+import { getTxBuilder } from "@/utils/get-tx-builder";
 
 import { MeshTxInitiator } from "./common";
 import type { MeshTxInitiatorInput } from "./common";
@@ -193,6 +200,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     outputs: { address: string; unit: string; amount: string }[],
     msUtxos?: UTxO[],
     msWalletAddress?: string,
+    blockedUtxoRefs: UtxoRef[] = [],
   ) => {
     if (this.msCbor && !msUtxos && !msWalletAddress) {
       throw new Error(
@@ -202,7 +210,6 @@ export class MeshProxyContract extends MeshTxInitiator {
     const walletInfo = await this.getWalletInfoForTx();
     let { utxos, walletAddress } = walletInfo;
     const { collateral } = walletInfo;
-    // If multisig inputs are provided, use them instead of the wallet inputs
     if (this.msCbor && msUtxos && msWalletAddress) {
       utxos = msUtxos;
       walletAddress = msWalletAddress;
@@ -219,164 +226,51 @@ export class MeshProxyContract extends MeshTxInitiator {
     if (this.proxyAddress === undefined) {
       throw new Error("Proxy address not set. Please setupProxy first.");
     }
+    if (!this.paramUtxo.txHash) {
+      throw new Error("Proxy param UTxO is not set. Please setupProxy first.");
+    }
     const blockchainProvider = this.mesh.fetcher;
     if (!blockchainProvider) {
       throw new Error("Blockchain provider not found");
     }
 
+    const policyIdAT = resolveScriptHash(this.getAuthTokenCbor(), "V3");
+    const authTokenUtxo = selectFreeAuthTokenUtxo(
+      utxos,
+      policyIdAT,
+      blockedUtxoRefs,
+    );
+    if ("error" in authTokenUtxo) {
+      throw new Error(authTokenUtxo.error);
+    }
+
     const proxyUtxos = await blockchainProvider.fetchAddressUTxOs(
       this.proxyAddress,
     );
-
-    // Calculate spend requirements and ensure coverage by proxy UTxOs
-    const REQUIRED_FEE_BUFFER = BigInt(500_000); // 0.5 ADA buffer in lovelace
-
-    const requiredByUnit = new Map<string, bigint>();
-    for (const out of outputs) {
-      const prev = requiredByUnit.get(out.unit) ?? BigInt(0);
-      requiredByUnit.set(out.unit, prev + BigInt(out.amount));
-    }
-    // Add buffer to lovelace
-    const lovelaceNeed =
-      (requiredByUnit.get("lovelace") ?? BigInt(0)) + REQUIRED_FEE_BUFFER;
-    requiredByUnit.set("lovelace", lovelaceNeed);
-
-    const availableByUnit = new Map<string, bigint>();
-    for (const utxo of proxyUtxos) {
-      for (const asset of utxo.output.amount) {
-        const prev = availableByUnit.get(asset.unit) ?? BigInt(0);
-        availableByUnit.set(asset.unit, prev + BigInt(asset.quantity));
-      }
+    const selectedProxyUtxos = selectProxyUtxosForOutputs({
+      proxyUtxos,
+      outputs,
+    });
+    if ("error" in selectedProxyUtxos) {
+      throw new Error(selectedProxyUtxos.error);
     }
 
-    for (const [unit, needed] of requiredByUnit.entries()) {
-      const available = availableByUnit.get(unit) ?? BigInt(0);
-      if (available < needed) {
-        throw new Error(
-          `Insufficient proxy balance for ${unit}. Needed: ${needed.toString()}, Available: ${available.toString()}`,
-        );
-      }
-    }
+    const txBuilder = getTxBuilder(this.networkId, true);
+    buildProxySpendTx({
+      txBuilder,
+      network: this.networkId,
+      proxyAddress: this.proxyAddress,
+      paramUtxo: this.paramUtxo,
+      walletUtxos: [authTokenUtxo],
+      proxyUtxos: selectedProxyUtxos,
+      authTokenUtxo,
+      collateral,
+      outputs,
+      walletAddress,
+      multisigScriptCbor: this.msCbor,
+    });
 
-    // Select as few UTxOs as possible to cover required amounts
-    const remainingByUnit = new Map<string, bigint>(requiredByUnit);
-    const candidateUtxos = [...proxyUtxos];
-    const selectedUtxos: typeof proxyUtxos = [];
-
-    const hasRemaining = () => {
-      for (const value of remainingByUnit.values()) {
-        if (value > BigInt(0)) return true;
-      }
-      return false;
-    };
-
-    const contributionScore = (utxo: (typeof proxyUtxos)[number]) => {
-      let score = BigInt(0);
-      for (const asset of utxo.output.amount) {
-        const remaining = remainingByUnit.get(asset.unit) ?? BigInt(0);
-        if (remaining > BigInt(0)) {
-          const qty = BigInt(asset.quantity);
-          score += qty < remaining ? qty : remaining;
-        }
-      }
-      return score;
-    };
-
-    while (hasRemaining()) {
-      let bestIdx = -1;
-      let bestScore = BigInt(0);
-      for (let i = 0; i < candidateUtxos.length; i++) {
-        const s = contributionScore(candidateUtxos[i]!);
-        if (s > bestScore) {
-          bestScore = s;
-          bestIdx = i;
-        }
-      }
-      if (bestIdx === -1 || bestScore === BigInt(0)) {
-        throw new Error(
-          "Unable to select proxy UTxOs to cover required amounts.",
-        );
-      }
-      const chosen = candidateUtxos.splice(bestIdx, 1)[0]!;
-      selectedUtxos.push(chosen);
-      // Decrease remaining by chosen utxo's amounts
-      for (const asset of chosen.output.amount) {
-        const remaining = remainingByUnit.get(asset.unit) ?? BigInt(0);
-        if (remaining > BigInt(0)) {
-          const qty = BigInt(asset.quantity);
-          const newRemaining = remaining - (qty < remaining ? qty : remaining);
-          remainingByUnit.set(asset.unit, newRemaining);
-        }
-      }
-    }
-
-    const freeProxyUtxos = selectedUtxos;
-    const paramScriptAT = this.getAuthTokenCbor();
-    const policyIdAT = resolveScriptHash(paramScriptAT, "V3");
-    const authTokenUtxos = utxos.filter((utxo) =>
-      utxo.output.amount.some((asset) => asset.unit === policyIdAT),
-    );
-
-    if (!authTokenUtxos || authTokenUtxos.length === 0) {
-      throw new Error("No AuthToken found at control wallet address");
-    }
-    //ToDo check if AuthToken utxo is used in a pending transaction and blocked then use a free AuthToken
-    const authTokenUtxo = authTokenUtxos[0];
-    if (!authTokenUtxo) {
-      throw new Error("No AuthToken found");
-    }
-    const authTokenUtxoAmt = authTokenUtxo.output.amount;
-    if (!authTokenUtxoAmt) {
-      throw new Error("No AuthToken amount found");
-    }
-
-    //prepare Proxy spend
-    //1 Get
-    const txHex = this.mesh;
-
-    for (const input of freeProxyUtxos) {
-      txHex
-        .spendingPlutusScriptV3()
-        .txIn(
-          input.input.txHash,
-          input.input.outputIndex,
-          input.output.amount,
-          input.output.address,
-        )
-        .txInScript(this.getProxyCbor())
-        .txInInlineDatumPresent()
-        .txInRedeemerValue(mConStr0([]));
-    }
-
-    txHex
-      .txIn(
-        authTokenUtxo.input.txHash,
-        authTokenUtxo.input.outputIndex,
-        authTokenUtxo.output.amount,
-        authTokenUtxo.output.address,
-      )
-      .txInCollateral(
-        collateral.input.txHash,
-        collateral.input.outputIndex,
-        collateral.output.amount,
-        collateral.output.address,
-      )
-      .txOut(walletAddress, [{ unit: policyIdAT, quantity: "1" }]);
-
-    for (const output of outputs) {
-      txHex.txOut(output.address, [
-        { unit: output.unit, quantity: output.amount },
-      ]);
-    }
-
-    txHex.changeAddress(this.proxyAddress);
-
-    // Add the multisig script cbor if it exists (like in setupProxy)
-    if (this.msCbor) {
-      txHex.txInScript(this.msCbor);
-    }
-
-    return txHex;
+    return txBuilder;
   };
 
   manageProxyDrep = async (
