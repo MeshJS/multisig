@@ -7,7 +7,7 @@ import {
   buildProxyVoteTx,
   buildProxySetupTx,
   DEFAULT_PROXY_SETUP_LOVELACE,
-} from "@/lib/server/proxyTxBuilders";
+} from "@/lib/proxy/txBuilders";
 
 const mkUtxo = (
   address: string,

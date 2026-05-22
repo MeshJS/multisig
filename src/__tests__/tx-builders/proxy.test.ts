@@ -1,6 +1,8 @@
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, jest, afterEach } from "@jest/globals";
 import type { UTxO } from "@meshsdk/core";
+import { hashDrepAnchor } from "@meshsdk/core";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import * as txBuilders from "@/lib/proxy/txBuilders";
 import { createMockProvider } from "./mockProvider";
 import {
   FIXTURE_UTXOS,
@@ -100,9 +102,15 @@ const LARGE_UTXO: UTxO = {
   },
 };
 
+const ANCHOR_JSON = {
+  "@context": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0119/README.md",
+  hashAlgorithm: "blake2b-256",
+  body: { givenName: "TestDRep", bio: "Test bio" },
+};
+
 const ANCHOR = {
   anchorUrl: "https://example.com/drep.json",
-  anchorDataHash: "0".repeat(64),
+  anchorJson: ANCHOR_JSON,
 };
 
 const VALID_PROPOSAL_ID = "b".repeat(64) + "#0";
@@ -203,12 +211,12 @@ describe("MeshProxyContract.setupProxy", () => {
 describe("MeshProxyContract.manageProxyDrep", () => {
   it("register calls drepRegistrationCertificate with drepId and anchor", async () => {
     const { contract, calls } = makeManageContract();
-    await contract.manageProxyDrep("register", ANCHOR.anchorUrl, ANCHOR.anchorDataHash);
+    await contract.manageProxyDrep("register", ANCHOR.anchorUrl, ANCHOR.anchorJson);
 
     const certCall = calls.find(c => c.method === "drepRegistrationCertificate");
     expect(certCall).toBeDefined();
     expect(certCall!.args[0]).toBe(contract.getDrepId());
-    expect(certCall!.args[1]).toEqual({ anchorUrl: ANCHOR.anchorUrl, anchorDataHash: ANCHOR.anchorDataHash });
+    expect(certCall!.args[1]).toEqual({ anchorUrl: ANCHOR.anchorUrl, anchorDataHash: hashDrepAnchor(ANCHOR.anchorJson) });
   });
 
   it("deregister calls drepDeregistrationCertificate with drepId", async () => {
@@ -222,26 +230,26 @@ describe("MeshProxyContract.manageProxyDrep", () => {
 
   it("update calls drepUpdateCertificate with drepId and anchor", async () => {
     const { contract, calls } = makeManageContract();
-    await contract.manageProxyDrep("update", ANCHOR.anchorUrl, ANCHOR.anchorDataHash);
+    await contract.manageProxyDrep("update", ANCHOR.anchorUrl, ANCHOR.anchorJson);
 
     const certCall = calls.find(c => c.method === "drepUpdateCertificate");
     expect(certCall).toBeDefined();
     expect(certCall!.args[0]).toBe(contract.getDrepId());
-    expect(certCall!.args[1]).toEqual({ anchorUrl: ANCHOR.anchorUrl, anchorDataHash: ANCHOR.anchorDataHash });
+    expect(certCall!.args[1]).toEqual({ anchorUrl: ANCHOR.anchorUrl, anchorDataHash: hashDrepAnchor(ANCHOR.anchorJson) });
   });
 
   it("register without anchor throws", async () => {
     const { contract } = makeManageContract();
     await expect(
       contract.manageProxyDrep("register"),
-    ).rejects.toThrow("Anchor URL and hash are required");
+    ).rejects.toThrow("Anchor URL and JSON are required");
   });
 
   it("update without anchor throws", async () => {
     const { contract } = makeManageContract();
     await expect(
       contract.manageProxyDrep("update"),
-    ).rejects.toThrow("Anchor URL and hash are required");
+    ).rejects.toThrow("Anchor URL and JSON are required");
   });
 
   it("throws when auth token is absent from wallet UTxOs", async () => {
@@ -343,6 +351,77 @@ describe("MeshProxyContract.voteProxyDrep", () => {
     const { contract } = makeManageContract();
     await expect(
       contract.voteProxyDrep([{ proposalId: "invalid-id", voteKind: "Yes" }]),
-    ).rejects.toThrow("Invalid proposal ID format");
+    ).rejects.toThrow("Invalid proposalId format");
+  });
+});
+
+// ─── Builder Delegation Tests ─────────────────────────────────────────────────
+
+describe("MeshProxyContract — builder delegation", () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it("setupProxy delegates to buildProxySetupTx", async () => {
+    const spy = jest.spyOn(txBuilders, "buildProxySetupTx");
+    const { contract } = makeSetupContract();
+    jest.spyOn(contract as any, "getWalletInfoForTx").mockResolvedValue({
+      utxos: [LARGE_UTXO],
+      walletAddress: CHANGE_ADDRESS,
+      collateral: FIXTURE_COLLATERAL,
+    });
+
+    await contract.setupProxy();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      network: 0,
+      walletAddress: CHANGE_ADDRESS,
+      walletUtxos: [LARGE_UTXO],
+    }));
+  });
+
+  it("spendProxySimple delegates to buildProxySpendTx", async () => {
+    const spy = jest.spyOn(txBuilders, "buildProxySpendTx");
+    const { contract } = makeManageContract();
+
+    await contract.spendProxySimple([
+      { address: CHANGE_ADDRESS, unit: "lovelace", amount: "1000000" },
+    ]);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      network: 0,
+      walletAddress: CHANGE_ADDRESS,
+      walletUtxos: [],
+    }));
+  });
+
+  it("manageProxyDrep delegates to buildProxyDRepCertificateTx", async () => {
+    const spy = jest.spyOn(txBuilders, "buildProxyDRepCertificateTx");
+    const { contract } = makeManageContract();
+
+    await contract.manageProxyDrep("deregister");
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      network: 0,
+      action: "deregister",
+      walletAddress: CHANGE_ADDRESS,
+    }));
+  });
+
+  it("voteProxyDrep delegates to buildProxyVoteTx", async () => {
+    const spy = jest.spyOn(txBuilders, "buildProxyVoteTx");
+    const { contract } = makeManageContract();
+
+    await contract.voteProxyDrep([
+      { proposalId: VALID_PROPOSAL_ID, voteKind: "Yes" },
+    ]);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      network: 0,
+      votes: [{ proposalId: VALID_PROPOSAL_ID, voteKind: "Yes" }],
+      walletAddress: CHANGE_ADDRESS,
+    }));
   });
 });

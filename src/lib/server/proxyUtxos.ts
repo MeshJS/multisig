@@ -1,7 +1,10 @@
+import type { PrismaClient } from "@prisma/client";
 import type { UTxO } from "@meshsdk/core";
-import type { UtxoFetcher, UtxoRef } from "@/lib/server/resolveUtxoRefsFromChain";
+import type { UtxoFetcher } from "@/lib/server/resolveUtxoRefsFromChain";
+import { type UtxoRef, getLovelace, hasAsset, sameUtxoRef } from "@/lib/proxy/utxoUtils";
 
 export type { UtxoRef };
+export { getLovelace, hasAsset, sameUtxoRef };
 
 const MIN_COLLATERAL_LOVELACE = BigInt(5_000_000);
 
@@ -17,24 +20,6 @@ function normalizeUtxoRef(ref: UtxoRef | undefined): UtxoRef | null {
   }
 
   return { txHash, outputIndex };
-}
-
-export function getLovelace(utxo: UTxO): bigint {
-  return BigInt(
-    utxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ??
-      "0",
-  );
-}
-
-export function hasAsset(utxo: UTxO, unit: string, minimum = BigInt(1)): boolean {
-  const quantity = BigInt(
-    utxo.output.amount.find((asset) => asset.unit === unit)?.quantity ?? "0",
-  );
-  return quantity >= minimum;
-}
-
-export function sameUtxoRef(a: UTxO["input"], b: UTxO["input"]): boolean {
-  return a.txHash === b.txHash && a.outputIndex === b.outputIndex;
 }
 
 export async function resolveSingleUtxoRefFromChain(args: {
@@ -197,6 +182,21 @@ export function requireAuthTokenUtxo(
   }
 
   return authTokenUtxo;
+}
+
+/**
+ * Loads all UTxO refs that are consumed by currently-pending multisig transactions for a wallet.
+ * API routes pass these to `selectAuthTokenUtxo` so a locked auth token is never reused.
+ */
+export async function loadBlockedUtxoRefsForWallet(
+  db: PrismaClient,
+  walletId: string,
+): Promise<UtxoRef[]> {
+  const pendingTxs = await db.transaction.findMany({
+    where: { walletId, state: 0 },
+    select: { txJson: true },
+  });
+  return pendingTxs.flatMap((tx) => extractBlockedUtxoRefsFromPendingTxJson(tx.txJson));
 }
 
 export function selectProxyUtxosForOutputs(args: {

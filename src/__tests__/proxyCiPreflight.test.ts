@@ -310,7 +310,8 @@ describe("proxy full lifecycle hygiene", () => {
     isActive: true,
   };
 
-  function createHygieneDeps(requestJsonMock: ReturnType<typeof jest.fn>) {
+  type RequestJsonMock = jest.Mock<() => Promise<{ status: number; data: unknown }>>;
+  function createHygieneDeps(requestJsonMock: RequestJsonMock) {
     return {
       requestJson: requestJsonMock,
       authenticateBot: jest.fn(async () => "token"),
@@ -346,7 +347,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("cleans and finalizes an active proxy that is ready to burn", async () => {
     const requestJsonMock = jest
-      .fn()
+      .fn<() => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: false, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({
@@ -395,7 +396,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("runs a sweep pass before the burn pass when proxy UTxOs remain", async () => {
     const requestJsonMock = jest
-      .fn()
+      .fn<() => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: false, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({
@@ -424,7 +425,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("deregisters an active proxy DRep before cleanup", async () => {
     const requestJsonMock = jest
-      .fn()
+      .fn<() => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: true, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({ status: 201, data: { transaction: { id: "tx-drep" } } })

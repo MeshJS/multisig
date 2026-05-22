@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { PrismaClient } from "@prisma/client";
 
-const submitTxMock = jest.fn();
+const submitTxMock = jest.fn<(txCbor: string) => Promise<string>>();
 
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
@@ -13,7 +13,7 @@ let createPendingMultisigTransaction: typeof import("@/lib/server/createPendingM
 function makeDb() {
   return {
     transaction: {
-      create: jest.fn().mockResolvedValue({ id: "tx-1" }),
+      create: jest.fn<() => Promise<{ id: string }>>().mockResolvedValue({ id: "tx-1" }),
     },
   } as unknown as PrismaClient;
 }

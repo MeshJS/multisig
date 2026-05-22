@@ -78,7 +78,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
 
   async function createAnchor(): Promise<{
     anchorUrl: string;
-    anchorHash: string;
+    anchorJson: object;
   }> {
     if (!appWallet) {
       throw new Error("Wallet not connected");
@@ -89,7 +89,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       formState,
       appWallet,
     );
-    
+
     // Upload the compacted JSON-LD (readable format)
     const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
@@ -104,11 +104,9 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
-    
-    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
-    // The normalized form is in N-Quads format which is the canonical representation
-    const anchorHash = hashDrepAnchor(metadataResult.compacted);
-    return { anchorUrl, anchorHash };
+
+    // Return the raw JSON-LD object; the hash is computed deterministically inside the tx builder
+    return { anchorUrl, anchorJson: metadataResult.compacted };
   }
 
   async function updateProxyDrep(): Promise<void> {
@@ -136,7 +134,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       }
 
       // Create anchor metadata
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
 
       // Get multisig inputs
       const { utxos, walletAddress } = await getMsInputs();
@@ -157,7 +155,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Update DRep using proxy
-      const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorHash, utxos, walletAddress);
+      const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorJson, utxos, walletAddress);
 
       await newTransaction({
         txBuilder: txHex,
@@ -222,7 +220,8 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       throw new Error("Script or change address not found");
     }
     try {
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
+      const anchorDataHash = hashDrepAnchor(anchorJson);
 
       const selectedUtxos: UTxO[] = manualUtxos;
 
@@ -238,7 +237,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
         scriptCbor,
         changeAddress,
         utxos: selectedUtxos,
-        anchor: { anchorUrl, anchorDataHash: anchorHash },
+        anchor: { anchorUrl, anchorDataHash },
       });
 
       await newTransaction({

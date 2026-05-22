@@ -8,7 +8,7 @@ const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) =
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
 const verifyJwtMock: jest.Mock = jest.fn();
 const isBotJwtMock: jest.Mock = jest.fn();
-const authorizeProxyReadForV1Mock: jest.Mock = jest.fn();
+const authorizeProxyReadForV1Mock = jest.fn<() => Promise<void>>();
 const loadActiveProxyForWalletMock: jest.Mock = jest.fn();
 const deriveProxyScriptsMock: jest.Mock = jest.fn();
 
