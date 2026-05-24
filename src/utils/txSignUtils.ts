@@ -1,4 +1,4 @@
-import { csl } from "@meshsdk/core-csl";
+import { csl, calculateTxHash } from "@meshsdk/core-csl";
 import {
   decodeNativeScriptFromCsl,
   collectSigKeyHashes,
@@ -6,6 +6,13 @@ import {
 
 function toKeyHashHex(publicKey: csl.PublicKey): string {
   return Array.from(publicKey.hash().to_bytes())
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toLowerCase();
+}
+
+function toPubKeyHex(publicKey: csl.PublicKey): string {
+  return Array.from(publicKey.as_bytes())
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")
     .toLowerCase();
@@ -135,12 +142,20 @@ export function addUniqueVkeyWitnessToTx(
 export function mergeSignerWitnesses(
   originalTxHex: string,
   signedPayloadHex: string,
-): string {
+): { txHex: string; invalidVkeyPubKeysHex: string[] } {
   const originalTx = csl.Transaction.from_hex(originalTxHex);
   const txBodyClone = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
   const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
     originalTx.witness_set().to_bytes(),
   );
+
+  const existingKeyHashes = new Set<string>();
+  const existingVkeys = witnessSetClone.vkeys();
+  if (existingVkeys) {
+    for (let i = 0; i < existingVkeys.len(); i++) {
+      existingKeyHashes.add(toKeyHashHex(existingVkeys.get(i).vkey().public_key()));
+    }
+  }
 
   const mergedVkeys = cloneVkeyWitnesses(witnessSetClone);
 
@@ -158,7 +173,24 @@ export function mergeSignerWitnesses(
     mergedTx.set_is_valid(false);
   }
 
-  return mergedTx.to_hex();
+  const txHex = mergedTx.to_hex();
+
+  // Verify each *newly added* vkey witness against the merged tx body hash.
+  // Wallets sometimes re-canonicalise CBOR before signing, producing witnesses
+  // that target a different body than the one we're about to submit. Catch
+  // that here so callers can abort before persisting or broadcasting.
+  const invalidVkeyPubKeysHex: string[] = [];
+  const bodyHashBytes = Buffer.from(calculateTxHash(txHex), "hex");
+  for (let i = 0; i < mergedVkeys.len(); i++) {
+    const witness = mergedVkeys.get(i);
+    const pubKey = witness.vkey().public_key();
+    if (existingKeyHashes.has(toKeyHashHex(pubKey))) continue;
+    if (!pubKey.verify(bodyHashBytes, witness.signature())) {
+      invalidVkeyPubKeysHex.push(toPubKeyHex(pubKey));
+    }
+  }
+
+  return { txHex, invalidVkeyPubKeysHex };
 }
 
 /**
