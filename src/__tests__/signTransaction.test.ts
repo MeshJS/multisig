@@ -14,19 +14,24 @@ jest.mock(
   { virtual: true },
 );
 
-const verifyJwtMock = jest.fn<(token: string | undefined) => { address: string } | null>();
+const verifyJwtMock = jest.fn<(token: string | undefined) => { address: string; botId?: string; type?: string } | null>();
+const isBotJwtMock = jest.fn<(payload: unknown) => boolean>();
 
 jest.mock(
   '@/lib/verifyJwt',
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
+    isBotJwt: isBotJwtMock,
   }),
   { virtual: true },
 );
 
 const applyRateLimitMock = jest.fn<
   (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
+>();
+const applyBotRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, botId: string) => boolean
 >();
 const enforceBodySizeMock = jest.fn<
   (req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean
@@ -37,6 +42,7 @@ jest.mock(
   () => ({
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
+    applyBotRateLimit: applyBotRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
   }),
   { virtual: true },
@@ -420,7 +426,9 @@ beforeEach(() => {
   addCorsCacheBustingHeadersMock.mockReset();
   createCallerMock.mockReset();
   verifyJwtMock.mockReset();
+  isBotJwtMock.mockReset();
   applyRateLimitMock.mockReset();
+  applyBotRateLimitMock.mockReset();
   enforceBodySizeMock.mockReset();
   getClientIPMock.mockReset();
 
@@ -432,6 +440,8 @@ beforeEach(() => {
   resolvePaymentKeyHashMock.mockReturnValue(witnessKeyHashHex);
   addressToNetworkMock.mockReturnValue(0);
   applyRateLimitMock.mockReturnValue(true);
+  applyBotRateLimitMock.mockReturnValue(true);
+  isBotJwtMock.mockReturnValue(false);
   enforceBodySizeMock.mockReturnValue(true);
   getClientIPMock.mockReturnValue('127.0.0.1');
   shouldSubmitMultisigTxMock.mockReturnValue(true);
@@ -609,6 +619,98 @@ describe('signTransaction API route', () => {
       transaction: updatedTransaction,
       submitted: true,
       txHash: 'provided-hash',
+    });
+  });
+
+  it('records witness and returns 502 when signed transaction has PPView hash mismatch', async () => {
+    const address = 'addr_test1qpl3w9v4l5qhxk778exampleaddress';
+    const walletId = 'wallet-id-ppview';
+    const transactionId = 'transaction-id-ppview';
+    const signatureHex = 'aa'.repeat(64);
+    const keyHex = 'bb'.repeat(64);
+    const submissionError =
+      'Transaction rejected: scriptIntegrityHash mismatch (PPViewHashesDontMatch). This transaction cannot be repaired';
+
+    verifyJwtMock.mockReturnValue({ address });
+
+    walletGetWalletMock.mockResolvedValue({
+      id: walletId,
+      type: 'atLeast',
+      numRequiredSigners: 1,
+      signersAddresses: [address],
+    });
+
+    const transactionRecord = {
+      id: transactionId,
+      walletId,
+      state: 0,
+      signedAddresses: [] as string[],
+      rejectedAddresses: [] as string[],
+      txCbor: 'stored-tx-hex',
+      txHash: null as string | null,
+      txJson: '{}',
+    };
+
+    const updatedTransaction = {
+      ...transactionRecord,
+      signedAddresses: [address],
+      txCbor: 'updated-tx-hex',
+      state: 0,
+      txJson: JSON.stringify({
+        multisig: {
+          state: 0,
+          submitted: false,
+          submissionError,
+        },
+      }),
+    };
+
+    dbTransactionFindUniqueMock
+      .mockResolvedValueOnce(transactionRecord)
+      .mockResolvedValueOnce(updatedTransaction);
+
+    dbTransactionUpdateManyMock.mockResolvedValue({ count: 1 });
+    getProviderMock.mockReturnValue({ submitTx: jest.fn() });
+    submitTxWithScriptRecoveryMock.mockRejectedValueOnce(new Error(submissionError));
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        walletId,
+        transactionId,
+        address,
+        signature: signatureHex,
+        key: keyHex,
+      },
+    } as unknown as NextApiRequest;
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(submitTxWithScriptRecoveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHex: 'updated-tx-hex',
+      }),
+    );
+    expect(dbTransactionUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          signedAddresses: { set: [address] },
+          txCbor: 'updated-tx-hex',
+          state: 0,
+          txJson: expect.stringContaining('PPViewHashesDontMatch'),
+        }),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Transaction witness recorded, but submission to network failed',
+      transaction: updatedTransaction,
+      submitted: false,
+      txHash: undefined,
+      submissionError,
     });
   });
 

@@ -11,6 +11,7 @@ import {
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
@@ -103,16 +104,30 @@ export default function useTransaction() {
         });
       }
 
-      const unsignedTx = await data.txBuilder.complete();
+      const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
 
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
-      let signedTx = filterWitnessesToScripts(
-        mergeSignerWitnesses(unsignedTx, signerWitnessPayload),
-      );
+      const mergeResult = mergeSignerWitnesses(unsignedTx, signerWitnessPayload);
+      if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
+        setLoading(false);
+        console.error(
+          "Wallet returned witness that does not verify against tx body hash",
+          { invalidVkeyPubKeysHex: mergeResult.invalidVkeyPubKeysHex },
+        );
+        toast({
+          title: "Signature mismatch",
+          description:
+            "Your wallet's signature doesn't match this transaction's body. The Cardano SDK and your wallet disagree on CBOR encoding. Try a different wallet, or report this with the failing pubkey (see browser console).",
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);

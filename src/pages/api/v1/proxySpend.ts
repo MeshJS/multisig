@@ -20,6 +20,7 @@ import {
   type UtxoRef,
 } from "@/lib/server/proxyUtxos";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
+import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { buildProxySpendTx, deriveProxyScripts } from "@/lib/server/proxyTxBuilders";
@@ -254,7 +255,7 @@ export default async function handler(
     return res.status(proxyUtxos.status).json({ error: proxyUtxos.error });
   }
 
-  const txBuilder = getTxBuilder(network) as MeshTxBuilderWithBody;
+  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
   try {
     buildProxySpendTx({
       txBuilder,
@@ -277,7 +278,7 @@ export default async function handler(
 
   let txCbor: string;
   try {
-    txCbor = await txBuilder.complete();
+    txCbor = await completeTxWithFreshCostModels(txBuilder, network);
   } catch (error) {
     console.error("proxySpend complete error:", error);
     return res.status(500).json({

@@ -1,2 +1,5 @@
 # Shell scripts run in Linux containers; CRLF breaks shebangs (e.g. /bin/sh^M).
 *.sh text eol=lf
+
+# Collapse the lockfile in PR diffs; reviewers don't need to scroll past it.
+package-lock.json linguist-generated=true
