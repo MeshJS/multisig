@@ -142,6 +142,7 @@
     "lodash.get": "^4.4.2",
     "lodash.isequal": "^4.5.0",
     "undici": "^6.23.0",
-    "elliptic": "^6.5.7"
+    "elliptic": "^6.5.7",
+    "libsodium-wrappers-sumo": "0.7.10"
   }
 }
