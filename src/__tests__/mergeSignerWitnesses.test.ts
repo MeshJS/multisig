@@ -44,6 +44,55 @@ function witnessSetHexFor(
   return witnessSet.to_hex();
 }
 
+// Build a full signed Transaction hex whose body bytes differ from
+// `originalTxHex` (one input flipped) and whose vkey signature targets the
+// wallet's body — the shape a wallet returns when it re-canonicalises CBOR
+// before signing.
+function fullSignedTxHexWithDifferentBody(
+  originalTxHex: string,
+  signer: csl.PrivateKey,
+): { hex: string; walletBodyHashHex: string } {
+  const inputs = csl.TransactionInputs.new();
+  inputs.add(
+    csl.TransactionInput.new(
+      csl.TransactionHash.from_bytes(Buffer.from("11".repeat(32), "hex")),
+      0,
+    ),
+  );
+
+  const orig = csl.Transaction.from_hex(originalTxHex);
+  const body = csl.TransactionBody.new(
+    inputs,
+    orig.body().outputs(),
+    orig.body().fee(),
+    undefined,
+  );
+
+  // Build a transient tx (no witnesses) just to take its body hash.
+  const probeHex = csl.Transaction.new(
+    body,
+    csl.TransactionWitnessSet.new(),
+    undefined,
+  ).to_hex();
+  const walletBodyHashHex = calculateTxHash(probeHex);
+
+  const sig = signer.sign(Buffer.from(walletBodyHashHex, "hex"));
+  const vkeys = csl.Vkeywitnesses.new();
+  vkeys.add(csl.Vkeywitness.new(csl.Vkey.new(signer.to_public()), sig));
+  const witnessSet = csl.TransactionWitnessSet.new();
+  witnessSet.set_vkeys(vkeys);
+
+  // Re-parse the body so it's not consumed by the probe tx above.
+  return {
+    hex: csl.Transaction.new(
+      csl.TransactionBody.from_bytes(body.to_bytes()),
+      witnessSet,
+      undefined,
+    ).to_hex(),
+    walletBodyHashHex,
+  };
+}
+
 describe("mergeSignerWitnesses", () => {
   it("returns an empty invalidVkeyPubKeysHex when the new vkey verifies", () => {
     const txHex = buildMinimalTxHex();
@@ -79,6 +128,24 @@ describe("mergeSignerWitnesses", () => {
     expect(
       csl.Transaction.from_hex(result.txHex).witness_set().vkeys()?.len(),
     ).toBe(1);
+  });
+
+  it("adopts the wallet's body when the wallet returned a full signed tx whose body differs and there are no pre-existing witnesses", () => {
+    // First-signer scenario: the wallet re-canonicalised the body before
+    // signing. We should use the wallet's body (so the signature verifies)
+    // and report no invalid vkeys.
+    const txHex = buildMinimalTxHex();
+    const signer = csl.PrivateKey.generate_ed25519();
+    const { hex: walletSignedHex, walletBodyHashHex } =
+      fullSignedTxHexWithDifferentBody(txHex, signer);
+
+    // Sanity: the wallet's body hash is NOT the original body hash.
+    expect(walletBodyHashHex).not.toEqual(calculateTxHash(txHex));
+
+    const result = mergeSignerWitnesses(txHex, walletSignedHex);
+
+    expect(result.invalidVkeyPubKeysHex).toEqual([]);
+    expect(calculateTxHash(result.txHex)).toEqual(walletBodyHashHex);
   });
 
   it("does not re-verify witnesses that were already present", () => {

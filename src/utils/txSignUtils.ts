@@ -139,12 +139,38 @@ export function addUniqueVkeyWitnessToTx(
   };
 }
 
+function extractFullSignedTx(
+  signedPayloadHex: string,
+): csl.Transaction | undefined {
+  try {
+    return csl.Transaction.from_hex(signedPayloadHex);
+  } catch {
+    return undefined;
+  }
+}
+
 export function mergeSignerWitnesses(
   originalTxHex: string,
   signedPayloadHex: string,
 ): { txHex: string; invalidVkeyPubKeysHex: string[] } {
   const originalTx = csl.Transaction.from_hex(originalTxHex);
-  const txBodyClone = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
+  const originalBodyBytes = Buffer.from(originalTx.body().to_bytes());
+
+  // Some wallets re-canonicalise the tx body before signing (notably with Conway
+  // `voting_procedures`). Their vkey witness then targets *their* body hash, not
+  // ours. If the wallet returned a full Transaction (vs just a witness set) and
+  // we have no pre-existing witnesses to invalidate, prefer their body — that's
+  // what the signature is actually over.
+  const signedTx = extractFullSignedTx(signedPayloadHex);
+  const existingVkeysCount = originalTx.witness_set().vkeys()?.len() ?? 0;
+  let bodyToUse = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
+  if (signedTx && existingVkeysCount === 0) {
+    const walletBodyBytes = Buffer.from(signedTx.body().to_bytes());
+    if (!originalBodyBytes.equals(walletBodyBytes)) {
+      bodyToUse = csl.TransactionBody.from_bytes(signedTx.body().to_bytes());
+    }
+  }
+
   const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
     originalTx.witness_set().to_bytes(),
   );
@@ -165,7 +191,7 @@ export function mergeSignerWitnesses(
   witnessSetClone.set_vkeys(mergedVkeys);
 
   const mergedTx = csl.Transaction.new(
-    txBodyClone,
+    bodyToUse,
     witnessSetClone,
     originalTx.auxiliary_data(),
   );
@@ -176,9 +202,9 @@ export function mergeSignerWitnesses(
   const txHex = mergedTx.to_hex();
 
   // Verify each *newly added* vkey witness against the merged tx body hash.
-  // Wallets sometimes re-canonicalise CBOR before signing, producing witnesses
-  // that target a different body than the one we're about to submit. Catch
-  // that here so callers can abort before persisting or broadcasting.
+  // Even after the body-swap recovery above, a wallet that returns *only* a
+  // witness set (no body) can still produce a witness over an encoding we
+  // don't have. Surface that so callers can abort before persisting.
   const invalidVkeyPubKeysHex: string[] = [];
   const bodyHashBytes = Buffer.from(calculateTxHash(txHex), "hex");
   for (let i = 0; i < mergedVkeys.len(); i++) {
