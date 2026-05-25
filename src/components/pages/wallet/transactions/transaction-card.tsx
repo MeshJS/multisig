@@ -254,9 +254,26 @@ export default function TransactionCard({
 
       const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
 
-      let signedTx = filterWitnessesToScripts(
-        mergeSignerWitnesses(transaction.txCbor, signerWitnessPayload),
+      const mergeResult = mergeSignerWitnesses(
+        transaction.txCbor,
+        signerWitnessPayload,
       );
+      if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
+        setLoading(false);
+        console.error(
+          "Wallet returned witness that does not verify against tx body hash",
+          { invalidVkeyPubKeysHex: mergeResult.invalidVkeyPubKeysHex },
+        );
+        toast({
+          title: "Signature mismatch",
+          description:
+            "Your wallet's signature doesn't match this transaction's body. The Cardano SDK and your wallet disagree on CBOR encoding. Try a different wallet, or report this with the failing pubkey (see browser console).",
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
       // sanity check
       const tx = csl.Transaction.from_hex(signedTx);

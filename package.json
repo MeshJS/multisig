@@ -31,11 +31,11 @@
     "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^3.9.0",
     "@jinglescode/nostr-chat-plugin": "^0.0.11",
-    "@meshsdk/core": "^1.9.0-beta.87",
-    "@meshsdk/core-csl": "^1.9.0-beta.87",
-    "@meshsdk/core-cst": "^1.9.0-beta.87",
-    "@meshsdk/provider": "^1.9.0-beta.86",
-    "@meshsdk/react": "^1.9.0-beta.87",
+    "@meshsdk/core": "1.9.0-beta.102",
+    "@meshsdk/core-csl": "1.9.0-beta.102",
+    "@meshsdk/core-cst": "1.9.0-beta.102",
+    "@meshsdk/provider": "1.9.0-beta.100",
+    "@meshsdk/react": "1.9.0-beta-40",
     "@octokit/core": "^6.1.2",
     "@prisma/client": "^6.17.1",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -143,6 +143,7 @@
     "lodash.get": "^4.4.2",
     "lodash.isequal": "^4.5.0",
     "undici": "^6.23.0",
-    "elliptic": "^6.5.7"
+    "elliptic": "^6.5.7",
+    "@peculiar/webcrypto": "1.5.0"
   }
 }

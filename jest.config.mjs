@@ -16,6 +16,10 @@ export default {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // libsodium-wrappers-sumo ships an .mjs that does `import "./libsodium-sumo.mjs"`,
+    // but that file lives in the separate `libsodium-sumo` package. Node resolves it
+    // via package.json exports; Jest's ESM resolver does not. Redirect.
+    '^\\./libsodium-sumo\\.mjs$': '<rootDir>/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
