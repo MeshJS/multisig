@@ -92,6 +92,84 @@ const assertNewWalletAccess = async (ctx: any, walletId: string, requester: stri
   return assertNewWalletSignerAccess(ctx, walletId, requester);
 };
 
+// Shape of the wallet export payload exchanged by the cross-instance
+// import flow and the JSON-backup file. Hoisted above the router so the
+// discriminated union in importWallet can reference it during module
+// initialization (the const is declared further down too — keeping the
+// canonical definition here avoids a temporal-dead-zone hazard).
+const walletExportPayloadSchema = z.object({
+  schemaVersion: z.literal(1),
+  id: z.string(),
+  name: z.string().min(1).max(256),
+  description: z.string().max(2000),
+  signersAddresses: z.array(z.string()),
+  signersStakeKeys: z.array(z.string()),
+  signersDRepKeys: z.array(z.string()),
+  signersDescriptions: z.array(z.string()),
+  numRequiredSigners: z.number().int().nullable(),
+  scriptCbor: z.string().min(1),
+  stakeCredentialHash: z.string().nullable(),
+  type: z.string(),
+  rawImportBodies: z.any().nullable(),
+});
+
+type WalletExportPayload = z.infer<typeof walletExportPayloadSchema>;
+
+function assertCallerIsClaimedSigner(
+  claimed: string,
+  callerAddresses: Set<string>,
+) {
+  if (!callerAddresses.has(claimed)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Claimed verified signer does not match your session",
+    });
+  }
+}
+
+function assertSignerOnPayload(payload: WalletExportPayload, address: string) {
+  const isSigner =
+    payload.signersStakeKeys.includes(address) ||
+    payload.signersAddresses.includes(address);
+  if (!isSigner) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Verified signer is not listed on the source wallet",
+    });
+  }
+}
+
+function walletDataFromPayload(
+  payload: WalletExportPayload,
+  provenance: Record<string, unknown>,
+  lockedSigners: boolean,
+  ownerAddress: string,
+): Prisma.WalletCreateInput {
+  // Carry through any pre-existing rawImportBodies (e.g. Summon multisig
+  // metadata) so the imported wallet keeps resolving via the existing
+  // buildWallet 'summon' branch, then layer our provenance on top.
+  const existing = (payload.rawImportBodies ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = {
+    ...existing,
+    provenance,
+    lockedSigners,
+  };
+  return {
+    name: payload.name,
+    description: payload.description,
+    signersAddresses: payload.signersAddresses,
+    signersStakeKeys: payload.signersStakeKeys,
+    signersDRepKeys: payload.signersDRepKeys,
+    signersDescriptions: payload.signersDescriptions,
+    numRequiredSigners: payload.numRequiredSigners as unknown as number,
+    scriptCbor: payload.scriptCbor,
+    stakeCredentialHash: payload.stakeCredentialHash ?? undefined,
+    type: payload.type,
+    rawImportBodies: JSON.parse(JSON.stringify(merged)) as Prisma.InputJsonValue,
+    ownerAddress,
+  };
+}
+
 export const walletRouter = createTRPCRouter({
   // Read operations stay public but validate signer membership by address param
   getUserWallets: publicProcedure
@@ -668,5 +746,171 @@ export const walletRouter = createTRPCRouter({
           isArchived: true,
         },
       });
+    }),
+
+  // Read the wallet config in the same shape used by the cross-instance
+  // export endpoint, so the "Download JSON backup" button on the wallet
+  // info page produces a file that the import wizard's JSON tab can
+  // ingest one-for-one.
+  exportWallet: protectedProcedure
+    .input(z.object({ walletId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      const wallet = await assertWalletAccess(ctx, input.walletId, requesters);
+
+      const payload = {
+        schemaVersion: 1 as const,
+        id: wallet.id,
+        name: wallet.name,
+        description: wallet.description ?? "",
+        signersAddresses: wallet.signersAddresses,
+        signersStakeKeys: wallet.signersStakeKeys,
+        signersDRepKeys: wallet.signersDRepKeys,
+        signersDescriptions: wallet.signersDescriptions,
+        numRequiredSigners: wallet.numRequiredSigners,
+        scriptCbor: wallet.scriptCbor,
+        stakeCredentialHash: wallet.stakeCredentialHash ?? null,
+        type: wallet.type,
+        rawImportBodies: wallet.rawImportBodies ?? null,
+      };
+      const { hashPayload } = await import("@/pages/api/v1/exportWallet/redeem");
+      return { payload, payloadHash: hashPayload(payload) };
+    }),
+
+  // Discriminated-union importer covering all wizard sources. Delegates
+  // to the same wallet.create write that createWallet uses — no parallel
+  // writer. Provenance lives in rawImportBodies.provenance; lockedSigners
+  // is set for sources where the canonical signer list lives elsewhere
+  // (Summon, instance, json).
+  importWallet: protectedProcedure
+    .input(
+      z.discriminatedUnion("source", [
+        z.object({
+          source: z.literal("instance"),
+          originUrl: z.string().url(),
+          originalWalletId: z.string(),
+          verifiedSigner: z.string(),
+          payload: walletExportPayloadSchema,
+        }),
+        z.object({
+          source: z.literal("json"),
+          sourceInstance: z.string(),
+          payload: walletExportPayloadSchema,
+          payloadHash: z.string(),
+        }),
+        z.object({
+          source: z.literal("cbor"),
+          name: z.string().min(1).max(256),
+          description: z.string().max(2000),
+          signersAddresses: z.array(z.string()),
+          signersStakeKeys: z.array(z.string()),
+          signersDRepKeys: z.array(z.string()),
+          signersDescriptions: z.array(z.string()),
+          scriptCbor: z.string().min(1),
+          numRequiredSigners: z.number().int().min(1),
+          scriptType: z.enum(["all", "any", "atLeast"]),
+          stakeCredentialHash: z.string().optional().nullable(),
+          verifiedSigner: z.string(),
+        }),
+      ]),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const callerAddresses = new Set([sessionAddress, ...sessionWallets]);
+
+      const now = new Date().toISOString();
+      let data: Prisma.WalletCreateInput;
+      let provenance: Record<string, unknown>;
+      let lockedSigners = false;
+
+      if (input.source === "instance") {
+        assertCallerIsClaimedSigner(input.verifiedSigner, callerAddresses);
+        assertSignerOnPayload(input.payload, input.verifiedSigner);
+        provenance = {
+          origin: "instance",
+          originUrl: input.originUrl,
+          originalWalletId: input.originalWalletId,
+          verifiedSigner: input.verifiedSigner,
+          importedAt: now,
+        };
+        lockedSigners = true;
+        data = walletDataFromPayload(input.payload, provenance, lockedSigners, sessionAddress);
+      } else if (input.source === "json") {
+        const { hashPayload } = await import("@/pages/api/v1/exportWallet/redeem");
+        const expected = hashPayload(input.payload);
+        if (expected !== input.payloadHash) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Payload hash mismatch — file may be corrupt or tampered",
+          });
+        }
+        const claimedAddresses = [
+          ...callerAddresses,
+        ].filter((addr) =>
+          input.payload.signersStakeKeys.includes(addr) ||
+          input.payload.signersAddresses.includes(addr),
+        );
+        if (claimedAddresses.length === 0) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Your connected wallet is not a signer on this backup",
+          });
+        }
+        provenance = {
+          origin: "json",
+          sourceInstance: input.sourceInstance,
+          originalWalletId: input.payload.id,
+          payloadHash: input.payloadHash,
+          importedAt: now,
+        };
+        lockedSigners = true;
+        data = walletDataFromPayload(input.payload, provenance, lockedSigners, sessionAddress);
+      } else {
+        // source === "cbor"
+        assertCallerIsClaimedSigner(input.verifiedSigner, callerAddresses);
+        const claimedIndex = input.signersStakeKeys.findIndex(
+          (k) => k === input.verifiedSigner,
+        );
+        const claimedAddressIndex = input.signersAddresses.findIndex(
+          (a) => a === input.verifiedSigner,
+        );
+        if (claimedIndex < 0 && claimedAddressIndex < 0) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Your connected wallet must be in the signer list",
+          });
+        }
+        provenance = {
+          origin: "cbor",
+          verifiedSigner: input.verifiedSigner,
+          importedAt: now,
+        };
+        data = {
+          name: input.name,
+          description: input.description,
+          signersAddresses: input.signersAddresses,
+          signersStakeKeys: input.signersStakeKeys,
+          signersDRepKeys: input.signersDRepKeys,
+          signersDescriptions: input.signersDescriptions,
+          numRequiredSigners:
+            input.scriptType === "all" || input.scriptType === "any"
+              ? (null as unknown as number)
+              : input.numRequiredSigners,
+          scriptCbor: input.scriptCbor,
+          stakeCredentialHash: input.stakeCredentialHash ?? undefined,
+          type: input.scriptType,
+          rawImportBodies: {
+            provenance,
+            lockedSigners: false,
+          } as Prisma.InputJsonValue,
+          ownerAddress: sessionAddress,
+        };
+      }
+
+      const wallet = await ctx.db.wallet.create({ data });
+      return wallet;
     }),
 });

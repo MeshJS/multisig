@@ -61,6 +61,11 @@ interface ReviewSignersCardProps {
   currentUserAddress?: string;
   walletId?: string;
   hasExternalStakeCredential?: boolean;
+  // Set when the wallet was imported from a source whose signer set is
+  // authoritative (Summon eject, cross-instance import, JSON backup).
+  // The local DB row may not safely diverge from the origin, so hide the
+  // add/edit/delete affordances and the invite-link block.
+  lockedSigners?: boolean;
   onSave?: (
     signersAddresses: string[],
     signersDescriptions: string[],
@@ -74,6 +79,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   currentUserAddress,
   walletId,
   hasExternalStakeCredential = false,
+  lockedSigners = false,
   onSave,
 }) => {
   const {
@@ -340,18 +346,22 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
 
                       {/* Edit */}
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startEdit(index)}
-                        >
-                          Edit
-                        </Button>
+                        {lockedSigners ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => startEdit(index)}
+                          >
+                            Edit
+                          </Button>
+                        )}
                       </TableCell>
 
                       {/* Delete */}
                       <TableCell>
-                        {index > 0 && removeSigner ? (
+                        {!lockedSigners && index > 0 && removeSigner ? (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -396,15 +406,17 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => startEdit(index)}
-                        className="h-8 px-2"
-                      >
-                        Edit
-                      </Button>
-                      {index > 0 && removeSigner && (
+                      {!lockedSigners && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => startEdit(index)}
+                          className="h-8 px-2"
+                        >
+                          Edit
+                        </Button>
+                      )}
+                      {!lockedSigners && index > 0 && removeSigner && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -474,21 +486,30 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
               ))}
             </div>
 
-            {/* Add Signer Button */}
-            <Button
-              onClick={startAdd}
-              variant="outline"
-              className="w-full sm:w-auto"
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add signer
-            </Button>
+            {/* Add Signer Button — hidden for imported wallets where the
+                signer set is authoritative on the origin. */}
+            {!lockedSigners && (
+              <Button
+                onClick={startAdd}
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add signer
+              </Button>
+            )}
+            {lockedSigners && (
+              <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-xs text-muted-foreground">
+                Signers were imported from another source and cannot be
+                edited here.
+              </div>
+            )}
 
             {/* Divider before optional section */}
-            {walletId && <div className="my-4 border-t" />}
+            {walletId && !lockedSigners && <div className="my-4 border-t" />}
 
             {/* Invite Link Section */}
-            {walletId && (
+            {walletId && !lockedSigners && (
               <div className="space-y-2">
                 <Label className="text-sm">Add signers by invitation</Label>
                 <p className="text-xs text-muted-foreground">

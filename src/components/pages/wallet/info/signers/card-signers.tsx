@@ -14,6 +14,12 @@ import { Wallet } from "@/types/wallet";
 
 export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);
+  // Imported wallets where the signer set is authoritative on the origin
+  // cannot safely diverge locally. Hide the Edit affordance for them.
+  const lockedSigners = Boolean(
+    (appWallet.rawImportBodies as { lockedSigners?: boolean } | null)
+      ?.lockedSigners,
+  );
 
   return (
     <CardUI
@@ -47,23 +53,25 @@ export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
         </>
       }
       headerDom={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon" aria-haspopup="true" variant="ghost">
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
-              {showEdit ? "Close Edit" : "Edit Signers"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        lockedSigners ? undefined : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" aria-haspopup="true" variant="ghost">
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setShowEdit(!showEdit)}>
+                {showEdit ? "Close Edit" : "Edit Signers"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
       }
       cardClassName="col-span-2"
     >
-      {showEdit ? (
+      {showEdit && !lockedSigners ? (
         <EditSigners appWallet={appWallet} setShowEdit={setShowEdit} />
       ) : (
         <ShowSigners appWallet={appWallet} />
