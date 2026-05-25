@@ -911,22 +911,6 @@ export const walletRouter = createTRPCRouter({
       }
 
       const wallet = await ctx.db.wallet.create({ data });
-
-      void audit(ctx.db, {
-        actorAddress: sessionAddress,
-        actorType: "user",
-        action: "wallet.import",
-        resourceType: "wallet",
-        resourceId: wallet.id,
-        ip: ctx.ip ?? null,
-        outcome: "success",
-        metadata: {
-          source: input.source,
-          provenance,
-          lockedSigners,
-        },
-      });
-
       return wallet;
     }),
 });
