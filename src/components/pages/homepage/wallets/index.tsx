@@ -123,6 +123,9 @@ export default function PageWallets() {
           <Button size="sm" asChild>
             <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
           </Button>
+          <Button size="sm" variant="secondary" asChild>
+            <Link href="/wallets/import-wallet">Import Wallet</Link>
+          </Button>
           {wallets && wallets.some((wallet) => wallet.isArchived) && (
             <Button
               variant={showArchived ? "default" : "secondary"}
