@@ -1,7 +1,6 @@
 import React, { useEffect, Component, ReactNode, useMemo, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { useWallet, useAddress } from "@meshsdk/react";
 import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
@@ -156,7 +155,6 @@ export default function RootLayout({
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
-  const { generateNsec } = useNostrChat();
   const { isEnabled: isUtxosEnabled } = useUTXOS();
 
   const userAddress = useUserStore((state) => state.userAddress);
@@ -229,7 +227,6 @@ export default function RootLayout({
             address: variables.address,
             stakeAddress: variables.stakeAddress,
             drepKeyHash: variables.drepKeyHash ?? "",
-            nostrKey: variables.nostrKey,
           }
         );
       }
@@ -361,12 +358,10 @@ export default function RootLayout({
         }
 
         // Create or update user
-        const nostrKey = generateNsec();
         createUser({
           address: walletAddress,
           stakeAddress,
           drepKeyHash,
-          nostrKey: JSON.stringify(nostrKey),
         });
       } catch (error) {
         if (error instanceof Error && error.message.includes("account changed")) {
@@ -374,9 +369,9 @@ export default function RootLayout({
         }
       }
     }
-    
+
     initializeWallet();
-  }, [connected, activeWallet, user, userAddress, address, createUser, generateNsec]);
+  }, [connected, activeWallet, user, userAddress, address, createUser]);
 
   // Check wallet session and show authorization modal for first-time connections
   // Check session as soon as wallet is connected and address is available (don't wait for user)

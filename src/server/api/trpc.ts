@@ -75,6 +75,30 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => ({
 });
 
 /**
+ * Inferred shape of the context every tRPC procedure receives. Used as the
+ * type of `ctx` in helper functions that previously had to use `any`.
+ */
+export type TRPCContext = ReturnType<typeof createInnerTRPCContext>;
+
+/**
+ * Structural ctx shape accepted by router helpers. `protectedProcedure`'s
+ * middleware narrows `session.expires` to optional, which is not assignable
+ * to the base TRPCContext. Helpers consuming ctx use this looser shape so
+ * they accept both base and narrowed contexts.
+ */
+export type AuthCtx = {
+  db: TRPCContext["db"];
+  ip: string;
+  sessionAddress: string | null;
+  sessionWallets: string[];
+  primaryWallet: string | null;
+  session:
+    | (Omit<Session, "expires"> & { expires?: string })
+    | Session
+    | null;
+};
+
+/**
  * This is the actual context you will use in your router. It will be used to process every request
  * that goes through your tRPC endpoint.
  *

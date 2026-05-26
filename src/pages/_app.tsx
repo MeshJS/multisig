@@ -16,7 +16,6 @@ import "@/styles/globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import RootLayout from "@/components/common/overall-layout/layout";
-import { NostrChatProvider } from "@jinglescode/nostr-chat-plugin";
 
 import "swagger-ui-react/swagger-ui.css";
 import "../styles/swagger-overrides.css";
@@ -67,17 +66,15 @@ const MyApp: AppType<{ session: Session | null }> = ({
         />
       )}
       <SessionProvider session={session}>
-        <NostrChatProvider>
-          <div className={GeistSans.className}>
-            <div className="flex min-h-screen w-full flex-col">
-              <RootLayout>
-                <Component {...pageProps} />
-              </RootLayout>
-            </div>
-            <Toaster />
-            <Metatags />
+        <div className={GeistSans.className}>
+          <div className="flex min-h-screen w-full flex-col">
+            <RootLayout>
+              <Component {...pageProps} />
+            </RootLayout>
           </div>
-        </NostrChatProvider>
+          <Toaster />
+          <Metatags />
+        </div>
       </SessionProvider>
     </MeshProviderNoSSR>
   );
