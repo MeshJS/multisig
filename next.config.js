@@ -55,13 +55,16 @@ const config = {
       layers: true,
     };
     
-    // Optimize tree-shaking by ensuring proper module resolution
+    // Optimize tree-shaking by ensuring proper module resolution.
+    // Note: do NOT set `sideEffects: false` globally — it tells webpack that
+    // every file is side-effect-free, which silently strips CSS imports,
+    // polyfills, and other modules that exist purely for their side effects.
+    // Per-package sideEffects flags in package.json are the correct surface.
     config.optimization = {
       ...config.optimization,
       usedExports: true,
-      sideEffects: false,
     };
-    
+
     // Handle CommonJS modules that don't support named exports
     config.resolve = {
       ...config.resolve,
@@ -75,6 +78,24 @@ const config = {
   
   // External packages for server components to avoid bundling issues
   serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
+
+  // Basic security headers applied to all routes.
+  // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
+  // omitted — CSP would break inline scripts/styles and HSTS locks browsers to
+  // HTTPS for max-age and should only be enabled after team review.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
 };
 
 // Bundle analyzer - only enable when ANALYZE env var is set

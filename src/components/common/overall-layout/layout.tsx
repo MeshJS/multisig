@@ -93,56 +93,6 @@ class WalletErrorBoundary extends Component<
   }
 }
 
-// Component to track layout content changes
-function LayoutContentTracker({ 
-  children, 
-  router, 
-  pageIsPublic, 
-  userAddress 
-}: { 
-  children: ReactNode; 
-  router: ReturnType<typeof useRouter>;
-  pageIsPublic: boolean;
-  userAddress: string | undefined;
-}) {
-  const prevPathRef = useRef<string>(router.pathname);
-  const prevQueryRef = useRef<string>(JSON.stringify(router.query));
-  
-  useEffect(() => {
-    const handleRouteChangeStart = (url: string) => {
-      // Route change started
-    };
-    
-    const handleRouteChangeComplete = (url: string) => {
-      prevPathRef.current = router.pathname;
-      prevQueryRef.current = JSON.stringify(router.query);
-    };
-    
-    const handleRouteChangeError = (err: Error, url: string) => {
-      // Route change error
-    };
-    
-    router.events.on('routeChangeStart', handleRouteChangeStart);
-    router.events.on('routeChangeComplete', handleRouteChangeComplete);
-    router.events.on('routeChangeError', handleRouteChangeError);
-    
-    return () => {
-      router.events.off('routeChangeStart', handleRouteChangeStart);
-      router.events.off('routeChangeComplete', handleRouteChangeComplete);
-      router.events.off('routeChangeError', handleRouteChangeError);
-    };
-  }, [router]);
-  
-  useEffect(() => {
-    if (router.pathname !== prevPathRef.current || JSON.stringify(router.query) !== prevQueryRef.current) {
-      prevPathRef.current = router.pathname;
-      prevQueryRef.current = JSON.stringify(router.query);
-    }
-  }, [router.pathname, router.query]);
-  
-  return <>{children}</>;
-}
-
 export default function RootLayout({
   children,
 }: {
@@ -547,6 +497,13 @@ export default function RootLayout({
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">
+      {/* Skip link for keyboard users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      >
+        Skip to main content
+      </a>
       {(shouldShowBackgroundLoading || showPostAuthLoading) && (
         <div className="fixed inset-0 z-50 transition-opacity duration-300 ease-in-out opacity-100">
           <Loading />
@@ -672,7 +629,11 @@ export default function RootLayout({
         )}
 
         {/* Main content */}
-        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8 focus:outline-none"
+        >
           <WalletErrorBoundary
             fallback={
               <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
@@ -707,9 +668,7 @@ export default function RootLayout({
               </div>
             }
           >
-            <LayoutContentTracker router={router} pageIsPublic={pageIsPublic} userAddress={userAddress}>
-              {pageIsPublic || userAddress ? children : <PageHomepage />}
-            </LayoutContentTracker>
+            {pageIsPublic || userAddress ? children : <PageHomepage />}
           </WalletErrorBoundary>
         </main>
       </div>

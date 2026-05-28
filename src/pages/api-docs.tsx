@@ -6,8 +6,9 @@ import { Key, Lightbulb, Copy, Check } from "lucide-react";
 import Globe from "./globe";
 
 // Avoid SSR for Swagger UI
+// Note: swagger-ui CSS is imported globally from src/pages/_app.tsx because
+// Next.js Pages Router only allows global CSS imports from the custom App.
 const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
-import "swagger-ui-react/swagger-ui.css";
 
 export const getServerSideProps = () => ({ props: {} });
 

@@ -200,6 +200,7 @@ export default function NewWalletCreationStep({
           setSignerStakeKeys: walletFlow.setSignerStakeKeys,
           signersDRepKeys: walletFlow.signersDRepKeys,
           setSignerDRepKeys: walletFlow.setSignerDRepKeys,
+          signerIds: walletFlow.signerIds,
           addSigner: walletFlow.addSigner,
           removeSigner: walletFlow.removeSigner,
         }}

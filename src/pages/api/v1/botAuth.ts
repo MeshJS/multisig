@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+
+const { sign } = jwt;
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyStrictRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { verifyBotKeySecret, parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
