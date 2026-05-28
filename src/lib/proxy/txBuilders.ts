@@ -9,7 +9,7 @@ import {
 import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import blueprint from "@/components/multisig/proxy/aiken-workspace/plutus.json";
 import { parseProposalId } from "@/lib/governance";
-import { getLovelace, sameUtxoRef } from "./utxoUtils";
+import { accumulateFundingUtxos, getLovelace, sameUtxoRef, selectSetupUtxo } from "./utxoUtils";
 
 export const DEFAULT_PROXY_SETUP_LOVELACE = "1000000";
 const PROXY_ACTION_MIN_LOVELACE = 2_000_000n;
@@ -102,12 +102,6 @@ function addCollateral(txBuilder: MeshTxBuilder, collateral: UTxO) {
   );
 }
 
-function selectParamUtxo(utxos: UTxO[]): UTxO | null {
-  return (
-    utxos.find((utxo) => getLovelace(utxo) >= BigInt(20_000_000)) ?? null
-  );
-}
-
 export function buildProxySetupTx(args: {
   txBuilder: MeshTxBuilder;
   network: number;
@@ -118,7 +112,7 @@ export function buildProxySetupTx(args: {
   initialProxyLovelace?: string;
   stakeCredential?: string;
 }): ProxySetupInfo {
-  const paramUtxo = selectParamUtxo(args.walletUtxos);
+  const paramUtxo = selectSetupUtxo(args.walletUtxos);
   if (!paramUtxo) {
     throw new Error(
       "Insufficicient balance. Create one utxo holding at Least 20 ADA.",
@@ -244,27 +238,20 @@ export function buildProxyDRepCertificateTx(args: {
     anchorDataHash = hashDrepAnchor(args.anchorJson);
   }
 
-  addScriptInput(args.txBuilder, args.authTokenUtxo, args.multisigScriptCbor);
   addCollateral(args.txBuilder, args.collateral);
 
   const requiredAmount =
     args.action === "register" ? BigInt(505_000_000) : PROXY_ACTION_MIN_LOVELACE;
-  let totalAmount = getLovelace(args.authTokenUtxo);
-  for (const utxo of args.walletUtxos) {
-    if (totalAmount >= requiredAmount) {
-      break;
-    }
-    if (sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
-      continue;
-    }
-    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
-    totalAmount += getLovelace(utxo);
-  }
+  const selectedUtxos = accumulateFundingUtxos(args.walletUtxos, args.authTokenUtxo, requiredAmount);
+  const totalAmount = selectedUtxos.reduce((sum, u) => sum + getLovelace(u), 0n);
   assertSelectedLovelace({
     context: `proxy DRep ${args.action}`,
     selectedLovelace: totalAmount,
     requiredLovelace: requiredAmount,
   });
+  for (const utxo of selectedUtxos) {
+    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
+  }
 
   args.txBuilder.txOut(args.walletAddress, [
     { unit: scripts.authTokenId, quantity: "1" },
@@ -314,25 +301,18 @@ export function buildProxyVoteTx(args: {
     stakeCredential: args.stakeCredential,
   });
 
-  addScriptInput(args.txBuilder, args.authTokenUtxo, args.multisigScriptCbor);
   addCollateral(args.txBuilder, args.collateral);
 
-  let totalAmount = getLovelace(args.authTokenUtxo);
-  for (const utxo of args.walletUtxos) {
-    if (totalAmount >= PROXY_ACTION_MIN_LOVELACE) {
-      break;
-    }
-    if (sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
-      continue;
-    }
-    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
-    totalAmount += getLovelace(utxo);
-  }
+  const selectedUtxos = accumulateFundingUtxos(args.walletUtxos, args.authTokenUtxo, PROXY_ACTION_MIN_LOVELACE);
+  const totalAmount = selectedUtxos.reduce((sum, u) => sum + getLovelace(u), 0n);
   assertSelectedLovelace({
     context: "proxy vote",
     selectedLovelace: totalAmount,
     requiredLovelace: PROXY_ACTION_MIN_LOVELACE,
   });
+  for (const utxo of selectedUtxos) {
+    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
+  }
 
   args.txBuilder.txOut(args.walletAddress, [
     { unit: scripts.authTokenId, quantity: "1" },

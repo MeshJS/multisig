@@ -86,6 +86,28 @@ export function selectProxyUtxosForOutputs(
   return selected;
 }
 
+export function selectSetupUtxo(utxos: UTxO[]): UTxO | null {
+  return utxos.find((utxo) => getLovelace(utxo) >= 20_000_000n) ?? null;
+}
+
+export function accumulateFundingUtxos(
+  walletUtxos: UTxO[],
+  authTokenUtxo: UTxO,
+  requiredLovelace: bigint,
+): UTxO[] {
+  const selected = [authTokenUtxo];
+  let total = getLovelace(authTokenUtxo);
+  const candidates = walletUtxos
+    .filter((u) => !sameUtxoRef(u.input, authTokenUtxo.input))
+    .sort((a, b) => Number(getLovelace(b) - getLovelace(a)));
+  for (const utxo of candidates) {
+    if (total >= requiredLovelace) break;
+    selected.push(utxo);
+    total += getLovelace(utxo);
+  }
+  return selected;
+}
+
 /**
  * Picks the best free auth-token UTxO from wallet UTxOs.
  * Skips any UTxOs whose refs appear in `blockedUtxoRefs` (server blocked-tx avoidance).

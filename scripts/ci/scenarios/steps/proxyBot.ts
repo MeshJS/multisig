@@ -1,3 +1,4 @@
+import type { UTxO } from "@meshsdk/core";
 import type { CIBootstrapContext, CIWalletType, RouteStep, Scenario } from "../../framework/types";
 import { boolFromEnv } from "../../framework/env";
 import { requestJson } from "../../framework/http";
@@ -21,12 +22,18 @@ import {
   parseLovelace,
   PROXY_FULL_LIFECYCLE_WALLET_TYPES,
   PROXY_SPEND_LOVELACE,
-  sameRef,
   SETUP_UTXO_REQUIRED_LOVELACE,
   toRef,
   type ScriptUtxo,
   type UtxoRef,
 } from "../proxyLifecyclePreflight";
+import {
+  accumulateFundingUtxos,
+  getLovelace,
+  selectAuthTokenUtxo,
+  selectSetupUtxo,
+} from "../../../../src/lib/proxy/utxoUtils";
+import { buildProxySetupTx } from "../../../../src/lib/proxy/txBuilders";
 
 export {
   analyzeProxyFullLifecycleUtxoShape,
@@ -210,13 +217,12 @@ export function selectSetupRefs(args: {
   walletUtxos: ScriptUtxo[];
   collateralUtxos: ScriptUtxo[];
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef } {
-  const setupUtxo = args.walletUtxos.find((utxo) => parseLovelace(utxo) >= SETUP_UTXO_REQUIRED_LOVELACE);
+  const setupUtxo = selectSetupUtxo(args.walletUtxos as unknown as UTxO[]);
   if (!setupUtxo) {
     throw new Error(`proxy setup requires a wallet UTxO with at least ${formatAda(SETUP_UTXO_REQUIRED_LOVELACE)}`);
   }
-  const setupRef = toRef(setupUtxo);
   const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy setup");
-  return { utxoRefs: [setupRef], collateralRef: toRef(collateral) };
+  return { utxoRefs: [toRef(setupUtxo as unknown as ScriptUtxo)], collateralRef: toRef(collateral) };
 }
 
 export function selectAuthTokenRefs(args: {
@@ -225,16 +231,20 @@ export function selectAuthTokenRefs(args: {
   authTokenId: string;
   includeAllAuthTokens?: boolean;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef } {
-  const authTokenUtxos = args.walletUtxos.filter((utxo) =>
-    utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n),
-  );
-  if (!authTokenUtxos.length) {
-    throw new Error("No proxy auth-token UTxO found in freeUtxos response");
-  }
-  const spendUtxos = args.includeAllAuthTokens ? authTokenUtxos : [authTokenUtxos[0]!];
-  const refs = spendUtxos.map(toRef);
   const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy action");
-  return { utxoRefs: refs, collateralRef: toRef(collateral) };
+  if (args.includeAllAuthTokens) {
+    // Cleanup path: include every auth-token UTxO
+    const authTokenUtxos = args.walletUtxos.filter((utxo) =>
+      utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n),
+    );
+    if (!authTokenUtxos.length) {
+      throw new Error("No proxy auth-token UTxO found in freeUtxos response");
+    }
+    return { utxoRefs: authTokenUtxos.map(toRef), collateralRef: toRef(collateral) };
+  }
+  // Standard path: use the same selection as the client (highest lovelace, blocked-ref filtering)
+  const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);
+  return { utxoRefs: [toRef(authTokenUtxo as unknown as ScriptUtxo)], collateralRef: toRef(collateral) };
 }
 
 export function selectDRepRegisterRefs(args: {
@@ -244,46 +254,18 @@ export function selectDRepRegisterRefs(args: {
   requiredLovelace?: bigint;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef; selectedLovelace: bigint; requiredLovelace: bigint } {
   const requiredLovelace = args.requiredLovelace ?? DREP_REGISTER_REQUIRED_LOVELACE;
-  const authTokenUtxo = args.walletUtxos.find((utxo) =>
-    utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n),
-  );
-  if (!authTokenUtxo) {
-    throw new Error("No proxy auth-token UTxO found in freeUtxos response");
-  }
-
-  const authRef = toRef(authTokenUtxo);
-  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy DRep register");
-  const collateralRef = toRef(collateral);
-  const selectedRefs = [authRef];
-  let selectedLovelace = parseLovelace(authTokenUtxo);
-  const fundingCandidates = [...args.walletUtxos]
-    .filter((utxo) => {
-      const ref = toRef(utxo);
-      return !sameRef(ref, authRef);
-    })
-    .sort((left, right) => {
-      const leftLovelace = parseLovelace(left);
-      const rightLovelace = parseLovelace(right);
-      if (leftLovelace > rightLovelace) return -1;
-      if (leftLovelace < rightLovelace) return 1;
-      return 0;
-    });
-
-  for (const utxo of fundingCandidates) {
-    if (selectedLovelace >= requiredLovelace) break;
-    selectedRefs.push(toRef(utxo));
-    selectedLovelace += parseLovelace(utxo);
-  }
-
+  const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);
+  const selected = accumulateFundingUtxos(args.walletUtxos as unknown as UTxO[], authTokenUtxo, requiredLovelace);
+  const selectedLovelace = selected.reduce((sum, u) => sum + getLovelace(u), 0n);
   if (selectedLovelace < requiredLovelace) {
     throw new Error(
       `proxy DRep register requires ${formatAda(requiredLovelace)} in selected wallet inputs but only ${formatAda(selectedLovelace)} is available after reserving separate collateral. Fund or consolidate the CI wallet before running scenario.proxy-full-lifecycle.`,
     );
   }
-
+  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy DRep register");
   return {
-    utxoRefs: selectedRefs,
-    collateralRef,
+    utxoRefs: selected.map((u) => toRef(u as unknown as ScriptUtxo)),
+    collateralRef: toRef(collateral),
     selectedLovelace,
     requiredLovelace,
   };
@@ -296,46 +278,18 @@ export function selectAuthTokenRefsWithMinLovelace(args: {
   requiredLovelace: bigint;
   context: string;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef; selectedLovelace: bigint; requiredLovelace: bigint } {
-  const authTokenUtxo = args.walletUtxos.find((utxo) =>
-    utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n),
-  );
-  if (!authTokenUtxo) {
-    throw new Error("No proxy auth-token UTxO found in freeUtxos response");
-  }
-
-  const authRef = toRef(authTokenUtxo);
-  const collateral = selectSeparateCollateral(args.collateralUtxos, args.context);
-  const collateralRef = toRef(collateral);
-  const selectedRefs = [authRef];
-  let selectedLovelace = parseLovelace(authTokenUtxo);
-  const fundingCandidates = [...args.walletUtxos]
-    .filter((utxo) => {
-      const ref = toRef(utxo);
-      return !sameRef(ref, authRef);
-    })
-    .sort((left, right) => {
-      const leftLovelace = parseLovelace(left);
-      const rightLovelace = parseLovelace(right);
-      if (leftLovelace > rightLovelace) return -1;
-      if (leftLovelace < rightLovelace) return 1;
-      return 0;
-    });
-
-  for (const utxo of fundingCandidates) {
-    if (selectedLovelace >= args.requiredLovelace) break;
-    selectedRefs.push(toRef(utxo));
-    selectedLovelace += parseLovelace(utxo);
-  }
-
+  const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);
+  const selected = accumulateFundingUtxos(args.walletUtxos as unknown as UTxO[], authTokenUtxo, args.requiredLovelace);
+  const selectedLovelace = selected.reduce((sum, u) => sum + getLovelace(u), 0n);
   if (selectedLovelace < args.requiredLovelace) {
     throw new Error(
       `${args.context} requires ${formatAda(args.requiredLovelace)} in selected wallet inputs but only ${formatAda(selectedLovelace)} is available after reserving separate collateral. Fund or consolidate the CI wallet before running scenario.proxy-full-lifecycle.`,
     );
   }
-
+  const collateral = selectSeparateCollateral(args.collateralUtxos, args.context);
   return {
-    utxoRefs: selectedRefs,
-    collateralRef,
+    utxoRefs: selected.map((u) => toRef(u as unknown as ScriptUtxo)),
+    collateralRef: toRef(collateral),
     selectedLovelace,
     requiredLovelace: args.requiredLovelace,
   };
@@ -1203,6 +1157,74 @@ function createProxyFullLifecycleAdoptionStep(walletType: CIWalletType): RouteSt
   };
 }
 
+function createProxyClientBuildSmokeStep(walletType: CIWalletType): RouteStep {
+  return {
+    id: `v1.proxy.client-build-smoke.${walletType}`,
+    description: `Build proxy setup CBOR via client builder without submission (${walletType})`,
+    severity: "non-critical",
+    execute: async (ctx) => {
+      const wallet = getWalletByType(ctx, walletType);
+      if (!wallet) throw new Error(`Missing ${walletType} wallet`);
+      if (!wallet.walletAddress) {
+        throw new Error(`Wallet ${wallet.walletId} has no walletAddress; cannot build proxy setup CBOR`);
+      }
+      const apiKey = process.env.CI_BLOCKFROST_PREPROD_API_KEY?.trim();
+      if (!apiKey) throw new Error("CI_BLOCKFROST_PREPROD_API_KEY is required for proxy client build smoke");
+      if (ctx.networkId !== 0) throw new Error("Proxy client build smoke is preprod-only");
+
+      const bot = getDefaultBot(ctx);
+
+      const { BlockfrostProvider, MeshTxBuilder } = await import("@meshsdk/core");
+      const provider = new BlockfrostProvider(apiKey);
+
+      const [walletUtxos, collateralUtxos] = await Promise.all([
+        provider.fetchAddressUTxOs(wallet.walletAddress),
+        provider.fetchAddressUTxOs(bot.paymentAddress),
+      ]);
+
+      const paramUtxo = selectSetupUtxo(walletUtxos);
+      if (!paramUtxo) {
+        throw new Error(
+          `proxy client build smoke: no wallet UTxO with at least ${formatAda(SETUP_UTXO_REQUIRED_LOVELACE)} found at ${wallet.walletAddress}`,
+        );
+      }
+
+      const collateralScriptUtxo = selectSeparateCollateral(
+        collateralUtxos as unknown as ScriptUtxo[],
+        "proxy client build smoke",
+      );
+
+      const txBuilder = new MeshTxBuilder({
+        fetcher: provider,
+        evaluator: provider,
+      });
+      txBuilder.setNetwork("preprod");
+
+      buildProxySetupTx({
+        txBuilder,
+        network: ctx.networkId,
+        walletUtxos,
+        walletAddress: wallet.walletAddress,
+        collateral: collateralScriptUtxo as unknown as UTxO,
+      });
+
+      const unsignedCbor = await txBuilder.complete();
+      if (!unsignedCbor || typeof unsignedCbor !== "string" || unsignedCbor.length === 0) {
+        throw new Error("proxy client build smoke produced empty or invalid CBOR");
+      }
+
+      return {
+        message: `proxy client build smoke produced valid unsigned CBOR (${unsignedCbor.length} chars) for ${walletType}`,
+        artifacts: {
+          walletAddress: wallet.walletAddress,
+          paramUtxoRef: `${paramUtxo.input.txHash}#${paramUtxo.input.outputIndex}`,
+          cborLength: unsignedCbor.length,
+        },
+      };
+    },
+  };
+}
+
 function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   const runtime: {
     setup?: ProxySetup;
@@ -1276,6 +1298,7 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
         };
       },
     },
+    createProxyClientBuildSmokeStep(walletType),
     ...createSetupLifecycleSteps({ walletType, runtime }),
     createProxyActionStep({
       id: `v1.proxy.full.spend.propose.${walletType}`,

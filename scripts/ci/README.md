@@ -50,14 +50,17 @@ CI runs these stages in order:
   - `walletAuth.ts`: nonce + signer auth helper (`getNonce`/`authSigner`) and signer data signing.
   - `datumSign.ts`: reusable datum signing helper.
   - `governance.ts`: deterministic governance proposal selection and ballot payload builder.
-  - `runner.ts`: scenario/step execution + report writing.
+  - `runner.ts`: scenario/step execution engine.
+  - `markdown.ts`: Markdown report rendering (run header, wallet balances table, scenario summary table, step detail sections with failure artifact blocks).
   - `walletBalances.ts`: on-chain UTxO balance collection via Blockfrost (used by `walletBalanceSummary` in report).
   - `redact.ts`: recursive sensitive-value redaction for log-safe JSON serialisation.
 - `scenarios/`
   - `manifest.ts`: scenario registry and ordering only.
   - `proxyLifecyclePreflight.ts`: proxy lifecycle ADA/UTxO budget constants and shape analysis.
+  - `proxyChainRecovery.ts`: chain-based proxy row recovery — scans non-lovelace assets at the CI wallet address, derives proxy scripts from mint transaction inputs, and creates or reactivates `Proxy` DB rows when the derived `authTokenId` matches an observed asset unit.
+  - `proxyOrphanAdoption.ts`: historical proxy row adoption — searches all `Proxy` rows whose script address matches the current CI wallet's script address and reattaches any that are not yet linked to the current wallet.
   - `flows/`: `signingFlow.ts`, `transferFlow.ts`, `certificateSigningFlow.ts`, `utxoShapeFlow.ts` (reusable multisig sign, real transfer builders, stake-cert signing with dual payment+stake witnesses, and proxy lifecycle self-split shaping).
-  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, `walletLifecycle.ts`, `proxyBot.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps.
+  - `steps/`: route step factories grouped by area (`discovery.ts`, `botIdentity.ts`, `authPlane.ts`, `datum.ts`, `governance.ts`, `transferRing.ts`, `certificates.ts`, `walletLifecycle.ts`, `proxyBot.ts`, …) plus `helpers.ts` (ring wallet-type utilities) and `template-route-step.ts` for new steps. `proxyBot.ts` and `scenarios/flows/utxoShapeFlow.ts` import UTxO selection helpers directly from `src/lib/proxy/utxoUtils.ts` and transaction builders from `src/lib/proxy/txBuilders.ts`, which is the shared source of truth for all proxy transaction construction.
 
 ### Full scenario execution order
 
@@ -140,8 +143,11 @@ The first full-lifecycle steps for each eligible wallet type are ordered as:
 3. `v1.proxy.full.hygiene.<walletType>`
 4. `v1.proxy.full.utxoShape.<walletType>`
 5. `v1.proxy.full.preflight.<walletType>`
+6. `v1.proxy.client-build-smoke.<walletType>` (non-critical)
 
-Chain recovery is CI-only and evidence-based. It scans non-lovelace assets at the current bootstrap `walletAddress`, asks Blockfrost for each asset's mint transaction, tests the mint transaction inputs as candidate `paramUtxo` values with `deriveProxyScripts`, and only creates or reactivates a `Proxy` row when the derived `authTokenId` exactly matches the observed asset unit. This handles clean-database rebuilds where old proxy auth tokens and proxy DReps remain on-chain but the app has no `Proxy` rows. It cannot recover a proxy if the auth token is no longer discoverable at the current CI wallet address.
+Step 6, `v1.proxy.client-build-smoke.<walletType>`, is a non-submitting step that calls `buildProxySetupTx` from `src/lib/proxy/txBuilders.ts` directly with a real `MeshTxBuilder` and Blockfrost-resolved UTxOs. It fetches UTxOs at the wallet script address and the bot payment address from Blockfrost, selects a param UTxO (≥ 20 ADA) and an ADA-only collateral, builds the setup transaction, and calls `txBuilder.complete()` to run the Aiken evaluator against preprod. It asserts that the result is a non-empty CBOR hex string and discards it without calling `addTransaction` or any signing step. This catches blueprint schema regressions (`plutus.json` validator index changes), `applyParamsToScript`/`resolveScriptHash` failures, Aiken evaluator errors, and `MeshTxBuilder` API changes that would not be caught by the mock-builder unit tests in `src/__tests__/proxyTxBuilders.test.ts`. Marked non-critical so a slow Blockfrost evaluator response does not block the lifecycle steps that follow.
+
+Chain recovery is CI-only and evidence-based. It scans non-lovelace assets at the current bootstrap `walletAddress` (up to 25 asset candidates; excess are skipped), asks Blockfrost for each asset's mint transaction, tests the mint transaction inputs as candidate `paramUtxo` values with `deriveProxyScripts`, and only creates or reactivates a `Proxy` row when the derived `authTokenId` exactly matches the observed asset unit. This handles clean-database rebuilds where old proxy auth tokens and proxy DReps remain on-chain but the app has no `Proxy` rows. It cannot recover a proxy if the auth token is no longer discoverable at the current CI wallet address.
 
 When preflight passes, each eligible wallet lifecycle creates its own proxy, finalizes the confirmed setup, exercises proxy spend, proxy DRep register/deregister, optional proxy voting when active governance proposals exist, then runs safe cleanup and asserts the proxy no longer appears in `GET /api/v1/proxies`. Proxy actions always use bot payment-address collateral that is distinct from selected wallet spend inputs; DRep registration selects an auth-token input plus additional wallet inputs when needed to meet the registration budget. The proposer/collateral owner is signer index 0 (`CI_MNEMONIC_1`), and signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 proxy actions. After each broadcasted proxy action, the route-chain waits for the selected wallet inputs to disappear from fresh `freeUtxos` before proposing the next action. Cleanup may require two submitted transactions: a sweep transaction that empties the proxy address while preserving an auth token, followed by a burn transaction and cleanup finalization. If the initial cleanup call already returns a burn transaction, the optional burn proposal is skipped after that transaction is signed. Because this scenario runs on every PR, the default CI legacy, hierarchical, and SDK wallets must stay funded; one-UTxO shape problems are repaired by the self-split step, while true budget failures still fail the route-chain rather than skipping proxy lifecycle coverage.
 
@@ -245,7 +251,7 @@ Primary variables (in workflow/compose):
 - `CI_DREP_ANCHOR_URL` (required by the default run for `scenario.drep-certificates` and `scenario.proxy-full-lifecycle`): the URL string stored in the on-chain anchor — passed as-is to the API, never fetched.
 - `CI_DREP_ANCHOR_JSON` (required by the default run for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
-- `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`429`, `418`, and selected `5xx`). Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
+- `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`408`, `418`, `429`, `500`, `502`, `503`, `504`). Exponential backoff with `Retry-After` header support. Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
 
 Validation notes:
 

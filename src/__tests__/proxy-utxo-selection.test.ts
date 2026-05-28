@@ -3,6 +3,8 @@ import type { UTxO } from "@meshsdk/core";
 import {
   selectProxyUtxosForOutputs,
   selectAuthTokenUtxo,
+  selectSetupUtxo,
+  accumulateFundingUtxos,
 } from "@/lib/proxy/utxoUtils";
 
 const AUTH_POLICY_ID = "a".repeat(56);
@@ -148,5 +150,72 @@ describe("selectAuthTokenUtxo", () => {
         [{ txHash: "a".repeat(64), outputIndex: 0 }],
       ),
     ).toThrow("No AuthToken found");
+  });
+});
+
+// ─── selectSetupUtxo ──────────────────────────────────────────────────────────
+
+describe("selectSetupUtxo", () => {
+  it("returns the first UTxO with at least 20 ADA", () => {
+    const utxo = mkUtxo("a".repeat(64), 0, "20000000");
+    const result = selectSetupUtxo([utxo]);
+    expect(result).toEqual(utxo);
+  });
+
+  it("returns null when no UTxO has 20 ADA", () => {
+    const small = mkUtxo("a".repeat(64), 0, "5000000");
+    const result = selectSetupUtxo([small]);
+    expect(result).toBeNull();
+  });
+
+  it("ignores UTxOs below the threshold even if they are the only ones", () => {
+    const justUnder = mkUtxo("a".repeat(64), 0, "19999999");
+    const result = selectSetupUtxo([justUnder]);
+    expect(result).toBeNull();
+  });
+
+  it("picks the first eligible UTxO in array order when multiple qualify", () => {
+    const first = mkUtxo("a".repeat(64), 0, "25000000");
+    const second = mkUtxo("b".repeat(64), 0, "30000000");
+    const result = selectSetupUtxo([first, second]);
+    expect(result).toEqual(first);
+  });
+});
+
+// ─── accumulateFundingUtxos ───────────────────────────────────────────────────
+
+describe("accumulateFundingUtxos", () => {
+  it("returns only the auth-token UTxO when it alone meets the requirement", () => {
+    const authUtxo = mkUtxo("a".repeat(64), 0, "10000000", { unit: AUTH_POLICY_ID, quantity: "1" });
+    const extra = mkUtxo("b".repeat(64), 0, "5000000");
+    const result = accumulateFundingUtxos([authUtxo, extra], authUtxo, 10_000_000n);
+    expect(result).toEqual([authUtxo]);
+  });
+
+  it("adds wallet UTxOs in descending lovelace order until threshold is met", () => {
+    const authUtxo = mkUtxo("a".repeat(64), 0, "2000000", { unit: AUTH_POLICY_ID, quantity: "1" });
+    const large = mkUtxo("b".repeat(64), 0, "8000000");
+    const small = mkUtxo("c".repeat(64), 0, "1000000");
+    // authUtxo (2 ADA) + large (8 ADA) = 10 ADA, which meets 9 ADA threshold
+    const result = accumulateFundingUtxos([authUtxo, large, small], authUtxo, 9_000_000n);
+    expect(result).toEqual([authUtxo, large]);
+  });
+
+  it("skips the auth-token UTxO when scanning wallet candidates", () => {
+    const authUtxo = mkUtxo("a".repeat(64), 0, "2000000", { unit: AUTH_POLICY_ID, quantity: "1" });
+    const other = mkUtxo("b".repeat(64), 0, "5000000");
+    const result = accumulateFundingUtxos([authUtxo, other], authUtxo, 6_000_000n);
+    // auth (2 ADA) + other (5 ADA) = 7 ADA; auth should appear only once
+    expect(result).toHaveLength(2);
+    expect(result.filter((u) => u.input.txHash === "a".repeat(64))).toHaveLength(1);
+    expect(result).toContain(other);
+  });
+
+  it("returns all candidates exhausted without reaching threshold (caller validates)", () => {
+    const authUtxo = mkUtxo("a".repeat(64), 0, "2000000", { unit: AUTH_POLICY_ID, quantity: "1" });
+    const extra = mkUtxo("b".repeat(64), 0, "3000000");
+    // 2 + 3 = 5 ADA, but we require 10 ADA — should return all without throwing
+    const result = accumulateFundingUtxos([authUtxo, extra], authUtxo, 10_000_000n);
+    expect(result).toEqual([authUtxo, extra]);
   });
 });

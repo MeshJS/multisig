@@ -16,6 +16,8 @@ import {
   buildProxySpendTx,
   buildProxyDRepCertificateTx,
   buildProxyVoteTx,
+  buildProxyCleanupTx,
+  buildProxyCleanupSweepTx,
   deriveProxyScripts,
 } from "@/lib/proxy/txBuilders";
 import {
@@ -548,6 +550,64 @@ export class MeshProxyContract extends MeshTxInitiator {
       multisigScriptCbor: this.msCbor,
       stakeCredential: this.stakeCredential,
     });
+
+    return this.mesh;
+  };
+
+  /**
+   * Clean up a proxy. If proxy UTxOs remain at the proxy address, sweeps them
+   * back to the wallet (sweep step). If the proxy address is empty, burns all
+   * 10 auth tokens (burn step).
+   */
+  cleanupProxy = async (msUtxos?: UTxO[], msWalletAddress?: string) => {
+    if (this.proxyAddress === undefined) {
+      throw new Error("Proxy address not set. Please setupProxy first.");
+    }
+
+    const { utxos, walletAddress, collateral } =
+      await this._resolveWalletInputs(msUtxos, msWalletAddress);
+
+    const blockchainProvider = this.mesh.fetcher;
+    if (!blockchainProvider) {
+      throw new Error("Blockchain provider not found");
+    }
+
+    const proxyUtxos = await blockchainProvider.fetchAddressUTxOs(this.proxyAddress);
+
+    const scripts = deriveProxyScripts({
+      paramUtxo: this.paramUtxo,
+      network: this.networkId,
+      stakeCredential: this.stakeCredential,
+    });
+
+    if (proxyUtxos.length > 0) {
+      const authTokenUtxo = selectAuthTokenUtxo(utxos, scripts.authTokenId);
+      buildProxyCleanupSweepTx({
+        txBuilder: this.mesh,
+        network: this.networkId,
+        paramUtxo: this.paramUtxo,
+        proxyAddress: this.proxyAddress,
+        proxyUtxos,
+        walletUtxos: utxos,
+        authTokenUtxo,
+        collateral,
+        walletAddress,
+        multisigScriptCbor: this.msCbor,
+        stakeCredential: this.stakeCredential,
+      });
+    } else {
+      buildProxyCleanupTx({
+        txBuilder: this.mesh,
+        network: this.networkId,
+        paramUtxo: this.paramUtxo,
+        walletUtxos: utxos,
+        collateral,
+        walletAddress,
+        authTokenId: scripts.authTokenId,
+        multisigScriptCbor: this.msCbor,
+        stakeCredential: this.stakeCredential,
+      });
+    }
 
     return this.mesh;
   };

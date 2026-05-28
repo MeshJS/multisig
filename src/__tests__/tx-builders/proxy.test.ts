@@ -245,6 +245,37 @@ describe("MeshProxyContract.manageProxyDrep", () => {
     ).rejects.toThrow("Anchor URL and JSON are required");
   });
 
+  it("register throws when total lovelace is below 505 ADA after accumulation", async () => {
+    const provider = createMockProvider();
+    const { mesh } = createMeshMock(provider);
+    const contract = new MeshProxyContract(
+      { mesh, networkId: 0, wallet: {} as any },
+      { paramUtxo: PARAM_UTXO },
+    );
+    const authPolicyId = contract.getAuthTokenPolicyId();
+
+    const lowAuthTokenUtxo: UTxO = {
+      input: { txHash: "f".repeat(64), outputIndex: 0 },
+      output: {
+        address: CHANGE_ADDRESS,
+        amount: [
+          { unit: "lovelace", quantity: "100000000" }, // 100 ADA — below 505 ADA with no extra UTxOs
+          { unit: authPolicyId, quantity: "1" },
+        ],
+      },
+    };
+
+    jest.spyOn(contract as any, "getWalletInfoForTx").mockResolvedValue({
+      utxos: [lowAuthTokenUtxo],
+      walletAddress: CHANGE_ADDRESS,
+      collateral: FIXTURE_COLLATERAL,
+    });
+
+    await expect(
+      contract.manageProxyDrep("register", ANCHOR.anchorUrl, ANCHOR.anchorJson),
+    ).rejects.toThrow(/proxy DRep register requires/);
+  });
+
   it("update without anchor throws", async () => {
     const { contract } = makeManageContract();
     await expect(
@@ -353,6 +384,78 @@ describe("MeshProxyContract.voteProxyDrep", () => {
       contract.voteProxyDrep([{ proposalId: "invalid-id", voteKind: "Yes" }]),
     ).rejects.toThrow("Invalid proposalId format");
   });
+
+  it("throws when total lovelace is below 2 ADA", async () => {
+    const provider = createMockProvider();
+    const { mesh } = createMeshMock(provider);
+    const contract = new MeshProxyContract(
+      { mesh, networkId: 0, wallet: {} as any },
+      { paramUtxo: PARAM_UTXO },
+    );
+    const authPolicyId = contract.getAuthTokenPolicyId();
+
+    const tinyAuthTokenUtxo: UTxO = {
+      input: { txHash: "f".repeat(64), outputIndex: 0 },
+      output: {
+        address: CHANGE_ADDRESS,
+        amount: [
+          { unit: "lovelace", quantity: "1000000" }, // 1 ADA — below the 2 ADA minimum with no extra UTxOs
+          { unit: authPolicyId, quantity: "1" },
+        ],
+      },
+    };
+
+    jest.spyOn(contract as any, "getWalletInfoForTx").mockResolvedValue({
+      utxos: [tinyAuthTokenUtxo],
+      walletAddress: CHANGE_ADDRESS,
+      collateral: FIXTURE_COLLATERAL,
+    });
+
+    await expect(
+      contract.voteProxyDrep([{ proposalId: VALID_PROPOSAL_ID, voteKind: "Yes" }]),
+    ).rejects.toThrow(/proxy vote requires/);
+  });
+});
+
+// ─── cleanupProxy Tests ───────────────────────────────────────────────────────
+
+describe("MeshProxyContract.cleanupProxy", () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it("calls buildProxyCleanupTx when no proxy UTxOs are present at the proxy address", async () => {
+    const { contract } = makeManageContract();
+    const spy = jest.spyOn(txBuilders, "buildProxyCleanupTx")
+      .mockReturnValue({ burnedAuthTokens: "10" });
+
+    (contract as any).mesh.fetcher.fetchAddressUTxOs.mockResolvedValue([]);
+
+    await contract.cleanupProxy();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ network: 0 }));
+  });
+
+  it("calls buildProxyCleanupSweepTx when proxy UTxOs are present at the proxy address", async () => {
+    const { contract } = makeManageContract();
+    const spy = jest.spyOn(txBuilders, "buildProxyCleanupSweepTx")
+      .mockReturnValue({ sweptProxyUtxos: "1", preservedAuthTokens: "1" });
+
+    const proxyUtxo: UTxO = {
+      input: { txHash: "d".repeat(64), outputIndex: 0 },
+      output: {
+        address: contract.proxyAddress!,
+        amount: [{ unit: "lovelace", quantity: "2000000" }],
+      },
+    };
+    (contract as any).mesh.fetcher.fetchAddressUTxOs.mockResolvedValue([proxyUtxo]);
+
+    await contract.cleanupProxy();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ network: 0, proxyUtxos: [proxyUtxo] }),
+    );
+  });
 });
 
 // ─── Builder Delegation Tests ─────────────────────────────────────────────────
@@ -423,5 +526,61 @@ describe("MeshProxyContract — builder delegation", () => {
       votes: [{ proposalId: VALID_PROPOSAL_ID, voteKind: "Yes" }],
       walletAddress: CHANGE_ADDRESS,
     }));
+  });
+
+  it("spendProxySimple uses the proxyAddress set by setupProxy", async () => {
+    const { contract } = makeSetupContract();
+    const walletSpy = jest.spyOn(contract as any, "getWalletInfoForTx");
+
+    // Phase 1: setupProxy derives and stores proxyAddress from LARGE_UTXO
+    walletSpy.mockResolvedValueOnce({
+      utxos: [LARGE_UTXO],
+      walletAddress: CHANGE_ADDRESS,
+      collateral: FIXTURE_COLLATERAL,
+    });
+    const setupResult = await contract.setupProxy();
+
+    // Phase 2: prepare wallet with auth token so spendProxySimple can proceed
+    const authTokenUtxo: UTxO = {
+      input: { txHash: "f".repeat(64), outputIndex: 0 },
+      output: {
+        address: CHANGE_ADDRESS,
+        amount: [
+          { unit: "lovelace", quantity: "5000000" },
+          { unit: setupResult.authTokenId, quantity: "1" },
+        ],
+      },
+    };
+    walletSpy.mockResolvedValueOnce({
+      utxos: [authTokenUtxo],
+      walletAddress: CHANGE_ADDRESS,
+      collateral: FIXTURE_COLLATERAL,
+    });
+
+    // Proxy address holds a UTxO large enough to cover the requested output
+    const proxyUtxo: UTxO = {
+      input: { txHash: "d".repeat(64), outputIndex: 0 },
+      output: {
+        address: setupResult.proxyAddress,
+        amount: [{ unit: "lovelace", quantity: "5000000" }],
+      },
+    };
+    (contract as any).mesh.fetcher.fetchAddressUTxOs.mockResolvedValue([proxyUtxo]);
+
+    const spendSpy = jest.spyOn(txBuilders, "buildProxySpendTx");
+    await contract.spendProxySimple([
+      { address: CHANGE_ADDRESS, unit: "lovelace", amount: "1000000" },
+    ]);
+
+    // contract.proxyAddress is what setupProxy stored via setProxyAddress();
+    // spendProxySimple must forward that stored value to the builder
+    expect(spendSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ proxyAddress: contract.proxyAddress }),
+    );
+    // Confirm proxyAddress was actually set (not still undefined)
+    expect(contract.proxyAddress).toBeDefined();
+    // Confirm the stored address was used (not setupResult.proxyAddress which
+    // comes from the builder's DEFAULT_PROXY_STAKE_CREDENTIAL fallback)
+    expect(setupResult.paramUtxo).toEqual(LARGE_UTXO.input);
   });
 });

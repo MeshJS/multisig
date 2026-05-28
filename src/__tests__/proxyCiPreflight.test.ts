@@ -13,6 +13,7 @@ import {
   runProxyFullLifecycleHygiene,
 } from "../../scripts/ci/scenarios/steps/proxyBot";
 import type { CIBootstrapContext, CIWalletType } from "../../scripts/ci/framework/types";
+import type { requestJson } from "../../scripts/ci/framework/http";
 
 type TestUtxo = Parameters<typeof assertProxyFullLifecyclePreflight>[0]["walletUtxos"][number];
 
@@ -310,10 +311,10 @@ describe("proxy full lifecycle hygiene", () => {
     isActive: true,
   };
 
-  type RequestJsonMock = jest.Mock<() => Promise<{ status: number; data: unknown }>>;
+  type RequestJsonMock = jest.Mock<(args: unknown) => Promise<{ status: number; data: unknown }>>;
   function createHygieneDeps(requestJsonMock: RequestJsonMock) {
     return {
-      requestJson: requestJsonMock,
+      requestJson: requestJsonMock as unknown as typeof requestJson,
       authenticateBot: jest.fn(async () => "token"),
       getDefaultBot: jest.fn((ctx: CIBootstrapContext) => ctx.bots[0]!),
       fetchFreeUtxos: jest.fn(async () => [mkAuthTokenUtxo()]),
@@ -347,7 +348,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("cleans and finalizes an active proxy that is ready to burn", async () => {
     const requestJsonMock = jest
-      .fn<() => Promise<{ status: number; data: unknown }>>()
+      .fn<(args: unknown) => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: false, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({
@@ -396,7 +397,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("runs a sweep pass before the burn pass when proxy UTxOs remain", async () => {
     const requestJsonMock = jest
-      .fn<() => Promise<{ status: number; data: unknown }>>()
+      .fn<(args: unknown) => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: false, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({
@@ -425,7 +426,7 @@ describe("proxy full lifecycle hygiene", () => {
 
   it("deregisters an active proxy DRep before cleanup", async () => {
     const requestJsonMock = jest
-      .fn<() => Promise<{ status: number; data: unknown }>>()
+      .fn<(args: unknown) => Promise<{ status: number; data: unknown }>>()
       .mockResolvedValueOnce({ status: 200, data: [proxy] })
       .mockResolvedValueOnce({ status: 200, data: { active: true, dRepId: "drep1proxy" } })
       .mockResolvedValueOnce({ status: 201, data: { transaction: { id: "tx-drep" } } })
