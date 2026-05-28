@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import * as dns from "node:dns/promises";
+import { Agent, buildConnector, request } from "undici";
 import { hashDrepAnchor } from "@meshsdk/core";
 
 function isPrivateOrLoopbackAddress(ip: string): boolean {
@@ -35,7 +36,9 @@ function normalizeHexForCompare(h: string): Buffer {
   return Buffer.from(s, "hex");
 }
 
-async function assertUrlSafeForFetch(urlStr: string): Promise<void> {
+type SafeTarget = { url: URL; ip: string; family: 4 | 6 };
+
+async function assertUrlSafeForFetch(urlStr: string): Promise<SafeTarget> {
   let u: URL;
   try {
     u = new URL(urlStr);
@@ -57,11 +60,14 @@ async function assertUrlSafeForFetch(urlStr: string): Promise<void> {
     throw new Error("Anchor URL hostname not allowed");
   }
 
-  let records: { address: string }[];
+  let records: { address: string; family: number }[];
   try {
     const lookedUp = await dns.lookup(host, { all: true });
     records = Array.isArray(lookedUp) ? lookedUp : [lookedUp];
   } catch {
+    throw new Error("Could not resolve anchor URL host");
+  }
+  if (records.length === 0) {
     throw new Error("Could not resolve anchor URL host");
   }
   for (const { address } of records) {
@@ -69,28 +75,26 @@ async function assertUrlSafeForFetch(urlStr: string): Promise<void> {
       throw new Error("Anchor URL resolves to a private or loopback address");
     }
   }
+  // Pin the first validated record so the actual fetch can't be DNS-rebound
+  // to a private/loopback IP between validation and connection.
+  const first = records[0]!;
+  const family: 4 | 6 = first.family === 6 ? 6 : 4;
+  return { url: u, ip: first.address, family };
 }
 
-async function readBodyWithLimit(
-  res: Response,
+async function readUndiciBodyWithLimit(
+  body: import("undici").Dispatcher.ResponseData["body"],
   maxBytes: number,
 ): Promise<Uint8Array> {
-  const body = res.body;
-  if (!body) {
-    throw new Error("Empty anchor response body");
-  }
-  const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.length;
+  for await (const chunk of body) {
+    const view = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk as Buffer);
+    total += view.length;
     if (total > maxBytes) {
       throw new Error(`Anchor response exceeds ${maxBytes} bytes`);
     }
-    chunks.push(value);
+    chunks.push(view);
   }
   const out = new Uint8Array(total);
   let offset = 0;
@@ -104,6 +108,12 @@ async function readBodyWithLimit(
 /**
  * Fetches JSON from anchorUrl, parses JSON, computes hashDrepAnchor (same as registerDrep after upload).
  * Optional expectedAnchorDataHash (hex): rejects on mismatch.
+ *
+ * SSRF defense: assertUrlSafeForFetch validates the URL (protocol, hostname
+ * blocklist, DNS lookup, private/loopback IP rejection) and returns the
+ * resolved IP. The fetch then uses a pinned-IP undici Agent so the
+ * actual TCP connection targets that exact IP — eliminating the TOCTOU
+ * window where DNS could be rebound between validation and connect.
  */
 export async function resolveDRepAnchorFromUrl(
   anchorUrl: string,
@@ -113,16 +123,31 @@ export async function resolveDRepAnchorFromUrl(
   if (!trimmed) {
     throw new Error("anchorUrl is required");
   }
-  await assertUrlSafeForFetch(trimmed);
+  const target = await assertUrlSafeForFetch(trimmed);
+
+  // Pin the resolved IP so the TCP connection can't be DNS-rebound between
+  // the safety check above and the actual connect. buildConnector wires
+  // its `lookup` into both net.createConnection (HTTP) and tls.connect
+  // (HTTPS); the SNI/Host header still comes from the original hostname.
+  const connector = buildConnector({
+    lookup: (_hostname, _options, cb) => cb(null, target.ip, target.family),
+  });
+  const agent = new Agent({
+    connect: connector,
+    headersTimeout: TIMEOUT_MS,
+    bodyTimeout: TIMEOUT_MS,
+  });
 
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
-  let res: Response;
+  let res: import("undici").Dispatcher.ResponseData;
   try {
-    res = await fetch(trimmed, { // lgtm[js/ssrf] URL validated by assertUrlSafeForFetch: protocol, hostname blocklist, DNS/IP checks, no redirects
+    res = await request(target.url, {
+      dispatcher: agent,
+      method: "GET",
+      maxRedirections: 0,
       signal: ac.signal,
-      redirect: "error",
-      headers: { Accept: "application/json, */*" },
+      headers: { accept: "application/json, */*" },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -131,11 +156,13 @@ export async function resolveDRepAnchorFromUrl(
     clearTimeout(t);
   }
 
-  if (!res.ok) {
-    throw new Error(`Anchor fetch failed: HTTP ${res.status}`);
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    // Drain body to free the socket before throwing.
+    try { for await (const _ of res.body) { /* discard */ } } catch { /* ignore */ }
+    throw new Error(`Anchor fetch failed: HTTP ${res.statusCode}`);
   }
 
-  const buf = await readBodyWithLimit(res, MAX_BYTES);
+  const buf = await readUndiciBodyWithLimit(res.body, MAX_BYTES);
   let json: unknown;
   try {
     json = JSON.parse(new TextDecoder().decode(buf));

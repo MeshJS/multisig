@@ -16,12 +16,12 @@ datasource db {
 }
 
 model User {
-  id           String @id @default(cuid())
-  address      String @unique
-  stakeAddress String @unique
-  drepKeyHash  String @default("")
-  nostrKey     String @unique
-  discordId    String @default("")
+  id           String  @id @default(cuid())
+  address      String  @unique
+  stakeAddress String  @unique
+  drepKeyHash  String  @default("")
+  nostrKey     String? @unique
+  discordId    String  @default("")
 }
 
 model Wallet {
@@ -256,4 +256,25 @@ model BotClaimToken {
   createdAt    DateTime   @default(now())
 
   @@index([tokenHash])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorAddress String? // Wallet address that performed the action (null for system/anonymous)
+  actorType    String // "user" | "bot" | "system"
+  action       String // e.g. "wallet.create", "tx.sign", "bot.grant", "auth.login"
+  resourceType String? // "wallet" | "transaction" | "bot" | "ballot" | etc.
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  outcome      String // "success" | "denied" | "error"
+  reason       String? // Short reason on denied/error
+  metadata     Json? // Additional context (no secrets, redacted)
+  createdAt    DateTime @default(now())
+
+  @@index([actorAddress])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@index([actorAddress, createdAt])
 }

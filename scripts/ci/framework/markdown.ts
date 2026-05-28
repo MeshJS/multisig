@@ -12,7 +12,12 @@ function fmtMs(ms: number): string {
 }
 
 function escapeCell(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ");
+  // Escape both `\` and `|` in a single pass with a character class so the
+  // replacement can't be mis-ordered or partially applied — CodeQL's
+  // js/incomplete-sanitization rule flagged the previous chained version.
+  // Backslash is added in the replacement, so we capture and prefix in
+  // one regex (no second pass that could double-escape).
+  return s.replace(/[\\|]/g, "\\$&").replace(/[\r\n]+/g, " ");
 }
 
 function renderSteps(steps: StepReport[]): string {
