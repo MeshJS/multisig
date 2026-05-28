@@ -70,14 +70,15 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
 
   // Helper to resolve inputs for multisig controlled txs
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet?.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet?.address, manualUtxos]);
 
   async function createAnchor(): Promise<{
     anchorUrl: string;
@@ -246,8 +247,8 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       return registerDrep();
     }
 
-    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
-      const errorMessage = "Proxy registration requires both connected wallet signer and multisig wallet configuration.";
+    if (!activeWallet || !userAddress || !appWallet) {
+      const errorMessage = "Proxy registration requires a connected wallet signer.";
       toast({
         title: "Wallet Not Connected",
         description: errorMessage,

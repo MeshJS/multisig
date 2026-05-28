@@ -1,8 +1,7 @@
 import { Minus } from "lucide-react";
 import { useState, useCallback } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useWallet } from "@meshsdk/react";
-import { useUserStore } from "@/lib/zustand/user";
+import useActiveWallet from "@/hooks/useActiveWallet";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { getDRepIds } from "@meshsdk/core-cst";
@@ -29,8 +28,7 @@ interface UpdateDRepProps {
 
 export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   const { appWallet } = useAppWallet();
-  const { wallet, connected } = useWallet();
-  const userAddress = useUserStore((state) => state.userAddress);
+  const { activeWallet, userAddress } = useActiveWallet();
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
@@ -55,14 +53,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet?.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet?.address, manualUtxos]);
   const [formState, setFormState] = useState({
     givenName: "",
     bio: "",
@@ -110,13 +109,8 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet) {
+    if (!activeWallet || !userAddress || !appWallet) {
       throw new Error("Wallet not connected");
-    }
-    // Proxy mode requires multisigWallet (SDK wallets only)
-    if (!multisigWallet) {
-      // Fall back to standard update for legacy wallets
-      return updateDrep();
     }
     if (!hasValidProxy) {
       // Fall back to standard update if no valid proxy
@@ -144,7 +138,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
@@ -177,7 +171,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet)
+    if (!activeWallet || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
 
     setLoading(true);

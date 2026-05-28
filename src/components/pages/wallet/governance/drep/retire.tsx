@@ -43,14 +43,15 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet.address, manualUtxos]);
 
   async function retireProxyDrep(): Promise<void> {
     if (!hasValidProxy) {
@@ -58,10 +59,10 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       return retireDrep();
     }
 
-    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
+    if (!activeWallet || !userAddress) {
       toast({
         title: "Connection Error",
-        description: "Proxy retirement requires both connected wallet signer and multisig wallet configuration.",
+        description: "Proxy retirement requires a connected wallet signer.",
         variant: "destructive",
       });
       return;
