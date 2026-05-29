@@ -1,0 +1,56 @@
+name: tRPC Integration Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - preprod
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  trpc-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: multisig_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      SKIP_ENV_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/multisig_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/multisig_test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Run tRPC integration tests
+        run: npm run test:trpc

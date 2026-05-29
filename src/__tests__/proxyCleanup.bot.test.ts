@@ -17,6 +17,8 @@ const resolveUtxoRefsFromChainMock: jest.Mock = jest.fn();
 const resolveCollateralRefFromChainMock: jest.Mock = jest.fn();
 const resolveSingleUtxoRefFromChainMock: jest.Mock = jest.fn();
 const requireAuthTokenUtxoMock: jest.Mock = jest.fn();
+const loadBlockedUtxoRefsForWalletMock: jest.Mock = jest.fn();
+const selectAuthTokenUtxoMock: jest.Mock = jest.fn();
 const buildProxyCleanupSweepTxMock: jest.Mock = jest.fn();
 const buildProxyCleanupTxMock: jest.Mock = jest.fn();
 const deriveProxyScriptsMock: jest.Mock = jest.fn();
@@ -85,8 +87,14 @@ jest.mock("@/lib/server/resolveUtxoRefsFromChain", () => ({
 jest.mock("@/lib/server/proxyUtxos", () => ({
   __esModule: true,
   requireAuthTokenUtxo: requireAuthTokenUtxoMock,
+  loadBlockedUtxoRefsForWallet: loadBlockedUtxoRefsForWalletMock,
   resolveCollateralRefFromChain: resolveCollateralRefFromChainMock,
   resolveSingleUtxoRefFromChain: resolveSingleUtxoRefFromChainMock,
+}), { virtual: true });
+
+jest.mock("@/lib/proxy/utxoUtils", () => ({
+  __esModule: true,
+  selectAuthTokenUtxo: selectAuthTokenUtxoMock,
 }), { virtual: true });
 
 jest.mock("@/lib/server/createPendingMultisigTransaction", () => ({
@@ -138,6 +146,8 @@ beforeEach(() => {
   (resolveUtxoRefsFromChainMock as any).mockResolvedValue({ utxos: [{ input: { txHash: "bb", outputIndex: 1 } }] });
   (resolveCollateralRefFromChainMock as any).mockResolvedValue({ collateral: { input: { txHash: "dd", outputIndex: 3 } } });
   requireAuthTokenUtxoMock.mockReturnValue({ input: { txHash: "bb", outputIndex: 1 } });
+  (loadBlockedUtxoRefsForWalletMock as any).mockResolvedValue([]);
+  selectAuthTokenUtxoMock.mockReturnValue({ input: { txHash: "bb", outputIndex: 1 } });
   deriveProxyScriptsMock.mockReturnValue({
     authTokenId: proxy.authTokenId,
     proxyAddress: proxy.proxyAddress,

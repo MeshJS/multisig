@@ -32,6 +32,10 @@ export default {
   coverageProvider: 'v8',
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
+  coverageThreshold: {
+    'src/utils/stakingCertificates.ts': { lines: 90 },
+    'src/lib/tx-builders/buildDRepCertTx.ts': { lines: 90 },
+  },
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
   testTimeout: 10000,
   verbose: true,

@@ -1,8 +1,7 @@
 import { Minus } from "lucide-react";
 import { useState, useCallback } from "react";
 import useAppWallet from "@/hooks/useAppWallet";
-import { useWallet } from "@meshsdk/react";
-import { useUserStore } from "@/lib/zustand/user";
+import useActiveWallet from "@/hooks/useActiveWallet";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { getDRepIds } from "@meshsdk/core-cst";
@@ -17,6 +16,7 @@ import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { api } from "@/utils/api";
 import { getProvider } from "@/utils/get-provider";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 interface PutResponse {
   url: string;
@@ -28,8 +28,7 @@ interface UpdateDRepProps {
 
 export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   const { appWallet } = useAppWallet();
-  const { wallet, connected } = useWallet();
-  const userAddress = useUserStore((state) => state.userAddress);
+  const { activeWallet, userAddress } = useActiveWallet();
   const network = useSiteStore((state) => state.network);
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
@@ -54,14 +53,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet?.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet?.address, manualUtxos]);
   const [formState, setFormState] = useState({
     givenName: "",
     bio: "",
@@ -77,7 +77,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
 
   async function createAnchor(): Promise<{
     anchorUrl: string;
-    anchorHash: string;
+    anchorJson: object;
   }> {
     if (!appWallet) {
       throw new Error("Wallet not connected");
@@ -88,7 +88,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       formState,
       appWallet,
     );
-    
+
     // Upload the compacted JSON-LD (readable format)
     const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
@@ -103,21 +103,14 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
-    
-    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
-    // The normalized form is in N-Quads format which is the canonical representation
-    const anchorHash = hashDrepAnchor(metadataResult.compacted);
-    return { anchorUrl, anchorHash };
+
+    // Return the raw JSON-LD object; the hash is computed deterministically inside the tx builder
+    return { anchorUrl, anchorJson: metadataResult.compacted };
   }
 
   async function updateProxyDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet) {
+    if (!activeWallet || !userAddress || !appWallet) {
       throw new Error("Wallet not connected");
-    }
-    // Proxy mode requires multisigWallet (SDK wallets only)
-    if (!multisigWallet) {
-      // Fall back to standard update for legacy wallets
-      return updateDrep();
     }
     if (!hasValidProxy) {
       // Fall back to standard update if no valid proxy
@@ -135,7 +128,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       }
 
       // Create anchor metadata
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
 
       // Get multisig inputs
       const { utxos, walletAddress } = await getMsInputs();
@@ -145,7 +138,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
-          wallet: wallet,
+          wallet: activeWallet,
           networkId: network,
         },
         {
@@ -156,7 +149,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Update DRep using proxy
-      const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorHash, utxos, walletAddress);
+      const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorJson, utxos, walletAddress);
 
       await newTransaction({
         txBuilder: txHex,
@@ -178,7 +171,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateDrep(): Promise<void> {
-    if (!connected || !userAddress || !appWallet)
+    if (!activeWallet || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
 
     setLoading(true);
@@ -221,7 +214,8 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       throw new Error("Script or change address not found");
     }
     try {
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
+      const anchorDataHash = hashDrepAnchor(anchorJson);
 
       const selectedUtxos: UTxO[] = manualUtxos;
 
@@ -230,30 +224,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
         return;
       }
 
-      for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(scriptCbor);
-      }
-
-      txBuilder
-        .drepUpdateCertificate(dRepId, {
-          anchorUrl: anchorUrl,
-          anchorDataHash: anchorHash,
-        });
-      
-      // Only add certificateScript if it's different from the spending script
-      // to avoid "extraneous scripts" error
-      if (drepCbor !== scriptCbor) {
-        txBuilder.certificateScript(drepCbor);
-      }
-      
-      txBuilder.changeAddress(changeAddress);
+      applyDRepCert(txBuilder, {
+        action: "update",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+        anchor: { anchorUrl, anchorDataHash },
+      });
 
       await newTransaction({
         txBuilder,

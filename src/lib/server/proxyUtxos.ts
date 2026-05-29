@@ -1,7 +1,10 @@
+import type { PrismaClient } from "@prisma/client";
 import type { UTxO } from "@meshsdk/core";
-import type { UtxoFetcher, UtxoRef } from "@/lib/server/resolveUtxoRefsFromChain";
+import type { UtxoFetcher } from "@/lib/server/resolveUtxoRefsFromChain";
+import { type UtxoRef, getLovelace, hasAsset, sameUtxoRef } from "@/lib/proxy/utxoUtils";
 
 export type { UtxoRef };
+export { getLovelace, hasAsset, sameUtxoRef };
 
 const MIN_COLLATERAL_LOVELACE = BigInt(5_000_000);
 
@@ -17,24 +20,6 @@ function normalizeUtxoRef(ref: UtxoRef | undefined): UtxoRef | null {
   }
 
   return { txHash, outputIndex };
-}
-
-export function getLovelace(utxo: UTxO): bigint {
-  return BigInt(
-    utxo.output.amount.find((asset) => asset.unit === "lovelace")?.quantity ??
-      "0",
-  );
-}
-
-export function hasAsset(utxo: UTxO, unit: string, minimum = BigInt(1)): boolean {
-  const quantity = BigInt(
-    utxo.output.amount.find((asset) => asset.unit === unit)?.quantity ?? "0",
-  );
-  return quantity >= minimum;
-}
-
-export function sameUtxoRef(a: UTxO["input"], b: UTxO["input"]): boolean {
-  return a.txHash === b.txHash && a.outputIndex === b.outputIndex;
 }
 
 export async function resolveSingleUtxoRefFromChain(args: {
@@ -118,19 +103,100 @@ export async function resolveCollateralRefFromChain(args: {
   return { collateral: resolved.utxo };
 }
 
+export function filterBlockedUtxos(
+  utxos: UTxO[],
+  blockedRefs: UtxoRef[],
+): UTxO[] {
+  if (blockedRefs.length === 0) {
+    return utxos;
+  }
+
+  const blocked = new Set(
+    blockedRefs.map((ref) => `${ref.txHash}#${ref.outputIndex}`),
+  );
+
+  return utxos.filter(
+    (utxo) => !blocked.has(`${utxo.input.txHash}#${utxo.input.outputIndex}`),
+  );
+}
+
+export function extractBlockedUtxoRefsFromPendingTxJson(txJson: string): UtxoRef[] {
+  try {
+    const parsed = JSON.parse(txJson) as {
+      inputs?: Array<{ txIn?: { txHash?: string; txIndex?: number } }>;
+    };
+    if (!Array.isArray(parsed.inputs)) {
+      return [];
+    }
+
+    return parsed.inputs
+      .map((input) => ({
+        txHash: typeof input.txIn?.txHash === "string" ? input.txIn.txHash : "",
+        outputIndex:
+          typeof input.txIn?.txIndex === "number" && Number.isInteger(input.txIn.txIndex)
+            ? input.txIn.txIndex
+            : -1,
+      }))
+      .filter((ref) => ref.txHash.length > 0 && ref.outputIndex >= 0);
+  } catch {
+    return [];
+  }
+}
+
+export function selectFreeAuthTokenUtxo(
+  utxos: UTxO[],
+  authTokenId: string,
+  blockedRefs: UtxoRef[] = [],
+): UTxO | { error: string } {
+  const freeUtxos = filterBlockedUtxos(utxos, blockedRefs);
+  const authTokenUtxos = freeUtxos.filter((utxo) => hasAsset(utxo, authTokenId));
+  if (authTokenUtxos.length === 0) {
+    return {
+      error:
+        "No free proxy auth-token UTxO found at the multisig wallet address. Cancel or complete pending transactions that use the auth token, then try again.",
+    };
+  }
+
+  return authTokenUtxos.sort((left, right) => {
+    const lovelaceDelta = Number(getLovelace(right) - getLovelace(left));
+    if (lovelaceDelta !== 0) {
+      return lovelaceDelta;
+    }
+    if (left.input.txHash !== right.input.txHash) {
+      return left.input.txHash.localeCompare(right.input.txHash);
+    }
+    return left.input.outputIndex - right.input.outputIndex;
+  })[0]!;
+}
+
 export function requireAuthTokenUtxo(
   utxos: UTxO[],
   authTokenId: string,
 ): UTxO | { error: string; status: number } {
-  const authTokenUtxo = utxos.find((utxo) => hasAsset(utxo, authTokenId));
-  if (!authTokenUtxo) {
+  const authTokenUtxo = selectFreeAuthTokenUtxo(utxos, authTokenId);
+  if ("error" in authTokenUtxo) {
     return {
-      error: "No proxy auth-token UTxO found at the multisig wallet address",
+      error: authTokenUtxo.error,
       status: 400,
     };
   }
 
   return authTokenUtxo;
+}
+
+/**
+ * Loads all UTxO refs that are consumed by currently-pending multisig transactions for a wallet.
+ * API routes pass these to `selectAuthTokenUtxo` so a locked auth token is never reused.
+ */
+export async function loadBlockedUtxoRefsForWallet(
+  db: PrismaClient,
+  walletId: string,
+): Promise<UtxoRef[]> {
+  const pendingTxs = await db.transaction.findMany({
+    where: { walletId, state: 0 },
+    select: { txJson: true },
+  });
+  return pendingTxs.flatMap((tx) => extractBlockedUtxoRefsFromPendingTxJson(tx.txJson));
 }
 
 export function selectProxyUtxosForOutputs(args: {

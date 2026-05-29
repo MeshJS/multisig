@@ -13,12 +13,13 @@ import { loadActiveProxyForWallet } from "@/lib/server/proxyAccess";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
 import {
-  requireAuthTokenUtxo,
+  loadBlockedUtxoRefsForWallet,
   resolveCollateralRefFromChain,
   resolveSingleUtxoRefFromChain,
   selectProxyUtxosForOutputs,
   type UtxoRef,
 } from "@/lib/server/proxyUtxos";
+import { selectAuthTokenUtxo } from "@/lib/proxy/utxoUtils";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
@@ -219,12 +220,12 @@ export default async function handler(
     return res.status(resolvedWalletUtxos.status).json({ error: resolvedWalletUtxos.error });
   }
 
-  const authTokenUtxo = requireAuthTokenUtxo(
-    resolvedWalletUtxos.utxos,
-    proxy.authTokenId,
-  );
-  if ("error" in authTokenUtxo) {
-    return res.status(authTokenUtxo.status).json({ error: authTokenUtxo.error });
+  const blockedRefs = await loadBlockedUtxoRefsForWallet(db, walletId);
+  let authTokenUtxo: UTxO;
+  try {
+    authTokenUtxo = selectAuthTokenUtxo(resolvedWalletUtxos.utxos, proxy.authTokenId, blockedRefs);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "No free auth token UTxO" });
   }
 
   const resolvedCollateral = await resolveCollateralRefFromChain({
