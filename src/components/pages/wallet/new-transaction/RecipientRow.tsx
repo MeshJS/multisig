@@ -114,6 +114,7 @@ function RecipientRow({
                 void handleAddressChange(e.target.value);
               }}
               className="flex-1"
+              data-testid={`recipient-address-input-${index}`}
             />
             {getAddressLabel && recipientAddresses[index] && (() => {
               const addressLabel = getAddressLabel(recipientAddresses[index]!);
@@ -153,6 +154,7 @@ function RecipientRow({
             }}
             placeholder=""
             disabled={disableAdaAmountInput}
+            data-testid={`amount-input-${index}`}
           />
         </div>
       </TableCell>

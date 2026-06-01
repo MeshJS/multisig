@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/playwright:v1.50.0-jammy
+
+WORKDIR /app
+
+# Install app dependencies (needed for @meshsdk/* imports in Phase 2 helpers).
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci
+
+# Install Chromium and its system dependencies.
+RUN npx playwright install chromium --with-deps
+
+# Copy e2e suite and the CI framework types it imports.
+COPY e2e/ ./e2e/
+COPY scripts/ci/framework/ ./scripts/ci/framework/
+COPY tsconfig*.json ./

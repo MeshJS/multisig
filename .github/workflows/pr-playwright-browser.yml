@@ -1,0 +1,138 @@
+name: PR Playwright Browser Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - preprod
+  workflow_dispatch:
+    inputs:
+      transfer_lovelace:
+        description: "Lovelace amount for ring transfer legs"
+        required: false
+        default: "2000000"
+        type: string
+
+jobs:
+  playwright-browser:
+    if: github.repository == 'MeshJS/multisig'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI_JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+      CI_MNEMONIC_1: ${{ secrets.CI_MNEMONIC_1 }}
+      CI_MNEMONIC_2: ${{ secrets.CI_MNEMONIC_2 }}
+      CI_MNEMONIC_3: ${{ secrets.CI_MNEMONIC_3 }}
+      CI_BLOCKFROST_PREPROD_API_KEY: ${{ secrets.CI_BLOCKFROST_PREPROD_API_KEY }}
+      CI_NETWORK_ID: "0"
+      CI_WALLET_TYPES: "legacy,hierarchical,sdk"
+      CI_NUM_REQUIRED_SIGNERS: "2"
+      CI_TRANSFER_LOVELACE: ${{ github.event_name == 'workflow_dispatch' && inputs.transfer_lovelace || '2000000' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          missing=()
+          [[ -n "$CI_JWT_SECRET" ]] || missing+=("CI_JWT_SECRET")
+          [[ -n "$CI_MNEMONIC_1" ]] || missing+=("CI_MNEMONIC_1")
+          [[ -n "$CI_MNEMONIC_2" ]] || missing+=("CI_MNEMONIC_2")
+          [[ -n "$CI_MNEMONIC_3" ]] || missing+=("CI_MNEMONIC_3")
+          [[ -n "$CI_BLOCKFROST_PREPROD_API_KEY" ]] || missing+=("CI_BLOCKFROST_PREPROD_API_KEY")
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${missing[*]}"
+            echo "Set these in repo settings before running the Playwright browser workflow."
+            exit 1
+          fi
+
+      - name: Pull base images (with retry)
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            docker pull node:20-alpine && break
+            echo "Pull attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+
+      - name: Build CI containers
+        shell: bash
+        run: docker compose -f docker-compose.playwright.yml build app playwright-runner
+
+      - name: Start Postgres + App containers
+        shell: bash
+        run: docker compose -f docker-compose.playwright.yml up -d postgres app
+
+      - name: Wait for app healthcheck
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$(docker compose -f docker-compose.playwright.yml ps -q app)")
+            if [[ "$status" == "healthy" ]]; then
+              echo "App is healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App failed to become healthy in time."
+          docker compose -f docker-compose.playwright.yml ps
+          exit 1
+
+      - name: Run CI wallet bootstrap
+        shell: bash
+        run: |
+          docker compose -f docker-compose.playwright.yml --profile playwright \
+            run --rm bootstrap-runner
+
+      - name: Run Playwright ring transfer tests
+        shell: bash
+        run: |
+          docker compose -f docker-compose.playwright.yml --profile playwright \
+            run --rm playwright-runner
+
+      - name: Dump container logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          docker compose -f docker-compose.playwright.yml logs --no-color \
+            | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
+            | sed -E 's/("token"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
+            | sed -E 's/("secret"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
+            | sed -E 's/("mnemonic([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("private([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("signing([[:alnum:]_-]*)?key([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("seed([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/("xprv([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
+            | sed -E 's/(ed25519e?_sk[[:alnum:]_]+)/[REDACTED]/gI' \
+            | sed -E 's/(xprv[[:alnum:]]+)/[REDACTED]/gI' \
+            > docker-compose-playwright.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-compose-playwright-logs
+          path: docker-compose-playwright.log
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ci-artifacts/playwright-report/
+          if-no-files-found: warn
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: ci-artifacts/playwright-traces/
+          if-no-files-found: ignore
+
+      - name: Tear down containers
+        if: always()
+        shell: bash
+        run: docker compose -f docker-compose.playwright.yml down -v --remove-orphans
