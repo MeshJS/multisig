@@ -135,7 +135,7 @@
   "ct3aMetadata": {
     "initVersion": "7.37.0"
   },
-  "packageManager": "npm@10.7.0",
+  "packageManager": "npm@11.14.1",
   "overrides": {
     "ip": "^2.0.1",
     "rimraf": "^6.1.2",

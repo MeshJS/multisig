@@ -5,7 +5,8 @@
 //
 // Requires CI_JWT_SECRET == the app's JWT_SECRET env var.
 
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+const { sign } = jwt;
 
 export const WALLET_SESSION_COOKIE = "mesh_wallet_session";
 

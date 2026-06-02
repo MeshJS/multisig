@@ -22,8 +22,9 @@ export function buildCip30MockScript(params: Cip30MockParams): string {
         enable: async function() {
           return {
             getBalance: async function() {
-              // Minimal CBOR for a Value of 2 ADA — used for display only
-              return 'a200a1581c\\0041\\00a1\\00021a001e8480';
+              // CBOR integer 2000000 lovelace (2 ADA) — display only.
+              // 1a = uint32 tag; 001e8480 = 2000000 in hex.
+              return '1a001e8480';
             },
             getUsedAddresses: async function() { return params.usedAddresses; },
             getUnusedAddresses: async function() { return []; },

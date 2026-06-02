@@ -5,6 +5,9 @@ RUN apk add --no-cache postgresql-client
 
 WORKDIR /app
 
+# Upgrade npm to match local dev environment (lock file generated with npm 11).
+RUN npm install -g npm@11
+
 # Install dependencies first for better layer caching.
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma

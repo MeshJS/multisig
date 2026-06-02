@@ -164,8 +164,31 @@ export default function RootLayout({
   // State for wallet authorization modal
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [checkingSession, setCheckingSession] = useState(false);
-  const [hasCheckedSession, setHasCheckedSession] = useState(false); // Prevent duplicate checks
+  // hasCheckedSession is persisted in sessionStorage so it survives full-page navigations
+  // within the same browser tab. Without this, a new page load resets the flag and triggers
+  // a redundant session re-check that opens the WalletAuthModal even when already authorized.
+  const [hasCheckedSession, setHasCheckedSessionState] = useState(false);
   const [showPostAuthLoading, setShowPostAuthLoading] = useState(false); // Show loading after authorization
+
+  // Restore hasCheckedSession from sessionStorage on mount (client-side only).
+  // This prevents the modal from appearing on every page navigation.
+  useEffect(() => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("mesh_session_checked") === "1") {
+      setHasCheckedSessionState(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep sessionStorage in sync whenever hasCheckedSession changes.
+  const setHasCheckedSession = useCallback((checked: boolean) => {
+    setHasCheckedSessionState(checked);
+    if (typeof window !== "undefined") {
+      if (checked) {
+        sessionStorage.setItem("mesh_session_checked", "1");
+      } else {
+        sessionStorage.removeItem("mesh_session_checked");
+      }
+    }
+  }, []);
   
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);

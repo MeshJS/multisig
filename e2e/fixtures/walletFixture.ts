@@ -54,8 +54,13 @@ export const test = base.extend<WalletFixtures>({
         await page.exposeFunction("__ci_getUtxos", () =>
           getSignerUtxos(currentSignerAddress),
         );
-        await page.exposeFunction("__ci_signData", (addr: string, payload: string) =>
-          signDataWithMnemonic(currentMnemonic, addr, payload),
+        await page.exposeFunction("__ci_signData", (_addr: string, payload: string) =>
+          // BrowserWallet.signData(nonce, address) maps to CIP-30 signData(addressBytesHex, nonce).
+          // _addr = hex-encoded address bytes (CIP-30 key selector) — ignored; we use the
+          //         bech32 currentSignerAddress from the closure for the signing call instead.
+          // payload = the nonce (fromUTF8(nonce) == nonce because nonce is already a valid
+          //           even-length hex string, so BrowserWallet passes it through unchanged).
+          signDataWithMnemonic(currentMnemonic, payload, currentSignerAddress),
         );
         // submitTx is a no-op: actual broadcast happens via /api/v1/signTransaction
         await page.exposeFunction("__ci_submitTx", (_cbor: string) =>
@@ -96,9 +101,14 @@ export const test = base.extend<WalletFixtures>({
       }
       // Clear the HttpOnly session cookie via the app's own endpoint
       await page.request.delete("/api/auth/wallet-session").catch(() => {});
+      // Clear the sessionStorage flag that prevents the WalletAuthModal from showing
+      // when the layout detects the wallet is not authorized. Without this, the layout
+      // skips the session check after any previous auth in the same browser tab.
+      await page.evaluate(() => sessionStorage.removeItem("mesh_session_checked"));
 
-      // Open the Connect Wallet dropdown
-      const connectBtn = page.getByRole("button", { name: /connect wallet/i });
+      // Open the Connect Wallet dropdown (first match = header button;
+      // the homepage also has a hero-section CTA with the same label).
+      const connectBtn = page.getByRole("button", { name: /connect wallet/i }).first();
       await connectBtn.waitFor({ timeout: 10_000 });
       await connectBtn.click();
       await page.waitForSelector('[role="menu"]', { timeout: 5_000 });
@@ -111,17 +121,20 @@ export const test = base.extend<WalletFixtures>({
 
       // The WalletAuthModal opens with autoAuthorize=true.
       // It calls wallet.signData(nonce, address) → window.__ci_signData → signDataWithMnemonic.
-      // Wait for the resulting POST /api/auth/wallet-session to succeed.
+      // Wait for the resulting POST /api/auth/wallet-session to succeed (status 200).
+      // Checking status prevents silently proceeding when the POST fails (e.g. stale nonce).
       await page.waitForResponse(
         (r) =>
           r.url().includes("/api/auth/wallet-session") &&
-          r.request().method() === "POST",
+          r.request().method() === "POST" &&
+          r.status() === 200,
         { timeout: 30_000 },
       );
 
-      // Confirm the auth modal has closed before the test proceeds
+      // Confirm the auth modal has closed before the test proceeds.
+      // 30 s gives the modal animation + React state update time to complete.
       await page
-        .waitForSelector('[role="dialog"]', { state: "hidden", timeout: 10_000 })
+        .waitForSelector('[role="dialog"]', { state: "hidden", timeout: 30_000 })
         .catch(() => {});
     });
   },

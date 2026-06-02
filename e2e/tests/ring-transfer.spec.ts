@@ -71,6 +71,16 @@ test.describe.serial("ring transfer", () => {
       await page.fill(`[data-testid="recipient-address-input-0"]`, dstWallet.walletAddress);
       await page.fill(`[data-testid="amount-input-0"]`, ADA_AMOUNT);
 
+      // The layout re-checks the wallet session on every full-page navigation.
+      // If the WalletAuthModal appears (session check returned unauthorized), wait for
+      // it to auto-close — with autoAuthorize=true and the wallet mock connected it
+      // signs and closes within a few seconds.  waitForFunction returns immediately
+      // when no dialog is present so this adds negligible delay in the happy path.
+      await page.waitForFunction(
+        () => document.querySelectorAll('[role="dialog"][data-state="open"]').length === 0,
+        { timeout: 30_000 },
+      ).catch(() => {});
+
       // Submit — the hook calls activeWallet.signTx (bridges to meshSign) then
       // calls createTransaction tRPC mutation and redirects to transactions page.
       await page.click('[data-testid="create-transaction-button"]');

@@ -1,9 +1,6 @@
 import { toast } from "@/hooks/use-toast";
 import { getProvider } from "@/utils/get-provider";
 
-//AdaHandle look up provider only supports mainnnet
-const provider = getProvider(1)
-
 export const resolveAdaHandle = async (
   setAdaHandle: (value: string) => void,
   setRecipientAddresses: (value: string[]) => void,
@@ -11,6 +8,9 @@ export const resolveAdaHandle = async (
   index: number,
   value: string,
 ) => {
+  // AdaHandle lookup only supports mainnet; instantiate lazily so a missing
+  // mainnet key in preprod CI environments does not crash the page on load.
+  const provider = getProvider(1);
   try {
     const handleName = value.substring(1);
     if (handleName.length === 0) {

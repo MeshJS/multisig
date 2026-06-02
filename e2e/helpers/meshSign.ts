@@ -22,8 +22,8 @@ export async function signWithMnemonic(
 
 export async function signDataWithMnemonic(
   mnemonic: string,
-  address: string,
-  payload: string,
+  dataToSign: string,
+  signingAddress: string,
 ): Promise<{ signature: string; key: string }> {
   const { MeshWallet } = await import("@meshsdk/core");
   const wallet = new MeshWallet({
@@ -31,7 +31,8 @@ export async function signDataWithMnemonic(
     key: { type: "mnemonic", words: parseMnemonic(mnemonic) },
   });
   await wallet.init();
-  // MeshWallet.signData(payload, address) — note argument order differs from raw CIP-0030
-  const result = await wallet.signData(payload, address);
+  // MeshWallet.signData(payload, address): first arg is data to sign, second is the bech32
+  // signing address. EmbeddedWallet uses the address to look up the correct private key.
+  const result = await wallet.signData(dataToSign, signingAddress);
   return { signature: result.signature, key: result.key };
 }

@@ -24,6 +24,7 @@ services:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"
       SKIP_ENV_VALIDATION: "true"
+      NEXT_PUBLIC_SKIP_ENV_VALIDATION: "true"
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
       JWT_SECRET: ${CI_JWT_SECRET}
@@ -34,7 +35,12 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - multisig-playwright-network
+      multisig-playwright-network:
+        # "app" matches the .app HSTS-preloaded gTLD — Chromium hard-redirects
+        # all http://app:* to https:// before the request leaves the browser.
+        # "webapp" is not on the preload list, so Playwright can reach it over HTTP.
+        aliases:
+          - webapp
     command: >
       sh -c "
         echo 'Waiting for PostgreSQL to be ready...' &&
@@ -62,7 +68,7 @@ services:
       SKIP_ENV_VALIDATION: "true"
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
-      API_BASE_URL: http://app:3000
+      API_BASE_URL: http://webapp:3000
       CI_NETWORK_ID: ${CI_NETWORK_ID:-0}
       CI_NUM_REQUIRED_SIGNERS: ${CI_NUM_REQUIRED_SIGNERS:-2}
       CI_JWT_SECRET: ${CI_JWT_SECRET}
@@ -88,7 +94,7 @@ services:
       context: .
       dockerfile: Dockerfile.playwright
     environment:
-      APP_URL: http://app:3000
+      APP_URL: http://webapp:3000
       CI_CONTEXT_PATH: /artifacts/ci-wallet-context.json
       CI_JWT_SECRET: ${CI_JWT_SECRET}
       CI_MNEMONIC_1: ${CI_MNEMONIC_1:-}
@@ -107,6 +113,12 @@ services:
       - multisig-playwright-network
     volumes:
       - ./ci-artifacts:/artifacts
+      # Mount e2e sources and CI framework at runtime so local edits are picked
+      # up immediately without rebuilding the image. Docker's BuildKit layer
+      # cache on Windows often fails to detect file changes inside COPY layers,
+      # so this is the reliable alternative.
+      - ./e2e:/app/e2e:ro
+      - ./scripts/ci/framework:/app/scripts/ci/framework:ro
     profiles:
       - playwright
     command: npx playwright test --config=e2e/playwright.config.ts
