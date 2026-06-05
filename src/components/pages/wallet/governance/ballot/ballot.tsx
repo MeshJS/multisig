@@ -288,7 +288,7 @@ export default function BallotCard({
       const proxy = proxies.find((p: any) => p.id === selectedProxyId);
       if (!proxy) throw new Error("Proxy not found");
 
-      const meshTxBuilder = getTxBuilder(network);
+      const meshTxBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: meshTxBuilder,
@@ -436,7 +436,7 @@ export default function BallotCard({
         setAlert("Change address not found");
         return;
       }
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       // Ensure minimum ADA for fee and voting
       const assetMap = new Map<Unit, Quantity>();

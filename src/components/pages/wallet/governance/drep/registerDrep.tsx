@@ -132,7 +132,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
     }
 
     setLoading(true);
-    const txBuilder = getTxBuilder(network);
+    const txBuilder = await getTxBuilder(network);
     
     // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
     // For SDK wallets, use multisigWallet to compute DRep ID and script
@@ -281,7 +281,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       }
 
       // Create proxy contract instance with the selected proxy
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,

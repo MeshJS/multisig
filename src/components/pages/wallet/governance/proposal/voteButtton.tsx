@@ -131,7 +131,7 @@ export default function VoteButton({
       }
 
       // Create proxy contract instance
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
@@ -265,7 +265,7 @@ export default function VoteButton({
         setAlert("Change address not found");
         return;
       }
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       const assetMap = new Map<Unit, Quantity>();
       assetMap.set("lovelace", "5000000");

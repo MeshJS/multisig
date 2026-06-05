@@ -170,27 +170,29 @@ export default function ProxyControl() {
     if (isWalletReady && activeWallet) {
       // Only initialize once
       if (!contractInitializedRef.current) {
-        try {
-          const txBuilder = getTxBuilder(network);
-          const contract = new MeshProxyContract(
-            {
-              mesh: txBuilder,
-              wallet: activeWallet,
-              networkId: network,
-            },
-            {},
-            appWallet?.scriptCbor ?? undefined,
-          );
-          setProxyContract(contract);
-          contractInitializedRef.current = true;
-        } catch (error) {
-          console.error("[ProxyContract] Failed to initialize:", error);
-          toast({
-            title: "Error",
-            description: "Failed to initialize proxy contract",
-            variant: "destructive",
-          });
-        }
+        (async () => {
+          try {
+            const txBuilder = await getTxBuilder(network);
+            const contract = new MeshProxyContract(
+              {
+                mesh: txBuilder,
+                wallet: activeWallet,
+                networkId: network,
+              },
+              {},
+              appWallet?.scriptCbor ?? undefined,
+            );
+            setProxyContract(contract);
+            contractInitializedRef.current = true;
+          } catch (error) {
+            console.error("[ProxyContract] Failed to initialize:", error);
+            toast({
+              title: "Error",
+              description: "Failed to initialize proxy contract",
+              variant: "destructive",
+            });
+          }
+        })();
       }
     } else {
       // Clear contract if wallet is not ready
@@ -432,7 +434,7 @@ export default function ProxyControl() {
       // Create a temporary contract instance for this proxy
       const tempContract = new MeshProxyContract(
         {
-          mesh: getTxBuilder(network),
+          mesh: await getTxBuilder(network),
           wallet: activeWallet,
           networkId: network,
         },
@@ -456,7 +458,7 @@ export default function ProxyControl() {
       // Create a temporary contract instance for this proxy
       const tempContract = new MeshProxyContract(
         {
-          mesh: getTxBuilder(network),
+          mesh: await getTxBuilder(network),
           wallet: activeWallet,
           networkId: network,
         },
@@ -605,7 +607,7 @@ export default function ProxyControl() {
       
       const selectedProxyContract = new MeshProxyContract(
         {
-          mesh: getTxBuilder(network),
+          mesh: await getTxBuilder(network),
           wallet: activeWallet,
           networkId: network,
         },
