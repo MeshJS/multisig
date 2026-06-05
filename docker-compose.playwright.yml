@@ -28,6 +28,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
       JWT_SECRET: ${CI_JWT_SECRET}
+      CORS_ORIGINS: http://webapp:3000,http://localhost:3000
+      NEXT_PUBLIC_DEFAULT_NETWORK: ${CI_NETWORK_ID:-0}
       NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
       NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_MAINNET_API_KEY:-}
       BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}

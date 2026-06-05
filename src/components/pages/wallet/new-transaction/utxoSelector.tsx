@@ -170,6 +170,10 @@ export default function UTxOSelector({
       setIsInitialLoad(false);
     } catch (error) {
       console.error(`Failed to fetch UTxOs for Address ${address}:`, error);
+      setUtxos([]);
+      setSelectedUtxos([]);
+      setLoaded(true);
+      setIsInitialLoad(false);
     } finally {
       setLoading(false);
     }

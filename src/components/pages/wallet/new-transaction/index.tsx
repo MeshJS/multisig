@@ -420,6 +420,7 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
 
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
+        setLoading(false);
         return;
       }
 

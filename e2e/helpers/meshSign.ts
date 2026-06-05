@@ -17,7 +17,12 @@ export async function signWithMnemonic(
     key: { type: "mnemonic", words: parseMnemonic(mnemonic) },
   });
   await wallet.init();
-  return wallet.signTx(txCbor, partial);
+  // The injected browser object is a CIP-30 wallet. CIP-30 signTx returns a
+  // TransactionWitnessSet, and Mesh BrowserWallet wraps that witness set into
+  // the full transaction. Returning a full transaction here makes BrowserWallet
+  // try to parse a transaction as a witness set, which fails with CBOR major
+  // type mismatch errors.
+  return wallet.signTx(txCbor, partial, false);
 }
 
 export async function signDataWithMnemonic(
