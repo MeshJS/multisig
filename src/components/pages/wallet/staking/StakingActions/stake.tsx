@@ -26,7 +26,7 @@ function buildStakingActionConfigs({
   poolHex,
   rewards,
 }: {
-  txBuilder: ReturnType<typeof getTxBuilder>;
+  txBuilder: Awaited<ReturnType<typeof getTxBuilder>>;
   rewardAddress: string;
   stakingScript: string;
   poolHex: string;
@@ -103,7 +103,7 @@ export default function StakeButton({
       const stakingScript = appWallet.stakeScriptCbor || mWallet.getStakingScript();
       if (!stakingScript) throw new Error("Staking Script could not be built.");
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const selectedUtxos = utxos;
 
       for (const utxo of selectedUtxos) {

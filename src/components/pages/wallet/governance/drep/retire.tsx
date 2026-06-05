@@ -92,7 +92,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       }
 
       // Create proxy contract instance
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
@@ -171,7 +171,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       
       // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
       // For SDK wallets, use multisigWallet to compute DRep ID and script

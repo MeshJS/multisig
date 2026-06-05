@@ -49,7 +49,7 @@ export default function DelegateButton({ drepid }: { drepid: string }) {
       }
 
       // console.log("Building delegation transaction...");
-      const txBuilder = getTxBuilder(await wallet.getNetworkId());
+      const txBuilder = await getTxBuilder(await wallet.getNetworkId());
       txBuilder
         .voteDelegationCertificate({ dRepId: drepid }, rewardAddress)
         .changeAddress(changeAddress)

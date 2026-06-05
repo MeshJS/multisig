@@ -141,7 +141,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       const { utxos, walletAddress } = await getMsInputs();
 
       // Create proxy contract instance
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
@@ -182,7 +182,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       throw new Error("Wallet not connected");
 
     setLoading(true);
-    const txBuilder = getTxBuilder(network);
+    const txBuilder = await getTxBuilder(network);
     
     // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
     // For SDK wallets, use multisigWallet to compute DRep ID and script

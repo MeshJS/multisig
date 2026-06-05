@@ -199,7 +199,7 @@ export default function PageNewTransaction() {
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
         txBuilder.txIn(

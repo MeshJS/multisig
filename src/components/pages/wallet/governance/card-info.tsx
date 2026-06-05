@@ -89,7 +89,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
       }, 10000); // 10 second timeout
       
       try {
-        const txBuilder = getTxBuilder(network);
+        const txBuilder = await getTxBuilder(network);
         const proxyContract = new MeshProxyContract(
           {
             mesh: txBuilder,
