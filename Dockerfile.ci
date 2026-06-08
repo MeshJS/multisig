@@ -26,6 +26,11 @@ COPY . .
 ENV SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+# @meshsdk/core-csl is loaded as a native ESM external; node's ESM loader needs
+# this flag to resolve whisky-evaluator's WebAssembly-backed exports
+# (`does not provide an export named 'js_evaluate_tx_scripts'`). Persists to the
+# runtime `next start` too.
+ENV NODE_OPTIONS=--experimental-wasm-modules
 RUN npm run build
 
 EXPOSE 3000
