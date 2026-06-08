@@ -41,8 +41,8 @@ services:
         until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done &&
         echo 'Running Prisma migrations...' &&
         npx prisma migrate deploy || npx prisma db push &&
-        echo 'Starting application...' &&
-        npm run dev -- --hostname 0.0.0.0 --port 3000
+        echo 'Starting application (production build)...' &&
+        node_modules/.bin/next start --hostname 0.0.0.0 --port 3000
       "
     healthcheck:
       test:

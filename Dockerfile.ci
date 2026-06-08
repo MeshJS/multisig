@@ -8,10 +8,20 @@ WORKDIR /app
 # Install dependencies first for better layer caching.
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npm ci
 
 # Copy full source for containerized CI runs.
 COPY . .
 
-EXPOSE 3000
+# Build the production app so the smoke runs `next start` (not `next dev`) and
+# exercises the same output Vercel deploys. `next dev` mis-resolves the
+# @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.
+# Connection URLs are only needed at runtime (compose overrides these); the
+# dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
+ENV SKIP_ENV_VALIDATION=true
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+RUN npm run build
 
+EXPOSE 3000
