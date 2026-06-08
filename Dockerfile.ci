@@ -14,6 +14,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# @meshsdk/core-csl loads as a native ESM module whose whisky-evaluator WASM
+# exports node can only resolve with --experimental-wasm-modules. Both the app
+# (`next build` + `next start`) and the ci-runner (tsx scripts that import the
+# Mesh SDK) need it, so set it on the shared base stage.
+ENV NODE_OPTIONS=--experimental-wasm-modules
+
 # Install dependencies first for better layer caching.
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
@@ -33,11 +39,8 @@ FROM base AS app
 # @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.
 # Connection URLs are only needed at runtime (compose overrides these); the
 # dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
-# @meshsdk/core-csl loads as a native ESM external whose whisky-evaluator WASM
-# exports need node's --experimental-wasm-modules; NODE_OPTIONS persists it to
-# the runtime `next start` too.
+# (NODE_OPTIONS=--experimental-wasm-modules is inherited from the base stage.)
 ENV SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
-ENV NODE_OPTIONS=--experimental-wasm-modules
 RUN npm run build
