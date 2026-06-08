@@ -309,7 +309,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
         
         // Otherwise, calculate it from the proxy contract
         try {
-          const txBuilder = getTxBuilder(network);
+          const txBuilder = await getTxBuilder(network);
           const proxyContract = new MeshProxyContract(
             {
               mesh: txBuilder,

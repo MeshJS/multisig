@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useRouter } from "next/router";
 
 import { api } from "@/utils/api";
@@ -19,9 +20,11 @@ export default function useMultisigWallet() {
       enabled: walletId !== undefined && userAddress !== undefined,
     },
   );
-  if (wallet) {
-    return { multisigWallet: buildMultisigWallet(wallet as DbWalletWithLegacy, network), wallet, isLoading };
-  }
 
-  return { multisigWallet: undefined, wallet: undefined, isLoading };
+  const multisigWallet = useMemo(() => {
+    if (!wallet) return undefined;
+    return buildMultisigWallet(wallet as DbWalletWithLegacy, network);
+  }, [wallet, network]);
+
+  return { multisigWallet, wallet, isLoading };
 }

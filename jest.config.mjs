@@ -20,7 +20,11 @@ export default {
     // but that file lives in the separate `libsodium-sumo` package. Node resolves it
     // via package.json exports; Jest's ESM resolver does not. Redirect.
     '^\\./libsodium-sumo\\.mjs$': '<rootDir>/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs',
+    '\\.(css|less|scss|sass)$': '<rootDir>/src/__tests__/__mocks__/styleMock.cjs',
   },
+  transformIgnorePatterns: [
+    '/node_modules/(?!(superjson|copy-anything|is-what|@trpc|@meshsdk|@noble|@sidan-lab|nanoid|jose|uuid)/)',
+  ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
@@ -36,6 +40,7 @@ export default {
     'src/utils/stakingCertificates.ts': { lines: 90 },
     'src/lib/tx-builders/buildDRepCertTx.ts': { lines: 90 },
   },
+  setupFiles: ['<rootDir>/src/__tests__/setupEnv.cjs'],
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
   testTimeout: 10000,
   verbose: true,

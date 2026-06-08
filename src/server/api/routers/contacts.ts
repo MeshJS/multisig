@@ -2,15 +2,16 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const getSessionAddresses = (ctx: any): string[] => {
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+const getSessionAddresses = (ctx: AuthCtx): string[] => {
+  const sessionWallets: string[] = ctx.sessionWallets ?? [];
   if (sessionWallets.length > 0) return sessionWallets;
   const single = ctx.sessionAddress;
   return single ? [single] : [];
 };
 
-const assertWalletAccess = async (ctx: any, walletId: string) => {
+const assertWalletAccess = async (ctx: AuthCtx, walletId: string) => {
   const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -24,7 +25,7 @@ const assertWalletAccess = async (ctx: any, walletId: string) => {
   const authorized = addresses.some((addr) => {
     const isSigner =
       Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr);
-    const isOwner = wallet.ownerAddress === addr || wallet.ownerAddress === "all";
+    const isOwner = wallet.ownerAddress === addr;
     return isSigner || isOwner;
   });
 

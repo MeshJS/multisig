@@ -1,4 +1,6 @@
-import { sign, verify } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+
+const { sign, verify } = jwt;
 import type { NextApiRequest, NextApiResponse } from "next";
 import { env } from "@/env";
 

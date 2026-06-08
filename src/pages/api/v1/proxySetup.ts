@@ -20,7 +20,7 @@ import {
 } from "@/lib/server/proxyTxBuilders";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
-type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
+type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
   meshTxBuilderBody: unknown;
 };
 
@@ -157,7 +157,7 @@ export default async function handler(
       .json({ error: resolvedCollateral.error });
   }
 
-  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
+  const txBuilder = (await getTxBuilder(network, true)) as MeshTxBuilderWithBody;
   let setup;
   try {
     setup = buildProxySetupTx({

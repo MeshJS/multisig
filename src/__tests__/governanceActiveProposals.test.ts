@@ -13,56 +13,51 @@ const parseScopeMock = jest.fn<(scope: string) => string[]>();
 const scopeIncludesMock = jest.fn<(scopes: string[], required: string) => boolean>();
 const getProposalStatusMock = jest.fn();
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/cors",
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/security/requestGuards",
   () => ({
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/verifyJwt",
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/governance",
   () => ({
     __esModule: true,
     getProposalStatus: getProposalStatusMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botKey",
   () => ({
     __esModule: true,
     parseScope: parseScopeMock,
     scopeIncludes: scopeIncludesMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/server/db",
   () => ({
     __esModule: true,
@@ -72,10 +67,9 @@ jest.mock(
       },
     },
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/utils/get-provider",
   () => ({
     __esModule: true,
@@ -83,7 +77,6 @@ jest.mock(
       get: providerGetMock,
     }),
   }),
-  { virtual: true },
 );
 
 type ResponseMock = NextApiResponse & { statusCode?: number };
@@ -214,7 +207,7 @@ describe("governanceActiveProposals API", () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    const payload = (res.json as jest.Mock).mock.calls[0]?.[0] as any;
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
     expect(Array.isArray(payload.proposals)).toBe(true);
     expect(payload.proposals).toHaveLength(1);
     expect(payload.proposals[0]).toMatchObject({

@@ -30,7 +30,7 @@ import {
 } from "@/lib/server/proxyTxBuilders";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
-type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
+type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
   meshTxBuilderBody: unknown;
 };
 
@@ -229,7 +229,7 @@ export default async function handler(
   }
 
   const blockedRefs = await loadBlockedUtxoRefsForWallet(db, walletId);
-  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
+  const txBuilder = (await getTxBuilder(network, true)) as MeshTxBuilderWithBody;
   let cleanup: CleanupMetadata;
   try {
     if (proxyUtxosResult.utxos.length > 0) {

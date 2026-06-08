@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const requireSessionAddress = (ctx: any) => {
+const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
   if (!address) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -10,7 +11,7 @@ const requireSessionAddress = (ctx: any) => {
   return address;
 };
 
-const assertMigrationOwner = async (ctx: any, migrationId: string, requester: string | string[]) => {
+const assertMigrationOwner = async (ctx: AuthCtx, migrationId: string, requester: string | string[]) => {
   const migration = await ctx.db.migration.findUnique({ where: { id: migrationId } });
   if (!migration) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Migration not found" });
@@ -30,7 +31,7 @@ export const migrationRouter = createTRPCRouter({
   getPendingMigrations: protectedProcedure
     .input(z.object({ ownerAddress: z.string() }))
     .query(async ({ ctx, input }) => {
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -55,7 +56,7 @@ export const migrationRouter = createTRPCRouter({
     .input(z.object({ migrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       // Check against sessionWallets array like getPendingMigrations does
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -72,7 +73,7 @@ export const migrationRouter = createTRPCRouter({
       migrationData: z.any().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -119,7 +120,7 @@ export const migrationRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       // Check against sessionWallets array like getPendingMigrations does
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -161,7 +162,7 @@ export const migrationRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       // Check against sessionWallets array like getPendingMigrations does
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -183,7 +184,7 @@ export const migrationRouter = createTRPCRouter({
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       // Check against sessionWallets array like getPendingMigrations does
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];
@@ -202,7 +203,7 @@ export const migrationRouter = createTRPCRouter({
     .input(z.object({ migrationId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       // Check against sessionWallets array like getPendingMigrations does
-      const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const addresses = sessionWallets.length
         ? sessionWallets
         : [requireSessionAddress(ctx)];

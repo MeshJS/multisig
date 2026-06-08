@@ -289,7 +289,7 @@ function RowAction({
     );
 
     if (allTxInputsFromSameAddress) {
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       const _amount: { [unit: string]: number } = {};
 

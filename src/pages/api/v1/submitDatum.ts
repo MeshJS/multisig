@@ -116,7 +116,7 @@ export default async function handler(
       data: {
         walletId,
         payload: datum,
-        signatures: [`signature: ${sig.signature}, key: ${sig.key}`],
+        signatures: [JSON.stringify({ signature: sig.signature, key: sig.key })],
         signedAddresses: [address],
         rejectedAddresses: [],
         description,

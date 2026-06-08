@@ -26,7 +26,6 @@ import {
 } from "@meshsdk/core";
 import useUTXOS from "@/hooks/useUTXOS";
 import { api } from "@/utils/api";
-import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -103,7 +102,6 @@ function ConnectWalletContent({
     (state) => state.setUserAssetMetadata,
   );
   const { user, isLoading: isUserLoading } = useUser();
-  const { generateNsec } = useNostrChat();
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
   const { toast } = useToast();
@@ -472,12 +470,10 @@ function ConnectWalletContent({
 
         // 4) Create or update user (same as normal wallet)
         if (!isUserLoading) {
-          const nostrKey = generateNsec();
           createUser({
             address,
             stakeAddress,
             drepKeyHash,
-            nostrKey: JSON.stringify(nostrKey),
           });
         }
 
@@ -487,7 +483,7 @@ function ConnectWalletContent({
         utxosInitializedRef.current = false;
       }
     })();
-  }, [isUtxosEnabled, utxosWallet, isUserLoading, createUser, generateNsec, setUserAddress, netId]);
+  }, [isUtxosEnabled, utxosWallet, isUserLoading, createUser, setUserAddress, netId]);
 
   // Handle UTXOS wallet assets and network
   useEffect(() => {

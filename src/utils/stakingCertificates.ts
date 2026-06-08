@@ -27,7 +27,7 @@ export function buildStakingCertificateActions({
   stakingScript,
   poolHex,
 }: {
-  txBuilder: ReturnType<typeof getTxBuilder>;
+  txBuilder: Awaited<ReturnType<typeof getTxBuilder>>;
   rewardAddress: string;
   stakingScript: string;
   poolHex: string;
@@ -76,7 +76,7 @@ export function buildStakingActionConfigs({
   poolHex,
   rewards,
 }: {
-  txBuilder: ReturnType<typeof getTxBuilder>;
+  txBuilder: Awaited<ReturnType<typeof getTxBuilder>>;
   rewardAddress: string;
   stakingScript: string;
   poolHex: string;

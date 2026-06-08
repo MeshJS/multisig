@@ -2,7 +2,7 @@ import { MeshTxBuilder } from "@meshsdk/core";
 import { CSLSerializer } from "@meshsdk/core-csl";
 import { getProvider } from "@/utils/get-provider";
 
-export function getTxBuilder(network: number, useCslSerializer = false) {
+export async function getTxBuilder(network: number, useCslSerializer = false) {
   const blockchainProvider = getProvider(network);
   const txBuilder = new MeshTxBuilder({
     fetcher: blockchainProvider,
@@ -15,5 +15,7 @@ export function getTxBuilder(network: number, useCslSerializer = false) {
   } else {
     txBuilder.setNetwork("preprod");
   }
+  const costModels = await blockchainProvider.fetchCostModels();
+  txBuilder.setCostModels(costModels);
   return txBuilder;
 }
