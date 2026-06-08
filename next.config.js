@@ -15,11 +15,7 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  // @meshsdk/core-csl (1.9+) pulls whisky-evaluator, which ships a .wasm the
-  // Node server runtime can't load when the package is externalized
-  // (ERR_UNKNOWN_FILE_EXTENSION ".wasm"). Transpiling them forces Next to bundle
-  // the package so webpack/turbopack's WebAssembly handling applies.
-  transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl", "whisky-evaluator"],
+  transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -80,8 +76,17 @@ const config = {
     return config;
   },
   
-  // External packages for server components to avoid bundling issues
-  serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
+  // External packages for server components to avoid bundling issues.
+  // The whisky WASM packages (pulled by @meshsdk/core-csl 1.9) must be loaded as
+  // CommonJS at runtime rather than bundled — webpack can't statically resolve
+  // their WASM-backed ESM named exports during `next build` on Linux
+  // (`does not provide an export named 'js_evaluate_tx_scripts'`). Externalizing
+  // them makes Node `require` the cjs/ build, which loads the WASM synchronously.
+  serverExternalPackages: [
+    "@fabianbormann/cardano-peer-connect",
+    "whisky-evaluator",
+    "@sidan-lab/whisky-js-nodejs",
+  ],
 
   // Basic security headers applied to all routes.
   // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
