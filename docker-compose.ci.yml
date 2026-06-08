@@ -20,6 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
+      target: app
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"
@@ -56,6 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
+      target: base
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"

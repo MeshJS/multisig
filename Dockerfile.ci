@@ -1,6 +1,11 @@
 # Debian (glibc), not alpine (musl): the @meshsdk/core-csl / whisky-evaluator
 # WebAssembly modules don't resolve under musl during `next build`.
-FROM node:22-slim
+#
+# Two stages:
+#   - `base`  : deps + source. Used by the ci-runner service, which only runs
+#               tsx scripts and must NOT run `next build`.
+#   - `app`   : base + a production `next build`. Used by the app service.
+FROM node:22-slim AS base
 
 # Install PostgreSQL client tools for readiness checks.
 RUN apt-get update \
@@ -18,19 +23,21 @@ RUN npm ci
 # Copy full source for containerized CI runs.
 COPY . .
 
+EXPOSE 3000
+
+# --- Application image: production build served with `next start` ---------------
+FROM base AS app
+
 # Build the production app so the smoke runs `next start` (not `next dev`) and
 # exercises the same output Vercel deploys. `next dev` mis-resolves the
 # @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.
 # Connection URLs are only needed at runtime (compose overrides these); the
 # dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
+# @meshsdk/core-csl loads as a native ESM external whose whisky-evaluator WASM
+# exports need node's --experimental-wasm-modules; NODE_OPTIONS persists it to
+# the runtime `next start` too.
 ENV SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
-# @meshsdk/core-csl is loaded as a native ESM external; node's ESM loader needs
-# this flag to resolve whisky-evaluator's WebAssembly-backed exports
-# (`does not provide an export named 'js_evaluate_tx_scripts'`). Persists to the
-# runtime `next start` too.
 ENV NODE_OPTIONS=--experimental-wasm-modules
 RUN npm run build
-
-EXPOSE 3000
