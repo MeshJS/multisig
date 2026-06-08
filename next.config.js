@@ -15,7 +15,11 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  transpilePackages: ["geist", "@meshsdk/react"],
+  // @meshsdk/core-csl (1.9+) pulls whisky-evaluator, which ships a .wasm the
+  // Node server runtime can't load when the package is externalized
+  // (ERR_UNKNOWN_FILE_EXTENSION ".wasm"). Transpiling them forces Next to bundle
+  // the package so webpack/turbopack's WebAssembly handling applies.
+  transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl", "whisky-evaluator"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
