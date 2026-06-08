@@ -28,7 +28,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "node scripts/run-tests.mjs --coverage",
     "test:ci": "node scripts/run-tests.mjs --ci --coverage --runInBand",
-    "test:trpc": "jest --testPathPatterns=\"src/__tests__/trpc\" --testPathIgnorePatterns=\"/node_modules/\" --runInBand",
+    "test:trpc": "jest -c jest.trpc.config.mjs --runInBand",
     "analyze": "ANALYZE=true npm run build",
     "apply-project": "node scripts/apply-project-to-github.mjs"
   },
