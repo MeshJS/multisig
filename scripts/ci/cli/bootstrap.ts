@@ -1,4 +1,5 @@
-import { BotWalletRole, PrismaClient } from "@prisma/client";
+import { BotWalletRole } from "@prisma/client";
+import { createPrismaClient } from "../framework/prismaClient";
 import { stringifyRedacted } from "../framework/redact";
 import { requireEnv, parseWalletTypesEnv } from "../framework/env";
 import { parseMnemonic } from "../framework/mnemonic";
@@ -12,7 +13,7 @@ import {
 } from "@meshsdk/core";
 import { MultisigWallet, type MultisigKey } from "../../../src/utils/multisigSDK";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 type CIWalletType = "legacy" | "hierarchical" | "sdk";
 

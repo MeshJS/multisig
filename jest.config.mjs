@@ -15,6 +15,8 @@ export default {
     }],
   },
   moduleNameMapper: {
+    // Stub `@/env` (ESM-only @t3-oss validator) before the general @/ alias.
+    '^@/env$': '<rootDir>/src/__tests__/__mocks__/env.cjs',
     '^@/(.*)$': '<rootDir>/src/$1',
     // libsodium-wrappers-sumo ships an .mjs that does `import "./libsodium-sumo.mjs"`,
     // but that file lives in the separate `libsodium-sumo` package. Node resolves it
