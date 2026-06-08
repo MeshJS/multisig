@@ -156,6 +156,9 @@ jest.unstable_mockModule(
   () => ({
     __esModule: true,
     resolvePaymentKeyHash: resolvePaymentKeyHashMock,
+    // The handler also imports resolveStakeKeyHash; ESM static linking requires
+    // the mock to provide it even if the tested paths don't call it.
+    resolveStakeKeyHash: jest.fn(),
   }),
 );
 
