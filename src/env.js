@@ -18,6 +18,16 @@ export const env = createEnv({
     BLOCKFROST_API_KEY_PREPROD: z.string().optional(),
     BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
     /**
+     * Base URL for the Ekklesia / Intersect Hydra voting API that the
+     * `/api/ekklesia/*` proxy forwards to. Defaults to the Intersect mainnet
+     * instance. Browser-direct calls are blocked by CORS, so all Ekklesia
+     * traffic must go through the server proxy.
+     */
+    EKKLESIA_API_BASE: z
+      .string()
+      .url()
+      .default("https://intersect.ekklesia.vote/api"),
+    /**
      * Comma-separated list of hostnames the OG metadata fetcher (`/api/v1/og`)
      * is allowed to talk to. Defaults to a small allow-list when unset; set to
      * "*" to allow any public hostname (still SSRF-guarded against private ranges).
@@ -82,6 +92,7 @@ export const env = createEnv({
     JWT_SECRET: process.env.JWT_SECRET,
     BLOCKFROST_API_KEY_PREPROD: process.env.BLOCKFROST_API_KEY_PREPROD,
     BLOCKFROST_API_KEY_MAINNET: process.env.BLOCKFROST_API_KEY_MAINNET,
+    EKKLESIA_API_BASE: process.env.EKKLESIA_API_BASE,
     OG_ALLOWED_HOSTS: process.env.OG_ALLOWED_HOSTS,
   },
   /**
