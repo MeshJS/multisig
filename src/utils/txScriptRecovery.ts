@@ -3,7 +3,7 @@ import {
   deserializeAddress,
   serializeNativeScript,
 } from "@meshsdk/core";
-import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
+import { csl, deserializeNativeScript, calculateTxHash } from "@meshsdk/core-csl";
 import type {
   MultisigSubmissionWallet,
   ScriptRecoveryWallet,
@@ -493,6 +493,37 @@ async function retrySubmitWithCandidateScriptSets(
   throw lastRetryError;
 }
 
+/**
+ * [ballot-witness-diag] Diagnostic only — no behaviour change.
+ * Recomputes the body hash of the exact tx we are about to submit and checks
+ * every vkey witness against it. Any witness that fails here is signed over a
+ * different body encoding than the one reaching the node — the root cause of
+ * `InvalidWitnessesUTXOW` on Conway ballot/vote transactions.
+ */
+export function diagnoseTxWitnesses(txHex: string): {
+  bodyHash: string;
+  total: number;
+  stale: { pubKeyHex: string; keyHashHex: string }[];
+} {
+  const tx = csl.Transaction.from_hex(txHex);
+  const bodyHash = calculateTxHash(txHex).toLowerCase();
+  const bodyHashBytes = Buffer.from(bodyHash, "hex");
+  const vkeys = tx.witness_set().vkeys();
+  const total = vkeys ? vkeys.len() : 0;
+  const stale: { pubKeyHex: string; keyHashHex: string }[] = [];
+  for (let i = 0; i < total; i++) {
+    const w = vkeys!.get(i);
+    const pk = w.vkey().public_key();
+    if (!pk.verify(bodyHashBytes, w.signature())) {
+      stale.push({
+        pubKeyHex: bytesToHex(pk.as_bytes()),
+        keyHashHex: bytesToHex(pk.hash().to_bytes()),
+      });
+    }
+  }
+  return { bodyHash, total, stale };
+}
+
 export async function submitTxWithScriptRecovery({
   txHex,
   submitter,
@@ -500,6 +531,22 @@ export async function submitTxWithScriptRecovery({
   network,
 }: SubmitTxWithRecoveryArgs): Promise<SubmitTxWithRecoveryResult> {
   try {
+    try {
+      const diag = diagnoseTxWitnesses(txHex);
+      if (diag.stale.length > 0) {
+        console.warn(
+          "[ballot-witness-diag] vkey witness(es) do NOT verify against the submit body — node will reject with InvalidWitnessesUTXOW",
+          {
+            submitBodyHash: diag.bodyHash,
+            totalWitnesses: diag.total,
+            staleWitnesses: diag.stale,
+          },
+        );
+      }
+    } catch (diagError) {
+      console.warn("[ballot-witness-diag] pre-submit diagnostic failed", diagError);
+    }
+
     const txHash = await submitter.submitTx(txHex);
     return { txHash, txHex, repaired: false };
   } catch (submitError) {
