@@ -8,6 +8,7 @@ import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import useAppWallet from "@/hooks/useAppWallet";
 import useUTXOS from "@/hooks/useUTXOS";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -99,6 +100,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const { wallet } = useWallet();
+  // 1.9 IWallet bridge — used for getDRep(), which the react 2.0 wallet lacks.
+  const { wallet: meshWallet } = useMeshWallet();
   const { state: walletState, connectedWalletInstance } = useWalletContext();
   const address = useAddress();
   const { user, isLoading: isLoadingUser } = useUser();
@@ -296,10 +299,11 @@ export default function RootLayout({
           return;
         }
 
-        // Get DRep key hash (optional)
+        // Get DRep key hash (optional). getDRep only exists on the 1.9 IWallet,
+        // so use the bridged wallet; if it isn't enabled yet, skip silently.
         let drepKeyHash = "";
         try {
-          const dRepKey = await activeWallet.getDRep();
+          const dRepKey = await meshWallet?.getDRep();
           if (dRepKey?.publicKeyHash) {
             drepKeyHash = dRepKey.publicKeyHash;
           }
@@ -319,9 +323,9 @@ export default function RootLayout({
         }
       }
     }
-    
+
     initializeWallet();
-  }, [connected, activeWallet, user, userAddress, address, createUser]);
+  }, [connected, activeWallet, meshWallet, user, userAddress, address, createUser]);
 
   // Check wallet session and show authorization modal for first-time connections
   // Check session as soon as wallet is connected and address is available (don't wait for user)

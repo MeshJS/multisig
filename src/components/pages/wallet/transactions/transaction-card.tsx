@@ -4,7 +4,7 @@ import {
   checkSignature,
   generateNonce,
 } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "@/hooks/useActiveWallet";
 
@@ -68,11 +68,19 @@ export default function TransactionCard({
   walletId: string;
   transaction: Transaction;
 }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { activeWallet, isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
-  const txJson = useMemo(() => JSON.parse(transaction.txJson), [transaction.txJson]);
+  // Parse defensively — a malformed txJson (e.g. from a row that slipped past
+  // earlier API validation) must not crash the whole Transactions page (#211).
+  const txJson = useMemo<any>(() => {
+    try {
+      return JSON.parse(transaction.txJson);
+    } catch {
+      return null;
+    }
+  }, [transaction.txJson]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   const { toast } = useToast();
@@ -245,9 +253,26 @@ export default function TransactionCard({
 
       const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
 
-      let signedTx = filterWitnessesToScripts(
-        mergeSignerWitnesses(transaction.txCbor, signerWitnessPayload),
+      const mergeResult = mergeSignerWitnesses(
+        transaction.txCbor,
+        signerWitnessPayload,
       );
+      if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
+        setLoading(false);
+        console.error(
+          "Wallet returned witness that does not verify against tx body hash",
+          { invalidVkeyPubKeysHex: mergeResult.invalidVkeyPubKeysHex },
+        );
+        toast({
+          title: "Signature mismatch",
+          description:
+            "Your wallet's signature doesn't match this transaction's body. The Cardano SDK and your wallet disagree on CBOR encoding. Try a different wallet, or report this with the failing pubkey (see browser console).",
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
       // sanity check
       const tx = csl.Transaction.from_hex(signedTx);
@@ -302,6 +327,7 @@ export default function TransactionCard({
 
   async function rejectTx() {
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
 
     try {
       setLoading(true);
@@ -370,6 +396,9 @@ export default function TransactionCard({
   // }, []);
 
   const outputList = useMemo((): React.ReactElement => {
+    if (!txJson || !Array.isArray(txJson.outputs)) {
+      return <></>;
+    }
     return (
       <>
         {txJson.outputs.map((output: any, i: number) => {
@@ -476,7 +505,51 @@ export default function TransactionCard({
   }
 
   if (!appWallet) return <></>;
-  
+
+  // Unreadable transaction — txJson failed to parse. Render a degraded card so
+  // the Transactions page still loads and the user can free locked UTxOs (#211).
+  if (!txJson) {
+    return (
+      <Card className="self-start overflow-hidden w-full border-destructive/40">
+        <CardHeader className="flex flex-col gap-3 bg-destructive/5 p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">
+            Unreadable transaction
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            {dateToFormatted(transaction.createdAt)}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 text-sm space-y-3">
+          <p className="text-muted-foreground">
+            This transaction&apos;s metadata could not be parsed and cannot be
+            signed. Rejecting it here will free any UTxOs it was holding.
+          </p>
+          <div className="text-xs font-mono text-muted-foreground break-all">
+            <div>
+              <span className="font-semibold">ID:</span> {transaction.id}
+            </div>
+            {transaction.txHash && (
+              <div>
+                <span className="font-semibold">Tx hash:</span>{" "}
+                {transaction.txHash}
+              </div>
+            )}
+          </div>
+        </CardContent>
+        <CardFooter className="flex items-center justify-end border-t bg-muted/50 px-4 sm:px-6 py-3">
+          <Button
+            variant="destructive"
+            onClick={() => deleteTx()}
+            disabled={loading}
+            loading={loading}
+          >
+            Reject & Delete
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
   // Calculate signing threshold info
   const signersCount = appWallet.signersAddresses.length;
   const requiredSigners = appWallet.numRequiredSigners ?? signersCount;

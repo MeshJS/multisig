@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import useAppWallet from "@/hooks/useAppWallet";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader } from "lucide-react";
 
 export default function DelegateButton({ drepid }: { drepid: string }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { appWallet } = useAppWallet();
   const { toast } = useToast();
   const [delegating, setDelegating] = useState(false);

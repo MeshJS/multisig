@@ -4,7 +4,6 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
 import type { Wallet as DbWallet } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
@@ -15,6 +14,7 @@ import { DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
+import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 
 export default async function handler(
   req: NextApiRequest,
@@ -107,25 +107,41 @@ export default async function handler(
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
-    const mWallet = buildMultisigWallet(walletFetch as DbWalletWithLegacy);
-    if (!mWallet) {
-      return res.status(500).json({ error: "Wallet could not be constructed" });
+    let addr: string;
+    try {
+      addr = resolveWalletScriptAddress(
+        walletFetch as DbWalletWithLegacy,
+        address,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      return res.status(500).json({
+        error: `Wallet script address resolution failed: ${message}`,
+      });
     }
-    const addr = mWallet.getScript().address;
     const network = addressToNetwork(addr);
 
     const blockchainProvider = getProvider(network);
+    const fresh = req.query.fresh === "true";
 
-    // Use cached UTxO fetch to reduce Blockfrost API calls
-    const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
-    const utxos: UTxO[] = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    let utxos: UTxO[];
+    if (fresh) {
+      utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+    } else {
+      const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+      utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    }
 
     const blockedUtxos: { hash: string; index: number }[] =
       pendingTxsResult.flatMap((m): { hash: string; index: number }[] => {
         try {
           const txJson: {
             inputs: { txIn: { txHash: string; txIndex: number } }[];
+            multisig?: { submissionError?: string | null };
           } = JSON.parse(m.txJson);
+          // A tx that was broadcast but rejected by the node has a submissionError.
+          // Its inputs are still unspent on-chain — don't block them.
+          if (txJson.multisig?.submissionError) return [];
           return txJson.inputs.map((n) => ({
             hash: n.txIn.txHash,
             index: n.txIn.txIndex,
@@ -145,10 +161,9 @@ export default async function handler(
         ),
     );
 
-    // Set cache headers for CDN/edge caching
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=30, stale-while-revalidate=60",
+      fresh ? "no-store" : "public, s-maxage=30, stale-while-revalidate=60",
     );
     res.status(200).json(freeUtxos);
   } catch (error) {

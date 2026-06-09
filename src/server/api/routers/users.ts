@@ -33,6 +33,11 @@ export const userRouter = createTRPCRouter({
         stakeAddress: z.string().min(1, "stakeAddress required"),
         // DRep key hash is optional (not all wallets / networks expose it)
         drepKeyHash: z.string().optional().default(""),
+        // nostrKey is legacy — the chat system that used it was removed
+        // in #253; the column is nullable in the schema, callers no
+        // longer pass it. Kept in the input shape for backwards
+        // compatibility with any in-flight client bundles.
+        nostrKey: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -50,11 +55,13 @@ export const userRouter = createTRPCRouter({
         update: {
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
         create: {
           address: input.address,
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
       });
     }),

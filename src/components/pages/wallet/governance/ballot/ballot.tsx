@@ -6,7 +6,7 @@ import type { Quantity, Unit, UTxO } from "@meshsdk/core";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useToast } from "@/hooks/use-toast";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useUserStore } from "@/lib/zustand/user";
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import CardUI from "@/components/ui/card-content";
@@ -178,7 +178,7 @@ export default function BallotCard({
 
   // Proxy state
   const { isProxyEnabled, selectedProxyId } = useProxy();
-  const { wallet } = useWallet();
+  const { wallet } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
 
   // Get proxies for proxy mode
@@ -287,6 +287,7 @@ export default function BallotCard({
     try {
       const proxy = proxies.find((p: any) => p.id === selectedProxyId);
       if (!proxy) throw new Error("Proxy not found");
+      if (!wallet) throw new Error("No connected wallet");
 
       const meshTxBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(

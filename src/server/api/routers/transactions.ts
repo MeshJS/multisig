@@ -43,6 +43,7 @@ export const transactionRouter = createTRPCRouter({
           walletId: input.walletId,
           txJson: input.txJson,
           signedAddresses: input.signedAddresses,
+          rejectedAddresses: [],
           txCbor: input.txCbor,
           state: input.state,
           description: input.description,

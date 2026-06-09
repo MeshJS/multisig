@@ -3,16 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // For Supabase + Vercel serverless optimization:
-  // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
-  //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
-  // - DIRECT_URL: Use Supabase's direct connection URL (for migrations)
-  //   Example: postgresql://user:pass@host:5432/db
-  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL
-  //   This separation improves performance and prevents connection pool exhaustion
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  // Prisma 7 no longer accepts connection URLs in the schema. They live in
+  // prisma.config.ts (for CLI/migrations) and are passed to PrismaClient at
+  // runtime in src/server/db.ts. For Supabase + Vercel serverless:
+  // - DATABASE_URL: pooling URL (Transaction mode, port 6543, ?pgbouncer=true)
+  //   — used by the runtime client.
+  // - DIRECT_URL: direct connection (port 5432) — used by migrations.
+  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL.
 }
 
 model User {

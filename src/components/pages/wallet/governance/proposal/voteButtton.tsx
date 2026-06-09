@@ -21,7 +21,7 @@ import { api } from "@/utils/api";
 import { useBallot } from "@/hooks/useBallot";
 import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useUserStore } from "@/lib/zustand/user";
 import {
   Dialog,
@@ -94,7 +94,7 @@ export default function VoteButton({
 
   // Proxy state
   const { isProxyEnabled, selectedProxyId } = useProxy();
-  const { wallet } = useWallet();
+  const { wallet } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
 
   // Check if proposal is active (only Active proposals can be voted on)
@@ -129,6 +129,7 @@ export default function VoteButton({
         // Fall back to standard vote if proxy not found
         return vote();
       }
+      if (!wallet) throw new Error("No connected wallet");
 
       // Create proxy contract instance
       const txBuilder = await getTxBuilder(network);

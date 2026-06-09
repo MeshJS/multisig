@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { getFirstAndLast } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
@@ -67,7 +67,7 @@ function ProfileIconWithDiscord({ discordId, size = "md" }: ProfileIconWithDisco
 }
 
 export default function ShowSigners({ appWallet }: ShowSignersProps) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { toast } = useToast();
   const ctx = api.useUtils();
@@ -138,6 +138,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
     async function signVerify() {
       if (!userAddress) throw new Error("User address not found");
       if (!connected) throw new Error("Wallet not connected");
+      if (!wallet) throw new Error("Wallet not connected");
 
       const userRewardAddress = (await wallet.getRewardAddresses())[0];
       const nonce = generateNonce("Verify this wallet: ");

@@ -161,9 +161,20 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   const hasValidProxyData = !!(isProxyEnabled && proxyDrepId && proxies.length > 0 && proxies.find(p => p.id === selectedProxyId));
   const displayDrepId = hasValidProxyData ? proxyDrepId : currentDrepId;
   const displayDrepInfo = hasValidProxyData ? proxyDrepInfo : currentDrepInfo;
-  
-  
-  
+
+  // These must be declared before any early return to satisfy Rules of Hooks
+  const [isDRepManagementOpen, setIsDRepManagementOpen] = useState(false);
+  const [showProxySelector, setShowProxySelector] = useState(!!selectedProxyId);
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+
+  // Sync showProxySelector when a proxy is selected
+  useEffect(() => {
+    if (selectedProxyId) {
+      setShowProxySelector(true);
+    }
+  }, [selectedProxyId]);
+
   // Show loading or error state if no DRep ID
   if (!displayDrepId) {
     return (
@@ -224,18 +235,7 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
   
   // Check if DRep is actually registered (has info from Blockfrost)
   const isDRepRegistered = displayDrepInfo?.active === true;
-  const [isDRepManagementOpen, setIsDRepManagementOpen] = useState(false);
-  const [showProxySelector, setShowProxySelector] = useState(!!selectedProxyId);
-  const [registerModalOpen, setRegisterModalOpen] = useState(false);
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  
-  // Sync showProxySelector when a proxy is selected
-  useEffect(() => {
-    if (selectedProxyId) {
-      setShowProxySelector(true);
-    }
-  }, [selectedProxyId]);
-  
+
   return (
     <CardUI
       title={hasValidProxyData ? "Proxy DRep Information" : "DRep Information"}

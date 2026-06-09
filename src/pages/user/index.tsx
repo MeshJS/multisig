@@ -305,6 +305,45 @@ export default function UserInfoPage() {
                 Copy
               </Button>
             </div>
+            {user.nostrKey && (() => {
+              // Pin to a non-null local — nostrKey became nullable when the
+              // Nostr chat system was removed in #253, but legacy users
+              // still have a value persisted. The outer guard ensures the
+              // block only renders when it's a string.
+              const nostrKey = user.nostrKey;
+              return (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium mb-1">Nostr Key</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {(() => {
+                        try {
+                          const nostrKeyObj = JSON.parse(nostrKey);
+                          const nsec = nostrKeyObj.nsec || "";
+                          const pubkey = nostrKeyObj.pubkey || "";
+                          return (
+                            <span>
+                              {`{"nsec":"${getFirstAndLast(nsec, 10, 8)}","pubkey":"${getFirstAndLast(pubkey, 10, 8)}"}`}
+                            </span>
+                          );
+                        } catch {
+                          return getFirstAndLast(nostrKey, 20, 8);
+                        }
+                      })()}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopy(nostrKey, "Nostr Key")}
+                    className="flex-shrink-0 mt-1 sm:mt-0"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy
+                  </Button>
+                </div>
+              );
+            })()}
           </div>
         </CardUI>
       </div>
