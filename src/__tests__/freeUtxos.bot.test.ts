@@ -97,6 +97,14 @@ jest.mock("@/lib/security/rateLimit", () => ({
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
 beforeAll(async () => {
+  // Other suites (notably nativeScriptUtils.test.ts) import the real
+  // @/utils/nativeScriptUtils and @/utils/common before this file runs;
+  // Jest caches those modules and the jest.mock(..., {virtual:true})
+  // declarations above don't re-wire the bindings inside transitively
+  // imported files like @/lib/server/walletScriptAddress. Resetting the
+  // registry forces the dynamic handler import below to pick up our
+  // mocked versions instead of the cached reals.
+  jest.resetModules();
   ({ default: handler } = await import("../pages/api/v1/freeUtxos"));
 });
 
