@@ -93,9 +93,9 @@ services:
     command: >
       sh -c "
         status=0;
-        npx --yes tsx scripts/ci/cli/bootstrap.ts || status=$$?;
-        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/wallet-status.ts || status=$$?; fi;
-        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/route-chain.ts || status=$$?; fi;
+        node .ci-dist/bootstrap.mjs || status=$$?;
+        if [ \"$$status\" -eq 0 ]; then node .ci-dist/wallet-status.mjs || status=$$?; fi;
+        if [ \"$$status\" -eq 0 ]; then node .ci-dist/route-chain.mjs || status=$$?; fi;
         rm -f \"${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}\";
         exit \"$$status\"
       "

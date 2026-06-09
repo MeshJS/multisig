@@ -29,6 +29,18 @@ RUN npm ci
 # Copy full source for containerized CI runs.
 COPY . .
 
+# Pre-bundle the CI CLI scripts with esbuild and run them with plain node.
+# tsx's esbuild loader can't defer whisky-evaluator's .wasm imports to node's
+# native --experimental-wasm-modules handling, so `tsx bootstrap.ts` fails to
+# load @meshsdk/core-csl. Bundling (resolving @/ aliases, externalizing
+# node_modules) lets `node --experimental-wasm-modules` load the WASM natively.
+RUN npx --yes esbuild@0.25.10 \
+  scripts/ci/cli/bootstrap.ts \
+  scripts/ci/cli/wallet-status.ts \
+  scripts/ci/cli/route-chain.ts \
+  --bundle --platform=node --format=esm --packages=external \
+  --alias:@=./src --outdir=.ci-dist --out-extension:.js=.mjs
+
 EXPOSE 3000
 
 # --- Application image: production build served with `next start` ---------------
