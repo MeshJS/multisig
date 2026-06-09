@@ -12,7 +12,9 @@ import { useBallot } from "@/hooks/useBallot";
 import BallotModal from "./ballot/BallotModal";
 import { BallotModalProvider, useBallotModal } from "@/hooks/useBallotModal";
 import { Button } from "@/components/ui/button";
-import { Vote } from "lucide-react";
+import { Vote, Waves, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/router";
 
 function PageGovernanceContent() {
   const { appWallet } = useAppWallet();
@@ -21,6 +23,8 @@ function PageGovernanceContent() {
   const [manualSelected, setManualSelected] = useState(false);
   const [selectedBallotId, setSelectedBallotId] = useState<string | undefined>(undefined);
   const { isOpen, closeModal, openModal, currentProposalId, currentProposalTitle } = useBallotModal();
+  const router = useRouter();
+  const walletId = router.query.wallet as string;
 
   const { ballots } = useBallot(appWallet?.id);
   const selected = ballots?.find((b) => b.id === selectedBallotId);
@@ -46,6 +50,25 @@ function PageGovernanceContent() {
           onSelectBallot={setSelectedBallotId}
         />
         
+        {/* Off-chain Hydra budget vote entry */}
+        <Link
+          href={`/wallets/${walletId}/governance/hydra`}
+          className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-[#0A0A0B] dark:hover:bg-gray-900"
+        >
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-white">
+              <Waves className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="font-semibold">Hydra Budget Vote</div>
+              <div className="text-sm text-muted-foreground">
+                Off-chain DRep vote on the Cardano Budget 2026 (Ekklesia / Hydra)
+              </div>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </Link>
+
         {/* Vote and Clarity cards */}
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
           <VoteCard appWallet={appWallet} utxos={manualUtxos} selectedBallotId={selectedBallotId} />
