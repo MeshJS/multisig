@@ -35,6 +35,9 @@ jest.mock("@/lib/auth/botKey", () => ({
 
 jest.mock("jsonwebtoken", () => ({
   __esModule: true,
+  // botAuth.ts does `import jwt from "jsonwebtoken"; const { sign } = jwt`, so
+  // the default export must carry `sign` (esModuleInterop reads `.default`).
+  default: { sign: signMock },
   sign: signMock,
 }));
 

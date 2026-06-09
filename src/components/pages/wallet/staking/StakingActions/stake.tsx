@@ -12,6 +12,7 @@ import useTransaction from "@/hooks/useTransaction";
 import { buildStakingActionConfigs, type StakingActionUi } from "@/utils/stakingCertificates";
 
 type StakingAction = StakingActionUi;
+
 export default function StakeButton({
   stakingInfo,
   appWallet,
@@ -45,7 +46,7 @@ export default function StakeButton({
       const stakingScript = appWallet.stakeScriptCbor || mWallet.getStakingScript();
       if (!stakingScript) throw new Error("Staking Script could not be built.");
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const selectedUtxos = utxos;
 
       for (const utxo of selectedUtxos) {

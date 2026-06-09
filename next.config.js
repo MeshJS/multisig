@@ -15,7 +15,7 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  transpilePackages: ["geist", "@meshsdk/react"],
+  transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -55,13 +55,16 @@ const config = {
       layers: true,
     };
     
-    // Optimize tree-shaking by ensuring proper module resolution
+    // Optimize tree-shaking by ensuring proper module resolution.
+    // Note: do NOT set `sideEffects: false` globally — it tells webpack that
+    // every file is side-effect-free, which silently strips CSS imports,
+    // polyfills, and other modules that exist purely for their side effects.
+    // Per-package sideEffects flags in package.json are the correct surface.
     config.optimization = {
       ...config.optimization,
       usedExports: true,
-      sideEffects: false,
     };
-    
+
     // Handle CommonJS modules that don't support named exports
     config.resolve = {
       ...config.resolve,
@@ -73,8 +76,35 @@ const config = {
     return config;
   },
   
-  // External packages for server components to avoid bundling issues
-  serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
+  // External packages for server components to avoid bundling issues.
+  // The whisky WASM packages (pulled by @meshsdk/core-csl 1.9) must be loaded as
+  // CommonJS at runtime rather than bundled — webpack can't statically resolve
+  // their WASM-backed ESM named exports during `next build` on Linux
+  // (`does not provide an export named 'js_evaluate_tx_scripts'`). Externalizing
+  // them makes Node `require` the cjs/ build, which loads the WASM synchronously.
+  serverExternalPackages: [
+    "@fabianbormann/cardano-peer-connect",
+    "whisky-evaluator",
+    "@sidan-lab/whisky-js-nodejs",
+  ],
+
+  // Basic security headers applied to all routes.
+  // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
+  // omitted — CSP would break inline scripts/styles and HSTS locks browsers to
+  // HTTPS for max-age and should only be enabled after team review.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
 };
 
 // Bundle analyzer - only enable when ANALYZE env var is set

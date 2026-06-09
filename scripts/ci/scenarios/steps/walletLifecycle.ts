@@ -109,8 +109,8 @@ export function createScenarioCreateWallet(ctx: CIBootstrapContext): Scenario {
           if (!runtime.createdWalletId) {
             return { message: "createWallet.cleanup: no walletId to clean up; skipping" };
           }
-          const { PrismaClient } = await import("@prisma/client");
-          const prisma = new PrismaClient();
+          const { createPrismaClient } = await import("../../framework/prismaClient");
+          const prisma = createPrismaClient();
           try {
             // WalletBotAccess has no cascade relation — must be deleted before the Wallet row.
             await prisma.walletBotAccess.deleteMany({ where: { walletId: runtime.createdWalletId } });

@@ -181,7 +181,7 @@ export default async function handler(
     }
   }
 
-  const txBuilder = getTxBuilder(network);
+  const txBuilder = await getTxBuilder(network);
   const spendScriptCbor = mWallet.getScript().scriptCbor || appWallet.scriptCbor;
   for (const utxo of utxos) {
     txBuilder.txIn(

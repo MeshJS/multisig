@@ -6,13 +6,13 @@ export const authRouter = createTRPCRouter({
     .input(z.object({ address: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       // Use wallet-session data already decoded into the tRPC context
-      const wallets: string[] = (ctx as any).sessionWallets ?? [];
+      const wallets: string[] = ctx.sessionWallets ?? [];
       const authorized = wallets.includes(input.address);
 
       return {
         authorized,
         wallets,
-        primaryWallet: (ctx as any).primaryWallet ?? null,
+        primaryWallet: ctx.primaryWallet ?? null,
       };
     }),
 });

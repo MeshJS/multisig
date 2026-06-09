@@ -259,7 +259,7 @@ export const protectedProcedure = t.procedure
   .use(({ ctx, next }) => {
     const hasNextAuth = !!ctx.session?.user;
     const hasWalletSession =
-      Array.isArray((ctx as any).sessionWallets) && (ctx as any).sessionWallets.length > 0;
+      Array.isArray(ctx.sessionWallets) && ctx.sessionWallets.length > 0;
 
     if (!hasNextAuth && !hasWalletSession) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -272,8 +272,7 @@ export const protectedProcedure = t.procedure
     if (hasNextAuth) {
       sessionAddress = ctx.session?.user?.id ?? sessionAddress;
     } else if (!sessionAddress && hasWalletSession) {
-      const wallets = (ctx as any).sessionWallets as string[];
-      sessionAddress = wallets[0] ?? null;
+      sessionAddress = ctx.sessionWallets[0] ?? null;
     }
 
     return next({

@@ -27,17 +27,16 @@ const txMock = {
   },
 };
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/cors",
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/security/requestGuards",
   () => ({
     __esModule: true,
@@ -45,49 +44,44 @@ jest.mock(
     applyBotRateLimit: applyBotRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/verifyJwt",
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/governance",
   () => ({
     __esModule: true,
     isValidChoice: isValidChoiceMock,
     parseProposalId: parseProposalIdMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botKey",
   () => ({
     __esModule: true,
     parseScope: parseScopeMock,
     scopeIncludes: scopeIncludesMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botAccess",
   () => ({
     __esModule: true,
     assertBotWalletAccess: assertBotWalletAccessMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/server/db",
   () => ({
     __esModule: true,
@@ -98,7 +92,6 @@ jest.mock(
       $transaction: transactionMock,
     },
   }),
-  { virtual: true },
 );
 
 type ResponseMock = NextApiResponse & { statusCode?: number };

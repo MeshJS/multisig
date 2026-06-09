@@ -11,7 +11,7 @@ jest.mock("node:dns/promises", () => ({
 // undici.request is the transport used by resolveDRepAnchorFromUrl — the
 // previous test mocked global.fetch, but the implementation now pins the
 // resolved IP via undici's buildConnector to close the DNS-rebinding TOCTOU.
-const requestMock = jest.fn<(...args: unknown[]) => unknown>();
+const requestMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.mock("undici", () => ({
   request: (...args: unknown[]) => requestMock(...args),
   Agent: jest.fn(),

@@ -4,7 +4,7 @@ import {
   checkSignature,
   generateNonce,
 } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "@/hooks/useActiveWallet";
 
@@ -53,7 +53,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { get } from "http";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -69,7 +68,7 @@ export default function TransactionCard({
   walletId: string;
   transaction: Transaction;
 }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { activeWallet, isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
@@ -328,6 +327,7 @@ export default function TransactionCard({
 
   async function rejectTx() {
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
 
     try {
       setLoading(true);

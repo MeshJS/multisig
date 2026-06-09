@@ -28,7 +28,7 @@ import { buildProxySpendTx, deriveProxyScripts } from "@/lib/server/proxyTxBuild
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type ProxyOutput = { address: string; unit: string; amount: string };
-type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
+type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
   meshTxBuilderBody: unknown;
 };
 
@@ -256,7 +256,7 @@ export default async function handler(
     return res.status(proxyUtxos.status).json({ error: proxyUtxos.error });
   }
 
-  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
+  const txBuilder = (await getTxBuilder(network, true)) as MeshTxBuilderWithBody;
   try {
     buildProxySpendTx({
       txBuilder,

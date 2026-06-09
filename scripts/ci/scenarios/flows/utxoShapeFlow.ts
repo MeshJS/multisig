@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../../framework/prismaClient";
 import type { CIBootstrapContext, CIWalletType } from "../../framework/types";
 import { authenticateBot } from "../../framework/botAuth";
 import { getDefaultBot } from "../../framework/botContext";
@@ -20,7 +20,7 @@ import {
 import { runSigningFlow } from "./signingFlow";
 import { getWalletByType } from "../steps/helpers";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 type UtxoShapeResult = {
   walletType: CIWalletType;
