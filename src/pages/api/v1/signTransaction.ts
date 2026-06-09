@@ -334,6 +334,26 @@ export default async function handler(
       }
     }
 
+    // [ballot-witness-diag] Detect whether merging/rebuilding the tx changed the
+    // body the signatures were made over. `txHashHex` is the body hash the
+    // incoming witness was verified against (line ~245). If the final tx hashes
+    // differently, every collected witness is now stale → InvalidWitnessesUTXOW.
+    try {
+      const finalBodyHash = calculateTxHash(txHexForUpdate).toLowerCase();
+      if (finalBodyHash !== txHashHex) {
+        console.warn("[ballot-witness-diag] tx body hash changed after witness merge", {
+          transactionId,
+          storedBodyHash: txHashHex,
+          finalBodyHash,
+        });
+      }
+    } catch (diagError: unknown) {
+      console.warn(
+        "[ballot-witness-diag] failed to compute final body hash",
+        toError(diagError),
+      );
+    }
+
     const witnessSummaries: {
       keyHashHex: string;
       publicKeyBech32: string;
