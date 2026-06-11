@@ -4,8 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import useUTXOS from "@/hooks/useUTXOS";
-import { useSiteStore } from "@/lib/zustand/site";
-import { deserializeAddress, pubKeyAddress, scriptAddress, serializeAddressObj } from "@meshsdk/core";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 interface WalletAuthModalProps {
   address: string; // display label; actual signing address is derived from wallet.getUsedAddresses()
@@ -17,8 +16,6 @@ interface WalletAuthModalProps {
 
 export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuthorize = false }: WalletAuthModalProps) {
   const { wallet, connected } = useWallet();
-  const network = useSiteStore((state) => state.network);
-  const netId = (network === 1 ? 1 : 0) as 0 | 1;
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS();
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -28,21 +25,6 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
     isUtxosEnabled && utxosWallet?.cardano
       ? utxosWallet.cardano
       : (wallet && connected ? wallet : null);
-
-  const normalizePaymentAddress = useCallback((maybeHexOrBech: string): string => {
-    if (maybeHexOrBech.startsWith("addr1") || maybeHexOrBech.startsWith("addr_test1")) {
-      return maybeHexOrBech;
-    }
-    const d = deserializeAddress(maybeHexOrBech);
-    const stakeCredential = d.stakeCredentialHash || d.stakeScriptCredentialHash || "";
-    const rebuilt =
-      d.pubKeyHash
-        ? pubKeyAddress(d.pubKeyHash, stakeCredential, !!d.stakeScriptCredentialHash)
-        : d.scriptHash
-          ? scriptAddress(d.scriptHash, stakeCredential, !!d.stakeScriptCredentialHash)
-          : null;
-    return rebuilt ? serializeAddressObj(rebuilt, netId) : maybeHexOrBech;
-  }, [netId]);
 
   const handleAuthorize = useCallback(async () => {
     if (!signingWallet) {
@@ -95,7 +77,10 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
       if (!signingAddress) {
         throw new Error("No addresses found for wallet");
       }
-      signingAddress = normalizePaymentAddress(signingAddress);
+      signingAddress = normalizeAddressToBech32(signingAddress);
+      if (!signingAddress.startsWith("addr1") && !signingAddress.startsWith("addr_test1")) {
+        throw new Error("Could not read a valid payment address from this wallet.");
+      }
 
       // 1) Get nonce from existing endpoint
       const nonceRes = await fetch(`/api/v1/getNonce?address=${encodeURIComponent(signingAddress)}`);
@@ -171,7 +156,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
     } finally {
       setSubmitting(false);
     }
-  }, [signingWallet, toast, onAuthorized, onClose, normalizePaymentAddress]);
+  }, [signingWallet, toast, onAuthorized, onClose]);
 
   // Auto-authorize when modal opens if autoAuthorize is true (only once)
   useEffect(() => {
