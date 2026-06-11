@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { publicCors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 /**
  * Cross-instance wallet list for the import wizard's "instance root + picker"
@@ -24,7 +25,7 @@ export default async function handler(
     return;
   }
 
-  await cors(req, res);
+  await publicCors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -33,10 +34,11 @@ export default async function handler(
     return res.status(405).end();
   }
 
-  const { address } = req.query;
-  if (typeof address !== "string" || address.length === 0) {
+  const { address: rawAddress } = req.query;
+  if (typeof rawAddress !== "string" || rawAddress.length === 0) {
     return res.status(400).json({ error: "Missing address" });
   }
+  const address = normalizeAddressToBech32(rawAddress);
 
   try {
     const wallets = await db.wallet.findMany({
