@@ -49,6 +49,17 @@ EXPOSE 3000
 # --- Application image: production build served with `next start` ---------------
 FROM base AS app
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle by `next build`, so the
+# browser-driven Playwright flow must pass them as build args (see
+# docker-compose.playwright.yml). They default to empty for API-only smoke runs
+# (docker-compose.ci.yml), which never load the client bundle.
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=
+ARG NEXT_PUBLIC_DEFAULT_NETWORK=0
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=$NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=$NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET
+ENV NEXT_PUBLIC_DEFAULT_NETWORK=$NEXT_PUBLIC_DEFAULT_NETWORK
+
 # Build the production app so the smoke runs `next start` (not `next dev`) and
 # exercises the same output Vercel deploys. `next dev` mis-resolves the
 # @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.
@@ -56,6 +67,9 @@ FROM base AS app
 # dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
 # (NODE_OPTIONS=--experimental-wasm-modules is inherited from the base stage.)
 ENV SKIP_ENV_VALIDATION=true
+# Inlined into the client bundle: skips t3-env client validation in the browser,
+# which would otherwise throw when optional CI builds omit NEXT_PUBLIC_* keys.
+ENV NEXT_PUBLIC_SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN npm run build

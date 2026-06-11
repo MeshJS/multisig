@@ -31,7 +31,17 @@ on:
 
 jobs:
   multisig-v1-smoke:
-    if: ${{ always() && github.repository == 'MeshJS/multisig' }}
+    # workflow_run has secrets; never execute fork PR code in that context.
+    # workflow_dispatch is maintainer-triggered and may checkout github.sha.
+    if: >-
+      github.repository == 'MeshJS/multisig' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:

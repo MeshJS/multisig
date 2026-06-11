@@ -20,6 +20,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
+      target: app
+      # `next build` inlines NEXT_PUBLIC_* into the client bundle, so the
+      # browser flow needs them at build time, not just at runtime. If any of
+      # these change in .env.playwright, rebuild the app image.
+      args:
+        NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+        NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_MAINNET_API_KEY:-}
+        NEXT_PUBLIC_DEFAULT_NETWORK: ${CI_NETWORK_ID:-0}
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"
@@ -28,6 +36,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
       JWT_SECRET: ${CI_JWT_SECRET}
+      # The production build serves plain HTTP here; without this flag the
+      # wallet-session cookie is marked Secure and Chromium drops it.
+      WALLET_SESSION_ALLOW_INSECURE_COOKIE: "true"
       CORS_ORIGINS: http://webapp:3000,http://localhost:3000
       NEXT_PUBLIC_DEFAULT_NETWORK: ${CI_NETWORK_ID:-0}
       NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
@@ -43,14 +54,19 @@ services:
         # "webapp" is not on the preload list, so Playwright can reach it over HTTP.
         aliases:
           - webapp
+    # Serve the production build, like docker-compose.ci.yml. `next dev` cannot
+    # serve this app: Turbopack dev bundles @sidan-lab/whisky-js-nodejs despite
+    # serverExternalPackages (breaking its WASM path, 500-ing every SSR page),
+    # and webpack dev chokes on react-refresh's import.meta injection into the
+    # CJS @harmoniclabs/cbor dist under the transpiled @meshsdk/react.
     command: >
       sh -c "
         echo 'Waiting for PostgreSQL to be ready...' &&
         until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done &&
         echo 'Running Prisma migrations...' &&
         npx prisma migrate deploy || npx prisma db push &&
-        echo 'Starting application...' &&
-        npm run dev -- --hostname 0.0.0.0 --port 3000
+        echo 'Starting application (production build)...' &&
+        node_modules/.bin/next start --hostname 0.0.0.0 --port 3000
       "
     healthcheck:
       test:

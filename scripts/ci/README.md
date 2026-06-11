@@ -409,6 +409,14 @@ $env:CI_ROUTE_SCENARIOS=""
 
 Start a clean CI-like stack:
 
+Set the CI env vars above **before** `up`. The `app` service only receives `CI_BLOCKFROST_PREPROD_API_KEY` and `CI_JWT_SECRET` when its container is created. If you set them after the first `up`, recreate app:
+
+```powershell
+docker compose -f docker-compose.ci.yml up -d postgres app --force-recreate
+```
+
+`wallet-status` can pass while route-chain 500s on `freeUtxos` / `governanceActiveProposals` when the app started without Blockfrost keys — the ci-runner calls Blockfrost directly; those v1 routes call Blockfrost through the app.
+
 If you changed local code or Dockerfiles, rebuild `app` and `ci-runner`; otherwise you can skip the `build` command for faster reruns.
 
 ```powershell
@@ -419,10 +427,12 @@ docker compose -f docker-compose.ci.yml up -d postgres app
 
 Bootstrap wallets and write host-mounted artifacts:
 
+Use the pre-bundled `.ci-dist/*.mjs` entrypoints (see `Dockerfile.ci`). Do not run these via `tsx` inside `ci-runner`: route-chain loads `@meshsdk/core-csl` / `whisky-evaluator` WASM, which `tsx` cannot load (`js_evaluate_tx_scripts` export errors). Rebuild `ci-runner` after CI script edits so esbuild refreshes `.ci-dist/`.
+
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
 Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
@@ -430,7 +440,7 @@ Optional: confirm wallets are funded on-chain before running route-chain (uses `
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -439,7 +449,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md `
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 
 ```
 
@@ -507,12 +517,12 @@ docker compose -f docker-compose.ci.yml build app ci-runner
 docker compose -f docker-compose.ci.yml up -d postgres app
 ```
 
-Bootstrap wallets and write host-mounted artifacts:
+Bootstrap wallets and write host-mounted artifacts (use bundled `.ci-dist/*.mjs`; see PowerShell section above):
 
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
 Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
@@ -520,7 +530,7 @@ Optional: confirm wallets are funded on-chain before running route-chain (uses `
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -529,7 +539,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md \
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 ```
 
 View generated report on host:

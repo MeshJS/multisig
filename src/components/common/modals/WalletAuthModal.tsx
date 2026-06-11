@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -16,7 +16,10 @@ interface WalletAuthModalProps {
 }
 
 export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuthorize = false }: WalletAuthModalProps) {
-  const { wallet, connected } = useWallet();
+  // useMeshWallet (not raw useWallet): react 2.0's wallet has an incompatible
+  // signData(addressBech32, data) signature and returns hex addresses, which
+  // breaks the nonce flow below. The hook re-exposes the 1.9 IWallet surface.
+  const { wallet, connected } = useMeshWallet();
   const network = useSiteStore((state) => state.network);
   const netId = (network === 1 ? 1 : 0) as 0 | 1;
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS();

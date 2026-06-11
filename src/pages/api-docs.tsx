@@ -1,7 +1,7 @@
 // src/pages/api-docs.tsx
 import dynamic from "next/dynamic";
 import React, { useEffect, useState, useRef } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
 import Globe from "./globe";
 
@@ -13,7 +13,9 @@ const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
 export const getServerSideProps = () => ({ props: {} });
 
 export default function ApiDocs() {
-  const { wallet, connected } = useWallet();
+  // useMeshWallet (not raw useWallet): the nonce flow below needs the 1.9
+  // IWallet surface — bech32 addresses and signData(payload, address).
+  const { wallet, connected } = useMeshWallet();
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,9 @@ type Mode =
  * and lets them pick before signing.
  */
 export default function InstanceTab({ flow }: Props) {
-  const { wallet, connected } = useWallet();
+  // useMeshWallet (not raw useWallet): the nonce signing below needs 1.9's
+  // signData(payload, address); react 2.0's wallet has the arguments swapped.
+  const { wallet, connected } = useMeshWallet();
   const { toast } = useToast();
   const [urlInput, setUrlInput] = useState("");
   const [busy, setBusy] = useState(false);

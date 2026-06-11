@@ -239,7 +239,8 @@ run.
 **`utxo-selector[data-loaded="true"]` timeout** - the app could not fetch UTxOs from
 Blockfrost. Confirm `CI_BLOCKFROST_PREPROD_API_KEY` is a valid preprod key and the
 wallets have UTxOs. If the key changed, rebuild and restart the `app` service because
-Next.js bakes `NEXT_PUBLIC_*` vars into the client bundle at first compile.
+`next build` bakes `NEXT_PUBLIC_*` vars into the client bundle at image build time
+(they are passed as Docker build args from `.env.playwright`).
 
 **`net::ERR_SSL_PROTOCOL_ERROR`** - `.app` is on Chromium's HSTS preload list, so
 `http://app:*` is upgraded to HTTPS. The Compose file uses the `webapp` network alias

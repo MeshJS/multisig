@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Info, Loader, Check, X, ExternalLink } from "lucide-react";
 
 import useAppWallet from "@/hooks/useAppWallet";
@@ -53,7 +53,9 @@ interface EkklesiaSignablePayload {
 export default function HydraBudgetVote() {
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
-  const { wallet, connected } = useWallet();
+  // useMeshWallet (not raw useWallet): signDataHex below needs 1.9's
+  // signData(payload, address); react 2.0's wallet has the arguments swapped.
+  const { wallet, connected } = useMeshWallet();
   const userAddress = useUserStore((s) => s.userAddress);
   const { toast } = useToast();
   const ctx = api.useUtils();
@@ -103,7 +105,7 @@ export default function HydraBudgetVote() {
    */
   const signDataHex = useCallback(
     async (dataHex: string): Promise<EkklesiaWitness> => {
-      if (!connected) throw new Error("Wallet not connected");
+      if (!connected || !wallet) throw new Error("Wallet not connected");
       if (!userAddress) throw new Error("User address not found");
       const sig = await wallet.signData(dataHex, userAddress);
       return { signature: sig.signature, key: sig.key };
