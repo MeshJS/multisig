@@ -1,4 +1,5 @@
 import { PrismaClient, type Proxy as DbProxy, type Wallet as DbWallet } from "@prisma/client";
+import { createPrismaClient } from "../framework/prismaClient";
 import { BlockfrostProvider, type UTxO } from "@meshsdk/core";
 import { deriveProxyScripts } from "../../../src/lib/server/proxyTxBuilders";
 import { hasAsset, type UtxoRef } from "../../../src/lib/server/proxyUtxos";
@@ -107,7 +108,7 @@ const proxySelect: Record<keyof ProxyAdoptionRow, true> = {
 let defaultDb: PrismaClient | undefined;
 
 function getDefaultDb(): PrismaClient {
-  defaultDb ??= new PrismaClient();
+  defaultDb ??= createPrismaClient();
   return defaultDb;
 }
 

@@ -56,3 +56,4 @@ scripts/bot-ref/bot-wallet.json
 
 # CI artifacts
 ci-artifacts/
+.ci-dist/

@@ -4,70 +4,73 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 const addCorsCacheBustingHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/cors',
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-const verifyJwtMock = jest.fn<(token: string | undefined) => { address: string; botId?: string; type?: string } | null>();
-const isBotJwtMock = jest.fn<(payload: unknown) => boolean>();
+type JwtPayloadLike = { address: string; botId?: string; type?: string };
+const verifyJwtMock = jest.fn<(token: string | undefined) => JwtPayloadLike | null>();
+const isBotJwtMock = jest.fn<(payload: JwtPayloadLike) => boolean>(
+  (payload) => Boolean(payload && (payload as JwtPayloadLike).type === "bot"),
+);
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/verifyJwt',
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
 );
 
 const applyRateLimitMock = jest.fn<
   (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
 >();
+const applyStrictRateLimitMock = jest.fn<
+  (req: NextApiRequest, res: NextApiResponse, options?: unknown) => boolean
+>();
 const applyBotRateLimitMock = jest.fn<
-  (req: NextApiRequest, res: NextApiResponse, botId: string) => boolean
+  (req: NextApiRequest, res: NextApiResponse, botId: string, maxRequests?: number) => boolean
 >();
 const enforceBodySizeMock = jest.fn<
   (req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean
 >();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/security/requestGuards',
   () => ({
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
+    applyStrictRateLimit: applyStrictRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
+    isBodyTooLarge: jest.fn(() => false),
   }),
-  { virtual: true },
 );
 
 const getClientIPMock = jest.fn<(req: NextApiRequest) => string>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/lib/security/rateLimit',
   () => ({
     __esModule: true,
     getClientIP: getClientIPMock,
   }),
-  { virtual: true },
 );
 
 const createCallerMock = jest.fn();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/server/api/root',
   () => ({
     __esModule: true,
     createCaller: createCallerMock,
   }),
-  { virtual: true },
 );
 
 const dbTransactionFindUniqueMock = jest.fn<(args: unknown) => Promise<unknown>>();
@@ -85,35 +88,32 @@ const dbMock = {
   },
 };
 
-jest.mock(
+jest.unstable_mockModule(
   '@/server/db',
   () => ({
     __esModule: true,
     db: dbMock,
   }),
-  { virtual: true },
 );
 
 const getProviderMock = jest.fn<(network: number) => unknown>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/utils/get-provider',
   () => ({
     __esModule: true,
     getProvider: getProviderMock,
   }),
-  { virtual: true },
 );
 
 const addressToNetworkMock = jest.fn<(address: string) => number>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/utils/multisigSDK',
   () => ({
     __esModule: true,
     addressToNetwork: addressToNetworkMock,
   }),
-  { virtual: true },
 );
 
 const shouldSubmitMultisigTxMock = jest.fn<
@@ -138,7 +138,7 @@ const addUniqueVkeyWitnessToTxMock = jest.fn<
   }
 >();
 
-jest.mock(
+jest.unstable_mockModule(
   '@/utils/txSignUtils',
   () => ({
     __esModule: true,
@@ -147,18 +147,19 @@ jest.mock(
     shouldSubmitMultisigTx: shouldSubmitMultisigTxMock,
     submitTxWithScriptRecovery: submitTxWithScriptRecoveryMock,
   }),
-  { virtual: true },
 );
 
 const resolvePaymentKeyHashMock = jest.fn<(address: string) => string>();
 
-jest.mock(
+jest.unstable_mockModule(
   '@meshsdk/core',
   () => ({
     __esModule: true,
     resolvePaymentKeyHash: resolvePaymentKeyHashMock,
+    // The handler also imports resolveStakeKeyHash; ESM static linking requires
+    // the mock to provide it even if the tested paths don't call it.
+    resolveStakeKeyHash: jest.fn(),
   }),
-  { virtual: true },
 );
 
 const witnessKeyHashHex = '00112233';
@@ -361,14 +362,13 @@ const cslMock = {
   Vkeywitnesses: MockVkeywitnesses,
 };
 
-jest.mock(
+jest.unstable_mockModule(
   '@meshsdk/core-csl',
   () => ({
     __esModule: true,
     csl: cslMock,
     calculateTxHash: calculateTxHashMock,
   }),
-  { virtual: true },
 );
 
 const consoleErrorSpy = jest
@@ -427,8 +427,14 @@ beforeEach(() => {
   createCallerMock.mockReset();
   verifyJwtMock.mockReset();
   isBotJwtMock.mockReset();
+  isBotJwtMock.mockImplementation(
+    (payload) => Boolean(payload && (payload as JwtPayloadLike).type === "bot"),
+  );
   applyRateLimitMock.mockReset();
+  applyStrictRateLimitMock.mockReset();
   applyBotRateLimitMock.mockReset();
+  applyBotRateLimitMock.mockReturnValue(true);
+  applyStrictRateLimitMock.mockReturnValue(true);
   enforceBodySizeMock.mockReset();
   getClientIPMock.mockReset();
 
@@ -469,7 +475,7 @@ beforeEach(() => {
         continue;
       }
       const existingKeyHash = Buffer.from(
-        existingWitness.vkey().public_key().hash().to_bytes(),
+        existingWitness!.vkey().public_key().hash().to_bytes(),
       ).toString('hex').toLowerCase();
 
       if (existingKeyHash === incomingKeyHash) {

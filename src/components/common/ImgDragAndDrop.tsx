@@ -225,6 +225,7 @@ export default function ImgDragAndDrop({ onImageUpload, initialUrl }: ImgDragAnd
       </div>
       <Input
         type="url"
+        aria-label="Image URL"
         className="w-full rounded-md border border-gray-300 p-2"
         placeholder="Enter your own image URL..."
         value={filePath}

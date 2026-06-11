@@ -1,4 +1,6 @@
-import { verify } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+
+const { verify } = jwt;
 
 export type JwtPayload =
   | { address: string; botId?: undefined; type?: undefined }

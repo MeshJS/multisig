@@ -29,7 +29,7 @@ import {
 import { parseProposalId } from "@/lib/governance";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
-type MeshTxBuilderWithBody = ReturnType<typeof getTxBuilder> & {
+type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
   meshTxBuilderBody: unknown;
 };
 
@@ -213,7 +213,7 @@ export default async function handler(
     return res.status(resolvedCollateral.status).json({ error: resolvedCollateral.error });
   }
 
-  const txBuilder = getTxBuilder(network, true) as MeshTxBuilderWithBody;
+  const txBuilder = (await getTxBuilder(network, true)) as MeshTxBuilderWithBody;
   let details: { dRepId: string };
   try {
     details = buildProxyVoteTx({

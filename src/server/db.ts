@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 import { env } from "@/env";
 
@@ -100,7 +101,13 @@ const createPrismaClient = () => {
     }
   }
 
+  // Prisma 7 requires a driver adapter (or Accelerate) instead of a schema/url
+  // connection. The pg adapter connects via the pooled DATABASE_URL; migrations
+  // use the direct connection configured in prisma.config.ts.
+  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
+
   const client = new PrismaClient({
+    adapter,
     log:
       env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });

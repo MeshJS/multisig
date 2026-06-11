@@ -3,16 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // For Supabase + Vercel serverless optimization:
-  // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
-  //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
-  // - DIRECT_URL: Use Supabase's direct connection URL (for migrations)
-  //   Example: postgresql://user:pass@host:5432/db
-  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL
-  //   This separation improves performance and prevents connection pool exhaustion
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  // Prisma 7 no longer accepts connection URLs in the schema. They live in
+  // prisma.config.ts (for CLI/migrations) and are passed to PrismaClient at
+  // runtime in src/server/db.ts. For Supabase + Vercel serverless:
+  // - DATABASE_URL: pooling URL (Transaction mode, port 6543, ?pgbouncer=true)
+  //   — used by the runtime client.
+  // - DIRECT_URL: direct connection (port 5432) — used by migrations.
+  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL.
 }
 
 model User {
@@ -43,6 +41,9 @@ model Wallet {
   migrationTargetWalletId String?
   profileImageIpfsUrl     String?
   ownerAddress            String?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Transaction {
@@ -77,6 +78,10 @@ model Signable {
   updatedAt         DateTime @updatedAt
   callbackUrl       String?
   remoteOrigin      String?
+
+  @@index([walletId])
+  @@index([state])
+  @@index([walletId, state])
 }
 
 model NewWallet {
@@ -95,6 +100,9 @@ model NewWallet {
   paymentCbor         String?
   stakeCbor           String?
   rawImportBodies     Json?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Nonce {
@@ -105,18 +113,36 @@ model Nonce {
 }
 
 model Ballot {
-  id               String   @id @default(cuid())
-  walletId         String
-  description      String?
-  items            String[]
-  itemDescriptions String[]
-  choices          String[]
-  anchorUrls       String[] @default([])
-  anchorHashes     String[] @default([])
+  id                String   @id @default(cuid())
+  walletId          String
+  description       String?
+  items             String[]
+  itemDescriptions  String[]
+  choices           String[]
+  anchorUrls        String[] @default([])
+  anchorHashes      String[] @default([])
   rationaleComments String[] @default([])
-  type             Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  type              Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([walletId])
+}
+
+// Retained to preserve the existing production table; feature is currently unused
+// in app code. Do not drop without an explicit data-migration plan.
+model Crowdfund {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+  paramUtxo         String?
+  govDatum          String?
+  govAddress        String?
+  createdAt         DateTime @default(now())
 }
 
 model Proxy {
@@ -146,6 +172,9 @@ model BalanceSnapshot {
   assetBalances Json
   isArchived    Boolean
   snapshotDate  DateTime @default(now())
+
+  @@index([walletId])
+  @@index([walletId, snapshotDate])
 }
 
 model Migration {
@@ -195,13 +224,13 @@ model BotKey {
 }
 
 model BotUser {
-  id              String   @id @default(cuid())
-  botKeyId        String   @unique
-  paymentAddress  String   @unique // One bot, one address
-  stakeAddress    String?
-  displayName     String?
-  createdAt       DateTime @default(now())
-  botKey          BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  botKeyId       String   @unique
+  paymentAddress String   @unique // One bot, one address
+  stakeAddress   String?
+  displayName    String?
+  createdAt      DateTime @default(now())
+  botKey         BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
 
   @@index([paymentAddress])
 }
@@ -213,11 +242,11 @@ enum BotWalletRole {
 
 model WalletBotAccess {
   walletId  String
-  botId      String
-  role       BotWalletRole
-  createdAt  DateTime @default(now())
+  botId     String
+  role      BotWalletRole
+  createdAt DateTime      @default(now())
 
-  @@unique([walletId, botId])
+  @@id([walletId, botId])
   @@index([walletId])
   @@index([botId])
 }
@@ -232,10 +261,10 @@ model PendingBot {
   name            String
   paymentAddress  String
   stakeAddress    String?
-  requestedScopes String           // JSON array of requested scopes
+  requestedScopes String // JSON array of requested scopes
   status          PendingBotStatus @default(UNCLAIMED)
-  claimedBy       String?          // ownerAddress of the claiming human
-  secretCipher    String?          // Encrypted secret (set on claim, cleared on pickup)
+  claimedBy       String? // ownerAddress of the claiming human
+  secretCipher    String? // Encrypted secret (set on claim, cleared on pickup)
   pickedUp        Boolean          @default(false)
   expiresAt       DateTime
   createdAt       DateTime         @default(now())
@@ -249,7 +278,7 @@ model BotClaimToken {
   id           String     @id @default(cuid())
   pendingBotId String     @unique
   pendingBot   PendingBot @relation(fields: [pendingBotId], references: [id], onDelete: Cascade)
-  tokenHash    String     // SHA-256 hash of the claim code
+  tokenHash    String // SHA-256 hash of the claim code
   attempts     Int        @default(0)
   expiresAt    DateTime
   consumedAt   DateTime?
@@ -258,6 +287,9 @@ model BotClaimToken {
   @@index([tokenHash])
 }
 
+// Append-only security audit trail. Writers should never UPDATE existing rows.
+// Events are emitted from auth flows, wallet/transaction mutations, and
+// privilege-changing actions (bot grants, signer changes, ownership transfers).
 model AuditLog {
   id           String   @id @default(cuid())
   actorAddress String? // Wallet address that performed the action (null for system/anonymous)

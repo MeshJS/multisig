@@ -84,12 +84,10 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
               >
                 {isImageIpfs ? (
                   <IPFSImage
-                    src={
-                      "ipfs://QmSNkaU4DW3asABKyUfSx3ykFAtV5PuXLsXu63nMUo8HGv"
-                    }
-                    alt="IPFS Image"
-                    width={300}
-                    height={300}
+                    src={imageSrc}
+                    alt={name}
+                    width={60}
+                    height={60}
                   />
                 ) : (
                   <Image

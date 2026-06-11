@@ -6,9 +6,9 @@ import { stringifyRedacted } from "../../framework/redact";
 import { parseMnemonic } from "../../framework/mnemonic";
 import { normalizeWalletTypeFromLabel } from "../../framework/walletType";
 import { isTestnetAddress } from "../../framework/preprod";
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../../framework/prismaClient";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 type TransferSeedResult = {
   fromWalletType: CIWalletType;

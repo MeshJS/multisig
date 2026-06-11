@@ -424,7 +424,7 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const paymentScript = appWallet.scriptCbor;
       if (!paymentScript) return;
 

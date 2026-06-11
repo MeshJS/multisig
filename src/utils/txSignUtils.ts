@@ -164,10 +164,24 @@ export function mergeSignerWitnesses(
   const signedTx = extractFullSignedTx(signedPayloadHex);
   const existingVkeysCount = originalTx.witness_set().vkeys()?.len() ?? 0;
   let bodyToUse = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
-  if (signedTx && existingVkeysCount === 0) {
+  if (signedTx) {
     const walletBodyBytes = Buffer.from(signedTx.body().to_bytes());
-    if (!originalBodyBytes.equals(walletBodyBytes)) {
+    const bodiesDiffer = !originalBodyBytes.equals(walletBodyBytes);
+    if (bodiesDiffer && existingVkeysCount === 0) {
+      // [ballot-witness-diag] First signer: adopt the wallet's re-canonicalised
+      // body so the signature matches (unchanged behaviour, now logged).
       bodyToUse = csl.TransactionBody.from_bytes(signedTx.body().to_bytes());
+      console.warn(
+        "[ballot-witness-diag] wallet re-canonicalised tx body; adopting wallet body (first signer)",
+      );
+    } else if (bodiesDiffer) {
+      // [ballot-witness-diag] Co-signer: body-swap is skipped because earlier
+      // witnesses exist, so this signature stays bound to the wallet's encoding
+      // and may be stale against the stored body we persist/submit.
+      console.warn(
+        "[ballot-witness-diag] wallet re-canonicalised tx body but existing witnesses present — co-signer witness may be stale against stored body",
+        { existingVkeysCount },
+      );
     }
   }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { getFirstAndLast } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
@@ -67,7 +67,7 @@ function ProfileIconWithDiscord({ discordId, size = "md" }: ProfileIconWithDisco
 }
 
 export default function ShowSigners({ appWallet }: ShowSignersProps) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { toast } = useToast();
   const ctx = api.useUtils();
@@ -138,6 +138,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
     async function signVerify() {
       if (!userAddress) throw new Error("User address not found");
       if (!connected) throw new Error("Wallet not connected");
+      if (!wallet) throw new Error("Wallet not connected");
 
       const userRewardAddress = (await wallet.getRewardAddresses())[0];
       const nonce = generateNonce("Verify this wallet: ");
@@ -155,24 +156,18 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
       }
     }
 
-    function handleConnectDiscord() {
-      // Discord OAuth2 URL with required scopes
-      const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
-      const redirectUri = encodeURIComponent(
-        `${process.env.NODE_ENV === "production" ? "https://multisig.meshjs.dev" : "http://localhost:3000"}/api/auth/discord/callback`,
-      );
-      const scope = encodeURIComponent("identify");
-      const state = encodeURIComponent(userAddress || "");
-
-      const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
-      console.log({
-        endpoint: "https://discord.com/api/oauth2/token",
-        client_id: process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID,
-        client_secret_set: !!process.env.DISCORD_CLIENT_SECRET,
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      });
-      window.location.href = url;
+    async function handleConnectDiscord() {
+      try {
+        const r = await fetch("/api/auth/discord/start", { credentials: "include" });
+        if (!r.ok) {
+          throw new Error("Failed to start Discord auth");
+        }
+        const data = (await r.json()) as { url?: string };
+        if (!data.url) throw new Error("No Discord auth URL");
+        window.location.href = data.url;
+      } catch (err) {
+        console.error("Discord auth start failed:", err instanceof Error ? err.message : err);
+      }
     }
 
     return appWallet.signersAddresses.map((address, index) => {

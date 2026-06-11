@@ -59,7 +59,7 @@ export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
         appWallet.address,
       );
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       for (const utxo of utxos) {
         txBuilder.txIn(

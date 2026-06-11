@@ -26,14 +26,14 @@ jobs:
        github.event.deployment.creator.login == 'railway-app[bot]' &&
        contains(github.event.deployment.environment, 'preprod'))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # On deployment_status, check out the exact SHA that was deployed.
           ref: ${{ github.event.deployment.sha || github.sha }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Check secrets configured
         id: check-secrets
@@ -58,7 +58,7 @@ jobs:
         run: npx tsx scripts/ci-smoke/run-route-chain.ts
 
       - name: Upload smoke artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && steps.check-secrets.outputs.configured == 'true'
         with:
           name: smoke-report

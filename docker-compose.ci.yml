@@ -20,6 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
+      target: app
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"
@@ -41,8 +42,8 @@ services:
         until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done &&
         echo 'Running Prisma migrations...' &&
         npx prisma migrate deploy || npx prisma db push &&
-        echo 'Starting application...' &&
-        npm run dev -- --hostname 0.0.0.0 --port 3000
+        echo 'Starting application (production build)...' &&
+        node_modules/.bin/next start --hostname 0.0.0.0 --port 3000
       "
     healthcheck:
       test:
@@ -56,6 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
+      target: base
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"
@@ -91,9 +93,9 @@ services:
     command: >
       sh -c "
         status=0;
-        npx --yes tsx scripts/ci/cli/bootstrap.ts || status=$$?;
-        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/wallet-status.ts || status=$$?; fi;
-        if [ \"$$status\" -eq 0 ]; then npx --yes tsx scripts/ci/cli/route-chain.ts || status=$$?; fi;
+        node .ci-dist/bootstrap.mjs || status=$$?;
+        if [ \"$$status\" -eq 0 ]; then node .ci-dist/wallet-status.mjs || status=$$?; fi;
+        if [ \"$$status\" -eq 0 ]; then node .ci-dist/route-chain.mjs || status=$$?; fi;
         rm -f \"${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}\";
         exit \"$$status\"
       "

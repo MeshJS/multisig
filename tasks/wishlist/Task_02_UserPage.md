@@ -71,7 +71,6 @@ model User {
   id           String @id @default(cuid())
   address      String @unique
   stakeAddress String @unique
-  nostrKey     String @unique
   discordId    String @default("")
 }
 

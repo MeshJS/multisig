@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { TRPCError } from "@trpc/server";
 
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
@@ -95,7 +96,7 @@ describe("wallet router authorization", () => {
       isArchived: false,
       verified: [],
       migrationTargetWalletId: null,
-    });
+    } as never);
 
     const caller = createCaller({
       db: baseDb as any,
@@ -130,7 +131,7 @@ describe("wallet router authorization", () => {
       verified: [],
       migrationTargetWalletId: null,
     };
-    baseDb.wallet.findUnique.mockResolvedValueOnce(wallet);
+    baseDb.wallet.findUnique.mockResolvedValueOnce(wallet as never);
 
     const caller = createCaller({
       db: baseDb as any,

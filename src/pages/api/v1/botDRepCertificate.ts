@@ -169,7 +169,7 @@ export default async function handler(
   }
   const { utxos } = resolved;
 
-  const txBuilder = getTxBuilder(network);
+  const txBuilder = await getTxBuilder(network);
 
   if (action === "register") {
     const anchorUrl =

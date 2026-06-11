@@ -31,9 +31,22 @@ export default async function handler(
       .json({ error: "Missing or invalid pubKeyHashes parameter" });
   }
 
-  const hashes = pubKeyHashes.split(",").map((s) => s.trim().toLowerCase());
-  console.log(hashes);
+  const hashes = pubKeyHashes
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => /^[0-9a-f]{56}$/.test(s));
+
+  if (hashes.length === 0) {
+    return res.status(400).json({ error: "No valid pubKeyHashes provided" });
+  }
+  if (hashes.length > 50) {
+    return res.status(400).json({ error: "Too many pubKeyHashes (max 50)" });
+  }
+
   const networkId = parseInt(network as string, 10);
+  if (networkId !== 0 && networkId !== 1) {
+    return res.status(400).json({ error: "Invalid network (expected 0 or 1)" });
+  }
 
   const provider = getProvider(networkId);
 

@@ -1,20 +1,61 @@
-FROM node:20-alpine
+# Debian (glibc), not alpine (musl): the @meshsdk/core-csl / whisky-evaluator
+# WebAssembly modules don't resolve under musl during `next build`.
+#
+# Two stages:
+#   - `base`  : deps + source. Used by the ci-runner service, which only runs
+#               tsx scripts and must NOT run `next build`.
+#   - `app`   : base + a production `next build`. Used by the app service.
+FROM node:22-slim AS base
 
 # Install PostgreSQL client tools for readiness checks.
-RUN apk add --no-cache postgresql-client
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Upgrade npm to match local dev environment (lock file generated with npm 11).
 RUN npm install -g npm@11
 
+# @meshsdk/core-csl loads as a native ESM module whose whisky-evaluator WASM
+# exports node can only resolve with --experimental-wasm-modules. Both the app
+# (`next build` + `next start`) and the ci-runner scripts that import the Mesh
+# SDK need it, so set it on the shared base stage.
+ENV NODE_OPTIONS=--experimental-wasm-modules
+
 # Install dependencies first for better layer caching.
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npm ci
 
 # Copy full source for containerized CI runs.
 COPY . .
 
+# Pre-bundle the CI CLI scripts with esbuild and run them with plain node.
+# tsx's esbuild loader can't defer whisky-evaluator's .wasm imports to node's
+# native --experimental-wasm-modules handling, so `tsx bootstrap.ts` fails to
+# load @meshsdk/core-csl. Bundling (resolving @/ aliases, externalizing
+# node_modules) lets `node --experimental-wasm-modules` load the WASM natively.
+RUN npx --yes esbuild@0.25.10 \
+  scripts/ci/cli/bootstrap.ts \
+  scripts/ci/cli/wallet-status.ts \
+  scripts/ci/cli/route-chain.ts \
+  --bundle --platform=node --format=esm --packages=external \
+  --alias:@=./src --outdir=.ci-dist --out-extension:.js=.mjs
+
 EXPOSE 3000
 
+# --- Application image: production build served with `next start` ---------------
+FROM base AS app
+
+# Build the production app so the smoke runs `next start` (not `next dev`) and
+# exercises the same output Vercel deploys. `next dev` mis-resolves the
+# @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.
+# Connection URLs are only needed at runtime (compose overrides these); the
+# dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
+# (NODE_OPTIONS=--experimental-wasm-modules is inherited from the base stage.)
+ENV SKIP_ENV_VALIDATION=true
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+RUN npm run build

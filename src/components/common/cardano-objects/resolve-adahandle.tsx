@@ -1,6 +1,15 @@
 import { toast } from "@/hooks/use-toast";
 import { getProvider } from "@/utils/get-provider";
 
+// AdaHandle lookup is mainnet-only. Lazy-init the provider so the module
+// can be imported during SSR / page-data collection without requiring
+// NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET to be defined at module-load time.
+let cachedProvider: ReturnType<typeof getProvider> | null = null;
+const getMainnetProvider = () => {
+  if (!cachedProvider) cachedProvider = getProvider(1);
+  return cachedProvider;
+};
+
 export const resolveAdaHandle = async (
   setAdaHandle: (value: string) => void,
   setRecipientAddresses: (value: string[]) => void,
@@ -18,7 +27,7 @@ export const resolveAdaHandle = async (
       return;
     }
 
-    const address = await provider.fetchHandleAddress(handleName);
+    const address = await getMainnetProvider().fetchHandleAddress(handleName);
 
     if (address) {
       const newAddresses = [...recipientAddresses];

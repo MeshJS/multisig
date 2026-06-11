@@ -118,7 +118,20 @@ export default async function handler(
 
   const reqSigners = wallet.numRequiredSigners;
   const type = wallet.type;
-  const network = address.includes("test") ? 0 : 1;
+  // Derive network from the bech32 HRP (human-readable prefix) instead of
+  // the older `address.includes("test")` substring check, which would
+  // mis-classify any mainnet address whose bech32 body happened to contain
+  // the substring "test". Cardano HRPs:
+  //   `addr1...` / `stake1...` = mainnet
+  //   `addr_test1...` / `stake_test1...` = testnet
+  let network: 0 | 1;
+  if (/^(addr_test1|stake_test1)/.test(address)) {
+    network = 0;
+  } else if (/^(addr1|stake1)/.test(address)) {
+    network = 1;
+  } else {
+    return res.status(400).json({ error: "Invalid address" });
+  }
 
   try {
     const newTx = await createPendingMultisigTransaction(db, {
