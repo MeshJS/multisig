@@ -16,14 +16,8 @@ import React from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider } from "@/utils/get-provider";
-import {
-  Asset,
-  deserializeAddress,
-  pubKeyAddress,
-  scriptAddress,
-  serializeAddressObj,
-  serializeRewardAddress,
-} from "@meshsdk/core";
+import { Asset } from "@meshsdk/core";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useUTXOS from "@/hooks/useUTXOS";
 import { api } from "@/utils/api";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
@@ -405,23 +399,7 @@ function ConnectWalletContent({
         }
 
         // Normalize possible hex-encoded CIP-30 address bytes to bech32 (addr/addr_test)
-        try {
-          if (!address.startsWith("addr1") && !address.startsWith("addr_test1")) {
-            const d = deserializeAddress(address);
-            const stakeCredential = d.stakeCredentialHash || d.stakeScriptCredentialHash || "";
-            const rebuilt =
-              d.pubKeyHash
-                ? pubKeyAddress(d.pubKeyHash, stakeCredential, !!d.stakeScriptCredentialHash)
-                : d.scriptHash
-                  ? scriptAddress(d.scriptHash, stakeCredential, !!d.stakeScriptCredentialHash)
-                  : null;
-            if (rebuilt) {
-              address = serializeAddressObj(rebuilt, netId);
-            }
-          }
-        } catch {
-          // If normalization fails, keep original (better than dropping the address)
-        }
+        address = normalizeAddressToBech32(address);
 
         setUserAddress(address);
 
@@ -430,24 +408,8 @@ function ConnectWalletContent({
         let stakeAddress = stakeAddresses[0];
 
         // Normalize possible hex-encoded reward address bytes to bech32 (stake/stake_test)
-        try {
-          if (
-            stakeAddress &&
-            !stakeAddress.startsWith("stake1") &&
-            !stakeAddress.startsWith("stake_test1")
-          ) {
-            const d = deserializeAddress(stakeAddress);
-            const stakeHash = d.stakeCredentialHash || d.stakeScriptCredentialHash;
-            if (stakeHash) {
-              stakeAddress = serializeRewardAddress(
-                stakeHash,
-                !!d.stakeScriptCredentialHash,
-                netId,
-              );
-            }
-          }
-        } catch {
-          // ignore
+        if (stakeAddress) {
+          stakeAddress = normalizeAddressToBech32(stakeAddress);
         }
 
         if (!stakeAddress || !address) {
@@ -483,7 +445,7 @@ function ConnectWalletContent({
         utxosInitializedRef.current = false;
       }
     })();
-  }, [isUtxosEnabled, utxosWallet, isUserLoading, createUser, setUserAddress, netId]);
+  }, [isUtxosEnabled, utxosWallet, isUserLoading, createUser, setUserAddress]);
 
   // Handle UTXOS wallet assets and network
   useEffect(() => {
