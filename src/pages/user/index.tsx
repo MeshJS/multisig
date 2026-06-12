@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useToast } from "@/hooks/use-toast";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
@@ -22,7 +22,7 @@ export default function UserInfoPage() {
   const { user, isLoading } = useUser();
   const userAddress = useUserStore((state) => state.userAddress);
   const userAssets = useUserStore((state) => state.userAssets);
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled, isLoading: isUtxosLoading, error: utxosError } = useUTXOS();
   const { walletType, isAnyWalletConnected, isWalletReady, activeWallet } = useActiveWallet();
   const { toast } = useToast();

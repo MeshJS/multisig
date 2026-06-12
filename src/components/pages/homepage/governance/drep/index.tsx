@@ -4,7 +4,7 @@ import Pagination from "@/components/common/overall-layout/pagination";
 import { getProvider } from "@/utils/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import DelegateButton from "./id/delegateButton";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,7 +16,7 @@ export default function DrepOverviewPage() {
     Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata | null }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [order, setOrder] = useState<"asc" | "desc">("asc");

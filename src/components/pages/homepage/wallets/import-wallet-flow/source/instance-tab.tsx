@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,10 @@ type Mode =
  * and lets them pick before signing.
  */
 export default function InstanceTab({ flow }: Props) {
-  const { wallet, connected } = useWallet();
+  // Mesh 1.9 bridge — signData(payload, address). react-2.0's useWallet()
+  // wallet has the args swapped, which made VESPR sign the wrong bytes and
+  // throw CIP-30 InternalError (-2) during cross-instance import.
+  const { wallet, connected } = useMeshWallet();
   const { toast } = useToast();
   const [urlInput, setUrlInput] = useState("");
   const [busy, setBusy] = useState(false);
