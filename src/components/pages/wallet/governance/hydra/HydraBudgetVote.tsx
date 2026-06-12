@@ -6,6 +6,10 @@ import { Info, Loader, Check, X, ExternalLink } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useUserStore } from "@/lib/zustand/user";
+import { useSiteStore } from "@/lib/zustand/site";
+import { getProvider } from "@/utils/get-provider";
+import { getDRepIds } from "@meshsdk/core-cst";
+import type { BlockfrostDrepInfo } from "@/types/governance";
 import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -52,7 +56,8 @@ interface EkklesiaSignablePayload {
 
 export default function HydraBudgetVote() {
   const { appWallet } = useAppWallet();
-  const { multisigWallet } = useMultisigWallet();
+  const { multisigWallet, isLoading: walletLoading } = useMultisigWallet();
+  const network = useSiteStore((s) => s.network);
   // Mesh 1.9 bridge — signData(payload, address). Do NOT use react-2.0's
   // useWallet().wallet here: its signData args are swapped, which silently
   // signed the wrong bytes (the ballot witness/body-hash divergence).
@@ -77,7 +82,31 @@ export default function HydraBudgetVote() {
   });
 
   const questions = ballot?.hydra?.ballot?.questions ?? [];
+  // Locally-derived DRep ID (always present once the wallet loads — it's a
+  // key/script derivation, NOT proof of on-chain registration).
   const dRepId = multisigWallet?.getDRepId();
+
+  // Proper detection: the wallet can only vote if this DRep is actually
+  // registered (active) on-chain — the same source the DRep Information card
+  // uses. Gating on `dRepId` alone wrongly told registered DReps to "register
+  // first", since the derivation succeeds regardless of registration.
+  const { data: isDRepRegistered, isLoading: registrationLoading } = useQuery({
+    queryKey: ["drep-registration", dRepId, network],
+    enabled: !!dRepId,
+    staleTime: 60 * 1000,
+    queryFn: async (): Promise<boolean> => {
+      const ids = getDRepIds(dRepId!);
+      try {
+        const info = (await getProvider(network).get(
+          `/governance/dreps/${ids.cip105}`,
+        )) as BlockfrostDrepInfo | undefined;
+        return info?.active === true;
+      } catch {
+        // 404 (or any lookup failure) → treat as not registered.
+        return false;
+      }
+    },
+  });
   // DRep native script for the draft body (role-3 keys, payment-script fallback).
   const nativeScript = useMemo(
     () => multisigWallet?.buildScript(3) ?? multisigWallet?.buildScript(0),
@@ -268,7 +297,23 @@ export default function HydraBudgetVote() {
 
   if (!appWallet) return null;
 
-  if (!dRepId) {
+  // Still resolving the wallet or its on-chain DRep status — don't claim the
+  // wallet isn't a DRep before we actually know.
+  if (walletLoading || !multisigWallet || (!!dRepId && registrationLoading)) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Hydra Budget Vote</CardTitle>
+          <CardDescription className="flex items-center gap-2">
+            <Loader className="h-4 w-4 animate-spin" />
+            Checking DRep registration…
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (!isDRepRegistered) {
     return (
       <Card>
         <CardHeader>
