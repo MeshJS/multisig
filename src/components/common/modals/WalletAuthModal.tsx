@@ -104,20 +104,34 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
           signingAddress,
         )) as { signature: string; key: string };
       } catch (error: any) {
-        if (error instanceof Error) {
-          const msg = error.message.toLowerCase();
-          if (
-            msg.includes("user") ||
-            msg.includes("cancel") ||
-            msg.includes("decline") ||
-            msg.includes("reject")
-          ) {
-            throw new Error(
-              "Signing cancelled. Please try again and approve the signing request.",
-            );
-          }
+        const raw =
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : (() => {
+                  try {
+                    return JSON.stringify(error);
+                  } catch {
+                    return String(error);
+                  }
+                })();
+        // Surface the wallet's real error — some (e.g. the UTXOS smart
+        // wallet) fail inside signData with a provider-specific message we
+        // otherwise lose. Keep the friendly cancel handling on top.
+        console.error("[WalletAuthModal] signData failed:", error);
+        const msg = (raw ?? "").toLowerCase();
+        if (
+          msg.includes("user") ||
+          msg.includes("cancel") ||
+          msg.includes("decline") ||
+          msg.includes("reject")
+        ) {
+          throw new Error(
+            "Signing cancelled. Please try again and approve the signing request.",
+          );
         }
-        throw new Error("Failed to sign nonce. Please try again.");
+        throw new Error(`Failed to sign nonce: ${raw || "unknown wallet error"}`);
       }
 
       if (!signed?.signature || !signed?.key) {
