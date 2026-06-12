@@ -111,8 +111,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.playwright
+    # Three Chromium instances run in parallel (one per ring-transfer leg);
+    # Docker's default 64MB /dev/shm makes Chromium crash under that load.
+    shm_size: 1gb
     environment:
       APP_URL: http://webapp:3000
+      PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-3}
       CI_CONTEXT_PATH: /artifacts/ci-wallet-context.json
       CI_JWT_SECRET: ${CI_JWT_SECRET}
       CI_MNEMONIC_1: ${CI_MNEMONIC_1:-}

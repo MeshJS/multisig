@@ -1,7 +1,11 @@
 // Phase 4: Full browser-driven ring transfer test.
 //
-// Three sequential legs share the same preprod wallets and run in order to
-// avoid UTxO conflicts.  Each leg:
+// Three legs run in parallel (one worker each). Every leg spends from a
+// different multisig wallet (legacy, hierarchical, sdk), so the legs never
+// compete for the same UTxOs — incoming deposits from a concurrent leg do not
+// invalidate a source wallet's existing inputs. Each source wallet must hold
+// enough ADA on its own (transfer amount + ~0.5 ADA fees); bootstrap funds
+// each with at least 5 ADA.  Each leg:
 //   1. Proposer (signer 0) creates the transaction via the UI — the proposer
 //      auto-signs during creation (1 of 2 required signatures).
 //   2. Signer 1 opens the transactions page and clicks "Approve & Sign" —
@@ -74,10 +78,13 @@ function totalLovelace(utxos: BlockfrostUtxo[]): number {
   }, 0);
 }
 
+// 300s timeout: when a prior run left a source wallet underfunded, the leg
+// that refills it runs concurrently — broadcast plus preprod confirmation can
+// take a few minutes, and this wait is what lets the ring self-heal.
 async function waitForSpendableUtxos(
   address: string,
   minLovelace: number,
-  timeoutMs = 180_000,
+  timeoutMs = 300_000,
 ): Promise<BlockfrostUtxo[]> {
   const deadline = Date.now() + timeoutMs;
   let lastBalance = 0;
@@ -266,7 +273,11 @@ async function waitForTxCleared(
   );
 }
 
-test.describe.serial("ring transfer", () => {
+test.describe("ring transfer", () => {
+  // Each leg has a distinct source wallet, so they can run on separate workers.
+  test.describe.configure({ mode: "parallel" });
+
+
   for (const leg of LEGS) {
     test(`ring transfer: ${leg.name}`, async ({ page, authenticateAs }) => {
       test.setTimeout(600_000);

@@ -6,6 +6,10 @@ export default defineConfig({
   globalSetup: "./global-setup.ts",
   timeout: 120_000,
   retries: 0,
+  // The ring-transfer legs spend from distinct wallets and run in parallel —
+  // one worker per leg. Default worker detection inside a container can
+  // resolve to 1, which would silently serialize them again.
+  workers: Number(process.env.PLAYWRIGHT_WORKERS ?? "3"),
   reporter: [
     [
       "html",

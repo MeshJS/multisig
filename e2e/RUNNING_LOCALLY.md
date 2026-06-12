@@ -200,6 +200,7 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
 | `CI_NETWORK_ID` | No | `0` for preprod. Defaults to `0`. |
 | `CI_NUM_REQUIRED_SIGNERS` | No | Signing threshold. Defaults to `2`. |
 | `CI_WALLET_TYPES` | No | Comma-separated wallet types. Defaults to `legacy,hierarchical,sdk`. |
+| `PLAYWRIGHT_WORKERS` | No | Number of parallel Playwright workers. Defaults to `3` (one per ring-transfer leg). Set to `1` for serial execution. |
 
 ## How the Test Works
 
@@ -209,7 +210,8 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
 
 2. `global-setup.ts` validates env vars and caches the context JSON for the test run.
 
-3. `ring-transfer.spec.ts` runs three sequential legs. For each leg:
+3. `ring-transfer.spec.ts` runs three legs in parallel, one Playwright worker
+   per leg. For each leg:
    - Signer 0 proposes a transaction from `/wallets/{id}/transactions/new`.
    - The `window.cardano.meshci` mock intercepts `signTx` and bridges to
      `MeshWallet.signTx` in Node.js using the corresponding mnemonic.
@@ -218,7 +220,12 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
    - The test waits for `[data-testid="tx-broadcast-success"]` and confirms the pending
      transaction is cleared via `/api/v1/pendingTransactions`.
 
-4. Legs run serially to avoid UTxO conflicts between legs.
+4. Legs run in parallel. Each leg spends from a different multisig wallet
+   (legacy, hierarchical, sdk), so the legs never compete for the same UTxOs.
+   Each source wallet must independently hold enough ADA for its transfer plus
+   fees; if a previous run left a wallet short, the leg waits up to 5 minutes
+   for the concurrently running leg that refills it. Set `PLAYWRIGHT_WORKERS=1`
+   to fall back to serial execution.
 
 ## Troubleshooting
 
