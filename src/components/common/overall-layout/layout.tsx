@@ -1,7 +1,7 @@
 import React, { useEffect, Component, ReactNode, useMemo, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useWallet, useAddress } from "@meshsdk/react";
+import { useAddress } from "@meshsdk/react";
 import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
@@ -99,7 +99,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { wallet } = useWallet();
   // 1.9 IWallet bridge — used for getDRep(), which the react 2.0 wallet lacks.
   const { wallet: meshWallet } = useMeshWallet();
   const { state: walletState, connectedWalletInstance } = useWalletContext();
@@ -124,9 +123,9 @@ export default function RootLayout({
   const connected = String(walletState) === String(WalletState.CONNECTED);
   const anyWalletConnected = connected || isUtxosEnabled;
   // Use connectedWalletInstance if available, otherwise fall back to wallet
-  const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0 
-    ? connectedWalletInstance 
-    : wallet;
+  const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0
+    ? connectedWalletInstance
+    : meshWallet;
 
   // Global error handler for unhandled promise rejections
   useEffect(() => {
@@ -289,8 +288,8 @@ export default function RootLayout({
     }
 
     async function initializeWallet() {
-      if (!walletAddress) return;
-      
+      if (!walletAddress || !activeWallet) return;
+
       try {
         // Get stake address
         const stakeAddresses = await activeWallet.getRewardAddresses();

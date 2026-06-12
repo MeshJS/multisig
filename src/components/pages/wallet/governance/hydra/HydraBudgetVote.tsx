@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Info, Loader, Check, X, ExternalLink } from "lucide-react";
 
 import useAppWallet from "@/hooks/useAppWallet";
@@ -53,7 +53,10 @@ interface EkklesiaSignablePayload {
 export default function HydraBudgetVote() {
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
-  const { wallet, connected } = useWallet();
+  // Mesh 1.9 bridge — signData(payload, address). Do NOT use react-2.0's
+  // useWallet().wallet here: its signData args are swapped, which silently
+  // signed the wrong bytes (the ballot witness/body-hash divergence).
+  const { wallet, connected } = useMeshWallet();
   const userAddress = useUserStore((s) => s.userAddress);
   const { toast } = useToast();
   const ctx = api.useUtils();
@@ -103,7 +106,7 @@ export default function HydraBudgetVote() {
    */
   const signDataHex = useCallback(
     async (dataHex: string): Promise<EkklesiaWitness> => {
-      if (!connected) throw new Error("Wallet not connected");
+      if (!connected || !wallet) throw new Error("Wallet not connected");
       if (!userAddress) throw new Error("User address not found");
       const sig = await wallet.signData(dataHex, userAddress);
       return { signature: sig.signature, key: sig.key };
