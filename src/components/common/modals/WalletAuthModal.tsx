@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useWallet } from "@meshsdk/react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import useUTXOS from "@/hooks/useUTXOS";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 interface WalletAuthModalProps {
@@ -15,7 +15,16 @@ interface WalletAuthModalProps {
 }
 
 export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuthorize = false }: WalletAuthModalProps) {
-  const { wallet, connected } = useWallet();
+  // Use the Mesh 1.9 BrowserWallet (via useMeshWallet), NOT react-2.0's
+  // useWallet().wallet. The latter is a low-level CIP-30 wallet whose
+  // signData(address, payload) argument order is SWAPPED relative to 1.9's
+  // signData(payload, address). Calling it with our (nonce, address) order
+  // made wallets (e.g. VESPR) sign with the nonce as the address and throw
+  // CIP-30 InternalError (-2). The 1.9 wallet matches the (payload, address)
+  // order used everywhere else in the app, and the UTXOS MeshWallet below is
+  // also payload-first — so a single signData(nonce, address) call is correct
+  // for both.
+  const { wallet: meshWallet, connected } = useMeshWallet();
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS();
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +33,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
   const signingWallet =
     isUtxosEnabled && utxosWallet?.cardano
       ? utxosWallet.cardano
-      : (wallet && connected ? wallet : null);
+      : (meshWallet && connected ? meshWallet : null);
 
   const handleAuthorize = useCallback(async () => {
     if (!signingWallet) {
@@ -98,7 +107,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
 
       let signed: { signature: string; key: string } | undefined;
       try {
-        // Mirror the working Swagger token flow: signData(nonce, address)
+        // Mesh 1.9 / UTXOS order is signData(payload, address).
         signed = (await (signingWallet as any).signData(
           nonce,
           signingAddress,
