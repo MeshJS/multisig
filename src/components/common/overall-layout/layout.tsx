@@ -6,6 +6,7 @@ import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useAppWallet from "@/hooks/useAppWallet";
 import useUTXOS from "@/hooks/useUTXOS";
 import useMeshWallet from "@/hooks/useMeshWallet";
@@ -240,10 +241,14 @@ export default function RootLayout({
     },
   });
 
-  // Sync address from hook to store
+  // Sync address from hook to store.
+  // Normalize to bech32: react-2.0's useAddress (and raw CIP-30 wallets) can
+  // return hex-encoded address bytes, but user records are keyed by bech32 —
+  // a hex userAddress makes getUserByAddress miss and the app hangs on
+  // "Loading…".
   useEffect(() => {
     if (address) {
-      setUserAddress(address);
+      setUserAddress(normalizeAddressToBech32(address));
     }
   }, [address, setUserAddress]);
   
@@ -258,7 +263,7 @@ export default function RootLayout({
       activeWallet.getUsedAddresses()
         .then((addresses) => {
           if (addresses && addresses.length > 0) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
             fetchingAddressRef.current = false;
           } else {
             return activeWallet.getUnusedAddresses();
@@ -266,7 +271,7 @@ export default function RootLayout({
         })
         .then((addresses) => {
           if (addresses && addresses.length > 0 && !userAddress) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
           }
           fetchingAddressRef.current = false;
         })
