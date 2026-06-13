@@ -66,7 +66,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
       )}
       <SessionProvider session={session}>
         <div className={GeistSans.className}>
-          <div className="flex min-h-screen w-full flex-col">
+          <div className="flex min-h-[100dvh] w-full flex-col">
             <RootLayout>
               <Component {...pageProps} />
             </RootLayout>
