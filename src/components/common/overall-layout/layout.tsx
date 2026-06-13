@@ -111,6 +111,7 @@ export default function RootLayout({
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
+  const reauthNonce = useUserStore((state) => state.reauthNonce);
   const ctx = api.useUtils();
   
   // State for wallet authorization modal
@@ -397,6 +398,21 @@ export default function RootLayout({
     setHasCheckedSession(true); // Mark as checked to prevent showing modal again
     // Don't refetch here - let the natural query refetch handle it if needed
   }, []);
+
+  // Manual re-authorization: when the user is connected but never got a
+  // session (e.g. the auto-authorize failed/was cancelled), hasCheckedSession
+  // stays true and the modal never reopens — leaving the connect button stuck
+  // on "Loading…". Bumping reauthNonce (from the connect dropdown) clears that
+  // latch and refetches the session so the session-check effect reopens the
+  // auth modal.
+  useEffect(() => {
+    if (reauthNonce > 0) {
+      setHasCheckedSession(false);
+      setCheckingSession(false);
+      setShowAuthModal(false);
+      void refetchWalletSession();
+    }
+  }, [reauthNonce, refetchWalletSession]);
 
   const handleAuthModalAuthorized = useCallback(async () => {
     setShowAuthModal(false);
