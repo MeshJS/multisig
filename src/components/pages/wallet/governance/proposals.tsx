@@ -31,7 +31,7 @@ import VoteButton from "./proposal/voteButtton";
 import { UTxO } from "@meshsdk/core";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText, Plus } from "lucide-react";
+import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText } from "lucide-react";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
@@ -844,17 +844,6 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                               View Full Details
                             </Button>
                           </Link>
-                <Button
-                  variant="default"
-                  className="w-full text-sm bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white py-2.5"
-                  onClick={() => {
-                    setCurrentProposal(proposalId, proposal.json_metadata.body.title);
-                    openModal();
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add to Ballot
-                </Button>
                           <VoteButton
                             utxos={utxos}
                             appWallet={appWallet}
@@ -1129,19 +1118,8 @@ function ProposalRow({
                 </div>
               )}
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button
-                  variant="default"
-                  className="w-full sm:w-auto text-sm bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white"
-                  onClick={() => {
-                    setCurrentProposal(proposalId, proposal.json_metadata.body.title);
-                    openModal();
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add to Ballot
-                </Button>
                 <Link href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}>
-                  <Button variant="default" className="w-full sm:w-auto text-sm">
+                  <Button variant="outline" className="w-full sm:w-auto text-sm">
                     View Full Proposal
                   </Button>
                 </Link>
