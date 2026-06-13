@@ -3,7 +3,8 @@ import {
   deserializeAddress,
   serializeNativeScript,
 } from "@meshsdk/core";
-import { csl, deserializeNativeScript, calculateTxHash } from "@meshsdk/core-csl";
+import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
+import { resolveTxHash } from "@meshsdk/core-cst";
 import type {
   MultisigSubmissionWallet,
   ScriptRecoveryWallet,
@@ -506,7 +507,10 @@ export function diagnoseTxWitnesses(txHex: string): {
   stale: { pubKeyHex: string; keyHashHex: string }[];
 } {
   const tx = csl.Transaction.from_hex(txHex);
-  const bodyHash = calculateTxHash(txHex).toLowerCase();
+  // Hash with core-cst (the build serializer) so this matches the body hash the
+  // node computes from the submitted bytes — core-csl's calculateTxHash
+  // re-serializes the body and would false-flag valid Conway-vote witnesses.
+  const bodyHash = resolveTxHash(txHex).toLowerCase();
   const bodyHashBytes = Buffer.from(bodyHash, "hex");
   const vkeys = tx.witness_set().vkeys();
   const total = vkeys ? vkeys.len() : 0;
