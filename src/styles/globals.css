@@ -716,3 +716,21 @@ body.add-wallet-glass-page #logo-header svg {
 .force-scroll-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Touch devices: enforce ~44px minimum tap targets on interactive controls
+   without changing desktop density. Scoped to coarse pointers so mouse/laptop
+   layouts are untouched; intentionally not applied to plain text links. */
+@media (pointer: coarse) {
+  button,
+  a[role="button"],
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
