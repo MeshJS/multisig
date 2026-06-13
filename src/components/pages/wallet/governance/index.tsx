@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Vote, Waves, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 
 function PageGovernanceContent() {
   const { appWallet } = useAppWallet();
@@ -35,7 +36,7 @@ function PageGovernanceContent() {
       0,
     ) ?? 0;
 
-  if (appWallet === undefined) return <></>;
+  if (appWallet === undefined) return <WalletDetailSkeleton />;
   return (
     <>
       <main className="flex flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8 max-w-7xl mx-auto w-full">
