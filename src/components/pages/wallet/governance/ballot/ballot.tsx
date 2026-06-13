@@ -36,6 +36,8 @@ import { hashDrepAnchor } from "@meshsdk/core";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { parseProposalId } from "@/lib/governance";
+import { fetchIpfsJson } from "@/lib/ipfs";
+import BallotCsv from "./BallotCsv";
 
 const GovAction = 1;
 
@@ -880,12 +882,26 @@ export default function BallotCard({
                   <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
                 </Button>
               </div>
+
+              {/* CSV import / export */}
+              <BallotCsv
+                ballot={selectedBallot}
+                ballotId={selectedBallot.id}
+                onImported={() => getBallots.refetch()}
+              />
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <VoteIcon className="h-16 w-16 text-gray-300 dark:text-gray-600 mb-4" />
               <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-2">No proposals in this ballot</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500">Add proposals to start voting</p>
+              <p className="text-sm text-gray-500 dark:text-gray-500">Add proposals manually or import a CSV to start voting</p>
+              <div className="mt-4 w-full max-w-xl text-left">
+                <BallotCsv
+                  ballot={selectedBallot}
+                  ballotId={selectedBallot.id}
+                  onImported={() => getBallots.refetch()}
+                />
+              </div>
               <div className="mt-4 flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -994,6 +1010,7 @@ function ProposalRationaleEditor({
   onStateChange,
   onUpload,
   onLoadFromUrl,
+  onPersistComment,
   loading,
 }: {
   idx: number;
@@ -1001,6 +1018,7 @@ function ProposalRationaleEditor({
   onStateChange: (updates: Partial<{ json: string; url: string; hash: string; loading: boolean; comment?: string }>) => void;
   onUpload: () => void;
   onLoadFromUrl: (url?: string) => void;
+  onPersistComment?: () => void;
   loading: boolean;
 }) {
   const state = rationaleState || { json: "", url: "", hash: "", loading: false, comment: "" };
@@ -1091,9 +1109,13 @@ function ProposalRationaleEditor({
           <Textarea
             value={state.comment || ""}
             onChange={(e) => handleCommentChange(e.target.value)}
+            onBlur={() => onPersistComment?.()}
             placeholder="Enter your voting rationale comment..."
             className="min-h-[80px] text-xs"
           />
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Drafts save automatically; upload to IPFS to anchor the rationale on-chain.
+          </p>
         </div>
         <div className="space-y-2">
           <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Rationale URL (optional)</label>
@@ -1168,6 +1190,7 @@ function BallotOverviewTable({
   const { toast } = useToast();
   const updateChoiceMutation = api.ballot.updateChoice.useMutation();
   const updateAnchorMutation = api.ballot.updateProposalAnchor.useMutation();
+  const updateRationaleMutation = api.ballot.updateProposalRationale.useMutation();
   const [updatingIdx, setUpdatingIdx] = React.useState<number | null>(null);
   const [expandedRationaleIdx, setExpandedRationaleIdx] = React.useState<number | null>(null);
   const [rationaleStates, setRationaleStates] = React.useState<Record<number, {
@@ -1177,7 +1200,15 @@ function BallotOverviewTable({
     loading: boolean;
     comment?: string;
   }>>({});
-  
+  // Tracks which anchor URL we've already auto-loaded per row, so a refetch that
+  // only changed an unrelated field (e.g. a vote choice) doesn't re-fetch every
+  // anchor or clobber in-progress edits.
+  const loadedAnchorsRef = React.useRef<Record<number, string>>({});
+  // Per-row seed identity (`proposalId anchorUrl`). When unchanged we keep
+  // the user's in-progress editor state; when it changes (proposal added/removed
+  // so indices shift, or the anchor changed) we reseed that row from ballot data.
+  const seedKeysRef = React.useRef<Record<number, string>>({});
+
   const {
     removingIdx,
     deleteProposalIdx,
@@ -1191,65 +1222,83 @@ function BallotOverviewTable({
     return hashDrepAnchor(jsonData as Record<string, unknown>);
   }, []);
 
-  // Initialize rationale states from ballot data and auto-load existing anchors
+  // Seed rationale states from ballot data and auto-load existing anchors. This
+  // re-runs whenever the ballot arrays change reference (e.g. after any refetch),
+  // so it MUST NOT blow away in-progress editor edits: rows whose anchor URL is
+  // unchanged keep their local state, and anchors already loaded aren't re-fetched.
   React.useEffect(() => {
-    const states: Record<number, { json: string; url: string; hash: string; loading: boolean; comment?: string }> = {};
-    const loadPromises: Promise<void>[] = [];
-    
+    const controller = new AbortController();
+
+    // Snapshot the previous seed keys before reassigning the ref below — the
+    // functional setState updater runs after this effect body, so it must read a
+    // captured copy, not seedKeysRef.current (which is overwritten by then).
+    const prevSeedKeys = seedKeysRef.current;
+    const nextSeedKeys: Record<number, string> = {};
+    ballot.items.forEach((itemId, idx) => {
+      nextSeedKeys[idx] = `${itemId ?? ""} ${ballot.anchorUrls?.[idx] || ""}`;
+    });
+
+    setRationaleStates((prev) => {
+      const next: typeof prev = {};
+      ballot.items.forEach((_, idx) => {
+        const anchorUrl = ballot.anchorUrls?.[idx] || "";
+        const anchorHash = ballot.anchorHashes?.[idx] || "";
+        const existing = prev[idx];
+        const reseed = !existing || prevSeedKeys[idx] !== nextSeedKeys[idx];
+        if (reseed) {
+          // New row, shifted proposal, or changed anchor: seed fresh from ballot.
+          next[idx] = {
+            json: "",
+            url: anchorUrl,
+            hash: anchorHash,
+            loading: !!anchorUrl.trim(),
+            comment: anchorUrl.trim() ? "" : ballot.rationaleComments?.[idx] || "",
+          };
+        } else {
+          // Same proposal + anchor: keep the user's in-progress edits, refresh hash.
+          next[idx] = { ...existing, hash: anchorHash || existing.hash };
+        }
+      });
+      return next;
+    });
+    seedKeysRef.current = nextSeedKeys;
+
+    // Auto-load anchors we haven't already fetched for the current URL.
     ballot.items.forEach((_, idx) => {
       const anchorUrl = ballot.anchorUrls?.[idx] || "";
-      const draftComment = anchorUrl.trim() ? "" : ballot.rationaleComments?.[idx] || "";
-      states[idx] = {
-        json: "",
-        url: anchorUrl,
-        hash: ballot.anchorHashes?.[idx] || "",
-        loading: !!anchorUrl.trim(), // Set loading if we have a URL to fetch
-        comment: draftComment,
-      };
-      
-      // Auto-load rationale if anchor URL exists
-      if (anchorUrl.trim()) {
-        const loadPromise = fetch(anchorUrl)
-          .then(async (res) => {
-            if (!res.ok) throw new Error("Failed to fetch rationale");
-            const data = await res.json();
-            const hash = computeHashFromJson(data);
-            const comment = data?.body?.comment || "";
-            setRationaleStates(prev => ({ 
-              ...prev, 
-              [idx]: { 
-                json: JSON.stringify(data, null, 2),
-                url: anchorUrl,
-                hash,
-                comment,
-                loading: false 
-              } 
-            }));
-          })
-          .catch(() => {
-            // Silently fail - user can manually reload if needed
-            setRationaleStates(prev => {
-              const currentState = prev[idx] || states[idx];
-              return {
-                ...prev,
-                [idx]: {
-                  json: currentState?.json || "",
-                  url: currentState?.url || "",
-                  hash: currentState?.hash || "",
-                  comment: currentState?.comment || "",
-                  loading: false
-                }
-              };
-            });
-          });
-        loadPromises.push(loadPromise);
+      if (!anchorUrl.trim()) {
+        delete loadedAnchorsRef.current[idx];
+        return;
       }
+      if (loadedAnchorsRef.current[idx] === anchorUrl) return; // already loaded
+      fetchIpfsJson<{ body?: { comment?: string } }>(anchorUrl, controller.signal)
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          const hash = computeHashFromJson(data);
+          const comment = data?.body?.comment || "";
+          loadedAnchorsRef.current[idx] = anchorUrl;
+          setRationaleStates((prev) => ({
+            ...prev,
+            [idx]: { json: JSON.stringify(data, null, 2), url: anchorUrl, hash, comment, loading: false },
+          }));
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          // Leave the (possibly stale) anchor unmarked so a later retry can reload.
+          setRationaleStates((prev) => ({
+            ...prev,
+            [idx]: {
+              json: prev[idx]?.json || "",
+              url: prev[idx]?.url || anchorUrl,
+              hash: prev[idx]?.hash || "",
+              comment: prev[idx]?.comment || "",
+              loading: false,
+            },
+          }));
+        });
     });
-    
-    // Set initial states first
-    setRationaleStates(states);
-    
-    // Auto-load will happen asynchronously via the promises
+
+    return () => controller.abort();
   }, [ballot.items, ballot.anchorUrls, ballot.anchorHashes, ballot.rationaleComments, computeHashFromJson]);
 
   const getChoiceColor = (choice: string) => {
@@ -1299,6 +1348,23 @@ function BallotOverviewTable({
     }
   }, [ballotId, updateChoiceMutation, refetchBallots, onBallotChanged, toast]);
 
+  // Persist the draft rationale comment to the DB so it survives reloads and is
+  // available for review in the pending transaction (cached, no IPFS round-trip).
+  const persistRationaleComment = useCallback(async (idx: number, override?: string) => {
+    const comment = (override ?? rationaleStates[idx]?.comment ?? "").trim();
+    if (comment === (ballot.rationaleComments?.[idx] ?? "").trim()) return; // no change
+    try {
+      await updateRationaleMutation.mutateAsync({
+        ballotId,
+        index: idx,
+        rationaleComment: comment,
+      });
+      await refetchBallots();
+    } catch {
+      // Non-fatal: drafting is best-effort; the user can re-save or upload.
+    }
+  }, [rationaleStates, ballot.rationaleComments, ballotId, updateRationaleMutation, refetchBallots]);
+
   const uploadRationaleToIpfs = useCallback(async (idx: number) => {
     const state = rationaleStates[idx];
     if (!state?.json.trim()) {
@@ -1344,6 +1410,19 @@ function BallotOverviewTable({
         anchorUrl: res.url,
         anchorHash: hash,
       });
+      // Cache the rationale comment in the DB alongside the anchor so the
+      // pending-transaction review can render it without an IPFS round-trip.
+      const cachedComment =
+        (state.comment ??
+          (parsed as { body?: { comment?: string } })?.body?.comment ??
+          "").trim();
+      if (cachedComment) {
+        await updateRationaleMutation.mutateAsync({
+          ballotId,
+          index: idx,
+          rationaleComment: cachedComment,
+        });
+      }
       await refetchBallots();
       toast({
         title: "Rationale uploaded",
@@ -1357,7 +1436,7 @@ function BallotOverviewTable({
         variant: "destructive",
       });
     }
-  }, [rationaleStates, computeHashFromJson, ballotId, updateAnchorMutation, refetchBallots, toast]);
+  }, [rationaleStates, computeHashFromJson, ballotId, updateAnchorMutation, updateRationaleMutation, refetchBallots, toast]);
 
   const loadRationaleFromUrl = useCallback(async (idx: number, overrideUrl?: string) => {
     const state = rationaleStates[idx];
@@ -1372,22 +1451,22 @@ function BallotOverviewTable({
     }
     setRationaleStates(prev => ({ ...prev, [idx]: { ...prev[idx]!, loading: true } }));
     try {
-      const res = await fetch(targetUrl);
-      if (!res.ok) throw new Error("Failed to fetch rationale");
-      const data = await res.json();
+      const data = await fetchIpfsJson<{ body?: { comment?: string } }>(targetUrl);
       const hash = computeHashFromJson(data);
       // Extract comment from loaded JSON-LD if present
       const comment = data?.body?.comment || "";
-      setRationaleStates(prev => ({ 
-        ...prev, 
-        [idx]: { 
-          ...prev[idx]!, 
+      // Mark loaded so the auto-load effect doesn't redundantly re-fetch this URL.
+      loadedAnchorsRef.current[idx] = targetUrl;
+      setRationaleStates(prev => ({
+        ...prev,
+        [idx]: {
+          ...prev[idx]!,
           json: JSON.stringify(data, null, 2),
           url: targetUrl,
           hash,
           comment,
-          loading: false 
-        } 
+          loading: false
+        }
       }));
       await updateAnchorMutation.mutateAsync({
         ballotId,
@@ -1540,6 +1619,7 @@ function BallotOverviewTable({
                             onStateChange={(updates) => setRationaleStates(prev => ({ ...prev, [idx]: { ...prev[idx]!, ...updates } }))}
                             onUpload={() => uploadRationaleToIpfs(idx)}
                             onLoadFromUrl={(url) => loadRationaleFromUrl(idx, url)}
+                            onPersistComment={() => persistRationaleComment(idx)}
                             loading={rationaleStates[idx]?.loading || false}
                           />
                         </td>
@@ -1598,6 +1678,7 @@ function BallotOverviewTable({
                       onStateChange={(updates) => setRationaleStates(prev => ({ ...prev, [idx]: { ...prev[idx]!, ...updates } }))}
                       onUpload={() => uploadRationaleToIpfs(idx)}
                       onLoadFromUrl={(url) => loadRationaleFromUrl(idx, url)}
+                      onPersistComment={() => persistRationaleComment(idx)}
                       loading={rationaleStates[idx]?.loading || false}
                     />
                   </div>
