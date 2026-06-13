@@ -7,7 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog, ArrowLeftRight } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/common/empty-state";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
@@ -76,8 +78,24 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
     setCurrentPage(1);
   }, [appWallet.id, walletTransactions?.length]);
 
+  // Distinguish loading (store value not yet populated) from genuinely empty.
   if (walletTransactions === undefined)
-    return <div className="text-center">No transactions yet</div>;
+    return (
+      <div className="space-y-2">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-14 w-full" />
+        ))}
+      </div>
+    );
+
+  if (walletTransactions.length === 0)
+    return (
+      <EmptyState
+        icon={ArrowLeftRight}
+        title="No transactions yet"
+        description="Transactions involving this wallet will appear here once it has on-chain activity."
+      />
+    );
 
   return (
     <CardUI
