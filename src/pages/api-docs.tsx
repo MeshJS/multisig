@@ -1,7 +1,7 @@
 // src/pages/api-docs.tsx
 import dynamic from "next/dynamic";
 import React, { useEffect, useState, useRef } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
 import Globe from "./globe";
 
@@ -13,7 +13,10 @@ const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
 export const getServerSideProps = () => ({ props: {} });
 
 export default function ApiDocs() {
-  const { wallet, connected } = useWallet();
+  // Mesh 1.9 bridge — signData(payload, address). react-2.0's useWallet()
+  // wallet has the args swapped, which broke bearer-token generation on
+  // wallets like VESPR (CIP-30 InternalError -2).
+  const { wallet, connected } = useMeshWallet();
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

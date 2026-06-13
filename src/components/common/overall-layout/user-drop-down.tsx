@@ -9,13 +9,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
 
 export default function UserDropDown() {
-  const { wallet, disconnect } = useWallet();
+  // useWallet only for connection control (disconnect); wallet ops go
+  // through the Mesh 1.9 bridge.
+  const { disconnect } = useWallet();
+  const { wallet } = useMeshWallet();
   const { toast } = useToast();
   const router = useRouter();
   const setPastWallet = useUserStore((state) => state.setPastWallet);
@@ -42,6 +46,7 @@ export default function UserDropDown() {
 
   async function unlinkDiscord(): Promise<void> {
     try {
+      if (!wallet) return;
       const usedAddresses = await wallet.getUsedAddresses();
       const address = usedAddresses[0];
       unlinkDiscordMutation.mutate({ address: address ?? "" });
@@ -84,6 +89,7 @@ export default function UserDropDown() {
         <DropdownMenuItem
           onClick={async () => {
             try {
+              if (!wallet) return;
               let userAddress: string | undefined;
               try {
                 const usedAddresses = await wallet.getUsedAddresses();
