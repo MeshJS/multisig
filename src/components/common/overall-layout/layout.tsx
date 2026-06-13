@@ -6,6 +6,7 @@ import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useAppWallet from "@/hooks/useAppWallet";
 import useUTXOS from "@/hooks/useUTXOS";
 import useMeshWallet from "@/hooks/useMeshWallet";
@@ -102,7 +103,11 @@ export default function RootLayout({
   // 1.9 IWallet bridge — used for getDRep(), which the react 2.0 wallet lacks.
   const { wallet: meshWallet } = useMeshWallet();
   const { state: walletState, connectedWalletInstance } = useWalletContext();
-  const address = useAddress();
+  // react-2.0's useAddress can return hex-encoded address bytes; user records
+  // and sessions are keyed by bech32. Normalize once at the source so every
+  // consumer below (store sync, session check) uses the bech32 form.
+  const rawAddress = useAddress();
+  const address = rawAddress ? normalizeAddressToBech32(rawAddress) : rawAddress;
   const { user, isLoading: isLoadingUser } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
@@ -111,6 +116,7 @@ export default function RootLayout({
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
+  const reauthNonce = useUserStore((state) => state.reauthNonce);
   const ctx = api.useUtils();
   
   // State for wallet authorization modal
@@ -257,7 +263,7 @@ export default function RootLayout({
       activeWallet.getUsedAddresses()
         .then((addresses) => {
           if (addresses && addresses.length > 0) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
             fetchingAddressRef.current = false;
           } else {
             return activeWallet.getUnusedAddresses();
@@ -265,7 +271,7 @@ export default function RootLayout({
         })
         .then((addresses) => {
           if (addresses && addresses.length > 0 && !userAddress) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
           }
           fetchingAddressRef.current = false;
         })
@@ -397,6 +403,21 @@ export default function RootLayout({
     setHasCheckedSession(true); // Mark as checked to prevent showing modal again
     // Don't refetch here - let the natural query refetch handle it if needed
   }, []);
+
+  // Manual re-authorization: when the user is connected but never got a
+  // session (e.g. the auto-authorize failed/was cancelled), hasCheckedSession
+  // stays true and the modal never reopens — leaving the connect button stuck
+  // on "Loading…". Bumping reauthNonce (from the connect dropdown) clears that
+  // latch and refetches the session so the session-check effect reopens the
+  // auth modal.
+  useEffect(() => {
+    if (reauthNonce > 0) {
+      setHasCheckedSession(false);
+      setCheckingSession(false);
+      setShowAuthModal(false);
+      void refetchWalletSession();
+    }
+  }, [reauthNonce, refetchWalletSession]);
 
   const handleAuthModalAuthorized = useCallback(async () => {
     setShowAuthModal(false);

@@ -1,4 +1,4 @@
-import { Wallet, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Wallet, Loader2, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -98,6 +98,7 @@ function ConnectWalletContent({
   const { user, isLoading: isUserLoading } = useUser();
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
+  const requestReauth = useUserStore((state) => state.requestReauth);
   const { toast } = useToast();
 
   // Use WalletContext for regular wallet connection
@@ -654,6 +655,17 @@ function ConnectWalletContent({
         </>
       );
     }
+    // Connected but the user query resolved with no user → no wallet session
+    // was established (authorization failed/cancelled). Don't spin forever:
+    // show an actionable "Authorize" label; the dropdown offers re-authorize.
+    if (isConnected && !user && !isUserLoading && !isConnecting) {
+      return (
+        <>
+          <ShieldCheck className="mr-2 h-4 w-4 transition-all duration-300" />
+          <span className="font-medium transition-opacity duration-300">Authorize</span>
+        </>
+      );
+    }
     if (isConnected && isLoading) {
       return (
         <>
@@ -745,6 +757,22 @@ function ConnectWalletContent({
           
           {isConnected && (
             <>
+              {!user && !isUserLoading && (
+                <DropdownMenuItem
+                  onClick={() => requestReauth()}
+                  className={cn(
+                    "px-3 py-2.5 rounded-md",
+                    "text-zinc-900 dark:text-zinc-50",
+                    "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                    "focus:bg-zinc-100 dark:focus:bg-zinc-800",
+                    "transition-colors duration-150",
+                    "cursor-pointer"
+                  )}
+                >
+                  <ShieldCheck className="mr-2.5 h-4 w-4" />
+                  <span className="font-medium">Authorize wallet</span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={handleDisconnect}
                 className={cn(
