@@ -27,7 +27,10 @@ export default function Metatags({
 
   return (
     <Head>
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover"
+      />
       <meta charSet="utf-8" />
 
       <title>{title}</title>

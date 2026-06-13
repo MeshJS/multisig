@@ -32,6 +32,7 @@ import { UTxO } from "@meshsdk/core";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText } from "lucide-react";
+import { EmptyState } from "@/components/common/empty-state";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
@@ -874,9 +875,11 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
           </div>
         )}
         {proposals.length === 0 && !isLoading && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <p className="text-sm sm:text-base">No proposals found.</p>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No proposals found"
+            description="There are no governance proposals to show here right now."
+          />
         )}
       </div>
     </CardUI>

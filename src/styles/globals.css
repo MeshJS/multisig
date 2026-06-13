@@ -329,6 +329,19 @@ header[data-header="main"] {
   max-height: var(--header-height-base);
 }
 
+/* Mobile: grow the main header by the safe-area inset so the bar sits below the
+   notch/status bar, and honor side insets in landscape. Only applies below the
+   md breakpoint (the sidebar layout is hidden there). */
+@media (max-width: 767px) {
+  header[data-header="main"] {
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    min-height: calc(var(--header-height-base) + env(safe-area-inset-top));
+    max-height: calc(var(--header-height-base) + env(safe-area-inset-top));
+  }
+}
+
 /* Ensure parent containers don't affect alignment */
 aside > div > header[data-header="sidebar"] {
   /* Remove any inherited transforms or positioning */
@@ -702,4 +715,22 @@ body.add-wallet-glass-page #logo-header svg {
 
 .force-scroll-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Touch devices: enforce ~44px minimum tap targets on interactive controls
+   without changing desktop density. Scoped to coarse pointers so mouse/laptop
+   layouts are untouched; intentionally not applied to plain text links. */
+@media (pointer: coarse) {
+  button,
+  a[role="button"],
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
 }

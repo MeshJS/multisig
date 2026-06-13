@@ -520,7 +520,7 @@ export default function RootLayout({
   const walletIdForMenu = useMemo(() => (router.query.wallet as string) || lastVisitedWalletId || undefined, [router.query.wallet, lastVisitedWalletId]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden">
       {/* Skip link for keyboard users */}
       <a
         href="#main-content"
@@ -599,7 +599,7 @@ export default function RootLayout({
         {/* Sidebar for larger screens - hidden only on public homepage (not logged in) */}
         {(isLoggedIn || !isHomepage) && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
-            <div className="flex h-full max-h-screen flex-col">
+            <div className="flex h-full max-h-[100dvh] flex-col">
               <nav className="flex-1 pt-2 overflow-y-auto">
                 <div className="flex flex-col">
                   {/* 1. Home Link - only when NOT logged in */}
