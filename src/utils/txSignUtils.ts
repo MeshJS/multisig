@@ -1,8 +1,33 @@
-import { csl, calculateTxHash } from "@meshsdk/core-csl";
+import { csl } from "@meshsdk/core-csl";
+import {
+  resolveTxHash,
+  addVKeyWitnessSetToTransaction,
+  Transaction as CstTransaction,
+  TxCBOR,
+  CborSet,
+  VkeyWitness,
+} from "@meshsdk/core-cst";
 import {
   decodeNativeScriptFromCsl,
   collectSigKeyHashes,
 } from "@/utils/nativeScriptUtils";
+
+// The tx is BUILT with core-cst (MeshTxBuilder's default CardanoSDK serializer),
+// so the wallet signs the body hash core-cst produces. The old verify path used
+// core-csl's calculateTxHash, which re-serializes the body to *different* bytes
+// (notably Conway `voting_procedures` map order / set tag 258) — a different
+// hash, so valid witnesses failed to verify ("witness does not verify against tx
+// body hash"). Everything here now hashes and merges via core-cst so build and
+// verify agree, and the original body bytes every signer signed are preserved.
+//
+// core-cst VkeyWitness.toCore() returns a [pubKeyHex, signatureHex] tuple.
+function cstVkeyPubKeyHex(vkw: { toCore: () => unknown }): string {
+  const core = vkw.toCore() as unknown;
+  const pub = Array.isArray(core)
+    ? (core[0] as string)
+    : ((core as { vkey: string }).vkey);
+  return String(pub).toLowerCase();
+}
 
 function toKeyHashHex(publicKey: csl.PublicKey): string {
   return Array.from(publicKey.hash().to_bytes())
@@ -139,95 +164,57 @@ export function addUniqueVkeyWitnessToTx(
   };
 }
 
-function extractFullSignedTx(
-  signedPayloadHex: string,
-): csl.Transaction | undefined {
-  try {
-    return csl.Transaction.from_hex(signedPayloadHex);
-  } catch {
-    return undefined;
-  }
-}
-
 export function mergeSignerWitnesses(
   originalTxHex: string,
   signedPayloadHex: string,
 ): { txHex: string; invalidVkeyPubKeysHex: string[] } {
   const originalTx = csl.Transaction.from_hex(originalTxHex);
-  const originalBodyBytes = Buffer.from(originalTx.body().to_bytes());
 
-  // Some wallets re-canonicalise the tx body before signing (notably with Conway
-  // `voting_procedures`). Their vkey witness then targets *their* body hash, not
-  // ours. If the wallet returned a full Transaction (vs just a witness set) and
-  // we have no pre-existing witnesses to invalidate, prefer their body — that's
-  // what the signature is actually over.
-  const signedTx = extractFullSignedTx(signedPayloadHex);
-  const existingVkeysCount = originalTx.witness_set().vkeys()?.len() ?? 0;
-  let bodyToUse = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
-  if (signedTx) {
-    const walletBodyBytes = Buffer.from(signedTx.body().to_bytes());
-    const bodiesDiffer = !originalBodyBytes.equals(walletBodyBytes);
-    if (bodiesDiffer && existingVkeysCount === 0) {
-      // [ballot-witness-diag] First signer: adopt the wallet's re-canonicalised
-      // body so the signature matches (unchanged behaviour, now logged).
-      bodyToUse = csl.TransactionBody.from_bytes(signedTx.body().to_bytes());
-      console.warn(
-        "[ballot-witness-diag] wallet re-canonicalised tx body; adopting wallet body (first signer)",
-      );
-    } else if (bodiesDiffer) {
-      // [ballot-witness-diag] Co-signer: body-swap is skipped because earlier
-      // witnesses exist, so this signature stays bound to the wallet's encoding
-      // and may be stale against the stored body we persist/submit.
-      console.warn(
-        "[ballot-witness-diag] wallet re-canonicalised tx body but existing witnesses present — co-signer witness may be stale against stored body",
-        { existingVkeysCount },
-      );
-    }
-  }
-
-  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
-    originalTx.witness_set().to_bytes(),
-  );
-
+  // Key hashes already witnessed by earlier co-signers — don't re-verify those.
   const existingKeyHashes = new Set<string>();
-  const existingVkeys = witnessSetClone.vkeys();
+  const existingVkeys = originalTx.witness_set().vkeys();
   if (existingVkeys) {
     for (let i = 0; i < existingVkeys.len(); i++) {
       existingKeyHashes.add(toKeyHashHex(existingVkeys.get(i).vkey().public_key()));
     }
   }
 
-  const mergedVkeys = cloneVkeyWitnesses(witnessSetClone);
-
+  // The wallet's freshly-added vkey witnesses (it returns a witness-set-only
+  // payload on partial sign, or a full tx), deduped against existing.
   const incomingVkeys = extractVkeyWitnesses(signedPayloadHex);
-  mergeUniqueWitnesses(mergedVkeys, incomingVkeys);
-
-  witnessSetClone.set_vkeys(mergedVkeys);
-
-  const mergedTx = csl.Transaction.new(
-    bodyToUse,
-    witnessSetClone,
-    originalTx.auxiliary_data(),
-  );
-  if (!originalTx.is_valid()) {
-    mergedTx.set_is_valid(false);
+  const newVkeys = csl.Vkeywitnesses.new();
+  const seen = new Set<string>();
+  for (let i = 0; i < incomingVkeys.len(); i++) {
+    const witness = incomingVkeys.get(i);
+    const keyHash = toKeyHashHex(witness.vkey().public_key());
+    if (existingKeyHashes.has(keyHash) || seen.has(keyHash)) continue;
+    seen.add(keyHash);
+    newVkeys.add(witness);
   }
 
-  const txHex = mergedTx.to_hex();
-
-  // Verify each *newly added* vkey witness against the merged tx body hash.
-  // Even after the body-swap recovery above, a wallet that returns *only* a
-  // witness set (no body) can still produce a witness over an encoding we
-  // don't have. Surface that so callers can abort before persisting.
+  // Verify each new witness against the core-cst hash of the ORIGINAL body —
+  // the exact bytes the wallet signed. No more body-swap workaround: with a
+  // consistent (core-cst) encoder there's nothing to reconcile, and every
+  // co-signer signs the same stored body.
+  const bodyHashBytes = Buffer.from(resolveTxHash(originalTxHex), "hex");
   const invalidVkeyPubKeysHex: string[] = [];
-  const bodyHashBytes = Buffer.from(calculateTxHash(txHex), "hex");
-  for (let i = 0; i < mergedVkeys.len(); i++) {
-    const witness = mergedVkeys.get(i);
+  for (let i = 0; i < newVkeys.len(); i++) {
+    const witness = newVkeys.get(i);
     const pubKey = witness.vkey().public_key();
-    if (existingKeyHashes.has(toKeyHashHex(pubKey))) continue;
     if (!pubKey.verify(bodyHashBytes, witness.signature())) {
       invalidVkeyPubKeysHex.push(toPubKeyHex(pubKey));
     }
+  }
+
+  // Merge the new witnesses into the original tx WITHOUT re-encoding the body.
+  // addVKeyWitnessSetToTransaction parses with the same (core-cst) serializer
+  // used to build the tx and preserves the original body bytes, so the
+  // persisted/submitted body hash stays equal to what every signer signed.
+  let txHex = originalTxHex;
+  if (newVkeys.len() > 0) {
+    const newWitnessSet = csl.TransactionWitnessSet.new();
+    newWitnessSet.set_vkeys(newVkeys);
+    txHex = addVKeyWitnessSetToTransaction(originalTxHex, newWitnessSet.to_hex());
   }
 
   return { txHex, invalidVkeyPubKeysHex };
@@ -268,13 +255,14 @@ export function filterWitnessesToScripts(txHex: string): string {
     return txHex;
   }
 
-  const filteredVkeys = csl.Vkeywitnesses.new();
+  // Pub keys (by hex) whose key hash is required by a native script — keep only
+  // these. Analysis is read-only via core-csl; the rebuild below is core-cst.
+  const allowedPubKeyHexes = new Set<string>();
   let removed = 0;
   for (let i = 0; i < existingVkeys.len(); i++) {
-    const w = existingVkeys.get(i);
-    const kh = toKeyHashHex(w.vkey().public_key());
-    if (allowedKeyHashes.has(kh)) {
-      filteredVkeys.add(w);
+    const pub = existingVkeys.get(i).vkey().public_key();
+    if (allowedKeyHashes.has(toKeyHashHex(pub))) {
+      allowedPubKeyHexes.add(toPubKeyHex(pub));
     } else {
       removed += 1;
     }
@@ -284,21 +272,26 @@ export function filterWitnessesToScripts(txHex: string): string {
     return txHex;
   }
 
-  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
-    witnessSet.to_bytes(),
-  );
-  witnessSetClone.set_vkeys(filteredVkeys);
-
-  const filteredTx = csl.Transaction.new(
-    csl.TransactionBody.from_bytes(tx.body().to_bytes()),
-    witnessSetClone,
-    tx.auxiliary_data(),
-  );
-  if (!tx.is_valid()) {
-    filteredTx.set_is_valid(false);
+  // Drop the extraneous vkeys WITHOUT re-encoding the body: rebuild the witness
+  // set with core-cst, which preserves the original body bytes (so the
+  // remaining witnesses stay valid against the submitted body hash).
+  const cstTx = CstTransaction.fromCbor(TxCBOR(txHex));
+  const cstWitnessSet = cstTx.witnessSet();
+  const cstVkeys = cstWitnessSet.vkeys();
+  if (!cstVkeys) {
+    return txHex;
   }
-
-  return filteredTx.to_hex();
+  const keptVkeys = [...cstVkeys.values()].filter((vkw) =>
+    allowedPubKeyHexes.has(cstVkeyPubKeyHex(vkw)),
+  );
+  cstWitnessSet.setVkeys(
+    CborSet.fromCore(
+      keptVkeys.map((vkw) => vkw.toCore()),
+      VkeyWitness.fromCore,
+    ),
+  );
+  cstTx.setWitnessSet(cstWitnessSet);
+  return cstTx.toCbor();
 }
 
 export {
