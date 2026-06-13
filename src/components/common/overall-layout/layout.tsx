@@ -29,6 +29,7 @@ import {
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
+import SiteFooter from "@/components/common/overall-layout/site-footer";
 import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
@@ -456,6 +457,12 @@ export default function RootLayout({
   const pageIsPublic = useMemo(() => publicRoutes.includes(router.pathname), [router.pathname]);
   const isLoggedIn = useMemo(() => !!user, [user]);
   const isHomepage = useMemo(() => router.pathname === "/", [router.pathname]);
+  // Marketing footer on public surfaces, but not on the logged-in homepage
+  // (which renders the wallet dashboard rather than the landing page).
+  const showFooter = useMemo(
+    () => pageIsPublic && !(isHomepage && isLoggedIn),
+    [pageIsPublic, isHomepage, isLoggedIn],
+  );
 
   // Keep track of the last visited wallet to show wallet menu even on other pages
   const [lastVisitedWalletId, setLastVisitedWalletId] = React.useState<string | null>(null);
@@ -658,6 +665,11 @@ export default function RootLayout({
           tabIndex={-1}
           className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8 focus:outline-none"
         >
+          {/* When the marketing footer is shown, keep page content + footer in a
+              non-shrinking flex column so a `min-h-screen` page root can't be
+              flex-shrunk by <main> (which would let content overflow under the
+              footer). `contents` is a no-op passthrough for app pages. */}
+          <div className={showFooter ? "flex shrink-0 flex-col gap-4" : "contents"}>
           <WalletErrorBoundary
             fallback={
               <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
@@ -694,6 +706,8 @@ export default function RootLayout({
           >
             {pageIsPublic || userAddress ? children : <PageHomepage />}
           </WalletErrorBoundary>
+          {showFooter && <SiteFooter />}
+          </div>
         </main>
       </div>
       

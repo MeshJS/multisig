@@ -325,6 +325,44 @@ export default function ApiDocs() {
           WebkitBackdropFilter: "blur(16px)",
         }}
       >
+        <div className="mb-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            API &amp; Bot Documentation
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Build on Mesh Multisig with a typed REST API. List wallets, read
+            pending transactions, and add or sign transactions from your own
+            services and bots — the same endpoints the app itself uses.
+          </p>
+          <ul className="mt-4 space-y-1.5 text-sm text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">Authenticate:</span>{" "}
+              connect a wallet and use{" "}
+              <span className="font-medium text-foreground">Generate Token</span>{" "}
+              (bottom-right), or call{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                POST /api/v1/botAuth
+              </code>{" "}
+              for bots.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Authorize:</span> send{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                Authorization: Bearer &lt;token&gt;
+              </code>{" "}
+              on each request.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Machine spec:</span>{" "}
+              fetch the OpenAPI JSON at{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                GET /api/swagger
+              </code>
+              .
+            </li>
+          </ul>
+        </div>
+
         <SwaggerUI
           url="/api/swagger"
           docExpansion="none"
