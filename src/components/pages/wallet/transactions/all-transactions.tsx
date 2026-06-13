@@ -293,23 +293,30 @@ function TransactionRow({
     <TableRow style={{ backgroundColor: "none" }} className="hover:bg-muted/50">
       <TableCell className="align-top py-4">
         <div className="flex flex-col gap-1.5 min-w-0">
-          <LinkCardanoscan
-            url={`transaction/${transaction.hash}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-          >
-            <span className="font-mono text-xs truncate">
-              {transaction.hash.substring(0, 8)}...{transaction.hash.slice(-8)}
-            </span>
-            <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
-          </LinkCardanoscan>
+          {/* Lead with the human-meaningful label (fall back to direction so
+              on-chain-only rows are never identified by a bare hash). */}
+          <div className="text-sm font-medium text-foreground break-words line-clamp-2">
+            {dbTransaction?.description ??
+              certificatesInfo?.[0]?.label ??
+              (transaction.inputs.some(
+                (i) => i.address === appWallet.address,
+              )
+                ? "Sent"
+                : "Received")}
+          </div>
           <span className="text-xs text-muted-foreground">
             {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
           </span>
-        {dbTransaction && (
-            <div className="text-sm font-medium break-words line-clamp-2">
-            {dbTransaction.description}
-          </div>
-        )}
+          {/* Hash demoted to a quiet mono link. */}
+          <LinkCardanoscan
+            url={`transaction/${transaction.hash}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors group"
+          >
+            <span className="font-mono">
+              {getFirstAndLast(transaction.hash, 8, 8)}
+            </span>
+            <ArrowUpRight className="h-3 w-3 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </LinkCardanoscan>
         {certificatesInfo && certificatesInfo.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {certificatesInfo.map((certInfo: CertificateInfo, idx: number) => {
