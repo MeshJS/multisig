@@ -9,6 +9,7 @@ import { migrationRouter } from "./routers/migrations";
 import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
 import { botRouter } from "./routers/bot";
+import { governanceRouter } from "./routers/governance";
 
 /**
  * This is the primary router for your server.
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
   auth: authRouter,
   contact: contactRouter,
   bot: botRouter,
+  governance: governanceRouter,
 });
 
 // export type definition of API
