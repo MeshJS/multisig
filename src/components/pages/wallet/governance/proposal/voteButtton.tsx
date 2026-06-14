@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Button from "@/components/common/button";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
@@ -40,6 +40,12 @@ interface VoteButtonProps {
   proposalTitle?: string;
   proposalDetails?: ProposalDetails;
   /**
+   * The wallet's current on-chain vote for this proposal, if any. When set,
+   * the segmented control pre-selects it and the primary button reflects
+   * whether the pending choice re-submits or changes the existing vote.
+   */
+  currentVote?: "Yes" | "No" | "Abstain";
+  /**
    * Optional handler from the proposal page to open the ballot sidebar.
    * When provided, the \"Add proposal to ballot\" button will simply
    * open the ballot card instead of mutating ballots directly.
@@ -56,6 +62,7 @@ export default function VoteButton({
   selectedBallotId,
   proposalTitle,
   proposalDetails,
+  currentVote,
   onOpenBallotSidebar,
 }: VoteButtonProps) {
   // Use the custom hook for ballots (still used for proxy / context where needed)
@@ -77,7 +84,18 @@ export default function VoteButton({
 
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
-  const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain">("Abstain");
+  // Start with no selection so we never pre-arm a vote (esp. Abstain). When a
+  // current on-chain vote is known, adopt it — unless the user has already
+  // picked something, so a late-arriving lookup can't clobber their choice.
+  const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain" | undefined>(
+    currentVote,
+  );
+  const userPicked = useRef(false);
+  useEffect(() => {
+    if (currentVote && !userPicked.current) {
+      setVoteKind(currentVote);
+    }
+  }, [currentVote]);
   const { toast } = useToast();
   const setAlert = useSiteStore((state) => state.setAlert);
   const network = useSiteStore((state) => state.network);
@@ -109,6 +127,10 @@ export default function VoteButton({
   const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
 
   async function voteProxy() {
+    if (!voteKind) {
+      setAlert("Select Yes, No, or Abstain before voting");
+      return;
+    }
     if (!hasValidProxy) {
       // Fall back to standard vote if no valid proxy
       return vote();
@@ -206,6 +228,10 @@ export default function VoteButton({
   }
 
   async function vote() {
+    if (!voteKind) {
+      setAlert("Select Yes, No, or Abstain before voting");
+      return;
+    }
     if (drepInfo === undefined) {
       setAlert("DRep not found");
       toast({
