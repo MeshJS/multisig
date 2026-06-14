@@ -74,6 +74,15 @@ export const env = createEnv({
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: z.string().optional(),
     /** Umami script URL; default is Umami Cloud. Use your self-hosted URL if needed. */
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: z.string().url().optional(),
+    /**
+     * Dedicated Pinata IPFS gateway origin (e.g. https://<id>.mypinata.cloud
+     * or a bare host like <id>.mypinata.cloud). IPFS reads resolve through
+     * /api/ipfs/resolve, which tries this gateway first (our pinned content)
+     * before falling back to public gateways, and new uploads return a URL on
+     * this gateway instead of the flaky ipfs.io. A missing scheme is normalised
+     * to https:// in code, so a bare hostname is accepted here.
+     */
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
   },
 
   /**
@@ -95,6 +104,7 @@ export const env = createEnv({
     NEXT_PUBLIC_UTXOS_PROJECT_ID: process.env.NEXT_PUBLIC_UTXOS_PROJECT_ID,
     NEXT_PUBLIC_NETWORK_ID: process.env.NEXT_PUBLIC_NETWORK_ID ?? "0",
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
     PINATA_JWT: process.env.PINATA_JWT,
