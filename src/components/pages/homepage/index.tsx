@@ -13,7 +13,7 @@ import { api } from "@/utils/api";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Database, Bot, Code, Download, Check } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import {
@@ -138,48 +138,13 @@ export function PageHomepage() {
   const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
-  // Scroll detection for aurora fade-out
-  const [scrollY, setScrollY] = useState(0);
-
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const currentScrollY = target.scrollTop;
-      setScrollY(currentScrollY);
-    };
-
-    // Find the main element (scrollable container)
-    const mainElement = document.querySelector('main');
-
-    if (mainElement) {
-      // Initial call
-      setScrollY(mainElement.scrollTop);
-
-      // Listen to scroll on main element
-      mainElement.addEventListener("scroll", handleScroll, { passive: true });
-
-      return () => {
-        mainElement.removeEventListener("scroll", handleScroll);
-      };
-    }
-  }, []);
-
-  // Aurora Fade-Out (Top): 500px - 1500px
-  const calculateTopAuroraOpacity = () => {
-    if (scrollY < 500) return 0.35;
-    if (scrollY > 1500) return 0;
-    return 0.35 * (1 - (scrollY - 500) / 1000);
-  };
-
-  const topAuroraOpacity = calculateTopAuroraOpacity();
-
-  // Network mesh sits above the aurora and stays a touch more present.
-  const calculateMeshOpacity = () => {
-    if (scrollY < 500) return 0.9;
-    if (scrollY > 1500) return 0;
-    return 0.9 * (1 - (scrollY - 500) / 1000);
-  };
-  const meshOpacity = calculateMeshOpacity();
+  // Scroll-driven fade of the hero background layers. We write opacity straight
+  // to the layer DOM nodes via refs inside a requestAnimationFrame callback, so
+  // scrolling never triggers a React re-render of this (large) page — the old
+  // setState-on-every-scroll approach re-rendered the whole tree each frame,
+  // which is what made scrolling choppy.
+  const auroraRef = useRef<HTMLDivElement>(null);
+  const meshRef = useRef<HTMLDivElement>(null);
 
   // The homepage hero background follows the same appearance setting as the rest
   // of the app. Default-show until mounted so the SSR markup and first client
@@ -190,6 +155,34 @@ export function PageHomepage() {
   useEffect(() => setAppearanceMounted(true), []);
   const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
   const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
+
+  useEffect(() => {
+    if (!heroBackgroundOn) return;
+    const mainElement = document.querySelector("main");
+    if (!mainElement) return;
+
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const y = mainElement.scrollTop;
+      // Aurora fades 500→1500px; the marble mesh starts a touch more present.
+      const aurora = y < 500 ? 0.35 : y > 1500 ? 0 : 0.35 * (1 - (y - 500) / 1000);
+      const mesh = y < 500 ? 0.9 : y > 1500 ? 0 : 0.9 * (1 - (y - 500) / 1000);
+      if (auroraRef.current) auroraRef.current.style.opacity = String(aurora);
+      if (meshRef.current) meshRef.current.style.opacity = String(mesh);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(apply);
+    };
+
+    apply();
+    mainElement.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      mainElement.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [heroBackgroundOn]);
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
@@ -202,18 +195,21 @@ export function PageHomepage() {
     <div className="relative w-full min-h-screen">
       {heroBackgroundOn && (
         <>
-          {/* Aurora Background - Fixed with Smooth Fade-Out */}
+          {/* Aurora Background — opacity is driven per-frame via the rAF scroll
+              effect above (ref), not React state, so scrolling stays smooth. */}
           <div
-            className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-            style={{ opacity: topAuroraOpacity }}
+            ref={auroraRef}
+            className="fixed inset-0 -z-10"
+            style={{ opacity: 0.35, willChange: "opacity" }}
           >
             <Background variant="aurora" preset={heroPreset} />
           </div>
 
           {/* Marble swirls under a frosted-glass pane, above the aurora */}
           <div
-            className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-            style={{ opacity: meshOpacity }}
+            ref={meshRef}
+            className="fixed inset-0 -z-10"
+            style={{ opacity: 0.9, willChange: "opacity" }}
           >
             <MarbleField />
             {/* Frosted glass: a thin blur so the sharp marbling peeks through */}
