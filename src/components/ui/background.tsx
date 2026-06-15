@@ -26,6 +26,11 @@ export interface BackgroundProps
    * @default true
    */
   showRadialGradient?: boolean
+  /**
+   * Colour theme for the orbs / sheen / bloom.
+   * @default "aurora"
+   */
+  preset?: BackgroundPreset
 }
 
 // Two grayscale aurora gradients at different angles. Animating them in opposite
@@ -78,6 +83,55 @@ const ORBS = [
   },
 ] as const
 
+// Selectable colour themes for the aurora. Each supplies the three orb glows,
+// the rotating conic sheen, and the top bloom; the grayscale base layers are
+// shared. `BACKGROUND_PRESETS` is the source of truth for the settings picker.
+export const BACKGROUND_PRESETS = [
+  { id: "aurora", label: "Aurora" },
+  { id: "sunset", label: "Sunset" },
+  { id: "ocean", label: "Ocean" },
+  { id: "nebula", label: "Nebula" },
+  { id: "mono", label: "Monochrome" },
+] as const
+
+export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number]["id"]
+
+const PRESET_COLORS: Record<
+  BackgroundPreset,
+  { orbs: readonly [string, string, string]; sheen: string; bloom: string }
+> = {
+  aurora: {
+    orbs: ["hsl(222 70% 66% / 0.40)", "hsl(268 55% 68% / 0.36)", "hsl(190 65% 64% / 0.34)"],
+    sheen:
+      "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(222 60% 70% / 0.22) 60deg, transparent 150deg, hsl(275 55% 70% / 0.20) 240deg, transparent 330deg)",
+    bloom: "radial-gradient(50% 60% at 50% 0%, hsl(225 30% 90% / 0.35), transparent 70%)",
+  },
+  sunset: {
+    orbs: ["hsl(28 90% 64% / 0.42)", "hsl(344 75% 66% / 0.38)", "hsl(45 92% 62% / 0.34)"],
+    sheen:
+      "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(28 80% 70% / 0.24) 60deg, transparent 150deg, hsl(344 70% 70% / 0.20) 240deg, transparent 330deg)",
+    bloom: "radial-gradient(50% 60% at 50% 0%, hsl(35 60% 88% / 0.38), transparent 70%)",
+  },
+  ocean: {
+    orbs: ["hsl(192 80% 60% / 0.40)", "hsl(210 75% 62% / 0.38)", "hsl(168 65% 58% / 0.34)"],
+    sheen:
+      "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(192 70% 66% / 0.24) 60deg, transparent 150deg, hsl(210 65% 66% / 0.20) 240deg, transparent 330deg)",
+    bloom: "radial-gradient(50% 60% at 50% 0%, hsl(195 45% 88% / 0.36), transparent 70%)",
+  },
+  nebula: {
+    orbs: ["hsl(270 70% 66% / 0.42)", "hsl(320 65% 66% / 0.38)", "hsl(245 70% 66% / 0.34)"],
+    sheen:
+      "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(270 65% 70% / 0.24) 60deg, transparent 150deg, hsl(320 60% 70% / 0.20) 240deg, transparent 330deg)",
+    bloom: "radial-gradient(50% 60% at 50% 0%, hsl(275 40% 88% / 0.38), transparent 70%)",
+  },
+  mono: {
+    orbs: ["hsl(240 6% 60% / 0.34)", "hsl(240 5% 72% / 0.30)", "hsl(240 6% 46% / 0.30)"],
+    sheen:
+      "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(240 8% 72% / 0.18) 60deg, transparent 150deg, hsl(240 6% 60% / 0.16) 240deg, transparent 330deg)",
+    bloom: "radial-gradient(50% 60% at 50% 0%, hsl(240 10% 90% / 0.30), transparent 70%)",
+  },
+}
+
 /**
  * Background Component
  *
@@ -94,8 +148,9 @@ const ORBS = [
  * ```
  */
 const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
-  ({ className, variant, showRadialGradient = true, children, ...props }, ref) => {
+  ({ className, variant, preset = "aurora", showRadialGradient = true, children, ...props }, ref) => {
     const isAnimated = variant !== "aurora-static"
+    const colors = PRESET_COLORS[preset] ?? PRESET_COLORS.aurora
     const reduced = useReducedMotion()
     const rootRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -164,10 +219,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
             "pointer-events-none absolute inset-[-25%] transform-gpu opacity-60 blur-[70px] will-change-transform",
             isAnimated && "animate-aurora-spin",
           )}
-          style={{
-            background:
-              "conic-gradient(from 0deg at 50% 50%, transparent 0deg, hsl(222 60% 70% / 0.22) 60deg, transparent 150deg, hsl(275 55% 70% / 0.20) 240deg, transparent 330deg)",
-          }}
+          style={{ background: colors.sheen }}
         />
 
         {/* Coloured drifting orbs, on a mouse-parallax layer for depth. */}
@@ -178,7 +230,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
               "translate3d(calc(var(--aurora-px) * 26px), calc(var(--aurora-py) * 22px), 0)",
           }}
         >
-          {ORBS.map((orb) => (
+          {ORBS.map((orb, i) => (
             <div
               key={orb.key}
               className={cn(
@@ -188,7 +240,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
                 isAnimated && orb.anim,
               )}
               style={{
-                background: `radial-gradient(circle at 50% 50%, ${orb.color}, transparent 70%)`,
+                background: `radial-gradient(circle at 50% 50%, ${colors.orbs[i] ?? orb.color}, transparent 70%)`,
               }}
             />
           ))}
@@ -200,10 +252,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
             "pointer-events-none absolute inset-x-0 -top-1/3 h-2/3",
             isAnimated && "animate-aurora-drift",
           )}
-          style={{
-            background:
-              "radial-gradient(50% 60% at 50% 0%, hsl(225 30% 90% / 0.35), transparent 70%)",
-          }}
+          style={{ background: colors.bloom }}
         />
 
         {/* Radial vignette mask for center focus */}
