@@ -161,9 +161,7 @@ export function PageHomepage() {
     const mainElement = document.querySelector("main");
     if (!mainElement) return;
 
-    const root = document.documentElement;
     let raf = 0;
-    let idle = 0;
     const apply = () => {
       raf = 0;
       const y = mainElement.scrollTop;
@@ -174,11 +172,6 @@ export function PageHomepage() {
       if (meshRef.current) meshRef.current.style.opacity = String(mesh);
     };
     const onScroll = () => {
-      // Flag active scrolling so the marble shader pauses and the aurora
-      // animations freeze (globals.css) — frees the GPU for smooth scrolling.
-      root.setAttribute("data-scrolling", "");
-      clearTimeout(idle);
-      idle = window.setTimeout(() => root.removeAttribute("data-scrolling"), 140);
       if (raf) return;
       raf = requestAnimationFrame(apply);
     };
@@ -188,8 +181,6 @@ export function PageHomepage() {
     return () => {
       mainElement.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
-      clearTimeout(idle);
-      root.removeAttribute("data-scrolling");
     };
   }, [heroBackgroundOn]);
 
