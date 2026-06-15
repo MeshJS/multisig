@@ -157,9 +157,13 @@ export function MarbleField({ className }: { className?: string }) {
     const mouse = { x: -9999, y: -9999 };
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      canvas.width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-      canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      // The marble sits under a soft wash at low opacity, so render the backing
+      // store well below display resolution and let the browser upscale —
+      // invisibly softer, but a fraction of the fragment-shader cost.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1);
+      const scale = 0.6;
+      canvas.width = Math.max(1, Math.floor(canvas.clientWidth * dpr * scale));
+      canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr * scale));
       gl.viewport(0, 0, canvas.width, canvas.height);
     };
 
@@ -171,10 +175,18 @@ export function MarbleField({ className }: { className?: string }) {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
+    // Cap to ~30fps and skip all shader work while the user is scrolling or the
+    // tab is hidden, so the marble never competes with scroll compositing.
+    const FRAME_MS = 1000 / 30;
+    let last = -Infinity;
     const loop = (timeMs: number) => {
       if (!running) return;
-      frame(timeMs);
       raf = requestAnimationFrame(loop);
+      if (document.hidden) return;
+      if (document.documentElement.hasAttribute("data-scrolling")) return;
+      if (timeMs - last < FRAME_MS) return;
+      last = timeMs;
+      frame(timeMs);
     };
 
     const onMove = (e: PointerEvent) => {

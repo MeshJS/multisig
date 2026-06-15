@@ -166,6 +166,13 @@
   animation: aurora-spin 48s linear infinite;
 }
 
+/* While the user is actively scrolling the landing (PageHomepage sets
+   data-scrolling on <html>), freeze the aurora's compositor animations so the
+   GPU is free for smooth scroll compositing. Resumes ~140ms after scroll stops. */
+html[data-scrolling] [class*="animate-aurora"] {
+  animation-play-state: paused !important;
+}
+
 /* Feature-card icon animations */
 @keyframes feat-dash {
   to {

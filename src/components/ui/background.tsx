@@ -187,29 +187,27 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
         style={{ "--aurora-px": "0", "--aurora-py": "0" } as React.CSSProperties}
         {...props}
       >
-        {/* Layer 1 — primary grayscale aurora */}
+        {/* Layer 1 — primary grayscale aurora. Static: animating background-
+            position here repaints a 300%-size, 40px-blurred surface every frame
+            (very expensive). Movement/life comes from the transform-based orbs
+            and sheen below, which composite cheaply. */}
         <div
-          className={cn(
-            "absolute inset-0 transform-gpu blur-[40px] will-change-[background-position]",
-            isAnimated && "animate-aurora",
-          )}
+          className="absolute inset-0 transform-gpu blur-[40px]"
           style={{
             background: LAYER_ONE,
             backgroundSize: "300%",
-            backgroundPosition: isAnimated ? undefined : "200% 50%",
+            backgroundPosition: "200% 50%",
           }}
         />
 
-        {/* Layer 2 — counter-moving grayscale shimmer */}
+        {/* Layer 2 — counter-positioned grayscale shimmer (also static; dropped
+            mix-blend-soft-light, which is costly to composite). */}
         <div
-          className={cn(
-            "absolute inset-0 transform-gpu blur-[64px] opacity-70 will-change-[background-position] mix-blend-soft-light",
-            isAnimated && "animate-aurora-reverse",
-          )}
+          className="absolute inset-0 transform-gpu blur-[64px] opacity-70"
           style={{
             background: LAYER_TWO,
             backgroundSize: "260%",
-            backgroundPosition: isAnimated ? undefined : "120% 50%",
+            backgroundPosition: "120% 50%",
           }}
         />
 
