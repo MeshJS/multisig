@@ -2,6 +2,7 @@ import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
+import { useAppearanceStore } from "@/lib/zustand/appearance";
 import { MarbleField } from "@/components/ui/marble-field";
 import { FeatureIcon } from "@/components/pages/homepage/feature-icons";
 import { MultisigSigningExplainer } from "@/components/pages/homepage/multisig-explainer";
@@ -180,6 +181,16 @@ export function PageHomepage() {
   };
   const meshOpacity = calculateMeshOpacity();
 
+  // The homepage hero background follows the same appearance setting as the rest
+  // of the app. Default-show until mounted so the SSR markup and first client
+  // paint agree (avoids a hydration mismatch on the persisted preference).
+  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
+  const [appearanceMounted, setAppearanceMounted] = useState(false);
+  useEffect(() => setAppearanceMounted(true), []);
+  const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
+  const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
+
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
     {
@@ -189,23 +200,27 @@ export function PageHomepage() {
 
   return (
     <div className="relative w-full min-h-screen">
-      {/* Aurora Background - Fixed with Smooth Fade-Out */}
-      <div
-        className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-        style={{ opacity: topAuroraOpacity }}
-      >
-        <Background variant="aurora" />
-      </div>
+      {heroBackgroundOn && (
+        <>
+          {/* Aurora Background - Fixed with Smooth Fade-Out */}
+          <div
+            className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
+            style={{ opacity: topAuroraOpacity }}
+          >
+            <Background variant="aurora" preset={heroPreset} />
+          </div>
 
-      {/* Marble swirls under a frosted-glass pane, above the aurora */}
-      <div
-        className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-        style={{ opacity: meshOpacity }}
-      >
-        <MarbleField />
-        {/* Frosted glass: a thin blur so the sharp marbling peeks through */}
-        <div className="absolute inset-0 backdrop-blur-sm bg-white/12 dark:bg-zinc-900/14" />
-      </div>
+          {/* Marble swirls under a frosted-glass pane, above the aurora */}
+          <div
+            className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
+            style={{ opacity: meshOpacity }}
+          >
+            <MarbleField />
+            {/* Frosted glass: a thin blur so the sharp marbling peeks through */}
+            <div className="absolute inset-0 backdrop-blur-sm bg-white/12 dark:bg-zinc-900/14" />
+          </div>
+        </>
+      )}
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-16 md:py-24">

@@ -19,7 +19,7 @@ interface AppearanceState {
 export const useAppearanceStore = create<AppearanceState>()(
   persist(
     (set) => ({
-      backgroundEnabled: false,
+      backgroundEnabled: true,
       setBackgroundEnabled: (backgroundEnabled) => set({ backgroundEnabled }),
       backgroundPreset: "aurora",
       setBackgroundPreset: (backgroundPreset) => set({ backgroundPreset }),
