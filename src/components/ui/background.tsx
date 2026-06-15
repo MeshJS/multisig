@@ -225,7 +225,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
           className="pointer-events-none absolute inset-0 transition-transform duration-500 ease-out"
           style={{
             transform:
-              "translate3d(calc(var(--aurora-px) * 26px), calc(var(--aurora-py) * 22px), 0)",
+              "translate3d(calc(var(--aurora-px) * 10px), calc(var(--aurora-py) * 8px), 0)",
           }}
         >
           {ORBS.map((orb, i) => (

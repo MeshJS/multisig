@@ -66,7 +66,7 @@ void main() {
     fbm(p + 3.5 * q + vec2(8.3, 2.8) - 0.5 * t)
   );
   float f = fbm(p + 3.5 * r);
-  f += 0.18 * exp(-md * 3.5); // cursor swells the marble
+  f += 0.07 * exp(-md * 4.5); // cursor gently swells the marble (subtle)
 
   // Muted, desaturated stone palette (slate / gray-blue / mauve).
   vec3 deep   = vec3(0.22, 0.24, 0.30);
