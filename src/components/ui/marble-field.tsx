@@ -175,15 +175,17 @@ export function MarbleField({ className }: { className?: string }) {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
-    // Cap to ~30fps and skip work while the tab is hidden. The shader keeps
-    // running during scroll — at low resolution + 30fps its GPU cost is small
-    // enough to coexist with scroll compositing, so no need to pause it.
+    // Cap to ~30fps and skip work while the tab is hidden or the background has
+    // fully faded out (data-bg-hidden, set by the landing once it scrolls past
+    // the fade). It keeps running during scroll while still visible — at low
+    // resolution + 30fps its GPU cost coexists fine with scroll compositing.
     const FRAME_MS = 1000 / 30;
     let last = -Infinity;
     const loop = (timeMs: number) => {
       if (!running) return;
       raf = requestAnimationFrame(loop);
       if (document.hidden) return;
+      if (document.documentElement.hasAttribute("data-bg-hidden")) return;
       if (timeMs - last < FRAME_MS) return;
       last = timeMs;
       frame(timeMs);
