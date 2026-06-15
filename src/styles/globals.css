@@ -166,6 +166,14 @@
   animation: aurora-spin 48s linear infinite;
 }
 
+/* Once the landing background has fully faded out (PageHomepage sets
+   data-bg-hidden on <html> a beat after the scroll fade completes), pause the
+   aurora's animations — it's invisible, so this is imperceptible and frees the
+   GPU. Resumes instantly when it fades back in. */
+html[data-bg-hidden] [class*="animate-aurora"] {
+  animation-play-state: paused !important;
+}
+
 /* Feature-card icon animations */
 @keyframes feat-dash {
   to {

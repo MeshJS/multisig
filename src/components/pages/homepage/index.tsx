@@ -161,7 +161,9 @@ export function PageHomepage() {
     const mainElement = document.querySelector("main");
     if (!mainElement) return;
 
+    const root = document.documentElement;
     let raf = 0;
+    let hideTimer = 0;
     const apply = () => {
       raf = 0;
       const y = mainElement.scrollTop;
@@ -170,6 +172,24 @@ export function PageHomepage() {
       const mesh = y < 500 ? 0.9 : y > 1500 ? 0 : 0.9 * (1 - (y - 500) / 1000);
       if (auroraRef.current) auroraRef.current.style.opacity = String(aurora);
       if (meshRef.current) meshRef.current.style.opacity = String(mesh);
+
+      // Once the background is fully faded out (invisible), stop animating it a
+      // beat later to save GPU — it keeps running the whole time it's visible
+      // or fading, and resumes instantly the moment it fades back in.
+      if (aurora === 0 && mesh === 0) {
+        if (!hideTimer && !root.hasAttribute("data-bg-hidden")) {
+          hideTimer = window.setTimeout(() => {
+            hideTimer = 0;
+            root.setAttribute("data-bg-hidden", "");
+          }, 800);
+        }
+      } else {
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = 0;
+        }
+        root.removeAttribute("data-bg-hidden");
+      }
     };
     const onScroll = () => {
       if (raf) return;
@@ -181,6 +201,8 @@ export function PageHomepage() {
     return () => {
       mainElement.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
+      if (hideTimer) clearTimeout(hideTimer);
+      root.removeAttribute("data-bg-hidden");
     };
   }, [heroBackgroundOn]);
 
