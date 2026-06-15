@@ -27,8 +27,14 @@ export function extractCidPath(input: string | undefined | null): string | null 
   let s = input.trim();
   if (!s) return null;
   if (s.startsWith("ipfs://")) s = s.replace(/^ipfs:\/\/(ipfs\/)?/i, "");
-  const m = s.match(/\/ipfs\/(.+)$/i);
-  if (m?.[1]) s = m[1];
+  // Take everything after the first "/ipfs/" segment, if present. A linear
+  // indexOf (not a backtracking regex) so hostile inputs like
+  // "/ipfs/a/ipfs/a/ipfs/a…" can't trigger polynomial ReDoS (CodeQL).
+  const marker = "/ipfs/";
+  const ipfsIdx = s.toLowerCase().indexOf(marker);
+  if (ipfsIdx !== -1 && ipfsIdx + marker.length < s.length) {
+    s = s.slice(ipfsIdx + marker.length);
+  }
   s = s.split(/[?#]/)[0]!.replace(/^\/+/, "");
   if (!s || s.includes("..")) return null;
   const cid = s.split("/")[0]!;
