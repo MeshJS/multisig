@@ -161,7 +161,9 @@ export function PageHomepage() {
     const mainElement = document.querySelector("main");
     if (!mainElement) return;
 
+    const root = document.documentElement;
     let raf = 0;
+    let idle = 0;
     const apply = () => {
       raf = 0;
       const y = mainElement.scrollTop;
@@ -172,6 +174,11 @@ export function PageHomepage() {
       if (meshRef.current) meshRef.current.style.opacity = String(mesh);
     };
     const onScroll = () => {
+      // Flag active scrolling so the marble shader pauses and the aurora
+      // animations freeze (globals.css) — frees the GPU for smooth scrolling.
+      root.setAttribute("data-scrolling", "");
+      clearTimeout(idle);
+      idle = window.setTimeout(() => root.removeAttribute("data-scrolling"), 140);
       if (raf) return;
       raf = requestAnimationFrame(apply);
     };
@@ -181,6 +188,8 @@ export function PageHomepage() {
     return () => {
       mainElement.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
+      clearTimeout(idle);
+      root.removeAttribute("data-scrolling");
     };
   }, [heroBackgroundOn]);
 
@@ -197,23 +206,17 @@ export function PageHomepage() {
         <>
           {/* Aurora Background — opacity is driven per-frame via the rAF scroll
               effect above (ref), not React state, so scrolling stays smooth. */}
-          <div
-            ref={auroraRef}
-            className="fixed inset-0 -z-10"
-            style={{ opacity: 0.35, willChange: "opacity" }}
-          >
+          <div ref={auroraRef} className="fixed inset-0 -z-10" style={{ opacity: 0.35 }}>
             <Background variant="aurora" preset={heroPreset} />
           </div>
 
-          {/* Marble swirls under a frosted-glass pane, above the aurora */}
-          <div
-            ref={meshRef}
-            className="fixed inset-0 -z-10"
-            style={{ opacity: 0.9, willChange: "opacity" }}
-          >
+          {/* Marble swirls under a soft wash, above the aurora. The wash is a
+              plain translucent fill (no backdrop-filter): blurring the live
+              canvas every frame was a major scroll cost, and the marble is now
+              rendered low-res, so it already reads soft. */}
+          <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
             <MarbleField />
-            {/* Frosted glass: a thin blur so the sharp marbling peeks through */}
-            <div className="absolute inset-0 backdrop-blur-sm bg-white/12 dark:bg-zinc-900/14" />
+            <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
           </div>
         </>
       )}
