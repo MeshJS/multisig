@@ -538,9 +538,10 @@ export default function RootLayout({
 
   return (
     <div className="flex h-[100dvh] w-screen flex-col overflow-hidden">
-      {/* Animated app background (opt-in via profile → Appearance). Skipped on
-          the marketing homepage, which renders its own background. */}
-      {appearanceMounted && backgroundEnabled && !isHomepage && (
+      {/* Animated app background (on by default; toggle in profile → Appearance).
+          Renders on every route including the homepage, behind the homepage's
+          own hero background. */}
+      {appearanceMounted && backgroundEnabled && (
         <div className="pointer-events-none fixed inset-0 -z-10">
           <Background
             variant="aurora"
