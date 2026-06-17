@@ -68,15 +68,200 @@
   }
 }
 
+@keyframes aurora-reverse {
+  from {
+    background-position: 350% 50%;
+  }
+  to {
+    background-position: 50% 50%;
+  }
+}
+
+/* Slow vertical drift for a soft, breathing glow layer. */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(0, -2%, 0) scale(1.05);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(0, 2%, 0) scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* Drifting "orb" paths — independent, looping translations so a few blurred
+   blobs roam the background lava-lamp style. Transform-only, so they're cheap
+   to composite on the GPU. */
+@keyframes aurora-float-1 {
+  0%,
+  100% {
+    transform: translate3d(-6%, -8%, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(18%, 6%, 0) scale(1.18);
+  }
+  66% {
+    transform: translate3d(6%, 20%, 0) scale(0.92);
+  }
+}
+
+@keyframes aurora-float-2 {
+  0%,
+  100% {
+    transform: translate3d(10%, 4%, 0) scale(1.1);
+  }
+  50% {
+    transform: translate3d(-16%, -10%, 0) scale(0.88);
+  }
+}
+
+@keyframes aurora-float-3 {
+  0%,
+  100% {
+    transform: translate3d(0, 12%, 0) scale(1);
+  }
+  40% {
+    transform: translate3d(-18%, -14%, 0) scale(1.22);
+  }
+  75% {
+    transform: translate3d(14%, -4%, 0) scale(0.96);
+  }
+}
+
+/* Slowly rotating conic sheen — a "scanning light" pass for extra life. */
+@keyframes aurora-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .animate-aurora {
-  /* 70s = Smoother, more subtle gradient movement (~15% slower) */
-  animation: aurora 70s linear infinite;
+  /* Faster, more visible drift than before for a livelier feel. */
+  animation: aurora 40s linear infinite;
+}
+
+.animate-aurora-reverse {
+  /* Counter-moving second layer for a richer, layered shimmer. */
+  animation: aurora-reverse 55s linear infinite;
+}
+
+.animate-aurora-drift {
+  animation: aurora-drift 14s ease-in-out infinite;
+}
+
+.animate-aurora-float-1 {
+  animation: aurora-float-1 22s ease-in-out infinite;
+}
+
+.animate-aurora-float-2 {
+  animation: aurora-float-2 30s ease-in-out infinite;
+}
+
+.animate-aurora-float-3 {
+  animation: aurora-float-3 26s ease-in-out infinite;
+}
+
+.animate-aurora-spin {
+  animation: aurora-spin 48s linear infinite;
+}
+
+/* Once the landing background has fully faded out (PageHomepage sets
+   data-bg-hidden on <html> a beat after the scroll fade completes), pause the
+   aurora's animations — it's invisible, so this is imperceptible and frees the
+   GPU. Resumes instantly when it fades back in. */
+html[data-bg-hidden] [class*="animate-aurora"] {
+  animation-play-state: paused !important;
+}
+
+/* Feature-card icon animations */
+@keyframes feat-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+@keyframes feat-draw {
+  0% {
+    stroke-dashoffset: var(--dash, 48);
+  }
+  55%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes feat-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+@keyframes feat-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+@keyframes feat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.feat-dash {
+  stroke-dasharray: 4 6;
+  animation: feat-dash 1.6s linear infinite;
+}
+.feat-draw {
+  animation: feat-draw 3.4s ease-in-out infinite;
+}
+.feat-pulse,
+.feat-float,
+.feat-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.feat-pulse {
+  animation: feat-pulse 2.4s ease-in-out infinite;
+}
+.feat-float {
+  animation: feat-float 3s ease-in-out infinite;
+}
+.feat-spin {
+  animation: feat-spin 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feat-dash,
+  .feat-draw,
+  .feat-pulse,
+  .feat-float,
+  .feat-spin {
+    animation: none;
+  }
 }
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   .animate-aurora {
-    animation-duration: 140s; /* Slower for accessibility */
+    animation-duration: 90s; /* Slower for accessibility */
+  }
+  .animate-aurora-reverse {
+    animation-duration: 120s;
+  }
+  .animate-aurora-drift,
+  .animate-aurora-float-1,
+  .animate-aurora-float-2,
+  .animate-aurora-float-3,
+  .animate-aurora-spin {
+    animation: none;
   }
 }
 
@@ -327,6 +512,19 @@ header[data-header="main"] {
   /* Apply consistent heights using CSS variables */
   min-height: var(--header-height-base);
   max-height: var(--header-height-base);
+}
+
+/* Mobile: grow the main header by the safe-area inset so the bar sits below the
+   notch/status bar, and honor side insets in landscape. Only applies below the
+   md breakpoint (the sidebar layout is hidden there). */
+@media (max-width: 767px) {
+  header[data-header="main"] {
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    min-height: calc(var(--header-height-base) + env(safe-area-inset-top));
+    max-height: calc(var(--header-height-base) + env(safe-area-inset-top));
+  }
 }
 
 /* Ensure parent containers don't affect alignment */
@@ -702,4 +900,22 @@ body.add-wallet-glass-page #logo-header svg {
 
 .force-scroll-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* Touch devices: enforce ~44px minimum tap targets on interactive controls
+   without changing desktop density. Scoped to coarse pointers so mouse/laptop
+   layouts are untouched; intentionally not applied to plain text links. */
+@media (pointer: coarse) {
+  button,
+  a[role="button"],
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
 }

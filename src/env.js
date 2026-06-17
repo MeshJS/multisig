@@ -61,10 +61,28 @@ export const env = createEnv({
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
     NEXT_PUBLIC_UTXOS_PROJECT_ID: z.string().optional(),
     NEXT_PUBLIC_NETWORK_ID: z.string().default("0"),
+    /**
+     * Canonical public origin of the deployment. Used for SEO: canonical tags,
+     * Open Graph / Twitter URLs, robots.txt and the sitemap. Defaults to the
+     * production domain; override per-environment (e.g. preview deployments).
+     */
+    NEXT_PUBLIC_SITE_URL: z
+      .string()
+      .url()
+      .default("https://multisig.meshjs.dev"),
     /** Umami analytics: website ID from your Umami dashboard (cloud or self-hosted) */
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: z.string().optional(),
     /** Umami script URL; default is Umami Cloud. Use your self-hosted URL if needed. */
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: z.string().url().optional(),
+    /**
+     * Dedicated Pinata IPFS gateway origin (e.g. https://<id>.mypinata.cloud
+     * or a bare host like <id>.mypinata.cloud). IPFS reads resolve through
+     * /api/ipfs/resolve, which tries this gateway first (our pinned content)
+     * before falling back to public gateways, and new uploads return a URL on
+     * this gateway instead of the flaky ipfs.io. A missing scheme is normalised
+     * to https:// in code, so a bare hostname is accepted here.
+     */
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
   },
 
   /**
@@ -85,6 +103,8 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
     NEXT_PUBLIC_UTXOS_PROJECT_ID: process.env.NEXT_PUBLIC_UTXOS_PROJECT_ID,
     NEXT_PUBLIC_NETWORK_ID: process.env.NEXT_PUBLIC_NETWORK_ID ?? "0",
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
     PINATA_JWT: process.env.PINATA_JWT,

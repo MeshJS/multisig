@@ -1,4 +1,4 @@
-import { Wallet, Loader2, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Wallet, Loader2, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -136,6 +136,9 @@ function ConnectWalletContent({
   // Track wallet detection state
   const [detectingWallets, setDetectingWallets] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  // When no wallet extension is detected we lead with the UTXOS CTA; this lets
+  // a user opt into the full wallet picker anyway.
+  const [forceMenu, setForceMenu] = useState(false);
   const walletsRef = useRef(wallets);
   const hasInitializedPersist = useRef(false);
   const hasAttemptedAutoConnect = useRef(false);
@@ -690,6 +693,46 @@ function ConnectWalletContent({
     );
   };
 
+  // No Cardano wallet extension installed (detection has settled) and nothing
+  // connected yet: lead non-crypto users straight to UTXOS instead of a picker.
+  const noWalletDetected =
+    !forceMenu &&
+    !detectingWallets &&
+    wallets.length === 0 &&
+    !isAnyWalletConnected;
+
+  if (noWalletDetected) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <Button
+          size="lg"
+          onClick={() => void handleUtxosEnable()}
+          disabled={isUtxosLoading}
+          className="gap-2"
+        >
+          {isUtxosLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Connecting…
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4" />
+              Get Started with Multisig using UTXOS
+            </>
+          )}
+        </Button>
+        <button
+          type="button"
+          onClick={() => setForceMenu(true)}
+          className="text-xs text-zinc-500 underline-offset-2 transition-colors hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+        >
+          Have a Cardano wallet? Connect it
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2">
       <DropdownMenu open={dropdownOpen} onOpenChange={handleDropdownOpenChange}>
@@ -791,8 +834,8 @@ function ConnectWalletContent({
             </>
           )}
 
-          {/* UTXOS Wallet Option - Featured for new users */}
-          <div className="px-3 py-2">
+          {/* UTXOS Wallet Option */}
+          <div className="px-1 pb-1">
             <DropdownMenuItem
               onSelect={(e) => {
                 // Prevent Radix from auto-closing when interacting with nested controls (toggle).
@@ -801,148 +844,132 @@ function ConnectWalletContent({
               }}
               disabled={isUtxosLoading}
               className={cn(
-                "px-3 py-3 rounded-md",
-                "transition-all duration-150",
-                "cursor-default",
-                "border",
-                isUtxosEnabled && [
-                  "bg-zinc-100 dark:bg-zinc-800",
-                  "border-zinc-200 dark:border-zinc-700",
-                ],
-                !isUtxosEnabled && [
-                  "border-blue-200 dark:border-blue-800",
-                  "bg-blue-50 dark:bg-blue-950/30",
-                  "hover:bg-blue-100 dark:hover:bg-blue-950/50",
-                ],
-                isUtxosLoading && "opacity-50 cursor-wait"
+                "block w-full cursor-default rounded-lg border p-3 transition-colors duration-150",
+                isUtxosEnabled &&
+                  "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20",
+                // Only tint UTXOS as the suggested path when there's no wallet
+                // extension to choose; otherwise keep it neutral.
+                !isUtxosEnabled &&
+                  wallets.length === 0 &&
+                  "border-blue-200 bg-blue-50/70 dark:border-blue-900/60 dark:bg-blue-950/30",
+                !isUtxosEnabled &&
+                  wallets.length > 0 &&
+                  "border-zinc-200 dark:border-zinc-800",
+                isUtxosLoading && "cursor-wait opacity-60",
               )}
             >
-              <div className="flex flex-col gap-1.5 w-full">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {isUtxosEnabled ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                    ) : (
-                      <Wallet className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                    )}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium truncate">UTXOS</span>
-                      {!isUtxosEnabled && (
-                        <span className={cn(
-                          "text-xs font-semibold px-1.5 py-0.5 rounded",
-                          "bg-blue-100 dark:bg-blue-900/50",
-                          "text-blue-700 dark:text-blue-300",
-                          "flex-shrink-0"
-                        )}>
-                          Recommended
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {isUtxosEnabled && (
-                    <span className={cn(
-                      "text-xs font-medium px-2 py-0.5 rounded-full",
-                      "bg-zinc-200 dark:bg-zinc-700",
-                      "text-zinc-700 dark:text-zinc-300",
-                      "flex-shrink-0 ml-2"
-                    )}>
-                      Active
-                    </span>
+              {/* Header: brand tile + name + status */}
+              <div className="flex items-center gap-2.5">
+                <span
+                  className={cn(
+                    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white shadow-sm",
+                    isUtxosEnabled
+                      ? "bg-gradient-to-br from-emerald-500 to-teal-600"
+                      : "bg-gradient-to-br from-blue-500 to-indigo-600",
                   )}
-                </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 ml-6">
-                  No extension needed - sign in with email or social login
-                </p>
-
-                {/* Dedicated connect button to avoid toggle/click conflicts */}
-                <div
-                  className="mt-2 ml-6 flex items-center justify-end"
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <Button
+                  {isUtxosEnabled ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                      UTXOS
+                    </span>
+                    {isUtxosEnabled ? (
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                        Active
+                      </span>
+                    ) : wallets.length === 0 ? (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                        Recommended
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    Email or social login — no extension needed
+                  </p>
+                </div>
+              </div>
+
+              {/* Controls: network toggle + connect/disconnect */}
+              <div
+                className="mt-3 flex items-center justify-between gap-2"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <ToggleGroup
+                  type="single"
+                  value={netId === 1 ? "mainnet" : "testnet"}
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    const next = (value === "mainnet" ? 1 : 0) as 0 | 1;
+                    if (next === netId) return;
+
+                    if (isUtxosEnabled) {
+                      toast({
+                        title: "Network switched",
+                        description:
+                          "Please reconnect your UTXOS wallet for the new network.",
+                        variant: "default",
+                      });
+                    }
+                    setNetwork(next);
+                  }}
+                  className="gap-0.5 rounded-md border border-zinc-200 bg-white p-0.5 dark:border-zinc-800 dark:bg-zinc-950"
+                >
+                  <ToggleGroupItem
+                    value="mainnet"
                     size="sm"
-                    variant={isUtxosEnabled ? "secondary" : "default"}
-                    disabled={isUtxosLoading}
-                    onClick={() => {
-                      void (isUtxosEnabled ? handleUtxosDisable() : handleUtxosEnable());
-                      setDropdownOpen(false);
-                    }}
-                  >
-                    {isUtxosLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {isUtxosEnabled ? "Disconnecting..." : "Connecting..."}
-                      </>
-                    ) : (
-                      <>{isUtxosEnabled ? "Disconnect" : "Connect"}</>
-                    )}
-                  </Button>
-                </div>
-
-                <div
-                  className="mt-2 ml-6 flex items-center justify-between gap-3"
-                  // Stop bubbling so this doesn't trigger the card's click handler
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Network
-                  </span>
-                  <ToggleGroup
-                    type="single"
-                    value={netId === 1 ? "mainnet" : "testnet"}
-                    onValueChange={(value) => {
-                      if (!value) return;
-                      const next = (value === "mainnet" ? 1 : 0) as 0 | 1;
-                      if (next === netId) return;
-
-                      if (isUtxosEnabled) {
-                        toast({
-                          title: "Network switched",
-                          description:
-                            "Please reconnect your UTXOS wallet for the new network.",
-                          variant: "default",
-                        });
-                      }
-                      setNetwork(next);
-                    }}
                     className={cn(
-                      "justify-end gap-2 rounded-md border p-1",
-                      "border-zinc-200 bg-white/90 shadow-sm",
-                      "dark:border-zinc-800 dark:bg-zinc-950/70",
+                      "h-6 px-2 text-[11px] text-zinc-600 dark:text-zinc-300",
+                      "data-[state=on]:bg-zinc-900 data-[state=on]:text-white",
+                      "dark:data-[state=on]:bg-zinc-100 dark:data-[state=on]:text-zinc-900",
                     )}
+                    aria-label="Use mainnet"
+                    disabled={isUtxosLoading}
                   >
-                    <ToggleGroupItem
-                      value="mainnet"
-                      size="sm"
-                      className={cn(
-                        "h-7 px-2.5 text-[11px]",
-                        "text-zinc-700 dark:text-zinc-200",
-                        "data-[state=on]:bg-blue-600 data-[state=on]:text-white data-[state=on]:shadow-sm",
-                        "dark:data-[state=on]:bg-blue-500",
-                      )}
-                      aria-label="Use mainnet"
-                      disabled={isUtxosLoading}
-                    >
-                      Mainnet
-                    </ToggleGroupItem>
-                    <ToggleGroupItem
-                      value="testnet"
-                      size="sm"
-                      className={cn(
-                        "h-7 px-2.5 text-[11px]",
-                        "text-zinc-700 dark:text-zinc-200",
-                        "data-[state=on]:bg-blue-600 data-[state=on]:text-white data-[state=on]:shadow-sm",
-                        "dark:data-[state=on]:bg-blue-500",
-                      )}
-                      aria-label="Use testnet"
-                      disabled={isUtxosLoading}
-                    >
-                      Testnet
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
+                    Mainnet
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="testnet"
+                    size="sm"
+                    className={cn(
+                      "h-6 px-2 text-[11px] text-zinc-600 dark:text-zinc-300",
+                      "data-[state=on]:bg-zinc-900 data-[state=on]:text-white",
+                      "dark:data-[state=on]:bg-zinc-100 dark:data-[state=on]:text-zinc-900",
+                    )}
+                    aria-label="Use testnet"
+                    disabled={isUtxosLoading}
+                  >
+                    Testnet
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <Button
+                  size="sm"
+                  variant={isUtxosEnabled ? "outline" : "default"}
+                  disabled={isUtxosLoading}
+                  onClick={() => {
+                    void (isUtxosEnabled
+                      ? handleUtxosDisable()
+                      : handleUtxosEnable());
+                    setDropdownOpen(false);
+                  }}
+                >
+                  {isUtxosLoading ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      {isUtxosEnabled ? "Disconnecting" : "Connecting"}
+                    </>
+                  ) : isUtxosEnabled ? (
+                    "Disconnect"
+                  ) : (
+                    "Connect"
+                  )}
+                </Button>
               </div>
             </DropdownMenuItem>
           </div>
@@ -969,6 +996,9 @@ function ConnectWalletContent({
             </div>
           ) : (
             <div className="space-y-0.5">
+              <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                Browser wallets
+              </p>
               {wallets.map((wallet) => {
                 const isCurrentWallet =
                   isConnected && connectedWalletName === wallet.id;
@@ -993,26 +1023,31 @@ function ConnectWalletContent({
                       isConnecting && "opacity-50 cursor-wait"
                     )}
                   >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {isCurrentWallet ? (
-                          <CheckCircle2 className="h-4 w-4 text-zinc-600 dark:text-zinc-400 flex-shrink-0" />
-                        ) : (
-                          <div className="h-4 w-4 rounded-full bg-zinc-300 dark:bg-zinc-700 flex-shrink-0" />
-                        )}
-                        <span className="truncate">
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                          {wallet.icon ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={wallet.icon}
+                              alt=""
+                              className="h-5 w-5 object-contain"
+                            />
+                          ) : (
+                            <Wallet className="h-3.5 w-3.5 text-zinc-400" />
+                          )}
+                        </span>
+                        <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
                           {wallet.name}
                         </span>
                       </div>
-                      {isCurrentWallet && (
-                        <span className={cn(
-                          "text-xs font-medium px-2 py-0.5 rounded-full",
-                          "bg-zinc-200 dark:bg-zinc-700",
-                          "text-zinc-700 dark:text-zinc-300",
-                          "flex-shrink-0 ml-2"
-                        )}>
+                      {isCurrentWallet ? (
+                        <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" />
                           Active
                         </span>
+                      ) : (
+                        <ChevronRight className="h-4 w-4 flex-shrink-0 text-zinc-400" />
                       )}
                     </div>
                   </DropdownMenuItem>

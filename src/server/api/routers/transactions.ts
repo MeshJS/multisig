@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { csl, calculateTxHash } from "@meshsdk/core-csl";
+import { csl } from "@meshsdk/core-csl";
+import { resolveTxHash } from "@meshsdk/core-cst";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
 import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
@@ -248,7 +249,10 @@ export const transactionRouter = createTRPCRouter({
       // Check if any signature matches wallet signers
       let hasValidSignature = false;
       const signedAddresses: string[] = [];
-      const txHashHex = calculateTxHash(parsedTx.to_hex()).toLowerCase();
+      // Verify signatures against the core-cst body hash (the build serializer),
+      // so multisig signatures on Conway votes are recognised. Equal to the old
+      // core-csl hash for ordinary txs.
+      const txHashHex = resolveTxHash(parsedTx.to_hex()).toLowerCase();
       const txHashBytes = Buffer.from(txHashHex, "hex");
 
       for (let i = 0; i < vkeyWitnesses.len(); i++) {

@@ -6,6 +6,8 @@ import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
+import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { Background } from "@/components/ui/background";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useAppWallet from "@/hooks/useAppWallet";
 import useUTXOS from "@/hooks/useUTXOS";
@@ -29,6 +31,7 @@ import {
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
+import SiteFooter from "@/components/common/overall-layout/site-footer";
 import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
@@ -124,7 +127,15 @@ export default function RootLayout({
   const [checkingSession, setCheckingSession] = useState(false);
   const [hasCheckedSession, setHasCheckedSession] = useState(false); // Prevent duplicate checks
   const [showPostAuthLoading, setShowPostAuthLoading] = useState(false); // Show loading after authorization
-  
+
+  // Animated background preference (persisted to localStorage). Gate render on a
+  // mounted flag so the server (which can't read localStorage) and the first
+  // client paint agree, avoiding a hydration mismatch.
+  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
+  const [appearanceMounted, setAppearanceMounted] = useState(false);
+  useEffect(() => setAppearanceMounted(true), []);
+
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);
   const anyWalletConnected = connected || isUtxosEnabled;
@@ -456,6 +467,12 @@ export default function RootLayout({
   const pageIsPublic = useMemo(() => publicRoutes.includes(router.pathname), [router.pathname]);
   const isLoggedIn = useMemo(() => !!user, [user]);
   const isHomepage = useMemo(() => router.pathname === "/", [router.pathname]);
+  // Marketing footer on public surfaces, but not on the logged-in homepage
+  // (which renders the wallet dashboard rather than the landing page).
+  const showFooter = useMemo(
+    () => pageIsPublic && !(isHomepage && isLoggedIn),
+    [pageIsPublic, isHomepage, isLoggedIn],
+  );
 
   // Keep track of the last visited wallet to show wallet menu even on other pages
   const [lastVisitedWalletId, setLastVisitedWalletId] = React.useState<string | null>(null);
@@ -520,7 +537,19 @@ export default function RootLayout({
   const walletIdForMenu = useMemo(() => (router.query.wallet as string) || lastVisitedWalletId || undefined, [router.query.wallet, lastVisitedWalletId]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden">
+      {/* Animated app background (on by default; toggle in profile → Appearance).
+          Renders on every route including the homepage, behind the homepage's
+          own hero background. */}
+      {appearanceMounted && backgroundEnabled && (
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <Background
+            variant="aurora"
+            preset={backgroundPreset}
+            className="opacity-50"
+          />
+        </div>
+      )}
       {/* Skip link for keyboard users */}
       <a
         href="#main-content"
@@ -599,7 +628,7 @@ export default function RootLayout({
         {/* Sidebar for larger screens - hidden only on public homepage (not logged in) */}
         {(isLoggedIn || !isHomepage) && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
-            <div className="flex h-full max-h-screen flex-col">
+            <div className="flex h-full max-h-[100dvh] flex-col">
               <nav className="flex-1 pt-2 overflow-y-auto">
                 <div className="flex flex-col">
                   {/* 1. Home Link - only when NOT logged in */}
@@ -658,6 +687,11 @@ export default function RootLayout({
           tabIndex={-1}
           className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8 focus:outline-none"
         >
+          {/* When the marketing footer is shown, keep page content + footer in a
+              non-shrinking flex column so a `min-h-screen` page root can't be
+              flex-shrunk by <main> (which would let content overflow under the
+              footer). `contents` is a no-op passthrough for app pages. */}
+          <div className={showFooter ? "flex shrink-0 flex-col gap-4" : "contents"}>
           <WalletErrorBoundary
             fallback={
               <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
@@ -694,6 +728,8 @@ export default function RootLayout({
           >
             {pageIsPublic || userAddress ? children : <PageHomepage />}
           </WalletErrorBoundary>
+          {showFooter && <SiteFooter />}
+          </div>
         </main>
       </div>
       

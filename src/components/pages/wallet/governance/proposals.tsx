@@ -1,16 +1,8 @@
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "@/utils/api";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from "remark-gfm";
 import { getProvider } from "@/utils/get-provider";
@@ -31,11 +23,13 @@ import VoteButton from "./proposal/voteButtton";
 import { UTxO } from "@meshsdk/core";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText, Plus } from "lucide-react";
+import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText } from "lucide-react";
+import { EmptyState } from "@/components/common/empty-state";
 import { useProxy } from "@/hooks/useProxy";
 import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
 import { getProposalStatus as getProposalStatusValue, parseProposalId } from "@/lib/governance";
+import { GovernanceTypeChip } from "@/components/pages/wallet/governance/gov-type-chip";
 
 type VoteRecord = {
   tx_hash: string;
@@ -51,6 +45,21 @@ type VotingStatistics = {
   yes: number;
   no: number;
   abstain: number;
+};
+
+// Aggregate Yes/No/Abstain tally for a single proposal, counted from the
+// per-proposal votes endpoint. Blockfrost exposes no aggregate and no voting
+// power, so this is a count of distinct voters' latest votes — not stake-
+// weighted. `capped` marks tallies where pagination was bounded.
+type ProposalTally = {
+  proposalId?: string;
+  yes: number;
+  no: number;
+  abstain: number;
+  total: number;
+  capped: boolean;
+  // Set when the tally came from the DB cache; used to decide staleness.
+  updatedAt?: string | Date;
 };
 
 type ProposalListItem = {
@@ -285,6 +294,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   const [proxyDrepId, setProxyDrepId] = useState<string | null>(null);
   const [proposalDetails, setProposalDetails] = useState<Map<string, ProposalDetails>>(new Map());
   const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
+  const [proposalTallies, setProposalTallies] = useState<Map<string, ProposalTally>>(new Map());
   const { openModal, setCurrentProposal } = useBallotModal();
   const count = 10;
   const order = "desc";
@@ -349,6 +359,8 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
         if (!proposalDetails.has(proposalId) && !loadingDetails.has(proposalId)) {
           fetchProposalDetails(proposalId);
         }
+        // Expanding a proposal is user activity — warm its tally cache.
+        requestTallyRefresh(proposalId);
       }
       return newSet;
     });
@@ -382,6 +394,62 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
       });
     }
   };
+
+  // Proposal vote tallies are cached server-side in the DB (see the governance
+  // router) and recomputed from Blockfrost on demand. The list reads the cache
+  // (fast) and triggers a background refresh on user activity — when a stale or
+  // missing tally is loaded, and again whenever a proposal is expanded — so the
+  // cache stays warm without any cron. Tallies older than this are refreshed.
+  const TALLY_TTL_MS = 10 * 60 * 1000;
+  const proposalIds = useMemo(
+    () => proposals.map((p) => `${p.tx_hash}#${p.cert_index}`),
+    [proposals],
+  );
+  const refreshingTallies = useRef<Set<string>>(new Set());
+
+  const { data: cachedTallies } = api.governance.getProposalTallies.useQuery(
+    { network, proposalIds },
+    { enabled: proposalIds.length > 0 },
+  );
+
+  const refreshTally = api.governance.refreshProposalTally.useMutation({
+    onSuccess: (tally) => {
+      setProposalTallies((prev) => new Map(prev).set(tally.proposalId, tally));
+    },
+    onSettled: (_data, _err, variables) => {
+      refreshingTallies.current.delete(variables.proposalId);
+    },
+  });
+
+  const requestTallyRefresh = (proposalId: string) => {
+    if (refreshingTallies.current.has(proposalId)) return;
+    refreshingTallies.current.add(proposalId);
+    refreshTally.mutate({ network, proposalId });
+  };
+
+  // Sync the cached read into local state.
+  useEffect(() => {
+    if (!cachedTallies) return;
+    setProposalTallies((prev) => {
+      const next = new Map(prev);
+      for (const t of cachedTallies) next.set(t.proposalId, t);
+      return next;
+    });
+  }, [cachedTallies]);
+
+  // Activity-driven refresh: warm any tally that's missing or older than the TTL
+  // once the cached read has resolved.
+  useEffect(() => {
+    if (!cachedTallies) return;
+    for (const proposalId of proposalIds) {
+      const cached = proposalTallies.get(proposalId);
+      const fresh =
+        cached?.updatedAt &&
+        Date.now() - new Date(cached.updatedAt).getTime() < TALLY_TTL_MS;
+      if (!fresh) requestTallyRefresh(proposalId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cachedTallies, proposalIds, network]);
 
 
   // Fetch DRep voting history
@@ -691,186 +759,29 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
           </div>
         )}
         {proposals.length > 0 && (
-          <>
-            {/* Desktop Table View */}
-            <div className="hidden lg:block w-full">
-              <Table className="w-full table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40%] text-sm font-semibold align-top">Proposal</TableHead>
-                    <TableHead className="w-[45%] text-sm font-semibold align-top">Abstract</TableHead>
-                    <TableHead className="w-[15%] text-sm font-semibold align-top">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {proposals.map((proposal) => {
-                    const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
-                    const vote = votes.get(proposalId);
-                    const details = proposalDetails.get(proposalId);
-                    const isLoadingDetails = loadingDetails.has(proposalId);
-                    return (
-                      <ProposalRow
-                        key={proposalId}
-                        proposal={proposal}
-                        appWallet={appWallet}
-                        utxos={utxos}
-                        selectedBallotId={selectedBallotId}
-                        vote={vote}
-                        isExpanded={expandedProposals.has(proposalId)}
-                        onToggle={() => toggleProposal(proposalId)}
-                        details={details}
-                        isLoadingDetails={isLoadingDetails}
-                        setCurrentProposal={setCurrentProposal}
-                        openModal={openModal}
-                      />
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Mobile/Tablet Card View */}
-            <div className="block lg:hidden space-y-3 sm:space-y-4">
-              {proposals.map((proposal) => {
-                const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
-                const vote = votes.get(proposalId);
-                const isExpanded = expandedProposals.has(proposalId);
-                const details = proposalDetails.get(proposalId);
-                const isLoadingDetails = loadingDetails.has(proposalId);
-                return (
-                  <div
-                    key={proposalId}
-                    className="border rounded-lg shadow-sm bg-white dark:bg-[#0A0A0B] border-gray-200 dark:border-gray-800 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700 transition-all overflow-hidden"
-                  >
-                    {/* Collapsible Header */}
-                    <button
-                      onClick={() => toggleProposal(proposalId)}
-                      className="w-full p-3 sm:p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2 sm:gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-2 mb-2">
-                            <h3 className="text-sm sm:text-base font-semibold break-words text-gray-900 dark:text-gray-100 leading-tight flex-1">
-                              {proposal.json_metadata.body.title}
-                            </h3>
-                            {vote && (
-                              <div className="flex-shrink-0 mt-0.5">
-                                <VoteBadge voteKind={{
-                                  "yes": "Yes" as const,
-                                  "no": "No" as const,
-                                  "abstain": "Abstain" as const
-                                }[vote.vote]} />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                            {details && getProposalStatus(details) && (() => {
-                              const status = getProposalStatus(details)!;
-                              const StatusIcon = status.icon;
-                              return (
-                                <div>
-                                  <Badge className={`${status.color} flex items-center gap-1 w-fit`}>
-                                    <StatusIcon className="h-3 w-3" />
-                                    {status.label}
-                                  </Badge>
-                                </div>
-                              );
-                            })()}
-                            <div>
-                              <span className="font-medium">Type:</span>{" "}
-                              <span className="font-semibold">
-                                {proposal.governance_type.split("_").join(" ").toUpperCase()}
-                              </span>
-                            </div>
-                            {proposal.json_metadata.authors.length > 0 && (
-                              <div>
-                                <span className="font-medium">Authors:</span>{" "}
-                                <span className="break-words">
-                                  {proposal.json_metadata.authors
-                                    .map((author: any) => author.name)
-                                    .join(", ")}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 ml-2">
-                          {isExpanded ? (
-                            <ChevronUp className="h-5 w-5 text-gray-400" />
-                          ) : (
-                            <ChevronDown className="h-5 w-5 text-gray-400" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-
-                    {/* Expandable Content */}
-                    {isExpanded && (
-                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-gray-200 dark:border-gray-800 pt-3 sm:pt-4 space-y-3 sm:space-y-4">
-                        {/* Abstract - Mobile only */}
-                        <div>
-                          <h4 className="text-xs sm:text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Abstract</h4>
-                          <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 prose prose-sm sm:prose-base max-w-none prose-headings:text-sm sm:prose-headings:text-base prose-p:text-xs sm:prose-p:text-sm prose-p:my-1 sm:prose-p:my-2">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {proposal.json_metadata.body.abstract}
-                            </ReactMarkdown>
-                          </div>
-                        </div>
-
-                        {/* Voting History */}
-                        {vote && (
-                          <div className="pb-3 border-b border-gray-200 dark:border-gray-800">
-                            <h4 className="text-xs sm:text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Your Vote</h4>
-                            <div className="flex flex-col gap-2">
-                              <VoteBadge voteKind={{
-                                "yes": "Yes" as const,
-                                "no": "No" as const,
-                                "abstain": "Abstain" as const
-                              }[vote.vote]} />
-                              <span className="text-xs text-gray-500 dark:text-gray-400 break-all">
-                                Transaction: {vote.tx_hash.substring(0, 16)}... (cert index: {vote.cert_index})
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex flex-col gap-3 pt-3 border-t border-gray-200 dark:border-gray-800">
-                          <Link
-                            href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
-                            className="w-full"
-                          >
-                            <Button variant="outline" className="w-full text-sm sm:text-base py-2.5">
-                              View Full Details
-                            </Button>
-                          </Link>
-                <Button
-                  variant="default"
-                  className="w-full text-sm bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white py-2.5"
-                  onClick={() => {
-                    setCurrentProposal(proposalId, proposal.json_metadata.body.title);
-                    openModal();
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add to Ballot
-                </Button>
-                          <VoteButton
-                            utxos={utxos}
-                            appWallet={appWallet}
-                            proposalId={proposalId}
-                            proposalTitle={proposal.json_metadata.body.title}
-                            selectedBallotId={selectedBallotId}
-                            proposalDetails={details}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
+          <div className="flex flex-col gap-3 sm:gap-4">
+            {proposals.map((proposal) => {
+              const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
+              return (
+                <ProposalCard
+                  key={proposalId}
+                  proposal={proposal}
+                  appWallet={appWallet}
+                  utxos={utxos}
+                  selectedBallotId={selectedBallotId}
+                  vote={votes.get(proposalId)}
+                  tally={proposalTallies.get(proposalId)}
+                  isLoadingTally={!proposalTallies.has(proposalId)}
+                  isExpanded={expandedProposals.has(proposalId)}
+                  onToggle={() => toggleProposal(proposalId)}
+                  details={proposalDetails.get(proposalId)}
+                  isLoadingDetails={loadingDetails.has(proposalId)}
+                  setCurrentProposal={setCurrentProposal}
+                  openModal={openModal}
+                />
+              );
+            })}
+          </div>
         )}
         {hasMore && (
           <div className="flex flex-row items-center justify-center gap-2 pt-2 sm:pt-4">
@@ -885,21 +796,95 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
           </div>
         )}
         {proposals.length === 0 && !isLoading && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <p className="text-sm sm:text-base">No proposals found.</p>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No proposals found"
+            description="There are no governance proposals to show here right now."
+          />
         )}
       </div>
     </CardUI>
   );
 }
 
-function ProposalRow({
+// Live Yes/No/Abstain distribution for a proposal, counted by voter from the
+// DB-cached tally. Not stake-weighted (Blockfrost exposes no voting power).
+function VoteTallyBar({
+  tally,
+  loading,
+}: {
+  tally?: ProposalTally;
+  loading?: boolean;
+}): React.ReactElement {
+  if (!tally && loading) {
+    return (
+      <div className="space-y-1.5" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="h-2 w-full animate-pulse rounded-full bg-gray-100 dark:bg-gray-800"
+          />
+        ))}
+      </div>
+    );
+  }
+  if (!tally || tally.total === 0) {
+    return (
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        No votes recorded yet
+      </p>
+    );
+  }
+  const rows: {
+    label: "Yes" | "No" | "Abstain";
+    value: number;
+    bar: string;
+    text: string;
+  }[] = [
+    { label: "Yes", value: tally.yes, bar: "bg-green-500", text: "text-green-700 dark:text-green-400" },
+    { label: "No", value: tally.no, bar: "bg-red-500", text: "text-red-700 dark:text-red-400" },
+    { label: "Abstain", value: tally.abstain, bar: "bg-gray-400 dark:bg-gray-500", text: "text-gray-600 dark:text-gray-400" },
+  ];
+  return (
+    <div className="space-y-1.5">
+      {rows.map((r) => {
+        const pct = tally.total > 0 ? Math.round((r.value / tally.total) * 100) : 0;
+        return (
+          <div key={r.label} className="flex items-center gap-2 text-xs">
+            <span className="w-14 flex-shrink-0 text-gray-500 dark:text-gray-400">
+              {r.label}
+            </span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                className={`h-full rounded-full ${r.bar}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className={`w-9 flex-shrink-0 text-right font-medium tabular-nums ${r.text}`}>
+              {pct}%
+            </span>
+            <span className="w-7 flex-shrink-0 text-right tabular-nums text-gray-400 dark:text-gray-500">
+              {r.value}
+            </span>
+          </div>
+        );
+      })}
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">
+        by votes · {tally.total}
+        {tally.capped ? "+" : ""} voter{tally.total === 1 ? "" : "s"}
+      </p>
+    </div>
+  );
+}
+
+function ProposalCard({
   proposal,
   appWallet,
   utxos,
   selectedBallotId,
   vote,
+  tally,
+  isLoadingTally,
   isExpanded,
   onToggle,
   details,
@@ -912,6 +897,8 @@ function ProposalRow({
   utxos: UTxO[];
   selectedBallotId?: string;
   vote?: VoteRecord;
+  tally?: ProposalTally;
+  isLoadingTally?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
   details?: ProposalDetails;
@@ -920,241 +907,207 @@ function ProposalRow({
   openModal: () => void;
 }): React.ReactElement {
   const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
-  
-  // Convert vote to display format
-  const voteDisplay = vote ? {
-    "yes": "Yes" as const,
-    "no": "No" as const,
-    "abstain": "Abstain" as const
-  }[vote.vote] : undefined;
-  
+
+  // Convert the wallet's on-chain vote to display format.
+  const voteDisplay = vote
+    ? ({ yes: "Yes", no: "No", abstain: "Abstain" } as const)[vote.vote]
+    : undefined;
+
   return (
-    <>
-      <TableRow 
-        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-all hover:border-gray-300 hover:shadow-md dark:border-gray-800 dark:bg-[#0A0A0B] dark:hover:border-gray-700">
+      {/* Header (click to expand) */}
+      <div
         onClick={onToggle}
+        className="cursor-pointer p-4 transition-colors hover:bg-gray-50 sm:p-5 dark:hover:bg-gray-800/40"
       >
-        <TableCell className="py-3 sm:py-4 w-[40%] align-top">
-          <div className="space-y-2">
-            {/* Title with badge and chevron */}
-            <div className="flex items-start gap-2 min-w-0">
-              <Link
-                href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
-                className="hover:underline break-words min-w-0 flex-1 text-sm font-medium leading-tight"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {proposal.json_metadata.body.title}
-              </Link>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {voteDisplay && (
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <VoteBadge voteKind={voteDisplay} />
+        <div className="flex items-start justify-between gap-3">
+          <Link
+            href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
+            className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-gray-900 hover:underline sm:text-base dark:text-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {proposal.json_metadata.body.title}
+          </Link>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle?.();
+            }}
+            className="flex-shrink-0 rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+            aria-label={isExpanded ? "Collapse proposal" : "Expand proposal"}
+          >
+            {isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-400" />
+            )}
+          </button>
+        </div>
+
+        {/* Chips: status · type · voted pill · authors */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+          {details && getProposalStatus(details) && (() => {
+            const status = getProposalStatus(details)!;
+            const StatusIcon = status.icon;
+            return (
+              <Badge className={`${status.color} flex w-fit items-center gap-1`}>
+                <StatusIcon className="h-3 w-3" />
+                {status.label}
+              </Badge>
+            );
+          })()}
+          <GovernanceTypeChip governanceType={proposal.governance_type} />
+          {voteDisplay && <VoteBadge voteKind={voteDisplay} prefix="Voted " />}
+          {proposal.json_metadata.authors.length > 0 && (
+            <span className="break-words">
+              <span className="font-medium">Authors:</span>{" "}
+              {proposal.json_metadata.authors
+                .map((author: any) => author.name)
+                .join(", ")}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Abstract + live tally (always visible on the card face) */}
+      <div className="space-y-3 px-4 pb-4 sm:px-5 sm:pb-5">
+        <div
+          className={`prose prose-sm max-w-none break-words text-sm text-gray-600 dark:text-gray-300 ${
+            isExpanded ? "" : "line-clamp-2"
+          }`}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {proposal.json_metadata.body.abstract}
+          </ReactMarkdown>
+        </div>
+        <VoteTallyBar tally={tally} loading={isLoadingTally} />
+      </div>
+
+      {/* Expanded: details, your-vote, actions */}
+      {isExpanded && (
+        <div className="space-y-4 border-t border-gray-200 px-4 pb-4 pt-4 sm:px-5 sm:pb-5 dark:border-gray-800">
+          {isLoadingDetails ? (
+            <div className="flex items-center gap-2 border-b border-gray-200 pb-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-500 dark:border-t-gray-400"></div>
+              Loading details...
+            </div>
+          ) : details && (
+            <div className="grid grid-cols-1 gap-4 border-b border-gray-200 pb-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 dark:border-gray-800">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Type</span>
+                </div>
+                <div className="text-xs capitalize text-gray-600 sm:text-sm dark:text-gray-400">
+                  {details.governance_type.replace(/_/g, " ")}
+                </div>
+              </div>
+
+              {details.deposit && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Coins className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Deposit</span>
                   </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggle?.();
-                  }}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex-shrink-0"
-                  aria-label={isExpanded ? "Collapse proposal" : "Expand proposal"}
-                >
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  )}
-                </button>
+                  <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                    {(parseInt(details.deposit) / 1_000_000).toFixed(2)} ADA
+                  </div>
+                </div>
+              )}
+
+              {details.ratified_epoch && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Ratified Epoch</span>
+                  </div>
+                  <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                    {details.ratified_epoch}
+                  </div>
+                </div>
+              )}
+
+              {details.enacted_epoch && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Enacted Epoch</span>
+                  </div>
+                  <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                    {details.enacted_epoch}
+                  </div>
+                </div>
+              )}
+
+              {details.expiration && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Expires In</span>
+                  </div>
+                  <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                    {details.expiration} epochs
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+                <div className="flex items-center gap-2">
+                  <Hash className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-xs font-medium text-gray-700 sm:text-sm dark:text-gray-300">Transaction</span>
+                </div>
+                <div className="break-all font-mono text-xs text-gray-600 dark:text-gray-400">
+                  {details.tx_hash}
+                </div>
               </div>
             </div>
-            {/* Status, Type and Authors */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-              {details && getProposalStatus(details) && (() => {
-                const status = getProposalStatus(details)!;
-                const StatusIcon = status.icon;
-                return (
-                  <div>
-                    <Badge className={`${status.color} flex items-center gap-1 w-fit`}>
-                      <StatusIcon className="h-3 w-3" />
-                      {status.label}
-                    </Badge>
-                  </div>
-                );
-              })()}
-              <div>
-                <span className="font-medium">Type:</span>{" "}
-                <span className="font-semibold">
-                  {proposal.governance_type.split("_").join(" ").toUpperCase()}
+          )}
+
+          {vote && voteDisplay && (
+            <div className="border-b border-gray-200 pb-3 dark:border-gray-800">
+              <h4 className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300">Your Vote</h4>
+              <div className="flex items-center gap-2">
+                <VoteBadge voteKind={voteDisplay} prefix="Voted " />
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Transaction: {vote.tx_hash.substring(0, 16)}... (cert index: {vote.cert_index})
                 </span>
               </div>
-              {proposal.json_metadata.authors.length > 0 && (
-                <div>
-                  <span className="font-medium">Authors:</span>{" "}
-                  <span className="break-words">
-                    {proposal.json_metadata.authors
-                      .map((author: any) => author.name)
-                      .join(", ")}
-                  </span>
-                </div>
-              )}
             </div>
+          )}
+
+          {/* Actions */}
+          <div className="space-y-3">
+            <VoteButton
+              utxos={utxos}
+              appWallet={appWallet}
+              proposalId={proposalId}
+              proposalTitle={proposal.json_metadata.body.title}
+              selectedBallotId={selectedBallotId}
+              proposalDetails={details}
+              currentVote={voteDisplay}
+            />
+            <Link
+              href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}
+              className="block"
+            >
+              <Button variant="outline" className="w-full text-sm">
+                View Full Proposal
+              </Button>
+            </Link>
           </div>
-        </TableCell>
-        <TableCell className="prose prose-sm max-w-none whitespace-normal break-words text-sm py-3 sm:py-4 w-[45%] align-top">
-          <div className={isExpanded ? "" : "line-clamp-2"}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {proposal.json_metadata.body.abstract}
-            </ReactMarkdown>
-          </div>
-        </TableCell>
-        <TableCell className="py-3 sm:py-4 w-[15%] align-top" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-col items-end gap-2.5 min-w-0">
-            {/* Voting Status Indicator */}
-            {voteDisplay && (
-              <div className="flex justify-end">
-                <VoteBadge voteKind={voteDisplay} />
-              </div>
-            )}
-            {/* Action Buttons - Right-aligned for table */}
-            <div className="flex flex-col items-end gap-2">
-              <VoteButton
-                utxos={utxos}
-                appWallet={appWallet}
-                proposalId={proposalId}
-                proposalTitle={proposal.json_metadata.body.title}
-                selectedBallotId={selectedBallotId}
-                proposalDetails={details}
-              />
-            </div>
-          </div>
-        </TableCell>
-      </TableRow>
-      {isExpanded && (
-        <TableRow className="bg-gray-50/50 dark:bg-gray-800/30">
-          <TableCell colSpan={3} className="py-4 px-6">
-            <div className="space-y-4">
-              {/* Proposal Details */}
-              {isLoadingDetails ? (
-                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-3 border-b border-gray-200 dark:border-gray-800">
-                  <div className="w-4 h-4 border-2 border-gray-300 dark:border-gray-500 border-t-gray-600 dark:border-t-gray-400 rounded-full animate-spin"></div>
-                  Loading details...
-                </div>
-              ) : details && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pb-3 border-b border-gray-200 dark:border-gray-800">
-                  {/* Governance Type */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                    </div>
-                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 capitalize">
-                      {details.governance_type.replace(/_/g, " ")}
-                    </div>
-                  </div>
-
-                  {/* Deposit */}
-                  {details.deposit && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Coins className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                        <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Deposit</span>
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                        {(parseInt(details.deposit) / 1_000_000).toFixed(2)} ADA
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Ratified Epoch */}
-                  {details.ratified_epoch && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                        <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Ratified Epoch</span>
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                        {details.ratified_epoch}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Enacted Epoch */}
-                  {details.enacted_epoch && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                        <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Enacted Epoch</span>
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                        {details.enacted_epoch}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expiration */}
-                  {details.expiration && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                        <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Expires In</span>
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                        {details.expiration} epochs
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Transaction Hash */}
-                  <div className="space-y-2 sm:col-span-2 lg:col-span-1">
-                    <div className="flex items-center gap-2">
-                      <Hash className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Transaction</span>
-                    </div>
-                    <div className="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">
-                      {details.tx_hash}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {/* Voting History */}
-              {vote && (
-                <div className="pb-3 border-b border-gray-200 dark:border-gray-800">
-                  <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Your Vote</h4>
-                  <div className="flex items-center gap-2">
-                    <VoteBadge voteKind={voteDisplay!} />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Transaction: {vote.tx_hash.substring(0, 16)}... (cert index: {vote.cert_index})
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button
-                  variant="default"
-                  className="w-full sm:w-auto text-sm bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white"
-                  onClick={() => {
-                    setCurrentProposal(proposalId, proposal.json_metadata.body.title);
-                    openModal();
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add to Ballot
-                </Button>
-                <Link href={`/wallets/${appWallet.id}/governance/proposal/${proposal.tx_hash}:${proposal.cert_index}`}>
-                  <Button variant="default" className="w-full sm:w-auto text-sm">
-                    View Full Proposal
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </TableCell>
-        </TableRow>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
-function VoteBadge({ voteKind }: { voteKind: "Yes" | "No" | "Abstain" }) {
+function VoteBadge({
+  voteKind,
+  prefix = "",
+}: {
+  voteKind: "Yes" | "No" | "Abstain";
+  prefix?: string;
+}) {
   const config = {
     Yes: {
       icon: CheckCircle2,
@@ -1181,7 +1134,7 @@ function VoteBadge({ voteKind }: { voteKind: "Yes" | "No" | "Abstain" }) {
       className={`flex items-center gap-1 text-xs ${className}`}
     >
       <Icon className="h-3 w-3" />
-      <span>{voteKind}</span>
+      <span>{prefix}{voteKind}</span>
     </Badge>
   );
 }
