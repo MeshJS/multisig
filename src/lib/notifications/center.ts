@@ -37,10 +37,13 @@ export function notificationsEmailEnabled(): boolean {
 }
 
 export function getSiteUrl(): string {
-  return (env.NEXT_PUBLIC_SITE_URL ?? "https://multisig.meshjs.dev").replace(
-    /\/$/,
-    "",
-  );
+  const baseUrl =
+    env.NOTIFICATION_LINK_BASE_URL ??
+    (env.NODE_ENV === "development"
+      ? "http://localhost:3000"
+      : env.NEXT_PUBLIC_SITE_URL);
+
+  return baseUrl.replace(/\/$/, "");
 }
 
 function getRequiredSignerCount(wallet: WalletNotificationShape): number {

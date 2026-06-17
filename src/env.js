@@ -36,6 +36,7 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().optional(),
     EMAIL_FROM: z.string().optional(),
     EMAIL_REPLY_TO: z.string().email().optional(),
+    NOTIFICATION_LINK_BASE_URL: z.string().url().optional(),
     NOTIFICATION_DRAIN_SECRET: z.string().optional(),
     NOTIFICATIONS_EMAIL_ENABLED: z
       .enum(["true", "false"])
@@ -124,6 +125,7 @@ export const env = createEnv({
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
     EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
+    NOTIFICATION_LINK_BASE_URL: process.env.NOTIFICATION_LINK_BASE_URL,
     NOTIFICATION_DRAIN_SECRET: process.env.NOTIFICATION_DRAIN_SECRET,
     NOTIFICATIONS_EMAIL_ENABLED:
       process.env.NOTIFICATIONS_EMAIL_ENABLED ?? "false",
