@@ -10,6 +10,7 @@ import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
 import { botRouter } from "./routers/bot";
 import { governanceRouter } from "./routers/governance";
+import { notificationRouter } from "./routers/notifications";
 
 /**
  * This is the primary router for your server.
@@ -28,6 +29,7 @@ export const appRouter = createTRPCRouter({
   contact: contactRouter,
   bot: botRouter,
   governance: governanceRouter,
+  notification: notificationRouter,
 });
 
 // export type definition of API
