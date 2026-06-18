@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 
 import { env } from "@/env";
+import { SITE_URL } from "@/lib/seo";
 import {
   NOTIFICATION_EVENT_SIGNATURE_REQUIRED,
   NOTIFICATION_STATUS_PENDING,
@@ -37,13 +38,17 @@ export function notificationsEmailEnabled(): boolean {
 }
 
 export function getSiteUrl(): string {
-  const baseUrl =
-    env.NOTIFICATION_LINK_BASE_URL ??
-    (env.NODE_ENV === "development"
-      ? "http://localhost:3000"
-      : env.NEXT_PUBLIC_SITE_URL);
+  if (env.NOTIFICATION_LINK_BASE_URL) {
+    return env.NOTIFICATION_LINK_BASE_URL.replace(/\/$/, "");
+  }
 
-  return baseUrl.replace(/\/$/, "");
+  if (env.NODE_ENV === "development") {
+    return "http://localhost:3000";
+  }
+
+  // NEXT_PUBLIC_* defaults from env.js are not always present on the server at
+  // runtime; SITE_URL applies the same production fallback as SEO metadata.
+  return SITE_URL;
 }
 
 function getRequiredSignerCount(wallet: WalletNotificationShape): number {

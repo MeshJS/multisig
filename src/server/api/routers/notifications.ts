@@ -6,10 +6,8 @@ import { z } from "zod";
 import { env } from "@/env";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
-import {
-  assertWalletAccess,
-  requireSessionAddress,
-} from "@/server/api/auth";
+import { assertWalletAccess } from "@/server/api/auth";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import {
   getSiteUrl,
   enqueueSignatureRequiredNotifications,
@@ -27,14 +25,78 @@ import { drainNotificationOutbox } from "@/lib/notifications/worker";
 const VERIFY_TOKEN_BYTES = 32;
 const VERIFY_TOKEN_TTL_HOURS = 24;
 
+function addressesEqual(a: string, b: string): boolean {
+  return normalizeAddressToBech32(a) === normalizeAddressToBech32(b);
+}
+
+function isAddressAuthorizedInSession(ctx: AuthCtx, address: string): boolean {
+  const normalized = normalizeAddressToBech32(address);
+  const sessionWallets = Array.isArray(ctx.sessionWallets)
+    ? ctx.sessionWallets
+    : [];
+  if (sessionWallets.some((candidate) => addressesEqual(candidate, normalized))) {
+    return true;
+  }
+  const primary = ctx.primaryWallet ?? ctx.sessionAddress;
+  if (primary && addressesEqual(primary, normalized)) {
+    return true;
+  }
+  const sessionUserId = ctx.session?.user?.id;
+  return Boolean(sessionUserId && addressesEqual(sessionUserId, normalized));
+}
+
+function requireAuthorizedSignerAddress(
+  ctx: AuthCtx,
+  requesterAddress: string,
+): string {
+  const normalized = normalizeAddressToBech32(requesterAddress.trim());
+  if (!normalized) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Missing signer address",
+    });
+  }
+  if (!isAddressAuthorizedInSession(ctx, normalized)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "Address mismatch. Please authorize your currently connected wallet.",
+    });
+  }
+  return normalized;
+}
+
+function resolveWalletSignerAddress(
+  signersAddresses: string[],
+  requesterAddress: string,
+): string {
+  const normalized = normalizeAddressToBech32(requesterAddress);
+  return (
+    signersAddresses.find((candidate) => addressesEqual(candidate, normalized)) ??
+    normalized
+  );
+}
+
+function isWalletSigner(signersAddresses: string[], address: string): boolean {
+  return signersAddresses.some((candidate) => addressesEqual(candidate, address));
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-async function assertCurrentSigner(ctx: AuthCtx, walletId: string) {
-  const signerAddress = requireSessionAddress(ctx);
-  const wallet = await assertWalletAccess(ctx, walletId, signerAddress);
-  if (!wallet.signersAddresses.includes(signerAddress)) {
+async function assertCurrentSigner(
+  ctx: AuthCtx,
+  walletId: string,
+  requesterAddress: string,
+) {
+  requireAuthorizedSignerAddress(ctx, requesterAddress);
+  const wallet = await assertWalletAccess(ctx, walletId, requesterAddress);
+  const signerAddress = resolveWalletSignerAddress(
+    wallet.signersAddresses,
+    requesterAddress,
+  );
+  if (!isWalletSigner(wallet.signersAddresses, signerAddress)) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Only a wallet signer can manage their notification settings",
@@ -49,9 +111,18 @@ function verificationUrl(token: string): string {
 
 export const notificationRouter = createTRPCRouter({
   getWalletSignerSetting: protectedProcedure
-    .input(z.object({ walletId: z.string().min(1) }))
+    .input(
+      z.object({
+        walletId: z.string().min(1),
+        signerAddress: z.string().min(1),
+      }),
+    )
     .query(async ({ ctx, input }) => {
-      const { signerAddress } = await assertCurrentSigner(ctx, input.walletId);
+      const { signerAddress } = await assertCurrentSigner(
+        ctx,
+        input.walletId,
+        input.signerAddress,
+      );
       const setting = await ctx.db.walletSignerNotificationSetting.findUnique({
         where: {
           walletId_signerAddress: {
@@ -82,6 +153,7 @@ export const notificationRouter = createTRPCRouter({
     .input(
       z.object({
         walletId: z.string().min(1),
+        signerAddress: z.string().min(1),
         email: z.string().email().or(z.literal("")).optional(),
         emailOptIn: z.boolean().optional(),
         notifyTransactionSignatures: z.boolean().optional(),
@@ -89,7 +161,11 @@ export const notificationRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { signerAddress } = await assertCurrentSigner(ctx, input.walletId);
+      const { signerAddress } = await assertCurrentSigner(
+        ctx,
+        input.walletId,
+        input.signerAddress,
+      );
       const existing = await ctx.db.walletSignerNotificationSetting.findUnique({
         where: {
           walletId_signerAddress: {
@@ -163,11 +239,17 @@ export const notificationRouter = createTRPCRouter({
     }),
 
   sendVerificationEmail: protectedProcedure
-    .input(z.object({ walletId: z.string().min(1) }))
+    .input(
+      z.object({
+        walletId: z.string().min(1),
+        signerAddress: z.string().min(1),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const { wallet, signerAddress } = await assertCurrentSigner(
         ctx,
         input.walletId,
+        input.signerAddress,
       );
       const setting = await ctx.db.walletSignerNotificationSetting.findUnique({
         where: {
