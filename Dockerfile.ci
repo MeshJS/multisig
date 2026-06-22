@@ -26,7 +26,8 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 RUN npm install -g "$(node -p 'require("./package.json").packageManager')" \
   && npm --version
-RUN npm ci
+RUN npm ci --ignore-scripts
+RUN npx prisma generate
 
 # Copy full source for containerized CI runs.
 COPY . .
