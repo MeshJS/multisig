@@ -211,6 +211,67 @@ model Contact {
   @@index([address])
 }
 
+model WalletSignerNotificationSetting {
+  id                          String    @id @default(cuid())
+  walletId                    String
+  signerAddress               String
+  email                       String?
+  emailNormalized             String?
+  emailVerifiedAt             DateTime?
+  emailOptIn                  Boolean   @default(true)
+  notifyTransactionSignatures Boolean   @default(true)
+  notifySignableSignatures    Boolean   @default(true)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@unique([walletId, signerAddress])
+  @@index([walletId])
+  @@index([signerAddress])
+  @@index([emailNormalized])
+}
+
+model EmailVerificationToken {
+  id              String    @id @default(cuid())
+  walletId        String
+  signerAddress   String
+  emailNormalized String
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([walletId, signerAddress])
+  @@index([expiresAt])
+}
+
+model NotificationDelivery {
+  id                 String    @id @default(cuid())
+  eventType          String
+  channel            String
+  recipientAddress   String
+  recipientEmail     String?
+  resourceType       String
+  resourceId         String
+  walletId           String?
+  idempotencyKey     String    @unique
+  subject            String
+  payload            Json
+  status             String    @default("pending")
+  provider           String?
+  providerMessageId  String?
+  attempts           Int       @default(0)
+  lastError          String?
+  nextAttemptAt      DateTime  @default(now())
+  sentAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([recipientAddress])
+  @@index([walletId])
+  @@index([resourceType, resourceId])
+}
+
 model BotKey {
   id           String   @id @default(cuid())
   ownerAddress String // Human creator
