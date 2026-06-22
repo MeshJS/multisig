@@ -5,6 +5,8 @@ on:
       - prisma/migrations/**
     branches:
       - main
+  # Allow manual runs so a migration can be applied without a fresh push under prisma/migrations/**
+  workflow_dispatch:
 
 jobs:
   deploy-migrations:
@@ -16,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           
       - name: Install dependencies
