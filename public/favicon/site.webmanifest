@@ -1,14 +1,12 @@
-
-
 {
-  "name": "Multisig MeshJS",
+  "name": "Mesh Multisig — Cardano Treasury Wallet",
   "short_name": "Multisig",
-  "description": "A multisignature wallet interface built with MeshJS",
+  "description": "Free, open-source Cardano multi-signature wallet for teams and DAOs — secure your treasury and vote on governance together.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
   "icons": [
     {
       "src": "/favicon/apple-touch-icon.png",

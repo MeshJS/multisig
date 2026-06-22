@@ -2,6 +2,14 @@
 
 Project-specific context for AI coding agents. See also [.cursor/skills/multisig/SKILL.md](../.cursor/skills/multisig/SKILL.md) for the multisig Cursor skill.
 
+## Specs & PRDs
+
+Specs live in the vault, not this repo. The maintainer keeps a document-driven dev base (an Obsidian vault) where features are specified as **PRDs** before they are built; concept and entity notes there are the upstream source for data models and flows.
+
+- Before building a vault-specced feature, read its **PRD** (and the concept/entity notes it links) for scope, data model, and acceptance criteria. An entity note is the spec for its Prisma model.
+- Implementing PRs should **cite the PRD id** in the description (e.g. "Implements PRD-001"), so code stays traceable to the document that produced it.
+- The vault is the maintainer's local knowledge base; if you don't have access, ask for the relevant PRD's contents rather than guessing scope.
+
 ## Stack and layout
 
 - **Stack**: Next.js (Pages Router), TypeScript, tRPC, Prisma, PostgreSQL, Cardano (Mesh SDK). Auth: NextAuth (user) + JWT (API: wallet sign-in or bot keys).

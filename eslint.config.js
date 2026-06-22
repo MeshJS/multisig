@@ -30,6 +30,23 @@ export default [
       },
     },
     rules: {
+      // Guardrail: never pull `wallet` out of @meshsdk/react 2.0's useWallet().
+      // That object is a low-level CIP-30 wallet whose signData(address, payload)
+      // / signTx(tx, partialSign) signatures differ from the @meshsdk/core 1.9
+      // IWallet the app is built on — a wrong-order call compiles but signs the
+      // wrong bytes (caused VESPR CIP-30 InternalError -2 and ballot witness
+      // divergence). Use useMeshWallet()/useActiveWallet() for any wallet ops;
+      // useWallet() is fine for connection state only (name/connected/connect/
+      // disconnect).
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "VariableDeclarator[init.callee.name='useWallet'] > ObjectPattern > Property[key.name='wallet']",
+          message:
+            "Don't destructure `wallet` from @meshsdk/react useWallet() — its signData/signTx args differ from core 1.9 and silently sign wrong bytes. Use useMeshWallet()/useActiveWallet() instead.",
+        },
+      ],
       "@typescript-eslint/array-type": "off",
       "@typescript-eslint/consistent-type-definitions": "off",
       "@typescript-eslint/consistent-type-imports": [

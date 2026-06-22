@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   checkSignature,
@@ -24,7 +24,8 @@ import { Transaction } from "@prisma/client";
 
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp, Award, UserMinus, UserPlus, UserCog, FileText, ExternalLink } from "lucide-react";
+import { fetchIpfsJson, extractCidPath, ipfsGatewayUrl } from "@/lib/ipfs";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
@@ -61,6 +62,143 @@ import {
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+/**
+ * Renders the voting rationale for a single vote in a pending transaction.
+ * Prefers the DB-cached comment (saved when the ballot rationale was drafted /
+ * uploaded) so review needs no network call; falls back to resolving the IPFS
+ * anchor through /api/ipfs/resolve when there's no cache.
+ */
+function VoteRationale({
+  walletId,
+  anchorUrl,
+  anchorHash,
+}: {
+  walletId: string;
+  anchorUrl?: string;
+  anchorHash?: string;
+}) {
+  const { data: ballots } = api.ballot.getByWallet.useQuery(
+    { walletId },
+    { enabled: !!walletId },
+  );
+
+  const cachedComment = useMemo(() => {
+    if (!ballots) return undefined;
+    for (const b of ballots) {
+      const urls = b.anchorUrls ?? [];
+      const hashes = b.anchorHashes ?? [];
+      const comments = b.rationaleComments ?? [];
+      const len = Math.max(urls.length, hashes.length, comments.length);
+      for (let i = 0; i < len; i++) {
+        const urlMatch = !!anchorUrl && !!urls[i] && urls[i] === anchorUrl;
+        const hashMatch = !!anchorHash && !!hashes[i] && hashes[i] === anchorHash;
+        if (urlMatch || hashMatch) {
+          const c = comments[i]?.trim();
+          if (c) return c;
+        }
+      }
+    }
+    return undefined;
+  }, [ballots, anchorUrl, anchorHash]);
+
+  const [open, setOpen] = useState(false);
+  const [fetched, setFetched] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!open || cachedComment || fetched !== null || !anchorUrl) return;
+    let aborted = false;
+    setLoading(true);
+    setError(false);
+    fetchIpfsJson<{ body?: { comment?: string } }>(anchorUrl)
+      .then((data) => {
+        if (!aborted) setFetched(data?.body?.comment?.trim() ?? "");
+      })
+      .catch(() => {
+        if (!aborted) setError(true);
+      })
+      .finally(() => {
+        if (!aborted) setLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [open, cachedComment, fetched, anchorUrl]);
+
+  // Nothing to show: no on-chain anchor and no cached draft.
+  if (!anchorUrl && !cachedComment) return null;
+
+  const comment = cachedComment ?? (fetched || undefined);
+  // Link to the canonical document: a direct http(s) anchor as-is, otherwise the
+  // IPFS gateway URL for the CID (a human-openable page, not our JSON proxy).
+  const cidPath = anchorUrl ? extractCidPath(anchorUrl) : null;
+  const href = anchorUrl
+    ? anchorUrl.startsWith("http")
+      ? anchorUrl
+      : cidPath
+        ? ipfsGatewayUrl(cidPath)
+        : undefined
+    : undefined;
+
+  return (
+    <div className="pl-5">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex items-center gap-2">
+          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <FileText className="h-3 w-3" />
+            <span className="font-medium">Rationale</span>
+            {cachedComment && (
+              <Badge
+                variant="outline"
+                className="px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground border-border/50"
+              >
+                cached
+              </Badge>
+            )}
+            {open ? (
+              <ChevronUp className="h-3 w-3" />
+            ) : (
+              <ChevronDown className="h-3 w-3" />
+            )}
+          </CollapsibleTrigger>
+          {href && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              <span>source</span>
+            </a>
+          )}
+        </div>
+        <CollapsibleContent className="mt-1.5">
+          {comment ? (
+            <p className="whitespace-pre-wrap rounded-md border border-border/50 bg-muted/30 p-2 text-xs text-foreground/90">
+              {comment}
+            </p>
+          ) : loading ? (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader className="h-3 w-3 animate-spin" />
+              <span>Loading rationale…</span>
+            </div>
+          ) : error ? (
+            <p className="text-xs text-muted-foreground">
+              Could not load rationale from IPFS.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No rationale comment attached.
+            </p>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 export default function TransactionCard({
   walletId,
   transaction,
@@ -770,6 +908,9 @@ export default function TransactionCard({
                     const govActionId = vote.vote?.govActionId;
                     const govActionHash = govActionId?.txHash || "Unknown";
                     const govActionIndex = govActionId?.txIndex ?? "Unknown";
+                    const anchor = vote.vote?.votingProcedure?.anchor;
+                    const anchorUrl: string | undefined = anchor?.anchorUrl;
+                    const anchorHash: string | undefined = anchor?.anchorDataHash;
 
                     return (
                       <div key={index} className="space-y-2">
@@ -793,6 +934,11 @@ export default function TransactionCard({
                             </span>
                           </div>
                         </div>
+                        <VoteRationale
+                          walletId={walletId}
+                          anchorUrl={anchorUrl}
+                          anchorHash={anchorHash}
+                        />
                       </div>
                     );
                   })}

@@ -1,8 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "crypto";
 import { db } from "@/server/db";
-import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { publicCors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 /**
  * Cross-instance export nonce.
@@ -25,7 +26,7 @@ export default async function handler(
     return;
   }
 
-  await cors(req, res);
+  await publicCors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -35,10 +36,13 @@ export default async function handler(
   }
 
   try {
-    const { address, walletId } = req.query;
-    if (typeof address !== "string" || typeof walletId !== "string") {
+    const { address: rawAddress, walletId } = req.query;
+    if (typeof rawAddress !== "string" || typeof walletId !== "string") {
       return res.status(400).json({ error: "Missing address or walletId" });
     }
+    // Mobile CIP-30 wallets may hand the importer a hex-encoded address;
+    // signer lists store bech32, so normalize before membership checks.
+    const address = normalizeAddressToBech32(rawAddress);
 
     const wallet = await db.wallet.findUnique({ where: { id: walletId } });
     if (!wallet) {

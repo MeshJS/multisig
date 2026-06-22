@@ -9,12 +9,13 @@ import { DownloadBackup } from "./download-backup";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
 import ProxyControlCard from "./proxy-control";
 import { UpgradeGovernanceWallet } from "./upgrade-governance-wallet";
+import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
 
-  if (appWallet === undefined) return <></>;
+  if (appWallet === undefined) return <WalletDetailSkeleton />;
 
   return (
     <main className="flex w-full flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 md:p-6 lg:gap-8 lg:p-8 max-w-7xl mx-auto">

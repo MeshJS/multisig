@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader } from "lucide-react";
 import ActiveIndicator from "../activeIndicator";
 import ScriptIndicator from "../scriptIndicator";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import DelegateButton from "./delegateButton";
 export default function DrepDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const [drepInfo, setDrepInfo] = useState<BlockfrostDrepInfo | null>(null);
   const [drepMetadata, setDrepMetadata] =
     useState<BlockfrostDrepMetadata | null>(null);

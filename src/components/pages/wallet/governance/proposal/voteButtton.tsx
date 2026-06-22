@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Button from "@/components/common/button";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
@@ -7,14 +7,7 @@ import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ToastAction } from "@/components/ui/toast";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { api } from "@/utils/api";
@@ -32,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import type { BallotType } from "../ballot/ballot";
 import { useBallotModal } from "@/hooks/useBallotModal";
-import { Plus, Info, Lock, FileText, CheckCircle2, Vote } from "lucide-react";
+import { Plus, Info, Lock, FileText, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
 import { ProposalDetails } from "@/types/governance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getProposalStatus, parseProposalId } from "@/lib/governance";
@@ -46,6 +39,12 @@ interface VoteButtonProps {
   selectedBallotId?: string;
   proposalTitle?: string;
   proposalDetails?: ProposalDetails;
+  /**
+   * The wallet's current on-chain vote for this proposal, if any. When set,
+   * the segmented control pre-selects it and the primary button reflects
+   * whether the pending choice re-submits or changes the existing vote.
+   */
+  currentVote?: "Yes" | "No" | "Abstain";
   /**
    * Optional handler from the proposal page to open the ballot sidebar.
    * When provided, the \"Add proposal to ballot\" button will simply
@@ -63,6 +62,7 @@ export default function VoteButton({
   selectedBallotId,
   proposalTitle,
   proposalDetails,
+  currentVote,
   onOpenBallotSidebar,
 }: VoteButtonProps) {
   // Use the custom hook for ballots (still used for proxy / context where needed)
@@ -84,7 +84,18 @@ export default function VoteButton({
 
   const drepInfo = useWalletsStore((state) => state.drepInfo);
   const [loading, setLoading] = useState(false);
-  const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain">("Abstain");
+  // Start with no selection so we never pre-arm a vote (esp. Abstain). When a
+  // current on-chain vote is known, adopt it — unless the user has already
+  // picked something, so a late-arriving lookup can't clobber their choice.
+  const [voteKind, setVoteKind] = useState<"Yes" | "No" | "Abstain" | undefined>(
+    currentVote,
+  );
+  const userPicked = useRef(false);
+  useEffect(() => {
+    if (currentVote && !userPicked.current) {
+      setVoteKind(currentVote);
+    }
+  }, [currentVote]);
   const { toast } = useToast();
   const setAlert = useSiteStore((state) => state.setAlert);
   const network = useSiteStore((state) => state.network);
@@ -116,6 +127,10 @@ export default function VoteButton({
   const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
 
   async function voteProxy() {
+    if (!voteKind) {
+      setAlert("Select Yes, No, or Abstain before voting");
+      return;
+    }
     if (!hasValidProxy) {
       // Fall back to standard vote if no valid proxy
       return vote();
@@ -213,6 +228,10 @@ export default function VoteButton({
   }
 
   async function vote() {
+    if (!voteKind) {
+      setAlert("Select Yes, No, or Abstain before voting");
+      return;
+    }
     if (drepInfo === undefined) {
       setAlert("DRep not found");
       toast({
@@ -375,23 +394,38 @@ export default function VoteButton({
       ) : (
         // Active proposal state
         <>
-          <Select
+          <span className="text-xs font-medium text-muted-foreground">
+            Your vote
+          </span>
+          <ToggleGroup
+            type="single"
             value={voteKind}
-            onValueChange={(value) =>
-              setVoteKind(value as "Yes" | "No" | "Abstain")
-            }
+            // ToggleGroup emits "" when the active item is re-clicked; the
+            // guard keeps voteKind a valid choice so vote()/voteProxy() never
+            // read an empty vote into the on-chain tx.
+            onValueChange={(v) => v && setVoteKind(v as "Yes" | "No" | "Abstain")}
+            variant="outline"
+            className="grid w-full grid-cols-3 gap-1"
           >
-            <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 sm:px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-gray-500 bg-white dark:bg-gray-800">
-              <SelectValue placeholder="Select Vote Kind" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="Yes">Yes</SelectItem>
-                <SelectItem value="No">No</SelectItem>
-                <SelectItem value="Abstain">Abstain</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+            <ToggleGroupItem
+              value="Yes"
+              className="h-10 flex-1 gap-1.5 data-[state=on]:bg-green-100 data-[state=on]:text-green-800 dark:data-[state=on]:bg-green-900/30 dark:data-[state=on]:text-green-300"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Yes
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="No"
+              className="h-10 flex-1 gap-1.5 data-[state=on]:bg-red-100 data-[state=on]:text-red-800 dark:data-[state=on]:bg-red-900/30 dark:data-[state=on]:text-red-300"
+            >
+              <XCircle className="h-4 w-4" /> No
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="Abstain"
+              className="h-10 flex-1 gap-1.5 data-[state=on]:bg-gray-100 data-[state=on]:text-gray-800 dark:data-[state=on]:bg-gray-800 dark:data-[state=on]:text-gray-300"
+            >
+              <MinusCircle className="h-4 w-4" /> Abstain
+            </ToggleGroupItem>
+          </ToggleGroup>
 
           {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
             <div className="w-full p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
@@ -412,50 +446,43 @@ export default function VoteButton({
           <Button
             onClick={hasValidProxy ? voteProxy : vote}
             disabled={loading || utxos.length === 0}
-            className="w-full rounded-md bg-gray-600 dark:bg-gray-500 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white shadow hover:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full"
           >
             {loading
               ? "Voting..."
               : utxos.length > 0
-                ? `Vote${hasValidProxy ? " (Proxy)" : ""}`
+                ? `Vote ${voteKind}${hasValidProxy ? " (Proxy)" : ""}`
                 : "No UTxOs Available"}
           </Button>
         </>
       )}
 
-      <div className="flex justify-center">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => {
-                  setCurrentProposal(proposalId, proposalTitle);
-                  openModal();
-                }}
-                variant="outline"
-                size="sm"
-                className="h-9 w-9 p-0 rounded-md border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500 flex items-center justify-center transition-colors relative"
-              >
-                {isOnAnyBallot ? (
-                  <>
-                    <Vote className="h-4 w-4" />
-                    {ballotCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center text-[10px] font-semibold bg-green-500 dark:bg-green-600 text-white rounded-full border-2 border-white dark:border-gray-800">
-                        {ballotCount}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <Vote className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p>{isOnAnyBallot ? `Manage in ${ballotCount} ballot${ballotCount !== 1 ? 's' : ''}` : "Add to Ballot"}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={() => {
+                setCurrentProposal(proposalId, proposalTitle);
+                openModal();
+              }}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              <Vote className="mr-2 h-4 w-4" />
+              {isOnAnyBallot
+                ? `In ${ballotCount} ballot${ballotCount !== 1 ? "s" : ""}`
+                : "Add to ballot"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="max-w-[240px] text-xs">
+              Vote casts your DRep vote on-chain now. Add to ballot collects
+              this proposal so co-signers can vote together.
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }

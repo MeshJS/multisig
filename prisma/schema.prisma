@@ -310,3 +310,18 @@ model AuditLog {
   @@index([createdAt])
   @@index([actorAddress, createdAt])
 }
+
+model ProposalTally {
+  id         String   @id @default(cuid())
+  network    Int
+  proposalId String
+  yes        Int      @default(0)
+  no         Int      @default(0)
+  abstain    Int      @default(0)
+  total      Int      @default(0)
+  capped     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([network, proposalId])
+}

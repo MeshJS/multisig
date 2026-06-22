@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { env } from "@/env";
+import { ipfsGatewayUrl } from "@/lib/ipfs";
 
 interface PinataResponse {
   data: {
@@ -59,9 +60,10 @@ export default async function handler(
     }
 
     const pinataData = (await pinataResponse.json()) as PinataResponse;
-    
-    // Construct IPFS gateway URL using public IPFS gateway
-    const ipfsUrl = `https://ipfs.io/ipfs/${pinataData.data.cid}`;
+
+    // Return a reliable gateway URL (dedicated Pinata gateway when configured,
+    // else the shared Pinata gateway) — not the flaky public ipfs.io.
+    const ipfsUrl = ipfsGatewayUrl(pinataData.data.cid);
 
     res.status(200).json({ 
       url: ipfsUrl,

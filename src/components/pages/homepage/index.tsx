@@ -2,6 +2,10 @@ import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
+import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { MarbleField } from "@/components/ui/marble-field";
+import { FeatureIcon } from "@/components/pages/homepage/feature-icons";
+import { MultisigSigningExplainer } from "@/components/pages/homepage/multisig-explainer";
 import Link from "next/link";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/router";
@@ -9,8 +13,20 @@ import { api } from "@/utils/api";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { Database, Sparkles, Bot, Code, Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Database, Bot, Code, Download, Check } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
+import {
+  MultisigWalletPreview,
+  WalletListPreview,
+  SignersPreview,
+  CreateTransactionPreview,
+  TransactionHistoryPreview,
+  PendingTransactionsPreview,
+  ProposalPreview,
+  DRepPreview,
+  StakingPreview,
+} from "@/components/pages/homepage/previews";
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -122,40 +138,73 @@ export function PageHomepage() {
   const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
-  // Scroll detection for aurora fade-out
-  const [scrollY, setScrollY] = useState(0);
+  // Scroll-driven fade of the hero background layers. We write opacity straight
+  // to the layer DOM nodes via refs inside a requestAnimationFrame callback, so
+  // scrolling never triggers a React re-render of this (large) page — the old
+  // setState-on-every-scroll approach re-rendered the whole tree each frame,
+  // which is what made scrolling choppy.
+  const auroraRef = useRef<HTMLDivElement>(null);
+  const meshRef = useRef<HTMLDivElement>(null);
+
+  // The homepage hero background follows the same appearance setting as the rest
+  // of the app. Default-show until mounted so the SSR markup and first client
+  // paint agree (avoids a hydration mismatch on the persisted preference).
+  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
+  const [appearanceMounted, setAppearanceMounted] = useState(false);
+  useEffect(() => setAppearanceMounted(true), []);
+  const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
+  const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
 
   useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const currentScrollY = target.scrollTop;
-      setScrollY(currentScrollY);
+    if (!heroBackgroundOn) return;
+    const mainElement = document.querySelector("main");
+    if (!mainElement) return;
+
+    const root = document.documentElement;
+    let raf = 0;
+    let hideTimer = 0;
+    const apply = () => {
+      raf = 0;
+      const y = mainElement.scrollTop;
+      // Aurora fades 500→1500px; the marble mesh starts a touch more present.
+      const aurora = y < 500 ? 0.35 : y > 1500 ? 0 : 0.35 * (1 - (y - 500) / 1000);
+      const mesh = y < 500 ? 0.9 : y > 1500 ? 0 : 0.9 * (1 - (y - 500) / 1000);
+      if (auroraRef.current) auroraRef.current.style.opacity = String(aurora);
+      if (meshRef.current) meshRef.current.style.opacity = String(mesh);
+
+      // Once the background is fully faded out (invisible), stop animating it a
+      // beat later to save GPU — it keeps running the whole time it's visible
+      // or fading, and resumes instantly the moment it fades back in.
+      if (aurora === 0 && mesh === 0) {
+        if (!hideTimer && !root.hasAttribute("data-bg-hidden")) {
+          hideTimer = window.setTimeout(() => {
+            hideTimer = 0;
+            root.setAttribute("data-bg-hidden", "");
+          }, 800);
+        }
+      } else {
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = 0;
+        }
+        root.removeAttribute("data-bg-hidden");
+      }
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(apply);
     };
 
-    // Find the main element (scrollable container)
-    const mainElement = document.querySelector('main');
-
-    if (mainElement) {
-      // Initial call
-      setScrollY(mainElement.scrollTop);
-
-      // Listen to scroll on main element
-      mainElement.addEventListener("scroll", handleScroll, { passive: true });
-
-      return () => {
-        mainElement.removeEventListener("scroll", handleScroll);
-      };
-    }
-  }, []);
-
-  // Aurora Fade-Out (Top): 500px - 1500px
-  const calculateTopAuroraOpacity = () => {
-    if (scrollY < 500) return 0.4;
-    if (scrollY > 1500) return 0;
-    return 0.4 * (1 - (scrollY - 500) / 1000);
-  };
-
-  const topAuroraOpacity = calculateTopAuroraOpacity();
+    apply();
+    mainElement.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      mainElement.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      if (hideTimer) clearTimeout(hideTimer);
+      root.removeAttribute("data-bg-hidden");
+    };
+  }, [heroBackgroundOn]);
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
@@ -166,17 +215,28 @@ export function PageHomepage() {
 
   return (
     <div className="relative w-full min-h-screen">
-      {/* Aurora Background - Fixed with Smooth Fade-Out */}
-      <div
-        className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-        style={{ opacity: topAuroraOpacity }}
-      >
-        <Background variant="aurora" />
-      </div>
+      {heroBackgroundOn && (
+        <>
+          {/* Aurora Background — opacity is driven per-frame via the rAF scroll
+              effect above (ref), not React state, so scrolling stays smooth. */}
+          <div ref={auroraRef} className="fixed inset-0 -z-10" style={{ opacity: 0.35 }}>
+            <Background variant="aurora" preset={heroPreset} />
+          </div>
+
+          {/* Marble swirls under a soft wash, above the aurora. The wash is a
+              plain translucent fill (no backdrop-filter): blurring the live
+              canvas every frame was a major scroll cost, and the marble is now
+              rendered low-res, so it already reads soft. */}
+          <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
+            <MarbleField />
+            <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
+          </div>
+        </>
+      )}
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-4xl text-center">
+        <Reveal className="mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
             Manage Cardano Treasuries with Multisig Security
           </h1>
@@ -207,14 +267,50 @@ export function PageHomepage() {
                 </Button>
               </>
             ) : (
-              <ConnectWallet />
+              <>
+                <ConnectWallet />
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/features">Explore features</Link>
+                </Button>
+              </>
             )}
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
             Secure Treasuries • Participate in Governance • Collaborate
           </p>
-        </div>
+        </Reveal>
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* Multisig signing explainer */}
+      <section className="container mx-auto px-4 py-12">
+        <Reveal className="mx-auto grid max-w-5xl items-center gap-8 md:grid-cols-2">
+          <div>
+            <h2 className="text-3xl font-bold">Every transaction needs a quorum</h2>
+            <p className="mt-4 text-muted-foreground">
+              With M-of-N multisig, funds only move when enough signers approve. In
+              this 3-of-5 wallet the transaction executes the moment the third
+              signature lands — no single key can ever act alone.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                No single point of failure
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                Set your own threshold — at least N, all, or any
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                Every signer is invited and verified
+              </li>
+            </ul>
+          </div>
+          <MultisigSigningExplainer />
+        </Reveal>
       </section>
 
       <Separator className="my-8" />
@@ -225,56 +321,41 @@ export function PageHomepage() {
           <h2 className="text-center text-3xl font-bold">
             Control Your Cardano Treasuries
           </h2>
-          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Reveal className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
 
             {/* Multisig */}
             <CardUI
+              profileImage={<FeatureIcon name="multisig" />}
               title="Multi-signature security"
               description="M-of-N signing: require multiple signers to approve every transaction. Choose at least, all, or any threshold per wallet."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/multi-wallets.png"
-                  alt="Multi-signature"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <MultisigWalletPreview />
               </div>
             </CardUI>
 
             {/* Wallet Management */}
             <CardUI
+              profileImage={<FeatureIcon name="signers" />}
               title="Invite and Verify Signers"
               description="Invite signers to your multisig wallet by sharing a link. Ensure all signers are verified and have access to the wallet."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/invite-signers.png"
-                  alt="Invite and verify signers"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <SignersPreview />
               </div>
             </CardUI>
             
             <CardUI
+              profileImage={<FeatureIcon name="wallets" />}
               title="Manage All Your Wallets"
               description="Multiple multisig wallets for every collaboration, project, or team you are part of"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/multi-wallets.png"
-                  alt="Multi-wallet management"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <WalletListPreview />
               </div>
             </CardUI>
 
@@ -283,55 +364,40 @@ export function PageHomepage() {
 
             
             <CardUI
+              profileImage={<FeatureIcon name="createTx" />}
               title="Create New Transactions"
               description="Intuitive interface to create new transactions and send them to required signers for their signatures"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/new-tx.png"
-                  alt="Create transactions"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <CreateTransactionPreview />
               </div>
             </CardUI>
 
 
             <CardUI
+              profileImage={<FeatureIcon name="history" />}
               title="Complete Transaction History"
               description="View all your transactions in one place, including who signed them and their purpose"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/all-tx.png"
-                  alt="Transaction history"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <TransactionHistoryPreview />
               </div>
             </CardUI>
 
             <CardUI
+              profileImage={<FeatureIcon name="pending" />}
               title="Pending Transactions"
               description="Required signers can view and approve pending transactions with ease"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/pending-tx.png"
-                  alt="Pending transactions"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <PendingTransactionsPreview />
               </div>
             </CardUI>
 
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -341,7 +407,7 @@ export function PageHomepage() {
       <section className="container mx-auto px-4 py-16">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-center text-3xl font-bold">
-            Participate in Governance
+            Participate in Governance &amp; Staking
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
             <Link href="/governance" className="text-foreground hover:underline font-medium">
@@ -349,43 +415,46 @@ export function PageHomepage() {
             </Link>
           </p>
 
-          <div className="mt-12 flex flex-wrap justify-center gap-6">
+          <Reveal className="mt-12 flex flex-wrap justify-center gap-6">
             <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
               <CardUI
+                profileImage={<FeatureIcon name="proposals" />}
                 title="Cardano proposals"
                 description="View all Cardano proposals and vote as a team with multisig security"
-                cardClassName="overflow-hidden"
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
               >
-                <div className="mt-4 rounded-lg border border-border p-2">
-                  <Image
-                    src="/features/proposals.png"
-                    alt="Governance proposals"
-                    width={400}
-                    height={300}
-                    className="h-auto w-full rounded object-contain"
-                  />
+                <div className="mt-4">
+                  <ProposalPreview />
                 </div>
               </CardUI>
             </div>
 
             <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
               <CardUI
+                profileImage={<FeatureIcon name="drep" />}
                 title="Register DRep"
                 description="Register your team as a Delegated Representative for Cardano governance"
-                cardClassName="overflow-hidden"
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
               >
-                <div className="mt-4 rounded-lg border border-border p-2">
-                  <Image
-                    src="/features/register-drep.png"
-                    alt="DRep registration"
-                    width={400}
-                    height={300}
-                    className="h-auto w-full rounded object-contain"
-                  />
+                <div className="mt-4">
+                  <DRepPreview />
                 </div>
               </CardUI>
             </div>
-          </div>
+
+            <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
+              <CardUI
+                profileImage={<FeatureIcon name="staking" />}
+                title="Stake &amp; earn rewards"
+                description="Delegate your treasury to a Cardano stake pool and withdraw rewards securely through multisig."
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
+              >
+                <div className="mt-4">
+                  <StakingPreview />
+                </div>
+              </CardUI>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -452,7 +521,7 @@ export function PageHomepage() {
             <CardUI
               title="Multisig skill (download)"
               description="Cursor/IDE skill for multisig: bot API, v1 endpoints, wallet flows, and conventions. Drop into your project for AI-assisted development."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4">
                 <Button asChild variant="outline" size="sm">
@@ -466,7 +535,7 @@ export function PageHomepage() {
             <CardUI
               title="Machine-readable API spec"
               description="OpenAPI 3.0 JSON for codegen and tooling."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <code className="rounded bg-muted px-2 py-1 text-sm font-mono">
@@ -490,7 +559,7 @@ export function PageHomepage() {
             <CardUI
               title="Bot authentication"
               description="Authenticate bots with a bot key; use the returned JWT for v1 endpoints."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4 space-y-2 text-sm">
                 <p className="font-medium">POST /api/v1/botAuth</p>
@@ -549,24 +618,6 @@ export function PageHomepage() {
               wallet in minutes.
             </p>
 
-            {!user && (
-              <div className="mt-6 mx-auto max-w-lg">
-                <div className="flex items-start gap-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
-                  <div className="mt-0.5 p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/50 flex-shrink-0">
-                    <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
-                      New to crypto?
-                    </p>
-                    <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-                      Try <span className="font-medium">UTXOS</span> - the easiest way to get started. No wallet extension required! Sign in with email or social login from the wallet dropdown.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               {user ? (
                 <Button size="lg" asChild>
@@ -578,72 +629,6 @@ export function PageHomepage() {
             </div>
           </div>
       </section>
-
-      <Separator className="my-8" />
-
-      {/* Footer with Social Links */}
-      <footer className="mx-auto max-w-4xl px-4 pb-16">
-        <div className="flex justify-between items-center">
-          <p className="text-sm text-muted-foreground">
-            {new Date().getFullYear()} Mesh •{" "}
-            <a
-              href="https://github.com/MeshJS/multisig/blob/main/LICENSE.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline"
-            >
-              Apache-2.0 license
-            </a>
-          </p>
-          <div className="flex items-center gap-1.5">
-          <Link
-            href="/#developers-and-bots"
-            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Developers & Bots
-          </Link>
-          <Link
-            href="/features"
-            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Resources
-          </Link>
-          <a
-            href="https://x.com/meshsdk/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="X (Twitter)"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
-            </svg>
-          </a>
-          <a
-            href="https://discord.gg/dH48jH3BKa"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="Discord"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
-            </svg>
-          </a>
-          <a
-            href="https://github.com/MeshJS/multisig"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="GitHub"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-            </svg>
-          </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
