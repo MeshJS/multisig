@@ -10,6 +10,7 @@ import { addressToNetwork } from "@/utils/multisigSDK";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { assertWalletAccess } from "@/server/api/auth";
+import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -37,7 +38,7 @@ export const transactionRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWalletAccess(ctx, input.walletId);
+      const wallet = await assertWalletAccess(ctx, input.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
       const tx = await ctx.db.transaction.create({
         data: {
@@ -66,6 +67,21 @@ export const transactionRouter = createTRPCRouter({
           initialSigners: input.signedAddresses.length,
         },
       });
+      if (tx.state === 0) {
+        try {
+          await enqueueSignatureRequiredNotifications(ctx.db, {
+            wallet,
+            resourceType: "transaction",
+            resourceId: tx.id,
+            signedAddresses: tx.signedAddresses,
+            rejectedAddresses: tx.rejectedAddresses,
+            creatorAddress: sessionAddress,
+            description: tx.description,
+          });
+        } catch (error) {
+          console.error("Failed to enqueue transaction notifications", error);
+        }
+      }
       return tx;
     }),
 
@@ -549,6 +565,19 @@ export const transactionRouter = createTRPCRouter({
           existingSigners: signedAddresses.length,
         },
       });
+      try {
+        await enqueueSignatureRequiredNotifications(ctx.db, {
+          wallet,
+          resourceType: "transaction",
+          resourceId: created.id,
+          signedAddresses: created.signedAddresses,
+          rejectedAddresses: created.rejectedAddresses,
+          creatorAddress: sessionAddress,
+          description: created.description,
+        });
+      } catch (error) {
+        console.error("Failed to enqueue imported transaction notifications", error);
+      }
       return created;
     }),
 });

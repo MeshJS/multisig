@@ -88,6 +88,7 @@
     "react-dropzone": "^14.3.5",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "resend": "^6.12.4",
     "superjson": "^2.2.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-react": "^5.22.0",

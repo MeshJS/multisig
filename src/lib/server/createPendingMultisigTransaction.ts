@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { getProvider } from "@/utils/get-provider";
+import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 
 export type WalletSubmitShape = {
   numRequiredSigners: number | null;
@@ -54,7 +55,7 @@ export async function createPendingMultisigTransaction(
     return await blockchainProvider.submitTx(txCbor);
   }
 
-  return await db.transaction.create({
+  const transaction = await db.transaction.create({
     data: {
       walletId,
       txJson: txJsonStr,
@@ -65,4 +66,33 @@ export async function createPendingMultisigTransaction(
       state: 0,
     },
   });
+
+  try {
+    const walletRow = await db.wallet.findUnique({
+      where: { id: walletId },
+      select: {
+        id: true,
+        name: true,
+        signersAddresses: true,
+        numRequiredSigners: true,
+        type: true,
+      },
+    });
+
+    if (walletRow) {
+      await enqueueSignatureRequiredNotifications(db, {
+        wallet: walletRow,
+        resourceType: "transaction",
+        resourceId: transaction.id,
+        signedAddresses: transaction.signedAddresses,
+        rejectedAddresses: transaction.rejectedAddresses,
+        creatorAddress: proposerAddress,
+        description,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to enqueue transaction notifications", error);
+  }
+
+  return transaction;
 }
