@@ -59,7 +59,7 @@ jobs:
 
       - name: Build CI containers
         shell: bash
-        run: docker compose -f docker-compose.playwright.yml build app playwright-runner
+        run: docker compose -f docker-compose.playwright.yml build app bootstrap-runner playwright-runner
 
       - name: Start Postgres + App containers
         shell: bash

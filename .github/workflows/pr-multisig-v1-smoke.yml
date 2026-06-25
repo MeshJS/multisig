@@ -1,9 +1,7 @@
 name: PR Multisig v1 Smoke
 
 on:
-  workflow_run:
-    workflows: ["PR Playwright Browser Tests"]
-    types: [completed]
+  pull_request:
     branches:
       - main
       - preprod
@@ -31,17 +29,7 @@ on:
 
 jobs:
   multisig-v1-smoke:
-    # workflow_run has secrets; never execute fork PR code in that context.
-    # workflow_dispatch is maintainer-triggered and may checkout github.sha.
-    if: >-
-      github.repository == 'MeshJS/multisig' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_repository.full_name == github.repository
-        )
-      )
+    if: github.repository == 'MeshJS/multisig'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -64,8 +52,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Validate required CI secrets
         shell: bash

@@ -179,11 +179,12 @@ async function connectWalletFlow(page: Page): Promise<void> {
     }
   });
 
-  // Clear the HttpOnly session cookie via the app's own endpoint.
-  await page.request.delete("/api/auth/wallet-session").catch(() => {});
-  // Clear the flag that prevents WalletAuthModal from showing when the layout
-  // detects a connected wallet without an authorized wallet session.
-  await page.evaluate(() => sessionStorage.removeItem("mesh_session_checked"));
+  // Clear the HttpOnly session cookie from Playwright. This keeps the fixture
+  // compatible with preprod, where /api/auth/wallet-session only accepts POST.
+  await page.context().clearCookies({ name: "mesh_wallet_session" });
+  await page
+    .evaluate(() => sessionStorage.removeItem("mesh_session_checked"))
+    .catch(() => {});
 
   // Register the response listener before clicking so we do not miss a fast response.
   const sessionResponsePromise = page.waitForResponse(

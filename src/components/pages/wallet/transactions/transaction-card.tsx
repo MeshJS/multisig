@@ -221,7 +221,6 @@ export default function TransactionCard({
   }, [transaction.txJson]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
-  const [broadcastDone, setBroadcastDone] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -447,7 +446,6 @@ export default function TransactionCard({
         });
         txHash = submitResult.txHash;
         signedTx = submitResult.txHex;
-        setBroadcastDone(true);
       }
 
       updateTransaction({
@@ -650,7 +648,7 @@ export default function TransactionCard({
   // the Transactions page still loads and the user can free locked UTxOs (#211).
   if (!txJson) {
     return (
-      <Card className="self-start overflow-hidden w-full border-destructive/40" data-testid={`tx-card-${transaction.id}`}>
+      <Card className="self-start overflow-hidden w-full border-destructive/40">
         <CardHeader className="flex flex-col gap-3 bg-destructive/5 p-4 sm:p-6">
           <CardTitle className="text-base sm:text-lg">
             Unreadable transaction
@@ -723,7 +721,7 @@ export default function TransactionCard({
   const pendingCount = signersCount - signedCount - rejectedCount;
   
   return (
-    <Card className="self-start overflow-hidden w-full" data-testid={`tx-card-${transaction.id}`}>
+    <Card className="self-start overflow-hidden w-full">
       <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
         <div className="flex flex-row items-start w-full">
           <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
@@ -1181,17 +1179,13 @@ export default function TransactionCard({
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex items-center gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
-            {broadcastDone && (
-              <div data-testid="tx-broadcast-success" aria-hidden className="sr-only" />
-            )}
-            <Button
-              onClick={() => signTx()}
+            <Button 
+              onClick={() => signTx()} 
               disabled={loading}
               loading={loading}
-              data-testid={`sign-button-${transaction.id}`}
               className={`flex-1 h-10 relative overflow-hidden transition-all duration-300 ${
-                loading
-                  ? "bg-primary/90 shadow-lg shadow-primary/20 cursor-wait"
+                loading 
+                  ? "bg-primary/90 shadow-lg shadow-primary/20 cursor-wait" 
                   : ""
               }`}
             >

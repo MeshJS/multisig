@@ -21,13 +21,6 @@ services:
       context: .
       dockerfile: Dockerfile.ci
       target: app
-      # `next build` inlines NEXT_PUBLIC_* into the client bundle. API-only CI
-      # smoke reads Blockfrost via server-side BLOCKFROST_* at runtime, but pass
-      # build args when rebuilding so browser/client paths stay consistent.
-      args:
-        NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
-        NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_MAINNET_API_KEY:-}
-        NEXT_PUBLIC_DEFAULT_NETWORK: ${CI_NETWORK_ID:-0}
     environment:
       NODE_ENV: test
       NEXT_TELEMETRY_DISABLED: "1"

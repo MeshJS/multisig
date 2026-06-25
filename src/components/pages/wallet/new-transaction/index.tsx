@@ -420,7 +420,6 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
 
       if (selectedUtxos.length === 0) {
         setError("Insufficient funds");
-        setLoading(false);
         return;
       }
 
@@ -1379,7 +1378,6 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
             disabled={loading}
             size="lg"
             className="h-11 w-full sm:h-12 sm:w-auto sm:min-w-[200px]"
-            data-testid="create-transaction-button"
           >
             {loading ? (
               <>

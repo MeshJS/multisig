@@ -4,7 +4,6 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import {
-  clearWalletSessionCookie,
   getWalletSessionFromReq,
   setWalletSessionCookie,
   type WalletSessionPayload,
@@ -16,11 +15,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
-  }
-
-  if (req.method === "DELETE") {
-    clearWalletSessionCookie(res);
-    return res.status(200).json({ ok: true });
   }
 
   if (req.method !== "POST") {

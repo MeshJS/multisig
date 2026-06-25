@@ -72,36 +72,6 @@ function buildNativeScriptFromPaymentSigners(
   return nativeScript;
 }
 
-function buildStoredPaymentScriptWallet(
-  wallet: DbWalletWithLegacy,
-  network: number,
-): { nativeScript: NativeScript; scriptCbor: string; address: string } | undefined {
-  const scriptCbor = wallet.scriptCbor?.trim();
-  if (!scriptCbor) {
-    return undefined;
-  }
-
-  try {
-    const nativeScript = decodedToNativeScript(
-      decodeNativeScriptFromCbor(scriptCbor),
-    );
-    return {
-      nativeScript,
-      scriptCbor,
-      address: serializeNativeScript(
-        nativeScript,
-        wallet.stakeCredentialHash ?? undefined,
-        network,
-      ).address,
-    };
-  } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("buildWallet: failed to use stored scriptCbor", error);
-    }
-    return undefined;
-  }
-}
-
 function buildDRepIdFromScript(nativeScript: NativeScript): string {
   const dRepIdCip105 = resolveScriptHashDRepId(
     resolveNativeScriptHash(nativeScript),
@@ -349,19 +319,6 @@ export function buildWallet(
 
   // Type 0 (Legacy): Build native script directly from payment keys in input order
   if (walletType === 'legacy') {
-    const storedScriptWallet = buildStoredPaymentScriptWallet(wallet, network);
-    if (storedScriptWallet) {
-      const dRepIdCip129 = buildDRepIdFromScript(storedScriptWallet.nativeScript);
-
-      return {
-        ...wallet,
-        nativeScript: storedScriptWallet.nativeScript,
-        scriptCbor: storedScriptWallet.scriptCbor,
-        address: storedScriptWallet.address,
-        dRepId: dRepIdCip129,
-      } as Wallet;
-    }
-
     const validScripts = buildPaymentSigScripts(wallet);
 
     if (validScripts.length === 0) {
@@ -372,7 +329,7 @@ export function buildWallet(
     const nativeScript = buildNativeScriptFromPaymentSigners(wallet, validScripts);
 
     // Build address from payment script with external stake credential hash if available
-    // Legacy wallets can have external stake key hash but no individual stake keys.
+    // Legacy wallets can have external stake key hash but no individual stake keys
     const address = serializeNativeScript(
       nativeScript as NativeScript,
       wallet.stakeCredentialHash as undefined | string, // Use external stake credential hash if available

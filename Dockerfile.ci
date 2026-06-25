@@ -14,13 +14,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Upgrade npm to match local dev environment (lock file generated with npm 11).
-RUN npm install -g npm@11
-
 # @meshsdk/core-csl loads as a native ESM module whose whisky-evaluator WASM
 # exports node can only resolve with --experimental-wasm-modules. Both the app
-# (`next build` + `next start`) and the ci-runner scripts that import the Mesh
-# SDK need it, so set it on the shared base stage.
+# (`next build` + `next start`) and the ci-runner (tsx scripts that import the
+# Mesh SDK) need it, so set it on the shared base stage.
 ENV NODE_OPTIONS=--experimental-wasm-modules
 
 # Install dependencies first for better layer caching.
@@ -53,15 +50,13 @@ EXPOSE 3000
 FROM base AS app
 
 # NEXT_PUBLIC_* vars are inlined into the client bundle by `next build`, so the
-# browser-driven Playwright flow must pass them as build args (see
-# docker-compose.playwright.yml). They default to empty for API-only smoke runs
-# (docker-compose.ci.yml), which never load the client bundle.
+# browser-driven Playwright flow passes them as build args.
 ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=
 ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=
-ARG NEXT_PUBLIC_DEFAULT_NETWORK=0
+ARG NEXT_PUBLIC_NETWORK_ID=0
 ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=$NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
 ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=$NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET
-ENV NEXT_PUBLIC_DEFAULT_NETWORK=$NEXT_PUBLIC_DEFAULT_NETWORK
+ENV NEXT_PUBLIC_NETWORK_ID=$NEXT_PUBLIC_NETWORK_ID
 
 # Build the production app so the smoke runs `next start` (not `next dev`) and
 # exercises the same output Vercel deploys. `next dev` mis-resolves the
@@ -70,9 +65,6 @@ ENV NEXT_PUBLIC_DEFAULT_NETWORK=$NEXT_PUBLIC_DEFAULT_NETWORK
 # dummy DATABASE_URL keeps build-time module evaluation of the pg adapter happy.
 # (NODE_OPTIONS=--experimental-wasm-modules is inherited from the base stage.)
 ENV SKIP_ENV_VALIDATION=true
-# Inlined into the client bundle: skips t3-env client validation in the browser,
-# which would otherwise throw when optional CI builds omit NEXT_PUBLIC_* keys.
-ENV NEXT_PUBLIC_SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN npm run build

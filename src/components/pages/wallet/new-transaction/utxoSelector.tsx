@@ -170,10 +170,6 @@ export default function UTxOSelector({
       setIsInitialLoad(false);
     } catch (error) {
       console.error(`Failed to fetch UTxOs for Address ${address}:`, error);
-      setUtxos([]);
-      setSelectedUtxos([]);
-      setLoaded(true);
-      setIsInitialLoad(false);
     } finally {
       setLoading(false);
     }
@@ -401,11 +397,7 @@ export default function UTxOSelector({
   }, [selectedUtxos, recipientAmounts, recipientAssets, walletAssetMetadata]);
 
   return (
-    <div
-      className="space-y-4"
-      data-testid="utxo-selector"
-      data-loaded={loaded ? "true" : undefined}
-    >
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
         <Toggle
           variant="outline"

@@ -65,7 +65,7 @@ export const env = createEnv({
    * `NEXT_PUBLIC_`.
    */
   client: {
-    NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
+    NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: z.string(),
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
     NEXT_PUBLIC_UTXOS_PROJECT_ID: z.string().optional(),
     NEXT_PUBLIC_NETWORK_ID: z.string().default("0"),
@@ -134,11 +134,7 @@ export const env = createEnv({
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
    * useful for Docker builds.
    */
-  // SKIP_ENV_VALIDATION is server-only; NEXT_PUBLIC_SKIP_ENV_VALIDATION lets
-  // the client bundle skip validation too (used in Docker CI environments).
-  skipValidation:
-    !!process.env.SKIP_ENV_VALIDATION ||
-    !!process.env.NEXT_PUBLIC_SKIP_ENV_VALIDATION,
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   /**
    * Makes it so that empty strings are treated as undefined. `SOME_VAR: z.string()` and
    * `SOME_VAR=''` will throw an error.

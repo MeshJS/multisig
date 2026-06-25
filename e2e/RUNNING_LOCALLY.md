@@ -39,7 +39,7 @@ Run these commands in order from the repo root.
 ### PowerShell
 
 ```powershell
-docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app playwright-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner playwright-runner
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d postgres app
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright ps
 ```
@@ -58,7 +58,7 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright `
 ### Bash
 
 ```bash
-docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app playwright-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner playwright-runner
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d postgres app
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright ps
 ```
@@ -248,6 +248,14 @@ Blockfrost. Confirm `CI_BLOCKFROST_PREPROD_API_KEY` is a valid preprod key and t
 wallets have UTxOs. If the key changed, rebuild and restart the `app` service because
 `next build` bakes `NEXT_PUBLIC_*` vars into the client bundle at image build time
 (they are passed as Docker build args from `.env.playwright`).
+
+**Blank black page / no `Connect Wallet` button** - the browser bundle likely built
+without required public env vars. Rebuild and restart `app`:
+
+```powershell
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d app
+```
 
 **`net::ERR_SSL_PROTOCOL_ERROR`** - `.app` is on Chromium's HSTS preload list, so
 `http://app:*` is upgraded to HTTPS. The Compose file uses the `webapp` network alias

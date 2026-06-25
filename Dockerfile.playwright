@@ -2,9 +2,6 @@ FROM mcr.microsoft.com/playwright:v1.60.0-jammy
 
 WORKDIR /app
 
-# Upgrade npm to match local dev environment (lock file generated with npm 11).
-RUN npm install -g npm@11
-
 # Install app dependencies (needed for @meshsdk/* imports in Phase 2 helpers).
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma

@@ -31,19 +31,10 @@ export function getWalletSessionFromReq(req: NextApiRequest): WalletSessionPaylo
   return parseWalletSessionToken(raw);
 }
 
-// `next start` always runs with NODE_ENV=production, but CI serves the
-// production build over plain HTTP (http://webapp:3000), where Chromium
-// silently drops `Secure` cookies. WALLET_SESSION_ALLOW_INSECURE_COOKIE lets
-// the Playwright/CI stack opt out of the Secure attribute; it must never be
-// set in a real deployment.
-function isSecureCookieEnabled(): boolean {
-  if (process.env.WALLET_SESSION_ALLOW_INSECURE_COOKIE === "true") return false;
-  return env.NODE_ENV === "production";
-}
-
 export function setWalletSessionCookie(res: NextApiResponse, payload: WalletSessionPayload) {
   const token = createWalletSessionToken(payload);
-  const secureAttr = isSecureCookieEnabled() ? "; Secure" : "";
+  const secure = env.NODE_ENV === "production";
+  const secureAttr = secure ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
     `${WALLET_SESSION_COOKIE}=${token}; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=${
@@ -53,7 +44,8 @@ export function setWalletSessionCookie(res: NextApiResponse, payload: WalletSess
 }
 
 export function clearWalletSessionCookie(res: NextApiResponse) {
-  const secureAttr = isSecureCookieEnabled() ? "; Secure" : "";
+  const secure = env.NODE_ENV === "production";
+  const secureAttr = secure ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
     `${WALLET_SESSION_COOKIE}=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`,

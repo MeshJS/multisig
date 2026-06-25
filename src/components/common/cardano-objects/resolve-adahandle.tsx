@@ -17,9 +17,6 @@ export const resolveAdaHandle = async (
   index: number,
   value: string,
 ) => {
-  // AdaHandle lookup only supports mainnet; instantiate lazily so a missing
-  // mainnet key in preprod CI environments does not crash the page on load.
-  const provider = getProvider(1);
   try {
     const handleName = value.substring(1);
     if (handleName.length === 0) {

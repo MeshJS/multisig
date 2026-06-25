@@ -2,10 +2,6 @@ export default async function sendDiscordMessage(
   discordIds: string[],
   message: string,
 ) {
-  if (discordIds.length === 0) {
-    return { ok: true, skipped: true };
-  }
-
   const response = await fetch("/api/discord/send-message", {
     method: "POST",
     headers: {
