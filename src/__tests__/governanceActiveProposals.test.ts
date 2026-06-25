@@ -140,7 +140,7 @@ describe("governanceActiveProposals API", () => {
 
   it("returns only active proposals and tolerates metadata 404", async () => {
     providerGetMock.mockImplementation(async (path) => {
-      if (path.startsWith("governance/proposals?")) {
+      if (path.startsWith("/governance/proposals?")) {
         return [
           {
             tx_hash: "tx-active",
@@ -162,7 +162,7 @@ describe("governanceActiveProposals API", () => {
           },
         ];
       }
-      if (path === "governance/proposals/tx-active/0") {
+      if (path === "/governance/proposals/tx-active/0") {
         return {
           ratified_epoch: null,
           enacted_epoch: null,
@@ -173,7 +173,7 @@ describe("governanceActiveProposals API", () => {
           return_address: "addr_test1...",
         };
       }
-      if (path === "governance/proposals/tx-ratified/1") {
+      if (path === "/governance/proposals/tx-ratified/1") {
         return {
           ratified_epoch: 530,
           enacted_epoch: null,
@@ -184,7 +184,7 @@ describe("governanceActiveProposals API", () => {
           return_address: "addr_test1...",
         };
       }
-      if (path === "governance/proposals/tx-active/0/metadata") {
+      if (path === "/governance/proposals/tx-active/0/metadata") {
         throw JSON.stringify({
           data: {
             error: "Not Found",
@@ -223,7 +223,7 @@ describe("governanceActiveProposals API", () => {
 
   it("returns an empty proposal list when Blockfrost has no governance proposals", async () => {
     providerGetMock.mockImplementation(async (path) => {
-      if (path.startsWith("governance/proposals?")) {
+      if (path.startsWith("/governance/proposals?")) {
         throw {
           response: {
             data: {
@@ -255,5 +255,59 @@ describe("governanceActiveProposals API", () => {
       network: "0",
       details: false,
     });
+  });
+
+  it("still returns active proposals when optional details and metadata fetches fail", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
+        return [
+          {
+            tx_hash: "tx-active",
+            cert_index: 0,
+            governance_type: "info_action",
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            ratified_epoch: null,
+          },
+        ];
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        throw {
+          response: {
+            status: 500,
+            data: { status_code: 500 },
+          },
+        };
+      }
+      if (path === "/governance/proposals/tx-active/0/metadata") {
+        throw {
+          response: {
+            status: 500,
+            data: { status_code: 500 },
+          },
+        };
+      }
+      return null;
+    });
+
+    const req = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+      query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(payload.proposals).toHaveLength(1);
+    expect(payload.proposals[0]).toMatchObject({
+      proposalId: "tx-active#0",
+      title: null,
+      status: "active",
+    });
+    expect(payload.activeCount).toBe(1);
   });
 });

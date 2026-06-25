@@ -184,7 +184,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let list: BlockfrostProposalListItem[];
     try {
       list = (await provider.get(
-        `governance/proposals?count=${count}&page=${page}&order=${order}`,
+        `/governance/proposals?count=${count}&page=${page}&order=${order}`,
       )) as BlockfrostProposalListItem[];
     } catch (error) {
       const status = getErrorStatus(error);
@@ -202,11 +202,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         try {
           detailsForStatus = (await provider.get(
-            `governance/proposals/${txHash}/${certIndex}`,
+            `/governance/proposals/${txHash}/${certIndex}`,
           )) as BlockfrostProposalDetailsItem;
         } catch (error) {
           const status = getErrorStatus(error);
-          if (status && status !== 404) throw error;
+          if (status && status !== 404) {
+            console.warn("governanceActiveProposals details fetch failed; using list status fields", {
+              txHash,
+              certIndex,
+              status,
+            });
+          }
         }
 
         const status = getProposalStatus({
@@ -253,22 +259,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         try {
           metadata = (await provider.get(
-            `governance/proposals/${txHash}/${certIndex}/metadata`,
+            `/governance/proposals/${txHash}/${certIndex}/metadata`,
           )) as BlockfrostProposalMetadataItem;
         } catch (error) {
           const status = getErrorStatus(error);
           if (govActionId) {
             try {
               const fallbackMetadata = (await provider.get(
-                `governance/proposals/${govActionId}/metadata`,
+                `/governance/proposals/${govActionId}/metadata`,
               )) as BlockfrostProposalMetadataItem;
               metadata = await hydrateMetadataFromAnchor(fallbackMetadata);
             } catch (fallbackError) {
               const fallbackStatus = getErrorStatus(fallbackError);
-              if (fallbackStatus !== 404) throw fallbackError;
+              if (fallbackStatus !== 404) {
+                console.warn("governanceActiveProposals metadata fallback failed", {
+                  txHash,
+                  certIndex,
+                  status: fallbackStatus,
+                });
+              }
             }
           } else if (status !== 404) {
-            throw error;
+            console.warn("governanceActiveProposals metadata fetch failed", {
+              txHash,
+              certIndex,
+              status,
+            });
           }
         }
 
