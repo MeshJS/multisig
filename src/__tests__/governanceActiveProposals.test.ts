@@ -220,4 +220,40 @@ describe("governanceActiveProposals API", () => {
       authors: [],
     });
   });
+
+  it("returns an empty proposal list when Blockfrost has no governance proposals", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("governance/proposals?")) {
+        throw {
+          response: {
+            data: {
+              error: "Not Found",
+              message: "The requested component has not been found.",
+              status_code: 404,
+            },
+          },
+        };
+      }
+      return null;
+    });
+
+    const req = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+      query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(payload).toMatchObject({
+      proposals: [],
+      activeCount: 0,
+      sourceCount: 0,
+      network: "0",
+      details: false,
+    });
+  });
 });

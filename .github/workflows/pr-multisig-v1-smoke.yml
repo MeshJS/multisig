@@ -27,6 +27,14 @@ on:
         default: ""
         type: string
 
+# Serialize against the Playwright e2e workflow: both broadcast from the same
+# preprod CI wallets, so they must never run at the same time. A constant group
+# (not per-PR) ensures mutual exclusion across PRs too. cancel-in-progress:false
+# means runs queue rather than cancel each other.
+concurrency:
+  group: ci-preprod-wallets
+  cancel-in-progress: false
+
 jobs:
   multisig-v1-smoke:
     if: github.repository == 'MeshJS/multisig'

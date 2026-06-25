@@ -137,6 +137,16 @@ const getErrorStatus = (error: unknown): number | undefined => {
   if (
     error &&
     typeof error === "object" &&
+    "response" in error &&
+    (error as { response?: { data?: { status_code?: unknown } } }).response?.data &&
+    typeof (error as { response?: { data?: { status_code?: unknown } } }).response?.data
+      ?.status_code === "number"
+  ) {
+    return (error as { response: { data: { status_code: number } } }).response.data.status_code;
+  }
+  if (
+    error &&
+    typeof error === "object" &&
     "data" in error &&
     (error as { data?: { status_code?: unknown } }).data &&
     typeof (error as { data?: { status_code?: unknown } }).data?.status_code === "number"
@@ -216,9 +226,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const provider = getProvider(Number(network));
-    const list = (await provider.get(
-      `governance/proposals?count=${count}&page=${page}&order=${order}`,
-    )) as BlockfrostProposalListItem[];
+    let list: BlockfrostProposalListItem[];
+    try {
+      list = (await provider.get(
+        `governance/proposals?count=${count}&page=${page}&order=${order}`,
+      )) as BlockfrostProposalListItem[];
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if (status !== 404) {
+        throw error;
+      }
+      list = [];
+    }
 
     const statusResolved = await Promise.all(
       (Array.isArray(list) ? list : []).map(async (item) => {
