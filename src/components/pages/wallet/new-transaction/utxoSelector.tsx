@@ -397,7 +397,11 @@ export default function UTxOSelector({
   }, [selectedUtxos, recipientAmounts, recipientAssets, walletAssetMetadata]);
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      data-testid="utxo-selector"
+      data-loaded={loaded ? "true" : "false"}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
         <Toggle
           variant="outline"

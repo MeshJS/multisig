@@ -221,6 +221,10 @@ export default function TransactionCard({
   }, [transaction.txJson]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
+  // Set once an on-chain broadcast succeeds during signing; surfaces a hidden
+  // marker (data-testid="tx-broadcast-success") that e2e tests wait on before
+  // the pending card is removed by the refetch.
+  const [broadcastDone, setBroadcastDone] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -446,6 +450,7 @@ export default function TransactionCard({
         });
         txHash = submitResult.txHash;
         signedTx = submitResult.txHex;
+        setBroadcastDone(true);
       }
 
       updateTransaction({
@@ -721,7 +726,13 @@ export default function TransactionCard({
   const pendingCount = signersCount - signedCount - rejectedCount;
   
   return (
-    <Card className="self-start overflow-hidden w-full">
+    <Card
+      className="self-start overflow-hidden w-full"
+      data-testid={`tx-card-${transaction.id}`}
+    >
+      {broadcastDone && (
+        <span data-testid="tx-broadcast-success" className="sr-only" />
+      )}
       <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
         <div className="flex flex-row items-start w-full">
           <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
@@ -1179,8 +1190,9 @@ export default function TransactionCard({
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex items-center gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
-            <Button 
-              onClick={() => signTx()} 
+            <Button
+              data-testid={`sign-button-${transaction.id}`}
+              onClick={() => signTx()}
               disabled={loading}
               loading={loading}
               className={`flex-1 h-10 relative overflow-hidden transition-all duration-300 ${

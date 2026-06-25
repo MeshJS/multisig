@@ -113,21 +113,32 @@ async function mockBrowserUtxoFetch(
   const addressPath = `/addresses/${encodedAddress}/utxos`;
   const rawAddressPath = `/addresses/${address}/utxos`;
 
+  // Blockfrost paginates UTxOs with ?page=N (100 per page) and BlockfrostProvider
+  // recurses page+1 until a page returns an empty array (see paginateUTxOs in
+  // @meshsdk/provider). Returning the full set on every page would never produce
+  // an empty page, so the app recurses forever (observed: page=9230+). Slice by
+  // page so page 1 holds the UTxOs and page 2+ returns [], terminating the loop.
+  const PAGE_SIZE = 100;
+
   await page.unroute("**/addresses/*/utxos**").catch(() => {});
   await page.route("**/addresses/*/utxos**", async (route) => {
     const url = new URL(route.request().url());
-    diagnostics.push(`utxo route saw ${url.href}`);
     if (
       url.pathname === addressPath ||
       url.pathname === rawAddressPath ||
       url.pathname.endsWith(addressPath) ||
       url.pathname.endsWith(rawAddressPath)
     ) {
-      diagnostics.push(`utxo route fulfilled ${url.href} with ${utxos.length} utxos`);
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const start = (page - 1) * PAGE_SIZE;
+      const pageUtxos = utxos.slice(start, start + PAGE_SIZE);
+      diagnostics.push(
+        `utxo route fulfilled ${url.href} with ${pageUtxos.length} utxos (page ${page})`,
+      );
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(utxos),
+        body: JSON.stringify(pageUtxos),
       });
       return;
     }

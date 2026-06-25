@@ -1374,6 +1374,7 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
           )}
 
           <Button
+            data-testid="create-transaction-button"
             onClick={() => createNewTransaction()}
             disabled={loading}
             size="lg"

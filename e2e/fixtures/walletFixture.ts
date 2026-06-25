@@ -11,6 +11,17 @@ import { loadContext } from "../helpers/contextLoader";
 import { buildCip30MockScript } from "../helpers/cip30Mock";
 import { signWithMnemonic, signDataWithMnemonic } from "../helpers/meshSign";
 import { getSignerUtxos } from "../helpers/blockfrostUtils";
+import { Address } from "@meshsdk/core-cst";
+
+// CIP-30 getUsedAddresses/getChangeAddress/getRewardAddresses return HEX-encoded
+// address bytes, not bech32. Mesh react 2.0's useAddress() parses them with a
+// strict hex decoder (Cardano.Address.fromBytes(HexBlob(addr))); a bech32 string
+// throws `Invalid string: "expected hex string"` and leaves useAddress()
+// unresolved, so the layout falls back to the public homepage. Convert the
+// bootstrap's bech32 addresses to hex before injecting them into the mock.
+function addressToHex(bech32: string): string {
+  return Address.fromBech32(bech32).toBytes().toString();
+}
 
 type WalletFixtures = {
   injectWallet: (page: Page, signerIndex: number) => Promise<void>;
@@ -136,9 +147,9 @@ export const test = base.extend<WalletFixtures>({
       await page.addInitScript({
         content: buildCip30MockScript({
           walletName: "meshci",
-          usedAddresses: [signerAddress],
-          changeAddress: signerAddress,
-          rewardAddresses: stakeAddress ? [stakeAddress] : [],
+          usedAddresses: [addressToHex(signerAddress)],
+          changeAddress: addressToHex(signerAddress),
+          rewardAddresses: stakeAddress ? [addressToHex(stakeAddress)] : [],
         }),
       });
     });

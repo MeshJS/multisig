@@ -27,13 +27,29 @@ type AuthFixtures = {
 };
 
 export const test = walletTest.extend<AuthFixtures>({
-  // Drives the real wallet-connect auth flow (Option B).
-  // Calls injectWallet to update the mocked signer, then connectWallet to run
-  // the full nonce → signData → POST /api/auth/wallet-session sequence.
-  // The resulting HttpOnly cookie persists across subsequent page navigations
-  // within the same Playwright browser context, so no re-auth is needed per page.
+  // Establishes an authenticated session for the given signer.
+  //
+  // CI path (CI_JWT_SECRET set): instead of driving the real nonce → signData →
+  // POST /api/auth/wallet-session handshake, inject a valid mesh_wallet_session
+  // cookie directly and seed Mesh's persisted connection so connect-wallet's
+  // auto-connect re-enables the injected mock on every navigation. This is the
+  // authenticated-context-without-the-auth-flow scenario authenticateDirect was
+  // built for, and it sidesteps two failures that make the real handshake
+  // unusable for the parallel ring-transfer legs:
+  //   1. Under `next start` the app issues its cookie with the Secure attribute,
+  //      which the browser never resends over plain http://webapp:3000 — so
+  //      every navigation arrives unauthenticated, the WalletAuthModal reopens,
+  //      and the UTxO selector never loads. Our injected cookie is non-Secure.
+  //   2. The per-navigation re-auth that fires when no valid cookie is present
+  //      runs getNonce → wallet-session unserialized across the three legs, which
+  //      all authenticate as the same signer addresses backed by a single nonce
+  //      row → "No nonce issued for this address" / 401. A pre-injected cookie
+  //      keeps getWalletSession authorized, so no handshake ever runs.
+  //
+  // Fallback (no CI_JWT_SECRET, e.g. preprod): drive the real connect flow.
   authenticateAs: async ({ injectWallet, connectWallet }, use) => {
     let lastAuthenticatedIndex: number | null = null;
+    let persistSeeded = false;
 
     await use(async (page: Page, signerIndex: number) => {
       // Always re-inject so the mocked wallet's addresses and mnemonic reflect
@@ -41,8 +57,58 @@ export const test = walletTest.extend<AuthFixtures>({
       // injectWallet does not need to register exposeFunction more than once.
       await injectWallet(page, signerIndex);
 
-      // Skip the UI connect flow if we're still on the same signer — the session
-      // cookie is still valid and the browser context carries it between navigations.
+      const jwtSecret = process.env.CI_JWT_SECRET;
+      if (jwtSecret) {
+        const ctx = loadContext();
+        const signerAddress = ctx.signerAddresses[signerIndex];
+        if (!signerAddress) {
+          throw new Error(
+            `No signer address at index ${signerIndex} in bootstrap context`,
+          );
+        }
+
+        // Seed Mesh's persisted connection once. connect-wallet's auto-connect
+        // reads this on each full-page load and re-enables the injected mock, so
+        // useAddress resolves and the layout renders the wallet page without any
+        // UI interaction. addInitScript runs before page scripts on every load.
+        if (!persistSeeded) {
+          await page.addInitScript(() => {
+            try {
+              localStorage.setItem(
+                "mesh-wallet-persist",
+                JSON.stringify({ walletName: "meshci" }),
+              );
+            } catch {
+              // localStorage may be unavailable before first paint — ignored.
+            }
+          });
+          persistSeeded = true;
+        }
+
+        // Replace any prior signer's cookie with this signer's session.
+        // secure:false is essential — a Secure cookie is dropped over http and
+        // re-creates the unauthenticated-navigation failure this avoids.
+        const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+        const token = buildWalletSessionToken(signerAddress, jwtSecret);
+        await page.context().clearCookies({ name: WALLET_SESSION_COOKIE });
+        await page.context().addCookies([
+          {
+            name: WALLET_SESSION_COOKIE,
+            value: token,
+            url: appUrl,
+            httpOnly: true,
+            sameSite: "Lax",
+            secure: false,
+            // 7 days, matching createWalletSessionToken in walletSession.ts
+            expires: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+          },
+        ]);
+        lastAuthenticatedIndex = signerIndex;
+        return;
+      }
+
+      // Fallback: drive the real UI connect flow. Skip the reconnect when the
+      // signer index is unchanged — the session cookie carries between navigations.
       if (lastAuthenticatedIndex !== signerIndex) {
         await connectWallet(page);
         lastAuthenticatedIndex = signerIndex;

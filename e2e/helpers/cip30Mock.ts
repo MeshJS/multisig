@@ -1,9 +1,19 @@
 // Phase 2: Browser-injectable CIP-0030 wallet mock.
 // Injects window.cardano[walletName] driven by Node.js bridge functions
 // registered via page.exposeFunction() before page.goto().
+//
+// IMPORTANT: per the CIP-0030 spec, getUsedAddresses / getUnusedAddresses /
+// getChangeAddress / getRewardAddresses return HEX-encoded address bytes, not
+// bech32. Mesh react 2.0's useAddress() resolves the address via
+// getUsedAddressesBech32(), which runs Cardano.Address.fromBytes(HexBlob(addr)) —
+// a strict hex parser that throws `Invalid string: "expected hex string"` on a
+// bech32 string. That uncaught error leaves useAddress() unresolved, so the
+// layout never sets userAddress and renders the public homepage instead of the
+// wallet page. Always pass hex addresses here (see addressToHex in walletFixture).
 
 export type Cip30MockParams = {
   walletName: string;
+  // HEX-encoded address bytes (CIP-30 wire format), NOT bech32.
   usedAddresses: string[];
   changeAddress: string;
   rewardAddresses: string[];
