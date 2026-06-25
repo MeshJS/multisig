@@ -49,6 +49,15 @@ EXPOSE 3000
 # --- Application image: production build served with `next start` ---------------
 FROM base AS app
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle by `next build`, so the
+# browser-driven Playwright flow passes them as build args.
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=
+ARG NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=
+ARG NEXT_PUBLIC_NETWORK_ID=0
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD=$NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
+ENV NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET=$NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET
+ENV NEXT_PUBLIC_NETWORK_ID=$NEXT_PUBLIC_NETWORK_ID
+
 # Build the production app so the smoke runs `next start` (not `next dev`) and
 # exercises the same output Vercel deploys. `next dev` mis-resolves the
 # @meshsdk/core-csl / whisky-evaluator WASM path at runtime, 500-ing tx routes.

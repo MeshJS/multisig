@@ -107,6 +107,7 @@ function RecipientRow({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Input
+              data-testid={`recipient-address-input-${index}`}
               type="text"
               inputMode="text"
               autoCapitalize="off"
@@ -148,6 +149,7 @@ function RecipientRow({
           style={{ minHeight: adaHandle ? "76px" : "auto" }}
         >
           <Input
+            data-testid={`amount-input-${index}`}
             type="number"
             inputMode="decimal"
             value={amounts[index]}

@@ -6,6 +6,7 @@ import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards"
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { getProvider } from "@/utils/get-provider";
 import { getProposalStatus } from "@/lib/governance";
+import { getProviderErrorStatus } from "@/lib/server/providerErrors";
 
 const REQUIRED_SCOPE = "governance:read";
 
@@ -44,6 +45,89 @@ type BlockfrostProposalMetadataItem = {
     };
     authors?: unknown;
   };
+};
+
+const getBlockfrostConfig = (network: string): { key: string; baseUrl: string } | null => {
+  const key =
+    network === "0"
+      ? process.env.BLOCKFROST_API_KEY_PREPROD || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
+      : process.env.BLOCKFROST_API_KEY_MAINNET || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET;
+  if (!key?.trim()) return null;
+  return {
+    key,
+    baseUrl:
+      network === "0"
+        ? "https://cardano-preprod.blockfrost.io/api/v0"
+        : "https://cardano-mainnet.blockfrost.io/api/v0",
+  };
+};
+
+const blockfrostGet = async <T,>(network: string, path: string): Promise<T> => {
+  const config = getBlockfrostConfig(network);
+  if (!config) {
+    throw new Error(`Missing Blockfrost API key for network ${network}`);
+  }
+  const response = await fetch(`${config.baseUrl}${path.startsWith("/") ? path : `/${path}`}`, {
+    headers: {
+      project_id: config.key,
+      accept: "application/json",
+    },
+  });
+  const text = await response.text();
+  const body = text
+    ? (() => {
+        try {
+          return JSON.parse(text) as unknown;
+        } catch {
+          return text;
+        }
+      })()
+    : null;
+
+  if (!response.ok) {
+    throw {
+      status: response.status,
+      data: typeof body === "object" && body !== null ? body : { message: String(body ?? "") },
+    };
+  }
+
+  return body as T;
+};
+
+const providerGet = async <T,>(args: {
+  provider: { get: (path: string) => Promise<unknown> } | null;
+  network: string;
+  path: string;
+}): Promise<T> => {
+  if (!args.provider) {
+    return blockfrostGet<T>(args.network, args.path);
+  }
+
+  try {
+    return (await args.provider.get(args.path)) as T;
+  } catch (error) {
+    const status = getProviderErrorStatus(error);
+    if (status !== undefined) {
+      throw error;
+    }
+    console.warn("governanceActiveProposals provider.get failed; retrying via Blockfrost REST", {
+      path: args.path,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return blockfrostGet<T>(args.network, args.path);
+  }
+};
+
+const getGovernanceProvider = (network: string): { get: (path: string) => Promise<unknown> } | null => {
+  try {
+    return getProvider(Number(network));
+  } catch (error) {
+    console.warn("governanceActiveProposals getProvider failed; using Blockfrost REST", {
+      network,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 };
 
 const hasUsableJsonMetadata = (value: unknown): boolean =>
@@ -108,43 +192,7 @@ const hydrateMetadataFromAnchor = async (
   return metadata;
 };
 
-const getErrorStatus = (error: unknown): number | undefined => {
-  if (typeof error === "string") {
-    try {
-      const parsed = JSON.parse(error) as unknown;
-      return getErrorStatus(parsed);
-    } catch {
-      return undefined;
-    }
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "status" in error &&
-    typeof (error as { status?: unknown }).status === "number"
-  ) {
-    return (error as { status: number }).status;
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "response" in error &&
-    (error as { response?: { status?: unknown } }).response &&
-    typeof (error as { response?: { status?: unknown } }).response?.status === "number"
-  ) {
-    return (error as { response: { status: number } }).response.status;
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "data" in error &&
-    (error as { data?: { status_code?: unknown } }).data &&
-    typeof (error as { data?: { status_code?: unknown } }).data?.status_code === "number"
-  ) {
-    return (error as { data: { status_code: number } }).data.status_code;
-  }
-  return undefined;
-};
+const getErrorStatus = getProviderErrorStatus;
 
 const toInt = (value: string | string[] | undefined, fallback: number): number => {
   if (typeof value !== "string") return fallback;
@@ -213,12 +261,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Invalid order. Use 'asc' or 'desc'." });
   }
   const includeDetails = isBoolQueryTrue(req.query.details);
+  const includeDebug = isBoolQueryTrue(req.query.debug) || process.env.NODE_ENV === "test";
 
   try {
-    const provider = getProvider(Number(network));
-    const list = (await provider.get(
-      `governance/proposals?count=${count}&page=${page}&order=${order}`,
-    )) as BlockfrostProposalListItem[];
+    const provider = getGovernanceProvider(network);
+    let list: BlockfrostProposalListItem[];
+    try {
+      list = await providerGet<BlockfrostProposalListItem[]>({
+        provider,
+        network,
+        path: `/governance/proposals?count=${count}&page=${page}&order=${order}`,
+      });
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if (status !== 404) {
+        throw error;
+      }
+      list = [];
+    }
 
     const statusResolved = await Promise.all(
       (Array.isArray(list) ? list : []).map(async (item) => {
@@ -227,12 +287,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let detailsForStatus: BlockfrostProposalDetailsItem | null = null;
 
         try {
-          detailsForStatus = (await provider.get(
-            `governance/proposals/${txHash}/${certIndex}`,
-          )) as BlockfrostProposalDetailsItem;
+          detailsForStatus = await providerGet<BlockfrostProposalDetailsItem>({
+            provider,
+            network,
+            path: `/governance/proposals/${txHash}/${certIndex}`,
+          });
         } catch (error) {
           const status = getErrorStatus(error);
-          if (status && status !== 404) throw error;
+          if (status && status !== 404) {
+            console.warn("governanceActiveProposals details fetch failed; using list status fields", {
+              txHash,
+              certIndex,
+              status,
+            });
+          }
         }
 
         const status = getProposalStatus({
@@ -278,23 +346,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let metadata: BlockfrostProposalMetadataItem | null = null;
 
         try {
-          metadata = (await provider.get(
-            `governance/proposals/${txHash}/${certIndex}/metadata`,
-          )) as BlockfrostProposalMetadataItem;
+          metadata = await providerGet<BlockfrostProposalMetadataItem>({
+            provider,
+            network,
+            path: `/governance/proposals/${txHash}/${certIndex}/metadata`,
+          });
         } catch (error) {
           const status = getErrorStatus(error);
           if (govActionId) {
             try {
-              const fallbackMetadata = (await provider.get(
-                `governance/proposals/${govActionId}/metadata`,
-              )) as BlockfrostProposalMetadataItem;
+              const fallbackMetadata = await providerGet<BlockfrostProposalMetadataItem>({
+                provider,
+                network,
+                path: `/governance/proposals/${govActionId}/metadata`,
+              });
               metadata = await hydrateMetadataFromAnchor(fallbackMetadata);
             } catch (fallbackError) {
               const fallbackStatus = getErrorStatus(fallbackError);
-              if (fallbackStatus !== 404) throw fallbackError;
+              if (fallbackStatus !== 404) {
+                console.warn("governanceActiveProposals metadata fallback failed", {
+                  txHash,
+                  certIndex,
+                  status: fallbackStatus,
+                });
+              }
             }
           } else if (status !== 404) {
-            throw error;
+            console.warn("governanceActiveProposals metadata fetch failed", {
+              txHash,
+              certIndex,
+              status,
+            });
           }
         }
 
@@ -374,6 +456,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     console.error("governanceActiveProposals error:", error);
-    return res.status(500).json({ error: "Failed to fetch active governance proposals" });
+    return res.status(500).json({
+      error: "Failed to fetch active governance proposals",
+      ...(includeDebug
+        ? {
+            providerStatus: status ?? null,
+            providerMessage: error instanceof Error ? error.message : String(error),
+          }
+        : {}),
+    });
   }
 }

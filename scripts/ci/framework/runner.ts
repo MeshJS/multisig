@@ -38,6 +38,7 @@ export async function runScenarios(args: {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const isCritical = severity === "critical";
         steps.push({
           id: step.id,
           description: step.description,
@@ -47,9 +48,11 @@ export async function runScenarios(args: {
           durationMs: now() - stepStart,
           error: errorMessage,
         });
-        scenarioFailed = true;
-        overallFailed = true;
-        if (severity === "critical") {
+        if (isCritical || !continueOnNonCriticalFailure) {
+          scenarioFailed = true;
+          overallFailed = true;
+        }
+        if (isCritical) {
           break;
         }
         if (!continueOnNonCriticalFailure) {

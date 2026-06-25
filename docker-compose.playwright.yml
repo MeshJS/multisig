@@ -1,0 +1,152 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: multisig
+    volumes:
+      - postgres-playwright-data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - multisig-playwright-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+      target: app
+      # `next build` inlines NEXT_PUBLIC_* into the client bundle, so the
+      # browser flow needs them at build time, not just at runtime. If any of
+      # these change in .env.playwright, rebuild the app image.
+      args:
+        NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+        # Preprod currently requires this public env var even when the test
+        # only uses network 0, so reuse the preprod key to satisfy validation.
+        NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+        NEXT_PUBLIC_NETWORK_ID: ${CI_NETWORK_ID:-0}
+    environment:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      SKIP_ENV_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      JWT_SECRET: ${CI_JWT_SECRET}
+      CORS_ORIGINS: http://webapp:3000,http://localhost:3000
+      NEXT_PUBLIC_NETWORK_ID: ${CI_NETWORK_ID:-0}
+      NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      BLOCKFROST_API_KEY_PREPROD: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      multisig-playwright-network:
+        # "app" matches the .app HSTS-preloaded gTLD — Chromium hard-redirects
+        # all http://app:* to https:// before the request leaves the browser.
+        # "webapp" is not on the preload list, so Playwright can reach it over HTTP.
+        aliases:
+          - webapp
+    # Serve the production build, like docker-compose.ci.yml. `next dev` cannot
+    # serve this app: Turbopack dev bundles @sidan-lab/whisky-js-nodejs despite
+    # serverExternalPackages (breaking its WASM path, 500-ing every SSR page),
+    # and webpack dev chokes on react-refresh's import.meta injection into the
+    # CJS @harmoniclabs/cbor dist under the transpiled @meshsdk/react.
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL to be ready...' &&
+        until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done &&
+        echo 'Running Prisma migrations...' &&
+        npx prisma migrate deploy || npx prisma db push &&
+        echo 'Starting application (production build)...' &&
+        node_modules/.bin/next start --hostname 0.0.0.0 --port 3000
+      "
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://localhost:3000/api/swagger').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  bootstrap-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+      target: base
+    environment:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+      SKIP_ENV_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/multisig
+      API_BASE_URL: http://webapp:3000
+      CI_NETWORK_ID: ${CI_NETWORK_ID:-0}
+      CI_NUM_REQUIRED_SIGNERS: ${CI_NUM_REQUIRED_SIGNERS:-2}
+      CI_JWT_SECRET: ${CI_JWT_SECRET}
+      CI_MNEMONIC_1: ${CI_MNEMONIC_1:-}
+      CI_MNEMONIC_2: ${CI_MNEMONIC_2:-}
+      CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
+      CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      CI_WALLET_TYPES: ${CI_WALLET_TYPES:-legacy,hierarchical,sdk}
+      CI_CONTEXT_PATH: /artifacts/ci-wallet-context.json
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - multisig-playwright-network
+    volumes:
+      - ./ci-artifacts:/artifacts
+    profiles:
+      - playwright
+    command: node .ci-dist/bootstrap.mjs
+
+  playwright-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    # Three Chromium instances run in parallel (one per ring-transfer leg);
+    # Docker's default 64MB /dev/shm makes Chromium crash under that load.
+    shm_size: 1gb
+    environment:
+      APP_URL: http://webapp:3000
+      PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-3}
+      CI_CONTEXT_PATH: /artifacts/ci-wallet-context.json
+      CI_JWT_SECRET: ${CI_JWT_SECRET}
+      CI_MNEMONIC_1: ${CI_MNEMONIC_1:-}
+      CI_MNEMONIC_2: ${CI_MNEMONIC_2:-}
+      CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
+      CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
+      CI_TRANSFER_LOVELACE: ${CI_TRANSFER_LOVELACE:-2000000}
+      PLAYWRIGHT_HTML_REPORT: /artifacts/playwright-report
+      PLAYWRIGHT_OUTPUT_DIR: /artifacts/playwright-traces
+    depends_on:
+      bootstrap-runner:
+        condition: service_completed_successfully
+      app:
+        condition: service_healthy
+    networks:
+      - multisig-playwright-network
+    volumes:
+      - ./ci-artifacts:/artifacts
+      # Mount e2e sources and CI framework at runtime so local edits are picked
+      # up immediately without rebuilding the image. Docker's BuildKit layer
+      # cache on Windows often fails to detect file changes inside COPY layers,
+      # so this is the reliable alternative.
+      - ./e2e:/app/e2e:ro
+      - ./scripts/ci/framework:/app/scripts/ci/framework:ro
+    profiles:
+      - playwright
+    command: npx playwright test --config=e2e/playwright.config.ts
+
+volumes:
+  postgres-playwright-data:
+
+networks:
+  multisig-playwright-network:
+    driver: bridge

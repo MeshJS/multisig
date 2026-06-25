@@ -1,4 +1,4 @@
-name: PR Multisig v1 Smoke
+name: PR Playwright Browser Tests
 
 on:
   pull_request:
@@ -7,27 +7,13 @@ on:
       - preprod
   workflow_dispatch:
     inputs:
-      required_signers:
-        description: "Required signatures for CI wallet threshold scripts"
+      transfer_lovelace:
+        description: "Lovelace amount for ring transfer legs"
         required: false
-        default: "2"
-        type: string
-      sign_wallet_type:
-        description: "Which wallet type to sign in smoke"
-        required: false
-        default: "legacy"
-        type: choice
-        options:
-          - legacy
-          - hierarchical
-          - sdk
-      route_scenarios:
-        description: "Optional comma-separated scenario IDs for scripts/ci/cli/route-chain.ts"
-        required: false
-        default: ""
+        default: "2000000"
         type: string
 
-# Serialize against the Playwright e2e workflow: both broadcast from the same
+# Serialize against the Multisig v1 smoke workflow: both broadcast from the same
 # preprod CI wallets, so they must never run at the same time. A constant group
 # (not per-PR) ensures mutual exclusion across PRs too. cancel-in-progress:false
 # means runs queue rather than cancel each other.
@@ -36,10 +22,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  multisig-v1-smoke:
+  playwright-browser:
     if: github.repository == 'MeshJS/multisig'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       CI_JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
       CI_MNEMONIC_1: ${{ secrets.CI_MNEMONIC_1 }}
@@ -47,21 +33,15 @@ jobs:
       CI_MNEMONIC_3: ${{ secrets.CI_MNEMONIC_3 }}
       CI_BLOCKFROST_PREPROD_API_KEY: ${{ secrets.CI_BLOCKFROST_PREPROD_API_KEY }}
       CI_NETWORK_ID: "0"
-      CI_NUM_REQUIRED_SIGNERS: ${{ github.event_name == 'workflow_dispatch' && inputs.required_signers || '2' }}
       CI_WALLET_TYPES: "legacy,hierarchical,sdk"
-      CI_SIGN_WALLET_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_wallet_type || 'legacy' }}
-      SIGN_BROADCAST: "true"
-      CI_ROUTE_SCENARIOS: ${{ github.event_name == 'workflow_dispatch' && inputs.route_scenarios || '' }}
-      CI_CONTEXT_PATH: /tmp/ci-wallet-context.json
-      CI_DREP_ANCHOR_URL: ${{ secrets.CI_DREP_ANCHOR_URL }}
-      CI_DREP_ANCHOR_JSON: ${{ secrets.CI_DREP_ANCHOR_JSON }}
-      CI_STAKE_POOL_ID_HEX: ${{ secrets.CI_STAKE_POOL_ID_HEX }}
+      CI_NUM_REQUIRED_SIGNERS: "2"
+      CI_TRANSFER_LOVELACE: ${{ github.event_name == 'workflow_dispatch' && inputs.transfer_lovelace || '2000000' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate required CI secrets
+      - name: Validate required secrets
         shell: bash
         run: |
           missing=()
@@ -70,35 +50,13 @@ jobs:
           [[ -n "$CI_MNEMONIC_2" ]] || missing+=("CI_MNEMONIC_2")
           [[ -n "$CI_MNEMONIC_3" ]] || missing+=("CI_MNEMONIC_3")
           [[ -n "$CI_BLOCKFROST_PREPROD_API_KEY" ]] || missing+=("CI_BLOCKFROST_PREPROD_API_KEY")
-
-          route_scenarios=",${CI_ROUTE_SCENARIOS//[[:space:]]/},"
-          default_route_chain=false
-          if [[ -z "${CI_ROUTE_SCENARIOS//[[:space:]]/}" ]]; then
-            default_route_chain=true
-          fi
-
-          scenario_enabled() {
-            local scenario_id="$1"
-            [[ "$default_route_chain" == "true" || "$route_scenarios" == *",$scenario_id,"* ]]
-          }
-
-          if scenario_enabled "scenario.drep-certificates" || scenario_enabled "scenario.proxy-full-lifecycle"; then
-            [[ -n "$CI_DREP_ANCHOR_URL" ]] || missing+=("CI_DREP_ANCHOR_URL")
-          fi
-          if scenario_enabled "scenario.drep-certificates"; then
-            [[ -n "$CI_DREP_ANCHOR_JSON" ]] || missing+=("CI_DREP_ANCHOR_JSON")
-          fi
-          if scenario_enabled "scenario.stake-certificates"; then
-            [[ -n "$CI_STAKE_POOL_ID_HEX" ]] || missing+=("CI_STAKE_POOL_ID_HEX")
-          fi
-
           if [[ "${#missing[@]}" -gt 0 ]]; then
             echo "Missing required secrets: ${missing[*]}"
-            echo "Set these in repo settings before running PR multisig smoke workflow."
+            echo "Set these in repo settings before running the Playwright browser workflow."
             exit 1
           fi
 
-      - name: Pull base image (with retry)
+      - name: Pull base images (with retry)
         shell: bash
         run: |
           for i in 1 2 3; do
@@ -109,37 +67,44 @@ jobs:
 
       - name: Build CI containers
         shell: bash
-        run: docker compose -f docker-compose.ci.yml build
+        run: docker compose -f docker-compose.playwright.yml build app bootstrap-runner playwright-runner
 
       - name: Start Postgres + App containers
         shell: bash
-        run: docker compose -f docker-compose.ci.yml up -d postgres app
+        run: docker compose -f docker-compose.playwright.yml up -d postgres app
 
       - name: Wait for app healthcheck
         shell: bash
         run: |
           for i in {1..60}; do
-            status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$(docker compose -f docker-compose.ci.yml ps -q app)")
+            status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$(docker compose -f docker-compose.playwright.yml ps -q app)")
             if [[ "$status" == "healthy" ]]; then
               echo "App is healthy."
               exit 0
             fi
             sleep 2
           done
-
           echo "App failed to become healthy in time."
-          docker compose -f docker-compose.ci.yml ps
+          docker compose -f docker-compose.playwright.yml ps
           exit 1
 
-      - name: Run CI wallet bootstrap + v1 route-chain smoke
+      - name: Run CI wallet bootstrap
         shell: bash
-        run: docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner
+        run: |
+          docker compose -f docker-compose.playwright.yml --profile playwright \
+            run --rm bootstrap-runner
+
+      - name: Run Playwright ring transfer tests
+        shell: bash
+        run: |
+          docker compose -f docker-compose.playwright.yml --profile playwright \
+            run --rm --no-deps playwright-runner
 
       - name: Dump container logs on failure
         if: failure()
         shell: bash
         run: |
-          docker compose -f docker-compose.ci.yml logs --no-color \
+          docker compose -f docker-compose.playwright.yml logs --no-color \
             | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
             | sed -E 's/("token"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
             | sed -E 's/("secret"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\2/g' \
@@ -150,25 +115,32 @@ jobs:
             | sed -E 's/("xprv([[:alnum:]_-]*)?"[[:space:]]*:[[:space:]]*")[^"]+(")/\1[REDACTED]\3/gI' \
             | sed -E 's/(ed25519e?_sk[[:alnum:]_]+)/[REDACTED]/gI' \
             | sed -E 's/(xprv[[:alnum:]]+)/[REDACTED]/gI' \
-            > docker-compose-ci.log
+            > docker-compose-playwright.log
 
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-compose-ci-logs
-          path: docker-compose-ci.log
+          name: docker-compose-playwright-logs
+          path: docker-compose-playwright.log
 
-      - name: Upload route-chain report
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-route-chain-report
-          path: ci-artifacts/ci-route-chain-report.md
+          name: playwright-report
+          path: ci-artifacts/playwright-report/
           if-no-files-found: warn
 
-      - name: Tear down CI containers
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: ci-artifacts/playwright-traces/
+          if-no-files-found: ignore
+
+      - name: Tear down containers
         if: always()
         shell: bash
-        run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
-
+        run: docker compose -f docker-compose.playwright.yml down -v --remove-orphans

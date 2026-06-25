@@ -422,7 +422,7 @@ Bootstrap wallets and write host-mounted artifacts:
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
 Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
@@ -430,7 +430,7 @@ Optional: confirm wallets are funded on-chain before running route-chain (uses `
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -439,7 +439,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md `
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 
 ```
 
@@ -512,7 +512,7 @@ Bootstrap wallets and write host-mounted artifacts:
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
 Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
@@ -520,7 +520,7 @@ Optional: confirm wallets are funded on-chain before running route-chain (uses `
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -529,7 +529,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md \
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 ```
 
 View generated report on host:

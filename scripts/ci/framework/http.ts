@@ -109,7 +109,13 @@ export async function requestJson<T = unknown>(args: {
         signal: controller.signal,
       });
 
-      const data = (await response.json()) as T;
+      const text = await response.text();
+      let data: T;
+      try {
+        data = (text ? JSON.parse(text) : null) as T;
+      } catch {
+        data = text as T;
+      }
       clearTimeout(timer);
       if (attempt <= retries && retryableStatuses.has(response.status)) {
         await sleep(

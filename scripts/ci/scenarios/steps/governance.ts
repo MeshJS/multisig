@@ -33,7 +33,7 @@ export function createScenarioGovernanceRoutes(ctx: CIBootstrapContext): Scenari
             sourceCount?: number;
             error?: string;
           }>({
-            url: `${runCtx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
+            url: `${runCtx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false&debug=true`,
             method: "GET",
             token,
           });

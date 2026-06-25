@@ -15,6 +15,7 @@ const buildMultisigWalletMock: jest.Mock = jest.fn();
 const addressToNetworkMock: jest.Mock = jest.fn();
 const getProviderMock: jest.Mock = jest.fn();
 const cachedFetchAddressUTxOsMock: jest.Mock = jest.fn();
+const fetchAddressUTxOsMock: jest.Mock = jest.fn();
 const serializeNativeScriptMock: jest.Mock = jest.fn();
 const decodeNativeScriptFromCborMock: jest.Mock = jest.fn();
 const decodedToNativeScriptMock: jest.Mock = jest.fn();
@@ -117,7 +118,8 @@ beforeEach(() => {
   decodedToNativeScriptMock.mockReturnValue({ type: "all", scripts: [] });
   serializeNativeScriptMock.mockReturnValue({ address: "addr_test1canonicalwalletscript" });
   addressToNetworkMock.mockReturnValue(0);
-  getProviderMock.mockReturnValue({ get: jest.fn() });
+  (fetchAddressUTxOsMock as any).mockResolvedValue([{ input: { txHash: "direct", outputIndex: 1 } }]);
+  getProviderMock.mockReturnValue({ get: jest.fn(), fetchAddressUTxOs: fetchAddressUTxOsMock });
   (cachedFetchAddressUTxOsMock as any).mockResolvedValue([
     { input: { txHash: "a", outputIndex: 0 } },
   ]);
@@ -147,6 +149,39 @@ describe("freeUtxos bot API", () => {
     expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 } }]);
+  });
+
+  it("falls back to direct provider fetch when cached UTxO lookup fails", async () => {
+    (cachedFetchAddressUTxOsMock as any).mockRejectedValue(new Error("incremental cache unavailable"));
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(fetchAddressUTxOsMock).toHaveBeenCalledWith("addr_test1walletscript");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "direct", outputIndex: 1 } }]);
+  });
+
+  it("returns an empty array when the provider has no UTxOs for the script address", async () => {
+    (cachedFetchAddressUTxOsMock as any).mockRejectedValue({
+      response: { data: { status_code: 404 } },
+    });
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([]);
   });
 
   it("falls back to canonical scriptCbor when multisig wallet is unavailable", async () => {
