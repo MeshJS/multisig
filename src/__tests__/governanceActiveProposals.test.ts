@@ -8,6 +8,7 @@ const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse
 const verifyJwtMock = jest.fn<() => unknown>();
 const isBotJwtMock = jest.fn<() => boolean>();
 const findBotUserMock = jest.fn<() => Promise<unknown>>();
+const getProviderMock = jest.fn();
 const providerGetMock = jest.fn<(path: string) => Promise<unknown>>();
 const parseScopeMock = jest.fn<(scope: string) => string[]>();
 const scopeIncludesMock = jest.fn<(scopes: string[], required: string) => boolean>();
@@ -73,9 +74,7 @@ jest.unstable_mockModule(
   "@/utils/get-provider",
   () => ({
     __esModule: true,
-    getProvider: () => ({
-      get: providerGetMock,
-    }),
+    getProvider: getProviderMock,
   }),
 );
 
@@ -124,6 +123,9 @@ beforeEach(() => {
   findBotUserMock.mockResolvedValue({
     id: "bot-1",
     botKey: { scope: JSON.stringify(["multisig:read", "governance:read"]) },
+  });
+  getProviderMock.mockReturnValue({
+    get: providerGetMock,
   });
 });
 
@@ -309,5 +311,145 @@ describe("governanceActiveProposals API", () => {
       status: "active",
     });
     expect(payload.activeCount).toBe(1);
+  });
+
+  it("falls back to direct Blockfrost REST when provider list fetch fails without a status", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
+        throw new Error("Internal Server Error");
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        return {
+          ratified_epoch: null,
+          enacted_epoch: null,
+          dropped_epoch: null,
+          expired_epoch: null,
+          expiration: 999,
+          deposit: "1000000",
+          return_address: "addr_test1...",
+        };
+      }
+      if (path === "/governance/proposals/tx-active/0/metadata") {
+        throw { status: 404 };
+      }
+      return null;
+    });
+    const originalKey = process.env.BLOCKFROST_API_KEY_PREPROD;
+    process.env.BLOCKFROST_API_KEY_PREPROD = "preprod-key";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            tx_hash: "tx-active",
+            cert_index: 0,
+            governance_type: "info_action",
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            ratified_epoch: null,
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    try {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+
+      await handler(req, res);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://cardano-preprod.blockfrost.io/api/v0/governance/proposals?count=20&page=1&order=desc",
+        expect.objectContaining({
+          headers: expect.objectContaining({ project_id: "preprod-key" }),
+        }),
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+      expect(payload.proposals).toHaveLength(1);
+      expect(payload.activeCount).toBe(1);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.BLOCKFROST_API_KEY_PREPROD;
+      } else {
+        process.env.BLOCKFROST_API_KEY_PREPROD = originalKey;
+      }
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to direct Blockfrost REST when provider construction fails", async () => {
+    getProviderMock.mockImplementation(() => {
+      throw new TypeError("Cannot read properties of undefined (reading 'slice')");
+    });
+    const originalKey = process.env.BLOCKFROST_API_KEY_PREPROD;
+    process.env.BLOCKFROST_API_KEY_PREPROD = "preprod-key";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlString = String(url);
+      if (urlString.includes("/governance/proposals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              tx_hash: "tx-active",
+              cert_index: 0,
+              governance_type: "info_action",
+              enacted_epoch: null,
+              dropped_epoch: null,
+              expired_epoch: null,
+              ratified_epoch: null,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (urlString.includes("/governance/proposals/tx-active/0/metadata")) {
+        return new Response(JSON.stringify({ error: "Not Found", status_code: 404 }), {
+          status: 404,
+        });
+      }
+      if (urlString.includes("/governance/proposals/tx-active/0")) {
+        return new Response(
+          JSON.stringify({
+            ratified_epoch: null,
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            expiration: 999,
+            deposit: "1000000",
+            return_address: "addr_test1...",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Unexpected path" }), { status: 500 });
+    });
+
+    try {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+
+      await handler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+      expect(payload.proposals).toHaveLength(1);
+      expect(payload.activeCount).toBe(1);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.BLOCKFROST_API_KEY_PREPROD;
+      } else {
+        process.env.BLOCKFROST_API_KEY_PREPROD = originalKey;
+      }
+      fetchSpy.mockRestore();
+    }
   });
 });
