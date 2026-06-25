@@ -15,6 +15,7 @@ import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards"
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
+import { isProviderNotFoundError } from "@/lib/server/providerErrors";
 
 export default async function handler(
   req: NextApiRequest,
@@ -125,11 +126,30 @@ export default async function handler(
     const fresh = req.query.fresh === "true";
 
     let utxos: UTxO[];
-    if (fresh) {
-      utxos = await blockchainProvider.fetchAddressUTxOs(addr);
-    } else {
-      const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
-      utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    try {
+      if (fresh) {
+        utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+      } else {
+        const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+        try {
+          utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+        } catch (cacheError) {
+          if (isProviderNotFoundError(cacheError)) {
+            utxos = [];
+          } else {
+            console.warn("cached freeUtxos fetch failed; retrying without cache", {
+              message: (cacheError as Error)?.message,
+            });
+            utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+          }
+        }
+      }
+    } catch (providerError) {
+      if (isProviderNotFoundError(providerError)) {
+        utxos = [];
+      } else {
+        throw providerError;
+      }
     }
 
     const blockedUtxos: { hash: string; index: number }[] =

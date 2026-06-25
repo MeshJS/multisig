@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           docker compose -f docker-compose.playwright.yml --profile playwright \
-            run --rm playwright-runner
+            run --rm --no-deps playwright-runner
 
       - name: Dump container logs on failure
         if: failure()

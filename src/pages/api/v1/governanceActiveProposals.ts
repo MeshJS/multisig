@@ -6,6 +6,7 @@ import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards"
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { getProvider } from "@/utils/get-provider";
 import { getProposalStatus } from "@/lib/governance";
+import { getProviderErrorStatus } from "@/lib/server/providerErrors";
 
 const REQUIRED_SCOPE = "governance:read";
 
@@ -108,53 +109,7 @@ const hydrateMetadataFromAnchor = async (
   return metadata;
 };
 
-const getErrorStatus = (error: unknown): number | undefined => {
-  if (typeof error === "string") {
-    try {
-      const parsed = JSON.parse(error) as unknown;
-      return getErrorStatus(parsed);
-    } catch {
-      return undefined;
-    }
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "status" in error &&
-    typeof (error as { status?: unknown }).status === "number"
-  ) {
-    return (error as { status: number }).status;
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "response" in error &&
-    (error as { response?: { status?: unknown } }).response &&
-    typeof (error as { response?: { status?: unknown } }).response?.status === "number"
-  ) {
-    return (error as { response: { status: number } }).response.status;
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "response" in error &&
-    (error as { response?: { data?: { status_code?: unknown } } }).response?.data &&
-    typeof (error as { response?: { data?: { status_code?: unknown } } }).response?.data
-      ?.status_code === "number"
-  ) {
-    return (error as { response: { data: { status_code: number } } }).response.data.status_code;
-  }
-  if (
-    error &&
-    typeof error === "object" &&
-    "data" in error &&
-    (error as { data?: { status_code?: unknown } }).data &&
-    typeof (error as { data?: { status_code?: unknown } }).data?.status_code === "number"
-  ) {
-    return (error as { data: { status_code: number } }).data.status_code;
-  }
-  return undefined;
-};
+const getErrorStatus = getProviderErrorStatus;
 
 const toInt = (value: string | string[] | undefined, fallback: number): number => {
   if (typeof value !== "string") return fallback;
