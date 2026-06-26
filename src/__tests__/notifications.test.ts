@@ -7,6 +7,11 @@ import {
   NOTIFICATION_STATUS_SKIPPED_OPTED_OUT,
 } from "@/lib/notifications/events";
 import { resolveSignatureRecipients } from "@/lib/notifications/recipients";
+import {
+  maskAddress,
+  summarizeSignableSignatureContext,
+  summarizeTransactionSignatureContext,
+} from "@/lib/notifications/signatureContext";
 import { renderSignatureRequiredEmail } from "@/lib/notifications/templates/signatureRequired";
 
 describe("notification recipient resolution", () => {
@@ -113,6 +118,10 @@ describe("notification email templates", () => {
       totalSigners: 3,
       actionUrl: "https://example.com/sign?x=<bad>",
       preferencesUrl: "https://example.com/preferences",
+      signatureContext: {
+        summary: "Send 50 ADA to addr_tes...3te2",
+        details: [{ label: "Outputs", value: "2 total outputs" }],
+      },
     });
 
     expect(email.subject).toBe("Signature required: <Vault>");
@@ -120,6 +129,86 @@ describe("notification email templates", () => {
     expect(email.html).toContain("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
     expect(email.html).not.toContain("<script>alert");
     expect(email.text).toContain("A transaction in <Vault> is waiting");
+    expect(email.text).toContain("What needs signing: Send 50 ADA");
+    expect(email.html).toContain("What needs signing");
+    expect(email.html.indexOf("Description")).toBeLessThan(
+      email.html.indexOf("What needs signing"),
+    );
+    expect(email.text.indexOf("Description:")).toBeLessThan(
+      email.text.indexOf("What needs signing:"),
+    );
     expect(email.text).toContain("Review and sign:");
+  });
+
+  it("truncates long descriptions in html and text bodies", () => {
+    const longDescription = "Governance ".repeat(40).trim();
+    const email = renderSignatureRequiredEmail({
+      walletName: "Vault",
+      resourceType: "transaction",
+      description: longDescription,
+      signedCount: 0,
+      requiredCount: 2,
+      totalSigners: 3,
+      actionUrl: "https://example.com/sign",
+      preferencesUrl: "https://example.com/preferences",
+    });
+
+    expect(email.html).toContain("Description");
+    expect(email.html).toContain("...");
+    expect(email.html).not.toContain(longDescription);
+    expect(email.text).toContain("Description:");
+    expect(email.text).toContain("...");
+    expect(email.text).not.toContain(longDescription);
+  });
+});
+
+describe("notification signature context summaries", () => {
+  it("summarizes transfer outputs without revealing full recipient addresses", () => {
+    const fullAddress = "addr_test1qpy7y6u20jv7ky7p4vte2";
+    const summary = summarizeTransactionSignatureContext({
+      outputs: [
+        {
+          address: fullAddress,
+          amount: [{ unit: "lovelace", quantity: "50000000" }],
+        },
+      ],
+    });
+
+    expect(summary?.summary).toBe(`Send 50 ADA to ${maskAddress(fullAddress)}`);
+    expect(summary?.summary).not.toContain(fullAddress);
+  });
+
+  it("summarizes governance proxy vote metadata", () => {
+    const summary = summarizeTransactionSignatureContext({
+      proxyBot: {
+        kind: "proxyVote",
+        votes: [
+          {
+            proposalId:
+              "0123456789abcdef0123456789abcdef0123456789abcdef01234567#0",
+            voteKind: "Yes",
+          },
+        ],
+      },
+    });
+
+    expect(summary?.summary).toContain("Governance Yes vote");
+    expect(summary?.summary).toContain("01234567");
+    expect(summary?.summary).toContain("...67#0");
+  });
+
+  it("summarizes signable governance payloads by method", () => {
+    expect(
+      summarizeSignableSignatureContext({
+        method: "ekklesia-vote",
+        description: "Hydra Budget Vote",
+      }),
+    ).toEqual({ summary: "Governance vote package" });
+  });
+
+  it("falls back to governance descriptions when transaction metadata is generic", () => {
+    expect(summarizeTransactionSignatureContext("{}", "Vote: Yes - Treasury")).toEqual({
+      summary: "Governance action: Vote: Yes - Treasury",
+    });
   });
 });

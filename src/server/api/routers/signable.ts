@@ -5,6 +5,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { requireSessionAddress, assertWalletAccess } from "@/server/api/auth";
 import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
 export const signableRouter = createTRPCRouter({
   createSignable: protectedProcedure
@@ -43,6 +44,10 @@ export const signableRouter = createTRPCRouter({
             rejectedAddresses: signable.rejectedAddresses,
             creatorAddress: sessionAddress,
             description: signable.description,
+            signatureContext: summarizeSignableSignatureContext({
+              method: signable.method,
+              description: signable.description,
+            }),
           });
         } catch (error) {
           console.error("Failed to enqueue signable notifications", error);

@@ -10,6 +10,10 @@ import {
 } from "./events";
 import { createNotificationDelivery } from "./outbox";
 import { resolveSignatureRecipients } from "./recipients";
+import {
+  summarizeTransactionSignatureContext,
+  type SignatureContext,
+} from "./signatureContext";
 import { renderSignatureRequiredEmail } from "./templates/signatureRequired";
 import { drainNotificationOutbox } from "./worker";
 
@@ -29,6 +33,8 @@ export type EnqueueSignatureRequiredInput = {
   rejectedAddresses?: string[];
   creatorAddress?: string | null;
   description?: string | null;
+  txJson?: unknown;
+  signatureContext?: SignatureContext | null;
   onlyRecipientAddress?: string | null;
   eventType?: NotificationEventType;
 };
@@ -99,10 +105,16 @@ export async function enqueueSignatureRequiredNotifications(
   const siteUrl = getSiteUrl();
   const actionUrl = `${siteUrl}${actionPathFor(input.resourceType, input.wallet.id)}`;
   const preferencesUrl = `${siteUrl}/wallets/${input.wallet.id}/info`;
+  const signatureContext =
+    input.signatureContext ??
+    (input.resourceType === "transaction"
+      ? summarizeTransactionSignatureContext(input.txJson, input.description)
+      : null);
   const template = renderSignatureRequiredEmail({
     walletName: input.wallet.name,
     resourceType: input.resourceType,
     description: input.description ?? null,
+    signatureContext,
     signedCount: signedAddresses.length,
     requiredCount,
     totalSigners: input.wallet.signersAddresses.length,
@@ -131,6 +143,7 @@ export async function enqueueSignatureRequiredNotifications(
     requiredCount,
     totalSigners: input.wallet.signersAddresses.length,
     description: input.description ?? null,
+    signatureContext,
   };
 
   const deliveries = [];

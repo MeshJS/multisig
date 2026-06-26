@@ -7,6 +7,7 @@ import { checkSignature } from "@meshsdk/core-cst";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { assertBotWalletAccess } from "@/lib/auth/botAccess";
 import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
 export default async function handler(
   req: NextApiRequest,
@@ -147,6 +148,10 @@ export default async function handler(
           rejectedAddresses: newSignable.rejectedAddresses,
           creatorAddress: address,
           description: newSignable.description,
+          signatureContext: summarizeSignableSignatureContext({
+            method: newSignable.method,
+            description: newSignable.description,
+          }),
         });
       }
     } catch (notificationError) {

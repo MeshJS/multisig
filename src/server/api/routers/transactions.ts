@@ -77,6 +77,7 @@ export const transactionRouter = createTRPCRouter({
             rejectedAddresses: tx.rejectedAddresses,
             creatorAddress: sessionAddress,
             description: tx.description,
+            txJson: tx.txJson,
           });
         } catch (error) {
           console.error("Failed to enqueue transaction notifications", error);
@@ -574,6 +575,7 @@ export const transactionRouter = createTRPCRouter({
           rejectedAddresses: created.rejectedAddresses,
           creatorAddress: sessionAddress,
           description: created.description,
+          txJson: created.txJson,
         });
       } catch (error) {
         console.error("Failed to enqueue imported transaction notifications", error);
