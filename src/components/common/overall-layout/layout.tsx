@@ -115,7 +115,7 @@ export default function RootLayout({
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
-  const { isEnabled: isUtxosEnabled } = useUTXOS();
+  const { isEnabled: isUtxosEnabled, wallet: utxosWallet } = useUTXOS();
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
@@ -436,13 +436,69 @@ export default function RootLayout({
     setHasCheckedSession(true); // Mark as checked so we don't check again
     // Show loading skeleton for smooth transition
     setShowPostAuthLoading(true);
-    
+
     // Wait a moment for the cookie to be set by the browser, then refetch session
     await new Promise(resolve => setTimeout(resolve, 200));
-    
+
     // Refetch session to update state
     await refetchWalletSession();
-    
+
+    // Create/ensure the User row now that the wallet session cookie exists.
+    //
+    // createUser is a protectedProcedure (it needs a session). The onboarding
+    // effects fire createUser on *connect* (regular wallets in initializeWallet
+    // below; UTXOS in connect-wallet) — which happens seconds before the user
+    // approves the signing prompt — so that first attempt always runs
+    // unauthenticated and is rejected UNAUTHORIZED, and it never retries once the
+    // cookie lands. The result: useUser() stays null and the connect button is
+    // stuck on "Authorize" even though signing succeeded. Re-run it here, after
+    // authorization, when the cookie is actually present — for both regular
+    // browser wallets and the UTXOS smart wallet.
+    try {
+      const authedAddress = userAddress || address;
+      if (authedAddress) {
+        let stakeAddress: string | undefined;
+        let drepKeyHash = "";
+
+        if (activeWallet) {
+          // Regular browser wallet: stake from the wallet, DRep from the 1.9 IWallet.
+          stakeAddress = (await activeWallet.getRewardAddresses())[0];
+          try {
+            const dRepKey = await meshWallet?.getDRep();
+            if (dRepKey?.publicKeyHash) {
+              drepKeyHash = dRepKey.publicKeyHash;
+            }
+          } catch {
+            // DRep key is optional
+          }
+        } else if (isUtxosEnabled && utxosWallet?.cardano) {
+          // UTXOS smart wallet: stake + DRep come from its CIP-30 interface.
+          stakeAddress = (await utxosWallet.cardano.getRewardAddresses())[0];
+          try {
+            if (typeof utxosWallet.cardano.getDRep === "function") {
+              const dRepKey = await utxosWallet.cardano.getDRep();
+              if (dRepKey && typeof dRepKey === "object" && "publicKeyHash" in dRepKey) {
+                drepKeyHash = (dRepKey as { publicKeyHash: string }).publicKeyHash;
+              }
+            }
+          } catch {
+            // DRep key is optional
+          }
+        }
+
+        if (stakeAddress) {
+          createUser({
+            address: authedAddress,
+            stakeAddress: normalizeAddressToBech32(stakeAddress),
+            drepKeyHash,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal: the onboarding effects will retry on a later render now that
+      // the session cookie is present.
+    }
+
     // Invalidate wallet queries so they refetch with the new session
     // Use a small delay to ensure cookie is available on subsequent requests
     setTimeout(() => {
@@ -458,7 +514,7 @@ export default function RootLayout({
     setTimeout(() => {
       setShowPostAuthLoading(false);
     }, 1500);
-  }, [refetchWalletSession, ctx.wallet, userAddress, address]);
+  }, [refetchWalletSession, ctx.wallet, userAddress, address, activeWallet, meshWallet, isUtxosEnabled, utxosWallet, createUser]);
 
   // Memoize computed route values
   const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
