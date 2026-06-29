@@ -10,14 +10,6 @@ import { getTxBuilder } from "@/utils/get-tx-builder";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { useSiteStore } from "@/lib/zustand/site";
 import { ProposalMetadata, ProposalDetails } from "@/types/governance";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import Link from "next/link";
 import VoteButton from "./proposal/voteButtton";
 import { UTxO } from "@meshsdk/core";
@@ -30,6 +22,11 @@ import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
 import { getProposalStatus as getProposalStatusValue, parseProposalId } from "@/lib/governance";
 import { GovernanceTypeChip } from "@/components/pages/wallet/governance/gov-type-chip";
+import {
+  createProposalMetadataFallback,
+  fetchProposalMetadataWithFallback,
+  type ProposalMetadataListItem,
+} from "@/lib/governance/proposalMetadata";
 
 type VoteRecord = {
   tx_hash: string;
@@ -62,206 +59,20 @@ type ProposalTally = {
   updatedAt?: string | Date;
 };
 
-type ProposalListItem = {
-  tx_hash: string;
-  cert_index: number | string;
-  governance_type: string;
+type ProposalListItem = ProposalMetadataListItem & {
+  enacted_epoch?: number | null;
+  dropped_epoch?: number | null;
+  expired_epoch?: number | null;
+  ratified_epoch?: number | null;
 };
 
-const createMetadataFallback = (
-  proposal: ProposalListItem,
-  title: string,
-  abstract = "",
-): ProposalMetadata => ({
-  tx_hash: proposal.tx_hash,
-  cert_index: Number(proposal.cert_index),
-  governance_type: proposal.governance_type,
-  hash: "",
-  url: "",
-  bytes: "",
-  json_metadata: {
-    body: {
-      title,
-      abstract,
-      motivation: "",
-      rationale: "",
-      references: [],
-    },
-    authors: [],
-  },
-});
+type ProposalListStatus = Pick<
+  ProposalDetails,
+  "enacted_epoch" | "dropped_epoch" | "expired_epoch" | "ratified_epoch"
+>;
 
-const hasUsableJsonMetadata = (value: any): boolean =>
-  Boolean(value && typeof value === "object" && value.body && typeof value.body === "object");
-
-const getAnchorUrls = (anchorUrl: string): string[] => {
-  if (!anchorUrl) return [];
-  if (!anchorUrl.startsWith("ipfs://")) {
-    return [anchorUrl];
-  }
-  const cidPath = anchorUrl.replace("ipfs://", "");
-  return [
-    `https://ipfs.io/ipfs/${cidPath}`,
-    `https://cloudflare-ipfs.com/ipfs/${cidPath}`,
-    `https://dweb.link/ipfs/${cidPath}`,
-  ];
-};
-
-async function fetchJsonFromUrl(url: string): Promise<any> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    const text = await res.text();
-    return JSON.parse(text);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function hydrateMetadataFromAnchor(
-  rawMetadata: any,
-  proposal: ProposalListItem,
-): Promise<any> {
-  if (hasUsableJsonMetadata(rawMetadata?.json_metadata)) {
-    return rawMetadata;
-  }
-
-  const anchorUrl =
-    typeof rawMetadata?.url === "string" && rawMetadata.url.length > 0
-      ? rawMetadata.url
-      : null;
-  if (!anchorUrl) {
-    return rawMetadata;
-  }
-
-  const candidateUrls = getAnchorUrls(anchorUrl);
-  for (const url of candidateUrls) {
-    try {
-      const anchorJson = await fetchJsonFromUrl(url);
-      const jsonMetadata = anchorJson?.body ? anchorJson : { body: anchorJson };
-      if (hasUsableJsonMetadata(jsonMetadata)) {
-        return {
-          ...rawMetadata,
-          json_metadata: jsonMetadata,
-        };
-      }
-    } catch {
-      // Try next URL candidate.
-    }
-  }
-
-  return rawMetadata;
-}
-
-const normalizeProposalMetadata = (
-  rawMetadata: any,
-  proposal: ProposalListItem,
-): ProposalMetadata => {
-  const rawBody = rawMetadata?.json_metadata?.body;
-  const body = rawBody && typeof rawBody === "object" ? rawBody : {};
-  const rawAuthors = rawMetadata?.json_metadata?.authors;
-  const authors = Array.isArray(rawAuthors)
-    ? rawAuthors
-        .map((author) =>
-          typeof author?.name === "string" ? { name: author.name } : null,
-        )
-        .filter((author): author is { name: string } => Boolean(author))
-    : [];
-  const references = Array.isArray((body as any).references)
-    ? (body as any).references.filter(
-        (ref: any) =>
-          ref &&
-          typeof ref === "object" &&
-          typeof ref.label === "string" &&
-          typeof ref.uri === "string" &&
-          typeof ref["@type"] === "string",
-      )
-    : [];
-
-  return {
-    tx_hash:
-      typeof rawMetadata?.tx_hash === "string"
-        ? rawMetadata.tx_hash
-        : proposal.tx_hash,
-    cert_index:
-      Number.isFinite(Number(rawMetadata?.cert_index))
-        ? Number(rawMetadata.cert_index)
-        : Number(proposal.cert_index),
-    governance_type: proposal.governance_type,
-    hash: typeof rawMetadata?.hash === "string" ? rawMetadata.hash : "",
-    url: typeof rawMetadata?.url === "string" ? rawMetadata.url : "",
-    bytes: typeof rawMetadata?.bytes === "string" ? rawMetadata.bytes : "",
-    json_metadata: {
-      body: {
-        title:
-          typeof (body as any).title === "string"
-            ? (body as any).title
-            : "Metadata not available",
-        abstract:
-          typeof (body as any).abstract === "string" ? (body as any).abstract : "",
-        motivation:
-          typeof (body as any).motivation === "string"
-            ? (body as any).motivation
-            : "",
-        rationale:
-          typeof (body as any).rationale === "string" ? (body as any).rationale : "",
-        references,
-      },
-      authors,
-    },
-  };
-};
-
-async function fetchProposalMetadataWithFallback({
-  blockchainProvider,
-  proposal,
-  detailsPromise,
-}: {
-  blockchainProvider: ReturnType<typeof getProvider>;
-  proposal: ProposalListItem;
-  detailsPromise: Promise<ProposalDetails | null>;
-}): Promise<ProposalMetadata | null> {
-  const txHash = proposal.tx_hash;
-  const certIndex = Number(proposal.cert_index);
-  const primaryPath = `/governance/proposals/${txHash}/${certIndex}/metadata`;
-  const details = await detailsPromise;
-  const govActionId = typeof details?.id === "string" ? details.id : null;
-
-  // Prefer gov_action_id path when available.
-  if (govActionId) {
-    const fallbackPath = `/governance/proposals/${govActionId}/metadata`;
-    try {
-      const fallback = await hydrateMetadataFromAnchor(
-        await blockchainProvider.get(fallbackPath),
-        proposal,
-      );
-      return normalizeProposalMetadata(fallback, proposal);
-    } catch {
-      // Continue to primary path fallback.
-    }
-  }
-
-  try {
-    const primary = await hydrateMetadataFromAnchor(
-      await blockchainProvider.get(primaryPath),
-      proposal,
-    );
-    return normalizeProposalMetadata(primary, proposal);
-  } catch {
-    return null;
-  }
-}
-
-const getProposalStatus = (details?: ProposalDetails) => {
-  const status = getProposalStatusValue(details);
+const getProposalStatus = (details?: Partial<ProposalDetails> | null) => {
+  const status = getProposalStatusValue(details as ProposalDetails | null | undefined);
   if (!status) return null;
   if (status === "enacted") {
     return { label: "Enacted", icon: CheckCircle2, color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" };
@@ -293,6 +104,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   const [votingStatistics, setVotingStatistics] = useState<VotingStatistics>({ total: 0, yes: 0, no: 0, abstain: 0 });
   const [proxyDrepId, setProxyDrepId] = useState<string | null>(null);
   const [proposalDetails, setProposalDetails] = useState<Map<string, ProposalDetails>>(new Map());
+  const [proposalListStatuses, setProposalListStatuses] = useState<Map<string, ProposalListStatus>>(new Map());
   const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
   const [proposalTallies, setProposalTallies] = useState<Map<string, ProposalTally>>(new Map());
   const { openModal, setCurrentProposal } = useBallotModal();
@@ -542,81 +354,104 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
     fetchVotingHistory();
   }, [dRepId, network]);
 
+  const createLoadingMetadata = (proposal: ProposalListItem): ProposalMetadata => ({
+    tx_hash: proposal.tx_hash,
+    cert_index: Number(proposal.cert_index),
+    governance_type: proposal.governance_type,
+    hash: "",
+    url: "",
+    bytes: "",
+    json_metadata: {
+      body: {
+        title: "Loading...",
+        abstract: "Loading...",
+        motivation: "",
+        rationale: "",
+      },
+      authors: [],
+    },
+  });
+
+  const getListStatus = (proposal: ProposalListItem): ProposalListStatus => ({
+    enacted_epoch: proposal.enacted_epoch ?? null,
+    dropped_epoch: proposal.dropped_epoch ?? null,
+    expired_epoch: proposal.expired_epoch ?? null,
+    ratified_epoch: proposal.ratified_epoch ?? null,
+  });
+
+  const hydrateProposalPage = async ({
+    blockchainProvider,
+    proposalsData,
+  }: {
+    blockchainProvider: ReturnType<typeof getProvider>;
+    proposalsData: ProposalListItem[];
+  }) => {
+    const proposalResponses = await Promise.all(
+      proposalsData.map(async (p) => {
+        const proposalId = `${p.tx_hash}#${p.cert_index}`;
+        let fetchedDetails: ProposalDetails | null | undefined;
+        const fetchDetails = async () => {
+          if (fetchedDetails !== undefined) {
+            return fetchedDetails;
+          }
+          fetchedDetails = (await blockchainProvider
+            .get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`)
+            .catch(() => null)) as ProposalDetails | null;
+          return fetchedDetails;
+        };
+
+        const metadata = await fetchProposalMetadataWithFallback({
+          provider: blockchainProvider,
+          proposal: p,
+          fetchDetails,
+        });
+
+        return {
+          key: proposalId,
+          metadata: metadata ?? createProposalMetadataFallback(p),
+          details: fetchedDetails ?? null,
+        };
+      }),
+    );
+
+    setProposals((prev) => {
+      const updates = new Map(proposalResponses.map((res) => [res.key, res.metadata]));
+      return prev.map((p) => {
+        const key = `${p.tx_hash}#${p.cert_index}`;
+        return updates.has(key) ? updates.get(key)! : p;
+      });
+    });
+
+    setProposalDetails((prev) => {
+      const newMap = new Map(prev);
+      proposalResponses.forEach((res) => {
+        if (res.details) {
+          newMap.set(res.key, res.details);
+        }
+      });
+      return newMap;
+    });
+  };
+
   useEffect(() => {
     setProposals([]);
+    setProposalDetails(new Map());
+    setProposalListStatuses(new Map());
     setNextPage(1);
     setHasMore(true);
     setIsLoading(true);
 
     const blockchainProvider = getProvider(network);
     blockchainProvider.get(`/governance/proposals?count=${count}&page=1&order=${order}`)
-      .then(async (proposalsData) => {
-        const skeletons = proposalsData.map((p: any) => ({
-          tx_hash: p.tx_hash,
-          cert_index: Number(p.cert_index),
-          governance_type: p.governance_type,
-          hash: "",
-          url: "",
-          bytes: "",
-          json_metadata: {
-            body: {
-              title: "Loading...",
-              abstract: "Loading...",
-              motivation: "",
-              rationale: ""
-            },
-            authors: []
-          }
-        }));
+      .then(async (proposalsData: ProposalListItem[]) => {
+        const skeletons = proposalsData.map(createLoadingMetadata);
         setProposals(skeletons);
-
-        // Fetch both metadata and details in parallel for all proposals
-        const proposalResponses = await Promise.all(proposalsData.map(async (p: ProposalListItem) => {
-          const proposalId = p.tx_hash + "#" + p.cert_index;
-          const detailsPromise = blockchainProvider
-            .get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`)
-            .catch(() => null) as Promise<ProposalDetails | null>;
-
-          const [metadata, details] = await Promise.all([
-            fetchProposalMetadataWithFallback({
-              blockchainProvider,
-              proposal: p,
-              detailsPromise,
-            }),
-            detailsPromise,
-          ]);
-
-          return {
-            key: proposalId,
-            metadata:
-              metadata ??
-              createMetadataFallback(
-                p,
-                "Metadata could not be loaded.",
-                `${p.tx_hash}#${p.cert_index}`,
-              ),
-            details,
-          };
-        }));
-        // Update proposals with metadata
-        setProposals(prev => {
-          const updates = new Map(proposalResponses.map(res => [res.key, res.metadata]));
-          return prev.map(p => {
-            const key = p.tx_hash + "#" + p.cert_index;
-            return updates.has(key) ? updates.get(key)! : p;
-          });
-        });
-
-        // Update proposal details
-        setProposalDetails(prev => {
-          const newMap = new Map(prev);
-          proposalResponses.forEach(res => {
-            if (res.details) {
-              newMap.set(res.key, res.details);
-            }
-          });
-          return newMap;
-        });
+        setProposalListStatuses(
+          new Map(
+            proposalsData.map((p) => [`${p.tx_hash}#${p.cert_index}`, getListStatus(p)]),
+          ),
+        );
+        await hydrateProposalPage({ blockchainProvider, proposalsData });
 
         if (proposalsData.length < count) {
           setHasMore(false);
@@ -632,83 +467,25 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
     setIsLoading(true);
     try {
       const blockchainProvider = getProvider(network);
-      const proposalsData: {
-        tx_hash: string;
-        cert_index: string;
-        governance_type: string;
-      }[] = await blockchainProvider.get(`/governance/proposals?count=${count}&page=${nextPage}&order=${order}`);
+      const proposalsData = (await blockchainProvider.get(
+        `/governance/proposals?count=${count}&page=${nextPage}&order=${order}`,
+      )) as ProposalListItem[];
 
       // 1. Insert placeholder skeletons using just tx_hash, cert_index, and governance_type.
       const existingIds = new Set(proposals.map(p => p.tx_hash + "#" + p.cert_index));
       const newProposalsData = proposalsData.filter(p => !existingIds.has(p.tx_hash + "#" + p.cert_index));
 
-      const skeletons: ProposalMetadata[] = newProposalsData.map(p => ({
-        tx_hash: p.tx_hash,
-        cert_index: Number(p.cert_index),
-        governance_type: p.governance_type,
-        hash: "",
-        url: "",
-        bytes: "",
-        json_metadata: {
-          body: {
-            title: "Loading...",
-            abstract: "Loading...",
-            motivation: "",
-            rationale: ""
-          },
-          authors: []
-        }
-      }));
+      const skeletons = newProposalsData.map(createLoadingMetadata);
 
       setProposals(prev => [...prev, ...skeletons]);
-
-      // 2. Fetch metadata and details for all proposals in parallel
-      const proposalResponses = await Promise.all(newProposalsData.map(async (p: ProposalListItem) => {
-        const proposalId = p.tx_hash + "#" + p.cert_index;
-        const detailsPromise = blockchainProvider
-          .get(`/governance/proposals/${p.tx_hash}/${p.cert_index}`)
-          .catch(() => null) as Promise<ProposalDetails | null>;
-
-        const [metadata, details] = await Promise.all([
-          fetchProposalMetadataWithFallback({
-            blockchainProvider,
-            proposal: p,
-            detailsPromise,
-          }),
-          detailsPromise,
-        ]);
-
-        return {
-          key: proposalId,
-          metadata:
-            metadata ??
-            createMetadataFallback(
-              p,
-              "Metadata could not be loaded.",
-              `${p.tx_hash}#${p.cert_index}`,
-            ),
-          details,
-        };
-      }));
-      // 3. Update proposals with metadata
-      setProposals(prev => {
-        const updates = new Map(proposalResponses.map(res => [res.key, res.metadata]));
-        return prev.map(p => {
-          const key = p.tx_hash + "#" + p.cert_index;
-          return updates.has(key) ? updates.get(key)! : p;
+      setProposalListStatuses((prev) => {
+        const next = new Map(prev);
+        newProposalsData.forEach((p) => {
+          next.set(`${p.tx_hash}#${p.cert_index}`, getListStatus(p));
         });
+        return next;
       });
-
-      // 4. Update proposal details
-      setProposalDetails(prev => {
-        const newMap = new Map(prev);
-        proposalResponses.forEach(res => {
-          if (res.details) {
-            newMap.set(res.key, res.details);
-          }
-        });
-        return newMap;
-      });
+      await hydrateProposalPage({ blockchainProvider, proposalsData: newProposalsData });
 
       setNextPage(nextPage + 1);
       if (proposalsData.length < count) {
@@ -775,6 +552,7 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                   isExpanded={expandedProposals.has(proposalId)}
                   onToggle={() => toggleProposal(proposalId)}
                   details={proposalDetails.get(proposalId)}
+                  listStatus={proposalListStatuses.get(proposalId)}
                   isLoadingDetails={loadingDetails.has(proposalId)}
                   setCurrentProposal={setCurrentProposal}
                   openModal={openModal}
@@ -888,6 +666,7 @@ function ProposalCard({
   isExpanded,
   onToggle,
   details,
+  listStatus,
   isLoadingDetails,
   setCurrentProposal,
   openModal,
@@ -902,11 +681,13 @@ function ProposalCard({
   isExpanded?: boolean;
   onToggle?: () => void;
   details?: ProposalDetails;
+  listStatus?: ProposalListStatus;
   isLoadingDetails?: boolean;
   setCurrentProposal: (proposalId?: string, proposalTitle?: string) => void;
   openModal: () => void;
 }): React.ReactElement {
   const proposalId = proposal.tx_hash + "#" + proposal.cert_index;
+  const statusSource = details ?? listStatus;
 
   // Convert the wallet's on-chain vote to display format.
   const voteDisplay = vote
@@ -946,8 +727,8 @@ function ProposalCard({
 
         {/* Chips: status · type · voted pill · authors */}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400">
-          {details && getProposalStatus(details) && (() => {
-            const status = getProposalStatus(details)!;
+          {statusSource && getProposalStatus(statusSource) && (() => {
+            const status = getProposalStatus(statusSource)!;
             const StatusIcon = status.icon;
             return (
               <Badge className={`${status.color} flex w-fit items-center gap-1`}>

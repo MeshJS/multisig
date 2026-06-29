@@ -19,6 +19,7 @@ import {
 } from "@/lib/notifications/events";
 import { createNotificationDelivery } from "@/lib/notifications/outbox";
 import { normalizeEmail } from "@/lib/notifications/recipients";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 import { renderVerifyEmail } from "@/lib/notifications/templates/verifyEmail";
 import { drainNotificationOutbox } from "@/lib/notifications/worker";
 
@@ -374,6 +375,7 @@ export const notificationRouter = createTRPCRouter({
           signedAddresses: transaction.signedAddresses,
           rejectedAddresses: transaction.rejectedAddresses,
           description: transaction.description,
+          txJson: transaction.txJson,
           onlyRecipientAddress: input.recipientAddress,
           eventType: NOTIFICATION_EVENT_SIGNATURE_REMINDER,
         });
@@ -405,6 +407,10 @@ export const notificationRouter = createTRPCRouter({
         signedAddresses: signable.signedAddresses,
         rejectedAddresses: signable.rejectedAddresses,
         description: signable.description,
+        signatureContext: summarizeSignableSignatureContext({
+          method: signable.method,
+          description: signable.description,
+        }),
         onlyRecipientAddress: input.recipientAddress,
         eventType: NOTIFICATION_EVENT_SIGNATURE_REMINDER,
       });

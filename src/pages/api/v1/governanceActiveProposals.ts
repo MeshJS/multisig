@@ -7,6 +7,11 @@ import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { getProvider } from "@/utils/get-provider";
 import { getProposalStatus } from "@/lib/governance";
 import { getProviderErrorStatus } from "@/lib/server/providerErrors";
+import {
+  fetchProposalMetadataWithFallback,
+  type ProposalMetadataProvider,
+} from "@/lib/governance/proposalMetadata";
+import type { ProposalMetadata } from "@/types/governance";
 
 const REQUIRED_SCOPE = "governance:read";
 
@@ -32,19 +37,6 @@ type BlockfrostProposalDetailsItem = {
   enacted_epoch?: number | null;
   dropped_epoch?: number | null;
   expired_epoch?: number | null;
-};
-
-type BlockfrostProposalMetadataItem = {
-  url?: string;
-  json_metadata?: {
-    body?: {
-      title?: unknown;
-      abstract?: unknown;
-      motivation?: unknown;
-      rationale?: unknown;
-    };
-    authors?: unknown;
-  };
 };
 
 const getBlockfrostConfig = (network: string): { key: string; baseUrl: string } | null => {
@@ -128,68 +120,6 @@ const getGovernanceProvider = (network: string): { get: (path: string) => Promis
     });
     return null;
   }
-};
-
-const hasUsableJsonMetadata = (value: unknown): boolean =>
-  Boolean(
-    value &&
-      typeof value === "object" &&
-      "body" in (value as Record<string, unknown>) &&
-      (value as Record<string, unknown>).body &&
-      typeof (value as Record<string, unknown>).body === "object",
-  );
-
-const getAnchorUrls = (anchorUrl: string): string[] => {
-  if (!anchorUrl) return [];
-  if (!anchorUrl.startsWith("ipfs://")) {
-    return [anchorUrl];
-  }
-  const cidPath = anchorUrl.replace("ipfs://", "");
-  return [
-    `https://ipfs.io/ipfs/${cidPath}`,
-    `https://cloudflare-ipfs.com/ipfs/${cidPath}`,
-    `https://dweb.link/ipfs/${cidPath}`,
-  ];
-};
-
-const hydrateMetadataFromAnchor = async (
-  metadata: BlockfrostProposalMetadataItem,
-): Promise<BlockfrostProposalMetadataItem> => {
-  if (hasUsableJsonMetadata(metadata?.json_metadata)) {
-    return metadata;
-  }
-  if (!metadata?.url) {
-    return metadata;
-  }
-
-  const candidates = getAnchorUrls(metadata.url);
-  for (const candidate of candidates) {
-    try {
-      const res = await fetch(candidate, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      }
-      const text = await res.text();
-      const parsed = JSON.parse(text) as unknown;
-      const jsonMetadata =
-        parsed && typeof parsed === "object" && "body" in (parsed as Record<string, unknown>)
-          ? parsed
-          : { body: parsed };
-      if (hasUsableJsonMetadata(jsonMetadata)) {
-        return {
-          ...metadata,
-          json_metadata: jsonMetadata as BlockfrostProposalMetadataItem["json_metadata"],
-        };
-      }
-    } catch {
-      // Try next URL candidate.
-    }
-  }
-
-  return metadata;
 };
 
 const getErrorStatus = getProviderErrorStatus;
@@ -341,37 +271,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       active.map(async ({ item, detailsForStatus }) => {
         const txHash = item.tx_hash;
         const certIndex = Number(item.cert_index);
-        const govActionId =
-          typeof detailsForStatus?.id === "string" ? detailsForStatus.id : null;
-        let metadata: BlockfrostProposalMetadataItem | null = null;
+        let metadata: ProposalMetadata | null = null;
+        const metadataProvider: ProposalMetadataProvider = {
+          get: (path) => providerGet({ provider, network, path }),
+        };
 
         try {
-          metadata = await providerGet<BlockfrostProposalMetadataItem>({
-            provider,
-            network,
-            path: `/governance/proposals/${txHash}/${certIndex}/metadata`,
+          metadata = await fetchProposalMetadataWithFallback({
+            provider: metadataProvider,
+            proposal: item,
+            details: detailsForStatus
+              ? {
+                  id: detailsForStatus.id ?? "",
+                  tx_hash: txHash,
+                  cert_index: certIndex,
+                  governance_type: item.governance_type,
+                  deposit:
+                    typeof detailsForStatus.deposit === "string"
+                      ? detailsForStatus.deposit
+                      : "",
+                  return_address:
+                    typeof detailsForStatus.return_address === "string"
+                      ? detailsForStatus.return_address
+                      : "",
+                  governance_description: { tag: "" },
+                  ratified_epoch: detailsForStatus.ratified_epoch ?? null,
+                  enacted_epoch: detailsForStatus.enacted_epoch ?? null,
+                  dropped_epoch: detailsForStatus.dropped_epoch ?? null,
+                  expired_epoch: detailsForStatus.expired_epoch ?? null,
+                  expiration: detailsForStatus.expiration ?? null,
+                }
+              : null,
           });
         } catch (error) {
           const status = getErrorStatus(error);
-          if (govActionId) {
-            try {
-              const fallbackMetadata = await providerGet<BlockfrostProposalMetadataItem>({
-                provider,
-                network,
-                path: `/governance/proposals/${govActionId}/metadata`,
-              });
-              metadata = await hydrateMetadataFromAnchor(fallbackMetadata);
-            } catch (fallbackError) {
-              const fallbackStatus = getErrorStatus(fallbackError);
-              if (fallbackStatus !== 404) {
-                console.warn("governanceActiveProposals metadata fallback failed", {
-                  txHash,
-                  certIndex,
-                  status: fallbackStatus,
-                });
-              }
-            }
-          } else if (status !== 404) {
+          if (status !== 404) {
             console.warn("governanceActiveProposals metadata fetch failed", {
               txHash,
               certIndex,
@@ -380,27 +314,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
 
-        if (metadata) {
-          metadata = await hydrateMetadataFromAnchor(metadata);
-        }
-
-        const body = metadata?.json_metadata?.body ?? {};
-        const metadataAuthors = metadata?.json_metadata?.authors;
-        const authors = Array.isArray(metadataAuthors)
-          ? metadataAuthors
-              .map((author: any) => (typeof author?.name === "string" ? author.name : null))
-              .filter((name: string | null): name is string => !!name)
-          : [];
+        const body = metadata?.json_metadata.body;
+        const authors =
+          metadata?.json_metadata.authors.map((author) => author.name) ?? [];
 
         return {
           proposalId: `${txHash}#${certIndex}`,
           txHash,
           certIndex,
           governanceType: item.governance_type,
-          title: typeof body.title === "string" ? body.title : null,
-          abstract: typeof body.abstract === "string" ? body.abstract : null,
-          motivation: typeof body.motivation === "string" ? body.motivation : null,
-          rationale: typeof body.rationale === "string" ? body.rationale : null,
+          title: body?.title ?? null,
+          abstract: body?.abstract ?? null,
+          motivation: body?.motivation ?? null,
+          rationale: body?.rationale ?? null,
           authors,
           status: "active" as const,
           details: includeDetails

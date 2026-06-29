@@ -88,6 +88,7 @@ export async function createPendingMultisigTransaction(
         rejectedAddresses: transaction.rejectedAddresses,
         creatorAddress: proposerAddress,
         description,
+        txJson,
       });
     }
   } catch (error) {
