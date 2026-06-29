@@ -10,7 +10,7 @@ import { useEffect } from "react";
 import dynamic from "next/dynamic";
 
 import { env } from "@/env";
-import { getRouteSeo } from "@/lib/seo";
+import { getRouteSeo, type PageSeo } from "@/lib/seo";
 
 import { api } from "@/utils/api";
 
@@ -58,8 +58,22 @@ const MyApp: AppType<{ session: Session | null }> = ({
   // canonical / og:url tags (so dynamic routes resolve to the actual path, not
   // a "[id]" pattern).
   const router = useRouter();
-  const seo = getRouteSeo(router.pathname);
+  const routeSeo = getRouteSeo(router.pathname);
   const canonicalPath = (router.asPath || "/").split(/[?#]/)[0] || "/";
+
+  // A page can return a fully-resolved `seo` override from its data fetcher
+  // (e.g. blog posts via getServerSideProps). It's merged over the route-pattern
+  // defaults here so dynamic pages get a server-rendered, per-page <head>.
+  const pageSeo = (pageProps as { seo?: PageSeo }).seo;
+  const seo = {
+    title: pageSeo?.title ?? routeSeo.title,
+    description: pageSeo?.description ?? routeSeo.description,
+    keywords: pageSeo?.keywords ?? routeSeo.keywords,
+    noindex: pageSeo?.noindex ?? routeSeo.noindex,
+    image: pageSeo?.image,
+    type: pageSeo?.type,
+    jsonLd: pageSeo?.jsonLd,
+  };
 
   const umamiWebsiteId = env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
   const umamiScriptUrl =
@@ -76,6 +90,9 @@ const MyApp: AppType<{ session: Session | null }> = ({
         keywords={seo.keywords}
         path={canonicalPath}
         noindex={seo.noindex}
+        image={seo.image}
+        type={seo.type}
+        extraJsonLd={seo.jsonLd}
       />
       <MeshProviderNoSSR>
         {umamiWebsiteId && (

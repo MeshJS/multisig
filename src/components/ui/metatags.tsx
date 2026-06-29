@@ -28,6 +28,8 @@ export default function Metatags({
   /** Open Graph object type. "website" for marketing pages, "article" for content. */
   type = "website",
   noindex = false,
+  /** Extra JSON-LD blocks (e.g. an Article) appended to the site-wide ones. */
+  extraJsonLd,
 }: {
   title?: string;
   description?: string;
@@ -36,10 +38,15 @@ export default function Metatags({
   path?: string;
   type?: string;
   noindex?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extraJsonLd?: Record<string, any>[];
 }) {
   const canonical = absoluteUrl(path);
   const imageUrl = absoluteUrl(image);
-  const jsonLd = JSON.stringify(buildJsonLd(path));
+  const jsonLd = JSON.stringify([
+    ...buildJsonLd(path),
+    ...(extraJsonLd ?? []),
+  ]);
 
   return (
     <>
