@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           for i in 1 2 3; do
-            docker pull node:20-alpine && break
+            docker pull node:22-slim && break
             echo "Pull attempt $i failed, retrying in 30s..."
             sleep 30
           done

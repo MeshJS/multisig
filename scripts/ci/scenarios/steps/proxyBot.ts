@@ -1225,6 +1225,28 @@ function createProxyClientBuildSmokeStep(walletType: CIWalletType): RouteStep {
   };
 }
 
+let proxyActiveProposalsCache: ActiveProposal[] | undefined;
+
+async function getCachedProxyActiveProposals(ctx: CIBootstrapContext): Promise<ActiveProposal[]> {
+  if (proxyActiveProposalsCache) {
+    return proxyActiveProposalsCache;
+  }
+
+  const bot = getDefaultBot(ctx);
+  const token = await authenticateBot({ ctx, bot });
+  const response = await requestJson<{ proposals?: unknown[]; activeCount?: number; sourceCount?: number; error?: string }>({
+    url: `${ctx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
+    method: "GET",
+    token,
+  });
+  if (response.status !== 200) {
+    throw new Error(`governanceActiveProposals failed (${response.status}): ${stringifyRedacted(response.data)}`);
+  }
+
+  proxyActiveProposalsCache = getDeterministicActiveProposals(response.data, 1);
+  return proxyActiveProposalsCache;
+}
+
 function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   const runtime: {
     setup?: ProxySetup;
@@ -1351,19 +1373,9 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       description: "Fetch active proposals for optional proxy vote",
       severity: "critical",
       execute: async (runCtx) => {
-        const bot = getDefaultBot(runCtx);
-        const token = await authenticateBot({ ctx: runCtx, bot });
-        const response = await requestJson<{ proposals?: unknown[]; activeCount?: number; sourceCount?: number; error?: string }>({
-          url: `${runCtx.apiBaseUrl}/api/v1/governanceActiveProposals?network=0&count=20&page=1&order=desc&details=false`,
-          method: "GET",
-          token,
-        });
-        if (response.status !== 200) {
-          throw new Error(`governanceActiveProposals failed (${response.status}): ${stringifyRedacted(response.data)}`);
-        }
-        runtime.activeProposals = getDeterministicActiveProposals(response.data, 1);
+        runtime.activeProposals = await getCachedProxyActiveProposals(runCtx);
         return {
-          message: `selected ${runtime.activeProposals.length} active proposal(s) for optional proxy vote`,
+          message: `selected ${runtime.activeProposals.length} cached active proposal(s) for optional proxy vote`,
           artifacts: { selectedProposalIds: runtime.activeProposals.map((proposal) => proposal.proposalId) },
         };
       },

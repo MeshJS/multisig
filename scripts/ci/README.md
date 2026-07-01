@@ -252,6 +252,7 @@ Primary variables (in workflow/compose):
 - `CI_DREP_ANCHOR_JSON` (required by the default run for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
 - `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`408`, `418`, `429`, `500`, `502`, `503`, `504`). Exponential backoff with `Retry-After` header support. Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
+- `CI_RUN_WALLET_STATUS` (default `false`): when running the composed `ci-runner` command, set to `true` to print the optional pre-route wallet balance check. The route-chain report always collects end-of-run wallet balances, so the default CI path skips this extra Blockfrost lookup.
 
 Validation notes:
 
@@ -425,7 +426,7 @@ docker compose -f docker-compose.ci.yml run --rm `
   ci-runner node .ci-dist/bootstrap.mjs
 ```
 
-Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails). The composed `ci-runner` skips this by default; set `CI_RUN_WALLET_STATUS=true` if you want it included there.
 
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
@@ -447,6 +448,12 @@ View generated report on host:
 
 ```powershell
 Get-Content ".\ci-artifacts\ci-route-chain-report.md"
+```
+
+When you are done, remove the CI containers and volume:
+
+```powershell
+docker compose -f docker-compose.ci.yml down -v --remove-orphans
 ```
 
 ## Local execution (Linux/Bash, CI-like)
@@ -515,7 +522,7 @@ docker compose -f docker-compose.ci.yml run --rm \
   ci-runner node .ci-dist/bootstrap.mjs
 ```
 
-Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails). The composed `ci-runner` skips this by default; set `CI_RUN_WALLET_STATUS=true` if you want it included there.
 
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
@@ -536,4 +543,10 @@ View generated report on host:
 
 ```bash
 cat ./ci-artifacts/ci-route-chain-report.md
+```
+
+When you are done, remove the CI containers and volume:
+
+```bash
+docker compose -f docker-compose.ci.yml down -v --remove-orphans
 ```
