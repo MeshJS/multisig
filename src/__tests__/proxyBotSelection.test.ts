@@ -42,6 +42,29 @@ describe("proxy bot UTxO selection", () => {
     expect(refs.collateralRef).toEqual({ txHash: "collateral", outputIndex: 0 });
   });
 
+  it("uses the reserved collateral ref instead of the first available collateral", () => {
+    const refs = selectSetupRefs({
+      walletUtxos: [mkUtxo("20000000", "setup")],
+      collateralUtxos: [
+        mkUtxo("6000000", "collateral-a", 0, undefined, "addr_test_signer_1"),
+        mkUtxo("6000000", "collateral-b", 1, undefined, "addr_test_signer_1"),
+      ],
+      reservedCollateralRef: { txHash: "collateral-b", outputIndex: 1 },
+    });
+
+    expect(refs.collateralRef).toEqual({ txHash: "collateral-b", outputIndex: 1 });
+  });
+
+  it("fails instead of falling back when the reserved collateral ref is unavailable", () => {
+    expect(() =>
+      selectSetupRefs({
+        walletUtxos: [mkUtxo("20000000", "setup")],
+        collateralUtxos: [mkUtxo("6000000", "collateral-a", 0, undefined, "addr_test_signer_1")],
+        reservedCollateralRef: { txHash: "collateral-b", outputIndex: 1 },
+      }),
+    ).toThrow(/reserved signer-0 collateral UTxO collateral-b:1 is not currently available/);
+  });
+
   it("rejects setup when only wallet script UTxOs could act as collateral", () => {
     expect(() =>
       selectSetupRefs({

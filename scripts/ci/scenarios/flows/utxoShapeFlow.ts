@@ -177,6 +177,7 @@ async function buildSelfSplitTransaction(args: {
 export async function ensureProxyLifecycleUtxoShape(args: {
   ctx: CIBootstrapContext;
   walletType: CIWalletType;
+  minKeyCollateralCandidates?: number;
 }): Promise<UtxoShapeResult> {
   const wallet = getWalletByType(args.ctx, args.walletType);
   if (!wallet) throw new Error(`Missing ${args.walletType} wallet`);
@@ -198,6 +199,7 @@ export async function ensureProxyLifecycleUtxoShape(args: {
   const analysis = analyzeProxyFullLifecycleUtxoShape({
     walletUtxos: utxos,
     collateralUtxos,
+    minKeyCollateralCandidates: args.minKeyCollateralCandidates,
   });
   if (analysis.status === "pass") {
     return {
@@ -216,7 +218,11 @@ export async function ensureProxyLifecycleUtxoShape(args: {
         `Proxy lifecycle self-split cannot leave ${formatAda(PROXY_LIFECYCLE_COLLATERAL_SPLIT_LOVELACE)} collateral plus enough selectable ADA. ${analysis.diagnostics}. Add at least ${formatAda(analysis.selfSplitRequiredLovelace - analysis.totalLovelace)} plus any desired safety margin before running proxy full lifecycle.`,
       );
     }
-    assertProxyFullLifecyclePreflight({ walletUtxos: utxos, collateralUtxos });
+    assertProxyFullLifecyclePreflight({
+      walletUtxos: utxos,
+      collateralUtxos,
+      minKeyCollateralCandidates: args.minKeyCollateralCandidates,
+    });
   }
 
   requireProxyShapeEnvironment(args.ctx, wallet.walletAddress, bot.paymentAddress);
@@ -292,6 +298,7 @@ export async function ensureProxyLifecycleUtxoShape(args: {
   const shaped = assertProxyFullLifecyclePreflight({
     walletUtxos: shapedUtxos,
     collateralUtxos: shapedCollateralUtxos,
+    minKeyCollateralCandidates: args.minKeyCollateralCandidates,
   });
 
   return {

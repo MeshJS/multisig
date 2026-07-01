@@ -10,6 +10,11 @@ import { runSigningFlow } from "../flows/signingFlow";
 import { ensureProxyLifecycleUtxoShape } from "../flows/utxoShapeFlow";
 import { recoverProxyRowsFromChainForWalletType } from "../proxyChainRecovery";
 import { adoptProxyOrphansForWalletType } from "../proxyOrphanAdoption";
+import {
+  requireReservedCollateralUtxo,
+  reserveProxyLifecycleCollateral,
+  type ProxyCollateralReservation,
+} from "../proxyCollateralReservations";
 import { getWalletByType } from "./helpers";
 import {
   assertProxyFullLifecyclePreflight,
@@ -195,7 +200,15 @@ function isAdaOnlyCollateral(utxo: ScriptUtxo): boolean {
 function selectSeparateCollateral(
   utxos: ScriptUtxo[],
   context: string,
+  reservedCollateralRef?: UtxoRef,
 ): ScriptUtxo {
+  if (reservedCollateralRef) {
+    return requireReservedCollateralUtxo({
+      collateralUtxos: utxos,
+      reservedCollateralRef,
+      context,
+    });
+  }
   const collateral = [...utxos]
     .filter(isAdaOnlyCollateral)
     .sort((left, right) => {
@@ -216,12 +229,13 @@ function selectSeparateCollateral(
 export function selectSetupRefs(args: {
   walletUtxos: ScriptUtxo[];
   collateralUtxos: ScriptUtxo[];
+  reservedCollateralRef?: UtxoRef;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef } {
   const setupUtxo = selectSetupUtxo(args.walletUtxos as unknown as UTxO[]);
   if (!setupUtxo) {
     throw new Error(`proxy setup requires a wallet UTxO with at least ${formatAda(SETUP_UTXO_REQUIRED_LOVELACE)}`);
   }
-  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy setup");
+  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy setup", args.reservedCollateralRef);
   return { utxoRefs: [toRef(setupUtxo as unknown as ScriptUtxo)], collateralRef: toRef(collateral) };
 }
 
@@ -230,8 +244,9 @@ export function selectAuthTokenRefs(args: {
   collateralUtxos: ScriptUtxo[];
   authTokenId: string;
   includeAllAuthTokens?: boolean;
+  reservedCollateralRef?: UtxoRef;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef } {
-  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy action");
+  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy action", args.reservedCollateralRef);
   if (args.includeAllAuthTokens) {
     // Cleanup path: include every auth-token UTxO
     const authTokenUtxos = args.walletUtxos.filter((utxo) =>
@@ -252,6 +267,7 @@ export function selectDRepRegisterRefs(args: {
   collateralUtxos: ScriptUtxo[];
   authTokenId: string;
   requiredLovelace?: bigint;
+  reservedCollateralRef?: UtxoRef;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef; selectedLovelace: bigint; requiredLovelace: bigint } {
   const requiredLovelace = args.requiredLovelace ?? DREP_REGISTER_REQUIRED_LOVELACE;
   const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);
@@ -262,7 +278,7 @@ export function selectDRepRegisterRefs(args: {
       `proxy DRep register requires ${formatAda(requiredLovelace)} in selected wallet inputs but only ${formatAda(selectedLovelace)} is available after reserving separate collateral. Fund or consolidate the CI wallet before running scenario.proxy-full-lifecycle.`,
     );
   }
-  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy DRep register");
+  const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy DRep register", args.reservedCollateralRef);
   return {
     utxoRefs: selected.map((u) => toRef(u as unknown as ScriptUtxo)),
     collateralRef: toRef(collateral),
@@ -277,6 +293,7 @@ export function selectAuthTokenRefsWithMinLovelace(args: {
   authTokenId: string;
   requiredLovelace: bigint;
   context: string;
+  reservedCollateralRef?: UtxoRef;
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef; selectedLovelace: bigint; requiredLovelace: bigint } {
   const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);
   const selected = accumulateFundingUtxos(args.walletUtxos as unknown as UTxO[], authTokenUtxo, args.requiredLovelace);
@@ -286,7 +303,7 @@ export function selectAuthTokenRefsWithMinLovelace(args: {
       `${args.context} requires ${formatAda(args.requiredLovelace)} in selected wallet inputs but only ${formatAda(selectedLovelace)} is available after reserving separate collateral. Fund or consolidate the CI wallet before running scenario.proxy-full-lifecycle.`,
     );
   }
-  const collateral = selectSeparateCollateral(args.collateralUtxos, args.context);
+  const collateral = selectSeparateCollateral(args.collateralUtxos, args.context, args.reservedCollateralRef);
   return {
     utxoRefs: selected.map((u) => toRef(u as unknown as ScriptUtxo)),
     collateralRef: toRef(collateral),
@@ -381,6 +398,7 @@ async function fetchProxyDRepInfo(args: {
 export async function runProxyFullLifecycleHygiene(args: {
   ctx: CIBootstrapContext;
   walletType: CIWalletType;
+  reservedCollateralRef?: UtxoRef;
   deps?: Partial<ProxyLifecycleHygieneDeps>;
 }): Promise<{ message: string; artifacts: Record<string, unknown> }> {
   const deps = { ...defaultProxyLifecycleHygieneDeps, ...args.deps };
@@ -441,6 +459,7 @@ export async function runProxyFullLifecycleHygiene(args: {
         authTokenId: proxy.authTokenId,
         requiredLovelace: PROXY_ACTION_REQUIRED_LOVELACE + PROXY_ACTION_FEE_BUFFER_LOVELACE,
         context: "proxy hygiene DRep deregister",
+        reservedCollateralRef: args.reservedCollateralRef,
       });
       const { requestRefs, selectionArtifacts } = splitProxyActionSelection(selection);
       const response = await deps.requestJson<unknown | { error?: string }>({
@@ -521,6 +540,7 @@ export async function runProxyFullLifecycleHygiene(args: {
         collateralUtxos,
         authTokenId: proxy.authTokenId,
         includeAllAuthTokens: true,
+        reservedCollateralRef: args.reservedCollateralRef,
       });
       const response = await deps.requestJson<unknown | { error?: string }>({
         url: `${args.ctx.apiBaseUrl}/api/v1/proxyCleanup`,
@@ -813,6 +833,7 @@ export function requireSetupTxHash(runtime: {
 
 function createSetupLifecycleSteps(args: {
   walletType: CIWalletType;
+  getReservedCollateralRef?: () => UtxoRef | undefined;
   runtime: {
     setup?: ProxySetup;
     proxyId?: string;
@@ -836,7 +857,11 @@ function createSetupLifecycleSteps(args: {
           fetchFreeUtxos({ ctx, walletId: wallet.walletId, token, address: bot.paymentAddress, fresh: true }),
           fetchKeyAddressUtxos({ ctx, address: bot.paymentAddress }),
         ]);
-        const refs = selectSetupRefs({ walletUtxos, collateralUtxos });
+        const refs = selectSetupRefs({
+          walletUtxos,
+          collateralUtxos,
+          reservedCollateralRef: args.getReservedCollateralRef?.(),
+        });
         const response = await requestJson<{ transaction?: unknown; setup?: ProxySetup; error?: string }>({
           url: `${ctx.apiBaseUrl}/api/v1/proxySetup`,
           method: "POST",
@@ -964,7 +989,13 @@ function createProxyActionStep(args: {
     cleanupBurnTransactionId?: string;
   };
   buildBody: (ctx: CIBootstrapContext, refs: ProxyActionRequestRefs) => Record<string, unknown> | null;
-  selectRefs?: (args: { walletUtxos: ScriptUtxo[]; collateralUtxos: ScriptUtxo[]; authTokenId: string }) => ProxyActionSelection;
+  selectRefs?: (args: {
+    walletUtxos: ScriptUtxo[];
+    collateralUtxos: ScriptUtxo[];
+    authTokenId: string;
+    reservedCollateralRef?: UtxoRef;
+  }) => ProxyActionSelection;
+  getReservedCollateralRef?: () => UtxoRef | undefined;
   includeAllAuthTokens?: boolean;
   shouldSkip?: () => boolean;
   onSkip?: () => void;
@@ -990,12 +1021,18 @@ function createProxyActionStep(args: {
         fetchKeyAddressUtxos({ ctx, address: bot.paymentAddress }),
       ]);
       const selection =
-        args.selectRefs?.({ walletUtxos, collateralUtxos, authTokenId: args.runtime.setup.authTokenId }) ??
+        args.selectRefs?.({
+          walletUtxos,
+          collateralUtxos,
+          authTokenId: args.runtime.setup.authTokenId,
+          reservedCollateralRef: args.getReservedCollateralRef?.(),
+        }) ??
         selectAuthTokenRefs({
           walletUtxos,
           collateralUtxos,
           authTokenId: args.runtime.setup.authTokenId,
           includeAllAuthTokens: args.includeAllAuthTokens,
+          reservedCollateralRef: args.getReservedCollateralRef?.(),
         });
       const { requestRefs, selectionArtifacts } = splitProxyActionSelection(selection);
       args.runtime.actionTransactionId = undefined;
@@ -1114,12 +1151,20 @@ function createWaitForActionConfirmationStep(args: {
   };
 }
 
-function createProxyFullLifecycleHygieneStep(walletType: CIWalletType): RouteStep {
+function createProxyFullLifecycleHygieneStep(
+  walletType: CIWalletType,
+  getReservedCollateralRef?: () => UtxoRef | undefined,
+): RouteStep {
   return {
     id: `v1.proxy.full.hygiene.${walletType}`,
     description: "Clean stale active proxy lifecycle rows before starting",
     severity: "critical",
-    execute: async (ctx) => runProxyFullLifecycleHygiene({ ctx, walletType }),
+    execute: async (ctx) =>
+      runProxyFullLifecycleHygiene({
+        ctx,
+        walletType,
+        reservedCollateralRef: getReservedCollateralRef?.(),
+      }),
   };
 }
 
@@ -1157,7 +1202,10 @@ function createProxyFullLifecycleAdoptionStep(walletType: CIWalletType): RouteSt
   };
 }
 
-function createProxyClientBuildSmokeStep(walletType: CIWalletType): RouteStep {
+function createProxyClientBuildSmokeStep(
+  walletType: CIWalletType,
+  getReservedCollateralRef?: () => UtxoRef | undefined,
+): RouteStep {
   return {
     id: `v1.proxy.client-build-smoke.${walletType}`,
     description: `Build proxy setup CBOR via client builder without submission (${walletType})`,
@@ -1192,6 +1240,7 @@ function createProxyClientBuildSmokeStep(walletType: CIWalletType): RouteStep {
       const collateralScriptUtxo = selectSeparateCollateral(
         collateralUtxos as unknown as ScriptUtxo[],
         "proxy client build smoke",
+        getReservedCollateralRef?.(),
       );
 
       const txBuilder = new MeshTxBuilder({
@@ -1247,7 +1296,10 @@ async function getCachedProxyActiveProposals(ctx: CIBootstrapContext): Promise<A
   return proxyActiveProposalsCache;
 }
 
-function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
+function createProxyFullLifecycleSteps(
+  walletType: CIWalletType,
+  getReservedCollateralRef?: () => UtxoRef | undefined,
+): RouteStep[] {
   const runtime: {
     setup?: ProxySetup;
     proxyId?: string;
@@ -1267,7 +1319,7 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   return [
     createProxyFullLifecycleChainRecoveryStep(walletType),
     createProxyFullLifecycleAdoptionStep(walletType),
-    createProxyFullLifecycleHygieneStep(walletType),
+    createProxyFullLifecycleHygieneStep(walletType, getReservedCollateralRef),
     {
       id: `v1.proxy.full.utxoShape.${walletType}`,
       description: "Ensure proxy full-lifecycle wallet has separate setup and collateral UTxOs",
@@ -1279,7 +1331,10 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
             result.status === "already-shaped"
               ? `proxy full lifecycle UTxO shape already satisfied for ${walletType}`
               : `proxy full lifecycle UTxO self-split confirmed for ${walletType}`,
-          artifacts: result as unknown as Record<string, unknown>,
+          artifacts: {
+            ...(result as unknown as Record<string, unknown>),
+            reservedCollateralRef: getReservedCollateralRef?.(),
+          },
         };
       },
     },
@@ -1306,6 +1361,14 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
           walletUtxos,
           collateralUtxos,
         });
+        const reservedCollateralRef = getReservedCollateralRef?.();
+        if (reservedCollateralRef) {
+          requireReservedCollateralUtxo({
+            collateralUtxos,
+            reservedCollateralRef,
+            context: `proxy full lifecycle preflight (${walletType})`,
+          });
+        }
         return {
           message: `proxy full lifecycle preflight passed with ${formatAda(result.totalLovelace)} available and ${formatAda(result.requiredTotalLovelace)} required`,
           artifacts: {
@@ -1316,18 +1379,20 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
             drepSelectableLovelace: result.drepSelectableLovelace.toString(),
             drepRequiredLovelace: result.drepRequiredLovelace.toString(),
             requiredTotalLovelace: result.requiredTotalLovelace.toString(),
+            reservedCollateralRef,
           },
         };
       },
     },
-    createProxyClientBuildSmokeStep(walletType),
-    ...createSetupLifecycleSteps({ walletType, runtime }),
+    createProxyClientBuildSmokeStep(walletType, getReservedCollateralRef),
+    ...createSetupLifecycleSteps({ walletType, runtime, getReservedCollateralRef }),
     createProxyActionStep({
       id: `v1.proxy.full.spend.propose.${walletType}`,
       description: "Build proxy spend transaction",
       walletType,
       endpoint: "proxySpend",
       runtime,
+      getReservedCollateralRef,
       buildBody: (runCtx) => ({
         outputs: [{ address: getWalletByType(runCtx, walletType)?.walletAddress ?? "", unit: "lovelace", amount: PROXY_SPEND_LOVELACE.toString() }],
         description: "CI proxy spend",
@@ -1346,12 +1411,14 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       walletType,
       endpoint: "proxyDRepCertificate",
       runtime,
-      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId }) => {
+      getReservedCollateralRef,
+      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId, reservedCollateralRef }) => {
         return selectDRepRegisterRefs({
           walletUtxos,
           collateralUtxos,
           authTokenId,
           requiredLovelace: DREP_REGISTER_REQUIRED_LOVELACE + FULL_LIFECYCLE_FEE_BUFFER_LOVELACE,
+          reservedCollateralRef,
         });
       },
       buildBody: () => ({
@@ -1386,13 +1453,15 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       walletType,
       endpoint: "proxyVote",
       runtime,
-      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId }) =>
+      getReservedCollateralRef,
+      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId, reservedCollateralRef }) =>
         selectAuthTokenRefsWithMinLovelace({
           walletUtxos,
           collateralUtxos,
           authTokenId,
           requiredLovelace: PROXY_ACTION_REQUIRED_LOVELACE + PROXY_ACTION_FEE_BUFFER_LOVELACE,
           context: "proxy vote",
+          reservedCollateralRef,
         }),
       buildBody: () => {
         const proposal = runtime.activeProposals?.[0];
@@ -1417,13 +1486,15 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       walletType,
       endpoint: "proxyDRepCertificate",
       runtime,
-      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId }) =>
+      getReservedCollateralRef,
+      selectRefs: ({ walletUtxos, collateralUtxos, authTokenId, reservedCollateralRef }) =>
         selectAuthTokenRefsWithMinLovelace({
           walletUtxos,
           collateralUtxos,
           authTokenId,
           requiredLovelace: PROXY_ACTION_REQUIRED_LOVELACE + PROXY_ACTION_FEE_BUFFER_LOVELACE,
           context: "proxy DRep deregister",
+          reservedCollateralRef,
         }),
       buildBody: () => ({
         action: "deregister",
@@ -1443,6 +1514,7 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       walletType,
       endpoint: "proxyCleanup",
       runtime,
+      getReservedCollateralRef,
       includeAllAuthTokens: true,
       buildBody: () => ({
         deactivateProxy: true,
@@ -1462,6 +1534,7 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
       walletType,
       endpoint: "proxyCleanup",
       runtime,
+      getReservedCollateralRef,
       includeAllAuthTokens: true,
       shouldSkip: () => shouldSkipCleanupBurnPropose(runtime),
       onSkip: () => {
@@ -1546,6 +1619,73 @@ function createProxyFullLifecycleSteps(walletType: CIWalletType): RouteStep[] {
   ];
 }
 
+function validateUniqueProxyLifecycleWallets(ctx: CIBootstrapContext, walletTypes: CIWalletType[]): void {
+  const walletIds = new Map<string, CIWalletType>();
+  const walletAddresses = new Map<string, CIWalletType>();
+
+  for (const walletType of walletTypes) {
+    const wallet = getWalletByType(ctx, walletType);
+    if (!wallet) throw new Error(`Missing ${walletType} wallet`);
+
+    const existingWalletId = walletIds.get(wallet.walletId);
+    if (existingWalletId) {
+      throw new Error(
+        `Proxy full lifecycle parallel isolation failed: ${walletType} and ${existingWalletId} share walletId ${wallet.walletId}`,
+      );
+    }
+    walletIds.set(wallet.walletId, walletType);
+
+    const existingAddress = walletAddresses.get(wallet.walletAddress);
+    if (existingAddress) {
+      throw new Error(
+        `Proxy full lifecycle parallel isolation failed: ${walletType} and ${existingAddress} share walletAddress ${wallet.walletAddress}`,
+      );
+    }
+    walletAddresses.set(wallet.walletAddress, walletType);
+  }
+}
+
+function createProxyFullLifecycleIsolationStep(args: {
+  eligibleWalletTypes: CIWalletType[];
+  reservations: Map<CIWalletType, ProxyCollateralReservation>;
+}): RouteStep {
+  return {
+    id: "v1.proxy.full.parallelIsolation",
+    description: "Reserve distinct signer-0 collateral UTxOs for parallel proxy lifecycles",
+    severity: "critical",
+    execute: async (ctx) => {
+      validateUniqueProxyLifecycleWallets(ctx, args.eligibleWalletTypes);
+
+      for (const walletType of args.eligibleWalletTypes) {
+        await ensureProxyLifecycleUtxoShape({
+          ctx,
+          walletType,
+          minKeyCollateralCandidates: args.eligibleWalletTypes.length,
+        });
+      }
+
+      const bot = getDefaultBot(ctx);
+      const collateralUtxos = await fetchKeyAddressUtxos({ ctx, address: bot.paymentAddress });
+      const reservations = reserveProxyLifecycleCollateral({
+        walletTypes: args.eligibleWalletTypes,
+        collateralUtxos,
+      });
+      args.reservations.clear();
+      for (const [walletType, reservation] of reservations.entries()) {
+        args.reservations.set(walletType, reservation);
+      }
+
+      return {
+        message: `reserved ${reservations.size} distinct signer-0 collateral UTxO(s) for proxy full lifecycle`,
+        artifacts: normalizeJsonArtifact({
+          collateralAddress: bot.paymentAddress,
+          reservations: Array.from(reservations.values()),
+        }) as Record<string, unknown>,
+      };
+    },
+  };
+}
+
 export function createScenarioProxyFullLifecycle(ctx: CIBootstrapContext): Scenario {
   const eligibleWalletTypes = PROXY_FULL_LIFECYCLE_WALLET_TYPES.filter(
     (walletType) =>
@@ -1553,8 +1693,23 @@ export function createScenarioProxyFullLifecycle(ctx: CIBootstrapContext): Scena
       ctx.wallets.some((wallet) => wallet.type === walletType),
   );
 
+  const reservations = new Map<CIWalletType, ProxyCollateralReservation>();
+  const isParallelEnabled = boolFromEnv(process.env.CI_PROXY_FULL_LIFECYCLE_PARALLEL, true);
+  const getReservedCollateralRef = (walletType: CIWalletType) =>
+    reservations.get(walletType)?.collateralRef;
+
   const steps: RouteStep[] = eligibleWalletTypes.length
-    ? eligibleWalletTypes.flatMap((walletType) => createProxyFullLifecycleSteps(walletType))
+    ? [
+        createProxyFullLifecycleIsolationStep({
+          eligibleWalletTypes,
+          reservations,
+        }),
+        ...(!isParallelEnabled
+          ? eligibleWalletTypes.flatMap((walletType) =>
+              createProxyFullLifecycleSteps(walletType, () => getReservedCollateralRef(walletType)),
+            )
+          : []),
+      ]
     : [
         {
           id: "v1.proxy.full.precondition",
@@ -1568,9 +1723,19 @@ export function createScenarioProxyFullLifecycle(ctx: CIBootstrapContext): Scena
         },
       ];
 
+  const parallelBranches =
+    eligibleWalletTypes.length && isParallelEnabled
+      ? eligibleWalletTypes.map((walletType) => ({
+          id: `proxy-full-lifecycle.${walletType}`,
+          description: `Proxy full lifecycle (${walletType})`,
+          steps: createProxyFullLifecycleSteps(walletType, () => getReservedCollateralRef(walletType)),
+        }))
+      : undefined;
+
   return {
     id: "scenario.proxy-full-lifecycle",
     description: "Proxy spend, governance, and cleanup lifecycle for legacy, hierarchical, and SDK wallets",
     steps,
+    parallelBranches,
   };
 }

@@ -54,6 +54,11 @@ export type Scenario = {
   id: string;
   description: string;
   steps: RouteStep[];
+  parallelBranches?: Array<{
+    id: string;
+    description: string;
+    steps: RouteStep[];
+  }>;
 };
 
 export type StepReport = {
