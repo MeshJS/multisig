@@ -1,11 +1,13 @@
 # Running the Playwright E2E Tests Locally
 
-The ring-transfer suite drives a real Cardano preprod browser flow:
+The Playwright runner is the single local entry point for browser E2E tests in
+`e2e/tests`. It currently includes the ring-transfer suite, which drives a real
+Cardano preprod browser flow:
 CIP-0030 wallet injection -> transaction propose -> multi-sign -> on-chain broadcast.
 
 Use the Docker flow below when you want the local run to match CI. It starts Postgres,
-starts the app, bootstraps the three CI wallets, then runs Playwright against the app
-container.
+starts the app, bootstraps the three CI wallets, then runs the full Playwright suite
+against the app container.
 
 ## Prerequisites
 
@@ -30,7 +32,14 @@ CI_NETWORK_ID=0
 CI_NUM_REQUIRED_SIGNERS=2
 CI_WALLET_TYPES=legacy,hierarchical,sdk
 CI_TRANSFER_LOVELACE=2000000
+# Hex (28-byte) preprod pool id — required by the staking-ui spec.
+CI_STAKE_POOL_ID_HEX=f9c8e7275348d3b1a3596c94095f43307990cc5f800bbbb256298658
 ```
+
+Keep every value on a single line: `docker compose --env-file` cannot parse
+multi-line values, and one malformed entry breaks the whole file. The browser
+governance spec and route-chain runner both expect `CI_DREP_ANCHOR_JSON` to stay
+single-line minified JSON if you keep it in this file.
 
 ## 2. First Clean Run
 
@@ -39,7 +48,8 @@ Run these commands in order from the repo root.
 ### PowerShell
 
 ```powershell
-docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner playwright-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build playwright-runner
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d postgres app
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright ps
 ```
@@ -58,7 +68,8 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright `
 ### Bash
 
 ```bash
-docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner playwright-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app bootstrap-runner
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright build playwright-runner
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d postgres app
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright ps
 ```
@@ -77,8 +88,18 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright \
 Bootstrap creates `ci-artifacts/ci-wallet-context.json`. The Playwright runner reads
 that file, so bootstrap must run before the test runner.
 
+Do not continue after a failed or canceled image build. In particular, if the
+`playwright-runner` image fails during `npm ci`, rebuild it after the registry
+recovers before running tests; if the `app` build is canceled, rebuild `app` before
+`up -d postgres app`. Otherwise Docker may start an older app image whose browser
+bundle is missing the `.env.playwright` `NEXT_PUBLIC_*` values.
+
 Use `--no-deps` when running `playwright-runner` after bootstrap. Without it, Docker
 Compose may try to run dependency services again, including bootstrap.
+
+By default, `playwright-runner` executes all specs under `e2e/tests` using
+`e2e/playwright.config.ts`. As new Playwright specs are added, they should be runnable
+through this same command unless they intentionally require a different setup.
 
 ## 3. Rerun After Changes
 
@@ -93,6 +114,8 @@ Pick the smallest path that matches what changed.
 
 ### Only test/framework changes
 
+Runs the full Playwright suite:
+
 ```powershell
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright `
     --profile playwright run --rm --no-deps playwright-runner
@@ -102,6 +125,29 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright `
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright \
   --profile playwright run --rm --no-deps playwright-runner
 ```
+
+### Run a focused spec
+
+Use this when iterating on one Playwright file while keeping the same Docker app,
+database, wallet context, and artifact paths.
+
+PowerShell:
+
+```powershell
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright `
+    --profile playwright run --rm --no-deps playwright-runner `
+    npx playwright test --config=e2e/playwright.config.ts e2e/tests/ring-transfer.spec.ts
+```
+
+Bash:
+
+```bash
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright \
+  --profile playwright run --rm --no-deps playwright-runner \
+  npx playwright test --config=e2e/playwright.config.ts e2e/tests/ring-transfer.spec.ts
+```
+
+Replace `e2e/tests/ring-transfer.spec.ts` with any spec path under `e2e/tests`.
 
 ### App code changes
 
@@ -197,12 +243,15 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
 | `CI_CONTEXT_PATH` | Yes in containers | Path where bootstrap writes and tests read `ci-wallet-context.json`; provided by Docker Compose. |
 | `APP_URL` | No | Base URL of the running app; provided by Docker Compose for the runner. |
 | `CI_TRANSFER_LOVELACE` | No | Lovelace sent per ring-transfer leg. Defaults to `2000000` (2 ADA). |
+| `CI_STAKE_POOL_ID_HEX` | Yes for `staking-ui.spec.ts` | Hex (28-byte) preprod stake pool id. A bech32 `pool1...` value is normalized in-test, but bootstrap and route-chain expect hex. Forwarded to both the bootstrap and Playwright runners. |
+| `CI_DREP_ANCHOR_URL` | No | Used as the mocked anchor URL in `governance-drep-ui.spec.ts` (a fallback URL is used when unset). Required separately by the route-chain CI runner. |
+| `CI_DREP_ANCHOR_JSON` | Yes for `governance-drep-ui.spec.ts` | CIP-119 anchor JSON used to fill the DRep register/update validation forms. It must stay single-line JSON because `docker compose --env-file` cannot parse multi-line values. |
 | `CI_NETWORK_ID` | No | `0` for preprod. Defaults to `0`. |
 | `CI_NUM_REQUIRED_SIGNERS` | No | Signing threshold. Defaults to `2`. |
 | `CI_WALLET_TYPES` | No | Comma-separated wallet types. Defaults to `legacy,hierarchical,sdk`. |
 | `PLAYWRIGHT_WORKERS` | No | Number of parallel Playwright workers. Defaults to `3` (one per ring-transfer leg). Set to `1` for serial execution. |
 
-## How the Test Works
+## How the Suite Works
 
 1. Bootstrap creates three multisig wallets (`legacy`, `hierarchical`, and `sdk`) in
    the app DB and writes their wallet IDs, script addresses, and signer addresses to
@@ -210,9 +259,15 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
 
 2. `global-setup.ts` validates env vars and caches the context JSON for the test run.
 
-3. `ring-transfer.spec.ts` runs three legs in parallel, one Playwright worker
+3. Playwright runs every spec in `e2e/tests` unless you pass a focused spec path.
+   Specs should reuse the existing fixtures and bootstrap context when possible so the
+   Docker runner remains the one local place to exercise browser coverage.
+
+4. `ring-transfer.spec.ts` runs three legs in parallel, one Playwright worker
    per leg. For each leg:
    - Signer 0 proposes a transaction from `/wallets/{id}/transactions/new`.
+   - The test verifies the pending transaction is still below threshold and only the
+     proposer has signed before the second signer acts.
    - The `window.cardano.meshci` mock intercepts `signTx` and bridges to
      `MeshWallet.signTx` in Node.js using the corresponding mnemonic.
    - Signer 1 signs from `/wallets/{id}/transactions`, reaching the 2-of-3 threshold
@@ -220,12 +275,17 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
    - The test waits for `[data-testid="tx-broadcast-success"]` and confirms the pending
      transaction is cleared via `/api/v1/pendingTransactions`.
 
-4. Legs run in parallel. Each leg spends from a different multisig wallet
+5. Ring-transfer legs run in parallel. Each leg spends from a different multisig wallet
    (legacy, hierarchical, sdk), so the legs never compete for the same UTxOs.
    Each source wallet must independently hold enough ADA for its transfer plus
    fees; if a previous run left a wallet short, the leg waits up to 5 minutes
    for the concurrently running leg that refills it. Set `PLAYWRIGHT_WORKERS=1`
    to fall back to serial execution.
+
+When adding new specs, keep their state isolated from ring-transfer where possible.
+The default worker count is `3` because the ring legs are designed to run in parallel;
+set `PLAYWRIGHT_WORKERS=1` for serial debugging or for a new spec that is not yet
+parallel-safe.
 
 ## Troubleshooting
 
@@ -256,6 +316,10 @@ without required public env vars. Rebuild and restart `app`:
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright build app
 docker compose -f docker-compose.playwright.yml --env-file .env.playwright up -d app
 ```
+
+This can happen after a build log containing `RUN npm ci ... exit code: 146` followed
+by `RUN npm run build CANCELED`: the runner image had a network install failure and
+the app image build was canceled, so the next `up` reused an older app image.
 
 **`net::ERR_SSL_PROTOCOL_ERROR`** - `.app` is on Chromium's HSTS preload list, so
 `http://app:*` is upgraded to HTTPS. The Compose file uses the `webapp` network alias

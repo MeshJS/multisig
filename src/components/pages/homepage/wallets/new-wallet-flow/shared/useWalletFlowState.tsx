@@ -117,6 +117,7 @@ export interface WalletFlowState {
 
 export function useWalletFlowState(): WalletFlowState {
   const router = useRouter();
+  const utils = api.useUtils();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
@@ -234,6 +235,9 @@ export function useWalletFlowState(): WalletFlowState {
       if (pathIsWalletInvite) {
         deleteWalletInvite({ walletId: walletInviteId || (Array.isArray(router.query.id) ? router.query.id[0] : router.query.id)! });
       }
+      void utils.wallet.getUserWallets.invalidate();
+      void utils.wallet.getUserNewWallets.invalidate();
+      void utils.wallet.getUserNewWalletsNotOwner.invalidate();
       setLoading(false);
       // Redirect to success page instead of wallets list
       void router.push(`/wallets/new-wallet-flow/ready/${data.id}`);
