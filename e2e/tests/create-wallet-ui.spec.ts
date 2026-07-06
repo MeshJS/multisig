@@ -126,8 +126,9 @@ async function createWalletThroughUi(
   await expect(page).toHaveURL(/\/wallets\/new-wallet-flow\/ready\/[^/]+$/);
   await expect(page.getByText("Wallet created successfully")).toBeVisible();
 
+  const walletsNavigationPromise = page.waitForURL(/\/wallets$/, { timeout: 30_000 });
   await page.getByRole("button", { name: /view all wallets/i }).click();
-  await expect(page).toHaveURL(/\/wallets$/);
+  await walletsNavigationPromise;
   await expect(page.getByText(walletName)).toBeVisible({ timeout: 30_000 });
 
   return walletName;
