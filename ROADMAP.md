@@ -100,6 +100,17 @@ Mid-month snapshot. Last updated 2026-06-17.
 | Wallet V2 — on-chain registration and discovery — design the on-chain registration record + discovery index, define the data model, prototype lookup by signer/policy | #33 |
 | CI/maintenance baseline — keep smoke + unit/tRPC suites green on Node 22, dependency/security updates | |
 
+### Progress
+
+Early-month snapshot. Last updated 2026-07-06.
+
+| Task | Status | Evidence |
+|------|--------|----------|
+| Mesh 2.0 runtime cutover | **Blocked upstream** | No 2.0 of `@meshsdk/core`/`core-cst`/`core-csl` exists on npm (latest = 1.9.1, published 2026-06-01; MeshJS/mesh's latest release is 1.9.0). Only `@meshsdk/react` has a 2.0 (2.0.0-beta.2), already in use. Readiness on our side is verified: all wallet ops funnel through the `useMeshWallet`/`useActiveWallet` bridge ([#278](https://github.com/MeshJS/multisig/pull/278)) and byte-preserving witness merge is implemented + regression-tested (`src/__tests__/mergeSignerWitnesses.test.ts`). When core 2.0 ships, the cutover is a single-layer change: bump `@meshsdk/*`, re-source the bridge wallet, fix the 2.0 deltas (`signData` arg order, `signTx(tx, partialSign)`, `getUtxos(): string[]`, removed `getDRep`/`getAssets`/`getLovelace`), drop the ESLint guardrail. Watch item: check npm for `@meshsdk/core` 2.x |
+| Production hardening follow-through | In progress | Node-22 deploy-migrations fix confirmed on `main` (via [#321](https://github.com/MeshJS/multisig/pull/321)) ✅. `ProposalTally` migration still **unapplied in production** — the June 17 deploy run (pre-fix) failed and nothing has re-triggered it; needs a manual "Deploy Database Migrations" dispatch on `main` (governance tallies error until then). RLS advisory reviewed → [#332](https://github.com/MeshJS/multisig/pull/332) enables RLS + deny-all policies on the 7 flagged tables plus `ProposalTally` and the notification-center tables. Supabase also warns the Postgres version has pending security patches (dashboard upgrade). Stray committed worktree gitlink breaking CI submodule cleanup fixed in [#333](https://github.com/MeshJS/multisig/pull/333) |
+| FROST research kickoff (#220) | Not started | |
+| CI/maintenance baseline | Watch item | `multisig-v1-smoke` fails on **every dependabot PR** — dependabot-triggered runs don't receive repo Actions secrets (`CI_BLOCKFROST_PREPROD_API_KEY` is empty), and this job lacks the skip-when-secrets-missing guard the other smoke job has. Dependabot CI is red for systemic reasons, not because of the version bumps |
+
 ---
 
 ## Month 4 — August 2026
