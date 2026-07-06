@@ -36,6 +36,9 @@ jobs:
       CI_WALLET_TYPES: "legacy,hierarchical,sdk"
       CI_NUM_REQUIRED_SIGNERS: "2"
       CI_TRANSFER_LOVELACE: ${{ github.event_name == 'workflow_dispatch' && inputs.transfer_lovelace || '2000000' }}
+      CI_DREP_ANCHOR_URL: ${{ secrets.CI_DREP_ANCHOR_URL }}
+      CI_DREP_ANCHOR_JSON: ${{ secrets.CI_DREP_ANCHOR_JSON }}
+      CI_STAKE_POOL_ID_HEX: ${{ secrets.CI_STAKE_POOL_ID_HEX }}
 
     steps:
       - name: Checkout repository
@@ -50,6 +53,8 @@ jobs:
           [[ -n "$CI_MNEMONIC_2" ]] || missing+=("CI_MNEMONIC_2")
           [[ -n "$CI_MNEMONIC_3" ]] || missing+=("CI_MNEMONIC_3")
           [[ -n "$CI_BLOCKFROST_PREPROD_API_KEY" ]] || missing+=("CI_BLOCKFROST_PREPROD_API_KEY")
+          [[ -n "$CI_DREP_ANCHOR_JSON" ]] || missing+=("CI_DREP_ANCHOR_JSON")
+          [[ -n "$CI_STAKE_POOL_ID_HEX" ]] || missing+=("CI_STAKE_POOL_ID_HEX")
           if [[ "${#missing[@]}" -gt 0 ]]; then
             echo "Missing required secrets: ${missing[*]}"
             echo "Set these in repo settings before running the Playwright browser workflow."

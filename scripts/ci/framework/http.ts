@@ -69,7 +69,7 @@ export async function requestJson<T = unknown>(args: {
   retries?: number;
   retryDelayMs?: number;
   maxRetryDelayMs?: number;
-  retryStatuses?: number[];
+  retryStatuses?: readonly number[];
 }): Promise<{ status: number; data: T }> {
   const {
     url,

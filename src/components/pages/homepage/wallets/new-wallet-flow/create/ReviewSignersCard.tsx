@@ -655,7 +655,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                     placeholder={hasExternalStakeCredential ? "External stake credential configured" : "Staking address"}
                     value={tempStakeKey}
                     onChange={(e) => setTempStakeKey(e.target.value)}
-                    disabled={editMode === "edit" && editIndex === 0 || hasExternalStakeCredential}
+                    disabled={hasExternalStakeCredential}
                   />
                   {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
                     <div className="mt-1 flex items-center gap-1">
