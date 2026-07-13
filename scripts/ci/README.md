@@ -197,7 +197,7 @@ Runs after the early discovery and ADA route-health checks, before request-heavy
 
 Runs when both `legacy` and `sdk` wallets are in context. Requires `CI_DREP_ANCHOR_URL`.
 
-For each wallet type the scenario runs a pre-hygiene step followed by two sequential phases — register then retire — leaving the wallet in its pre-test DRep state:
+For each wallet type the scenario runs a pre-hygiene step followed by two sequential phases — register then retire — leaving the wallet in its pre-test DRep state. The legacy and SDK wallet branches run in parallel because they spend from distinct multisig wallets, while each branch keeps its register-before-retire ordering:
 
 **Pre-hygiene step** — checks on-chain DRep state via `GET /api/v1/drepInfo`. If the DRep is already registered (e.g. from a previous incomplete run), it proposes a `retire` tx, signs with both signers, and waits for on-chain confirmation. If the broadcast is rejected with `DRepNotRegistered` or similar errors, the credential is treated as already clean (stale Blockfrost cache false-positive) and the step succeeds silently.
 
@@ -208,7 +208,7 @@ For each wallet type the scenario runs a pre-hygiene step followed by two sequen
 3. Signer 1 (`CI_MNEMONIC_2`, index 1) adds a payment-key witness, no broadcast.
 4. Signer 2 (`CI_MNEMONIC_3`, index 2) adds a payment-key witness and broadcasts.
 5. Assert the transaction is cleared from pending.
-6. Poll `freeUtxos?fresh=true` until the spent inputs are no longer unspent on-chain (confirms block inclusion before the next phase). Up to 30 retries × 8 s = 4 minutes.
+6. Poll `freeUtxos?fresh=true` until the spent inputs are no longer unspent on-chain (confirms block inclusion before the next phase). Up to 48 retries × 5 s = 4 minutes.
 7. Repeat steps 1–6 with `action: "retire"`.
 
 **Why payment-key witnesses are sufficient for DRep cert:**

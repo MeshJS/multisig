@@ -94,8 +94,8 @@ async function pollUntilUtxosConsumed(args: {
   maxRetries?: number;
   retryDelayMs?: number;
 }): Promise<{ attempts: number }> {
-  const maxRetries = args.maxRetries ?? 30;
-  const retryDelayMs = args.retryDelayMs ?? 8000;
+  const maxRetries = args.maxRetries ?? 48;
+  const retryDelayMs = args.retryDelayMs ?? 5000;
   const spent = new Set(args.spentUtxoRefs.map(key));
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (attempt > 0) {

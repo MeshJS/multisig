@@ -42,7 +42,7 @@ async function fetchUtxoRefs(args: {
  * the result. This confirms the cert tx has been included in a block and its
  * inputs are no longer unspent on-chain.
  *
- * Preprod block time is ~20 s. We retry every 8 s for up to 4 minutes.
+ * Preprod block time is ~20 s. We retry every 5 s for up to 4 minutes.
  */
 async function pollUntilUtxosConsumed(args: {
   ctx: CIBootstrapContext;
@@ -54,8 +54,8 @@ async function pollUntilUtxosConsumed(args: {
   retryDelayMs?: number;
 }): Promise<{ attempts: number }> {
   const { ctx, walletId, token, botAddress, spentUtxoRefs } = args;
-  const maxRetries = args.maxRetries ?? 30;
-  const retryDelayMs = args.retryDelayMs ?? 8000;
+  const maxRetries = args.maxRetries ?? 48;
+  const retryDelayMs = args.retryDelayMs ?? 5000;
   const spentKeys = new Set(spentUtxoRefs.map((r) => `${r.txHash}:${r.outputIndex}`));
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -78,7 +78,7 @@ async function pollUntilUtxosConsumed(args: {
     }
   }
   throw new Error(
-    `Timed out after ${maxRetries} attempts (${(maxRetries * (args.retryDelayMs ?? 8000)) / 1000}s) waiting for cert tx inputs to be confirmed on-chain`,
+    `Timed out after ${maxRetries} attempts (${(maxRetries * (args.retryDelayMs ?? 5000)) / 1000}s) waiting for cert tx inputs to be confirmed on-chain`,
   );
 }
 
@@ -527,53 +527,60 @@ export function createScenarioDRepCertificates(): Scenario {
     id: "scenario.drep-certificates",
     description:
       "Register and retire DRep for legacy and SDK wallets, restoring pre-test state",
-    steps: [
-      // Legacy: hygiene (deregister if already registered)
-      createDRepHygieneStep("legacy"),
-      // Legacy: register
-      ...createCertPhaseSteps({
-        idPrefix: "v1.botDRepCertificate.legacy.register",
-        walletType: "legacy",
-        certEndpoint: "botDRepCertificate",
-        action: "register",
-        label: "DRep registration (legacy)",
-        runtime: legacyReg,
-        requireBroadcastSuccess: true,
-        buildExtraBody: () => buildDRepRegBody(),
-      }),
-      // Legacy: retire
-      ...createCertPhaseSteps({
-        idPrefix: "v1.botDRepCertificate.legacy.retire",
-        walletType: "legacy",
-        certEndpoint: "botDRepCertificate",
-        action: "retire",
-        label: "DRep retirement (legacy)",
-        runtime: legacyRetire,
-        requireBroadcastSuccess: true,
-      }),
-      // SDK: hygiene (deregister if already registered)
-      createDRepHygieneStep("sdk"),
-      // SDK: register
-      ...createCertPhaseSteps({
-        idPrefix: "v1.botDRepCertificate.sdk.register",
-        walletType: "sdk",
-        certEndpoint: "botDRepCertificate",
-        action: "register",
-        label: "DRep registration (sdk)",
-        runtime: sdkReg,
-        requireBroadcastSuccess: true,
-        buildExtraBody: () => buildDRepRegBody(),
-      }),
-      // SDK: retire
-      ...createCertPhaseSteps({
-        idPrefix: "v1.botDRepCertificate.sdk.retire",
-        walletType: "sdk",
-        certEndpoint: "botDRepCertificate",
-        action: "retire",
-        label: "DRep retirement (sdk)",
-        runtime: sdkRetire,
-        requireBroadcastSuccess: true,
-      }),
+    steps: [],
+    parallelBranches: [
+      {
+        id: "drep-certificates.legacy",
+        description: "DRep certificate lifecycle (legacy)",
+        steps: [
+          createDRepHygieneStep("legacy"),
+          ...createCertPhaseSteps({
+            idPrefix: "v1.botDRepCertificate.legacy.register",
+            walletType: "legacy",
+            certEndpoint: "botDRepCertificate",
+            action: "register",
+            label: "DRep registration (legacy)",
+            runtime: legacyReg,
+            requireBroadcastSuccess: true,
+            buildExtraBody: () => buildDRepRegBody(),
+          }),
+          ...createCertPhaseSteps({
+            idPrefix: "v1.botDRepCertificate.legacy.retire",
+            walletType: "legacy",
+            certEndpoint: "botDRepCertificate",
+            action: "retire",
+            label: "DRep retirement (legacy)",
+            runtime: legacyRetire,
+            requireBroadcastSuccess: true,
+          }),
+        ],
+      },
+      {
+        id: "drep-certificates.sdk",
+        description: "DRep certificate lifecycle (SDK)",
+        steps: [
+          createDRepHygieneStep("sdk"),
+          ...createCertPhaseSteps({
+            idPrefix: "v1.botDRepCertificate.sdk.register",
+            walletType: "sdk",
+            certEndpoint: "botDRepCertificate",
+            action: "register",
+            label: "DRep registration (sdk)",
+            runtime: sdkReg,
+            requireBroadcastSuccess: true,
+            buildExtraBody: () => buildDRepRegBody(),
+          }),
+          ...createCertPhaseSteps({
+            idPrefix: "v1.botDRepCertificate.sdk.retire",
+            walletType: "sdk",
+            certEndpoint: "botDRepCertificate",
+            action: "retire",
+            label: "DRep retirement (sdk)",
+            runtime: sdkRetire,
+            requireBroadcastSuccess: true,
+          }),
+        ],
+      },
     ],
   };
 }

@@ -162,7 +162,6 @@ async function waitForUtxoSelectorLoaded(
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     diagnostics.push(`loading new transaction page attempt ${attempt}`);
     await page.goto(newTransactionUrl);
-    await page.waitForLoadState("networkidle", { timeout: 60_000 }).catch(() => {});
 
     const loaded = await page
       .waitForSelector('[data-testid="utxo-selector"][data-loaded="true"]', {
@@ -414,7 +413,6 @@ test.describe("ring transfer", () => {
       const transactionsUrl = `/wallets/${srcWallet.walletId}/transactions`;
       await page.goto(transactionsUrl);
       await expect(page).toHaveURL(new RegExp(`/wallets/${srcWallet.walletId}/transactions$`));
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
 
       // Extract the newly created transaction's ID from the first pending tx card
       const txCard = page.locator('[data-testid^="tx-card-"]').first();
@@ -448,7 +446,6 @@ test.describe("ring transfer", () => {
       await authenticateAs(page, 1);
 
       await page.goto(`/wallets/${srcWallet.walletId}/transactions`);
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
 
       // Confirm the tx card is still pending (proposer signed, threshold not yet met)
       await page.waitForSelector(`[data-testid="tx-card-${transactionId}"]`, {

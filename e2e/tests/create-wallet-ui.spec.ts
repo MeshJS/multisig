@@ -80,7 +80,6 @@ async function createWalletThroughUi(
   const clearStakeKey = mode === "legacy";
 
   await page.goto("/wallets/new-wallet-flow/save");
-  await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
 
   await page.getByLabel("Name", { exact: true }).fill(walletName);
   await page.getByLabel(/Description/i).fill(`Playwright ${mode} wallet creation coverage`);

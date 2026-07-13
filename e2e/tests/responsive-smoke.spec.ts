@@ -67,7 +67,6 @@ for (const viewport of VIEWPORTS) {
       await expect(
         page.getByRole("link", { name: "New Wallet" }),
       ).toBeVisible({ timeout: 60_000 });
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
       await expectNoHorizontalOverflow(page, "wallet list");
     });
 

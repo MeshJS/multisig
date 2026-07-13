@@ -7,9 +7,6 @@ COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-# Install Chromium and its system dependencies.
-RUN npx playwright install chromium --with-deps
-
 # Copy e2e suite and the CI framework types it imports.
 COPY e2e/ ./e2e/
 COPY scripts/ci/framework/ ./scripts/ci/framework/
