@@ -141,7 +141,6 @@ test.describe("rejected wallet signing", () => {
     ).toEqual([]);
 
     await page.goto(`/wallets/${wallet.walletId}/transactions`);
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
     await expect(page.locator('[data-testid^="tx-card-"]')).toHaveCount(0);
   });
 

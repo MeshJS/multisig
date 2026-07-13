@@ -60,6 +60,34 @@ describe("route-chain scenario manifest", () => {
     expect(scenarios.map((scenario) => scenario.id)).toEqual(["scenario.create-wallet"]);
   });
 
+  it("runs legacy and SDK DRep lifecycles as independent parallel branches", () => {
+    const [scenario] = getScenarioManifest(mkContext(["legacy", "sdk"]), [
+      "scenario.drep-certificates",
+    ]);
+
+    expect(scenario?.steps).toEqual([]);
+    expect(scenario?.parallelBranches?.map((branch) => branch.id)).toEqual([
+      "drep-certificates.legacy",
+      "drep-certificates.sdk",
+    ]);
+    expect(scenario?.parallelBranches?.[0]?.steps.map((step) => step.id)).toEqual([
+      "v1.botDRepCertificate.legacy.hygiene",
+      "v1.botDRepCertificate.legacy.register.propose",
+      "v1.botDRepCertificate.legacy.register.pending",
+      "v1.botDRepCertificate.legacy.register.sign.signer1",
+      "v1.botDRepCertificate.legacy.register.sign.signer2",
+      "v1.botDRepCertificate.legacy.register.cleared",
+      "v1.botDRepCertificate.legacy.register.onchain",
+      "v1.botDRepCertificate.legacy.retire.propose",
+      "v1.botDRepCertificate.legacy.retire.pending",
+      "v1.botDRepCertificate.legacy.retire.sign.signer1",
+      "v1.botDRepCertificate.legacy.retire.sign.signer2",
+      "v1.botDRepCertificate.legacy.retire.cleared",
+      "v1.botDRepCertificate.legacy.retire.onchain",
+    ]);
+    expect(scenario?.parallelBranches?.[1]?.steps).toHaveLength(13);
+  });
+
   it("still fails clearly when ring transfer is requested without all wallet types", () => {
     expect(() =>
       getScenarioManifest(mkContext(["legacy"]), ["scenario.real-transfer-and-sign"]),
