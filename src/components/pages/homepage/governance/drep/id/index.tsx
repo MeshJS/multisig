@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader } from "lucide-react";
 import ActiveIndicator from "../activeIndicator";
 import ScriptIndicator from "../scriptIndicator";
-import useMeshWallet from "@/hooks/useMeshWallet";
+import usePublicNetwork from "@/hooks/usePublicNetwork";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
@@ -17,33 +17,16 @@ import DelegateButton from "./delegateButton";
 export default function DrepDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { wallet, connected } = useMeshWallet();
   const [drepInfo, setDrepInfo] = useState<BlockfrostDrepInfo | null>(null);
   const [drepMetadata, setDrepMetadata] =
     useState<BlockfrostDrepMetadata | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [network, setNetwork] = useState<number>(3); // Default to mainnet
+  // Mainnet for anonymous visitors, the wallet's network once connected.
+  const network = usePublicNetwork();
 
-    useEffect(() => {
-      async function fetchNetwork() {
-        if (connected && wallet) {
-          try {
-            const net = await wallet.getNetworkId();
-            setNetwork(net);
-          } catch (error) {
-          setNetwork(1);
-            console.error("Error fetching network ID:", error);
-          }
-        }
-      }
-    
-      fetchNetwork();
-    }, [connected, wallet]);
-    
   useEffect(() => {
-    if (network === 3) return; // Prevent fetching if network is not set
     if (id) fetchDrepData(id as string);
-  }, [id, wallet, network]);
+  }, [id, network]);
 
   async function fetchDrepData(drepId: string) {
     setLoading(true);
