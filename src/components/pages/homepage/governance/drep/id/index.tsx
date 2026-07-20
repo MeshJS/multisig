@@ -13,6 +13,7 @@ import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
 import DelegateButton from "./delegateButton";
+import VoteHistory from "./voteHistory";
 
 export default function DrepDetailPage() {
   const router = useRouter();
@@ -163,6 +164,9 @@ export default function DrepDetailPage() {
 
         {/* Metadata Section */}
         <Metadata drepMetadata={drepMetadata} />
+
+        {/* On-chain votes with rationales + CSV export */}
+        <VoteHistory drepId={drep_id} network={network} />
       </main>
     </TooltipProvider>
   );
