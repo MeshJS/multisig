@@ -114,9 +114,12 @@ function formatVoteDate(blockTime: number): string {
 export default function VoteHistory({
   drepId,
   network,
+  embedded = false,
 }: {
   drepId: string;
   network: number;
+  /** Render without the page-level section title (the host supplies its own heading). */
+  embedded?: boolean;
 }) {
   const [votes, setVotes] = useState<DrepVoteHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -282,7 +285,7 @@ export default function VoteHistory({
 
   return (
     <section className="flex flex-col gap-4">
-      <SectionTitle>Vote History</SectionTitle>
+      {!embedded && <SectionTitle>Vote History</SectionTitle>}
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

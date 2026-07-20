@@ -22,6 +22,12 @@ import { useProxyData } from "@/lib/zustand/proxy";
 import { useBallotModal } from "@/hooks/useBallotModal";
 import { getProposalStatus as getProposalStatusValue, parseProposalId } from "@/lib/governance";
 import { GovernanceTypeChip } from "@/components/pages/wallet/governance/gov-type-chip";
+import VoteHistory from "@/components/pages/homepage/governance/drep/id/voteHistory";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   createProposalMetadataFallback,
   fetchProposalMetadataWithFallback,
@@ -533,6 +539,18 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
                 </div>
               </div>
             )}
+
+            {/* Full vote history with rationales + CSV export. Collapsed by
+                default; content only mounts (and fetches) once opened. */}
+            <Collapsible className="mt-4 border-t border-gray-200 pt-3 dark:border-gray-800">
+              <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 [&[data-state=open]>svg]:rotate-180">
+                <span>Vote history — rationales &amp; CSV export</span>
+                <ChevronDown className="h-4 w-4 transition-transform" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3">
+                <VoteHistory drepId={dRepId} network={network} embedded />
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         )}
         {proposals.length > 0 && (
