@@ -42,7 +42,13 @@ export const userRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      if (sessionAddress !== input.address) {
+      // The wallet session accumulates every nonce-verified address in
+      // this browser; any of them is "yourself". Requiring an exact match
+      // on the primary (most recently authorized) address 403s users who
+      // switched back to a previously authorized wallet.
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const callerAddresses = new Set([sessionAddress, ...sessionWallets]);
+      if (!callerAddresses.has(input.address)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Cannot create or modify a user other than yourself",

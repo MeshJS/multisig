@@ -10,6 +10,10 @@ import { resolvePaymentKeyHash, resolveStakeKeyHash, resolveRewardAddress } from
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
 import type { RawImportBodies } from "@/types/wallet";
+import {
+  keyHashToEnterpriseAddress,
+  verifyScriptCborAddress,
+} from "@/utils/cip146Discovery";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -74,6 +78,9 @@ export interface WalletFlowState {
   isValidForCreate: boolean;
   hasSignerHashInAddresses: boolean;
   hasValidRawImportBodies: boolean;
+  /** Fixed-signer draft (e.g. CIP-0146 discovery invite): the signer set
+   * and script are fixed on-chain, so signer/rule editing is disabled. */
+  lockedSigners: boolean;
   
   // Bypass options
   allowCreateWithHashSigners: boolean;
@@ -309,6 +316,24 @@ export function useWalletFlowState(): WalletFlowState {
     { walletId: (walletInviteId || router.query.id) as string },
     {
       enabled: Boolean(walletInviteId || router.query.id),
+      // Fixed-signer discovery drafts fill up out-of-band as co-signers
+      // claim their slots via the invite link — poll while any 56-hex
+      // placeholder slot remains so claims appear without a reload.
+      // Polling stops automatically once every slot is claimed.
+      refetchInterval: (query) => {
+        const data = query.state.data as
+          | {
+              rawImportBodies?: { lockedSigners?: boolean } | null;
+              signersAddresses?: string[];
+            }
+          | null
+          | undefined;
+        const isLocked = !!data?.rawImportBodies?.lockedSigners;
+        const hasUnclaimed = !!data?.signersAddresses?.some((addr) =>
+          /^[0-9a-fA-F]{56}$/.test(addr),
+        );
+        return isLocked && hasUnclaimed ? 5000 : false;
+      },
     },
   );
 
@@ -496,14 +521,52 @@ export function useWalletFlowState(): WalletFlowState {
       throw new Error("scriptCbor is undefined");
     }
 
+    let signersAddressesToUse = signersAddresses;
+    const isLockedDraft = !!inviteExtras.rawImportBodies?.lockedSigners;
+    if (isLockedDraft) {
+      // Safety assertion for on-chain-discovered wallets: the stored
+      // script must still reproduce the exact on-chain address.
+      const provenance = inviteExtras.rawImportBodies?.provenance as
+        | { expectedAddress?: string }
+        | undefined;
+      if (
+        provenance?.expectedAddress &&
+        !verifyScriptCborAddress({
+          scriptCbor: scriptCborToUse,
+          stakeCredentialHash: stakeKey || null,
+          networkId: network,
+          expectedAddress: provenance.expectedAddress,
+        })
+      ) {
+        setLoading(false);
+        toast({
+          title: "Address mismatch",
+          description:
+            "The reconstructed script no longer matches the on-chain wallet address — refusing to create the wallet.",
+          variant: "destructive",
+          duration: 10000,
+        });
+        return;
+      }
+      // Convert unclaimed 56-hex placeholder slots to derived enterprise
+      // addresses so no raw key hashes persist on the final wallet.
+      signersAddressesToUse = signersAddresses.map((addr) =>
+        /^[0-9a-fA-F]{56}$/.test(addr)
+          ? keyHashToEnterpriseAddress(addr.toLowerCase(), network)
+          : addr,
+      );
+    }
+
     createWallet({
       name: name,
       description: description,
-      signersAddresses: signersAddresses,
+      signersAddresses: signersAddressesToUse,
       signersDescriptions: signersDescriptions,
       signersStakeKeys: signersStakeKeys,
       signersDRepKeys: signersDRepKeys,
-      numRequiredSigners: numRequiredSigners,
+      numRequiredSigners: isLockedDraft
+        ? numRequiredSigners || signersAddressesToUse.length
+        : numRequiredSigners,
       scriptCbor: scriptCborToUse,
       rawImportBodies: inviteExtras.rawImportBodies ?? null,
       stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
@@ -685,6 +748,14 @@ export function useWalletFlowState(): WalletFlowState {
     });
   }, [signersAddresses, signersStakeKeys, signersDRepKeys, walletInviteId, router.query.id, name, description, signersDescriptions, numRequiredSigners, nativeScriptType, saveToBackend, toast]);
 
+  // Fixed-signer drafts (e.g. CIP-0146 discovery invites): signer set and
+  // script are fixed by an on-chain script, so editing is disabled.
+  const lockedSigners = useMemo(() => {
+    const raw = (walletInvite as { rawImportBodies?: RawImportBodies | null } | null)
+      ?.rawImportBodies;
+    return !!raw?.lockedSigners;
+  }, [walletInvite]);
+
   // Validation
   const isValidForSave = !loading && !!name.trim();
   const hasSignerHashInAddresses = useMemo(() => {
@@ -708,7 +779,10 @@ export function useWalletFlowState(): WalletFlowState {
     (nativeScriptType !== "atLeast" || numRequiredSigners > 0) &&
     name.length > 0 &&
     !loading &&
-    (!hasSignerHashInAddresses || allowCreateWithHashSigners) &&
+    // Fixed-signer discovery drafts hard-block creation until every slot
+    // is claimed — creating early would permanently hide the wallet from
+    // unclaimed signers (addresses aren't editable after creation).
+    (!hasSignerHashInAddresses || (allowCreateWithHashSigners && !lockedSigners)) &&
     // Allow creation if we have valid rawImportBodies, otherwise require multisigWallet
     (hasValidRawImportBodies || !!multisigWallet);
 
@@ -739,11 +813,12 @@ export function useWalletFlowState(): WalletFlowState {
     setNumRequiredSigners,
     nativeScriptType,
     setNativeScriptType,
-    
+
     // Advanced options
     stakeKey,
     setStakeKey,
     removeExternalStakeAndBackfill,
+    lockedSigners,
     
     // UI state
     loading,

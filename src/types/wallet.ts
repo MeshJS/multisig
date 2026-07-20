@@ -69,6 +69,13 @@ export type WalletImportProvenance =
       originalWalletId: string;
       payloadHash: string;
       importedAt: string;
+    }
+  | {
+      origin: "cip146-discovery";
+      registrationTxHash: string;
+      expectedAddress: string;
+      network: number;
+      importedAt: string;
     };
 
 export type DbWalletWithLegacy = DbWallet & {

@@ -6,6 +6,7 @@ import type { AuthCtx } from "@/server/api/trpc";
 import type { RawImportBodies } from "@/types/wallet";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/lib/observability/audit";
+import { paymentKeyHash } from "@/utils/multisigSDK";
 
 const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
@@ -460,17 +461,19 @@ export const walletRouter = createTRPCRouter({
         ownerAddress: z.string(),
         stakeCredentialHash: z.string().optional().nullable(),
         scriptType: z.string().optional(),
+        paymentCbor: z.string().optional(),
+        rawImportBodies: z.any().optional().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       const sessionWallets: string[] = ctx.sessionWallets ?? [];
-      
+
       // Allow ownerAddress to be either the sessionAddress or any address in sessionWallets
-      const isAuthorized = 
-        sessionAddress === input.ownerAddress || 
+      const isAuthorized =
+        sessionAddress === input.ownerAddress ||
         sessionWallets.includes(input.ownerAddress);
-      
+
       if (!isAuthorized) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Owner address mismatch" });
       }
@@ -487,6 +490,13 @@ export const walletRouter = createTRPCRouter({
           ownerAddress: input.ownerAddress,
           stakeCredentialHash: input.stakeCredentialHash,
           scriptType: input.scriptType,
+          paymentCbor: input.paymentCbor,
+          rawImportBodies:
+            input.rawImportBodies == null
+              ? undefined
+              : (JSON.parse(
+                  JSON.stringify(input.rawImportBodies),
+                ) as Prisma.InputJsonValue),
         } as any,
       });
       void audit(ctx.db, {
@@ -672,6 +682,166 @@ export const walletRouter = createTRPCRouter({
         ip: ctx.ip ?? null,
         outcome: "success",
         metadata: { newOwner: input.ownerAddress, previousOwner: "all" },
+      });
+      return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
+    }),
+
+  // Claim a fixed signer slot on a locked-signer draft (e.g. a CIP-0146
+  // discovery invite). Eligibility is proven cryptographically: the
+  // caller's session address must hash to one of the draft's 56-hex
+  // key-hash placeholders. No owner/signer precondition — the hash match
+  // IS the authorization.
+  claimNewWalletSignerSlot: protectedProcedure
+    .input(
+      z.object({
+        walletId: z.string(),
+        description: z.string().max(256).optional(),
+        // The wallet address the caller wants to claim as. Must be one of
+        // the session's authorized addresses. Without it, every session
+        // address is tried — the session cookie accumulates all addresses
+        // authorized in this browser and the "primary" may be a different
+        // wallet than the one currently connected.
+        address: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const callerAddresses = Array.from(
+        new Set([sessionAddress, ...sessionWallets]),
+      );
+
+      let candidates: string[];
+      if (input.address) {
+        if (!callerAddresses.includes(input.address)) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "The claiming address is not authorized in your session — re-authorize your wallet and try again",
+          });
+        }
+        candidates = [input.address];
+      } else {
+        candidates = callerAddresses;
+      }
+
+      const wallet = await ctx.db.newWallet.findUnique({
+        where: { id: input.walletId },
+      });
+      if (!wallet) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Wallet invite not found" });
+      }
+
+      const raw = wallet.rawImportBodies as { lockedSigners?: boolean } | null;
+      if (!raw?.lockedSigners) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This draft does not support slot claiming",
+        });
+      }
+
+      // Find a session address whose payment key hash matches an unclaimed
+      // placeholder slot. Fresh claims take precedence over the idempotent
+      // "already claimed" path — with a multi-wallet session, one session
+      // address may already occupy a slot (e.g. the draft owner's) while
+      // the connected wallet still has an unclaimed one.
+      let claimAddress: string | undefined;
+      let slotIndex = -1;
+      for (const candidate of candidates) {
+        let hash: string;
+        try {
+          hash = paymentKeyHash(candidate).toLowerCase();
+        } catch {
+          continue;
+        }
+        const idx = wallet.signersAddresses.findIndex(
+          (entry) =>
+            /^[0-9a-f]{56}$/i.test(entry) && entry.toLowerCase() === hash,
+        );
+        if (idx !== -1) {
+          claimAddress = candidate;
+          slotIndex = idx;
+          break;
+        }
+      }
+
+      if (slotIndex === -1 || !claimAddress) {
+        // Idempotent: a caller address already occupies a slot and no
+        // placeholder remains for any of them.
+        if (candidates.some((a) => wallet.signersAddresses.includes(a))) {
+          return wallet;
+        }
+        void audit(ctx.db, {
+          actorAddress: sessionAddress,
+          actorType: "user",
+          action: "wallet.new_signer_claim",
+          resourceType: "newWallet",
+          resourceId: input.walletId,
+          ip: ctx.ip ?? null,
+          outcome: "denied",
+          reason: "No session address matches a placeholder slot",
+        });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Your connected wallet is not a registered signer of this multisig wallet",
+        });
+      }
+
+      const user = await ctx.db.user.findUnique({
+        where: { address: claimAddress },
+      });
+
+      const count = wallet.signersAddresses.length;
+      const pad = (arr: string[]) =>
+        Array.from({ length: count }, (_, i) => arr[i] ?? "");
+      const signersAddresses = [...wallet.signersAddresses];
+      const signersStakeKeys = pad(wallet.signersStakeKeys);
+      const signersDRepKeys = pad(wallet.signersDRepKeys);
+      const signersDescriptions = pad(wallet.signersDescriptions);
+
+      signersAddresses[slotIndex] = claimAddress;
+      // Per-signer stake keys stay empty for fixed-script drafts: the
+      // on-chain script (paymentCbor) plus the external stakeCredentialHash
+      // are authoritative, and adding stake keys could change the derived
+      // wallet address after finalization.
+      signersStakeKeys[slotIndex] = "";
+      signersDRepKeys[slotIndex] = user?.drepKeyHash ?? signersDRepKeys[slotIndex]!;
+      if (input.description !== undefined) {
+        signersDescriptions[slotIndex] = input.description;
+      }
+
+      // Atomic CAS on the signer list so concurrent claims can't clobber
+      // each other (same pattern as updateNewWalletOwner's conditional
+      // updateMany).
+      const result = await ctx.db.newWallet.updateMany({
+        where: {
+          id: input.walletId,
+          signersAddresses: { equals: wallet.signersAddresses },
+        },
+        data: {
+          signersAddresses,
+          signersStakeKeys,
+          signersDRepKeys,
+          signersDescriptions,
+        },
+      });
+      if (result.count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "The signer list changed — refresh and try again",
+        });
+      }
+
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "wallet.new_signer_claim",
+        resourceType: "newWallet",
+        resourceId: input.walletId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { slotIndex, claimAddress },
       });
       return ctx.db.newWallet.findUnique({ where: { id: input.walletId } });
     }),

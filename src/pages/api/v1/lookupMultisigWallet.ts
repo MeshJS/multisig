@@ -52,10 +52,23 @@ export default async function handler(
   const provider = getProvider(networkId);
 
   try {
-    const response = await provider.get("/metadata/txs/labels/1854");
-
-    if (!Array.isArray(response)) {
-      throw new Error("Invalid response format from provider");
+    // Page through all label-1854 metadata (Blockfrost returns ascending,
+    // oldest first, 100 per page — a single unpaginated call silently
+    // misses registrations beyond the first page). MAX_PAGES bounds the
+    // provider fan-out; ascending order is preserved so consumers can
+    // treat the first match as the original registration.
+    const MAX_PAGES = 10;
+    const PAGE_SIZE = 100;
+    const response: unknown[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const batch = await provider.get(
+        `/metadata/txs/labels/1854?page=${page}&count=${PAGE_SIZE}`,
+      );
+      if (!Array.isArray(batch)) {
+        throw new Error("Invalid response format from provider");
+      }
+      response.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
     }
 
     const validItems = response.filter((item: any) => {
