@@ -94,7 +94,7 @@ export default function DrepOverviewPage() {
 
   return (
     <TooltipProvider>
-      <main className="flex flex-col gap-8 p-4 text-gray-300 md:p-8">
+      <main className="flex flex-col gap-8 p-4 text-foreground md:p-8">
         <SectionTitle>DREP Overview</SectionTitle>
 
         {/* Pagination Component */}
@@ -131,7 +131,7 @@ export default function DrepOverviewPage() {
               return (
                 <div
                   key={drepId}
-                  className="flex items-center gap-4 rounded-lg border-y border-gray-700 p-4 shadow-sm"
+                  className="flex flex-wrap items-center gap-4 rounded-lg border-y border-border p-4 shadow-sm"
                 >
                   {/* Profile Image or Placeholder */}
                   {imageUrl ? (
@@ -142,7 +142,7 @@ export default function DrepOverviewPage() {
                     />
                   ) : (
                     <svg
-                      className="h-12 w-12 text-gray-500"
+                      className="h-12 w-12 text-muted-foreground"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
@@ -155,12 +155,16 @@ export default function DrepOverviewPage() {
                   )}
 
                   {/* DRep Info */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
                       <ActiveIndicator isActive={isActive} />
                       {/* DRep Name */}
-                      <Link href={`/governance/drep/${drepId}`} passHref>
-                        <div className="cursor-pointer text-lg font-semibold text-gray-200 hover:underline">
+                      <Link
+                        href={`/governance/drep/${drepId}`}
+                        passHref
+                        className="min-w-0"
+                      >
+                        <div className="cursor-pointer truncate text-lg font-semibold text-foreground hover:underline">
                           {givenName}
                         </div>
                       </Link>
@@ -168,16 +172,11 @@ export default function DrepOverviewPage() {
                     </div>
 
                     {/* DRep ID directly under name */}
-                    <RowLabelInfo
-                      label="DRep ID:"
-                      value={drepId}
-                      copyString={drepId}
-                      className="text-sm text-gray-400"
-                    />
+                    <RowLabelInfo label="DRep ID:" value={drepId} copyString={drepId} />
                   </div>
 
                   {/* ADA Amount (Larger, Aligned Right) */}
-                  <p className="text-lg font-semibold text-gray-300">
+                  <p className="flex-shrink-0 whitespace-nowrap text-lg font-semibold text-foreground">
                     {adaAmount}
                   </p>
 
@@ -189,7 +188,7 @@ export default function DrepOverviewPage() {
           )}
 
           {!loading && drepList.length === 0 && (
-            <p className="text-gray-500">No DREP information available.</p>
+            <p className="text-muted-foreground">No DREP information available.</p>
           )}
         </div>
       </main>

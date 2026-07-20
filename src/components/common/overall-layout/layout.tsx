@@ -656,7 +656,9 @@ export default function RootLayout({
               {!isLoggedIn ? (
                 // On the homepage, the hero renders the wallet connector (avoid double-mount).
                 // On all other routes, show it in the header.
-                isHomepage ? null : <ConnectWallet key="wallet-connector" />
+                isHomepage ? null : (
+                  <ConnectWallet key="wallet-connector" variant="compact" />
+                )
               ) : (
                 <>
                   {/* Desktop buttons */}
