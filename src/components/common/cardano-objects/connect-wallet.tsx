@@ -25,8 +25,20 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useWalletDetection } from "@/hooks/useWalletDetection";
 
+/**
+ * Where the connector may render the large "Get Started with UTXOS" call to
+ * action when no wallet extension is installed. "hero" (homepage hero) keeps
+ * it; "compact" (page headers) always renders the regular pill button whose
+ * dropdown already leads no-extension users to UTXOS.
+ */
+export type ConnectWalletVariant = "hero" | "compact";
+
 // Main component - uses walletDetectionKey to force remount of useWalletList
-export default function ConnectWallet() {
+export default function ConnectWallet({
+  variant = "hero",
+}: {
+  variant?: ConnectWalletVariant;
+} = {}) {
   // Force re-mount key for useWalletList when wallets are detected
   const [walletDetectionKey, setWalletDetectionKey] = useState(0);
   const hasTriggeredRemountRef = useRef(false);
@@ -64,17 +76,24 @@ export default function ConnectWallet() {
     };
   }, []);
 
-  return <ConnectWalletInner key={walletDetectionKey} />;
+  return <ConnectWalletInner key={walletDetectionKey} variant={variant} />;
 }
 
 // Internal component that uses useWalletList - will remount when key changes
-function ConnectWalletInner() {
+function ConnectWalletInner({ variant }: { variant: ConnectWalletVariant }) {
   const wallets = useWalletList();
   const networkId = useNetwork();
   const assets = useAssets();
-  
-  
-  return <ConnectWalletContent wallets={wallets} networkId={networkId} assets={assets} />;
+
+
+  return (
+    <ConnectWalletContent
+      wallets={wallets}
+      networkId={networkId}
+      assets={assets}
+      variant={variant}
+    />
+  );
 }
 
 // Main component content
@@ -82,10 +101,12 @@ function ConnectWalletContent({
   wallets,
   networkId,
   assets,
+  variant,
 }: {
   wallets: ReturnType<typeof useWalletList>;
   networkId: ReturnType<typeof useNetwork>;
   assets: ReturnType<typeof useAssets>;
+  variant: ConnectWalletVariant;
 }) {
   const setNetwork = useSiteStore((state) => state.setNetwork);
   const pastUtxosEnabled = useUserStore((state) => state.pastUtxosEnabled);
@@ -695,13 +716,15 @@ function ConnectWalletContent({
 
   // No Cardano wallet extension installed (detection has settled) and nothing
   // connected yet: lead non-crypto users straight to UTXOS instead of a picker.
+  // Only the hero placement (homepage) gets the large CTA — in page headers
+  // the compact pill + dropdown stays, which offers UTXOS as well.
   const noWalletDetected =
     !forceMenu &&
     !detectingWallets &&
     wallets.length === 0 &&
     !isAnyWalletConnected;
 
-  if (noWalletDetected) {
+  if (noWalletDetected && variant === "hero") {
     return (
       <div className="flex flex-col items-center gap-2">
         <Button
