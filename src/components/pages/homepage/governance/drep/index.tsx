@@ -4,7 +4,7 @@ import Pagination from "@/components/common/overall-layout/pagination";
 import { getProvider } from "@/utils/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
-import useMeshWallet from "@/hooks/useMeshWallet";
+import usePublicNetwork from "@/hooks/usePublicNetwork";
 import DelegateButton from "./id/delegateButton";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,33 +16,15 @@ export default function DrepOverviewPage() {
     Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata | null }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { wallet, connected } = useMeshWallet();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [isLastPage, setIsLastPage] = useState<boolean>(false);
-  const [network, setNetwork] = useState<number>(3); // Default to mainnet
+  // Mainnet for anonymous visitors, the wallet's network once connected.
+  const network = usePublicNetwork();
 
   useEffect(() => {
-    async function fetchNetwork() {
-      if (connected && wallet) {
-        try {
-          const net = await wallet.getNetworkId();
-          setNetwork(net);
-        } catch (error) {
-        setNetwork(1);
-          console.error("Error fetching network ID:", error);
-        }
-      }
-    }
-  
-    fetchNetwork();
-  }, [connected, wallet]);
-  
-  useEffect(() => {
     async function loadDrepList() {
-      if (network === 3) return; // Prevent fetching if network is not set
-  
       setLoading(true);
       const blockchainProvider = getProvider(network);
   
@@ -73,10 +55,8 @@ export default function DrepOverviewPage() {
       }
     }
   
-    if (network !== null) {
-      loadDrepList();
-    }
-  }, [currentPage, pageSize, order, network]); // Dependency now waits for network
+    loadDrepList();
+  }, [currentPage, pageSize, order, network]);
 
   // Fetch DRep details
   const fetchDrepDetails = async (drepId: string) => {

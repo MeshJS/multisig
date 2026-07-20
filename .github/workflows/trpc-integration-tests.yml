@@ -13,7 +13,7 @@ on:
 jobs:
   trpc-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -46,8 +46,14 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Use repo npm version
+        run: npm install -g "$(node -p 'require("./package.json").packageManager')" && npm --version
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate
 
       - name: Run database migrations
         run: npx prisma migrate deploy

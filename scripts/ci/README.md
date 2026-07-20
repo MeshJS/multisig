@@ -134,7 +134,9 @@ The manifest currently covers:
 
 `scenario.proxy-smoke` runs by default and performs authenticated `proxies` read checks plus negative validation checks that should fail before chain mutation.
 
-`scenario.proxy-full-lifecycle` runs by default in PR smoke for `legacy`, `hierarchical`, and `sdk` wallets when present. The hierarchical coverage reuses the wallet already created for route-chain context and the ring transfer; it does not add a new bootstrap wallet path. It starts each eligible wallet type with three pre-hygiene steps before normal setup: chain recovery reconstructs missing `Proxy` rows from proxy auth tokens still visible at the current CI wallet address, row adoption reattaches valid rows from historical deterministic CI wallets, and hygiene cleans any active rows before the new lifecycle begins. It then runs UTxO shaping and a funding preflight that fetches fresh `freeUtxos`. The hardcoded lifecycle budget is 536 ADA per eligible wallet: 505 ADA DRep registration, 10 ADA initial proxy funding, 1 ADA planned proxy spend, and a 20 ADA fee buffer. Because collateral is reserved outside selected spend inputs, the practical minimum post-shape layout is at least 536 ADA selectable at the multisig wallet address plus a separate ADA-only bot payment-address collateral UTxO. The self-split path needs enough total ADA to leave that 536 ADA selectable budget, create a 6 ADA collateral output, and cover a 2 ADA self-split fee buffer. Adding hierarchical means default PR smoke needs that budget available for one more wallet. Proxy DRep registration uses `CI_DREP_ANCHOR_URL` as the on-chain anchor URL and sends an inline route-chain `anchorJson`; it does not use `CI_DREP_ANCHOR_JSON`.
+`scenario.proxy-full-lifecycle` runs by default in PR smoke for `legacy`, `hierarchical`, and `sdk` wallets when present. The hierarchical coverage reuses the wallet already created for route-chain context and the ring transfer; it does not add a new bootstrap wallet path. Before the wallet branches run, route-chain verifies that each eligible branch has a unique `walletId` and `walletAddress`, ensures enough UTxO shape for the full lifecycle, and reserves one distinct ADA-only signer-0 collateral UTxO per branch at `bot.paymentAddress`. The branch lifecycles then run in parallel by default while each wallet type keeps its own steps sequential. Set `CI_PROXY_FULL_LIFECYCLE_PARALLEL=false` to run the same reservation-aware wallet chains serially.
+
+Each eligible wallet type starts with three pre-hygiene steps before normal setup: chain recovery reconstructs missing `Proxy` rows from proxy auth tokens still visible at the current CI wallet address, row adoption reattaches valid rows from historical deterministic CI wallets, and hygiene cleans any active rows before the new lifecycle begins. It then runs UTxO shaping and a funding preflight that fetches fresh `freeUtxos`. The hardcoded lifecycle budget is 536 ADA per eligible wallet: 505 ADA DRep registration, 10 ADA initial proxy funding, 1 ADA planned proxy spend, and a 20 ADA fee buffer. Because collateral is reserved outside selected spend inputs, the practical minimum post-shape layout is at least 536 ADA selectable at the multisig wallet address plus a separate ADA-only bot payment-address collateral UTxO reserved for that wallet branch. The self-split path needs enough total ADA to leave that 536 ADA selectable budget, create a 6 ADA collateral output, and cover a 2 ADA self-split fee buffer. Adding hierarchical means default PR smoke needs that budget available for one more wallet. Proxy DRep registration uses `CI_DREP_ANCHOR_URL` as the on-chain anchor URL and sends an inline route-chain `anchorJson`; it does not use `CI_DREP_ANCHOR_JSON`.
 
 The first full-lifecycle steps for each eligible wallet type are ordered as:
 
@@ -145,13 +147,13 @@ The first full-lifecycle steps for each eligible wallet type are ordered as:
 5. `v1.proxy.full.preflight.<walletType>`
 6. `v1.proxy.client-build-smoke.<walletType>` (non-critical)
 
-Step 6, `v1.proxy.client-build-smoke.<walletType>`, is a non-submitting step that calls `buildProxySetupTx` from `src/lib/proxy/txBuilders.ts` directly with a real `MeshTxBuilder` and Blockfrost-resolved UTxOs. It fetches UTxOs at the wallet script address and the bot payment address from Blockfrost, selects a param UTxO (≥ 20 ADA) and an ADA-only collateral, builds the setup transaction, and calls `txBuilder.complete()` to run the Aiken evaluator against preprod. It asserts that the result is a non-empty CBOR hex string and discards it without calling `addTransaction` or any signing step. This catches blueprint schema regressions (`plutus.json` validator index changes), `applyParamsToScript`/`resolveScriptHash` failures, Aiken evaluator errors, and `MeshTxBuilder` API changes that would not be caught by the mock-builder unit tests in `src/__tests__/proxyTxBuilders.test.ts`. Marked non-critical so a slow Blockfrost evaluator response does not block the lifecycle steps that follow.
+Step 6, `v1.proxy.client-build-smoke.<walletType>`, is a non-submitting step that calls `buildProxySetupTx` from `src/lib/proxy/txBuilders.ts` directly with a real `MeshTxBuilder` and Blockfrost-resolved UTxOs. It fetches UTxOs at the wallet script address and the bot payment address from Blockfrost, selects a param UTxO (≥ 20 ADA) and the branch's reserved ADA-only collateral, builds the setup transaction, and calls `txBuilder.complete()` to run the Aiken evaluator against preprod. It asserts that the result is a non-empty CBOR hex string and discards it without calling `addTransaction` or any signing step. This catches blueprint schema regressions (`plutus.json` validator index changes), `applyParamsToScript`/`resolveScriptHash` failures, Aiken evaluator errors, and `MeshTxBuilder` API changes that would not be caught by the mock-builder unit tests in `src/__tests__/proxyTxBuilders.test.ts`. Marked non-critical so a slow Blockfrost evaluator response does not block the lifecycle steps that follow.
 
 Chain recovery is CI-only and evidence-based. It scans non-lovelace assets at the current bootstrap `walletAddress` (up to 25 asset candidates; excess are skipped), asks Blockfrost for each asset's mint transaction, tests the mint transaction inputs as candidate `paramUtxo` values with `deriveProxyScripts`, and only creates or reactivates a `Proxy` row when the derived `authTokenId` exactly matches the observed asset unit. This handles clean-database rebuilds where old proxy auth tokens and proxy DReps remain on-chain but the app has no `Proxy` rows. It cannot recover a proxy if the auth token is no longer discoverable at the current CI wallet address.
 
-When preflight passes, each eligible wallet lifecycle creates its own proxy, finalizes the confirmed setup, exercises proxy spend, proxy DRep register/deregister, optional proxy voting when active governance proposals exist, then runs safe cleanup and asserts the proxy no longer appears in `GET /api/v1/proxies`. Proxy actions always use bot payment-address collateral that is distinct from selected wallet spend inputs; DRep registration selects an auth-token input plus additional wallet inputs when needed to meet the registration budget. The proposer/collateral owner is signer index 0 (`CI_MNEMONIC_1`), and signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 proxy actions. After each broadcasted proxy action, the route-chain waits for the selected wallet inputs to disappear from fresh `freeUtxos` before proposing the next action. Cleanup may require two submitted transactions: a sweep transaction that empties the proxy address while preserving an auth token, followed by a burn transaction and cleanup finalization. If the initial cleanup call already returns a burn transaction, the optional burn proposal is skipped after that transaction is signed. Because this scenario runs on every PR, the default CI legacy, hierarchical, and SDK wallets must stay funded; one-UTxO shape problems are repaired by the self-split step, while true budget failures still fail the route-chain rather than skipping proxy lifecycle coverage.
+When preflight passes, each eligible wallet lifecycle creates its own proxy, finalizes the confirmed setup, exercises proxy spend, proxy DRep register/deregister, optional proxy voting when active governance proposals exist, then runs safe cleanup and asserts the proxy no longer appears in `GET /api/v1/proxies`. Proxy actions always use the branch's reserved bot payment-address collateral, which is distinct from both selected wallet spend inputs and other parallel branches' collateral. DRep registration selects an auth-token input plus additional wallet inputs when needed to meet the registration budget. The proposer/collateral owner is signer index 0 (`CI_MNEMONIC_1`), and signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 proxy actions. After each broadcasted proxy action, the route-chain waits for the selected wallet inputs to disappear from fresh `freeUtxos` before proposing the next action. Cleanup may require two submitted transactions: a sweep transaction that empties the proxy address while preserving an auth token, followed by a burn transaction and cleanup finalization. If the initial cleanup call already returns a burn transaction, the optional burn proposal is skipped after that transaction is signed. Because this scenario runs on every PR, the default CI legacy, hierarchical, and SDK wallets must stay funded; one-UTxO shape problems are repaired by the self-split step, while true budget failures still fail the route-chain rather than skipping proxy lifecycle coverage.
 
-Runtime expectation: `scenario.proxy-smoke` is the quick, non-mutating proxy subset. `scenario.proxy-full-lifecycle` is a real-chain scenario with multiple broadcasts per eligible wallet and can dominate default PR smoke duration during slow preprod/Blockfrost periods. The GitHub Actions job timeout is intentionally higher than the nominal happy path to leave room for confirmation polling.
+Runtime expectation: `scenario.proxy-smoke` is the quick, non-mutating proxy subset. `scenario.proxy-full-lifecycle` is a real-chain scenario with multiple broadcasts per eligible wallet and can dominate default PR smoke duration during slow preprod/Blockfrost periods. The expensive per-wallet lifecycles run in parallel by default after the isolation step, but the GitHub Actions job timeout is still intentionally higher than the nominal happy path to leave room for confirmation polling.
 
 For each tested wallet type, the `nativeScript` step stores decoded script payloads in step artifacts (`artifacts.nativeScripts`) and the list of script entry types (`artifacts.scriptTypes`) inside `ci-route-chain-report.md`, so script structure is visible during CI triage.
 
@@ -195,7 +197,7 @@ Runs after the early discovery and ADA route-health checks, before request-heavy
 
 Runs when both `legacy` and `sdk` wallets are in context. Requires `CI_DREP_ANCHOR_URL`.
 
-For each wallet type the scenario runs a pre-hygiene step followed by two sequential phases — register then retire — leaving the wallet in its pre-test DRep state:
+For each wallet type the scenario runs a pre-hygiene step followed by two sequential phases — register then retire — leaving the wallet in its pre-test DRep state. The legacy and SDK wallet branches run in parallel because they spend from distinct multisig wallets, while each branch keeps its register-before-retire ordering:
 
 **Pre-hygiene step** — checks on-chain DRep state via `GET /api/v1/drepInfo`. If the DRep is already registered (e.g. from a previous incomplete run), it proposes a `retire` tx, signs with both signers, and waits for on-chain confirmation. If the broadcast is rejected with `DRepNotRegistered` or similar errors, the credential is treated as already clean (stale Blockfrost cache false-positive) and the step succeeds silently.
 
@@ -206,7 +208,7 @@ For each wallet type the scenario runs a pre-hygiene step followed by two sequen
 3. Signer 1 (`CI_MNEMONIC_2`, index 1) adds a payment-key witness, no broadcast.
 4. Signer 2 (`CI_MNEMONIC_3`, index 2) adds a payment-key witness and broadcasts.
 5. Assert the transaction is cleared from pending.
-6. Poll `freeUtxos?fresh=true` until the spent inputs are no longer unspent on-chain (confirms block inclusion before the next phase). Up to 30 retries × 8 s = 4 minutes.
+6. Poll `freeUtxos?fresh=true` until the spent inputs are no longer unspent on-chain (confirms block inclusion before the next phase). Up to 48 retries × 5 s = 4 minutes.
 7. Repeat steps 1–6 with `action: "retire"`.
 
 **Why payment-key witnesses are sufficient for DRep cert:**
@@ -252,6 +254,7 @@ Primary variables (in workflow/compose):
 - `CI_DREP_ANCHOR_JSON` (required by the default run for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
 - `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`408`, `418`, `429`, `500`, `502`, `503`, `504`). Exponential backoff with `Retry-After` header support. Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
+- `CI_RUN_WALLET_STATUS` (default `false`): when running the composed `ci-runner` command, set to `true` to print the optional pre-route wallet balance check. The route-chain report always collects end-of-run wallet balances, so the default CI path skips this extra Blockfrost lookup.
 
 Validation notes:
 
@@ -322,12 +325,12 @@ Balance source: direct on-chain UTxO lookup per wallet address from bootstrap co
 
 ## Proxy Full Lifecycle UTxO Shaping
 
-`scenario.proxy-full-lifecycle` needs a wallet script UTxO for proxy setup/spend and a separate key-address collateral UTxO at `bot.paymentAddress` for each eligible wallet type (`legacy`, `hierarchical`, `sdk`). When a funded wallet has enough ADA but lacks the required wallet/key UTxO shape, the route-chain now performs an idempotent self-split before the proxy preflight:
+`scenario.proxy-full-lifecycle` needs a wallet script UTxO for proxy setup/spend and a separate key-address collateral UTxO at `bot.paymentAddress` for each eligible wallet type (`legacy`, `hierarchical`, `sdk`). Parallel mode requires one distinct signer-0 collateral UTxO per eligible wallet branch; the same signer address may be shared, but the same collateral ref is never intentionally shared. When a funded wallet has enough ADA but lacks the required wallet/key UTxO shape, the route-chain now performs an idempotent self-split before the proxy preflight:
 
-- If fresh `freeUtxos` plus fresh `bot.paymentAddress` UTxOs already satisfy the lifecycle budget and key collateral shape, the shaping step is a no-op.
+- If fresh `freeUtxos` plus fresh `bot.paymentAddress` UTxOs already satisfy the lifecycle budget and distinct key collateral shape, the shaping step is a no-op.
 - If wallet ADA is sufficient but the shape is not, the step submits a real preprod self-split through `/api/v1/addTransaction`, creating a 6 ADA collateral output at `bot.paymentAddress` and returning the rest as change to the wallet script address. The split requires the 536 ADA lifecycle budget plus the 6 ADA collateral output and a 2 ADA self-split fee buffer.
 - The self-split is signed by signer 1 and signer 2 using the existing `CI_MNEMONIC_2` / `CI_MNEMONIC_3` route-chain signing path, then waits for the original inputs to disappear from fresh `freeUtxos`.
-- Server-built proxy transactions are persisted with no initial signed addresses. Because key-address collateral lives at `bot.paymentAddress`, proxy setup and action transactions first add signer index 0 (`CI_MNEMONIC_1`) as a real collateral witness, then signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 wallet.
+- Server-built proxy transactions are persisted with no initial signed addresses. Because key-address collateral lives at `bot.paymentAddress`, proxy setup and action transactions first add signer index 0 (`CI_MNEMONIC_1`) as a real collateral witness, then signer index 1 (`CI_MNEMONIC_2`) broadcasts for the default threshold-2 wallet. If a branch's reserved collateral ref is no longer available, the branch fails instead of selecting another branch's collateral.
 - Manual funding is still required when the wallet does not have enough total ADA for the proxy lifecycle budget plus the 6 ADA collateral output and fee buffer.
 
 Because the self-split is an on-chain transaction, it can add one confirmation wait per wallet type, but only when the current UTxO shape needs repair.
@@ -422,15 +425,15 @@ Bootstrap wallets and write host-mounted artifacts:
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
-Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails). The composed `ci-runner` skips this by default; set `CI_RUN_WALLET_STATUS=true` if you want it included there.
 
 ```powershell
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -439,7 +442,7 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm `
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json `
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md `
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 
 ```
 
@@ -447,6 +450,12 @@ View generated report on host:
 
 ```powershell
 Get-Content ".\ci-artifacts\ci-route-chain-report.md"
+```
+
+When you are done, remove the CI containers and volume:
+
+```powershell
+docker compose -f docker-compose.ci.yml down -v --remove-orphans
 ```
 
 ## Local execution (Linux/Bash, CI-like)
@@ -512,15 +521,15 @@ Bootstrap wallets and write host-mounted artifacts:
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/bootstrap.ts
+  ci-runner node .ci-dist/bootstrap.mjs
 ```
 
-Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails).
+Optional: confirm wallets are funded on-chain before running route-chain (uses `CI_CONTEXT_PATH` and `CI_BLOCKFROST_PREPROD_API_KEY`; same total-balance semantics as `walletBalanceSummary` in the route-chain report). Flags: `--json` (machine-readable summary only), `--strict` (exit with status 1 if balance collection fails). The composed `ci-runner` skips this by default; set `CI_RUN_WALLET_STATUS=true` if you want it included there.
 
 ```bash
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
-  ci-runner npx --yes tsx scripts/ci/cli/wallet-status.ts
+  ci-runner node .ci-dist/wallet-status.mjs
 ```
 
 Run route-chain smoke scenarios:
@@ -529,11 +538,17 @@ Run route-chain smoke scenarios:
 docker compose -f docker-compose.ci.yml run --rm \
   -e CI_CONTEXT_PATH=/artifacts/ci-wallet-context.json \
   -e CI_ROUTE_CHAIN_REPORT_PATH=/artifacts/ci-route-chain-report.md \
-  ci-runner npx --yes tsx scripts/ci/cli/route-chain.ts
+  ci-runner node .ci-dist/route-chain.mjs
 ```
 
 View generated report on host:
 
 ```bash
 cat ./ci-artifacts/ci-route-chain-report.md
+```
+
+When you are done, remove the CI containers and volume:
+
+```bash
+docker compose -f docker-compose.ci.yml down -v --remove-orphans
 ```

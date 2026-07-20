@@ -10,6 +10,7 @@ import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
 import ProxyControlCard from "./proxy-control";
 import { UpgradeGovernanceWallet } from "./upgrade-governance-wallet";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
+import { WalletNotificationSettings } from "./wallet-notification-settings";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -22,6 +23,7 @@ export default function WalletInfo() {
       <div className="grid grid-cols-1 gap-4 sm:gap-6">
         <CardInfo appWallet={appWallet} />
         <CardSigners appWallet={appWallet} />
+        <WalletNotificationSettings appWallet={appWallet} />
         <ManageContacts appWallet={appWallet} />
         <MigrateWallet appWallet={appWallet} />
         <ProxyControlCard />

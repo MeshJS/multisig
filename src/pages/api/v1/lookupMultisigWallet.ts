@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getProvider } from "@/utils/get-provider";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { isProviderNotFoundError } from "@/lib/server/providerErrors";
 
 export default async function handler(
   req: NextApiRequest,
@@ -73,6 +74,10 @@ export default async function handler(
     res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
     res.status(200).json(matchedItems);
   } catch (error) {
+    if (isProviderNotFoundError(error)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.status(200).json([]);
+    }
     console.error("lookupWallet error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }

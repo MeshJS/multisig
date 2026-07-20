@@ -6,6 +6,8 @@ import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
 export default async function handler(
   req: NextApiRequest,
@@ -125,6 +127,36 @@ export default async function handler(
         state: 0,
       },
     });
+
+    try {
+      const walletRow = await db.wallet.findUnique({
+        where: { id: walletId },
+        select: {
+          id: true,
+          name: true,
+          signersAddresses: true,
+          numRequiredSigners: true,
+          type: true,
+        },
+      });
+      if (walletRow) {
+        await enqueueSignatureRequiredNotifications(db, {
+          wallet: walletRow,
+          resourceType: "signable",
+          resourceId: newSignable.id,
+          signedAddresses: newSignable.signedAddresses,
+          rejectedAddresses: newSignable.rejectedAddresses,
+          creatorAddress: address,
+          description: newSignable.description,
+          signatureContext: summarizeSignableSignatureContext({
+            method: newSignable.method,
+            description: newSignable.description,
+          }),
+        });
+      }
+    } catch (notificationError) {
+      console.error("Failed to enqueue signable notifications", notificationError);
+    }
 
     res.status(201).json(newSignable);
   } catch (error) {

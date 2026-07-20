@@ -5,6 +5,7 @@ import {
   keepRelevant,
   NativeScript,
   Quantity,
+  resolvePaymentKeyHash,
   Unit,
   UTxO,
 } from "@meshsdk/core";
@@ -73,6 +74,17 @@ import RecipientRowMobile from "./RecipientRowMobile";
 import RecipientCsv from "./RecipientCsv";
 import { truncateTokenSymbol } from "@/utils/strings";
 import { UserPlus } from "lucide-react";
+
+function isValidRecipientAddress(address: string): boolean {
+  if (!address.startsWith("addr")) return false;
+
+  try {
+    resolvePaymentKeyHash(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => void } = {}) {
   const { connected } = useWallet();
@@ -240,6 +252,94 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
     walletAssetMetadata,
   ]);
 
+  const selectedFunds = useMemo(() => {
+    return finalSelectedUtxos.reduce((acc, utxo) => {
+      if (Array.isArray(utxo.output.amount)) {
+        utxo.output.amount.forEach((asset) => {
+          acc[asset.unit] = (acc[asset.unit] ?? 0) + Number(asset.quantity);
+        });
+      }
+      return acc;
+    }, {} as Record<string, number>);
+  }, [finalSelectedUtxos]);
+
+  const requiredFunds = useMemo(() => {
+    return recipientAddresses.reduce((acc, address, index) => {
+      if (!address.trim()) return acc;
+
+      const rawAmount = amounts[index] ?? "";
+      const parsedAmount = Number.parseFloat(rawAmount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return acc;
+
+      const rawUnit = assets[index];
+      const unit = rawUnit === "ADA" || !rawUnit ? "lovelace" : rawUnit;
+      const assetMetadata = walletAssetMetadata[unit];
+      const multiplier =
+        unit === "lovelace"
+          ? 1000000
+          : Math.pow(10, assetMetadata?.decimals ?? 0);
+
+      acc[unit] = (acc[unit] ?? 0) + parsedAmount * multiplier;
+      if (unit !== "lovelace") {
+        acc.lovelace = (acc.lovelace ?? 0) + 1160000;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+  }, [recipientAddresses, amounts, assets, walletAssetMetadata]);
+
+  const validationErrors = useMemo(() => {
+    const errors: string[] = [];
+
+    recipientAddresses.forEach((address, index) => {
+      const rowNumber = index + 1;
+      const trimmedAddress = address.trim();
+      const rawAmount = amounts[index] ?? "";
+      const parsedAmount = Number.parseFloat(rawAmount);
+
+      if (!trimmedAddress) {
+        errors.push(`Recipient ${rowNumber}: address is required.`);
+      } else if (!isValidRecipientAddress(trimmedAddress)) {
+        errors.push(`Recipient ${rowNumber}: address is invalid.`);
+      }
+
+      if (!sendAllAssets) {
+        if (!rawAmount.trim()) {
+          errors.push(`Recipient ${rowNumber}: amount is required.`);
+        } else if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+          errors.push(`Recipient ${rowNumber}: amount must be greater than zero.`);
+        }
+      }
+    });
+
+    if (recipientAddresses.length === 0) {
+      errors.push("At least one recipient is required.");
+    }
+
+    if (finalSelectedUtxos.length === 0) {
+      errors.push("Select at least one UTxO.");
+    }
+
+    if (!sendAllAssets) {
+      const deficit = Object.entries(requiredFunds).some(
+        ([unit, required]) => (selectedFunds[unit] ?? 0) < required,
+      );
+      if (deficit) {
+        errors.push("Amount exceeds the selected UTxO balance.");
+      }
+    }
+
+    return errors;
+  }, [
+    recipientAddresses,
+    amounts,
+    sendAllAssets,
+    finalSelectedUtxos.length,
+    requiredFunds,
+    selectedFunds,
+  ]);
+
+  const canCreateTransaction = !loading && validationErrors.length === 0;
+
   // Preview transaction outputs as user prepares the transaction
   useEffect(() => {
     if (!appWallet || !userAddress) {
@@ -357,6 +457,11 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
   }
 
   async function createNewTransaction() {
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
+      return;
+    }
+
     setLoading(true);
     setError(undefined);
 
@@ -1373,9 +1478,26 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
             </div>
           )}
 
+          {validationErrors.length > 0 && (
+            <div
+              className="w-full max-w-md rounded-lg border border-destructive/20 bg-destructive/5 p-3 sm:p-4"
+            >
+              <div className="flex items-center gap-2 text-destructive">
+                <X className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm font-medium">Transaction needs attention</span>
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive/80">
+                {validationErrors.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <Button
+            data-testid="create-transaction-button"
             onClick={() => createNewTransaction()}
-            disabled={loading}
+            disabled={!canCreateTransaction}
             size="lg"
             className="h-11 w-full sm:h-12 sm:w-auto sm:min-w-[200px]"
           >

@@ -14,8 +14,9 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Database, Bot, Code, Download, Check } from "lucide-react";
+import { Database, Bot, Code, Download, Check, Sparkles } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
+import { Typewriter } from "@/components/ui/typewriter";
 import {
   MultisigWalletPreview,
   WalletListPreview,
@@ -27,6 +28,16 @@ import {
   DRepPreview,
   StakingPreview,
 } from "@/components/pages/homepage/previews";
+
+// Example prompts cycled by the "Connect your AI agent" typewriter. The first
+// is the literal flow most users start with; the rest hint at what an agent can
+// do once it holds the multisig skill.
+const AGENT_PROMPTS = [
+  "Connect to my https://multisig.meshjs.dev/ wallet",
+  "List the pending transactions on our treasury",
+  "Draft a 200 ₳ payout to the dev fund and request signatures",
+  "Show who still needs to sign the pending payout",
+];
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -279,6 +290,64 @@ export function PageHomepage() {
           <p className="mt-6 text-sm text-muted-foreground">
             Secure Treasuries • Participate in Governance • Collaborate
           </p>
+        </Reveal>
+      </section>
+
+      {/* Connect your AI agent – skill download + live prompt demo, up top */}
+      <section className="container mx-auto px-4 pb-8">
+        <Reveal className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/60 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/40 sm:p-8 md:p-10">
+            <div className="grid items-center gap-8 md:grid-cols-2">
+              {/* Copy + actions */}
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI-native multisig
+                </div>
+                <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+                  Connect your AI agent
+                </h2>
+                <p className="mt-3 text-muted-foreground">
+                  Drop the multisig skill into Claude Code, Cursor, or any agent and let
+                  it work alongside your treasury — read pending transactions, draft
+                  payouts, and track approvals through the authenticated v1 API. The
+                  agent can&apos;t sign for you: keys and signatures always stay with you
+                  and your co-signers.
+                </p>
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button asChild size="lg">
+                    <a href="/api/skill" download="multisig-skill.md">
+                      <Download className="mr-2 h-4 w-4" />
+                      Download skill
+                    </a>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
+                    <Link href="#developers-and-bots">
+                      <Bot className="mr-2 h-4 w-4" />
+                      Developer &amp; bot docs
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Animated agent prompt */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
+                <div className="flex items-center gap-1.5 pb-3">
+                  <span className="h-3 w-3 rounded-full bg-red-400/80" />
+                  <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
+                  <span className="h-3 w-3 rounded-full bg-green-400/80" />
+                  <span className="ml-2 text-xs text-zinc-500">agent</span>
+                </div>
+                <div className="flex min-h-[5rem] items-start gap-2 leading-relaxed">
+                  <span className="select-none text-emerald-400">›</span>
+                  <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
+                </div>
+                <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                  Read &amp; draft only — signing stays with you and your co-signers.
+                </div>
+              </div>
+            </div>
+          </div>
         </Reveal>
       </section>
 
