@@ -52,6 +52,32 @@ export type ProposalWithdrawal = {
   amount: string;
 };
 
+/**
+ * One on-chain vote cast by a DRep, joined with the proposal it voted on.
+ * Served by /api/governance/drepVotes (sourced from Koios, which — unlike
+ * Blockfrost — exposes the vote's rationale anchor and proposal link).
+ */
+export type DrepVoteHistoryItem = {
+  proposalId: string;
+  proposalTxHash: string;
+  proposalIndex: number;
+  voteTxHash: string;
+  /** Unix seconds of the block containing the vote. */
+  blockTime: number;
+  vote: "Yes" | "No" | "Abstain";
+  /** CIP-100/CIP-136 rationale anchor, when the DRep attached one. */
+  metaUrl: string | null;
+  metaHash: string | null;
+  /** Snake_case governance action type (matches GovernanceTypeChip keys). */
+  proposalType: string | null;
+  proposalTitle: string | null;
+};
+
+export type DrepVoteHistoryResponse = {
+  drepId: string;
+  votes: DrepVoteHistoryItem[];
+};
+
 export type BlockfrostDrepInfo = {
   drep_id: string;
   hex: string;
