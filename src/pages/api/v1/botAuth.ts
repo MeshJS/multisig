@@ -72,6 +72,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       botKeyId: botKey.id,
       paymentAddress,
       stakeAddress: stake,
+      // Address-less registrations create their BotUser here on first auth;
+      // carry the registration name over like the claim path does.
+      displayName: botKey.name,
     },
   });
 

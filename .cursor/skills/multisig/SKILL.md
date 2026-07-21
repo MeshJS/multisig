@@ -26,9 +26,12 @@ description: Build and integrate with the Mesh Multisig (Cardano multisig wallet
 ## Bot integration (machine-friendly)
 
 - **OpenAPI spec (JSON)**: `GET /api/swagger` — use for codegen or automation.
+- **Registration (new bots)**: `POST /api/v1/botRegister`  
+  Body: `{ "name": string, "requestedScopes": string[], "paymentAddress"?: string }`  
+  New bots should initially register **without** `paymentAddress` — a fresh bot has no wallet yet. Register with just name + scopes, have the owner claim you, pick up your credentials, generate a wallet, then bind the address at first `botAuth`. Only pass `paymentAddress` at registration if the bot already controls a wallet.
 - **Auth (bots)**: `POST /api/v1/botAuth`  
   Body: `{ "botKeyId": string, "secret": string, "paymentAddress": string, "stakeAddress"?: string }`  
-  Response: `{ "token": string, "botId": string }`. Use `Authorization: Bearer <token>` for v1 endpoints.
+  Response: `{ "token": string, "botId": string }`. Use `Authorization: Bearer <token>` for v1 endpoints. The first successful `botAuth` binds `paymentAddress` to the bot (creating its `BotUser` if registration was address-less).
 - **Bot keys**: Created in-app (User → Create bot). One bot key can have one `paymentAddress`; same address cannot be used by another bot.
 - **Scopes**: Bot keys have scope (e.g. `multisig:read`); `botAccess.ts` enforces wallet access for bots.
 - **V1 endpoints used by bots**: `walletIds` (query `address` = bot’s `paymentAddress`), `pendingTransactions`, `freeUtxos`, `addTransaction`, `signTransaction`, etc. Same as wallet-authenticated calls but identity is the bot’s registered address.

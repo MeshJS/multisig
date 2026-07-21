@@ -335,11 +335,11 @@ Endpoints:
   - Creates a `PendingBot` record in `UNCLAIMED` state
   - Generates one-time claim code and hashed claim token
   - Validates requested scopes against allowed bot scopes
-  - Rejects already-registered bot payment addresses
+  - Rejects already-registered bot payment addresses (when an address is provided)
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (required)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
   - `stakeAddress`: string (optional)
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
@@ -431,10 +431,10 @@ Endpoints:
 
 ### Bot Onboarding Flow
 
-1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes — initially without a `paymentAddress` (the bot typically has no wallet yet)
 2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
 3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
-4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT — this binds the bot's `paymentAddress` (creating its `BotUser` if registration was address-less)
 5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs, and certificate builders **`/api/v1/botStakeCertificate`** / **`/api/v1/botDRepCertificate`** when `multisig:sign` is granted)
 
 ### Error Handling

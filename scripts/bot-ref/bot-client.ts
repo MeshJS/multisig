@@ -4,7 +4,7 @@
  * Used by Cursor agent and local scripts to test bot flows.
  *
  * Usage:
- *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","paymentAddress":"addr1_..."}' npx tsx bot-client.ts register "Reference Bot" multisig:read
+ *   BOT_CONFIG='{"baseUrl":"http://localhost:3000"}' npx tsx bot-client.ts register "Reference Bot" multisig:read
  *   BOT_CONFIG='{"baseUrl":"http://localhost:3000"}' npx tsx bot-client.ts pickup <pendingBotId>
  *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","botKeyId":"...","secret":"...","paymentAddress":"addr1_..."}' npx tsx bot-client.ts auth
  *   npx tsx bot-client.ts walletIds
@@ -79,8 +79,10 @@ export async function registerBot(
   baseUrl: string,
   body: {
     name: string;
-    paymentAddress: string;
     requestedScopes: string[];
+    // Omit for a new bot: it has no wallet yet, and the address is bound at
+    // the first botAuth. Only pass when the bot already controls a wallet.
+    paymentAddress?: string;
     stakeAddress?: string;
   },
 ): Promise<{ pendingBotId: string; claimCode: string; claimExpiresAt: string }> {
@@ -101,7 +103,7 @@ export async function registerBot(
 export async function pickupBotSecret(
   baseUrl: string,
   pendingBotId: string,
-): Promise<{ botKeyId: string; secret: string; paymentAddress: string }> {
+): Promise<{ botKeyId: string; secret: string; paymentAddress: string | null }> {
   const base = ensureSlash(baseUrl);
   const res = await fetch(
     `${base}/api/v1/botPickupSecret?pendingBotId=${encodeURIComponent(pendingBotId)}`,
@@ -110,7 +112,7 @@ export async function pickupBotSecret(
     const text = await res.text();
     throw new Error(`botPickupSecret failed ${res.status}: ${text}`);
   }
-  return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string };
+  return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string | null };
 }
 
 /** Get wallet IDs for the bot (requires prior auth; pass JWT). */
@@ -318,15 +320,12 @@ async function main() {
   if (cmd === "register") {
     const name = process.argv[3];
     const scopesArg = process.argv[4] ?? "multisig:read";
+    // Optional: a new bot registers without an address (it has no wallet yet)
+    // and binds one at its first auth. Passing an address is the exception.
     const paymentAddress = process.argv[5] ?? config.paymentAddress;
 
     if (!name) {
       console.error("Usage: bot-client.ts register <name> [scope1,scope2,...] [paymentAddress]");
-      process.exit(1);
-    }
-
-    if (!paymentAddress) {
-      console.error("paymentAddress is required for register (arg or config).");
       process.exit(1);
     }
 
@@ -342,9 +341,12 @@ async function main() {
 
     const result = await registerBot(config.baseUrl, {
       name,
-      paymentAddress,
       requestedScopes,
+      ...(paymentAddress ? { paymentAddress } : {}),
     });
+    if (!paymentAddress) {
+      console.error("Registered without an address — bind one at first auth (generate-bot-wallet.ts, then `auth`).");
+    }
     console.log(JSON.stringify(result, null, 2));
     console.error("Human must now claim this bot in UI using pendingBotId + claimCode.");
     return;

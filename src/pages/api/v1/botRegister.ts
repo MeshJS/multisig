@@ -34,7 +34,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "invalid_registration_payload", message: "name must be a string between 1 and 100 characters" });
   }
 
-  if (typeof paymentAddress !== "string" || paymentAddress.length < 20) {
+  // A new bot usually has no wallet yet, so registration works without an
+  // address — the bot binds one at its first /api/v1/botAuth. When an address
+  // IS provided it still has to look like one.
+  const hasPaymentAddress = paymentAddress !== undefined && paymentAddress !== null;
+  if (hasPaymentAddress && (typeof paymentAddress !== "string" || paymentAddress.length < 20)) {
     return res.status(400).json({ error: "invalid_registration_payload", message: "Invalid paymentAddress" });
   }
 
@@ -55,16 +59,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // --- Check address not already registered to a claimed bot or existing BotUser ---
 
-  const existingBotUser = await db.botUser.findUnique({ where: { paymentAddress } });
-  if (existingBotUser) {
-    return res.status(409).json({ error: "address_already_registered", message: "This address is already registered to a bot" });
-  }
+  if (hasPaymentAddress) {
+    const existingBotUser = await db.botUser.findUnique({ where: { paymentAddress } });
+    if (existingBotUser) {
+      return res.status(409).json({ error: "address_already_registered", message: "This address is already registered to a bot" });
+    }
 
-  const existingClaimed = await db.pendingBot.findFirst({
-    where: { paymentAddress, status: "CLAIMED", pickedUp: false },
-  });
-  if (existingClaimed) {
-    return res.status(409).json({ error: "address_already_registered", message: "This address has a pending claimed bot" });
+    const existingClaimed = await db.pendingBot.findFirst({
+      where: { paymentAddress, status: "CLAIMED", pickedUp: false },
+    });
+    if (existingClaimed) {
+      return res.status(409).json({ error: "address_already_registered", message: "This address has a pending claimed bot" });
+    }
   }
 
   // --- Generate claim code and create records ---
@@ -77,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const bot = await tx.pendingBot.create({
       data: {
         name,
-        paymentAddress,
+        paymentAddress: hasPaymentAddress ? paymentAddress : null,
         stakeAddress: typeof stakeAddress === "string" ? stakeAddress : null,
         requestedScopes: JSON.stringify(validScopes),
         status: "UNCLAIMED",

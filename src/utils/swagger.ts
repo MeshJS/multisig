@@ -1211,7 +1211,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["Auth", "Bot"],
           summary: "Self-register a bot for human claim approval",
           description:
-            "Creates a pending bot registration and returns a short-lived claim code for a human owner to approve.",
+            "Creates a pending bot registration and returns a short-lived claim code for a human owner to approve. New bots should initially register WITHOUT a paymentAddress — a fresh bot usually has no wallet yet; the address is bound at the bot's first POST /api/v1/botAuth instead.",
           requestBody: {
             required: true,
             content: {
@@ -1220,7 +1220,12 @@ This API uses **Bearer Token** authentication (JWT).
                   type: "object",
                   properties: {
                     name: { type: "string", minLength: 1, maxLength: 100 },
-                    paymentAddress: { type: "string", minLength: 20 },
+                    paymentAddress: {
+                      type: "string",
+                      minLength: 20,
+                      description:
+                        "Optional. Omit on first registration; the bot binds its address at first botAuth.",
+                    },
                     stakeAddress: { type: "string" },
                     requestedScopes: {
                       type: "array",
@@ -1237,7 +1242,7 @@ This API uses **Bearer Token** authentication (JWT).
                       minItems: 1,
                     },
                   },
-                  required: ["name", "paymentAddress", "requestedScopes"],
+                  required: ["name", "requestedScopes"],
                 },
               },
             },

@@ -30,7 +30,11 @@ export interface ClaimBotInput {
 
 export interface ClaimBotResult {
   botKeyId: string;
-  botId: string;
+  /**
+   * Null when the bot registered without a payment address: the BotUser is
+   * only created at the bot's first /api/v1/botAuth, which binds the address.
+   */
+  botId: string | null;
   name: string;
   scopes: BotScope[];
 }
@@ -121,21 +125,28 @@ export async function performClaim(
     },
   });
 
-  const botUser = await tx.botUser.create({
-    data: {
-      botKeyId: botKey.id,
-      paymentAddress: pendingBot.paymentAddress,
-      stakeAddress: pendingBot.stakeAddress,
-      displayName: pendingBot.name,
-    },
-  });
+  // Address-less registrations defer BotUser creation to the bot's first
+  // botAuth, which upserts by botKeyId with the address the bot presents.
+  let botUser = null;
+  if (pendingBot.paymentAddress) {
+    botUser = await tx.botUser.create({
+      data: {
+        botKeyId: botKey.id,
+        paymentAddress: pendingBot.paymentAddress,
+        stakeAddress: pendingBot.stakeAddress,
+        displayName: pendingBot.name,
+      },
+    });
+  }
 
-  // Update PendingBot
+  // Update PendingBot. Storing botKeyId lets pickup resolve the key directly
+  // instead of via BotUser-by-address (which address-less bots don't have yet).
   await tx.pendingBot.update({
     where: { id: pendingBotId },
     data: {
       status: "CLAIMED",
       claimedBy: ownerAddress,
+      botKeyId: botKey.id,
       secretCipher: secret, // Store plain secret for one-time pickup
     },
   });
@@ -148,7 +159,7 @@ export async function performClaim(
 
   return {
     botKeyId: botKey.id,
-    botId: botUser.id,
+    botId: botUser?.id ?? null,
     name: pendingBot.name,
     scopes,
   };
