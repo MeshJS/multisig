@@ -25,6 +25,7 @@ import SectionExplanation from "./SectionExplanation";
 import WalletCardSkeleton from "./WalletCardSkeleton";
 import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
 import IPFSImage from "@/components/common/ipfs-image";
+import BotManagementCard from "@/components/pages/user/BotManagementCard";
 
 
 export default function PageWallets() {
@@ -234,6 +235,10 @@ export default function PageWallets() {
             </div>
           </>
         )}
+
+        {/* Claim and manage API bots without leaving the dashboard — the same
+            card as on the user page (it renders its own title and actions). */}
+        <BotManagementCard />
       </>
     </div>
   );
