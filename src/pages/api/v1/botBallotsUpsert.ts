@@ -4,8 +4,9 @@ import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
-import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { assertBotWalletAccess, BotAccessError } from "@/lib/auth/botAccess";
 import { isValidChoice, parseProposalId } from "@/lib/governance";
+import { addressToNetwork } from "@/utils/multisigSDK";
 
 const REQUIRED_SCOPE = "ballot:write";
 const GOV_BALLOT_TYPE = 1;
@@ -49,6 +50,40 @@ const alignBallotArrays = (ballot: any): BallotArrays => {
     rationaleComments: toLength(ballot?.rationaleComments, ""),
   };
 };
+
+const TX_HASH_RE = /^[0-9a-f]{64}$/i;
+
+/**
+ * On-chain existence probe for a governance action. Returns false only on a
+ * definitive 404; null when the provider can't answer (missing key, outage,
+ * rate limit) so callers can fail open — an indexer hiccup shouldn't block
+ * advisory drafts.
+ */
+async function proposalExistsOnChain(
+  network: number,
+  txHash: string,
+  certIndex: number,
+): Promise<boolean | null> {
+  const key =
+    network === 0
+      ? process.env.BLOCKFROST_API_KEY_PREPROD || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD
+      : process.env.BLOCKFROST_API_KEY_MAINNET || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET;
+  if (!key?.trim()) return null;
+  const base =
+    network === 0
+      ? "https://cardano-preprod.blockfrost.io/api/v0"
+      : "https://cardano-mainnet.blockfrost.io/api/v0";
+  try {
+    const res = await fetch(`${base}/governance/proposals/${txHash}/${certIndex}`, {
+      headers: { project_id: key, accept: "application/json" },
+    });
+    if (res.status === 404) return false;
+    if (!res.ok) return null;
+    return true;
+  } catch {
+    return null;
+  }
+}
 
 const makeDefaultBallotName = (): string => {
   const now = new Date();
@@ -120,19 +155,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "proposals must be a non-empty array" });
   }
 
+  let accessWallet: { signersAddresses: string[] } | null = null;
   try {
     // Non-mutating access: ballot drafts are unsigned advisory rows (choice +
     // rationaleComment only — anchors are rejected below), so an observer
     // grant is enough. Cosigner-for-drafts would lock advisory bots out of
     // existing wallets entirely, since signer lists are fixed at creation.
     // The ballot:write scope (owner-approved at claim) still gates this.
-    await assertBotWalletAccess(db, walletId, payload, false);
+    ({ wallet: accessWallet } = await assertBotWalletAccess(db, walletId, payload, false));
   } catch (err) {
+    if (err instanceof BotAccessError) {
+      return res.status(err.status).json({ error: err.message });
+    }
     return res
       .status(403)
       .json({ error: err instanceof Error ? err.message : "Not authorized for this wallet" });
   }
 
+  const parsedProposals = new Map<string, { txHash: string; certIndex: number }>();
   for (const proposal of proposals) {
     if (typeof proposal?.proposalId !== "string" || typeof proposal?.proposalTitle !== "string") {
       return res.status(400).json({ error: "Each proposal requires proposalId and proposalTitle" });
@@ -146,17 +186,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .json({ error: "Bots cannot set anchorUrl or anchorHash directly; provide rationaleComment only" });
     }
     try {
-      parseProposalId(proposal.proposalId);
+      const parsed = parseProposalId(proposal.proposalId);
+      if (!TX_HASH_RE.test(parsed.txHash)) {
+        return res.status(400).json({
+          error: "Invalid proposalId: txHash must be a 64-character hex transaction hash",
+          proposalId: proposal.proposalId,
+        });
+      }
+      parsedProposals.set(proposal.proposalId, parsed);
     } catch (error) {
       return res.status(400).json({
         error: error instanceof Error ? error.message : "Invalid proposalId",
+        proposalId: proposal.proposalId,
       });
     }
+  }
+
+  // Existence check: a typo'd or stale proposalId would otherwise silently
+  // create an advisory ballot for a phantom action. Definitive on-chain 404s
+  // are rejected; provider outages fail open.
+  const ballotNetwork = addressToNetwork(accessWallet?.signersAddresses?.[0] ?? "addr1");
+  const existence = await Promise.all(
+    Array.from(parsedProposals.entries()).map(async ([proposalId, parsed]) => ({
+      proposalId,
+      exists: await proposalExistsOnChain(ballotNetwork, parsed.txHash, parsed.certIndex),
+    })),
+  );
+  const unknownProposalIds = existence.filter((e) => e.exists === false).map((e) => e.proposalId);
+  if (unknownProposalIds.length > 0) {
+    return res.status(400).json({
+      error: "Unknown governance proposal(s): not found on-chain",
+      proposalIds: unknownProposalIds,
+    });
   }
 
   try {
     const result = await db.$transaction(async (tx) => {
       let targetBallot: any | null = null;
+      let createdBallot = false;
 
       if (ballotId) {
         targetBallot = await tx.ballot.findUnique({ where: { id: ballotId } });
@@ -193,6 +260,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               type: GOV_BALLOT_TYPE,
             },
           });
+          createdBallot = true;
         }
       } else {
         targetBallot = await tx.ballot.create({
@@ -202,6 +270,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             type: GOV_BALLOT_TYPE,
           },
         });
+        createdBallot = true;
       }
 
       const baselineUpdatedAt = targetBallot.updatedAt as Date;
@@ -248,26 +317,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const latest = await tx.ballot.findUnique({ where: { id: targetBallot.id } });
-      return latest;
+      return latest ? { latest, createdBallot } : null;
     });
 
     if (!result) {
       return res.status(500).json({ error: "Failed to save ballot" });
     }
+    const { latest: savedBallot, createdBallot } = result;
 
     return res.status(200).json({
+      // Whether this call created the ballot (vs updated an existing one) —
+      // upserts are keyed on ballotId first, then exact ballotName match.
+      created: createdBallot,
       ballot: {
-        id: result.id,
-        walletId: result.walletId,
-        description: result.description,
-        type: result.type,
-        items: result.items,
-        itemDescriptions: result.itemDescriptions,
-        choices: result.choices,
+        id: savedBallot.id,
+        walletId: savedBallot.walletId,
+        description: savedBallot.description,
+        type: savedBallot.type,
+        items: savedBallot.items,
+        itemDescriptions: savedBallot.itemDescriptions,
+        choices: savedBallot.choices,
         anchorUrls: (result as any).anchorUrls ?? [],
         anchorHashes: (result as any).anchorHashes ?? [],
         rationaleComments: (result as any).rationaleComments ?? [],
-        createdAt: result.createdAt,
+        createdAt: savedBallot.createdAt,
         updatedAt: (result as any).updatedAt,
       },
     });

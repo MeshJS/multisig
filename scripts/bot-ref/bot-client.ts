@@ -143,6 +143,55 @@ export async function pickupBotSecret(
   return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string | null };
 }
 
+/** List governance ballots the bot can see on a wallet (ballot:write scope; observer grant is enough). */
+export async function getBotBallots(
+  baseUrl: string,
+  token: string,
+  walletId: string,
+): Promise<{ ballots: Array<{ id: string; description: string | null; items: string[]; choices: string[]; rationaleComments: string[]; updatedAt: string }> }> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetchWithBackoff(
+    `${base}/api/v1/botBallots?walletId=${encodeURIComponent(walletId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error(`botBallots failed ${res.status}: ${await res.text()}`);
+  return (await res.json()) as { ballots: Array<{ id: string; description: string | null; items: string[]; choices: string[]; rationaleComments: string[]; updatedAt: string }> };
+}
+
+/** Delete a governance ballot draft (e.g. stale test drafts). */
+export async function deleteBotBallot(
+  baseUrl: string,
+  token: string,
+  walletId: string,
+  ballotId: string,
+): Promise<{ deleted: boolean; ballotId: string }> {
+  const base = ensureSlash(baseUrl);
+  const res = await fetchWithBackoff(`${base}/api/v1/botBallots`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ walletId, ballotId }),
+  });
+  if (!res.ok) throw new Error(`botBallots delete failed ${res.status}: ${await res.text()}`);
+  return (await res.json()) as { deleted: boolean; ballotId: string };
+}
+
+/** Rotate the bot key secret (invalidates the old one; the new secret is returned once). */
+export async function rotateBotSecret(
+  config: BotConfig,
+): Promise<{ botKeyId: string; secret: string }> {
+  if (!config.botKeyId || !config.secret) {
+    throw new Error("rotateSecret requires botKeyId and secret in config");
+  }
+  const base = ensureSlash(config.baseUrl);
+  const res = await fetchWithBackoff(`${base}/api/v1/botRotateSecret`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ botKeyId: config.botKeyId, secret: config.secret }),
+  });
+  if (!res.ok) throw new Error(`botRotateSecret failed ${res.status}: ${await res.text()}`);
+  return (await res.json()) as { botKeyId: string; secret: string };
+}
+
 /** Get wallet IDs for the bot (requires prior auth; pass JWT). */
 export async function getWalletIds(baseUrl: string, token: string, address: string): Promise<{ walletId: string; walletName: string }[]> {
   const base = ensureSlash(baseUrl);
@@ -329,7 +378,7 @@ async function main() {
   const config = await loadConfig();
   const cmd = process.argv[2];
   if (!cmd) {
-    console.error("Usage: bot-client.ts <register|pickup|auth|walletIds|pendingTransactions|freeUtxos|botMe|ownerInfo|createWallet|stakeCert|drepCert> [args]");
+    console.error("Usage: bot-client.ts <register|pickup|auth|walletIds|pendingTransactions|freeUtxos|botMe|ownerInfo|createWallet|stakeCert|drepCert|ballots|deleteBallot|rotateSecret> [args]");
     console.error("  register <name> [scope1,scope2,...] [paymentAddress] - create pending bot + claim code");
     console.error("  pickup <pendingBotId> - pickup botKeyId + secret after human claim");
     console.error("  auth                 - authenticate and print token");
@@ -377,6 +426,30 @@ async function main() {
     }
     console.log(JSON.stringify(result, null, 2));
     console.error("Human must now claim this bot in UI using pendingBotId + claimCode.");
+    return;
+  }
+
+  if (cmd === "ballots") {
+    const walletId = process.argv[3];
+    if (!walletId) { console.error("Usage: bot-client.ts ballots <walletId>"); process.exit(1); }
+    const token = process.env.BOT_TOKEN ?? (await botAuth(config)).token;
+    console.log(JSON.stringify(await getBotBallots(config.baseUrl, token, walletId), null, 2));
+    return;
+  }
+
+  if (cmd === "deleteBallot") {
+    const walletId = process.argv[3];
+    const ballotId = process.argv[4];
+    if (!walletId || !ballotId) { console.error("Usage: bot-client.ts deleteBallot <walletId> <ballotId>"); process.exit(1); }
+    const token = process.env.BOT_TOKEN ?? (await botAuth(config)).token;
+    console.log(JSON.stringify(await deleteBotBallot(config.baseUrl, token, walletId, ballotId), null, 2));
+    return;
+  }
+
+  if (cmd === "rotateSecret") {
+    const result = await rotateBotSecret(config);
+    console.error("Secret rotated. Update bot-config.json NOW — the old secret no longer works.");
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 

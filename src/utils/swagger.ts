@@ -1437,7 +1437,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Get authenticated bot profile",
           description:
-            "Returns the authenticated bot's own identity and owner address. Requires bot JWT.",
+            "Returns the authenticated bot's own identity, owner address, and wallet grants (botWallets: [{walletId, walletName, role}]) so a bot can self-discover where it may read/write. Requires bot JWT.",
           responses: {
             200: {
               description: "Bot profile",
@@ -1646,12 +1646,144 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/botBallots": {
+        get: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "List governance ballots on a granted wallet",
+          description:
+            "Read side of bot ballot drafting: returns every governance ballot (type=1) on the wallet so a bot can reconcile its drafts. Requires bot JWT, ballot:write scope, and any wallet grant (observer is enough).",
+          parameters: [
+            { in: "query", name: "walletId", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            200: {
+              description: "Ballot list",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      ballots: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            walletId: { type: "string" },
+                            description: { type: "string", nullable: true },
+                            items: { type: "array", items: { type: "string" } },
+                            itemDescriptions: { type: "array", items: { type: "string" } },
+                            choices: { type: "array", items: { type: "string" } },
+                            rationaleComments: { type: "array", items: { type: "string" } },
+                            createdAt: { type: "string", format: "date-time" },
+                            updatedAt: { type: "string", format: "date-time" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "walletId missing" },
+            401: { description: "Unauthorized" },
+            403: { description: "Not a bot token, missing ballot:write scope, or no wallet grant" },
+            404: { description: "Wallet not found" },
+            429: { description: "Too many requests" },
+          },
+        },
+        delete: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "Delete a governance ballot draft",
+          description:
+            "Removes a governance ballot (type=1) from a granted wallet — lets bots clean up stale drafts without UI intervention. Same auth as GET.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    ballotId: { type: "string" },
+                  },
+                  required: ["walletId", "ballotId"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Deleted",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      deleted: { type: "boolean" },
+                      ballotId: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing ids, wallet mismatch, or non-governance ballot" },
+            401: { description: "Unauthorized" },
+            403: { description: "Not permitted" },
+            404: { description: "Wallet or ballot not found" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
+      "/api/v1/botRotateSecret": {
+        post: {
+          tags: ["Auth", "Bot"],
+          summary: "Rotate the bot key secret",
+          security: [],
+          description:
+            "Proving possession of the current secret mints a replacement and invalidates the old one immediately. The new secret is returned exactly once — store it. Use this if a secret may have leaked; no re-registration needed. Strictly rate limited (5/min per IP).",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    botKeyId: { type: "string" },
+                    secret: { type: "string", description: "Current secret" },
+                  },
+                  required: ["botKeyId", "secret"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "New secret (returned once)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      botKeyId: { type: "string" },
+                      secret: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing botKeyId or secret" },
+            401: { description: "Invalid bot key or secret" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
       "/api/v1/botBallotsUpsert": {
         post: {
           tags: ["V1", "Bot", "Governance"],
           summary: "Create or update governance ballots from bot decisions",
           description:
-            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. Requires bot JWT, ballot:write scope, and any granted wallet access — observer is enough (drafts are unsigned advisory rows; the wallet owner grants access under User → Bot Management → Wallet access).",
+            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. proposalIds are validated: txHash must be 64-char hex and the governance action must exist on-chain (unknown ids get a 400 listing them; indexer outages fail open). Upserts key on ballotId first, then exact ballotName match (409 if ambiguous), else a new dated ballot is created — the response carries created:true|false plus the full ballot (track ballot.id for later upserts and cleanup). Requires bot JWT, ballot:write scope, and any granted wallet access — observer is enough (drafts are unsigned advisory rows; the wallet owner grants access under User → Bot Management → Wallet access).",
           requestBody: {
             required: true,
             content: {

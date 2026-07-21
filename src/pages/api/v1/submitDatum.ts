@@ -5,7 +5,7 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { assertBotWalletAccess, BotAccessError, botHasScope } from "@/lib/auth/botAccess";
 import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
@@ -47,6 +47,12 @@ export default async function handler(
 
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
     return;
+  }
+
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
   const session = {
@@ -100,7 +106,10 @@ export default async function handler(
     try {
       const result = await assertBotWalletAccess(db, walletId, payload, true);
       wallet = result.wallet;
-    } catch {
+    } catch (err) {
+      if (err instanceof BotAccessError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       return res.status(403).json({ error: "Not authorized for this wallet" });
     }
   } else {

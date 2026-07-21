@@ -39,6 +39,7 @@ jest.mock("@/lib/verifyJwt", () => ({
 }));
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
   assertBotWalletAccess: assertBotWalletAccessMock,

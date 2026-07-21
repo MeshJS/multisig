@@ -85,7 +85,10 @@ export default async function handler(
     if (isBotJwt(payload)) {
       const access = await getBotWalletAccess(db, walletId, payload.botId);
       if (!access.allowed) {
-        return res.status(403).json({ error: "Not authorized for this wallet" });
+        // Convention: 404 = unknown wallet, 403 = known but not permitted.
+        return access.reason === "wallet_not_found"
+          ? res.status(404).json({ error: "Wallet not found" })
+          : res.status(403).json({ error: "Not authorized for this wallet" });
       }
       pendingTxsResult = await db.transaction.findMany({
         where: { walletId, state: 0 },

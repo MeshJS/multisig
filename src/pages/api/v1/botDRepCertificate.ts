@@ -8,6 +8,7 @@ import {
   enforceBodySize,
 } from "@/lib/security/requestGuards";
 import { authorizeWalletSignerForV1Tx } from "@/lib/server/v1WalletAuth";
+import { BotAccessError, botHasScope } from "@/lib/auth/botAccess";
 import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
@@ -87,6 +88,12 @@ export default async function handler(
     return;
   }
 
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
+  }
+
   const body = req.body as {
     walletId?: string;
     address?: string;
@@ -114,6 +121,10 @@ export default async function handler(
   try {
     await authorizeWalletSignerForV1Tx(payload, walletId, address);
   } catch (err) {
+    if (err instanceof BotAccessError) {
+      // Convention: 404 = unknown wallet, 403 = known but not permitted.
+      return res.status(err.status).json({ error: err.message });
+    }
     const code = (err as { code?: string }).code;
     if (code === "INSUFFICIENT_SCOPE") {
       return res.status(403).json({ error: (err as Error).message });
