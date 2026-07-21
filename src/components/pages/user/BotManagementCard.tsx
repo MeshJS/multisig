@@ -470,7 +470,7 @@ export default function BotManagementCard() {
         ) : !botKeys?.length ? (
           <p className="text-sm text-muted-foreground">No bots yet. Register a bot and claim it to enable API access.</p>
         ) : (
-          <ul className="space-y-3 max-h-[280px] overflow-y-auto">
+          <ul className="max-h-[36rem] space-y-3 overflow-y-auto pr-1">
             {botKeys.map((key) => {
               const scopes = key.scopes ?? [];
               return (
@@ -539,13 +539,66 @@ export default function BotManagementCard() {
 
                       <div className="mt-2 space-y-2 rounded-md border p-2">
                         <p className="text-xs font-medium text-muted-foreground">Wallet access</p>
+
+                        {/* All current grants at a glance — not just the one
+                            for whichever wallet the dropdown happens to show. */}
+                        {key.botWalletAccesses?.length ? (
+                          <div className="flex flex-col gap-1.5">
+                            {key.botWalletAccesses.map((access) => {
+                              const grantWallet = userWallets?.find((w) => w.id === access.walletId);
+                              return (
+                                <div
+                                  key={access.walletId}
+                                  className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5"
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate text-xs font-medium">
+                                      {grantWallet?.name || getFirstAndLast(access.walletId, 8, 6)}
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        access.role === "cosigner"
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                          : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300"
+                                      }
+                                    >
+                                      {access.role}
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 shrink-0 px-2 text-xs text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                      if (!userAddress) return;
+                                      revokeBotAccess.mutate({
+                                        requesterAddress: userAddress,
+                                        walletId: access.walletId,
+                                        botId: botUser.id,
+                                      });
+                                    }}
+                                    disabled={revokeBotAccess.isPending || !userAddress}
+                                  >
+                                    Revoke
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No wallet grants yet — the bot can&apos;t read or draft anywhere until you grant one below.
+                          </p>
+                        )}
+
                         {isLoadingWallets ? (
                           <p className="text-xs text-muted-foreground">Loading multisigs...</p>
                         ) : !userWallets?.length ? (
                           <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
                         ) : (
                           <>
-                            <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto_auto] sm:items-center">
+                            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-center">
                               {(() => {
                                 const selectedWalletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? "";
                                 const currentAccess = key.botWalletAccesses?.find(
@@ -627,30 +680,9 @@ export default function BotManagementCard() {
                                   "Grant access"
                                 )}
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  const walletId = selectedWalletId;
-                                  if (!walletId || !userAddress) return;
-                                  revokeBotAccess.mutate({
-                                    requesterAddress: userAddress,
-                                    walletId,
-                                    botId: botUser.id,
-                                  });
-                                }}
-                                disabled={revokeBotAccess.isPending || !userAddress || !selectedWalletId || !currentAccess}
-                              >
-                                {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
-                              </Button>
-                              <p className="text-xs text-muted-foreground sm:col-span-4">
-                                {currentAccess
-                                  ? `Current access on selected wallet: ${currentAccess.role}`
-                                  : "Current access on selected wallet: none"}
-                              </p>
                               {!canBeCosigner && (
-                                <p className="text-xs text-amber-600 sm:col-span-4">
-                                  Cosigner is only available when the bot payment address is included in this wallet&apos;s signer list.
+                                <p className="text-xs text-muted-foreground sm:col-span-3">
+                                  Cosigner requires the bot&apos;s address in this wallet&apos;s signer list — observer is the right role for advisory bots.
                                 </p>
                               )}
                             </>
