@@ -117,6 +117,23 @@ export function keyHashToEnterpriseAddress(
   return serializeAddressObj(pubKeyAddress(keyHash), networkId);
 }
 
+/**
+ * Base bech32 address from a payment key hash + stake key hash. When both
+ * hashes belong to the same signer, this IS the address their wallet
+ * reports (for standard single-account wallets) — the exact string
+ * getUserWallets matches on for wallet visibility.
+ */
+export function keyHashesToBaseAddress(
+  paymentKeyHash: string,
+  stakeKeyHash: string,
+  networkId: number,
+): string {
+  return serializeAddressObj(
+    pubKeyAddress(paymentKeyHash, stakeKeyHash),
+    networkId,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Role-set recovery: reconstruct stake/dRep key sets from the registration
 // ---------------------------------------------------------------------------
@@ -137,6 +154,11 @@ export type RoleRecovery = {
   /** Per payment-slot raw 56-hex dRep key hashes; "" where the signer
    * registered none. */
   signersDRepKeys: string[];
+  /** Per payment-slot constructed base address (payment hash + that
+   * signer's recovered stake hash). Filled ONLY when the stake set is
+   * restored AND paired by name — combinatorial pairing is arbitrary and
+   * must never mint an address. "" where not constructible. */
+  signersBaseAddresses: string[];
 };
 
 const RECOVERY_MAX_PARTICIPANTS = 40;
@@ -228,6 +250,7 @@ export function recoverRoleKeySets(args: {
     pairedByName: false,
     signersStakeKeys: empty(),
     signersDRepKeys: empty(),
+    signersBaseAddresses: empty(),
   };
 
   // hash (lowercase) -> participant name
@@ -403,6 +426,14 @@ export function recoverRoleKeySets(args: {
         )
       : empty(),
     signersDRepKeys: drepRestored ? perSlotDRep! : empty(),
+    signersBaseAddresses:
+      stakeRestored && stakePairedByName
+        ? sigHashes.map((hash, i) =>
+            perSlotStake![i]
+              ? keyHashesToBaseAddress(hash, perSlotStake![i]!, networkId)
+              : "",
+          )
+        : empty(),
   };
 }
 
@@ -542,10 +573,19 @@ export function buildImportFromRegistration(args: {
     input: {
       name,
       description,
-      signersAddresses: sigHashes.map((hash) =>
+      // Co-signer slots get their CONSTRUCTED base address (registered
+      // payment hash + name-paired recovered stake hash) — the exact
+      // string a standard single-account wallet reports, so the wallet
+      // is visible to them (getUserWallets exact-match) with no paste or
+      // invite. A signer whose live wallet uses a different stake key
+      // silently won't match — same outcome as the enterprise
+      // placeholder, corrected via paste or invite. The user's own slot
+      // always keeps their wallet-reported address.
+      signersAddresses: sigHashes.map((hash, i) =>
         hash === userHash
           ? userAddress
-          : keyHashToEnterpriseAddress(hash, networkId),
+          : recovery.signersBaseAddresses[i] ||
+            keyHashToEnterpriseAddress(hash, networkId),
       ),
       signersStakeKeys: recovery.signersStakeKeys,
       signersDRepKeys: recovery.signersDRepKeys,
@@ -649,11 +689,14 @@ export function matchAddressesToSigSlots(args: {
 }
 
 /**
- * Final address per slot with precedence locked > assigned > fallback.
- * The "enterprise" fallback derives a payment-only bech32 address (used
- * when creating a final Wallet record); "keyhash" keeps the raw 56-hex
- * hash as a placeholder (used for invite drafts, where the invite
- * machinery treats bare hashes as unclaimed slots).
+ * Final address per slot with precedence locked > assigned > recovered >
+ * fallback. `recovered` carries base addresses constructed from the
+ * registration (RoleRecovery.signersBaseAddresses) — a pasted
+ * wallet-reported address still beats them. The "enterprise" fallback
+ * derives a payment-only bech32 address (used when creating a final
+ * Wallet record); "keyhash" keeps the raw 56-hex hash as a placeholder
+ * (used for invite drafts, where the invite machinery treats bare hashes
+ * as unclaimed slots).
  */
 export function buildSlotAddresses(args: {
   sigHashes: string[];
@@ -661,13 +704,17 @@ export function buildSlotAddresses(args: {
   lockedSlots: Record<number, string>;
   networkId: number;
   fallback: "enterprise" | "keyhash";
+  recovered?: Record<number, string>;
 }): string[] {
-  const { sigHashes, assignments, lockedSlots, networkId, fallback } = args;
+  const { sigHashes, assignments, lockedSlots, networkId, fallback, recovered } =
+    args;
   return sigHashes.map((hash, index) => {
     const locked = lockedSlots[index];
     if (locked !== undefined) return locked;
     const assigned = assignments[index];
     if (assigned !== undefined) return assigned;
+    const recoveredAddress = recovered?.[index];
+    if (recoveredAddress) return recoveredAddress;
     return fallback === "enterprise"
       ? keyHashToEnterpriseAddress(hash, networkId)
       : hash;

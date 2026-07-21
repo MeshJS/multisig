@@ -110,7 +110,12 @@ export default function DiscoverTab({ flow }: Props) {
         name: input.name,
         description: input.description,
         // Unknown slots stay as raw 56-hex key hashes — the invite page
-        // treats those as unclaimed placeholder slots.
+        // treats those as unclaimed placeholder slots. Deliberately no
+        // `recovered` base addresses here: claimNewWalletSignerSlot only
+        // matches claims against /^[0-9a-f]{56}$/ placeholder slots, so a
+        // pre-filled constructed address would make the slot unclaimable
+        // (claims are the corrective path when a signer's wallet reports
+        // a different address than the registered pairing).
         signersAddresses: buildSlotAddresses({
           sigHashes,
           assignments,
@@ -148,6 +153,7 @@ export default function DiscoverTab({ flow }: Props) {
             recovered: {
               stake: recovery?.stakeRestored ?? false,
               drep: recovery?.drepRestored ?? false,
+              baseAddresses: recovery?.pairedByName ?? false,
             },
           },
         },

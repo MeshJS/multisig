@@ -3,6 +3,7 @@ import {
   pubKeyAddress,
   resolveNativeScriptHash,
   resolvePaymentKeyHash,
+  resolveStakeKeyHash,
   serializeAddressObj,
   serializeNativeScript,
   serializeRewardAddress,
@@ -14,6 +15,7 @@ import {
   buildSlotAddresses,
   collectNativeScriptSigHashes,
   deriveStakeCredentialFromKeys,
+  keyHashesToBaseAddress,
   keyHashToEnterpriseAddress,
   matchAddressesToSigSlots,
   providerScriptJsonToNativeScript,
@@ -101,6 +103,15 @@ describe("keyHashToEnterpriseAddress", () => {
   });
 });
 
+describe("keyHashesToBaseAddress", () => {
+  it("produces a base address that round-trips both key hashes", () => {
+    const address = keyHashesToBaseAddress(hashA, mockKeyHashes.stake1, 0);
+    expect(address.startsWith("addr_test1")).toBe(true);
+    expect(resolvePaymentKeyHash(address)).toBe(hashA);
+    expect(resolveStakeKeyHash(address)).toBe(mockKeyHashes.stake1);
+  });
+});
+
 describe("buildImportFromRegistration", () => {
   const userAddress = keyHashToEnterpriseAddress(hashA, 0);
   const registration = {
@@ -141,7 +152,12 @@ describe("buildImportFromRegistration", () => {
     expect(input.stakeCredentialHash).toBe(stakeCredentialHash);
     // User's own slot carries their real address; others get derived
     // enterprise addresses that round-trip to the script's key hashes.
+    // (Stake set is unrecoverable here — types is [0] — so no base
+    // addresses are constructed.)
     expect(input.signersAddresses).toContain(userAddress);
+    expect(input.signersAddresses).toContain(
+      keyHashToEnterpriseAddress(hashB, 0),
+    );
     for (const addr of input.signersAddresses) {
       expect([hashA, hashB]).toContain(resolvePaymentKeyHash(addr));
     }
@@ -191,6 +207,16 @@ describe("buildImportFromRegistration", () => {
     expect(input.recovery?.stakeRestored).toBe(true);
     expect(input.recovery?.drepRestored).toBe(true);
     expect(input.recovery?.pairedByName).toBe(true);
+    // The user's own slot keeps their wallet-reported address; the
+    // co-signer's slot gets their CONSTRUCTED base address (payment +
+    // name-paired stake hash) — the string their wallet reports, so the
+    // wallet is visible to them without paste or invite.
+    expect(input.signersAddresses[slotOfA]).toBe(userAddress);
+    expect(input.signersAddresses[slotOfB]).toBe(
+      keyHashesToBaseAddress(hashB, stakeB, 0),
+    );
+    expect(resolvePaymentKeyHash(input.signersAddresses[slotOfB]!)).toBe(hashB);
+    expect(resolveStakeKeyHash(input.signersAddresses[slotOfB]!)).toBe(stakeB);
     expect(input.signersStakeKeys[slotOfA]).toBe(
       serializeRewardAddress(stakeA, false, 0),
     );
@@ -353,6 +379,41 @@ describe("buildSlotAddresses", () => {
       fallback: "enterprise",
     });
     expect(result).toEqual(["addr_test1locked", "addr_test1other"]);
+  });
+
+  it("slots recovered addresses between assignments and the fallback", () => {
+    const result = buildSlotAddresses({
+      sigHashes: [hashA, hashB, mockKeyHashes.drep1],
+      lockedSlots: { 0: "addr_test1locked" },
+      assignments: { 1: "addr_test1pasted" },
+      recovered: {
+        0: "addr_test1recovered0", // loses to locked
+        1: "addr_test1recovered1", // loses to pasted assignment
+        2: "addr_test1recovered2", // wins over the fallback
+      },
+      networkId: 0,
+      fallback: "enterprise",
+    });
+    expect(result).toEqual([
+      "addr_test1locked",
+      "addr_test1pasted",
+      "addr_test1recovered2",
+    ]);
+  });
+
+  it("lets empty recovered entries fall through to the fallback", () => {
+    const result = buildSlotAddresses({
+      sigHashes,
+      lockedSlots: {},
+      assignments: {},
+      recovered: { 0: "" },
+      networkId: 0,
+      fallback: "enterprise",
+    });
+    expect(result).toEqual([
+      keyHashToEnterpriseAddress(hashA, 0),
+      keyHashToEnterpriseAddress(hashB, 0),
+    ]);
   });
 
   it("falls back to enterprise addresses or raw key hashes", () => {
@@ -538,6 +599,15 @@ describe("recoverRoleKeySets", () => {
       s.map((hash) => serializeRewardAddress(hash, false, 0)),
     );
     expect(result.signersDRepKeys).toEqual(d);
+    // Name-paired recovery also reconstructs each signer's real base
+    // address (payment hash + their own stake hash).
+    expect(result.signersBaseAddresses).toEqual(
+      p.map((hash, i) => keyHashesToBaseAddress(hash, s[i]!, 0)),
+    );
+    for (const [i, address] of result.signersBaseAddresses.entries()) {
+      expect(resolvePaymentKeyHash(address)).toBe(p[i]);
+      expect(resolveStakeKeyHash(address)).toBe(s[i]);
+    }
   });
 
   it("recovers the real preprod shape: some signers have no dRep key", () => {
@@ -583,6 +653,8 @@ describe("recoverRoleKeySets", () => {
 
     expect(result.stakeRestored).toBe(true);
     expect(result.pairedByName).toBe(false);
+    // Arbitrary pairing must never mint a base address.
+    expect(result.signersBaseAddresses).toEqual(["", "", ""]);
     // Slot pairing is arbitrary but the sets are exact.
     const recoveredStakeSet = result.signersStakeKeys.map((addr) =>
       deriveStakeCredentialFromKeys({
@@ -613,6 +685,7 @@ describe("recoverRoleKeySets", () => {
     expect(result.drepRestored).toBe(false);
     expect(result.signersStakeKeys).toEqual(["", "", ""]);
     expect(result.signersDRepKeys).toEqual(["", "", ""]);
+    expect(result.signersBaseAddresses).toEqual(["", "", ""]);
   });
 
   it("recovers dRep keys without staking when the registration has no role 2", () => {
@@ -629,6 +702,7 @@ describe("recoverRoleKeySets", () => {
     expect(result.signersStakeKeys).toEqual(["", "", ""]);
     expect(result.drepRestored).toBe(true);
     expect(result.signersDRepKeys).toEqual(d);
+    expect(result.signersBaseAddresses).toEqual(["", "", ""]);
   });
 
   it("refuses to guess dRep keys when every hash is reused (no leftovers)", () => {

@@ -88,8 +88,28 @@ export default function AssignSignersPanel({
     [pending.sigHashes, lockedSlots, pastedLines, network],
   );
 
+  // Base addresses constructed from the registration (payment hash +
+  // name-paired recovered stake hash) — the co-signer's real wallet
+  // address for standard wallets, so the wallet is visible to them with
+  // no paste or invite. A pasted wallet-reported address still wins.
+  const recoveredSlots = useMemo(() => {
+    const out: Record<number, string> = {};
+    (pending.input.recovery?.signersBaseAddresses ?? []).forEach(
+      (address, i) => {
+        if (address && lockedSlots[i] === undefined) out[i] = address;
+      },
+    );
+    return out;
+  }, [pending.input.recovery, lockedSlots]);
+
   const unknownCount = pending.sigHashes.filter(
-    (_, i) => lockedSlots[i] === undefined && assignments[i] === undefined,
+    (_, i) =>
+      lockedSlots[i] === undefined &&
+      assignments[i] === undefined &&
+      recoveredSlots[i] === undefined,
+  ).length;
+  const recoveredCount = pending.sigHashes.filter(
+    (_, i) => assignments[i] === undefined && recoveredSlots[i] !== undefined,
   ).length;
 
   const finalAddresses = useMemo(
@@ -100,8 +120,9 @@ export default function AssignSignersPanel({
         lockedSlots,
         networkId: network,
         fallback: "enterprise",
+        recovered: recoveredSlots,
       }),
-    [pending.sigHashes, assignments, lockedSlots, network],
+    [pending.sigHashes, assignments, lockedSlots, network, recoveredSlots],
   );
 
   // Stake keys recovered from the registration's participant hashes and
@@ -146,10 +167,9 @@ export default function AssignSignersPanel({
       <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-sm sm:p-4">
         <p className="font-medium">Assign signer addresses</p>
         <p className="mt-1 text-muted-foreground">
-          The chain only records signer key hashes. Paste your co-signers'
-          wallet addresses so the wallet shows up in their account too —
-          slots left unknown will use a derived placeholder address and
-          won't be visible to that signer.
+          {recoveredCount > 0
+            ? "Co-signer addresses marked “from registration” were reconstructed from the on-chain registration — the wallet will show up in those signers' accounts automatically. Paste an address only for remaining unknown slots, or if a signer's wallet reports a different address."
+            : "The chain only records signer key hashes. Paste your co-signers' wallet addresses so the wallet shows up in their account too — slots left unknown will use a derived placeholder address and won't be visible to that signer."}
         </p>
       </div>
 
@@ -197,6 +217,16 @@ export default function AssignSignersPanel({
                       {getFirstAndLast(assigned, 12, 8)}
                     </code>
                   </>
+                ) : recoveredSlots[index] ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Badge variant="outline" className="text-[10px]">
+                      from registration
+                    </Badge>
+                    <code className="text-muted-foreground">
+                      {getFirstAndLast(recoveredSlots[index]!, 12, 8)}
+                    </code>
+                  </>
                 ) : (
                   <span className="text-muted-foreground">
                     Unknown — will use a placeholder address
@@ -241,8 +271,10 @@ export default function AssignSignersPanel({
               {pending.input.recovery?.drepRestored
                 ? ", including the registered dRep keys"
                 : ""}
-              . Pasting addresses is optional — it only makes the wallet
-              visible in your co-signers' accounts.
+              .{" "}
+              {unknownCount === 0
+                ? "All co-signer addresses are known — the wallet will appear in every signer's account automatically."
+                : "Pasting addresses is optional — it only makes the wallet visible in your co-signers' accounts."}
             </p>
           ) : stakeRestoration.restored ? (
             <p className="text-xs text-green-600 dark:text-green-400">
