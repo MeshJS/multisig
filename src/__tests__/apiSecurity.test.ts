@@ -5,7 +5,11 @@ import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { createCaller } from "@/server/api/root";
 
 const mockRes = () => {
-  const res: any = { statusCode: 200, body: null };
+  const res: any = { statusCode: 200, body: null, headers: {} };
+  res.setHeader = (name: string, value: string) => {
+    res.headers[name] = value;
+    return res;
+  };
   res.status = (code: number) => {
     res.statusCode = code;
     return res;

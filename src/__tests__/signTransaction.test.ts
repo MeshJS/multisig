@@ -825,7 +825,7 @@ describe('signTransaction API route', () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing token' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)' });
     expect(verifyJwtMock).not.toHaveBeenCalled();
     expect(createCallerMock).not.toHaveBeenCalled();
   });

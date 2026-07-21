@@ -49,15 +49,15 @@ npm install
 
 ### 1. Register -> claim -> pickup -> auth
 
-1. Bot self-registers and receives a claim code:
+1. Bot self-registers and receives a claim code. A new bot registers **without** an address — it has no wallet yet; the address is bound later at its first `botAuth`:
 
 ```bash
 curl -sS -X POST http://localhost:3000/api/v1/botRegister \
    -H "Content-Type: application/json" \
-   -d '{"name":"Reference Bot","paymentAddress":"addr1_xxx","requestedScopes":["multisig:read","multisig:sign"]}'
+   -d '{"name":"Reference Bot","requestedScopes":["multisig:read","multisig:sign"]}'
 ```
 
-Response includes `pendingBotId` and `claimCode`.
+Response includes `pendingBotId` and `claimCode`. (`paymentAddress` may still be included if the bot already controls a wallet.)
 
 2. Human claims the bot in the app by entering `pendingBotId` and `claimCode`.
 
@@ -69,7 +69,7 @@ curl -sS "http://localhost:3000/api/v1/botPickupSecret?pendingBotId=<pendingBotI
 
 Response includes `botKeyId` and `secret`.
 
-4. Set config with `botKeyId`, `secret`, and `paymentAddress`, then authenticate to get a JWT:
+4. If the bot has no wallet yet, generate one now (`npx tsx generate-bot-wallet.ts`) — the first `auth` binds this address to the bot. Set config with `botKeyId`, `secret`, and `paymentAddress`, then authenticate to get a JWT:
 
 ```bash
 BOT_CONFIG='{"baseUrl":"http://localhost:3000","botKeyId":"YOUR_KEY","secret":"YOUR_SECRET","paymentAddress":"addr1_xxx"}' npx tsx bot-client.ts auth

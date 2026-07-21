@@ -74,7 +74,7 @@ For example, \`/api/v1/nativeScript\` would be accessed at:
 
 ### Rate Limiting
 
-Please be mindful of rate limits when testing endpoints. Excessive requests may result in temporary restrictions.
+Endpoints are rate limited per IP (and per bot for bot-authenticated calls, default 40/min). Every guarded response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Reset\`; a 429 additionally carries \`Retry-After\` (seconds). Space your requests and back off using these headers — rejected requests never extend the window.
 
 ### Support
 
@@ -1210,8 +1210,9 @@ This API uses **Bearer Token** authentication (JWT).
         post: {
           tags: ["Auth", "Bot"],
           summary: "Self-register a bot for human claim approval",
+          security: [],
           description:
-            "Creates a pending bot registration and returns a short-lived claim code for a human owner to approve.",
+            "Creates a pending bot registration and returns a claim code (valid 30 minutes) for a human owner to approve. New bots should initially register WITHOUT a paymentAddress — a fresh bot usually has no wallet yet; the address is bound at the bot's first POST /api/v1/botAuth instead.",
           requestBody: {
             required: true,
             content: {
@@ -1220,7 +1221,12 @@ This API uses **Bearer Token** authentication (JWT).
                   type: "object",
                   properties: {
                     name: { type: "string", minLength: 1, maxLength: 100 },
-                    paymentAddress: { type: "string", minLength: 20 },
+                    paymentAddress: {
+                      type: "string",
+                      minLength: 20,
+                      description:
+                        "Optional. Omit on first registration; the bot binds its address at first botAuth.",
+                    },
                     stakeAddress: { type: "string" },
                     requestedScopes: {
                       type: "array",
@@ -1237,7 +1243,7 @@ This API uses **Bearer Token** authentication (JWT).
                       minItems: 1,
                     },
                   },
-                  required: ["name", "paymentAddress", "requestedScopes"],
+                  required: ["name", "requestedScopes"],
                 },
               },
             },
@@ -1333,6 +1339,7 @@ This API uses **Bearer Token** authentication (JWT).
       "/api/v1/botPickupSecret": {
         get: {
           tags: ["Auth", "Bot"],
+          security: [],
           summary: "Retrieve one-time bot secret after claim",
           description:
             "Returns bot credentials exactly once after a successful claim. Requires pendingBotId query parameter.",
@@ -1373,8 +1380,9 @@ This API uses **Bearer Token** authentication (JWT).
         post: {
           tags: ["Auth", "Bot"],
           summary: "Bot authentication",
+          security: [],
           description:
-            "Authenticate a bot key and return a bot JWT. botKeyId and secret are issued by the claim flow: POST /api/v1/botRegister -> human POST /api/v1/botClaim -> GET /api/v1/botPickupSecret.",
+            "Authenticate a bot key and return a bot JWT (valid ~1 hour; re-run botAuth to refresh — there is no separate refresh endpoint). botKeyId and secret are issued by the claim flow: POST /api/v1/botRegister -> human POST /api/v1/botClaim -> GET /api/v1/botPickupSecret. The secret can only be picked up ONCE but stays valid for repeated botAuth calls — store it securely. paymentAddress is required on the FIRST auth (it binds the bot's identity) and optional afterwards; the JWT always carries the server-side bound address, and a mismatching supplied address is rejected with 409.",
           requestBody: {
             required: true,
             content: {
@@ -1383,11 +1391,15 @@ This API uses **Bearer Token** authentication (JWT).
                   type: "object",
                   properties: {
                     botKeyId: { type: "string", description: "Bot key ID from bot claim flow" },
-                    secret: { type: "string", description: "One-time secret from botPickupSecret" },
-                    paymentAddress: { type: "string", description: "Cardano payment address for this bot" },
+                    secret: { type: "string", description: "Secret from botPickupSecret (one-time pickup, reusable for auth)" },
+                    paymentAddress: {
+                      type: "string",
+                      description:
+                        "Cardano payment address for this bot. Required on first auth (binds the address); optional afterwards and must match the bound address if provided.",
+                    },
                     stakeAddress: { type: "string", description: "Optional stake address" },
                   },
-                  required: ["botKeyId", "secret", "paymentAddress"],
+                  required: ["botKeyId", "secret"],
                 },
               },
             },
@@ -1407,10 +1419,13 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing or invalid botKeyId, secret, or paymentAddress" },
+            400: { description: "Missing or invalid botKeyId/secret, or paymentAddress missing on first auth" },
             401: { description: "Invalid bot key" },
             403: { description: "Insufficient scope" },
-            409: { description: "paymentAddress already registered to another bot" },
+            409: {
+              description:
+                "paymentAddress does not match the address bound to this bot key, or is already registered to another bot",
+            },
             405: { description: "Method not allowed" },
             429: { description: "Too many requests" },
             500: { description: "Internal server error" },
@@ -1574,7 +1589,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot", "Governance"],
           summary: "List active governance proposals for bots",
           description:
-            "Returns active on-chain governance proposals only (enacted/dropped/expired/ratified are filtered out). Requires bot JWT and governance:read scope.",
+            "Returns active on-chain governance proposals. 'Active' means no terminal epoch (enacted/dropped/expired/ratified) has been stamped by the chain indexer — this can be a smaller set than explorer 'active' headers, which often still display ratified-but-not-enacted actions (outcome decided, enactment waiting for the epoch boundary) as open. Pass includeRatified=true to also get those boundary cases (status 'ratified'). The response includes currentEpoch so deadlines can be computed from details.expiration. Requires bot JWT and governance:read scope.",
           parameters: [
             {
               in: "query",
@@ -1606,12 +1621,22 @@ This API uses **Bearer Token** authentication (JWT).
               name: "details",
               required: false,
               schema: { type: "string", enum: ["true", "false"], default: "false" },
-              description: "Set true to include extra per-proposal details fields.",
+              description:
+                "Set true to include extra per-proposal details fields (expiration epoch, deposit, parameters — recommended for advisory bots).",
+            },
+            {
+              in: "query",
+              name: "includeRatified",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"], default: "false" },
+              description:
+                "Set true to also include ratified-but-not-enacted proposals (status 'ratified') — the boundary cases explorers may still display as open.",
             },
           ],
           responses: {
             200: {
-              description: "Active proposals list (after active-status filtering)",
+              description:
+                "Proposals list plus paging echo, currentEpoch (null if unavailable), sourceCount and activeCount",
             },
             400: { description: "Invalid query parameter" },
             401: { description: "Unauthorized" },

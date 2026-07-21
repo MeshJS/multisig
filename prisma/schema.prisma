@@ -320,11 +320,14 @@ enum PendingBotStatus {
 model PendingBot {
   id              String           @id @default(cuid())
   name            String
-  paymentAddress  String
+  // Optional: new bots normally register before they have a wallet; the
+  // address is bound to the BotUser at first botAuth instead.
+  paymentAddress  String?
   stakeAddress    String?
   requestedScopes String // JSON array of requested scopes
   status          PendingBotStatus @default(UNCLAIMED)
   claimedBy       String? // ownerAddress of the claiming human
+  botKeyId        String? // BotKey minted at claim; lets pickup work without an address
   secretCipher    String? // Encrypted secret (set on claim, cleared on pickup)
   pickedUp        Boolean          @default(false)
   expiresAt       DateTime

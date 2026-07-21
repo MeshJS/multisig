@@ -41,13 +41,13 @@ export default function BotManagementCard() {
   const [claimCode, setClaimCode] = useState("");
   const [pendingBotInfo, setPendingBotInfo] = useState<{
     name: string;
-    paymentAddress: string;
+    paymentAddress: string | null;
     requestedScopes: string[];
   } | null>(null);
   const [approvedScopes, setApprovedScopes] = useState<BotScope[]>([]);
   const [claimResult, setClaimResult] = useState<{
     botKeyId: string;
-    botId: string;
+    botId: string | null;
     name: string;
     scopes: BotScope[];
   } | null>(null);
@@ -301,11 +301,18 @@ export default function BotManagementCard() {
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <RowLabelInfo label="Bot name" value={pendingBotInfo.name} />
-                    <RowLabelInfo
-                      label="Address"
-                      value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
-                      copyString={pendingBotInfo.paymentAddress}
-                    />
+                    {pendingBotInfo.paymentAddress ? (
+                      <RowLabelInfo
+                        label="Address"
+                        value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
+                        copyString={pendingBotInfo.paymentAddress}
+                      />
+                    ) : (
+                      <RowLabelInfo
+                        label="Address"
+                        value="Not set yet — bound when the bot first authenticates"
+                      />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Requested scopes</Label>
@@ -368,11 +375,18 @@ export default function BotManagementCard() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-1">
-                  <RowLabelInfo
-                    label="Bot ID"
-                    value={getFirstAndLast(claimResult.botId, 10, 8)}
-                    copyString={claimResult.botId}
-                  />
+                  {claimResult.botId ? (
+                    <RowLabelInfo
+                      label="Bot ID"
+                      value={getFirstAndLast(claimResult.botId, 10, 8)}
+                      copyString={claimResult.botId}
+                    />
+                  ) : (
+                    <RowLabelInfo
+                      label="Bot ID"
+                      value="Assigned when the bot first authenticates"
+                    />
+                  )}
                   <RowLabelInfo
                     label="Key ID"
                     value={getFirstAndLast(claimResult.botKeyId, 10, 8)}

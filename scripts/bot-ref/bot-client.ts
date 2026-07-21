@@ -4,7 +4,7 @@
  * Used by Cursor agent and local scripts to test bot flows.
  *
  * Usage:
- *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","paymentAddress":"addr1_..."}' npx tsx bot-client.ts register "Reference Bot" multisig:read
+ *   BOT_CONFIG='{"baseUrl":"http://localhost:3000"}' npx tsx bot-client.ts register "Reference Bot" multisig:read
  *   BOT_CONFIG='{"baseUrl":"http://localhost:3000"}' npx tsx bot-client.ts pickup <pendingBotId>
  *   BOT_CONFIG='{"baseUrl":"http://localhost:3000","botKeyId":"...","secret":"...","paymentAddress":"addr1_..."}' npx tsx bot-client.ts auth
  *   npx tsx bot-client.ts walletIds
@@ -51,19 +51,47 @@ function ensureSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
-/** Authenticate with bot key + payment address; returns JWT. */
+/**
+ * fetch with polite 429 handling: honors Retry-After (falling back to
+ * exponential backoff starting at 5s, capped at 60s) and retries up to
+ * maxRetries times. Never tight-retry a 429 — the server's window is fixed
+ * and hammering it just keeps you blind.
+ */
+export async function fetchWithBackoff(
+  url: string,
+  init?: RequestInit,
+  maxRetries = 3,
+): Promise<Response> {
+  let attempt = 0;
+  for (;;) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt >= maxRetries) {
+      return res;
+    }
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const fallback = Math.min(5_000 * 2 ** attempt, 60_000);
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : fallback;
+    console.error(`429 rate-limited; waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 1}/${maxRetries}`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    attempt++;
+  }
+}
+
+/** Authenticate with the bot key; returns a ~1h JWT (re-run on 401).
+ * paymentAddress is only needed on the FIRST auth — it binds the bot's
+ * address; afterwards the server uses the bound address. */
 export async function botAuth(config: BotConfig): Promise<{ token: string; botId: string }> {
-  if (!config.botKeyId || !config.secret || !config.paymentAddress) {
-    throw new Error("auth requires botKeyId, secret, and paymentAddress in config");
+  if (!config.botKeyId || !config.secret) {
+    throw new Error("auth requires botKeyId and secret in config");
   }
   const base = ensureSlash(config.baseUrl);
-  const res = await fetch(`${base}/api/v1/botAuth`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/botAuth`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       botKeyId: config.botKeyId,
       secret: config.secret,
-      paymentAddress: config.paymentAddress,
+      ...(config.paymentAddress ? { paymentAddress: config.paymentAddress } : {}),
     }),
   });
   if (!res.ok) {
@@ -79,13 +107,15 @@ export async function registerBot(
   baseUrl: string,
   body: {
     name: string;
-    paymentAddress: string;
     requestedScopes: string[];
+    // Omit for a new bot: it has no wallet yet, and the address is bound at
+    // the first botAuth. Only pass when the bot already controls a wallet.
+    paymentAddress?: string;
     stakeAddress?: string;
   },
 ): Promise<{ pendingBotId: string; claimCode: string; claimExpiresAt: string }> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/botRegister`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/botRegister`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -101,22 +131,22 @@ export async function registerBot(
 export async function pickupBotSecret(
   baseUrl: string,
   pendingBotId: string,
-): Promise<{ botKeyId: string; secret: string; paymentAddress: string }> {
+): Promise<{ botKeyId: string; secret: string; paymentAddress: string | null }> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(
+  const res = await fetchWithBackoff(
     `${base}/api/v1/botPickupSecret?pendingBotId=${encodeURIComponent(pendingBotId)}`,
   );
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`botPickupSecret failed ${res.status}: ${text}`);
   }
-  return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string };
+  return (await res.json()) as { botKeyId: string; secret: string; paymentAddress: string | null };
 }
 
 /** Get wallet IDs for the bot (requires prior auth; pass JWT). */
 export async function getWalletIds(baseUrl: string, token: string, address: string): Promise<{ walletId: string; walletName: string }[]> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/walletIds?address=${encodeURIComponent(address)}`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/walletIds?address=${encodeURIComponent(address)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`walletIds failed ${res.status}: ${await res.text()}`);
@@ -131,7 +161,7 @@ export async function getPendingTransactions(
   address: string,
 ): Promise<unknown[]> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(
+  const res = await fetchWithBackoff(
     `${base}/api/v1/pendingTransactions?walletId=${encodeURIComponent(walletId)}&address=${encodeURIComponent(address)}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
@@ -147,7 +177,7 @@ export async function getFreeUtxos(
   address: string,
 ): Promise<unknown[]> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(
+  const res = await fetchWithBackoff(
     `${base}/api/v1/freeUtxos?walletId=${encodeURIComponent(walletId)}&address=${encodeURIComponent(address)}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
@@ -167,7 +197,7 @@ export async function getBotMe(
   ownerAddress: string;
 }> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/botMe`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/botMe`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`botMe failed ${res.status}: ${await res.text()}`);
@@ -192,7 +222,7 @@ export async function getOwnerInfo(
   bot: { botId: string; paymentAddress: string; displayName: string | null; botName: string } | null;
 }> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(
+  const res = await fetchWithBackoff(
     `${base}/api/v1/ownerInfo?walletId=${encodeURIComponent(walletId)}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
@@ -223,7 +253,7 @@ export async function createWallet(
   },
 ): Promise<{ walletId: string; address: string; name: string }> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/createWallet`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/createWallet`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -252,7 +282,7 @@ export async function botStakeCertificate(
   },
 ): Promise<unknown> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/botStakeCertificate`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/botStakeCertificate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -281,7 +311,7 @@ export async function botDRepCertificate(
   },
 ): Promise<unknown> {
   const base = ensureSlash(baseUrl);
-  const res = await fetch(`${base}/api/v1/botDRepCertificate`, {
+  const res = await fetchWithBackoff(`${base}/api/v1/botDRepCertificate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -318,15 +348,12 @@ async function main() {
   if (cmd === "register") {
     const name = process.argv[3];
     const scopesArg = process.argv[4] ?? "multisig:read";
+    // Optional: a new bot registers without an address (it has no wallet yet)
+    // and binds one at its first auth. Passing an address is the exception.
     const paymentAddress = process.argv[5] ?? config.paymentAddress;
 
     if (!name) {
       console.error("Usage: bot-client.ts register <name> [scope1,scope2,...] [paymentAddress]");
-      process.exit(1);
-    }
-
-    if (!paymentAddress) {
-      console.error("paymentAddress is required for register (arg or config).");
       process.exit(1);
     }
 
@@ -342,9 +369,12 @@ async function main() {
 
     const result = await registerBot(config.baseUrl, {
       name,
-      paymentAddress,
       requestedScopes,
+      ...(paymentAddress ? { paymentAddress } : {}),
     });
+    if (!paymentAddress) {
+      console.error("Registered without an address — bind one at first auth (generate-bot-wallet.ts, then `auth`).");
+    }
     console.log(JSON.stringify(result, null, 2));
     console.error("Human must now claim this bot in UI using pendingBotId + claimCode.");
     return;
