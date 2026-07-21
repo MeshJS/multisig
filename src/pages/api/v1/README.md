@@ -231,7 +231,7 @@ Endpoints:
 - **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
 - **Authentication**: Required (bot JWT Bearer token)
 - **Scope**: `ballot:write`
-- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Wallet Access**: Any granted role for `walletId` — **observer is enough** (ballot drafts are unsigned advisory rows; bots cannot set anchors)
 - **Features**:
   - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
   - `409` on ambiguous `ballotName` matches
