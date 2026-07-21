@@ -31,13 +31,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { botKeyId, secret, paymentAddress, stakeAddress } = req.body;
 
-  if (typeof botKeyId !== "string" || typeof secret !== "string" || typeof paymentAddress !== "string") {
+  if (typeof botKeyId !== "string" || typeof secret !== "string") {
     return res.status(400).json({
-      error: "Missing required fields: botKeyId, secret, paymentAddress",
+      error: "Missing required fields: botKeyId, secret",
     });
   }
 
-  if (!paymentAddress || paymentAddress.length < 20) {
+  // The bot's identity is the address BOUND to its key server-side — never
+  // whatever the caller asserts. paymentAddress is only needed on the FIRST
+  // auth (it binds the address); afterwards it may be omitted, and if sent it
+  // must match the bound address.
+  const hasAddress = paymentAddress !== undefined && paymentAddress !== null;
+  if (hasAddress && (typeof paymentAddress !== "string" || paymentAddress.length < 20)) {
     return res.status(400).json({ error: "Invalid paymentAddress" });
   }
 
@@ -57,26 +62,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const stake = typeof stakeAddress === "string" ? stakeAddress : null;
 
-  const existingByAddress = await db.botUser.findUnique({ where: { paymentAddress } });
-  if (existingByAddress && existingByAddress.botKeyId !== botKey.id) {
-    return res.status(409).json({ error: "This address is already registered to another bot" });
+  let botUser = await db.botUser.findUnique({ where: { botKeyId: botKey.id } });
+  if (botUser) {
+    if (hasAddress && paymentAddress !== botUser.paymentAddress) {
+      return res.status(409).json({
+        error: "paymentAddress does not match the address bound to this bot key",
+      });
+    }
+    if (stake && stake !== botUser.stakeAddress) {
+      botUser = await db.botUser.update({
+        where: { id: botUser.id },
+        data: { stakeAddress: stake },
+      });
+    }
+  } else {
+    if (!hasAddress) {
+      return res.status(400).json({
+        error: "paymentAddress is required on the first botAuth — it binds the bot's address",
+      });
+    }
+    const existingByAddress = await db.botUser.findUnique({ where: { paymentAddress } });
+    if (existingByAddress) {
+      return res.status(409).json({ error: "This address is already registered to another bot" });
+    }
+    botUser = await db.botUser.create({
+      data: {
+        botKeyId: botKey.id,
+        paymentAddress,
+        stakeAddress: stake,
+        // Address-less registrations create their BotUser here on first auth;
+        // carry the registration name over like the claim path does.
+        displayName: botKey.name,
+      },
+    });
   }
-
-  const botUser = await db.botUser.upsert({
-    where: { botKeyId: botKey.id },
-    update: {
-      paymentAddress,
-      stakeAddress: stake,
-    },
-    create: {
-      botKeyId: botKey.id,
-      paymentAddress,
-      stakeAddress: stake,
-      // Address-less registrations create their BotUser here on first auth;
-      // carry the registration name over like the claim path does.
-      displayName: botKey.name,
-    },
-  });
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) {

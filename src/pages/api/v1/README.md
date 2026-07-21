@@ -386,8 +386,9 @@ Endpoints:
 - **Features**:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
-  - BotUser upsert with payment and optional stake address
+  - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
   - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)

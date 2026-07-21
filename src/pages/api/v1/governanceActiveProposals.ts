@@ -124,14 +124,29 @@ const getGovernanceProvider = (network: string): { get: (path: string) => Promis
 
 const getErrorStatus = getProviderErrorStatus;
 
-const toInt = (value: string | string[] | undefined, fallback: number): number => {
-  if (typeof value !== "string") return fallback;
+/** Strict integer query param: undefined → fallback, anything else must be an in-range integer. */
+const parseIntParam = (
+  value: string | string[] | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number | null => {
+  if (value === undefined) return fallback;
+  if (typeof value !== "string") return null;
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
 };
 
-const isBoolQueryTrue = (value: string | string[] | undefined): boolean =>
-  typeof value === "string" && value.toLowerCase() === "true";
+/** Strict boolean query param: undefined → false, otherwise must be "true"/"false". */
+const parseBoolParam = (value: string | string[] | undefined): boolean | null => {
+  if (value === undefined) return false;
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
+  return null;
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   addCorsCacheBustingHeaders(res);
@@ -151,7 +166,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -183,18 +198,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Invalid network. Use '0' (preprod) or '1' (mainnet)." });
   }
 
-  const count = Math.min(toInt(req.query.count, 100), 100);
-  const page = toInt(req.query.page, 1);
+  const count = parseIntParam(req.query.count, 100, 1, 100);
+  if (count === null) {
+    return res.status(400).json({ error: "Invalid count. Use an integer between 1 and 100." });
+  }
+  const page = parseIntParam(req.query.page, 1, 1, 10_000);
+  if (page === null) {
+    return res.status(400).json({ error: "Invalid page. Use an integer >= 1." });
+  }
   const orderRaw = typeof req.query.order === "string" ? req.query.order : "desc";
   const order = orderRaw === "asc" ? "asc" : orderRaw === "desc" ? "desc" : null;
   if (!order) {
     return res.status(400).json({ error: "Invalid order. Use 'asc' or 'desc'." });
   }
-  const includeDetails = isBoolQueryTrue(req.query.details);
-  const includeDebug = isBoolQueryTrue(req.query.debug) || process.env.NODE_ENV === "test";
+  const includeDetails = parseBoolParam(req.query.details);
+  if (includeDetails === null) {
+    return res.status(400).json({ error: "Invalid details. Use 'true' or 'false'." });
+  }
+  const includeRatified = parseBoolParam(req.query.includeRatified);
+  if (includeRatified === null) {
+    return res.status(400).json({ error: "Invalid includeRatified. Use 'true' or 'false'." });
+  }
+  const includeDebug = parseBoolParam(req.query.debug) === true || process.env.NODE_ENV === "test";
 
   try {
     const provider = getGovernanceProvider(network);
+
+    // Current epoch lets bots compute time-to-deadline from details.expiration
+    // without a second data source. Best-effort — null if the lookup fails.
+    let currentEpoch: number | null = null;
+    try {
+      const latestEpoch = await providerGet<{ epoch?: number }>({
+        provider,
+        network,
+        path: "/epochs/latest",
+      });
+      currentEpoch = typeof latestEpoch?.epoch === "number" ? latestEpoch.epoch : null;
+    } catch {
+      // leave null
+    }
+
     let list: BlockfrostProposalListItem[];
     try {
       list = await providerGet<BlockfrostProposalListItem[]>({
@@ -265,10 +308,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }),
     );
 
-    const active = statusResolved.filter((entry) => entry.status === "active");
+    // "active" = no terminal epoch stamped on-chain. Explorers often still
+    // display ratified-but-not-enacted actions as open (their outcome is
+    // decided but enactment waits for the epoch boundary) — bots that want
+    // those boundary cases can opt in via includeRatified=true.
+    const included = statusResolved.filter(
+      (entry) =>
+        entry.status === "active" ||
+        (includeRatified && entry.status === "ratified"),
+    );
 
     const proposals = await Promise.all(
-      active.map(async ({ item, detailsForStatus }) => {
+      included.map(async ({ item, detailsForStatus, status }) => {
         const txHash = item.tx_hash;
         const certIndex = Number(item.cert_index);
         let metadata: ProposalMetadata | null = null;
@@ -328,7 +379,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           motivation: body?.motivation ?? null,
           rationale: body?.rationale ?? null,
           authors,
-          status: "active" as const,
+          status,
           details: includeDetails
             ? {
                 proposedEpoch:
@@ -370,6 +421,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       order,
       network,
       details: includeDetails,
+      includeRatified,
+      currentEpoch,
       sourceCount: Array.isArray(list) ? list.length : 0,
       activeCount: proposals.length,
     });

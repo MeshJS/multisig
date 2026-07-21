@@ -4,7 +4,9 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyStrictRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { generateClaimCode, sha256, BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
 
-const CLAIM_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// 30 minutes: the claim is human-in-the-loop (open app, connect wallet,
+// paste code, sign) — 10 minutes proved too tight in practice.
+const CLAIM_CODE_TTL_MS = 30 * 60 * 1000;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   addCorsCacheBustingHeaders(res);

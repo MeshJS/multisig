@@ -73,7 +73,7 @@ export default async function handler(
     : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
