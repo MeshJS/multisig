@@ -5,6 +5,9 @@ export default defineConfig({
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   globalSetup: "./global-setup.ts",
   timeout: 120_000,
+  // Playwright's 5s default is too tight when 3 workers hit the app cold —
+  // assertions that gate on tRPC round-trips false-fail under contention.
+  expect: { timeout: 15_000 },
   retries: 0,
   // The ring-transfer legs spend from distinct wallets and run in parallel —
   // one worker per leg. Default worker detection inside a container can

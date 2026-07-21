@@ -90,7 +90,10 @@ async function createWalletThroughUi(
   await createDraftPromise;
   await expect(page).toHaveURL(/\/wallets\/new-wallet-flow\/create\/[^/]+$/);
 
-  await expect(page.locator("tbody tr").first()).toBeVisible();
+  // Fresh page load: the signers table only renders after the user and
+  // getNewWallet queries resolve, which can exceed the default expect
+  // timeout while all workers hit the app cold.
+  await expect(page.locator("tbody tr").first()).toBeVisible({ timeout: 30_000 });
   await page.locator("tbody tr").first().locator("button").first().click();
   await saveSigner(page, {
     name: "Signer 1",
