@@ -40,6 +40,7 @@ jest.mock("@/server/db", () => ({
 }), { virtual: true });
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getWalletIdsForBot: getWalletIdsForBotMock,
 }), { virtual: true });

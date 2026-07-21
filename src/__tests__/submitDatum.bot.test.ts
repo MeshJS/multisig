@@ -10,6 +10,7 @@ const enforceBodySizeMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, 
 const verifyJwtMock: jest.Mock = jest.fn();
 const isBotJwtMock: jest.Mock = jest.fn();
 const assertBotWalletAccessMock: jest.Mock = jest.fn();
+const botHasScopeMock: jest.Mock = jest.fn();
 const checkSignatureMock: jest.Mock = jest.fn();
 const createSignableMock: jest.Mock = jest.fn();
 
@@ -33,6 +34,8 @@ jest.mock("@/lib/verifyJwt", () => ({
 }), { virtual: true });
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
+  botHasScope: botHasScopeMock,
   __esModule: true,
   assertBotWalletAccess: assertBotWalletAccessMock,
 }), { virtual: true });
@@ -58,6 +61,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (botHasScopeMock as any).mockResolvedValue(true);
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
   enforceBodySizeMock.mockReturnValue(true);
@@ -70,6 +74,20 @@ beforeEach(() => {
 });
 
 describe("submitDatum bot API", () => {
+  it("rejects a scope-less bot with 403 before body validation runs", async () => {
+    (botHasScopeMock as any).mockResolvedValue(false);
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      // Deliberately invalid body: the scope gate must fire first.
+      body: {},
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Insufficient scope: multisig:sign required" });
+    expect(assertBotWalletAccessMock).not.toHaveBeenCalled();
+  });
   it("returns 401 for invalid datum signature", async () => {
     (checkSignatureMock as any).mockResolvedValue(false);
     const req = {

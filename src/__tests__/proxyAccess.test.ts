@@ -10,6 +10,7 @@ jest.mock("@/lib/verifyJwt", () => ({
 }), { virtual: true });
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
 }), { virtual: true });

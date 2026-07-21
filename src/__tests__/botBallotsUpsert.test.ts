@@ -76,6 +76,7 @@ jest.unstable_mockModule(
 jest.unstable_mockModule(
   "@/lib/auth/botAccess",
   () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
     __esModule: true,
     assertBotWalletAccess: assertBotWalletAccessMock,
   }),
@@ -121,6 +122,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as never;
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
   enforceBodySizeMock.mockReturnValue(true);
@@ -141,7 +143,7 @@ beforeEach(() => {
     botKey: { scope: JSON.stringify(["multisig:read", "ballot:write"]) },
   });
   // Observer role suffices for ballot drafting (unsigned advisory rows).
-  assertBotWalletAccessMock.mockResolvedValue({ wallet: { id: "wallet-1" }, role: "observer" });
+  assertBotWalletAccessMock.mockResolvedValue({ wallet: { id: "wallet-1", signersAddresses: ["addr_test1qexample"] }, role: "observer" });
   transactionMock.mockImplementation(async (cb: any) => cb(txMock));
 });
 
@@ -179,7 +181,7 @@ describe("botBallotsUpsert API", () => {
         walletId: "wallet-1",
         proposals: [
           {
-            proposalId: "tx#0",
+            proposalId: "b".repeat(64) + "#0",
             proposalTitle: "Title",
             choice: "Yes",
             anchorUrl: "ipfs://should-not-be-allowed",
@@ -207,7 +209,7 @@ describe("botBallotsUpsert API", () => {
       body: {
         walletId: "wallet-1",
         ballotName: "Gov",
-        proposals: [{ proposalId: "tx#0", proposalTitle: "Title", choice: "No" }],
+        proposals: [{ proposalId: "b".repeat(64) + "#0", proposalTitle: "Title", choice: "No" }],
       },
     } as unknown as NextApiRequest;
     const res = createMockResponse();
@@ -218,5 +220,63 @@ describe("botBallotsUpsert API", () => {
     expect(res.json).toHaveBeenCalledWith({
       error: "Multiple ballots match ballotName; provide ballotId to disambiguate",
     });
+  });
+
+  it("rejects a proposalId whose txHash is not 64-hex", async () => {
+    const req = {
+      method: "POST",
+      headers: { authorization: "Bearer token" },
+      body: {
+        walletId: "wallet-1",
+        ballotName: "Advisory",
+        proposals: [{ proposalId: "deadbeef#0", proposalTitle: "T", choice: "Yes" }],
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects proposalIds that do not exist on-chain, listing them", async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 404 })) as never;
+    const req = {
+      method: "POST",
+      headers: { authorization: "Bearer token" },
+      body: {
+        walletId: "wallet-1",
+        ballotName: "Advisory",
+        proposals: [{ proposalId: "c".repeat(64) + "#0", proposalTitle: "T", choice: "Yes" }],
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    const body = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(body.proposalIds).toEqual(["c".repeat(64) + "#0"]);
+  });
+
+  it("fails open when the chain indexer is unavailable", async () => {
+    global.fetch = jest.fn(async () => { throw new Error("indexer down"); }) as never;
+    const fresh = {
+      id: "b-new", walletId: "wallet-1", type: 1, description: "Advisory", updatedAt: new Date(),
+      items: [], itemDescriptions: [], choices: [], anchorUrls: [], anchorHashes: [], rationaleComments: [],
+    };
+    txMock.ballot.findMany.mockResolvedValue([]);
+    txMock.ballot.create.mockResolvedValue(fresh);
+    txMock.ballot.updateMany.mockResolvedValue({ count: 1 } as never);
+    txMock.ballot.findUnique.mockResolvedValue(fresh);
+    const req = {
+      method: "POST",
+      headers: { authorization: "Bearer token" },
+      body: {
+        walletId: "wallet-1",
+        ballotName: "Advisory",
+        proposals: [{ proposalId: "d".repeat(64) + "#0", proposalTitle: "T", choice: "Yes" }],
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

@@ -22,6 +22,13 @@ jest.mock("@/lib/security/requestGuards", () => ({
   applyBotRateLimit: applyBotRateLimitMock,
 }), { virtual: true });
 
+jest.mock("@/lib/auth/botAccess", () => ({
+  __esModule: true,
+  getWalletAccessForBot: jest.fn(async () => [
+    { walletId: "wallet-1", walletName: "drep.collective", role: "observer" },
+  ]),
+}), { virtual: true });
+
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
@@ -84,6 +91,9 @@ describe("botMe API", () => {
       displayName: null,
       botName: "My Bot",
       ownerAddress: "addr_test1qphuman",
+      botWallets: [
+        { walletId: "wallet-1", walletName: "drep.collective", role: "observer" },
+      ],
     });
   });
 });

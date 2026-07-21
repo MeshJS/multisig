@@ -239,13 +239,30 @@ Endpoints:
   - Upserts proposals and choices while preserving omitted rationale comments on existing entries
   - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
   - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+  - Validates `proposalId`s: `txHash` must be 64-char hex **and the governance action must exist on-chain** (unknown ids → 400 listing them; indexer outages fail open)
 - **Request Body**:
   - `walletId`: string (required)
   - `ballotId`: string (optional, recommended when updating existing ballots)
   - `ballotName`: string (optional)
   - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
-- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
-- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+- **Response**: `{ created: boolean, ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments` — track `ballot.id` for later upserts and deletes
+- **Error Handling**: 400 (validation, unknown proposalIds), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
+#### `botBallots.ts` - GET/DELETE `/api/v1/botBallots`
+
+- **Purpose**: Read and clean up bot ballot drafts — the other half of the drafting lifecycle
+- **Authentication**: Required (bot JWT Bearer token); scope `ballot:write`; any wallet grant (**observer is enough**)
+- **GET**: `?walletId=` — lists all governance ballots (type 1) on the wallet, newest first
+- **DELETE**: body `{ walletId, ballotId }` — deletes one governance ballot (400 if it belongs to another wallet or isn't type 1)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballot), 429, 500
+
+#### `botRotateSecret.ts` - POST `/api/v1/botRotateSecret`
+
+- **Purpose**: Self-service rotation of a (possibly leaked) bot key secret without re-registering
+- **Authentication**: None (proving possession of the current secret is the credential); strict rate limit 5/min per IP
+- **Request Body**: `{ botKeyId, secret }` (current secret)
+- **Response**: `{ botKeyId, secret }` — the **new** secret, returned exactly once; the old secret stops working immediately
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 429, 500
 
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
