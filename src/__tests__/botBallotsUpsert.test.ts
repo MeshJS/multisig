@@ -140,11 +140,37 @@ beforeEach(() => {
     id: "bot-1",
     botKey: { scope: JSON.stringify(["multisig:read", "ballot:write"]) },
   });
-  assertBotWalletAccessMock.mockResolvedValue({ wallet: { id: "wallet-1" }, role: "cosigner" });
+  // Observer role suffices for ballot drafting (unsigned advisory rows).
+  assertBotWalletAccessMock.mockResolvedValue({ wallet: { id: "wallet-1" }, role: "observer" });
   transactionMock.mockImplementation(async (cb: any) => cb(txMock));
 });
 
 describe("botBallotsUpsert API", () => {
+  it("requests non-mutating wallet access (observer role is enough to draft)", async () => {
+    const req = {
+      method: "POST",
+      headers: { authorization: "Bearer token" },
+      body: {
+        walletId: "wallet-1",
+        ballotName: "Advisory",
+        proposals: [{ proposalId: "a".repeat(64) + "#0", proposalTitle: "T", choice: "Yes" }],
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    // The access assertion must be called with mutating=false — cosigner must
+    // NOT be required for advisory drafts.
+    expect(assertBotWalletAccessMock as jest.Mock).toHaveBeenCalledWith(
+      expect.anything(),
+      "wallet-1",
+      expect.anything(),
+      false,
+    );
+    expect(res.status).not.toHaveBeenCalledWith(403);
+  });
+
   it("rejects anchor fields in proposal payload", async () => {
     const req = {
       method: "POST",

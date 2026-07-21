@@ -1651,7 +1651,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot", "Governance"],
           summary: "Create or update governance ballots from bot decisions",
           description:
-            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. Requires bot JWT, ballot:write scope, and cosigner wallet access.",
+            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. Requires bot JWT, ballot:write scope, and any granted wallet access — observer is enough (drafts are unsigned advisory rows; the wallet owner grants access under User → Bot Management → Wallet access).",
           requestBody: {
             required: true,
             content: {

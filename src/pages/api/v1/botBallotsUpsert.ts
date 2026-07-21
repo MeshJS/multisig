@@ -121,7 +121,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await assertBotWalletAccess(db, walletId, payload, true);
+    // Non-mutating access: ballot drafts are unsigned advisory rows (choice +
+    // rationaleComment only — anchors are rejected below), so an observer
+    // grant is enough. Cosigner-for-drafts would lock advisory bots out of
+    // existing wallets entirely, since signer lists are fixed at creation.
+    // The ballot:write scope (owner-approved at claim) still gates this.
+    await assertBotWalletAccess(db, walletId, payload, false);
   } catch (err) {
     return res
       .status(403)
