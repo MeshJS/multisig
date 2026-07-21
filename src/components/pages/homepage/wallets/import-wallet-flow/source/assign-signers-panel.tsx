@@ -69,6 +69,7 @@ export default function AssignSignersPanel({
   onInvite,
 }: Props) {
   const [pasted, setPasted] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const lockedSlots = useMemo(
     () => ({ [pending.userSlotIndex]: userAddress }),
@@ -147,6 +148,19 @@ export default function AssignSignersPanel({
     [finalAddresses, pending.input, network],
   );
 
+  // Fully recovered: every non-locked slot has a known address, the
+  // stake set is cryptographically verified, and the dRep set is settled
+  // (restored, or the registration has no role 3). Pasting/inviting adds
+  // nothing for correctness then — the manual tools collapse behind an
+  // "advanced" disclosure kept for the rare signer whose wallet reports
+  // a different address than the registered pairing.
+  const drepSettled =
+    !pending.registrationTypes.includes(3) ||
+    pending.input.recovery?.drepRestored === true;
+  const fullyRecovered =
+    unknownCount === 0 && stakeRecovered && drepSettled && errors.length === 0;
+  const showManualTools = !fullyRecovered || showAdvanced;
+
   function handleContinue() {
     onContinue({
       ...pending.input,
@@ -164,14 +178,28 @@ export default function AssignSignersPanel({
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-sm sm:p-4">
-        <p className="font-medium">Assign signer addresses</p>
-        <p className="mt-1 text-muted-foreground">
-          {recoveredCount > 0
-            ? "Co-signer addresses marked “from registration” were reconstructed from the on-chain registration — the wallet will show up in those signers' accounts automatically. Paste an address only for remaining unknown slots, or if a signer's wallet reports a different address."
-            : "The chain only records signer key hashes. Paste your co-signers' wallet addresses so the wallet shows up in their account too — slots left unknown will use a derived placeholder address and won't be visible to that signer."}
-        </p>
-      </div>
+      {fullyRecovered ? (
+        <div className="rounded-md border border-green-600/30 bg-green-500/10 p-3 text-sm sm:p-4">
+          <p className="flex items-center gap-1.5 font-medium text-green-700 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4" />
+            Wallet fully recovered from the on-chain registration
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            All signer keys and addresses were recovered and verified against
+            the registration. It's safe to review and create — co-signers
+            will see this wallet in their account automatically.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-sm sm:p-4">
+          <p className="font-medium">Assign signer addresses</p>
+          <p className="mt-1 text-muted-foreground">
+            {recoveredCount > 0
+              ? "Co-signer addresses marked “from registration” were reconstructed from the on-chain registration — the wallet will show up in those signers' accounts automatically. Paste an address only for remaining unknown slots, or if a signer's wallet reports a different address."
+              : "The chain only records signer key hashes. Paste your co-signers' wallet addresses so the wallet shows up in their account too — slots left unknown will use a derived placeholder address and won't be visible to that signer."}
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         {pending.sigHashes.map((hash, index) => {
@@ -238,6 +266,24 @@ export default function AssignSignersPanel({
         })}
       </div>
 
+      {!showManualTools && (
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-0 text-muted-foreground underline underline-offset-4"
+            onClick={() => setShowAdvanced(true)}
+          >
+            Adjust signer addresses (advanced)
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Only needed if a co-signer's wallet reports a different address
+            than the registered one.
+          </p>
+        </div>
+      )}
+
+      {showManualTools && (
       <div className="space-y-2">
         <Label htmlFor="cosigner-addresses">
           Co-signer addresses (one per line, any order)
@@ -264,6 +310,7 @@ export default function AssignSignersPanel({
           </p>
         )}
         {errors.length === 0 &&
+          !fullyRecovered &&
           (stakeRecovered ? (
             <p className="text-xs text-green-600 dark:text-green-400">
               Stake keys recovered from the on-chain registration and
@@ -289,6 +336,7 @@ export default function AssignSignersPanel({
             </p>
           ) : null)}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={onBack} disabled={busy}>
@@ -296,7 +344,7 @@ export default function AssignSignersPanel({
           Back
         </Button>
         <div className="flex gap-2">
-          {onInvite && (
+          {onInvite && showManualTools && (
             <Button
               variant="outline"
               onClick={() => onInvite(assignments)}
