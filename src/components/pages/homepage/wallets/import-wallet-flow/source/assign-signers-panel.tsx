@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   buildSlotAddresses,
   matchAddressesToSigSlots,
+  restoreStakeKeysFromAddresses,
   type DiscoveredImportInput,
   type SlotAssignmentError,
 } from "@/utils/cip146Discovery";
@@ -21,6 +22,12 @@ export type PendingDiscoveryImport = {
   userSlotIndex: number;
   registrationTxHash: string;
   expectedAddress: string;
+  /** roles present in the registration metadata (types array) */
+  registrationTypes: number[];
+  /** lowercased registration participant key hashes, all roles */
+  participantHashes: string[];
+  /** lowercased participant hash -> registered participant name */
+  participantNames: Record<string, string>;
 };
 
 const ERROR_COPY: Record<SlotAssignmentError["reason"], string> = {
@@ -85,18 +92,53 @@ export default function AssignSignersPanel({
     (_, i) => lockedSlots[i] === undefined && assignments[i] === undefined,
   ).length;
 
+  const finalAddresses = useMemo(
+    () =>
+      buildSlotAddresses({
+        sigHashes: pending.sigHashes,
+        assignments,
+        lockedSlots,
+        networkId: network,
+        fallback: "enterprise",
+      }),
+    [pending.sigHashes, assignments, lockedSlots, network],
+  );
+
+  // Stake keys recovered from the registration's participant hashes and
+  // proven against the on-chain stake credential (recoverRoleKeySets).
+  // When present they take precedence — pasted addresses are then only
+  // display polish, never load-bearing for correctness.
+  const stakeRecovered = pending.input.recovery?.stakeRestored === true;
+
+  // Stake restoration preview: pasted base addresses carry their owner's
+  // stake credential. When every slot yields one AND the derived role-2
+  // script hash equals the wallet's on-chain stake credential, the import
+  // is a full staking SDK wallet — provably identical to the original.
+  const stakeRestoration = useMemo(
+    () =>
+      restoreStakeKeysFromAddresses({
+        signersAddresses: finalAddresses,
+        expectedStakeCredentialHash: pending.input.stakeCredentialHash,
+        numRequiredSigners: pending.input.numRequiredSigners,
+        scriptType: pending.input.scriptType,
+        networkId: network,
+      }),
+    [finalAddresses, pending.input, network],
+  );
+
   function handleContinue() {
-    const signersAddresses = buildSlotAddresses({
-      sigHashes: pending.sigHashes,
-      assignments,
-      lockedSlots,
-      networkId: network,
-      fallback: "enterprise",
+    onContinue({
+      ...pending.input,
+      signersAddresses: finalAddresses,
+      signersStakeKeys: stakeRecovered
+        ? pending.input.signersStakeKeys
+        : stakeRestoration.signersStakeKeys,
+      // A recovered stake set derives the credential from its own keys —
+      // clearing the external hash makes the import a full SDK wallet.
+      stakeCredentialHash: stakeRecovered
+        ? null
+        : stakeRestoration.stakeCredentialHash,
     });
-    // Per-signer stake keys stay empty on purpose: the on-chain script is
-    // authoritative, and backfilling stake keys could flip the wallet's
-    // type classification and change the derived address.
-    onContinue({ ...pending.input, signersAddresses });
   }
 
   return (
@@ -125,6 +167,18 @@ export default function AssignSignersPanel({
                 {getFirstAndLast(hash, 10, 8)}
               </code>
               {name && <span className="font-medium">{name}</span>}
+              {pending.input.recovery?.stakeRestored &&
+                pending.input.signersStakeKeys[index] && (
+                  <Badge variant="outline" className="text-[10px]">
+                    staking
+                  </Badge>
+                )}
+              {pending.input.recovery?.drepRestored &&
+                pending.input.signersDRepKeys[index] && (
+                  <Badge variant="outline" className="text-[10px]">
+                    dRep
+                  </Badge>
+                )}
               <span className="ml-auto flex items-center gap-1">
                 {isUser ? (
                   <>
@@ -179,6 +233,29 @@ export default function AssignSignersPanel({
             {onInvite ? ", or invite them to claim their own slot" : ""}.
           </p>
         )}
+        {errors.length === 0 &&
+          (stakeRecovered ? (
+            <p className="text-xs text-green-600 dark:text-green-400">
+              Stake keys recovered from the on-chain registration and
+              verified against the wallet's stake credential
+              {pending.input.recovery?.drepRestored
+                ? ", including the registered dRep keys"
+                : ""}
+              . Pasting addresses is optional — it only makes the wallet
+              visible in your co-signers' accounts.
+            </p>
+          ) : stakeRestoration.restored ? (
+            <p className="text-xs text-green-600 dark:text-green-400">
+              Staking restored — the addresses match the wallet's on-chain
+              stake credential, so the import gets full staking support.
+            </p>
+          ) : unknownCount === 0 && pending.input.stakeCredentialHash ? (
+            <p className="text-xs text-muted-foreground">
+              Stake keys couldn't be verified against the on-chain stake
+              credential — the wallet imports with an external stake
+              credential and read-only staking.
+            </p>
+          ) : null)}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

@@ -11,7 +11,9 @@ import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
 import type { RawImportBodies } from "@/types/wallet";
 import {
+  deriveStakeCredentialFromKeys,
   keyHashToEnterpriseAddress,
+  stakeCredentialFromAddress,
   verifyScriptCborAddress,
 } from "@/utils/cip146Discovery";
 
@@ -403,11 +405,21 @@ export function useWalletFlowState(): WalletFlowState {
       const bothEmpty = !hasPayment && !hasStake;
       const bothHave = hasPayment && hasStake;
       const equal = bothHave && paymentCbor === stakeCbor;
-      const incomingStakeKeys = equal
-        ? []
-        : (bothHave || bothEmpty)
-          ? (walletInvite.signersStakeKeys || [])
-          : [];
+      // Fixed-signer discovery drafts carry claim-contributed stake keys
+      // and set paymentCbor without stakeCbor — the payment/stake CBOR
+      // policy below would blank them, so load them verbatim instead.
+      // (They're verified against the on-chain stake credential at
+      // finalization, not trusted here.)
+      const isLockedDraft = !!(
+        (walletInvite as any)?.rawImportBodies as { lockedSigners?: boolean } | null
+      )?.lockedSigners;
+      const incomingStakeKeys = isLockedDraft
+        ? (walletInvite.signersStakeKeys || [])
+        : equal
+          ? []
+          : (bothHave || bothEmpty)
+            ? (walletInvite.signersStakeKeys || [])
+            : [];
       setSignerStakeKeys(incomingStakeKeys);
       setSignerDRepKeys((walletInvite as any).signersDRepKeys ?? []);
       // Keep synthetic ids stable across refetches: only mint new ids
@@ -522,12 +534,22 @@ export function useWalletFlowState(): WalletFlowState {
     }
 
     let signersAddressesToUse = signersAddresses;
+    let signersStakeKeysToUse = signersStakeKeys;
+    let signersDRepKeysToUse = signersDRepKeys;
+    let stakeCredentialHashToUse: string | undefined =
+      stakeKey.length > 0 ? stakeKey : undefined;
     const isLockedDraft = !!inviteExtras.rawImportBodies?.lockedSigners;
     if (isLockedDraft) {
       // Safety assertion for on-chain-discovered wallets: the stored
       // script must still reproduce the exact on-chain address.
       const provenance = inviteExtras.rawImportBodies?.provenance as
-        | { expectedAddress?: string }
+        | {
+            expectedAddress?: string;
+            stakeCredentialHash?: string | null;
+            types?: number[];
+            participants?: string[];
+            recovered?: { stake?: boolean; drep?: boolean };
+          }
         | undefined;
       if (
         provenance?.expectedAddress &&
@@ -555,6 +577,80 @@ export function useWalletFlowState(): WalletFlowState {
           ? keyHashToEnterpriseAddress(addr.toLowerCase(), network)
           : addr,
       );
+
+      // Stake restoration: claims contributed per-signer stake keys. Only
+      // persist them when the derived role-2 script hash equals the
+      // wallet's on-chain stake credential — proving the reconstruction is
+      // identical to the original SDK wallet. Otherwise fall back to the
+      // external stake credential (read-only staking).
+      const expectedStakeHash = (
+        provenance?.stakeCredentialHash ??
+        (provenance?.expectedAddress
+          ? stakeCredentialFromAddress(provenance.expectedAddress)
+          : undefined) ??
+        (stakeKey || undefined)
+      )?.toLowerCase();
+      const requiredForScripts =
+        numRequiredSigners || signersAddressesToUse.length;
+      const allStakePresent =
+        signersStakeKeys.length === signersAddressesToUse.length &&
+        signersStakeKeys.every((k) => k.trim().length > 0);
+      const derivedStakeHash = allStakePresent
+        ? deriveStakeCredentialFromKeys({
+            stakeKeys: signersStakeKeys,
+            numRequiredSigners: requiredForScripts,
+            scriptType: nativeScriptType,
+            networkId: network,
+          })
+        : undefined;
+      const stakeRestored =
+        !!derivedStakeHash &&
+        !!expectedStakeHash &&
+        derivedStakeHash === expectedStakeHash;
+      if (stakeRestored) {
+        stakeCredentialHashToUse = undefined;
+      } else {
+        signersStakeKeysToUse = signersStakeKeys.map(() => "");
+        if (allStakePresent) {
+          toast({
+            title: "Staking not restored",
+            description:
+              "Contributed stake keys couldn't be verified against the on-chain stake credential — the wallet is created with an external stake credential instead.",
+            duration: 8000,
+          });
+        }
+      }
+
+      // DRep restoration. When the draft's dRep set was recovered from
+      // the registration itself (provenance.recovered.drep), a partial
+      // set is the registered truth — some signers legitimately have no
+      // role-3 key — so it's persisted as long as every non-empty key is
+      // a registration participant. Otherwise (claim-contributed keys)
+      // all slots must have contributed AND the registration declares
+      // role 3 AND every key is a registration participant; partial
+      // claim-contributed sets are never persisted (they would corrupt
+      // the wallet's role types and future 1854 update payloads).
+      const participants = provenance?.participants?.map((p) => p.toLowerCase());
+      const drepRecoveredFromRegistration =
+        provenance?.recovered?.drep === true;
+      const drepRestored =
+        signersDRepKeys.length === signersAddressesToUse.length &&
+        !!participants &&
+        (provenance?.types ?? []).includes(3) &&
+        (drepRecoveredFromRegistration
+          ? signersDRepKeys.some((k) => k.trim().length > 0) &&
+            signersDRepKeys.every(
+              (k) =>
+                k.trim().length === 0 ||
+                participants.includes(k.trim().toLowerCase()),
+            )
+          : signersDRepKeys.every((k) => k.trim().length > 0) &&
+            signersDRepKeys.every((k) =>
+              participants.includes(k.trim().toLowerCase()),
+            ));
+      if (!drepRestored) {
+        signersDRepKeysToUse = signersDRepKeys.map(() => "");
+      }
     }
 
     createWallet({
@@ -562,14 +658,14 @@ export function useWalletFlowState(): WalletFlowState {
       description: description,
       signersAddresses: signersAddressesToUse,
       signersDescriptions: signersDescriptions,
-      signersStakeKeys: signersStakeKeys,
-      signersDRepKeys: signersDRepKeys,
+      signersStakeKeys: signersStakeKeysToUse,
+      signersDRepKeys: signersDRepKeysToUse,
       numRequiredSigners: isLockedDraft
         ? numRequiredSigners || signersAddressesToUse.length
         : numRequiredSigners,
       scriptCbor: scriptCborToUse,
       rawImportBodies: inviteExtras.rawImportBodies ?? null,
-      stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
+      stakeCredentialHash: stakeCredentialHashToUse,
       type: nativeScriptType,
       ownerAddress: (walletInvite as { ownerAddress?: string } | null)?.ownerAddress,
     });

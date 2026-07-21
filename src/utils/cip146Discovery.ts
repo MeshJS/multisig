@@ -5,9 +5,13 @@
  */
 
 import {
+  deserializeAddress,
   pubKeyAddress,
+  resolveRewardAddress,
+  resolveStakeKeyHash,
   serializeAddressObj,
   serializeNativeScript,
+  serializeRewardAddress,
   type NativeScript,
 } from "@meshsdk/core";
 
@@ -16,6 +20,7 @@ import {
   joinMetadataString,
   type Label1854LookupItem,
 } from "./cip146Registration";
+import { MultisigWallet, type MultisigKey } from "./multisigSDK";
 import {
   decodeNativeScriptFromCbor,
   decodedToNativeScript,
@@ -39,6 +44,7 @@ export type DiscoveredImportInput = {
   numRequiredSigners: number;
   scriptType: "all" | "any" | "atLeast";
   stakeCredentialHash?: string | null;
+  recovery?: RoleRecovery;
 };
 
 /**
@@ -111,6 +117,295 @@ export function keyHashToEnterpriseAddress(
   return serializeAddressObj(pubKeyAddress(keyHash), networkId);
 }
 
+// ---------------------------------------------------------------------------
+// Role-set recovery: reconstruct stake/dRep key sets from the registration
+// ---------------------------------------------------------------------------
+
+export type RoleRecovery = {
+  /** True when a stake key set was found whose role-2 script hash equals
+   * the on-chain stake credential (cryptographic proof of exactness). */
+  stakeRestored: boolean;
+  /** True when the dRep key assignment is fully determined. Slots may
+   * still be "" — a signer that registered no role-3 key. */
+  drepRestored: boolean;
+  /** True when per-slot pairing came from participant names (cosmetic —
+   * pairing never affects script hashes, which are built from sorted
+   * sets). */
+  pairedByName: boolean;
+  /** Per payment-slot bech32 reward addresses; all "" when not restored. */
+  signersStakeKeys: string[];
+  /** Per payment-slot raw 56-hex dRep key hashes; "" where the signer
+   * registered none. */
+  signersDRepKeys: string[];
+};
+
+const RECOVERY_MAX_PARTICIPANTS = 40;
+const RECOVERY_MAX_COMBINATIONS = 10_000;
+const RECOVERY_MAX_NAME_VECTORS = 4096;
+
+/** Visit k-subsets of `pool` until the visitor returns true (the match)
+ * or the combination budget is exhausted. Returns the matching subset. */
+function findCombination(
+  pool: string[],
+  k: number,
+  budget: { remaining: number },
+  visit: (subset: string[]) => boolean,
+): string[] | undefined {
+  const current: string[] = [];
+  let found: string[] | undefined;
+  const walk = (start: number): boolean => {
+    if (current.length === k) {
+      if (budget.remaining-- <= 0) return true; // abort on budget exhaustion
+      if (visit(current)) {
+        found = [...current];
+        return true;
+      }
+      return false;
+    }
+    for (let i = start; i <= pool.length - (k - current.length); i++) {
+      current.push(pool[i]!);
+      const stop = walk(i + 1);
+      current.pop();
+      if (stop) return true;
+    }
+    return false;
+  };
+  walk(0);
+  return found;
+}
+
+/**
+ * Recover the per-role key-hash sets of a registered wallet from its 1854
+ * participants map alone.
+ *
+ * Scripts in this app are built purely from key hashes, and the
+ * participants map is the union of ALL roles' hashes — so although the
+ * hashes can never be reversed into keys or addresses, the exact role
+ * sets can be reconstructed:
+ *
+ * - payment set: known from the resolved on-chain script (`sigHashes`).
+ * - stake set: the subset of participant hashes whose role-2 script hash
+ *   (same script type/threshold) equals the on-chain stake credential.
+ *   A hash match is proof — identical script hash implies identical
+ *   sorted key set. Searched name-guided first (each signer's stake hash
+ *   comes from their own name group), then by bounded combinatorial
+ *   search.
+ * - dRep set: once payment and stake are fixed, each signer's leftover
+ *   hash is their dRep key; a name group with no leftover means that
+ *   signer registered NO dRep key (do not assume one per signer).
+ *
+ * Edge left undetectable by design: a dRep key identical to the same
+ * signer's payment/stake hash is indistinguishable from "no dRep key"
+ * using the metadata alone (the participants map collapses reused
+ * hashes).
+ */
+export function recoverRoleKeySets(args: {
+  /** 1854 participants map: keyHash -> { name } (any case, any shape) */
+  participants: Record<string, { name?: string | string[] } | undefined>;
+  /** Ordered payment slot hashes from the on-chain script (lowercase) */
+  sigHashes: string[];
+  stakeCredentialHash: string | null | undefined;
+  registrationTypes: number[] | null | undefined;
+  numRequiredSigners: number;
+  scriptType: "all" | "any" | "atLeast";
+  networkId: number;
+}): RoleRecovery {
+  const {
+    participants,
+    sigHashes,
+    stakeCredentialHash,
+    registrationTypes,
+    numRequiredSigners,
+    scriptType,
+    networkId,
+  } = args;
+
+  const slots = sigHashes.length;
+  const empty = (): string[] => Array.from({ length: slots }, () => "");
+  const none: RoleRecovery = {
+    stakeRestored: false,
+    drepRestored: false,
+    pairedByName: false,
+    signersStakeKeys: empty(),
+    signersDRepKeys: empty(),
+  };
+
+  // hash (lowercase) -> participant name
+  const names = new Map<string, string>();
+  for (const [hash, info] of Object.entries(participants ?? {})) {
+    if (/^[0-9a-f]{56}$/i.test(hash)) {
+      names.set(hash.toLowerCase(), joinMetadataString(info?.name).trim());
+    }
+  }
+  const allHashes = [...names.keys()];
+  if (allHashes.length === 0 || allHashes.length > RECOVERY_MAX_PARTICIPANTS) {
+    return none;
+  }
+  const paymentSet = new Set(sigHashes);
+
+  // Name groups: a signer's payment/stake/dRep hashes share their name.
+  // Usable only when every payment slot has a non-empty name and no two
+  // slots share one (otherwise groups don't identify signers).
+  const groups = new Map<string, string[]>();
+  for (const [hash, name] of names) {
+    if (!name) continue;
+    const group = groups.get(name);
+    if (group) group.push(hash);
+    else groups.set(name, [hash]);
+  }
+  const slotNames = sigHashes.map((h) => names.get(h) ?? "");
+  const namesUsable =
+    slotNames.every((n) => n) && new Set(slotNames).size === slots;
+
+  const expectedStake = stakeCredentialHash?.toLowerCase() ?? null;
+  const wantStake = registrationTypes ? registrationTypes.includes(2) : true;
+  const wantDRep = registrationTypes?.includes(3) ?? false;
+
+  const credentialOf = (stakeHashes: string[]): string | undefined =>
+    deriveStakeCredentialFromKeys({
+      stakeKeys: stakeHashes,
+      numRequiredSigners,
+      scriptType,
+      networkId,
+    });
+
+  // --- Stake set search -----------------------------------------------------
+  // perSlotStake[i] = raw stake key hash paired to payment slot i ("" = none)
+  let perSlotStake: string[] | undefined;
+  let stakePairedByName = false;
+
+  if (expectedStake && wantStake) {
+    // 1) Name-guided: pick one candidate per slot from that signer's own
+    //    name group (reuse across roles is legal, so the payment hash
+    //    itself is a candidate too).
+    if (namesUsable) {
+      const candidates = slotNames.map((n) => groups.get(n) ?? []);
+      const product = candidates.reduce((acc, c) => acc * c.length, 1);
+      if (product > 0 && product <= RECOVERY_MAX_NAME_VECTORS) {
+        const vector: string[] = [];
+        const search = (slot: number): boolean => {
+          if (slot === slots) {
+            return credentialOf(vector) === expectedStake;
+          }
+          for (const hash of candidates[slot]!) {
+            vector.push(hash);
+            if (search(slot + 1)) return true;
+            vector.pop();
+          }
+          return false;
+        };
+        if (search(0)) {
+          perSlotStake = [...vector];
+          stakePairedByName = true;
+        }
+      }
+    }
+
+    // 2) Combinatorial fallback over distinct participant hashes: the
+    //    standard case is one stake key per signer (size == slots), but a
+    //    registration may carry fewer role-2 keys, so smaller sizes are
+    //    tried too. The script-hash equality check is the arbiter, so a
+    //    match at any size is exact.
+    if (!perSlotStake) {
+      const budget = { remaining: RECOVERY_MAX_COMBINATIONS };
+      for (let k = Math.min(slots, allHashes.length); k >= 1; k--) {
+        const match = findCombination(allHashes, k, budget, (subset) => {
+          return credentialOf(subset) === expectedStake;
+        });
+        if (match) {
+          const sorted = [...match].sort();
+          // Attempt cosmetic name pairing of the found set; otherwise
+          // fill slots in sorted order.
+          perSlotStake = empty();
+          const unplaced: string[] = [];
+          for (const hash of sorted) {
+            const slot = namesUsable
+              ? slotNames.findIndex(
+                  (n, i) =>
+                    !perSlotStake![i] && groups.get(n)?.includes(hash),
+                )
+              : -1;
+            if (slot !== -1) perSlotStake[slot] = hash;
+            else unplaced.push(hash);
+          }
+          for (const hash of unplaced) {
+            const free = perSlotStake.findIndex((s) => !s);
+            if (free !== -1) perSlotStake[free] = hash;
+          }
+          stakePairedByName =
+            namesUsable && unplaced.length === 0 && match.length === slots;
+          break;
+        }
+        if (budget.remaining <= 0) break;
+      }
+    }
+  }
+
+  const stakeRestored = perSlotStake !== undefined;
+  const stakeSet = new Set((perSlotStake ?? []).filter(Boolean));
+
+  // --- dRep assignment ------------------------------------------------------
+  // Requires the stake set to be settled first, otherwise leftover hashes
+  // can't be attributed to a role. (When the registration has no role-2
+  // keys at all, the stake set is legitimately empty.)
+  let perSlotDRep: string[] | undefined;
+  const stakeSettled = stakeRestored || !wantStake;
+
+  if (wantDRep && stakeSettled) {
+    const leftovers = allHashes.filter(
+      (h) => !paymentSet.has(h) && !stakeSet.has(h),
+    );
+    // types including 3 means at least one role-3 key exists — an empty
+    // leftover set means every dRep key reuses a payment/stake hash,
+    // which the collapsed participants map cannot attribute. Don't guess.
+    if (leftovers.length > 0 && namesUsable) {
+      const assigned = empty();
+      let consistent = true;
+      for (let i = 0; i < slots; i++) {
+        const groupLeft = (groups.get(slotNames[i]!) ?? []).filter(
+          (h) => !paymentSet.has(h) && !stakeSet.has(h),
+        );
+        if (groupLeft.length === 1) assigned[i] = groupLeft[0]!;
+        else if (groupLeft.length > 1) {
+          consistent = false;
+          break;
+        }
+      }
+      // Every leftover hash must have found a slot — each participant
+      // hash holds at least one role in the registered wallet.
+      if (
+        consistent &&
+        leftovers.every((h) => assigned.includes(h))
+      ) {
+        perSlotDRep = assigned;
+      }
+    }
+    if (!perSlotDRep && leftovers.length > 0 && leftovers.length <= slots) {
+      // Without usable names the leftover SET is still exact (scripts
+      // sort internally); slot pairing is arbitrary.
+      const assigned = empty();
+      [...leftovers].sort().forEach((h, i) => {
+        assigned[i] = h;
+      });
+      perSlotDRep = assigned;
+    }
+  }
+
+  const drepRestored = perSlotDRep !== undefined;
+
+  return {
+    stakeRestored,
+    drepRestored,
+    pairedByName: stakePairedByName,
+    signersStakeKeys: stakeRestored
+      ? perSlotStake!.map((h) =>
+          h ? serializeRewardAddress(h, false, networkId ? 1 : 0) : "",
+        )
+      : empty(),
+    signersDRepKeys: drepRestored ? perSlotDRep! : empty(),
+  };
+}
+
 /**
  * Assemble the import-wizard cbor payload from a discovered registration
  * and the resolved on-chain script.
@@ -120,9 +415,10 @@ export function keyHashToEnterpriseAddress(
  * equal the address seen on-chain — a wallet is never imported with a
  * mismatched address.
  *
- * Per-signer stake/DRep keys are left empty: the flat 1854 participants
- * map doesn't record role pairings. The wallet address stays exact via
- * the external stakeCredentialHash.
+ * Per-signer stake/dRep keys are recovered from the registration's
+ * participant hashes via recoverRoleKeySets — the stake set is proven
+ * against the on-chain stake credential; the wallet address stays exact
+ * via the external stakeCredentialHash either way.
  */
 export function buildImportFromRegistration(args: {
   registration: Label1854LookupItem;
@@ -232,6 +528,16 @@ export function buildImportFromRegistration(args: {
   const name = joinMetadataString(metadata?.name) || "Discovered multisig wallet";
   const description = joinMetadataString(metadata?.description);
 
+  const recovery = recoverRoleKeySets({
+    participants,
+    sigHashes,
+    stakeCredentialHash: candidate.stakeCredentialHash,
+    registrationTypes: metadata?.types ?? null,
+    numRequiredSigners,
+    scriptType,
+    networkId,
+  });
+
   return {
     input: {
       name,
@@ -241,13 +547,17 @@ export function buildImportFromRegistration(args: {
           ? userAddress
           : keyHashToEnterpriseAddress(hash, networkId),
       ),
-      signersStakeKeys: sigHashes.map(() => ""),
-      signersDRepKeys: sigHashes.map(() => ""),
+      signersStakeKeys: recovery.signersStakeKeys,
+      signersDRepKeys: recovery.signersDRepKeys,
       signersDescriptions: sigHashes.map(participantName),
       scriptCbor,
       numRequiredSigners,
       scriptType,
+      // Kept even when the stake set was recovered: draft finalization
+      // asserts the serialized address against provenance.expectedAddress
+      // with this credential, then nulls it after verifying.
       stakeCredentialHash: candidate.stakeCredentialHash ?? null,
+      recovery,
     },
     sigHashes,
   };
@@ -362,6 +672,134 @@ export function buildSlotAddresses(args: {
       ? keyHashToEnterpriseAddress(hash, networkId)
       : hash;
   });
+}
+
+// ---------------------------------------------------------------------------
+// SDK-state restoration: recover per-signer stake keys with on-chain proof
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive the role-2 (staking) multisig script credential from a set of
+ * per-signer stake keys. Uses MultisigWallet itself so sorting, required
+ * count and script-type semantics are byte-identical to how the original
+ * wallet derived its stake credential.
+ *
+ * Accepts bech32 reward addresses or raw 56-hex stake key hashes.
+ * Returns undefined when any entry is missing/unparseable — restoration
+ * is all-or-nothing.
+ */
+export function deriveStakeCredentialFromKeys(args: {
+  stakeKeys: string[];
+  numRequiredSigners: number;
+  scriptType: "all" | "any" | "atLeast";
+  networkId: number;
+}): string | undefined {
+  const { stakeKeys, numRequiredSigners, scriptType, networkId } = args;
+  if (stakeKeys.length === 0) return undefined;
+  try {
+    const keys: MultisigKey[] = [];
+    for (const raw of stakeKeys) {
+      const entry = raw.trim();
+      if (!entry) return undefined;
+      const hash = /^[0-9a-f]{56}$/i.test(entry)
+        ? entry.toLowerCase()
+        : resolveStakeKeyHash(entry).toLowerCase();
+      keys.push({ keyHash: hash, role: 2, name: "" });
+    }
+    const wallet = new MultisigWallet(
+      "",
+      keys,
+      "",
+      numRequiredSigners,
+      networkId,
+      undefined,
+      scriptType,
+    );
+    return wallet.getStakeCredentialHash()?.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Attempt to restore per-signer stake keys from the final slot addresses
+ * (base addresses carry their owner's stake credential). The restoration
+ * only succeeds when EVERY slot yields a stake key AND the derived role-2
+ * script hash equals the wallet's on-chain stake credential — proving the
+ * reconstruction is identical to the original. Otherwise falls back to
+ * empty stake keys + the external stake credential (today's behavior).
+ */
+export function restoreStakeKeysFromAddresses(args: {
+  signersAddresses: string[];
+  expectedStakeCredentialHash: string | null | undefined;
+  numRequiredSigners: number;
+  scriptType: "all" | "any" | "atLeast";
+  networkId: number;
+}): {
+  restored: boolean;
+  signersStakeKeys: string[];
+  stakeCredentialHash: string | null;
+} {
+  const {
+    signersAddresses,
+    expectedStakeCredentialHash,
+    numRequiredSigners,
+    scriptType,
+    networkId,
+  } = args;
+
+  const fallback = {
+    restored: false,
+    signersStakeKeys: signersAddresses.map(() => ""),
+    stakeCredentialHash: expectedStakeCredentialHash ?? null,
+  };
+  if (!expectedStakeCredentialHash) return fallback;
+
+  const stakeKeys: string[] = [];
+  for (const address of signersAddresses) {
+    let rewardAddress = "";
+    try {
+      const parts = deserializeAddress(address);
+      // Script-stake base addresses can't contribute a signer stake key.
+      if (!parts.stakeScriptCredentialHash && parts.stakeCredentialHash) {
+        rewardAddress = resolveRewardAddress(address) ?? "";
+      }
+    } catch {
+      rewardAddress = "";
+    }
+    stakeKeys.push(rewardAddress);
+  }
+
+  if (stakeKeys.some((k) => !k)) return fallback;
+
+  const derived = deriveStakeCredentialFromKeys({
+    stakeKeys,
+    numRequiredSigners,
+    scriptType,
+    networkId,
+  });
+  if (!derived || derived !== expectedStakeCredentialHash.toLowerCase()) {
+    return fallback;
+  }
+
+  return {
+    restored: true,
+    signersStakeKeys: stakeKeys,
+    stakeCredentialHash: null,
+  };
+}
+
+/** Stake credential (script hash) embedded in a wallet address, if any. */
+export function stakeCredentialFromAddress(
+  address: string,
+): string | undefined {
+  try {
+    const parts = deserializeAddress(address);
+    const hash = parts.stakeScriptCredentialHash || parts.stakeCredentialHash;
+    return hash ? hash.toLowerCase() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  deserializeAddress,
+  resolveRewardAddress,
+  resolveStakeKeyHash,
+} from "@meshsdk/core";
 import { ExternalLink, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 
@@ -7,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import useMeshWallet from "@/hooks/useMeshWallet";
+import useUser from "@/hooks/useUser";
 import { useSiteStore } from "@/lib/zustand/site";
 import { tryResolveKeyHash } from "@/utils/addressCompatibility";
 import { api } from "@/utils/api";
@@ -54,6 +60,7 @@ type RegistrationGroup = {
 export default function DiscoverTab({ flow }: Props) {
   const { toast } = useToast();
   const { wallet, connected } = useMeshWallet();
+  const { user } = useUser();
   const network = useSiteStore((state) => state.network);
   const [importingKey, setImportingKey] = useState<string | null>(null);
   const [pendingImport, setPendingImport] =
@@ -67,8 +74,38 @@ export default function DiscoverTab({ flow }: Props) {
     if (!pendingImport || !userAddress) return;
     setInviteBusy(true);
     try {
-      const { input, sigHashes, userSlotIndex } = pendingImport;
+      const { input, sigHashes, userSlotIndex, registrationTypes, participantHashes } =
+        pendingImport;
       const lockedSlots = { [userSlotIndex]: userAddress };
+      const recovery = input.recovery;
+
+      // Seed the importer's own stake/DRep keys at their slot, but only
+      // when the corresponding hash appears in the registration's
+      // participants — mirrors the validation claims go through. Only a
+      // fallback: when role-set recovery succeeded, every slot is seeded
+      // from the registration itself below.
+      let myStakeKey = "";
+      try {
+        const parts = deserializeAddress(userAddress);
+        if (!parts.stakeScriptCredentialHash && parts.stakeCredentialHash) {
+          const reward = resolveRewardAddress(userAddress) ?? "";
+          if (
+            reward &&
+            participantHashes.includes(resolveStakeKeyHash(reward).toLowerCase())
+          ) {
+            myStakeKey = reward;
+          }
+        }
+      } catch {
+        myStakeKey = "";
+      }
+      const myDRepKey =
+        user?.drepKeyHash &&
+        registrationTypes.includes(3) &&
+        participantHashes.includes(user.drepKeyHash.toLowerCase())
+          ? user.drepKeyHash
+          : "";
+
       const draft = await createNewWallet({
         name: input.name,
         description: input.description,
@@ -81,8 +118,15 @@ export default function DiscoverTab({ flow }: Props) {
           networkId: network,
           fallback: "keyhash",
         }),
-        signersStakeKeys: sigHashes.map(() => ""),
-        signersDRepKeys: sigHashes.map(() => ""),
+        // Recovered role sets seed EVERY slot — claims then only attach
+        // each co-signer's real address; the wallet's exactness never
+        // depends on them.
+        signersStakeKeys: recovery?.stakeRestored
+          ? input.signersStakeKeys
+          : sigHashes.map((_, i) => (i === userSlotIndex ? myStakeKey : "")),
+        signersDRepKeys: recovery?.drepRestored
+          ? input.signersDRepKeys
+          : sigHashes.map((_, i) => (i === userSlotIndex ? myDRepKey : "")),
         signersDescriptions: input.signersDescriptions,
         numRequiredSigners: input.numRequiredSigners,
         ownerAddress: userAddress,
@@ -97,6 +141,14 @@ export default function DiscoverTab({ flow }: Props) {
             expectedAddress: pendingImport.expectedAddress,
             network,
             importedAt: new Date().toISOString(),
+            stakeCredentialHash: input.stakeCredentialHash ?? null,
+            types: registrationTypes,
+            participants: participantHashes,
+            participantNames: pendingImport.participantNames,
+            recovered: {
+              stake: recovery?.stakeRestored ?? false,
+              drep: recovery?.drepRestored ?? false,
+            },
           },
         },
       });
@@ -217,6 +269,15 @@ export default function DiscoverTab({ flow }: Props) {
               userSlotIndex: result.sigHashes.indexOf(userPaymentKeyHash),
               registrationTxHash: item.tx_hash,
               expectedAddress: candidate.address,
+              registrationTypes: newest.json_metadata?.types ?? [],
+              participantHashes: Object.keys(
+                newest.json_metadata?.participants ?? {},
+              ).map((k) => k.toLowerCase()),
+              participantNames: Object.fromEntries(
+                Object.entries(newest.json_metadata?.participants ?? {}).map(
+                  ([k, v]) => [k.toLowerCase(), joinMetadataString(v?.name)],
+                ),
+              ),
             });
             return;
           }
