@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOMServer from "react-dom/server";
 
 import SeoFallback from "@/components/ui/seo-fallback";
-import { buildJsonLd, DEFAULT_DESCRIPTION } from "@/lib/seo";
+import { buildJsonLd, DEFAULT_DESCRIPTION, INDEXABLE_ROUTES } from "@/lib/seo";
 import { buildLlmsTxt } from "@/pages/llms.txt";
 
 /**
@@ -69,6 +69,10 @@ describe("buildLlmsTxt — /llms.txt for AI agents", () => {
     ]) {
       expect(txt).toContain(ep);
     }
+  });
+
+  it("is listed in the sitemap route set", () => {
+    expect(INDEXABLE_ROUTES.map((r) => r.path)).toContain("/llms.txt");
   });
 });
 
