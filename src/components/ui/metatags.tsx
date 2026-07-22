@@ -1,5 +1,4 @@
 import Head from "next/head";
-import JsonLd from "@/components/ui/json-ld";
 import {
   SITE_NAME,
   TWITTER_HANDLE,
@@ -127,10 +126,16 @@ export default function Metatags({
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-      </Head>
 
-      {/* Structured data (injected safely into <head> on the client). */}
-      <JsonLd json={jsonLd} />
+        {/* Structured data, server-rendered so non-JS crawlers and LLM fetchers
+            (which never execute our client bundle) read it in the initial HTML.
+            The content is app-controlled JSON.stringify output; escaping "<" to
+            its "<" JSON form keeps it valid JSON while making a "</script>"
+            breakout impossible, so no raw-HTML injection is involved. */}
+        <script type="application/ld+json">
+          {jsonLd.replace(/</g, "\\u003c")}
+        </script>
+      </Head>
     </>
   );
 }

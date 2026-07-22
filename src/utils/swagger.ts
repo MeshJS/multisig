@@ -1,8 +1,19 @@
 import swaggerJSDoc from "swagger-jsdoc";
 
+import { SITE_URL } from "@/lib/seo";
+
 export const swaggerSpec = swaggerJSDoc({
   definition: {
     openapi: "3.0.0",
+    // Absolute base URL so the spec is self-locating: tooling / codegen / LLMs
+    // can resolve every path against the real deployment without extra config.
+    servers: [
+      {
+        url: SITE_URL,
+        description:
+          "Deployment origin. All endpoints live under /api/v1 (e.g. <origin>/api/v1/botAuth).",
+      },
+    ],
     info: {
       title: "Multisig API",
       version: "1.0.0",

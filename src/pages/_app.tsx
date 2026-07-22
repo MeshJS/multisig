@@ -19,6 +19,7 @@ import "swagger-ui-react/swagger-ui.css";
 import "@/styles/swagger-overrides.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
+import SeoFallback from "@/components/ui/seo-fallback";
 import RootLayout from "@/components/common/overall-layout/layout";
 
 // MeshProvider pulls in dependencies that assume a browser/webpack env.
@@ -94,6 +95,10 @@ const MyApp: AppType<{ session: Session | null }> = ({
         type={seo.type}
         extraJsonLd={seo.jsonLd}
       />
+      {/* Also outside the ssr:false boundary: a <noscript> content fallback so
+          crawlers and LLM fetchers that don't run our client bundle still get
+          readable body content (the app itself renders an empty shell for them). */}
+      <SeoFallback />
       <MeshProviderNoSSR>
         {umamiWebsiteId && (
           <Script
