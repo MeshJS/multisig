@@ -1,5 +1,6 @@
 import React from "react";
-import { AlertTriangle, Check, Clock } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, Clock, Network } from "lucide-react";
 
 import { Reveal } from "@/components/ui/reveal";
 import {
@@ -319,11 +320,20 @@ export function PageRoadmap() {
             </div>
             <Legend />
             <Timeline />
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Clock className="h-3.5 w-3.5 shrink-0" />
-              Status reflects the <code className="font-mono">preprod</code>{" "}
-              branch. Delivered does not mean live.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                Status reflects the <code className="font-mono">preprod</code>{" "}
+                branch. Delivered does not mean live.
+              </p>
+              <Link
+                href="/roadmap/graph"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              >
+                <Network className="h-3.5 w-3.5 shrink-0" />
+                Explore the same work as a feature graph
+              </Link>
+            </div>
           </section>
 
           {/* ahead of schedule */}

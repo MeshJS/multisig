@@ -26,6 +26,7 @@ import {
 const FALLBACK_LINKS = [
   { path: "/features", label: "Features" },
   { path: "/roadmap", label: "Roadmap" },
+  { path: "/roadmap/graph", label: "Feature Graph" },
   { path: "/governance", label: "Cardano Governance" },
   { path: "/governance/drep", label: "DRep Explorer" },
   { path: "/api-docs", label: "API & Bot Documentation" },

@@ -7,6 +7,7 @@ const productLinks = [
   { label: "DRep Explorer", href: "/governance/drep" },
   { label: "Import a wallet", href: "/wallets/import-wallet" },
   { label: "Roadmap", href: "/roadmap" },
+  { label: "Feature graph", href: "/roadmap/graph" },
   { label: "Blog", href: "/blog" },
 ];
 
