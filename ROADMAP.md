@@ -14,6 +14,57 @@
 
 ---
 
+## Delivered to date (May – July 2026)
+
+What the product can actually do today, as verified in the codebase on 2026-07-26. The per-month **Progress** tables below track plan-vs-actual; this section is the cumulative capability inventory, and it is the input that reshaped M4–M6.
+
+> **Caveat — delivered ≠ live.** Everything below is merged on `preprod`. `main` is 75 commits behind and the production database is four migrations behind, so a good share of this is not yet reachable on the production deployment. Closing that gap is the first item in August.
+
+### Governance
+
+- **In-app voting for multisig DReps** — Ekklesia/Hydra budget voting, DRep-registration detection, segmented ballot UX, proposal cards with DB-cached tallies ([#272](https://github.com/MeshJS/multisig/pull/272), [#279](https://github.com/MeshJS/multisig/pull/279), [#296](https://github.com/MeshJS/multisig/pull/296), [#297](https://github.com/MeshJS/multisig/pull/297), [#302](https://github.com/MeshJS/multisig/pull/302)). Closed the metadata hash-mismatch ([#122](https://github.com/MeshJS/multisig/issues/122)) five months early.
+- **Public DRep vote-history explorer** — `/governance/drep` and `/governance/drep/[id]`, no wallet required. Full vote history with search + vote filter, CIP-100/CIP-136 rationales resolved from the anchor via IPFS, and a 9-column CSV export that resolves every rationale before writing. Served through a Koios proxy (`/api/governance/drepVotes`) because Blockfrost omits the proposal + rationale anchor ([#337](https://github.com/MeshJS/multisig/pull/337)–[#339](https://github.com/MeshJS/multisig/pull/339)).
+- **Rationale drafting, IPFS reliability, ballot CSV import/export** ([#300](https://github.com/MeshJS/multisig/pull/300)), with ReDoS hardening in `extractCidPath` ([#315](https://github.com/MeshJS/multisig/pull/315)).
+
+### Bot platform — arrived ~4 months ahead of its M7 slot
+
+- **Human-in-the-loop onboarding**: `botRegister` → `botClaim` (owner approves a 30-min claim code with their own JWT) → `botPickupSecret` (one-time) → `botAuth`, plus self-service `botRotateSecret` and `botMe`.
+- **Double opt-in authorization**: five scopes (`multisig:create|read|sign`, `governance:read`, `ballot:write`) on the key **and** a per-wallet grant (`WalletBotAccess`, `cosigner`/`observer`). Secrets stored as `JWT_SECRET`-peppered HMAC-SHA256; one bot is bound to one payment address at first auth. A bot can never move funds alone — the wallet's M-of-N threshold still gates submission.
+- **27 `/api/v1/*` handlers accept bot JWTs**, including wallet creation, UTxO/pending-tx reads, `addTransaction`, `signTransaction` with auto-submit on threshold, server-built stake and DRep certificates, and the full Plutus proxy suite.
+- **Ballot drafting by bots** (`botBallotsUpsert`, `botBallots`) — observer access is sufficient to draft ([#341](https://github.com/MeshJS/multisig/pull/341)–[#345](https://github.com/MeshJS/multisig/pull/345)).
+- **Rate limiting + body-size caps** in `src/lib/security/requestGuards.ts`: 60/min default, 15/min strict on register/pickup/auth, 5/min on rotate, 40/min per bot id.
+- **Management UI + audit**: `BotManagementCard` on `/user` and the wallets dashboard, a `bot` tRPC router for scopes/grants/revocation, and an append-only `AuditLog`.
+
+### Developer & agent surface — the M8 "API documentation and developer portal" item, already standing
+
+`/api-docs` (Swagger UI with a wallet-signature bearer-token generator), `/api/swagger` (1841-line OpenAPI 3.0 spec), `/llms.txt` (agent orientation incl. a self-contained bot quickstart), `/api/skill` (downloadable agent skill), `src/pages/api/v1/README.md` as the authoritative endpoint reference, and a reference client in `scripts/bot-ref/` ([#328](https://github.com/MeshJS/multisig/pull/328), [#346](https://github.com/MeshJS/multisig/pull/346)).
+
+### Notifications
+
+Resend-backed email channel with a real outbox: `NotificationDelivery` carries an idempotency key, attempt counter, `nextAttemptAt` backoff and nine statuses (including four distinct skip reasons), drained by `drainNotificationOutbox` via a token-authenticated `POST /api/notifications/drain`. Event types are `email.verify`, `signature.required`, `signature.reminder`. Per-wallet × per-signer settings UI on the wallet Info page, plus hashed-token email verification ([#322](https://github.com/MeshJS/multisig/pull/322), [#326](https://github.com/MeshJS/multisig/pull/326)). **Gap:** no scheduled workflow drains the outbox — `daily-balance-snapshots.yml` is the only cron in the repo.
+
+### Testing & CI
+
+- **Playwright E2E**: 11 spec files, ~54 tests, in `e2e/tests/` — wallet creation (legacy + SDK), ring transfers on real preprod, staking, proxy, DRep/ballot UI, bot management, notification settings, wallet access control, signing rejection, responsive smoke. Runs in Docker via `pr-playwright-browser.yml`, serialized against the v1 smoke job through a shared `ci-preprod-wallets` concurrency group ([#323](https://github.com/MeshJS/multisig/pull/323), [#335](https://github.com/MeshJS/multisig/pull/335), [#336](https://github.com/MeshJS/multisig/pull/336)).
+- Real-chain smoke system closed ([#213](https://github.com/MeshJS/multisig/issues/213)); deploy-migrations on Node 22 + manual dispatch ([#319](https://github.com/MeshJS/multisig/pull/319)); RLS follow-up migration authored ([#332](https://github.com/MeshJS/multisig/pull/332)); worktree gitlink fix ([#333](https://github.com/MeshJS/multisig/pull/333)).
+
+### Platform
+
+Mesh 2.0 groundwork (Prisma 7.8 + Next 16, tx-builder hardfork upgrade, wallet ops consolidated behind one bridge with an ESLint guardrail); signing & auth reliability (bech32 normalization, `signData` arg order, core-cst witness/body-hash merge, stuck-"Loading…" recovery, cross-instance import, non-opaque wallet-session status codes); mobile foundations, skeleton/empty states, error toasts, pagination; landing + SEO + glass theme overhaul; on-chain wallet registration and discovery ([#340](https://github.com/MeshJS/multisig/pull/340)).
+
+### Landed ahead of schedule
+
+| Capability | Planned | Actually delivered | Effect on the plan |
+|------------|---------|--------------------|--------------------|
+| Governance metadata fix (#122) | M7 (Nov) | June | Closed |
+| Wallet V2 — registration & discovery (#33) | M3 (Jul) | July ([#340](https://github.com/MeshJS/multisig/pull/340)) | On time; feeds the Discover page (#52), which moves up from M10 |
+| Bot platform (SDK/reference client, scoped auth, ballot API) | M7 (Nov) | July | M7 reduces to **webhooks only** — no webhook code exists yet |
+| API documentation & developer portal | M8 (Dec) | June–July | Done; M8 slot freed |
+| Pending transactions on user's homepage (#125) | M7 (Nov) | Shipped — surfaced on the wallets dashboard | Issue still open; verify and close |
+| Playwright E2E suite | Not scheduled | June–July | Becomes the safety net Document Sign-Off ships against |
+
+---
+
 ## Month 1 — May 2026
 
 **Focus:** Establish foundations and fix critical blockers.
@@ -102,50 +153,63 @@ Mid-month snapshot. Last updated 2026-06-17.
 
 ### Progress
 
-Early-month snapshot. Last updated 2026-07-06.
+End-of-month snapshot. Last updated 2026-07-26.
 
 | Task | Status | Evidence |
 |------|--------|----------|
-| Mesh 2.0 runtime cutover | **Blocked upstream** | No 2.0 of `@meshsdk/core`/`core-cst`/`core-csl` exists on npm (latest = 1.9.1, published 2026-06-01; MeshJS/mesh's latest release is 1.9.0). Only `@meshsdk/react` has a 2.0 (2.0.0-beta.2), already in use. Readiness on our side is verified: all wallet ops funnel through the `useMeshWallet`/`useActiveWallet` bridge ([#278](https://github.com/MeshJS/multisig/pull/278)) and byte-preserving witness merge is implemented + regression-tested (`src/__tests__/mergeSignerWitnesses.test.ts`). When core 2.0 ships, the cutover is a single-layer change: bump `@meshsdk/*`, re-source the bridge wallet, fix the 2.0 deltas (`signData` arg order, `signTx(tx, partialSign)`, `getUtxos(): string[]`, removed `getDRep`/`getAssets`/`getLovelace`), drop the ESLint guardrail. Watch item: check npm for `@meshsdk/core` 2.x |
-| Production hardening follow-through | In progress | Node-22 deploy-migrations fix confirmed on `main` (via [#321](https://github.com/MeshJS/multisig/pull/321)) ✅. `ProposalTally` migration still **unapplied in production** — the June 17 deploy run (pre-fix) failed and nothing has re-triggered it; needs a manual "Deploy Database Migrations" dispatch on `main` (governance tallies error until then). RLS advisory reviewed → [#332](https://github.com/MeshJS/multisig/pull/332) enables RLS + deny-all policies on the 7 flagged tables plus `ProposalTally` and the notification-center tables. Supabase also warns the Postgres version has pending security patches (dashboard upgrade). Stray committed worktree gitlink breaking CI submodule cleanup fixed in [#333](https://github.com/MeshJS/multisig/pull/333) |
-| FROST research kickoff (#220) | Not started | |
-| CI/maintenance baseline | Watch item | `multisig-v1-smoke` fails on **every dependabot PR** — dependabot-triggered runs don't receive repo Actions secrets (`CI_BLOCKFROST_PREPROD_API_KEY` is empty), and this job lacks the skip-when-secrets-missing guard the other smoke job has. Dependabot CI is red for systemic reasons, not because of the version bumps |
+| Mesh 2.0 runtime cutover | **Blocked upstream** | Re-checked 2026-07-26: npm latest for `@meshsdk/core`/`core-cst`/`core-csl` is still **1.9.1** — no 2.x has been published. Only `@meshsdk/react` has a 2.0 (2.0.0-beta.2), already in use. Readiness on our side is verified: all wallet ops funnel through the `useMeshWallet`/`useActiveWallet` bridge ([#278](https://github.com/MeshJS/multisig/pull/278)) and byte-preserving witness merge is implemented + regression-tested (`src/__tests__/mergeSignerWitnesses.test.ts`). When core 2.0 ships, the cutover is a single-layer change: bump `@meshsdk/*`, re-source the bridge wallet, fix the 2.0 deltas (`signData` arg order, `signTx(tx, partialSign)`, `getUtxos(): string[]`, removed `getDRep`/`getAssets`/`getLovelace`), drop the ESLint guardrail. **Demoted from a monthly task to a standing watch item** — it cannot be scheduled against an unpublished dependency |
+| Production hardening follow-through | **Not done — regressed into a release gap** | The production database has applied **no migration since 2026-05-10** (`20260510170000_make_user_nostrkey_optional` is the newest row in `_prisma_migrations`). Four migrations are outstanding: `add_proposal_tally`, `add_notification_center`, `enable_rls_followup_tables`, `pending_bot_optional_address`. The Node-22 fix did land, but `deploy-migrations.yml` only fires on pushes to `main` that touch `prisma/migrations/**`, so the fix never re-triggered the failed June 17 run. Compounding it, `main` itself carries migrations only through `add_proposal_tally` — **`preprod` is 75 commits ahead of `main`**, so all of July's work is unreleased. Consequences in production today: governance tallies error (no `ProposalTally`), the notification center has no tables, address-less bot registration cannot work, and [#332](https://github.com/MeshJS/multisig/pull/332)'s RLS fix is merged but **not applied** |
+| Supabase RLS advisory | **Open security exposure** | Verified against the production project 2026-07-26: 7 tables still have `rls_enabled: false` — `Contact`, `BotKey`, `BotUser`, `WalletBotAccess`, `PendingBot`, `BotClaimToken`, `AuditLog` — and are reachable by the `anon`/`authenticated` PostgREST roles. The remediation is already written (`20260706100000_enable_rls_followup_tables`); it is purely undeployed. Supabase additionally reports the Postgres version (`supabase-postgres-17.4.1.064`) has outstanding security patches, which is a dashboard-side upgrade |
+| FROST research kickoff (#220) | Not started | Carried to August. Needs to start there to leave runway before the October go/no-go |
+| CI/maintenance baseline | Watch item — unchanged | `pr-multisig-v1-smoke.yml` still `exit 1`s in its "Validate required CI secrets" step when secrets are absent, and dependabot-triggered runs never receive repo Actions secrets. Every dependabot PR is therefore red for systemic reasons, not because of the version bump — 7 are open, the oldest since 2026-06-15. The sibling `ci-smoke-preprod.yml` already has the skip-when-unconfigured guard to copy |
+| Wallet V2 (#33) | Delivered | On-chain wallet registration + discovery shipped in [#340](https://github.com/MeshJS/multisig/pull/340) |
+| Unplanned July delivery | Delivered | Bot platform, DRep vote-history explorer, Playwright E2E, and agent/API documentation all landed this month — see [Delivered to date](#delivered-to-date-may--july-2026) |
 
 ---
 
 ## Month 4 — August 2026
 
-**Focus:** Document Sign-Off MVP — build (see [Flagship feature](#flagship-feature--document-sign-off)).
+**Focus:** Close the production release gap, then start Document Sign-Off (see [Flagship feature](#flagship-feature--document-sign-off)).
+
+Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date-may--july-2026)) freed the M7/M8 documentation and bot slots, and surfaced a release gap that outranks all feature work.
 
 **Quirin**
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (build) — 5-table data model, four routes, CIP-8 signature enforcement, version-hash binding | |
+| **Ship July to production** *(do this first)* — release `preprod` → `main` (75 commits), then dispatch "Deploy Database Migrations" and confirm all four outstanding migrations apply. Closes the RLS exposure on 7 tables, un-breaks governance tallies, and makes the notification center and address-less bot registration reachable in production | #332 |
+| Migration-deploy reliability — make the release path self-verifying rather than path-filter dependent: run `prisma migrate status` as a post-deploy gate and alert on drift, so "merged" and "applied" cannot silently diverge again | #319 |
+| Document Sign-Off MVP (build) — finalize PRD-001 (still `status: Draft`) first, then the 5-model Prisma schema, tRPC routes, CIP-8 signature enforcement, version-hash binding | |
+| FROST research kickoff — survey Cardano-compatible FROST libraries + protocol readiness, draft the native-script vs threshold-Schnorr trade-off note, scope a PoC *(carryover from M3; must start here to leave runway for the October go/no-go)* | #220 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
 | Document Sign-Off MVP (build) — Documents section UI, six-state lifecycle, signer review screen | |
+| Unblock dependabot CI — port the skip-when-unconfigured guard from `ci-smoke-preprod.yml` into `pr-multisig-v1-smoke.yml`, then clear the 7 open dependency PRs (oldest open since 2026-06-15) | |
+| Notification center follow-ups — gov-proposal improvements, Playwright coverage in CI, and a scheduled drain for the outbox (no cron currently runs `drainNotificationOutbox`) | #327 |
 
 ---
 
 ## Month 5 — September 2026
 
-**Focus:** Document Sign-Off MVP — ship (8–10 wk effort completes).
+**Focus:** Document Sign-Off MVP — ship (8–10 wk effort completes); discovery consolidation.
 
 **Quirin**
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route | |
+| Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route. Ready = a pilot team runs all six user stories end-to-end without developer help (PRD-001's own bar) | |
+| Test depth — extend the Playwright suite to cover the Sign-Off flows, plus transaction-builder & tRPC integration tests | #255 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
 | Document Sign-Off MVP (ship) — diffs where feasible, status grouping, polish | |
+| Discover page — fold into the delivered Wallet V2 registration/discovery rather than building it standalone; add lookup by signer/policy *(moved up from M10)* | #52, #33 |
+| Notification digests & deadline reminders — ballot-deadline and threshold-reached emails on the existing outbox (product work, infrastructure already exists) | |
 | Monthly report | |
 
 ---
@@ -165,7 +229,8 @@ Early-month snapshot. Last updated 2026-07-06.
 
 | Task | Issues |
 |------|--------|
-| Hardware wallet support — Ledger/Trezor | #44 |
+| Hardware wallet support — Ledger/Trezor. **Scope the CIP-8 `signData` constraint during the M4–M5 Sign-Off build, not after** — Ledger/Trezor support for `signData` is limited, and Document Sign-Off approvals depend on it | #44 |
+| UX papercut batch — full-address verification (#196), transaction pagination (#30), better 404 page (#22) | #196, #30, #22 |
 
 ---
 
@@ -173,38 +238,40 @@ Early-month snapshot. Last updated 2026-07-06.
 
 **Focus:** Governance polish, dApp connector, bot platform.
 
+Revised 2026-07-26: the governance metadata fix closed in June, and the bot platform and developer portal shipped in July, so this month absorbs the work those slots were holding.
+
 **Quirin**
 
 | Task | Issues |
 |------|--------|
-| Governance metadata fix | #122 |
 | dApp connector — external dApps request multi-sig transactions | |
+| Improved authentication — pairs naturally with the connector, since external dApp access and auth are the same problem surface | #135 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
-| Pending transactions on homepage | #125 |
-| Bot platform v2 — SDK, webhooks, example bots | |
+| Bot platform — webhooks. The rest of "v2" (scoped auth, reference client, example bots, OpenAPI) shipped in July; webhooks are the only unbuilt piece — no webhook code exists in `src/` today | |
+| Multisig MCP server — expose the existing bot API as an MCP server so an agent can act as a wallet observer or ballot drafter. Small step from `/llms.txt` + `/api/skill` + the scoped bot JWT, and a genuine differentiator | |
+| Verify and close pending-transactions-on-homepage (#125), already surfaced on the wallets dashboard | #125 |
 
 ---
 
 ## Month 8 — December 2026
 
-**Focus:** Proxy voting, testing, developer experience.
+**Focus:** Proxy voting, testing, backlog.
 
 **Quirin**
 
 | Task | Issues |
 |------|--------|
 | Proxy voting polish and documentation | |
-| Transaction builder & tRPC integration tests | #255 |
+| Collateral service for proxy usage — the last backlog item with no roadmap slot | #221 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
-| API documentation and developer portal | |
 | Backlog cleanup, dependency/security updates | |
 | Monthly report | |
 
@@ -225,13 +292,13 @@ Early-month snapshot. Last updated 2026-07-06.
 
 | Task | Issues |
 |------|--------|
-| User profiles and contacts | |
+| User profiles and contacts — the `Contact` model and profile-image storage already exist; this is the UI and the social layer on top, not a from-scratch build | |
 
 ---
 
 ## Month 10 — February 2027
 
-**Focus:** Invite flow and discovery.
+**Focus:** Invite flow.
 
 **Quirin**
 
@@ -243,7 +310,7 @@ Early-month snapshot. Last updated 2026-07-06.
 
 | Task | Issues |
 |------|--------|
-| Discover page — browse wallets, DAOs, governance | #52 |
+| Open slot — the Discover page moved up to M5 to ride the delivered Wallet V2 discovery work. Reserve for spillover or pull forward from M11 | |
 
 ---
 
@@ -343,16 +410,20 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M2] In-app governance voting — Ekklesia/Hydra budget voting, DRep-registration detection, ballot UX, DB-cached tallies (#122)
 - [M2] IPFS reliability + rationale caching + ballot CSV
 - [M2] Platform UX foundations — mobile, skeleton/empty states, error toasts, landing + SEO + theme
-- [M3] Mesh 2.0 runtime cutover (carryover from M2)
-- [M3] FROST research kickoff (#220)
-- [M3] Production hardening follow-through — Node-22 migration CI on `main`, apply `ProposalTally`, RLS review (#319)
-- [M4–5] Document Sign-Off MVP — data model, routes, CIP-8 enforcement, proof export
+- [M3] Mesh 2.0 runtime cutover — ⏸ blocked upstream (no `@meshsdk/core` 2.x on npm); now a standing watch item, not a scheduled task
+- [M3] Production hardening follow-through (#319) — ⚠️ not done; escalated into the M4 release-gap task
+- [M4] **Ship July to production** — release `preprod` → `main`, dispatch migrations, close the RLS exposure (#332)
+- [M4] Migration-deploy reliability — post-deploy `prisma migrate status` gate + drift alert (#319)
+- [M4] FROST research kickoff (#220) — carryover from M3
+- [M4–5] Document Sign-Off MVP — finalize PRD-001, data model, routes, CIP-8 enforcement, proof export
+- [M5] Test depth — Playwright coverage for Sign-Off, tx-builder & tRPC integration tests (#255)
 - [M6] Document Sign-Off v1 — Provenance (history, diff & rollback, audit export)
 - [M6] FROST research — deliver findings, PoC, go/no-go (#220)
 - [M7] Governance metadata fix (#122) — ✅ closed early in June
 - [M7] dApp connector — external dApps request multi-sig transactions
+- [M7] Improved authentication (#135)
 - [M8] Proxy voting polish and documentation
-- [M8] Transaction builder & tRPC integration tests (#255)
+- [M8] Collateral service for proxy usage (#221)
 - [M9] Document Sign-Off v2 — Checkpoints (opt-in on-chain anchoring)
 - [M9] Vesting — time-locked multi-sig contracts (#81)
 - [M10] Invite flow (PR #67)
@@ -366,14 +437,18 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M1] Handle external PR — capability-based metadata (PR #208)
 - [M2] CI improvements — real-chain smoke system, deploy-migrations on Node 22, dependency/security hardening (#213)
 - [M2] Email notification service — signature-required emails via Resend, notification center + outbox/worker, per-wallet settings, email verification
-- [M3] Wallet V2 — on-chain registration and discovery (#33)
+- [M3] Wallet V2 — on-chain registration and discovery (#33) — ✅ delivered in July (#340)
 - [M3] CI/maintenance baseline — keep suites green on Node 22, dependency/security updates
+- [M4] Unblock dependabot CI — skip-when-unconfigured guard in `pr-multisig-v1-smoke.yml`, then clear the 7 open dependency PRs
+- [M4] Notification center follow-ups — gov-proposal improvements, Playwright coverage, scheduled outbox drain (#327)
 - [M4–5] Document Sign-Off MVP — Documents UI, six-state lifecycle, signer review, diffs
-- [M6] Hardware wallet support — Ledger/Trezor (#44)
-- [M7] Pending transactions on homepage (#125)
-- [M7] Bot platform v2 — SDK, webhooks, example bots
-- [M8] API documentation and developer portal
+- [M5] Discover page + lookup by signer/policy (#52, #33) — moved up from M10
+- [M5] Notification digests & deadline reminders
+- [M6] Hardware wallet support — Ledger/Trezor (#44); CIP-8 `signData` constraint scoped during M4–M5
+- [M6] UX papercut batch — full-address verification (#196), tx pagination (#30), 404 page (#22)
+- [M7] Bot platform — webhooks (the rest of "v2" shipped in July)
+- [M7] Multisig MCP server — agent access over the existing bot API
+- [M7] Verify and close pending transactions on homepage (#125)
 - [M8] Backlog cleanup, dependency/security updates
 - [M9] User profiles and contacts
-- [M10] Discover page — browse wallets, DAOs, governance (#52)
 - [M11] Document Sign-Off v3 — Collaboration & standards (research)
