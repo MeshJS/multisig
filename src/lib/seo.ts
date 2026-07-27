@@ -83,6 +83,16 @@ export const routeSeo: Record<string, RouteSeo> = {
     description:
       "Use Mesh Multisig with your favourite Cardano DApps in multi-signature mode.",
   },
+  "/roadmap": {
+    title: "Roadmap",
+    description:
+      "The twelve-month Mesh Multisig roadmap: what has shipped, what is in progress and what is planned for the Cardano multi-signature wallet, from May 2026 to April 2027.",
+  },
+  "/roadmap/graph": {
+    title: "Feature Graph",
+    description:
+      "An interactive knowledge graph of every Mesh Multisig feature and the state it is in — delivered, planned or blocked — linked to its area and the features it touches.",
+  },
   "/blog": {
     title: "Blog",
     description:
@@ -152,6 +162,8 @@ export type SitemapRoute = {
 export const INDEXABLE_ROUTES: SitemapRoute[] = [
   { path: "/", changefreq: "weekly", priority: 1.0 },
   { path: "/features", changefreq: "monthly", priority: 0.8 },
+  { path: "/roadmap", changefreq: "monthly", priority: 0.6 },
+  { path: "/roadmap/graph", changefreq: "monthly", priority: 0.5 },
   { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/governance", changefreq: "daily", priority: 0.8 },
   { path: "/governance/drep", changefreq: "daily", priority: 0.7 },
