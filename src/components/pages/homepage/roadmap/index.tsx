@@ -66,7 +66,7 @@ function Bar({ item, row }: { item: RoadmapItem; row: number }) {
             gridColumn: `${item.start + 1} / span ${item.span}`,
             gridRow: row,
           }}
-          className={`relative z-20 mx-[3px] my-1.5 flex min-h-[34px] items-center gap-1.5 self-center rounded-md border px-2 pb-3 pt-1.5 text-[11px] font-medium leading-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${STATUS_BAR[item.status]}`}
+          className={`relative z-10 mx-[3px] my-1.5 flex min-h-[34px] items-center gap-1.5 self-center rounded-md border px-2 pb-3 pt-1.5 text-[11px] font-medium leading-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${STATUS_BAR[item.status]}`}
         >
           <StatusIcon status={item.status} />
           {/* min-w-0 lets the flex child shrink so a long single word wraps
@@ -112,6 +112,12 @@ function Legend() {
  * The month grid. Every cell is placed explicitly — the "today" rule spans all
  * rows, and a grid item with a definite position is packed before auto-placed
  * siblings, which would otherwise shove the month headers a column to the right.
+ *
+ * Stacking order matters because the first column is sticky: cells (auto) sit
+ * under bars and the today rule (z-10), which slide under the frozen workstream
+ * column (z-20) as the grid scrolls, which in turn sits under the frozen corner
+ * (z-30). Every sticky cell needs an opaque background, or scrolled bars show
+ * through it.
  */
 function Timeline() {
   const columns = `minmax(168px, 184px) repeat(${MONTHS.length}, minmax(84px, 1fr))`;
@@ -125,7 +131,7 @@ function Timeline() {
         {/* header row */}
         <div
           style={{ gridColumn: 1, gridRow: 1 }}
-          className="sticky left-0 z-30 flex flex-col justify-center border-b border-border bg-muted/50 px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur"
+          className="sticky left-0 z-30 flex flex-col justify-center border-b border-r border-border bg-muted px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground"
         >
           Workstream
         </div>
@@ -157,10 +163,12 @@ function Timeline() {
           );
         })}
 
-        {/* today rule, on the right edge of the current month */}
+        {/* today rule, on the right edge of the current month. Kept at the bar
+            layer (z-10) so the frozen first column covers it once the grid is
+            scrolled horizontally, same as the bars. */}
         <div
           style={{ gridColumn: CURRENT_MONTH + 2, gridRow: "1 / -1" }}
-          className="pointer-events-none z-30 w-0 justify-self-start border-l-2 border-amber-500"
+          className="pointer-events-none z-10 w-0 justify-self-start border-l-2 border-amber-500"
         />
 
         {TRACKS.map((track, t) => {
@@ -169,7 +177,7 @@ function Timeline() {
             <React.Fragment key={track.name}>
               <div
                 style={{ gridColumn: 1, gridRow: row }}
-                className="sticky left-0 z-10 flex flex-col justify-center border-b border-r border-border bg-card px-4 py-3"
+                className="sticky left-0 z-20 flex flex-col justify-center border-b border-r border-border bg-card px-4 py-3"
               >
                 <span className="text-[13px] font-semibold leading-tight">
                   {track.name}
