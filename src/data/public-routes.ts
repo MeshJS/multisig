@@ -4,6 +4,8 @@ export const publicRoutes = [
   "/governance/drep",
   "/governance/drep/[id]",
   "/features",
+  "/roadmap",
+  "/roadmap/graph",
   "/api-docs",
   "/dapps",
   "/blog",
