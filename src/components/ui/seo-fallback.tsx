@@ -25,6 +25,7 @@ import {
 // the longer per-link blurb is pulled from routeSeo at render time.
 const FALLBACK_LINKS = [
   { path: "/features", label: "Features" },
+  { path: "/roadmap", label: "Roadmap" },
   { path: "/governance", label: "Cardano Governance" },
   { path: "/governance/drep", label: "DRep Explorer" },
   { path: "/api-docs", label: "API & Bot Documentation" },
