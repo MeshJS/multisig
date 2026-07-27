@@ -1,20 +1,26 @@
-import type { InferGetStaticPropsType } from "next";
+import type { InferGetServerSidePropsType } from "next";
 
 import { VaultGraphView } from "@/components/pages/homepage/roadmap/graph";
 import { loadVaultGraph } from "@/lib/vault";
 
 /**
- * The vault is a folder of files that only changes when the repo does, so it is
- * read once at build time rather than on every request. This is the one page in
- * the app using `getStaticProps` instead of a no-op `getServerSideProps`, and the
- * reason is that: no runtime filesystem access, and a malformed note fails the
- * build rather than a visitor's request.
+ * Read the vault per request, like every other page here.
+ *
+ * This originally used `getStaticProps` — the vault only changes when the repo
+ * does, so parsing it once at build time was cheaper. That made Next *prerender*
+ * the page, which fails: the app is a client-only SPA whose shell calls
+ * `useRouter` outside a mounted router, so the export step dies with
+ * "NextRouter was not mounted". It survived a local build and broke the Railway
+ * one, which is exactly the kind of difference not worth fighting.
+ *
+ * The parse is memoised in {@link loadVaultGraph}, so per-request cost is one
+ * read per process rather than one per visitor.
  */
-export const getStaticProps = () => ({ props: { graph: loadVaultGraph() } });
+export const getServerSideProps = () => ({ props: { graph: loadVaultGraph() } });
 
 export default function Page({
   graph,
-}: InferGetStaticPropsType<typeof getStaticProps>) {
+}: InferGetServerSidePropsType<typeof getServerSideProps>) {
   return (
     <div className="relative z-20 mx-auto w-full min-w-0 max-w-7xl py-10 lg:py-8">
       <div className="px-8">
