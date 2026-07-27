@@ -42,6 +42,10 @@ Thumbs.db
 # Documentation
 *.md
 !README.md
+# The feature vault is data, not documentation: /roadmap/graph reads these notes
+# at runtime, so they have to survive the *.md filter above.
+!vault
+!vault/**
 docs
 
 # Docker

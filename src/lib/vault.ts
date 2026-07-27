@@ -174,9 +174,9 @@ function readNotes(dir: string): { title: string; raw: string }[] {
 
 /**
  * Build the graph. Throws when a feature names an area or state that has no note,
- * so a typo surfaces at build time instead of silently dropping an edge.
+ * so a typo surfaces on the first read instead of silently dropping an edge.
  */
-export function loadVaultGraph(): VaultGraph {
+function buildVaultGraph(): VaultGraph {
   const nodes: VaultNode[] = [];
   const edges: VaultEdge[] = [];
 
@@ -279,4 +279,19 @@ export function loadVaultGraph(): VaultGraph {
   );
 
   return { nodes, edges, counts, generatedFrom: "vault/" };
+}
+
+let cached: VaultGraph | null = null;
+
+/**
+ * The graph, parsed once per process.
+ *
+ * The vault is immutable inside a deployed container, so re-reading ~66 files on
+ * every request would be pure waste. In development the cache is skipped, so
+ * editing a note and refreshing shows the change without a restart.
+ */
+export function loadVaultGraph(): VaultGraph {
+  if (process.env.NODE_ENV !== "production") return buildVaultGraph();
+  cached ??= buildVaultGraph();
+  return cached;
 }
