@@ -111,8 +111,8 @@ Status of M1 tasks. Last updated 2026-04-23.
 
 | Task | Issues |
 |------|--------|
-| CI improvements — real-chain smoke system, deploy-migrations on Node 22, dependency/security hardening | #213 |
-| Email notification service — signature-required emails via Resend, notification center + outbox/worker, per-wallet settings, email verification | |
+| CI improvements — real-chain smoke system, Added transaction-builder unit tests and tRPC integration tests, Added authorization and persistence tests for transaction and proxy tRPC procedures. | #255 |
+| Email notification service — signature-required emails via Resend, notification center + outbox/worker, per-wallet settings, email verification | #327 |
 
 ### Progress
 
@@ -126,7 +126,7 @@ Mid-month snapshot. Last updated 2026-06-17.
 | IPFS + rationale + ballot CSV | Done | Reliable IPFS proxy, rationale caching, ballot CSV ([#300](https://github.com/MeshJS/multisig/pull/300)); ReDoS hardening in `extractCidPath` ([#315](https://github.com/MeshJS/multisig/pull/315)) |
 | Platform UX foundations | Done | Mobile foundations ([#287](https://github.com/MeshJS/multisig/pull/287)–[#291](https://github.com/MeshJS/multisig/pull/291)), skeleton/empty states ([#289](https://github.com/MeshJS/multisig/pull/289)), error toasts ([#292](https://github.com/MeshJS/multisig/pull/292)), pagination/labels/assets ([#293](https://github.com/MeshJS/multisig/pull/293)–[#295](https://github.com/MeshJS/multisig/pull/295)), landing + SEO + theme ([#298](https://github.com/MeshJS/multisig/pull/298)/[#299](https://github.com/MeshJS/multisig/pull/299)/[#308](https://github.com/MeshJS/multisig/pull/308)–[#318](https://github.com/MeshJS/multisig/pull/318)) |
 | CI improvements | Done | Real-chain smoke system closed ([#213](https://github.com/MeshJS/multisig/issues/213)); deploy-migrations moved to Node 22 + manual dispatch ([#319](https://github.com/MeshJS/multisig/pull/319)); pg pool cap ([#284](https://github.com/MeshJS/multisig/pull/284)); npm override for brace-expansion ReDoS ([#301](https://github.com/MeshJS/multisig/pull/301)) |
-| Email notification service | In progress | Built on `feature/email-notification-center` (Resend email channel, notification center + outbox/worker, tRPC router, per-wallet settings UI, email verification, tests, plan doc); not yet merged to `preprod` |
+| Email notification service | In progress | Built on `feature/email-notification-center` (Resend email channel, notification center + outbox/worker, tRPC router, per-wallet settings UI, email verification, tests, plan doc); ([#322](https://github.com/MeshJS/multisig/pull/322)) |
 
 **Carryover into July:** complete the Mesh 2.0 runtime cutover; land the Node-22 deploy-migrations fix on `main` and apply the pending `ProposalTally` migration to production (governance tallies error until it exists); review the Supabase RLS advisory on the seven `rls_enabled: false` tables.
 
@@ -148,7 +148,7 @@ Mid-month snapshot. Last updated 2026-06-17.
 
 | Task | Issues |
 |------|--------|
-| Wallet V2 — on-chain registration and discovery — design the on-chain registration record + discovery index, define the data model, prototype lookup by signer/policy | #33 |
+| Wallet V2 — on-chain registration and discovery — design the on-chain registration record + discovery index, define the data model, prototype lookup by signer/policy | #33 #349 |
 | CI/maintenance baseline — keep smoke + unit/tRPC suites green on Node 22, dependency/security updates | |
 
 ### Progress
