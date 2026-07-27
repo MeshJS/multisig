@@ -67,6 +67,76 @@ export async function mockWalletUtxos(
 }
 
 /**
+ * Mocks the Blockfrost transaction reads the token-flow visualization
+ * performs on expansion:
+ *   - `/txs/{hash}/utxos` -> one input/output pair echoing the requested
+ *     hash, with output 0 at the given address (this also resolves pending
+ *     inputs that lack address/amount in their builder body)
+ *   - `/txs/{hash}`       -> minimal tx info with zero certificate /
+ *     withdrawal / mint counts, so no follow-up detail reads fire
+ */
+export async function mockTxFlowReads(
+  page: Page,
+  address: string,
+  options: { lovelace?: string } = {},
+): Promise<void> {
+  const lovelace = options.lovelace ?? "5000000";
+  await page.route(/\/txs\/[0-9a-f]{64}\/utxos/, async (route) => {
+    const hash = /\/txs\/([0-9a-f]{64})\/utxos/.exec(
+      route.request().url(),
+    )?.[1];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        hash,
+        inputs: [
+          {
+            address,
+            amount: [{ unit: "lovelace", quantity: lovelace }],
+            tx_hash: "0".repeat(64),
+            output_index: 0,
+            data_hash: null,
+            collateral: false,
+            reference: false,
+          },
+        ],
+        outputs: [
+          {
+            address,
+            amount: [{ unit: "lovelace", quantity: lovelace }],
+            output_index: 0,
+            data_hash: null,
+            collateral: false,
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(/\/txs\/[0-9a-f]{64}$/, async (route) => {
+    const hash = /\/txs\/([0-9a-f]{64})$/.exec(route.request().url())?.[1];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        hash,
+        block_time: 1700000000,
+        fee: "200000",
+        deposit: "0",
+        valid_contract: true,
+        withdrawal_count: 0,
+        delegation_count: 0,
+        stake_cert_count: 0,
+        pool_update_count: 0,
+        pool_retire_count: 0,
+        asset_mint_or_burn_count: 0,
+        redeemer_count: 0,
+      }),
+    });
+  });
+}
+
+/**
  * Mocks the Blockfrost `/accounts/{stakeAddress}` read the staking page uses.
  * `active: false` exposes the RegisterAndDelegate action; `active: true`
  * exposes Delegate + Deregister instead.

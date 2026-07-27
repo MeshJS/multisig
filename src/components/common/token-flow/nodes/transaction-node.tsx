@@ -1,0 +1,66 @@
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { ArrowLeftRight, ExternalLink } from "lucide-react";
+
+import LinkCardanoscan from "@/components/common/link-cardanoscan";
+import type { TransactionFlowNode } from "@/types/token-flow";
+import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
+import { cn } from "@/lib/utils";
+
+export default function TransactionNode({ data }: NodeProps) {
+  const node = (data as { node: TransactionFlowNode }).node;
+  return (
+    <div
+      data-testid={`tx-flow-node-${node.id}`}
+      className="w-[240px] rounded-lg border border-primary/40 bg-card px-3 py-2 shadow-md"
+    >
+      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+          <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="truncate">{node.label || "Transaction"}</span>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
+            node.status === "pending"
+              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+              : "bg-green-500/15 text-green-600 dark:text-green-400",
+          )}
+        >
+          {node.status === "pending" ? "Pending" : "On-chain"}
+        </span>
+      </div>
+      {node.txHash && (
+        <LinkCardanoscan
+          url={`transaction/${node.txHash}`}
+          className="mt-0.5 flex items-center gap-1 font-mono text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          <span className="truncate">{getFirstAndLast(node.txHash, 10, 6)}</span>
+          <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+        </LinkCardanoscan>
+      )}
+      {node.fee && (
+        <div className="mt-1 text-[10px] text-muted-foreground">
+          Fee: {lovelaceToAda(node.fee)}
+        </div>
+      )}
+      {node.badges.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {node.badges.map((badge, i) => (
+            <span
+              key={i}
+              title={badge.detail}
+              className={cn(
+                "rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
+                badge.color ?? "text-muted-foreground",
+              )}
+            >
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-primary" />
+    </div>
+  );
+}
