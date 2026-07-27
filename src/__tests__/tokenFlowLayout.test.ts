@@ -2,6 +2,7 @@ import {
   COLUMN_WIDTH,
   layoutTokenFlow,
 } from "@/components/common/token-flow/layout";
+import { HANDLES } from "@/components/common/token-flow/handles";
 import { mergeTokenFlows } from "@/utils/token-flow";
 import type { TokenFlow } from "@/types/token-flow";
 
@@ -108,5 +109,147 @@ describe("layoutTokenFlow", () => {
     const result = layoutTokenFlow(flow);
     expect(result.edges.find((e) => e.id === "tx:one->protocol:fee:fee")?.animated).toBe(true);
     expect(result.edges.find((e) => e.id === "tx:one->addr:extra:output")?.animated).toBe(false);
+  });
+});
+
+/** A self+change tx: A funds tx:one, which pays B and change back to A. */
+function selfChangeFlow(): TokenFlow {
+  return {
+    nodes: [
+      { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+      { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+      { id: "tx:one", kind: "transaction", txHash: "one", status: "onchain", badges: [] },
+    ],
+    edges: [
+      { id: `addr:${A}->tx:one:input`, source: `addr:${A}`, target: "tx:one", kind: "input", assets: [{ unit: "lovelace", quantity: "5" }] },
+      { id: `tx:one->addr:${B}:output`, source: "tx:one", target: `addr:${B}`, kind: "output", assets: [{ unit: "lovelace", quantity: "2" }] },
+      { id: `tx:one->addr:${A}:output`, source: "tx:one", target: `addr:${A}`, kind: "output", assets: [{ unit: "lovelace", quantity: "3" }] },
+    ],
+  };
+}
+
+describe("layoutTokenFlow — explorer-style instance splitting", () => {
+  test("same-tx input+output address splits into @in and @out instances", () => {
+    const result = layoutTokenFlow(selfChangeFlow());
+    expect(result.nodes.find((n) => n.id === `addr:${A}`)).toBeUndefined();
+    expect(columnOf(result, `addr:${A}@in`)).toBe(0);
+    expect(columnOf(result, `addr:${A}@out`)).toBe(2);
+
+    const inputEdge = result.edges.find((e) => e.data!.edge.kind === "input")!;
+    expect(inputEdge.source).toBe(`addr:${A}@in`);
+    const changeOutput = result.edges.find(
+      (e) => e.id === `tx:one->addr:${A}:output`,
+    )!;
+    expect(changeOutput.target).toBe(`addr:${A}@out`);
+
+    const outInstance = result.nodes.find((n) => n.id === `addr:${A}@out`)!;
+    const inInstance = result.nodes.find((n) => n.id === `addr:${A}@in`)!;
+    expect(outInstance.data.changeHint).toBe(true);
+    expect(inInstance.data.changeHint).toBeUndefined();
+  });
+
+  test("no value edge ever flows backwards (chain + change)", () => {
+    const txTwo: TokenFlow = {
+      nodes: [
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        { id: `addr:${C}`, kind: "address", address: C, partyType: "unknown" },
+        { id: "tx:two", kind: "transaction", txHash: "two", status: "onchain", badges: [] },
+      ],
+      edges: [
+        { id: `addr:${B}->tx:two:input`, source: `addr:${B}`, target: "tx:two", kind: "input", assets: [{ unit: "lovelace", quantity: "2" }] },
+        { id: `tx:two->addr:${C}:output`, source: "tx:two", target: `addr:${C}`, kind: "output", assets: [{ unit: "lovelace", quantity: "1" }] },
+      ],
+    };
+    const result = layoutTokenFlow(mergeTokenFlows([selfChangeFlow(), txTwo]));
+    const nodeX = new Map(result.nodes.map((n) => [n.id, n.position.x]));
+    for (const edge of result.edges) {
+      const kind = edge.data!.edge.kind;
+      if (kind !== "input" && kind !== "output" && kind !== "withdrawal") continue;
+      expect(nodeX.get(edge.source)!).toBeLessThan(nodeX.get(edge.target)!);
+    }
+  });
+
+  test("chained consumer sources from the @out join instance, no extra split", () => {
+    const txTwo: TokenFlow = {
+      nodes: [
+        { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+        { id: "tx:two", kind: "transaction", txHash: "two", status: "onchain", badges: [] },
+      ],
+      edges: [
+        { id: `addr:${A}->tx:two:input`, source: `addr:${A}`, target: "tx:two", kind: "input", assets: [{ unit: "lovelace", quantity: "3" }] },
+      ],
+    };
+    const result = layoutTokenFlow(mergeTokenFlows([selfChangeFlow(), txTwo]));
+    const aInstances = result.nodes.filter((n) => n.id.startsWith(`addr:${A}`));
+    expect(aInstances.map((n) => n.id).sort()).toEqual([
+      `addr:${A}@in`,
+      `addr:${A}@out`,
+    ]);
+    const txTwoInput = result.edges.find(
+      (e) => e.id === `addr:${A}->tx:two:input`,
+    )!;
+    expect(txTwoInput.source).toBe(`addr:${A}@out`);
+  });
+
+  test("handle assignment: value edges left-right, protocol edges bottom-top", () => {
+    const flow = selfChangeFlow();
+    flow.nodes.push(
+      { id: "protocol:fee", kind: "protocol", role: "fee", label: "Network fee" },
+      { id: "protocol:mint", kind: "protocol", role: "mint", label: "Mint / Burn" },
+    );
+    flow.edges.push(
+      { id: "tx:one->protocol:fee:fee", source: "tx:one", target: "protocol:fee", kind: "fee", assets: [{ unit: "lovelace", quantity: "1" }] },
+      { id: "protocol:mint->tx:one:mint", source: "protocol:mint", target: "tx:one", kind: "mint", assets: [{ unit: "policy1aa", quantity: "7" }] },
+    );
+    const result = layoutTokenFlow(flow);
+
+    const input = result.edges.find((e) => e.data!.edge.kind === "input")!;
+    expect(input.sourceHandle).toBe(HANDLES.address.out);
+    expect(input.targetHandle).toBe(HANDLES.transaction.in);
+
+    const fee = result.edges.find((e) => e.data!.edge.kind === "fee")!;
+    expect(fee.sourceHandle).toBe(HANDLES.transaction.protoOut);
+    expect(fee.targetHandle).toBe(HANDLES.protocol.topIn);
+
+    const mint = result.edges.find((e) => e.data!.edge.kind === "mint")!;
+    expect(mint.sourceHandle).toBe(HANDLES.protocol.topOut);
+    expect(mint.targetHandle).toBe(HANDLES.transaction.protoIn);
+
+    // Drift guard: every emitted handle id must exist in the shared HANDLES
+    // constants that the node components render.
+    const knownHandles = new Set<string>(
+      Object.values(HANDLES).flatMap((group) => Object.values(group)),
+    );
+    for (const edge of result.edges) {
+      expect(knownHandles.has(edge.sourceHandle as string)).toBe(true);
+      expect(knownHandles.has(edge.targetHandle as string)).toBe(true);
+    }
+  });
+
+  test("protocol pill hangs beneath its transaction", () => {
+    const result = layoutTokenFlow(singleTxFlow());
+    const tx = result.nodes.find((n) => n.id === "tx:one")!;
+    const fee = result.nodes.find((n) => n.id === "protocol:fee")!;
+    expect(Math.abs(fee.position.x - tx.position.x)).toBeLessThan(COLUMN_WIDTH / 2);
+    expect(fee.position.y).toBeGreaterThan(tx.position.y);
+  });
+
+  test("deterministic on a merged multi-tx flow (barycenter ordering)", () => {
+    const txTwo: TokenFlow = {
+      nodes: [
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        { id: `addr:${C}`, kind: "address", address: C, partyType: "unknown" },
+        { id: "tx:two", kind: "transaction", txHash: "two", status: "onchain", badges: [] },
+      ],
+      edges: [
+        { id: `addr:${B}->tx:two:input`, source: `addr:${B}`, target: "tx:two", kind: "input", assets: [{ unit: "lovelace", quantity: "2" }] },
+        { id: `tx:two->addr:${C}:output`, source: "tx:two", target: `addr:${C}`, kind: "output", assets: [{ unit: "lovelace", quantity: "1" }] },
+      ],
+    };
+    const merged = mergeTokenFlows([selfChangeFlow(), txTwo]);
+    const a = layoutTokenFlow(merged);
+    const b = layoutTokenFlow(merged);
+    expect(a.nodes).toEqual(b.nodes);
+    expect(a.edges).toEqual(b.edges);
   });
 });

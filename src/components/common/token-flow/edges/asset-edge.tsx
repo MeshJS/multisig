@@ -2,6 +2,7 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
+  getStraightPath,
   type EdgeProps,
 } from "@xyflow/react";
 
@@ -32,14 +33,25 @@ export default function AssetEdge(props: EdgeProps) {
     | undefined;
   const edge = data?.edge;
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  // Protocol edges are (near-)vertical drops between a tx card's bottom
+  // ports and the protocol pill beneath it — a straight line reads cleaner
+  // than a bezier there. Value edges keep the horizontal bezier flow.
+  const isProtocolEdge =
+    edge?.kind === "fee" ||
+    edge?.kind === "deposit" ||
+    edge?.kind === "burn" ||
+    edge?.kind === "deposit-refund" ||
+    edge?.kind === "mint";
+  const [edgePath, labelX, labelY] = isProtocolEdge
+    ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+    : getBezierPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+      });
 
   const isDebit =
     edge?.kind === "fee" || edge?.kind === "deposit" || edge?.kind === "burn";

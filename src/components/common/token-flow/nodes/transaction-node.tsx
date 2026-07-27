@@ -5,15 +5,21 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import type { TransactionFlowNode } from "@/types/token-flow";
 import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import { cn } from "@/lib/utils";
+import { HANDLES } from "../handles";
 
-export default function TransactionNode({ data }: NodeProps) {
+export default function TransactionNode({ id, data }: NodeProps) {
   const node = (data as { node: TransactionFlowNode }).node;
   return (
     <div
-      data-testid={`tx-flow-node-${node.id}`}
+      data-testid={`tx-flow-node-${id}`}
       className="w-[240px] rounded-lg border border-primary/40 bg-card px-3 py-2 shadow-md"
     >
-      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={HANDLES.transaction.in}
+        className="!bg-primary"
+      />
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
           <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -60,7 +66,28 @@ export default function TransactionNode({ data }: NodeProps) {
           ))}
         </div>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-primary" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={HANDLES.transaction.out}
+        className="!bg-primary"
+      />
+      {/* Bottom ports: protocol edges (fee/deposit/burn out, mint/refund in)
+          drop vertically to the protocol pills beneath the card. */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id={HANDLES.transaction.protoOut}
+        style={{ left: "38%" }}
+        className="!bg-muted-foreground"
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id={HANDLES.transaction.protoIn}
+        style={{ left: "62%" }}
+        className="!bg-muted-foreground"
+      />
     </div>
   );
 }

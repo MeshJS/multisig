@@ -1,23 +1,35 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { FlowEdge, FlowNode, TokenFlow } from "@/types/token-flow";
+import { HANDLES } from "./handles";
 
 /**
  * Deterministic columnar layout for the bipartite token-flow graph — no
  * external layout library. Each transaction gets a layer L (longest-path
  * depth over tx-to-tx reachability through shared address nodes); its input
  * addresses sit in column 2L, the tx in column 2L+1, outputs in 2L+2.
- * Protocol nodes (fee/deposit/mint) sit in a row beneath the transactions
- * they touch. Scales from one tx to the multi-tx chains of the future
- * transaction builder.
+ *
+ * Explorer-style UTxO view: an address that is both input and output of the
+ * SAME transaction is rendered twice — an `@in` instance in the input column
+ * and an `@out` instance in the output column (with a "change" hint) — so
+ * every value edge flows strictly left→right and never crosses back. An
+ * address produced by one tx and consumed by a LATER tx stays a single join
+ * node between them.
+ *
+ * Protocol nodes (fee/deposit/mint) hang directly beneath the transactions
+ * they touch and connect through dedicated bottom/top ports, so their edges
+ * are vertical drops that never cross the horizontal value flow.
  */
 
 // Wide enough that edge-label chips (asset amounts) between two columns
 // don't collide with the nodes on either side.
 export const COLUMN_WIDTH = 380;
 const VERTICAL_GAP = 28;
-const PROTOCOL_ROW_GAP = 70;
+const PROTOCOL_ROW_GAP = 90;
 const PROTOCOL_SPACING = 190;
+// Offset from a tx column's x to the tx card's bottom-center, where the
+// protocol ports sit (tx card is 240px wide).
+const TX_BOTTOM_CENTER_OFFSET = 60;
 
 /** Estimated render height per node kind; tx cards grow with their badges. */
 function estimateHeight(node: FlowNode): number {
@@ -29,8 +41,48 @@ function estimateHeight(node: FlowNode): number {
   return 68;
 }
 
-export type TokenFlowNodeData = { node: FlowNode; [key: string]: unknown };
+export type TokenFlowNodeData = {
+  node: FlowNode;
+  /** Set on split address instances: which side of its tx this copy sits on. */
+  instanceRole?: "in" | "out";
+  /** True on the output-side instance when the same tx also spends from it. */
+  changeHint?: boolean;
+  [key: string]: unknown;
+};
 export type TokenFlowEdgeData = { edge: FlowEdge; [key: string]: unknown };
+
+type AddressInstance = {
+  id: string;
+  node: FlowNode;
+  column: number;
+  role?: "in" | "out";
+  changeHint?: boolean;
+};
+
+const PROTOCOL_EDGE_HANDLES: Partial<
+  Record<FlowEdge["kind"], { sourceHandle: string; targetHandle: string }>
+> = {
+  fee: {
+    sourceHandle: HANDLES.transaction.protoOut,
+    targetHandle: HANDLES.protocol.topIn,
+  },
+  deposit: {
+    sourceHandle: HANDLES.transaction.protoOut,
+    targetHandle: HANDLES.protocol.topIn,
+  },
+  burn: {
+    sourceHandle: HANDLES.transaction.protoOut,
+    targetHandle: HANDLES.protocol.topIn,
+  },
+  "deposit-refund": {
+    sourceHandle: HANDLES.protocol.topOut,
+    targetHandle: HANDLES.transaction.protoIn,
+  },
+  mint: {
+    sourceHandle: HANDLES.protocol.topOut,
+    targetHandle: HANDLES.transaction.protoIn,
+  },
+};
 
 export function layoutTokenFlow(flow: TokenFlow): {
   nodes: Node<TokenFlowNodeData>[];
@@ -85,65 +137,192 @@ export function layoutTokenFlow(flow: TokenFlow): {
     }
     if (!changed) break;
   }
+  const txColumn = (txId: string): number => 2 * (layer.get(txId) ?? 0) + 1;
 
-  // Column assignment.
-  const column = new Map<string, number>();
-  for (const tx of txIds) column.set(tx, 2 * layer.get(tx)! + 1);
+  // --- Address instance planning (the explorer-style split) ---------------
+  // For each address, decide whether it renders as one node or as an @in
+  // plus @out pair, and which instance each of its edges attaches to.
+  const column = new Map<string, number>(); // instance id (or tx id) -> column
+  for (const tx of txIds) column.set(tx, txColumn(tx));
+
+  const instances: AddressInstance[] = [];
+  // (address, consuming tx) -> instance id the input edge sources from
+  const consumerInstance = new Map<string, string>();
+  // address -> instance id its output edges target
+  const outputInstance = new Map<string, string>();
+
   for (const node of flow.nodes) {
     if (node.kind !== "address") continue;
-    const candidates: number[] = [];
-    for (const consumer of consumersByAddress.get(node.id) ?? []) {
-      candidates.push(2 * layer.get(consumer)!);
+    const producers = producersByAddress.get(node.id) ?? [];
+    const consumers = [...new Set(consumersByAddress.get(node.id) ?? [])];
+
+    const outCol =
+      producers.length > 0
+        ? Math.max(...producers.map((p) => txColumn(p) + 1))
+        : undefined;
+
+    // A consumer can reuse the produced (@out) instance only when that
+    // instance sits strictly left of the consuming tx (forward flow);
+    // otherwise the address needs an input-side instance.
+    const inConsumers = consumers.filter(
+      (tx) => outCol === undefined || outCol >= txColumn(tx),
+    );
+    const outConsumers = consumers.filter(
+      (tx) => outCol !== undefined && outCol < txColumn(tx),
+    );
+    const inCol =
+      inConsumers.length > 0
+        ? Math.min(...inConsumers.map((tx) => txColumn(tx) - 1))
+        : undefined;
+
+    const split = inCol !== undefined && outCol !== undefined;
+    if (split) {
+      const inId = `${node.id}@in`;
+      const outId = `${node.id}@out`;
+      instances.push({ id: inId, node, column: inCol, role: "in" });
+      instances.push({
+        id: outId,
+        node,
+        column: outCol,
+        role: "out",
+        // "change" when the same tx both spends from and pays this address
+        changeHint: producers.some((p) => inConsumers.includes(p)),
+      });
+      for (const tx of inConsumers) consumerInstance.set(`${node.id}|${tx}`, inId);
+      for (const tx of outConsumers) consumerInstance.set(`${node.id}|${tx}`, outId);
+      outputInstance.set(node.id, outId);
+      column.set(inId, inCol);
+      column.set(outId, outCol);
+    } else {
+      const col = inCol ?? outCol ?? 0;
+      instances.push({ id: node.id, node, column: col });
+      for (const tx of consumers) consumerInstance.set(`${node.id}|${tx}`, node.id);
+      outputInstance.set(node.id, node.id);
+      column.set(node.id, col);
     }
-    for (const producer of producersByAddress.get(node.id) ?? []) {
-      candidates.push(2 * layer.get(producer)! + 2);
-    }
-    // A chain address (produced by tx L, consumed by tx L+1) lands between
-    // them because 2L+2 === 2(L+1); Math.max keeps it after its producer.
-    column.set(node.id, candidates.length > 0 ? Math.max(...candidates) : 0);
   }
 
-  // Stack nodes per column (sorted by id for determinism), using estimated
-  // heights so tall transaction cards never overlap their neighbours;
-  // shorter columns are centered against the tallest one.
-  const byColumn = new Map<number, FlowNode[]>();
-  for (const node of flow.nodes) {
-    if (node.kind === "protocol") continue;
-    const col = column.get(node.id) ?? 0;
-    byColumn.set(col, [...(byColumn.get(col) ?? []), node]);
+  // --- Remapped React Flow edges ------------------------------------------
+  const edges: Edge<TokenFlowEdgeData>[] = flow.edges.map((edge) => {
+    let source = edge.source;
+    let target = edge.target;
+    let handles: { sourceHandle: string; targetHandle: string } = {
+      sourceHandle: HANDLES.address.out,
+      targetHandle: HANDLES.address.in,
+    };
+
+    const protocolHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
+    if (protocolHandles) {
+      handles = protocolHandles;
+    } else if (edge.kind === "input" || edge.kind === "withdrawal") {
+      source = consumerInstance.get(`${edge.source}|${edge.target}`) ?? edge.source;
+    } else if (edge.kind === "output") {
+      target = outputInstance.get(edge.target) ?? edge.target;
+    }
+
+    return {
+      id: edge.id,
+      source,
+      target,
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      type: "asset",
+      animated: edge.assets.length > 0,
+      data: { edge },
+    };
+  });
+
+  // --- Stack instances per column ----------------------------------------
+  // Heights are estimated per node kind so tall transaction cards never
+  // overlap their neighbours; shorter columns center against the tallest.
+  // Row order within a column follows a one-pass barycenter sweep (mean
+  // y-center of already-placed neighbours in lower columns) so edges in
+  // merged multi-tx flows stay as parallel as possible; ties break by id.
+  type ColumnEntry = {
+    id: string;
+    node: FlowNode;
+    role?: "in" | "out";
+    changeHint?: boolean;
+  };
+  const byColumn = new Map<number, ColumnEntry[]>();
+  const pushEntry = (col: number, entry: ColumnEntry) =>
+    byColumn.set(col, [...(byColumn.get(col) ?? []), entry]);
+  for (const instance of instances) {
+    pushEntry(instance.column, {
+      id: instance.id,
+      node: instance.node,
+      role: instance.role,
+      changeHint: instance.changeHint,
+    });
   }
-  const columnHeight = (nodes: FlowNode[]): number =>
-    nodes.reduce((sum, node) => sum + estimateHeight(node), 0) +
-    Math.max(0, nodes.length - 1) * VERTICAL_GAP;
+  for (const tx of txIds) {
+    pushEntry(txColumn(tx), { id: tx, node: nodesById.get(tx)! });
+  }
+
+  const columnHeight = (entries: ColumnEntry[]): number =>
+    entries.reduce((sum, entry) => sum + estimateHeight(entry.node), 0) +
+    Math.max(0, entries.length - 1) * VERTICAL_GAP;
   const maxHeight = Math.max(
-    estimateHeight({ id: "", kind: "protocol", role: "fee", label: "" }),
+    36,
     ...[...byColumn.values()].map(columnHeight),
   );
 
+  // Neighbours in lower columns, per instance id (from the remapped edges).
+  const lowerNeighbors = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind]) continue;
+    const sourceCol = column.get(edge.source);
+    const targetCol = column.get(edge.target);
+    if (sourceCol === undefined || targetCol === undefined) continue;
+    const [lower, higher] =
+      sourceCol < targetCol ? [edge.source, edge.target] : [edge.target, edge.source];
+    lowerNeighbors.set(higher, [...(lowerNeighbors.get(higher) ?? []), lower]);
+  }
+
   const positioned: Node<TokenFlowNodeData>[] = [];
-  for (const [col, columnNodes] of byColumn) {
-    const sorted = [...columnNodes].sort((a, b) => (a.id < b.id ? -1 : 1));
+  const centerY = new Map<string, number>();
+  const sortedColumns = [...byColumn.keys()].sort((a, b) => a - b);
+  for (const col of sortedColumns) {
+    const entries = byColumn.get(col)!;
+    const rank = (entry: ColumnEntry): number => {
+      const neighbors = (lowerNeighbors.get(entry.id) ?? [])
+        .map((id) => centerY.get(id))
+        .filter((y): y is number => y !== undefined);
+      return neighbors.length > 0
+        ? neighbors.reduce((a, b) => a + b, 0) / neighbors.length
+        : Number.POSITIVE_INFINITY; // unconnected entries sink to the bottom
+    };
+    const sorted = [...entries].sort((a, b) => {
+      const diff = rank(a) - rank(b);
+      if (diff !== 0 && !Number.isNaN(diff)) return diff;
+      return a.id < b.id ? -1 : 1;
+    });
+
     let y = (maxHeight - columnHeight(sorted)) / 2;
-    for (const node of sorted) {
+    for (const entry of sorted) {
+      const height = estimateHeight(entry.node);
       positioned.push({
-        id: node.id,
-        type: node.kind,
+        id: entry.id,
+        type: entry.node.kind,
         position: { x: col * COLUMN_WIDTH, y },
-        data: { node },
+        data: {
+          node: entry.node,
+          ...(entry.role ? { instanceRole: entry.role } : {}),
+          ...(entry.changeHint ? { changeHint: true } : {}),
+        },
       });
-      y += estimateHeight(node) + VERTICAL_GAP;
+      centerY.set(entry.id, y + height / 2);
+      y += height + VERTICAL_GAP;
     }
   }
 
-  // Protocol nodes: one row beneath everything, starting under the average
-  // column of the transactions each touches, spread out so they never
-  // overlap each other.
+  // --- Protocol nodes: hang beneath the transactions they touch ----------
   const protocolNodes = flow.nodes.filter((node) => node.kind === "protocol");
   const bottomY = maxHeight + PROTOCOL_ROW_GAP;
   const sortedProtocol = [...protocolNodes].sort((a, b) =>
     a.id < b.id ? -1 : 1,
   );
-  sortedProtocol.forEach((node, i) => {
+  const anchors = sortedProtocol.map((node) => {
     const connectedTxColumns = flow.edges
       .filter((edge) => edge.source === node.id || edge.target === node.id)
       .map((edge) => (edge.source === node.id ? edge.target : edge.source))
@@ -153,25 +332,25 @@ export function layoutTokenFlow(flow: TokenFlow): {
         ? connectedTxColumns.reduce((a, b) => a + b, 0) /
           connectedTxColumns.length
         : 1;
+    return averageColumn * COLUMN_WIDTH + TX_BOTTOM_CENTER_OFFSET;
+  });
+  // Spread pills sharing (roughly) the same anchor so they never overlap.
+  const anchorGroups = new Map<number, number[]>(); // rounded anchor -> indices
+  anchors.forEach((anchor, i) => {
+    const key = Math.round(anchor / 10) * 10;
+    anchorGroups.set(key, [...(anchorGroups.get(key) ?? []), i]);
+  });
+  sortedProtocol.forEach((node, i) => {
+    const group = [...anchorGroups.values()].find((g) => g.includes(i))!;
+    const posInGroup = group.indexOf(i);
+    const x = anchors[i]! + (posInGroup - (group.length - 1) / 2) * PROTOCOL_SPACING;
     positioned.push({
       id: node.id,
       type: node.kind,
-      position: {
-        x: averageColumn * COLUMN_WIDTH + i * PROTOCOL_SPACING,
-        y: bottomY,
-      },
+      position: { x, y: bottomY },
       data: { node },
     });
   });
-
-  const edges: Edge<TokenFlowEdgeData>[] = flow.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    type: "asset",
-    animated: edge.assets.length > 0,
-    data: { edge },
-  }));
 
   return { nodes: positioned, edges };
 }
