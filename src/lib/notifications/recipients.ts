@@ -40,6 +40,41 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+export type SignatureEligibilitySetting = {
+  email: string | null;
+  emailNormalized: string | null;
+  emailVerifiedAt: Date | null;
+  emailOptIn: boolean;
+  notifyTransactionSignatures: boolean;
+  notifySignableSignatures: boolean;
+};
+
+/**
+ * Single source of truth for whether a signer may receive a signature
+ * notification email. Returns the skip status, or null when eligible.
+ * Used both at enqueue time (resolveSignatureRecipients) and at send time
+ * (drainNotificationOutbox) so preference changes are honored for rows
+ * already sitting in the outbox.
+ */
+export function getSignatureSkipReason(
+  setting: SignatureEligibilitySetting | null | undefined,
+  resourceType: SignatureResourceType,
+): NotificationDeliveryStatus | null {
+  if (!setting?.email || !setting.emailNormalized) {
+    return NOTIFICATION_STATUS_SKIPPED_NO_EMAIL;
+  }
+  if (!setting.emailVerifiedAt) {
+    return NOTIFICATION_STATUS_SKIPPED_NOT_VERIFIED;
+  }
+  if (!setting.emailOptIn) {
+    return NOTIFICATION_STATUS_SKIPPED_OPTED_OUT;
+  }
+  if (!setting[getSignatureNotificationPreferenceField(resourceType)]) {
+    return NOTIFICATION_STATUS_SKIPPED_DISABLED;
+  }
+  return null;
+}
+
 export async function resolveSignatureRecipients(
   db: PrismaClient,
   input: ResolveSignatureRecipientsInput,
@@ -47,9 +82,6 @@ export async function resolveSignatureRecipients(
   const signed = new Set(input.signedAddresses ?? []);
   const rejected = new Set(input.rejectedAddresses ?? []);
   const creator = input.creatorAddress ?? null;
-  const preferenceField = getSignatureNotificationPreferenceField(
-    input.resourceType,
-  );
   const signerSet = new Set(input.signerAddresses);
 
   const candidateAddresses = input.signerAddresses.filter((address) => {
@@ -88,36 +120,16 @@ export async function resolveSignatureRecipients(
 
   for (const address of candidateAddresses) {
     const setting = settingsByAddress.get(address);
-    if (!setting?.email || !setting.emailNormalized) {
-      skipped.push({ address, reason: NOTIFICATION_STATUS_SKIPPED_NO_EMAIL });
-      continue;
-    }
-    if (!setting.emailVerifiedAt) {
-      skipped.push({
-        address,
-        reason: NOTIFICATION_STATUS_SKIPPED_NOT_VERIFIED,
-      });
-      continue;
-    }
-    if (!setting.emailOptIn) {
-      skipped.push({
-        address,
-        reason: NOTIFICATION_STATUS_SKIPPED_OPTED_OUT,
-      });
-      continue;
-    }
-    if (!setting[preferenceField]) {
-      skipped.push({
-        address,
-        reason: NOTIFICATION_STATUS_SKIPPED_DISABLED,
-      });
+    const skipReason = getSignatureSkipReason(setting, input.resourceType);
+    if (skipReason) {
+      skipped.push({ address, reason: skipReason });
       continue;
     }
 
     eligible.push({
       address,
-      email: setting.email,
-      emailNormalized: setting.emailNormalized,
+      email: setting!.email!,
+      emailNormalized: setting!.emailNormalized!,
     });
   }
 
