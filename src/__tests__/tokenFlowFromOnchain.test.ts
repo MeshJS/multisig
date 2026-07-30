@@ -14,8 +14,9 @@ const labelAddress: AddressLabeler = (address) =>
 function baseInfo(overrides: Partial<BlockfrostTxInfo> = {}): BlockfrostTxInfo {
   return {
     hash: "abc123",
+    block_height: 12345678,
     block_time: 1700000000,
-    fee: "200000",
+    fees: "200000",
     deposit: "0",
     valid_contract: true,
     withdrawal_count: 0,
@@ -32,13 +33,18 @@ function baseInfo(overrides: Partial<BlockfrostTxInfo> = {}): BlockfrostTxInfo {
 function input(
   address: string,
   amount: { unit: string; quantity: string }[],
-  flags: Partial<{ collateral: boolean; reference: boolean }> = {},
+  flags: Partial<{
+    collateral: boolean;
+    reference: boolean;
+    txHash: string;
+    outputIndex: number;
+  }> = {},
 ) {
   return {
     address,
     amount,
-    output_index: 0,
-    tx_hash: "prev",
+    output_index: flags.outputIndex ?? 0,
+    tx_hash: flags.txHash ?? "prev",
     collateral: flags.collateral ?? false,
     reference: flags.reference ?? false,
     data_hash: null,
@@ -73,7 +79,12 @@ describe("onChainTxToTokenFlow", () => {
     const flow = onChainTxToTokenFlow(data, { labelAddress });
 
     const txNode = flow.nodes.find((n) => n.kind === "transaction");
-    expect(txNode).toMatchObject({ id: "tx:abc123", status: "onchain", fee: "200000" });
+    expect(txNode).toMatchObject({
+      id: "tx:abc123",
+      status: "onchain",
+      fee: "200000",
+      blockHeight: 12345678,
+    });
 
     expect(edge(flow, "input")).toMatchObject({
       source: `addr:${SELF}`,
@@ -89,28 +100,48 @@ describe("onChainTxToTokenFlow", () => {
     expect(selfNode).toMatchObject({ label: "Self (Multisig)", partyType: "self" });
   });
 
-  test("aggregates multiple UTxOs from the same address into one edge", () => {
+  test("emits one edge per input UTxO from the same address", () => {
     const data: TxFlowData = {
       info: baseInfo(),
       utxos: {
         hash: "abc123",
         inputs: [
           input(SELF, [{ unit: "lovelace", quantity: "1000000" }]),
-          input(SELF, [
-            { unit: "lovelace", quantity: "2000000" },
-            { unit: "policy1asset1", quantity: "5" },
-          ]),
+          input(
+            SELF,
+            [
+              { unit: "lovelace", quantity: "2000000" },
+              { unit: "policy1asset1", quantity: "5" },
+            ],
+            { outputIndex: 1 },
+          ),
         ],
         outputs: [output(OTHER, [{ unit: "lovelace", quantity: "2800000" }])],
       },
     };
     const flow = onChainTxToTokenFlow(data, { labelAddress });
     const inputs = flow.edges.filter((e) => e.kind === "input");
-    expect(inputs).toHaveLength(1);
-    expect(inputs[0]!.assets).toEqual([
-      { unit: "lovelace", quantity: "3000000" },
-      { unit: "policy1asset1", quantity: "5" },
+    expect(inputs).toHaveLength(2);
+    expect(inputs.map((e) => e.id).sort()).toEqual([
+      `addr:${SELF}->tx:abc123:input:prev#0`,
+      `addr:${SELF}->tx:abc123:input:prev#1`,
     ]);
+    const byId = new Map(inputs.map((e) => [e.id, e]));
+    expect(byId.get(`addr:${SELF}->tx:abc123:input:prev#0`)).toMatchObject({
+      assets: [{ unit: "lovelace", quantity: "1000000" }],
+      note: expect.stringContaining("#0"),
+    });
+    expect(byId.get(`addr:${SELF}->tx:abc123:input:prev#1`)).toMatchObject({
+      assets: [
+        { unit: "lovelace", quantity: "2000000" },
+        { unit: "policy1asset1", quantity: "5" },
+      ],
+      note: expect.stringContaining("#1"),
+    });
+    // Still one address node — the split happens on edges, not nodes.
+    expect(
+      flow.nodes.filter((n) => n.kind === "address" && n.id === `addr:${SELF}`),
+    ).toHaveLength(1);
   });
 
   test("skips collateral and reference inputs on a successful script tx", () => {
@@ -120,8 +151,14 @@ describe("onChainTxToTokenFlow", () => {
         hash: "abc123",
         inputs: [
           input(SELF, [{ unit: "lovelace", quantity: "5000000" }]),
-          input(SELF, [{ unit: "lovelace", quantity: "3000000" }], { collateral: true }),
-          input(OTHER, [{ unit: "lovelace", quantity: "9000000" }], { reference: true }),
+          input(SELF, [{ unit: "lovelace", quantity: "3000000" }], {
+            collateral: true,
+            outputIndex: 1,
+          }),
+          input(OTHER, [{ unit: "lovelace", quantity: "9000000" }], {
+            reference: true,
+            txHash: "ref",
+          }),
         ],
         outputs: [
           output(OTHER, [{ unit: "lovelace", quantity: "4800000" }]),

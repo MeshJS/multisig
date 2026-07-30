@@ -48,6 +48,7 @@ export type TransactionFlowNode = {
   label?: string; // e.g. dbTransaction.description
   fee?: string; // lovelace
   deposit?: string; // net deposit in lovelace; negative = refund
+  blockHeight?: number; // on-chain only
   badges: FlowBadge[];
 };
 
@@ -71,11 +72,14 @@ export type FlowEdgeKind =
   | "burn"; // tx -> protocol:mint
 
 export type FlowEdge = {
-  id: string; // `${source}->${target}:${kind}`
+  id: string; // `${source}->${target}:${kind}` + optional `:${discriminator}`
   source: string;
   target: string;
   kind: FlowEdgeKind;
-  /** Aggregated per (source, target, kind); summed by unit. */
+  /**
+   * Aggregated per edge id — (source, target, kind) plus the optional
+   * discriminator, so discriminated edges (one per input UTxO) stay separate.
+   */
   assets: AssetQuantity[];
   /** Short annotation when assets are unknown or special, e.g. "change". */
   note?: string;

@@ -3,7 +3,7 @@ import { ArrowLeftRight, ExternalLink } from "lucide-react";
 
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import type { TransactionFlowNode } from "@/types/token-flow";
-import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
+import { getFirstAndLast, lovelaceToAda, numberWithCommas } from "@/utils/strings";
 import { cn } from "@/lib/utils";
 import { HANDLES } from "../handles";
 
@@ -44,6 +44,11 @@ export default function TransactionNode({ id, data }: NodeProps) {
           <span className="truncate">{getFirstAndLast(node.txHash, 10, 6)}</span>
           <ExternalLink className="h-2.5 w-2.5 shrink-0" />
         </LinkCardanoscan>
+      )}
+      {node.status === "onchain" && node.blockHeight !== undefined && (
+        <div className="mt-1 text-[10px] text-muted-foreground">
+          Block {numberWithCommas(node.blockHeight)}
+        </div>
       )}
       {node.fee && (
         <div className="mt-1 text-[10px] text-muted-foreground">

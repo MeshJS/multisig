@@ -99,14 +99,21 @@ export class FlowGraphBuilder {
     return node;
   }
 
+  /**
+   * `discriminator` opts an edge out of (source, target, kind) aggregation
+   * by extending the id — used for one-edge-per-input-UTxO rendering. Must
+   * be deterministic (e.g. `txHash#index`) so `mergeTokenFlows` dedupe holds.
+   */
   addEdge(
     source: string,
     target: string,
     kind: FlowEdgeKind,
     assets: { unit: string; quantity: string }[],
     note?: string,
+    discriminator?: string,
   ): void {
-    const id = `${source}->${target}:${kind}`;
+    const id =
+      `${source}->${target}:${kind}` + (discriminator ? `:${discriminator}` : "");
     if (!this.edgeMeta.has(id)) {
       this.edgeMeta.set(id, { source, target, kind, note });
       this.edgeAssets.set(id, new Map());

@@ -29,8 +29,9 @@ export type BlockfrostTxUtxos = {
 /** GET /txs/{hash} — the fields the token-flow feature reads. */
 export type BlockfrostTxInfo = {
   hash: string;
+  block_height: number;
   block_time: number;
-  fee: string; // lovelace
+  fees: string; // lovelace; Blockfrost uses the plural key
   deposit: string; // net deposit in lovelace; negative = refund
   valid_contract: boolean;
   withdrawal_count: number;

@@ -226,6 +226,33 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     }
   });
 
+  test("per-UTxO parallel edges survive the @in remap and get parallel indices", () => {
+    const flow = selfChangeFlow();
+    // Replace the single input edge with two discriminated per-UTxO edges.
+    flow.edges = flow.edges.filter((e) => e.kind !== "input");
+    flow.edges.push(
+      { id: `addr:${A}->tx:one:input:h#0`, source: `addr:${A}`, target: "tx:one", kind: "input", assets: [{ unit: "lovelace", quantity: "2" }], note: "h#0" },
+      { id: `addr:${A}->tx:one:input:h#1`, source: `addr:${A}`, target: "tx:one", kind: "input", assets: [{ unit: "lovelace", quantity: "3" }], note: "h#1" },
+    );
+    const result = layoutTokenFlow(flow);
+
+    const inputs = result.edges.filter((e) => e.data!.edge.kind === "input");
+    expect(inputs.map((e) => e.id).sort()).toEqual([
+      `addr:${A}->tx:one:input:h#0`,
+      `addr:${A}->tx:one:input:h#1`,
+    ]);
+    for (const edge of inputs) {
+      expect(edge.source).toBe(`addr:${A}@in`);
+      expect(edge.data!.parallelCount).toBe(2);
+    }
+    expect(inputs.map((e) => e.data!.parallelIndex).sort()).toEqual([0, 1]);
+
+    // Lone edges (the two outputs go to different targets) stay unstamped.
+    for (const edge of result.edges.filter((e) => e.data!.edge.kind === "output")) {
+      expect(edge.data!.parallelCount).toBeUndefined();
+    }
+  });
+
   test("protocol pill hangs beneath its transaction", () => {
     const result = layoutTokenFlow(singleTxFlow());
     const tx = result.nodes.find((n) => n.id === "tx:one")!;

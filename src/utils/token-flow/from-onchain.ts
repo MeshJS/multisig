@@ -1,5 +1,6 @@
 import type { TxFlowData } from "@/types/blockfrost";
 import type { AddressLabeler, TokenFlow, TransactionFlowNode } from "@/types/token-flow";
+import { getFirstAndLast } from "@/utils/strings";
 import { blockfrostCertBadges } from "./certificates";
 import {
   FlowGraphBuilder,
@@ -26,7 +27,8 @@ export function onChainTxToTokenFlow(
     txHash: info.hash,
     status: "onchain",
     label: opts.description,
-    fee: info.fee,
+    fee: info.fees,
+    blockHeight: info.block_height,
     deposit: info.deposit !== "0" ? info.deposit : undefined,
     badges: blockfrostCertBadges({
       delegations: data.delegations,
@@ -49,17 +51,26 @@ export function onChainTxToTokenFlow(
     (output) => (scriptFailed ? output.collateral : !output.collateral),
   );
 
+  // One edge per input UTxO (discriminated by its ref) so multiple spends
+  // from the same address render as separate labeled edges.
   for (const input of inputs) {
     const node = graph.addressNode(input.address);
-    graph.addEdge(node.id, txId, "input", input.amount);
+    graph.addEdge(
+      node.id,
+      txId,
+      "input",
+      input.amount,
+      `${getFirstAndLast(input.tx_hash, 8, 4)}#${input.output_index}`,
+      `${input.tx_hash}#${input.output_index}`,
+    );
   }
   for (const output of outputs) {
     const node = graph.addressNode(output.address);
     graph.addEdge(txId, node.id, "output", output.amount);
   }
 
-  if (BigInt(info.fee || "0") > 0n) {
-    graph.addEdge(txId, graph.protocolNode("fee").id, "fee", lovelace(info.fee));
+  if (BigInt(info.fees || "0") > 0n) {
+    graph.addEdge(txId, graph.protocolNode("fee").id, "fee", lovelace(info.fees));
   }
 
   const deposit = BigInt(info.deposit || "0");

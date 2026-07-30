@@ -78,6 +78,48 @@ describe("pendingTxToTokenFlow", () => {
     expect(flow.nodes.find((n) => n.id === "addr:unknown-inputs")).toBeUndefined();
   });
 
+  test("emits one edge per input UTxO from the same address", () => {
+    const txJson = {
+      inputs: [
+        {
+          type: "PubKey",
+          txIn: {
+            txHash: "prev1",
+            txIndex: 0,
+            address: SELF,
+            amount: [{ unit: "lovelace", quantity: "1000000" }],
+          },
+        },
+        { type: "PubKey", txIn: { txHash: "prev1", txIndex: 1 } },
+      ],
+      outputs: [],
+    };
+    const resolvedInputs = new Map([
+      [
+        resolvedInputKey("prev1", 1),
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "2000000" }] },
+      ],
+    ]);
+    const flow = pendingTxToTokenFlow(txJson, {
+      labelAddress,
+      txId: "db-1",
+      resolvedInputs,
+    });
+    const inputs = flow.edges.filter((e) => e.kind === "input");
+    expect(inputs).toHaveLength(2);
+    expect(inputs.map((e) => e.id).sort()).toEqual([
+      `addr:${SELF}->txp:db-1:input:prev1#0`,
+      `addr:${SELF}->txp:db-1:input:prev1#1`,
+    ]);
+    const byId = new Map(inputs.map((e) => [e.id, e.assets]));
+    expect(byId.get(`addr:${SELF}->txp:db-1:input:prev1#0`)).toEqual([
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(byId.get(`addr:${SELF}->txp:db-1:input:prev1#1`)).toEqual([
+      { unit: "lovelace", quantity: "2000000" },
+    ]);
+  });
+
   test("unresolvable inputs degrade to a single unresolved node", () => {
     const txJson = {
       inputs: [

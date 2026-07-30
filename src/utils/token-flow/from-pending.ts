@@ -5,6 +5,7 @@ import type {
   TransactionFlowNode,
 } from "@/types/token-flow";
 import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
+import { getFirstAndLast } from "@/utils/strings";
 import { meshCertificateToBadge, meshVoteToBadge } from "./certificates";
 import { FlowGraphBuilder, lovelace } from "./graph-builder";
 
@@ -71,7 +72,21 @@ export function pendingTxToTokenFlow(
       const node = graph.addressNode(resolved.address, {
         partyType: input.type === "Script" ? "script" : undefined,
       });
-      graph.addEdge(node.id, txNodeId, "input", resolved.amount);
+      // Discriminate by UTxO ref so multiple spends from one address render
+      // as separate edges; malformed bodies without a ref fall back to the
+      // aggregated edge.
+      const hasRef =
+        typeof txIn.txHash === "string" && typeof txIn.txIndex === "number";
+      graph.addEdge(
+        node.id,
+        txNodeId,
+        "input",
+        resolved.amount,
+        hasRef
+          ? `${getFirstAndLast(txIn.txHash, 8, 4)}#${txIn.txIndex}`
+          : undefined,
+        hasRef ? `${txIn.txHash}#${txIn.txIndex}` : undefined,
+      );
     } else {
       unresolvedCount++;
     }

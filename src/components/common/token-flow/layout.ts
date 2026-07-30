@@ -35,7 +35,9 @@ const TX_BOTTOM_CENTER_OFFSET = 60;
 function estimateHeight(node: FlowNode): number {
   if (node.kind === "transaction") {
     const badgeRows = Math.ceil(node.badges.length / 2);
-    return 84 + badgeRows * 24;
+    const detailRows =
+      (node.fee ? 1 : 0) + (node.blockHeight !== undefined ? 1 : 0);
+    return 84 + detailRows * 16 + badgeRows * 24;
   }
   if (node.kind === "protocol") return 36;
   return 68;
@@ -49,7 +51,13 @@ export type TokenFlowNodeData = {
   changeHint?: boolean;
   [key: string]: unknown;
 };
-export type TokenFlowEdgeData = { edge: FlowEdge; [key: string]: unknown };
+export type TokenFlowEdgeData = {
+  edge: FlowEdge;
+  /** Set when several edges share the same node pair (per-UTxO inputs). */
+  parallelIndex?: number;
+  parallelCount?: number;
+  [key: string]: unknown;
+};
 
 type AddressInstance = {
   id: string;
@@ -231,6 +239,25 @@ export function layoutTokenFlow(flow: TokenFlow): {
       data: { edge },
     };
   });
+
+  // Per-UTxO input edges share one node pair and one handle pair, so they
+  // would render on top of each other. Stamp each member of such a group
+  // with its index so the edge component can bow them apart. Grouping uses
+  // post-remap endpoints; order within a group is by edge id (deterministic).
+  const parallelGroups = new Map<string, Edge<TokenFlowEdgeData>[]>();
+  for (const edge of edges) {
+    if (PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind]) continue;
+    const key = `${edge.source}|${edge.target}`;
+    parallelGroups.set(key, [...(parallelGroups.get(key) ?? []), edge]);
+  }
+  for (const group of parallelGroups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) => (a.id < b.id ? -1 : 1));
+    sorted.forEach((edge, index) => {
+      edge.data!.parallelIndex = index;
+      edge.data!.parallelCount = sorted.length;
+    });
+  }
 
   // --- Stack instances per column ----------------------------------------
   // Heights are estimated per node kind so tall transaction cards never
