@@ -19,17 +19,19 @@ export default function TransactionNode({ id, data }: NodeProps) {
     inPortCount = 1,
     outPortCount = 1,
     usedProtoHandles = [],
+    testIdSuffix = "",
   } = data as {
     node: TransactionFlowNode;
     inPortCount?: number;
     outPortCount?: number;
     usedProtoHandles?: string[];
+    testIdSuffix?: string;
   };
   const protoOut = usedProtoHandles.includes(HANDLES.transaction.protoOut);
   const protoIn = usedProtoHandles.includes(HANDLES.transaction.protoIn);
   return (
     <div
-      data-testid={`tx-flow-node-${id}`}
+      data-testid={`tx-flow-node-${id}${testIdSuffix}`}
       // One connector per input/output edge; the card stretches so the
       // taller port stack keeps its dots evenly spaced.
       style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}

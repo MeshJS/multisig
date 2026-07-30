@@ -59,11 +59,13 @@ export default function AddressNode({ id, data }: NodeProps) {
     changeHint,
     inPortCount = 1,
     outPortCount = 1,
+    testIdSuffix = "",
   } = data as {
     node: AddressFlowNode;
     changeHint?: boolean;
     inPortCount?: number;
     outPortCount?: number;
+    testIdSuffix?: string;
   };
   const style = PARTY_STYLES[node.partyType] ?? PARTY_STYLES.unknown;
   const Icon = style.icon;
@@ -71,7 +73,7 @@ export default function AddressNode({ id, data }: NodeProps) {
     <div
       // React Flow node id, not node.id: split instances (@in/@out) must
       // render unique testids.
-      data-testid={`tx-flow-node-${id}`}
+      data-testid={`tx-flow-node-${id}${testIdSuffix}`}
       // Every attached edge gets its own connector; the card stretches so
       // the taller port stack keeps its dots evenly spaced.
       style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}

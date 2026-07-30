@@ -11,16 +11,17 @@ const ROLE_ICONS = {
 } as const;
 
 export default function ProtocolNode({ id, data }: NodeProps) {
-  const { node, usedProtoHandles = [] } = data as {
+  const { node, usedProtoHandles = [], testIdSuffix = "" } = data as {
     node: ProtocolFlowNode;
     usedProtoHandles?: string[];
+    testIdSuffix?: string;
   };
   const Icon = ROLE_ICONS[node.role] ?? Flame;
   const topIn = usedProtoHandles.includes(HANDLES.protocol.topIn);
   const topOut = usedProtoHandles.includes(HANDLES.protocol.topOut);
   return (
     <div
-      data-testid={`tx-flow-node-${id}`}
+      data-testid={`tx-flow-node-${id}${testIdSuffix}`}
       className="rounded-full border border-dashed border-border bg-muted/40 px-3 py-1.5 shadow-sm"
     >
       {/* Top ports: protocol pills hang beneath their transaction, so both

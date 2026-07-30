@@ -109,9 +109,57 @@ export function TokenFlowContent({
 }
 
 /**
- * Collapsible "Token Flow" section following the transactions-page house
- * pattern. Content (and its Blockfrost fetches + the React Flow chunk)
- * mounts only after the first expansion.
+ * Collapsible section shell following the transactions-page house pattern:
+ * collapsed by default, children mount only after the first expansion (so
+ * their data fetches and the React Flow chunk stay lazy).
+ */
+export function FlowSection({
+  label,
+  toggleTestId,
+  children,
+  className,
+}: {
+  label: string;
+  toggleTestId: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+
+  return (
+    <Collapsible
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (open) setHasOpened(true);
+      }}
+      className={className}
+    >
+      <CollapsibleTrigger
+        data-testid={toggleTestId}
+        className="group flex w-full items-center justify-between rounded-lg border border-border/50 bg-muted/30 p-3 transition-colors hover:bg-muted/50"
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        {isOpen ? (
+          <ChevronUp className="h-4 w-4 text-muted-foreground transition-transform" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3">
+        {hasOpened && children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * Collapsible "Token Flow" section for one transaction. Content (and its
+ * Blockfrost fetches + the React Flow chunk) mounts only after the first
+ * expansion.
  */
 export default function TokenFlowSection({
   source,
@@ -123,44 +171,21 @@ export default function TokenFlowSection({
   /** Disambiguates testids when several surfaces render the same tx. */
   testIdSuffix?: string;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hasOpened, setHasOpened] = useState(false);
-
   // A pending tx whose txJson failed to parse has nothing to visualize.
   if (source.type === "pending" && !source.txJson) return null;
 
   const txKey = source.type === "onchain" ? source.txHash : source.txId;
 
   return (
-    <Collapsible
-      open={isOpen}
-      onOpenChange={(open) => {
-        setIsOpen(open);
-        if (open) setHasOpened(true);
-      }}
+    <FlowSection
+      label="Token Flow"
+      toggleTestId={`tx-flow-toggle-${txKey}${testIdSuffix}`}
     >
-      <CollapsibleTrigger
-        data-testid={`tx-flow-toggle-${txKey}${testIdSuffix}`}
-        className="group flex w-full items-center justify-between rounded-lg border border-border/50 bg-muted/30 p-3 transition-colors hover:bg-muted/50"
-      >
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Token Flow
-        </div>
-        {isOpen ? (
-          <ChevronUp className="h-4 w-4 text-muted-foreground transition-transform" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
-        )}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3">
-        {hasOpened && (
-          <TokenFlowContent
-            source={source}
-            appWallet={appWallet}
-            testIdSuffix={testIdSuffix}
-          />
-        )}
-      </CollapsibleContent>
-    </Collapsible>
+      <TokenFlowContent
+        source={source}
+        appWallet={appWallet}
+        testIdSuffix={testIdSuffix}
+      />
+    </FlowSection>
   );
 }

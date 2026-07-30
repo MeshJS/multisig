@@ -7,6 +7,15 @@ export {
 export { draftToTokenFlow, flowIdToDraftEntity } from "./from-draft";
 export { mergeTokenFlows } from "./merge";
 export {
+  focusColumnRange,
+  focusPair,
+  orderTimelineTxs,
+  storeTxToTokenFlow,
+  timelineTxNodeId,
+  timelineTxsFromOnChain,
+  type TimelineTxRef,
+} from "./timeline";
+export {
   meshCertificateToBadge,
   meshVoteToBadge,
   blockfrostCertBadges,

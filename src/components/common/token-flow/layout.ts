@@ -58,6 +58,8 @@ export type TokenFlowNodeData = {
   outPortCount?: number;
   /** Which protocol ports carry an edge; unused ones aren't rendered. */
   usedProtoHandles?: string[];
+  /** Appended to the node testid; see LayoutOptions.testIdSuffix. */
+  testIdSuffix?: string;
   [key: string]: unknown;
 };
 export type TokenFlowEdgeData = {
@@ -98,9 +100,34 @@ const PROTOCOL_EDGE_HANDLES: Partial<
   },
 };
 
-export function layoutTokenFlow(flow: TokenFlow): {
+export type LayoutOptions = {
+  /**
+   * Timeline mode: tx node ids ordered oldest → newest. Each listed tx gets
+   * layer = its index in this list (strictly one tx per layer), replacing the
+   * dependency-based longest-path layering. Ids absent from the flow keep
+   * their index — the gap preserves loaded-tx positions while data for other
+   * txs streams in. Txs present in the flow but not listed fall back to
+   * layer 0. Address instancing also switches to per-column (`@c<col>`)
+   * so every value edge stays one column long, and protocol pills render
+   * once per touching tx (`protocol:fee@c<col>`) — globally shared
+   * instances would fan full-width edges across the whole timeline.
+   */
+  txOrder?: string[];
+  /**
+   * Appended to node testids so two canvases rendering the same tx (e.g. the
+   * timeline plus an expanded per-row viz) don't collide.
+   */
+  testIdSuffix?: string;
+};
+
+export function layoutTokenFlow(
+  flow: TokenFlow,
+  opts?: LayoutOptions,
+): {
   nodes: Node<TokenFlowNodeData>[];
   edges: Edge<TokenFlowEdgeData>[];
+  /** Layer per tx node id, as laid out (dependency- or txOrder-based). */
+  txLayer: Map<string, number>;
 } {
   const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
   const txIds = flow.nodes
@@ -137,38 +164,87 @@ export function layoutTokenFlow(flow: TokenFlow): {
     }
   }
 
-  // Longest-path layering; graphs are tiny, so simple relaxation is fine.
   const layer = new Map<string, number>(txIds.map((id) => [id, 0]));
-  for (let i = 0; i < txIds.length; i++) {
-    let changed = false;
-    for (const [tx, next] of successors) {
-      for (const successor of next) {
-        if (layer.get(successor)! < layer.get(tx)! + 1) {
-          layer.set(successor, layer.get(tx)! + 1);
-          changed = true;
+  if (opts?.txOrder) {
+    // Explicit chronological layering; indices of ids missing from the flow
+    // are intentionally left as gaps (empty columns) for position stability.
+    opts.txOrder.forEach((id, index) => {
+      if (nodesById.has(id)) layer.set(id, index);
+    });
+  } else {
+    // Longest-path layering; graphs are tiny, so simple relaxation is fine.
+    for (let i = 0; i < txIds.length; i++) {
+      let changed = false;
+      for (const [tx, next] of successors) {
+        for (const successor of next) {
+          if (layer.get(successor)! < layer.get(tx)! + 1) {
+            layer.set(successor, layer.get(tx)! + 1);
+            changed = true;
+          }
         }
       }
+      if (!changed) break;
     }
-    if (!changed) break;
   }
   const txColumn = (txId: string): number => 2 * (layer.get(txId) ?? 0) + 1;
 
   // --- Address instance planning (the explorer-style split) ---------------
-  // For each address, decide whether it renders as one node or as an @in
-  // plus @out pair, and which instance each of its edges attaches to.
+  // For each address, decide whether it renders as one node or as several
+  // per-column instances, and which instance each of its edges attaches to.
   const column = new Map<string, number>(); // instance id (or tx id) -> column
   for (const tx of txIds) column.set(tx, txColumn(tx));
 
   const instances: AddressInstance[] = [];
   // (address, consuming tx) -> instance id the input edge sources from
   const consumerInstance = new Map<string, string>();
-  // address -> instance id its output edges target
-  const outputInstance = new Map<string, string>();
+  // (address, producing tx) -> instance id its output edge targets
+  const producerInstance = new Map<string, string>();
 
   for (const node of flow.nodes) {
     if (node.kind !== "address") continue;
     const producers = producersByAddress.get(node.id) ?? [];
     const consumers = [...new Set(consumersByAddress.get(node.id) ?? [])];
+
+    if (opts?.txOrder) {
+      // Timeline mode: one instance per column, local to the txs touching
+      // it. With every tx in its own layer, a globally shared instance
+      // would sit at one end of a long timeline and fan full-width edges
+      // to every tx it serves (the multisig's own address touches nearly
+      // all of them). Local instances keep every value edge exactly one
+      // column long; a tx's output consumed by the NEXT tx still lands
+      // both roles on the same column and stays a single join node.
+      const byCol = new Map<number, { producers: string[]; consumers: string[] }>();
+      const at = (col: number) => {
+        if (!byCol.has(col)) byCol.set(col, { producers: [], consumers: [] });
+        return byCol.get(col)!;
+      };
+      for (const p of producers) at(txColumn(p) + 1).producers.push(p);
+      for (const c of consumers) at(txColumn(c) - 1).consumers.push(c);
+      if (byCol.size === 0) at(0);
+
+      const single = byCol.size === 1;
+      for (const [col, group] of byCol) {
+        const id = single ? node.id : `${node.id}@c${col}`;
+        instances.push({
+          id,
+          node,
+          column: col,
+          role:
+            single || (group.producers.length > 0 && group.consumers.length > 0)
+              ? undefined
+              : group.producers.length > 0
+                ? "out"
+                : "in",
+          // "change" when a tx paying this instance also spends from the
+          // same address (its own input instance sits two columns left).
+          changeHint: group.producers.some((p) => consumers.includes(p)),
+        });
+        for (const c of group.consumers) consumerInstance.set(`${node.id}|${c}`, id);
+        for (const p of group.producers) producerInstance.set(`${node.id}|${p}`, id);
+        column.set(id, col);
+      }
+      continue;
+    }
 
     const outCol =
       producers.length > 0
@@ -204,14 +280,14 @@ export function layoutTokenFlow(flow: TokenFlow): {
       });
       for (const tx of inConsumers) consumerInstance.set(`${node.id}|${tx}`, inId);
       for (const tx of outConsumers) consumerInstance.set(`${node.id}|${tx}`, outId);
-      outputInstance.set(node.id, outId);
+      for (const p of producers) producerInstance.set(`${node.id}|${p}`, outId);
       column.set(inId, inCol);
       column.set(outId, outCol);
     } else {
       const col = inCol ?? outCol ?? 0;
       instances.push({ id: node.id, node, column: col });
       for (const tx of consumers) consumerInstance.set(`${node.id}|${tx}`, node.id);
-      outputInstance.set(node.id, node.id);
+      for (const p of producers) producerInstance.set(`${node.id}|${p}`, node.id);
       column.set(node.id, col);
     }
   }
@@ -230,10 +306,21 @@ export function layoutTokenFlow(flow: TokenFlow): {
     const protocolHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
     if (protocolHandles) {
       handles = protocolHandles;
+      // Timeline mode: protocol edges attach to the per-tx pill instance
+      // (see the protocol placement section below).
+      if (opts?.txOrder) {
+        const sourceIsProtocol = nodesById.get(edge.source)?.kind === "protocol";
+        const txId = sourceIsProtocol ? edge.target : edge.source;
+        const instanceId = `${sourceIsProtocol ? edge.source : edge.target}@c${
+          column.get(txId) ?? 1
+        }`;
+        if (sourceIsProtocol) source = instanceId;
+        else target = instanceId;
+      }
     } else if (edge.kind === "input" || edge.kind === "withdrawal") {
       source = consumerInstance.get(`${edge.source}|${edge.target}`) ?? edge.source;
     } else if (edge.kind === "output") {
-      target = outputInstance.get(edge.target) ?? edge.target;
+      target = producerInstance.get(`${edge.target}|${edge.source}`) ?? edge.target;
     }
 
     return {
@@ -273,8 +360,10 @@ export function layoutTokenFlow(flow: TokenFlow): {
     const list = usedProtoHandles.get(nodeId) ?? [];
     if (!list.includes(handle)) usedProtoHandles.set(nodeId, [...list, handle]);
   };
-  for (const edge of flow.edges) {
-    const protoHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
+  // Iterate the remapped edges so marks land on per-tx pill instances in
+  // timeline mode (ids are unchanged in default mode).
+  for (const edge of edges) {
+    const protoHandles = PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind];
     if (!protoHandles) continue;
     markProto(edge.source, protoHandles.sourceHandle);
     markProto(edge.target, protoHandles.targetHandle);
@@ -365,6 +454,7 @@ export function layoutTokenFlow(flow: TokenFlow): {
             : {}),
           ...(entry.role ? { instanceRole: entry.role } : {}),
           ...(entry.changeHint ? { changeHint: true } : {}),
+          ...(opts?.testIdSuffix ? { testIdSuffix: opts.testIdSuffix } : {}),
         },
       });
       centerY.set(entry.id, y + height / 2);
@@ -409,20 +499,43 @@ export function layoutTokenFlow(flow: TokenFlow): {
   }
 
   // --- Protocol nodes: hang beneath the transactions they touch ----------
+  // Timeline mode renders each protocol role once PER touching tx — the
+  // shared singleton would anchor mid-timeline and fan long sideways edges
+  // to every tx (hiding the amount chips). Default mode keeps the shared
+  // pill.
   const protocolNodes = flow.nodes.filter((node) => node.kind === "protocol");
   const bottomY = maxHeight + PROTOCOL_ROW_GAP;
-  const sortedProtocol = [...protocolNodes].sort((a, b) =>
+  type ProtocolInstance = { id: string; node: FlowNode; txColumns: number[] };
+  const protocolInstances: ProtocolInstance[] = [];
+  for (const node of protocolNodes) {
+    const touchingTxs = [
+      ...new Set(
+        flow.edges
+          .filter((edge) => edge.source === node.id || edge.target === node.id)
+          .map((edge) => (edge.source === node.id ? edge.target : edge.source)),
+      ),
+    ];
+    const txCols = touchingTxs.map((txId) => column.get(txId) ?? 1);
+    if (opts?.txOrder) {
+      const seen = new Set<string>();
+      for (const col of txCols) {
+        const id = `${node.id}@c${col}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        protocolInstances.push({ id, node, txColumns: [col] });
+      }
+    } else {
+      protocolInstances.push({ id: node.id, node, txColumns: txCols });
+    }
+  }
+  const sortedProtocol = protocolInstances.sort((a, b) =>
     a.id < b.id ? -1 : 1,
   );
-  const anchors = sortedProtocol.map((node) => {
-    const connectedTxColumns = flow.edges
-      .filter((edge) => edge.source === node.id || edge.target === node.id)
-      .map((edge) => (edge.source === node.id ? edge.target : edge.source))
-      .map((txId) => column.get(txId) ?? 1);
+  const anchors = sortedProtocol.map((instance) => {
     const averageColumn =
-      connectedTxColumns.length > 0
-        ? connectedTxColumns.reduce((a, b) => a + b, 0) /
-          connectedTxColumns.length
+      instance.txColumns.length > 0
+        ? instance.txColumns.reduce((a, b) => a + b, 0) /
+          instance.txColumns.length
         : 1;
     return averageColumn * COLUMN_WIDTH + TX_BOTTOM_CENTER_OFFSET;
   });
@@ -432,17 +545,21 @@ export function layoutTokenFlow(flow: TokenFlow): {
     const key = Math.round(anchor / 10) * 10;
     anchorGroups.set(key, [...(anchorGroups.get(key) ?? []), i]);
   });
-  sortedProtocol.forEach((node, i) => {
+  sortedProtocol.forEach((instance, i) => {
     const group = [...anchorGroups.values()].find((g) => g.includes(i))!;
     const posInGroup = group.indexOf(i);
     const x = anchors[i]! + (posInGroup - (group.length - 1) / 2) * PROTOCOL_SPACING;
     positioned.push({
-      id: node.id,
-      type: node.kind,
+      id: instance.id,
+      type: instance.node.kind,
       position: { x, y: bottomY },
-      data: { node, usedProtoHandles: usedProtoHandles.get(node.id) ?? [] },
+      data: {
+        node: instance.node,
+        usedProtoHandles: usedProtoHandles.get(instance.id) ?? [],
+        ...(opts?.testIdSuffix ? { testIdSuffix: opts.testIdSuffix } : {}),
+      },
     });
   });
 
-  return { nodes: positioned, edges };
+  return { nodes: positioned, edges, txLayer: layer };
 }

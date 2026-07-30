@@ -34,26 +34,39 @@ export const EDGE_TYPES = {
 
 export const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
 
-/** Restores the computed layout after the user has dragged nodes around. */
-function ResetLayoutButton({ onReset }: { onReset: () => void }) {
+// Shared button chrome for the small canvas-corner controls (reset layout,
+// timeline expand, …).
+export const CANVAS_BUTTON_CLASS =
+  "flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/60 hover:text-foreground";
+
+/**
+ * Restores the computed layout after the user has dragged nodes around.
+ * Rendered without its own Panel so surfaces can group it with other
+ * controls; must sit inside a ReactFlow (uses useReactFlow).
+ */
+export function ResetLayoutButton({
+  onReset,
+  "data-testid": dataTestId = "tx-flow-reset",
+}: {
+  onReset: () => void;
+  "data-testid"?: string;
+}) {
   const { fitView } = useReactFlow();
   return (
-    <Panel position="top-right">
-      <button
-        type="button"
-        data-testid="tx-flow-reset"
-        title="Reset layout"
-        onClick={() => {
-          onReset();
-          // Refit once the restored positions have been applied.
-          window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
-        }}
-        className="flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <RotateCcw className="h-3 w-3" />
-        Reset layout
-      </button>
-    </Panel>
+    <button
+      type="button"
+      data-testid={dataTestId}
+      title="Reset layout"
+      onClick={() => {
+        onReset();
+        // Refit once the restored positions have been applied.
+        window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
+      }}
+      className={CANVAS_BUTTON_CLASS}
+    >
+      <RotateCcw className="h-3 w-3" />
+      Reset layout
+    </button>
   );
 }
 
@@ -118,7 +131,9 @@ export default function FlowCanvas({
         className="!bg-muted/20 rounded-lg border border-border/50"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-        <ResetLayoutButton onReset={() => setNodes(layoutNodes)} />
+        <Panel position="top-right">
+          <ResetLayoutButton onReset={() => setNodes(layoutNodes)} />
+        </Panel>
       </ReactFlow>
     </div>
   );
