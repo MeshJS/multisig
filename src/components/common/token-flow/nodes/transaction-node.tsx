@@ -3,23 +3,48 @@ import { ArrowLeftRight, ExternalLink } from "lucide-react";
 
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import type { TransactionFlowNode } from "@/types/token-flow";
-import { getFirstAndLast, lovelaceToAda, numberWithCommas } from "@/utils/strings";
+import { getFirstAndLast, numberWithCommas } from "@/utils/strings";
 import { cn } from "@/lib/utils";
-import { HANDLES } from "../handles";
+import {
+  HANDLES,
+  portStackHeight,
+  portTopPercent,
+  valuePortIn,
+  valuePortOut,
+} from "../handles";
 
 export default function TransactionNode({ id, data }: NodeProps) {
-  const node = (data as { node: TransactionFlowNode }).node;
+  const {
+    node,
+    inPortCount = 1,
+    outPortCount = 1,
+    usedProtoHandles = [],
+  } = data as {
+    node: TransactionFlowNode;
+    inPortCount?: number;
+    outPortCount?: number;
+    usedProtoHandles?: string[];
+  };
+  const protoOut = usedProtoHandles.includes(HANDLES.transaction.protoOut);
+  const protoIn = usedProtoHandles.includes(HANDLES.transaction.protoIn);
   return (
     <div
       data-testid={`tx-flow-node-${id}`}
-      className="w-[240px] rounded-lg border border-primary/40 bg-card px-3 py-2 shadow-md"
+      // One connector per input/output edge; the card stretches so the
+      // taller port stack keeps its dots evenly spaced.
+      style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}
+      className="flex w-[240px] flex-col justify-center rounded-lg border border-primary/40 bg-card px-3 py-2 shadow-md"
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={HANDLES.transaction.in}
-        className="!bg-primary"
-      />
+      {Array.from({ length: inPortCount }, (_, i) => (
+        <Handle
+          key={valuePortIn(i)}
+          type="target"
+          position={Position.Left}
+          id={valuePortIn(i)}
+          style={{ top: `${portTopPercent(i, inPortCount)}%` }}
+          className="!bg-primary"
+        />
+      ))}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
           <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -50,11 +75,8 @@ export default function TransactionNode({ id, data }: NodeProps) {
           Block {numberWithCommas(node.blockHeight)}
         </div>
       )}
-      {node.fee && (
-        <div className="mt-1 text-[10px] text-muted-foreground">
-          Fee: {lovelaceToAda(node.fee)}
-        </div>
-      )}
+      {/* The fee itself is shown on the edge to the Network-fee pill, not
+          repeated on the card. */}
       {node.badges.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {node.badges.map((badge, i) => (
@@ -71,28 +93,37 @@ export default function TransactionNode({ id, data }: NodeProps) {
           ))}
         </div>
       )}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={HANDLES.transaction.out}
-        className="!bg-primary"
-      />
+      {Array.from({ length: outPortCount }, (_, i) => (
+        <Handle
+          key={valuePortOut(i)}
+          type="source"
+          position={Position.Right}
+          id={valuePortOut(i)}
+          style={{ top: `${portTopPercent(i, outPortCount)}%` }}
+          className="!bg-primary"
+        />
+      ))}
       {/* Bottom ports: protocol edges (fee/deposit/burn out, mint/refund in)
-          drop vertically to the protocol pills beneath the card. */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id={HANDLES.transaction.protoOut}
-        style={{ left: "38%" }}
-        className="!bg-muted-foreground"
-      />
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id={HANDLES.transaction.protoIn}
-        style={{ left: "62%" }}
-        className="!bg-muted-foreground"
-      />
+          drop vertically to the protocol pills beneath the card. Only ports
+          an edge actually uses are rendered; a lone port sits centered. */}
+      {protoOut && (
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          id={HANDLES.transaction.protoOut}
+          style={{ left: protoIn ? "38%" : "50%" }}
+          className="!bg-muted-foreground"
+        />
+      )}
+      {protoIn && (
+        <Handle
+          type="target"
+          position={Position.Bottom}
+          id={HANDLES.transaction.protoIn}
+          style={{ left: protoOut ? "62%" : "50%" }}
+          className="!bg-muted-foreground"
+        />
+      )}
     </div>
   );
 }

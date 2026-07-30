@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getTxBuilder } from "@/utils/get-tx-builder";
+import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import CardUI from "@/components/ui/card-content";
 import { ToastAction } from "@/components/ui/toast";
 import {
@@ -529,7 +530,13 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
       }
 
       const txBuilder = await getTxBuilder(network);
-      const paymentScript = appWallet.scriptCbor;
+      // Prefer the script whose hash matches the wallet address — for
+      // imported/legacy wallets the stored scriptCbor can be a differently
+      // encoded variant, which the node rejects (MissingScriptWitnessesUTXOW)
+      // until submitTxWithScriptRecovery swaps it at submit time.
+      const paymentScript =
+        resolveExpectedPaymentScriptCbor(appWallet, network) ??
+        appWallet.scriptCbor;
       if (!paymentScript) return;
 
       for (const utxo of selectedUtxos) {

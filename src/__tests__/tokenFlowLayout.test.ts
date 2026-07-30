@@ -204,8 +204,8 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     const result = layoutTokenFlow(flow);
 
     const input = result.edges.find((e) => e.data!.edge.kind === "input")!;
-    expect(input.sourceHandle).toBe(HANDLES.address.out);
-    expect(input.targetHandle).toBe(HANDLES.transaction.in);
+    expect(input.sourceHandle).toBe("out-0");
+    expect(input.targetHandle).toBe("in-0");
 
     const fee = result.edges.find((e) => e.data!.edge.kind === "fee")!;
     expect(fee.sourceHandle).toBe(HANDLES.transaction.protoOut);
@@ -215,18 +215,32 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(mint.sourceHandle).toBe(HANDLES.protocol.topOut);
     expect(mint.targetHandle).toBe(HANDLES.transaction.protoIn);
 
-    // Drift guard: every emitted handle id must exist in the shared HANDLES
-    // constants that the node components render.
-    const knownHandles = new Set<string>(
+    // Nodes advertise which protocol ports carry an edge; the components
+    // skip rendering the unused ones.
+    const tx = result.nodes.find((n) => n.id === "tx:one")!;
+    expect([...(tx.data.usedProtoHandles as string[])].sort()).toEqual([
+      HANDLES.transaction.protoIn,
+      HANDLES.transaction.protoOut,
+    ]);
+    const feePill = result.nodes.find((n) => n.id === "protocol:fee")!;
+    expect(feePill.data.usedProtoHandles).toEqual([HANDLES.protocol.topIn]);
+    const mintPill = result.nodes.find((n) => n.id === "protocol:mint")!;
+    expect(mintPill.data.usedProtoHandles).toEqual([HANDLES.protocol.topOut]);
+
+    // Drift guard: every emitted handle id must be one the node components
+    // render — a protocol port constant or an indexed value port.
+    const protocolHandles = new Set<string>(
       Object.values(HANDLES).flatMap((group) => Object.values(group)),
     );
+    const isKnown = (id: string) =>
+      protocolHandles.has(id) || /^(in|out)-\d+$/.test(id);
     for (const edge of result.edges) {
-      expect(knownHandles.has(edge.sourceHandle as string)).toBe(true);
-      expect(knownHandles.has(edge.targetHandle as string)).toBe(true);
+      expect(isKnown(edge.sourceHandle as string)).toBe(true);
+      expect(isKnown(edge.targetHandle as string)).toBe(true);
     }
   });
 
-  test("per-UTxO parallel edges survive the @in remap and get parallel indices", () => {
+  test("per-UTxO input edges each get their own connector port", () => {
     const flow = selfChangeFlow();
     // Replace the single input edge with two discriminated per-UTxO edges.
     flow.edges = flow.edges.filter((e) => e.kind !== "input");
@@ -236,21 +250,33 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     );
     const result = layoutTokenFlow(flow);
 
-    const inputs = result.edges.filter((e) => e.data!.edge.kind === "input");
-    expect(inputs.map((e) => e.id).sort()).toEqual([
-      `addr:${A}->tx:one:input:h#0`,
-      `addr:${A}->tx:one:input:h#1`,
+    // Both inputs survive the @in remap but fan out over distinct ports on
+    // both endpoint cards (deterministic: ties within a side break by id).
+    const inputs = result.edges
+      .filter((e) => e.data!.edge.kind === "input")
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    expect(inputs.map((e) => e.source)).toEqual([
+      `addr:${A}@in`,
+      `addr:${A}@in`,
     ]);
-    for (const edge of inputs) {
-      expect(edge.source).toBe(`addr:${A}@in`);
-      expect(edge.data!.parallelCount).toBe(2);
-    }
-    expect(inputs.map((e) => e.data!.parallelIndex).sort()).toEqual([0, 1]);
+    expect(inputs.map((e) => e.sourceHandle)).toEqual(["out-0", "out-1"]);
+    expect(inputs.map((e) => e.targetHandle)).toEqual(["in-0", "in-1"]);
 
-    // Lone edges (the two outputs go to different targets) stay unstamped.
-    for (const edge of result.edges.filter((e) => e.data!.edge.kind === "output")) {
-      expect(edge.data!.parallelCount).toBeUndefined();
-    }
+    // The cards advertise matching port counts so the node components render
+    // one connector dot per edge and grow vertically to fit the stack.
+    const inInstance = result.nodes.find((n) => n.id === `addr:${A}@in`)!;
+    expect(inInstance.data.outPortCount).toBe(2);
+    expect(inInstance.data.inPortCount).toBe(1);
+    const tx = result.nodes.find((n) => n.id === "tx:one")!;
+    expect(tx.data.inPortCount).toBe(2);
+    expect(tx.data.outPortCount).toBe(2);
+
+    // The tx's two outputs (to B and back to A@out) fan out on its right.
+    const outputs = result.edges.filter((e) => e.data!.edge.kind === "output");
+    expect(outputs.map((e) => e.sourceHandle).sort()).toEqual([
+      "out-0",
+      "out-1",
+    ]);
   });
 
   test("protocol pill hangs beneath its transaction", () => {

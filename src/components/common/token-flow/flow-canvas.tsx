@@ -20,17 +20,19 @@ import AddressNode from "./nodes/address-node";
 import ProtocolNode from "./nodes/protocol-node";
 import TransactionNode from "./nodes/transaction-node";
 
-const NODE_TYPES = {
+// Shared with the transaction-builder canvas (builder-canvas.tsx), which
+// renders the same cards/edges with its own interaction model.
+export const NODE_TYPES = {
   address: AddressNode,
   transaction: TransactionNode,
   protocol: ProtocolNode,
 };
 
-const EDGE_TYPES = {
+export const EDGE_TYPES = {
   asset: AssetEdge,
 };
 
-const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
+export const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
 
 /** Restores the computed layout after the user has dragged nodes around. */
 function ResetLayoutButton({ onReset }: { onReset: () => void }) {

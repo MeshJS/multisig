@@ -4,6 +4,7 @@ export {
   resolvedInputKey,
   type ResolvedInputMap,
 } from "./from-pending";
+export { draftToTokenFlow, flowIdToDraftEntity } from "./from-draft";
 export { mergeTokenFlows } from "./merge";
 export {
   meshCertificateToBadge,

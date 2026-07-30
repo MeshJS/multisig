@@ -4,7 +4,12 @@ import { Landmark, User, Users, FileCode2, Coins, Wallet } from "lucide-react";
 import type { AddressFlowNode, AddressPartyType } from "@/types/token-flow";
 import { getFirstAndLast } from "@/utils/strings";
 import { cn } from "@/lib/utils";
-import { HANDLES } from "../handles";
+import {
+  portStackHeight,
+  portTopPercent,
+  valuePortIn,
+  valuePortOut,
+} from "../handles";
 
 const PARTY_STYLES: Record<
   AddressPartyType,
@@ -49,9 +54,16 @@ const PARTY_STYLES: Record<
 };
 
 export default function AddressNode({ id, data }: NodeProps) {
-  const { node, changeHint } = data as {
+  const {
+    node,
+    changeHint,
+    inPortCount = 1,
+    outPortCount = 1,
+  } = data as {
     node: AddressFlowNode;
     changeHint?: boolean;
+    inPortCount?: number;
+    outPortCount?: number;
   };
   const style = PARTY_STYLES[node.partyType] ?? PARTY_STYLES.unknown;
   const Icon = style.icon;
@@ -60,17 +72,24 @@ export default function AddressNode({ id, data }: NodeProps) {
       // React Flow node id, not node.id: split instances (@in/@out) must
       // render unique testids.
       data-testid={`tx-flow-node-${id}`}
+      // Every attached edge gets its own connector; the card stretches so
+      // the taller port stack keeps its dots evenly spaced.
+      style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}
       className={cn(
-        "w-[220px] rounded-lg border bg-card px-3 py-2 shadow-sm",
+        "flex w-[220px] flex-col justify-center rounded-lg border bg-card px-3 py-2 shadow-sm",
         style.border,
       )}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={HANDLES.address.in}
-        className="!bg-muted-foreground"
-      />
+      {Array.from({ length: inPortCount }, (_, i) => (
+        <Handle
+          key={valuePortIn(i)}
+          type="target"
+          position={Position.Left}
+          id={valuePortIn(i)}
+          style={{ top: `${portTopPercent(i, inPortCount)}%` }}
+          className="!bg-muted-foreground"
+        />
+      ))}
       <div className={cn("flex items-center gap-1.5 text-xs font-medium", style.text)}>
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.label || style.fallbackLabel}</span>
@@ -85,12 +104,16 @@ export default function AddressNode({ id, data }: NodeProps) {
           {getFirstAndLast(node.address, 12, 6)}
         </div>
       )}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={HANDLES.address.out}
-        className="!bg-muted-foreground"
-      />
+      {Array.from({ length: outPortCount }, (_, i) => (
+        <Handle
+          key={valuePortOut(i)}
+          type="source"
+          position={Position.Right}
+          id={valuePortOut(i)}
+          style={{ top: `${portTopPercent(i, outPortCount)}%` }}
+          className="!bg-muted-foreground"
+        />
+      ))}
     </div>
   );
 }

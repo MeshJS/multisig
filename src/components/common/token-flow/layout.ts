@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { FlowEdge, FlowNode, TokenFlow } from "@/types/token-flow";
-import { HANDLES } from "./handles";
+import { HANDLES, portStackHeight, valuePortIn, valuePortOut } from "./handles";
 
 /**
  * Deterministic columnar layout for the bipartite token-flow graph — no
@@ -31,16 +31,20 @@ const PROTOCOL_SPACING = 190;
 // protocol ports sit (tx card is 240px wide).
 const TX_BOTTOM_CENTER_OFFSET = 60;
 
-/** Estimated render height per node kind; tx cards grow with their badges. */
-function estimateHeight(node: FlowNode): number {
+/**
+ * Estimated render height per node kind; tx cards grow with their badges,
+ * and any card grows further when its per-edge connector stack needs more
+ * room than its content (`ports` = max edges on either side).
+ */
+function estimateHeight(node: FlowNode, ports = 1): number {
+  if (node.kind === "protocol") return 36;
+  let content = 68;
   if (node.kind === "transaction") {
     const badgeRows = Math.ceil(node.badges.length / 2);
-    const detailRows =
-      (node.fee ? 1 : 0) + (node.blockHeight !== undefined ? 1 : 0);
-    return 84 + detailRows * 16 + badgeRows * 24;
+    const detailRows = node.blockHeight !== undefined ? 1 : 0;
+    content = 84 + detailRows * 16 + badgeRows * 24;
   }
-  if (node.kind === "protocol") return 36;
-  return 68;
+  return Math.max(content, portStackHeight(ports));
 }
 
 export type TokenFlowNodeData = {
@@ -49,13 +53,15 @@ export type TokenFlowNodeData = {
   instanceRole?: "in" | "out";
   /** True on the output-side instance when the same tx also spends from it. */
   changeHint?: boolean;
+  /** Number of per-edge connector dots to render on each side (min 1). */
+  inPortCount?: number;
+  outPortCount?: number;
+  /** Which protocol ports carry an edge; unused ones aren't rendered. */
+  usedProtoHandles?: string[];
   [key: string]: unknown;
 };
 export type TokenFlowEdgeData = {
   edge: FlowEdge;
-  /** Set when several edges share the same node pair (per-UTxO inputs). */
-  parallelIndex?: number;
-  parallelCount?: number;
   [key: string]: unknown;
 };
 
@@ -214,9 +220,11 @@ export function layoutTokenFlow(flow: TokenFlow): {
   const edges: Edge<TokenFlowEdgeData>[] = flow.edges.map((edge) => {
     let source = edge.source;
     let target = edge.target;
+    // Value edges get real per-edge ports assigned after positioning (the
+    // port order depends on where the counterpart cards end up).
     let handles: { sourceHandle: string; targetHandle: string } = {
-      sourceHandle: HANDLES.address.out,
-      targetHandle: HANDLES.address.in,
+      sourceHandle: valuePortOut(0),
+      targetHandle: valuePortIn(0),
     };
 
     const protocolHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
@@ -240,23 +248,36 @@ export function layoutTokenFlow(flow: TokenFlow): {
     };
   });
 
-  // Per-UTxO input edges share one node pair and one handle pair, so they
-  // would render on top of each other. Stamp each member of such a group
-  // with its index so the edge component can bow them apart. Grouping uses
-  // post-remap endpoints; order within a group is by edge id (deterministic).
-  const parallelGroups = new Map<string, Edge<TokenFlowEdgeData>[]>();
-  for (const edge of edges) {
-    if (PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind]) continue;
-    const key = `${edge.source}|${edge.target}`;
-    parallelGroups.set(key, [...(parallelGroups.get(key) ?? []), edge]);
+  // Per-edge connector planning: every value edge occupies its own port on
+  // both endpoint cards (per-UTxO inputs each get their own dot instead of
+  // converging on one shared handle). Counting ports up front lets the
+  // stacking below grow cards vertically to fit their connector stacks.
+  const valueEdges = edges.filter(
+    (edge) => !PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind],
+  );
+  const inPorts = new Map<string, number>();
+  const outPorts = new Map<string, number>();
+  for (const edge of valueEdges) {
+    outPorts.set(edge.source, (outPorts.get(edge.source) ?? 0) + 1);
+    inPorts.set(edge.target, (inPorts.get(edge.target) ?? 0) + 1);
   }
-  for (const group of parallelGroups.values()) {
-    if (group.length < 2) continue;
-    const sorted = [...group].sort((a, b) => (a.id < b.id ? -1 : 1));
-    sorted.forEach((edge, index) => {
-      edge.data!.parallelIndex = index;
-      edge.data!.parallelCount = sorted.length;
-    });
+  const inPortCount = (id: string) => Math.max(1, inPorts.get(id) ?? 0);
+  const outPortCount = (id: string) => Math.max(1, outPorts.get(id) ?? 0);
+  const portCount = (id: string) =>
+    Math.max(inPortCount(id), outPortCount(id));
+
+  // Protocol ports (tx bottom, pill top) render only when an edge actually
+  // uses them — otherwise cards show stray unconnected dots.
+  const usedProtoHandles = new Map<string, string[]>();
+  const markProto = (nodeId: string, handle: string) => {
+    const list = usedProtoHandles.get(nodeId) ?? [];
+    if (!list.includes(handle)) usedProtoHandles.set(nodeId, [...list, handle]);
+  };
+  for (const edge of flow.edges) {
+    const protoHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
+    if (!protoHandles) continue;
+    markProto(edge.source, protoHandles.sourceHandle);
+    markProto(edge.target, protoHandles.targetHandle);
   }
 
   // --- Stack instances per column ----------------------------------------
@@ -287,7 +308,10 @@ export function layoutTokenFlow(flow: TokenFlow): {
   }
 
   const columnHeight = (entries: ColumnEntry[]): number =>
-    entries.reduce((sum, entry) => sum + estimateHeight(entry.node), 0) +
+    entries.reduce(
+      (sum, entry) => sum + estimateHeight(entry.node, portCount(entry.id)),
+      0,
+    ) +
     Math.max(0, entries.length - 1) * VERTICAL_GAP;
   const maxHeight = Math.max(
     36,
@@ -327,13 +351,18 @@ export function layoutTokenFlow(flow: TokenFlow): {
 
     let y = (maxHeight - columnHeight(sorted)) / 2;
     for (const entry of sorted) {
-      const height = estimateHeight(entry.node);
+      const height = estimateHeight(entry.node, portCount(entry.id));
       positioned.push({
         id: entry.id,
         type: entry.node.kind,
         position: { x: col * COLUMN_WIDTH, y },
         data: {
           node: entry.node,
+          inPortCount: inPortCount(entry.id),
+          outPortCount: outPortCount(entry.id),
+          ...(usedProtoHandles.has(entry.id)
+            ? { usedProtoHandles: usedProtoHandles.get(entry.id) }
+            : {}),
           ...(entry.role ? { instanceRole: entry.role } : {}),
           ...(entry.changeHint ? { changeHint: true } : {}),
         },
@@ -341,6 +370,42 @@ export function layoutTokenFlow(flow: TokenFlow): {
       centerY.set(entry.id, y + height / 2);
       y += height + VERTICAL_GAP;
     }
+  }
+
+  // --- Per-edge port assignment -------------------------------------------
+  // Each card's ports are ordered by the counterpart card's vertical center
+  // (ties broken by edge id) so the connector fans never cross themselves,
+  // then every value edge is pinned to its own indexed handle on both ends.
+  const bySide = (counterpartOf: (edge: Edge<TokenFlowEdgeData>) => string) => {
+    return (a: Edge<TokenFlowEdgeData>, b: Edge<TokenFlowEdgeData>) => {
+      const diff =
+        (centerY.get(counterpartOf(a)) ?? 0) -
+        (centerY.get(counterpartOf(b)) ?? 0);
+      if (diff !== 0) return diff;
+      return a.id < b.id ? -1 : 1;
+    };
+  };
+  const outEdgesByNode = new Map<string, Edge<TokenFlowEdgeData>[]>();
+  const inEdgesByNode = new Map<string, Edge<TokenFlowEdgeData>[]>();
+  for (const edge of valueEdges) {
+    outEdgesByNode.set(edge.source, [
+      ...(outEdgesByNode.get(edge.source) ?? []),
+      edge,
+    ]);
+    inEdgesByNode.set(edge.target, [
+      ...(inEdgesByNode.get(edge.target) ?? []),
+      edge,
+    ]);
+  }
+  for (const group of outEdgesByNode.values()) {
+    [...group].sort(bySide((edge) => edge.target)).forEach((edge, index) => {
+      edge.sourceHandle = valuePortOut(index);
+    });
+  }
+  for (const group of inEdgesByNode.values()) {
+    [...group].sort(bySide((edge) => edge.source)).forEach((edge, index) => {
+      edge.targetHandle = valuePortIn(index);
+    });
   }
 
   // --- Protocol nodes: hang beneath the transactions they touch ----------
@@ -375,7 +440,7 @@ export function layoutTokenFlow(flow: TokenFlow): {
       id: node.id,
       type: node.kind,
       position: { x, y: bottomY },
-      data: { node },
+      data: { node, usedProtoHandles: usedProtoHandles.get(node.id) ?? [] },
     });
   });
 

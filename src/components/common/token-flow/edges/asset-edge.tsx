@@ -32,53 +32,30 @@ export default function AssetEdge(props: EdgeProps) {
     | {
         edge: FlowEdge;
         assetMetadata?: AssetMetadataMap;
-        parallelIndex?: number;
-        parallelCount?: number;
       }
     | undefined;
   const edge = data?.edge;
 
   // Protocol edges are (near-)vertical drops between a tx card's bottom
   // ports and the protocol pill beneath it — a straight line reads cleaner
-  // than a bezier there. Value edges keep the horizontal bezier flow.
+  // than a bezier there. Value edges keep the horizontal bezier flow; each
+  // one attaches to its own connector port, so paths never stack.
   const isProtocolEdge =
     edge?.kind === "fee" ||
     edge?.kind === "deposit" ||
     edge?.kind === "burn" ||
     edge?.kind === "deposit-refund" ||
     edge?.kind === "mint";
-  // Edges that share both endpoints (per-UTxO inputs) get a vertical bow
-  // per parallel index so paths and label chips fan out instead of stacking.
-  const parallelCount = data?.parallelCount ?? 1;
-  const parallelOffset =
-    parallelCount > 1
-      ? ((data?.parallelIndex ?? 0) - (parallelCount - 1) / 2) * 28
-      : 0;
-  let edgePath: string;
-  let labelX: number;
-  let labelY: number;
-  if (isProtocolEdge) {
-    [edgePath, labelX, labelY] = getStraightPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-    });
-  } else if (parallelOffset !== 0) {
-    const midX = (sourceX + targetX) / 2;
-    edgePath = `M ${sourceX},${sourceY} C ${midX},${sourceY + 2 * parallelOffset} ${midX},${targetY + 2 * parallelOffset} ${targetX},${targetY}`;
-    labelX = midX;
-    labelY = (sourceY + targetY) / 2 + 1.5 * parallelOffset;
-  } else {
-    [edgePath, labelX, labelY] = getBezierPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-      sourcePosition,
-      targetPosition,
-    });
-  }
+  const [edgePath, labelX, labelY] = isProtocolEdge
+    ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+    : getBezierPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+      });
 
   const isDebit =
     edge?.kind === "fee" || edge?.kind === "deposit" || edge?.kind === "burn";
