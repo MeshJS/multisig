@@ -249,12 +249,15 @@ Primary variables (in workflow/compose):
 - `CI_SIGN_WALLET_TYPE` (default `legacy`): which wallet type is used when `runSigningFlow` resolves a wallet for signing in ring-transfer steps. Overridden per leg in transfer scenarios.
 - `SIGN_BROADCAST`
 - `CI_ROUTE_SCENARIOS` (optional scenario id filter)
-- `CI_TRANSFER_LOVELACE` (optional transfer amount)
+- `CI_TRANSFER_LOVELACE` (optional transfer amount, default `2000000`)
+- `CI_PROXY_FULL_LIFECYCLE_PARALLEL` (default `true`): set to `false` to run the per-wallet proxy full-lifecycle branches serially instead of in parallel.
 - `CI_DREP_ANCHOR_URL` (required by the default run for `scenario.drep-certificates` and `scenario.proxy-full-lifecycle`): the URL string stored in the on-chain anchor — passed as-is to the API, never fetched.
 - `CI_DREP_ANCHOR_JSON` (required by the default run for `scenario.drep-certificates`): the raw JSON content of the CIP-119 DRep metadata document. Parsed and sent as `anchorJson`; the API computes the anchor data hash server-side — no outbound fetch anywhere. Both vars are forwarded into the `ci-runner` container via `docker-compose.ci.yml`.
 - `CI_STAKE_POOL_ID_HEX` (**required** for `scenario.stake-certificates`): hex stake pool id stored in bootstrap context and used as `poolId` in the `register_and_delegate` certificate body.
 - `CI_HTTP_RETRIES` (default `6`), `CI_HTTP_RETRY_DELAY_MS` (default `1000`), `CI_HTTP_MAX_RETRY_DELAY_MS` (default `30000`): route-chain API retry controls for transient responses (`408`, `418`, `429`, `500`, `502`, `503`, `504`). Exponential backoff with `Retry-After` header support. Defaults are long enough to ride out the app's 60-second in-process rate-limit window without changing app behavior.
 - `CI_RUN_WALLET_STATUS` (default `false`): when running the composed `ci-runner` command, set to `true` to print the optional pre-route wallet balance check. The route-chain report always collects end-of-run wallet balances, so the default CI path skips this extra Blockfrost lookup.
+
+Compose forwarding note: `docker-compose.ci.yml` only forwards the variables declared in the `ci-runner` service's `environment` block from the host shell. `CI_TRANSFER_LOVELACE`, `CI_HTTP_RETRIES`, `CI_HTTP_RETRY_DELAY_MS`, `CI_HTTP_MAX_RETRY_DELAY_MS`, and `CI_PROXY_FULL_LIFECYCLE_PARALLEL` are **not** in that block — setting them in your shell has no effect on a compose run. They fall back to their in-code defaults unless you pass them explicitly on the `run` command, e.g. `docker compose -f docker-compose.ci.yml run --rm -e CI_TRANSFER_LOVELACE=3000000 ci-runner ...`.
 
 Validation notes:
 
@@ -379,7 +382,6 @@ $env:CI_MNEMONIC_3="..."
 $env:CI_BLOCKFROST_PREPROD_API_KEY="..."
 $env:CI_NETWORK_ID="0"
 $env:CI_WALLET_TYPES="legacy,hierarchical,sdk"
-$env:CI_TRANSFER_LOVELACE="2000000"
 $env:SIGN_BROADCAST="true"
 $env:CI_DREP_ANCHOR_URL="https://..."   # required for the default full flow; stored as on-chain anchor URL, never fetched
 $env:CI_STAKE_POOL_ID_HEX="..."         # required for the default full flow (scenario.stake-certificates)
@@ -419,6 +421,14 @@ docker compose -f docker-compose.ci.yml down -v
 docker compose -f docker-compose.ci.yml build app ci-runner
 docker compose -f docker-compose.ci.yml up -d postgres app
 ```
+
+One-shot CI-identical run (optional): this single command mirrors the GitHub workflow — bootstrap, optional wallet-status (`CI_RUN_WALLET_STATUS=true`), route-chain, and context-file cleanup in one container run. The context stays inside the container at `/tmp/ci-wallet-context.json` and is deleted at the end; the report is written to `.\ci-artifacts\ci-route-chain-report.md`.
+
+```powershell
+docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner
+```
+
+The steps below run the same stages individually with a host-mounted context file, which is easier to debug and lets you rerun route-chain without re-bootstrapping.
 
 Bootstrap wallets and write host-mounted artifacts:
 
@@ -474,7 +484,6 @@ export CI_MNEMONIC_3="..."
 export CI_BLOCKFROST_PREPROD_API_KEY="..."
 export CI_NETWORK_ID="0"
 export CI_WALLET_TYPES="legacy,hierarchical,sdk"
-export CI_TRANSFER_LOVELACE="2000000"
 export SIGN_BROADCAST="true"
 export CI_DREP_ANCHOR_URL="https://..."   # required for the default full flow; stored as on-chain anchor URL, never fetched
 export CI_STAKE_POOL_ID_HEX="..."        # required for the default full flow (scenario.stake-certificates)
@@ -515,6 +524,14 @@ docker compose -f docker-compose.ci.yml down -v
 docker compose -f docker-compose.ci.yml build app ci-runner
 docker compose -f docker-compose.ci.yml up -d postgres app
 ```
+
+One-shot CI-identical run (optional): this single command mirrors the GitHub workflow — bootstrap, optional wallet-status (`CI_RUN_WALLET_STATUS=true`), route-chain, and context-file cleanup in one container run. The context stays inside the container at `/tmp/ci-wallet-context.json` and is deleted at the end; the report is written to `./ci-artifacts/ci-route-chain-report.md`.
+
+```bash
+docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner
+```
+
+The steps below run the same stages individually with a host-mounted context file, which is easier to debug and lets you rerun route-chain without re-bootstrapping.
 
 Bootstrap wallets and write host-mounted artifacts:
 

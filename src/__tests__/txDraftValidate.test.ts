@@ -1,0 +1,179 @@
+import type { UTxO } from "@meshsdk/core";
+
+import { utxoFunds } from "@/lib/tx-draft/assets";
+import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
+import { validateDraft, type DraftIssue } from "@/lib/tx-draft/validate";
+import type { TxDraft } from "@/types/tx-draft";
+import { realTestAddresses } from "./testUtils";
+
+// CIP-19 test vector — a genuinely parseable mainnet payment address (the
+// testUtils mockAddresses.mainnet fixture fails deserializeAddress).
+const MAINNET_ADDRESS =
+  "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
+
+const TESTNET = { network: 0 };
+
+function draftWithOutput(
+  address: string,
+  assets: { unit: string; quantity: string }[],
+): TxDraft {
+  return addOutput(createDraft("d1"), { id: "out-1", address, assets }).draft;
+}
+
+function codes(issues: DraftIssue[]): string[] {
+  return issues.map((issue) => issue.code);
+}
+
+function utxo(amount: { unit: string; quantity: string }[]): UTxO {
+  return {
+    input: { txHash: "h".repeat(64), outputIndex: 0 },
+    output: { address: realTestAddresses.address1, amount },
+  } as UTxO;
+}
+
+describe("validateDraft", () => {
+  test("empty draft needs outputs", () => {
+    expect(codes(validateDraft(createDraft("d1"), TESTNET))).toEqual([
+      "no-outputs",
+    ]);
+  });
+
+  test("valid single-recipient ADA draft has no issues", () => {
+    const draft = draftWithOutput(realTestAddresses.address1, [
+      { unit: "lovelace", quantity: "2000000" },
+    ]);
+    expect(validateDraft(draft, TESTNET)).toEqual([]);
+  });
+
+  test("missing and invalid addresses are errors", () => {
+    const missing = draftWithOutput("", [
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(codes(validateDraft(missing, TESTNET))).toContain("missing-address");
+
+    const invalid = draftWithOutput("addr_test1notanaddress", [
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(codes(validateDraft(invalid, TESTNET))).toContain("invalid-address");
+
+    // Stake addresses are parseable but not payment addresses.
+    const stake = draftWithOutput(
+      "stake_test1uprrw2j075m8yq4wk60l2cwcc02943cueny9qc9q93s7ejgeu5ll8",
+      [{ unit: "lovelace", quantity: "1000000" }],
+    );
+    expect(codes(validateDraft(stake, TESTNET))).toContain("invalid-address");
+  });
+
+  test("network mismatch is an error", () => {
+    const mainnetAddr = draftWithOutput(MAINNET_ADDRESS, [
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(codes(validateDraft(mainnetAddr, TESTNET))).toContain(
+      "wrong-network-address",
+    );
+    expect(codes(validateDraft(mainnetAddr, { network: 1 }))).toEqual([]);
+
+    const testnetAddr = draftWithOutput(realTestAddresses.address1, [
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(codes(validateDraft(testnetAddr, { network: 1 }))).toContain(
+      "wrong-network-address",
+    );
+  });
+
+  test("outputs need a positive amount", () => {
+    const empty = draftWithOutput(realTestAddresses.address1, []);
+    expect(codes(validateDraft(empty, TESTNET))).toContain("no-amount");
+
+    const zero = draftWithOutput(realTestAddresses.address1, [
+      { unit: "lovelace", quantity: "0" },
+    ]);
+    expect(codes(validateDraft(zero, TESTNET))).toContain("no-amount");
+
+    const garbage = draftWithOutput(realTestAddresses.address1, [
+      { unit: "lovelace", quantity: "abc" },
+    ]);
+    expect(codes(validateDraft(garbage, TESTNET))).toContain("no-amount");
+  });
+
+  test("token-only output warns about the min-ADA top-up", () => {
+    const draft = draftWithOutput(realTestAddresses.address1, [
+      { unit: "policy1token", quantity: "5" },
+    ]);
+    const issues = validateDraft(draft, TESTNET);
+    expect(codes(issues)).toEqual(["min-ada-topup"]);
+    expect(issues[0]!.level).toBe("warning");
+  });
+
+  test("duplicate recipient address is a warning", () => {
+    let { draft } = addOutput(createDraft("d1"), {
+      id: "out-1",
+      address: realTestAddresses.address1,
+      assets: [{ unit: "lovelace", quantity: "1000000" }],
+    });
+    ({ draft } = addOutput(draft, {
+      id: "out-2",
+      address: realTestAddresses.address1,
+      assets: [{ unit: "lovelace", quantity: "2000000" }],
+    }));
+    const issues = validateDraft(draft, TESTNET);
+    expect(codes(issues)).toEqual(["duplicate-output"]);
+    expect(issues[0]).toMatchObject({ level: "warning", outputId: "out-2" });
+  });
+
+  describe("sufficiency vs selected funds", () => {
+    const draft = draftWithOutput(realTestAddresses.address1, [
+      { unit: "policy1token", quantity: "5" },
+      { unit: "lovelace", quantity: "2000000" },
+    ]);
+
+    test("insufficient lovelace or tokens is an error", () => {
+      const lowAda = utxoFunds([
+        utxo([
+          { unit: "lovelace", quantity: "1000000" },
+          { unit: "policy1token", quantity: "9" },
+        ]),
+      ]);
+      expect(
+        codes(validateDraft(draft, { ...TESTNET, selectedFunds: lowAda })),
+      ).toContain("insufficient-funds");
+
+      const noToken = utxoFunds([
+        utxo([{ unit: "lovelace", quantity: "9000000" }]),
+      ]);
+      expect(
+        codes(validateDraft(draft, { ...TESTNET, selectedFunds: noToken })),
+      ).toContain("insufficient-funds");
+    });
+
+    test("sufficient funds pass; min-ADA top-up counts toward the total", () => {
+      const funds = utxoFunds([
+        utxo([
+          { unit: "lovelace", quantity: "9000000" },
+          { unit: "policy1token", quantity: "9" },
+        ]),
+      ]);
+      expect(validateDraft(draft, { ...TESTNET, selectedFunds: funds })).toEqual(
+        [],
+      );
+
+      // Token-only output requires its 1_160_000 top-up to be funded too.
+      const tokenOnly = draftWithOutput(realTestAddresses.address1, [
+        { unit: "policy1token", quantity: "5" },
+      ]);
+      const tightFunds = utxoFunds([
+        utxo([
+          { unit: "lovelace", quantity: "1159999" },
+          { unit: "policy1token", quantity: "5" },
+        ]),
+      ]);
+      expect(
+        codes(validateDraft(tokenOnly, { ...TESTNET, selectedFunds: tightFunds })),
+      ).toContain("insufficient-funds");
+    });
+
+    test("omitted selectedFunds skips the sufficiency check", () => {
+      expect(codes(validateDraft(draft, TESTNET))).toEqual([]);
+    });
+  });
+});

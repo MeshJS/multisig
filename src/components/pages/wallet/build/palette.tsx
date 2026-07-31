@@ -1,0 +1,126 @@
+import { Panel } from "@xyflow/react";
+import { ChevronDown, Landmark, Plus, User, Users } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
+import { getFirstAndLast } from "@/utils/strings";
+
+export type PaletteEntry = { address: string; label: string };
+
+function AddressDropdown({
+  triggerLabel,
+  icon: Icon,
+  entries,
+  emptyText,
+  onPick,
+  testId,
+}: {
+  triggerLabel: string;
+  icon: typeof User;
+  entries: PaletteEntry[];
+  emptyText: string;
+  onPick: (address: string) => void;
+  testId: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          data-testid={testId}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          {triggerLabel}
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {entries.length === 0 && (
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            {emptyText}
+          </DropdownMenuLabel>
+        )}
+        {entries.map((entry) => (
+          <DropdownMenuItem
+            key={entry.address}
+            className="flex flex-col items-start gap-0.5"
+            onClick={() => onPick(entry.address)}
+          >
+            <span className="text-xs">{entry.label}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {getFirstAndLast(entry.address, 10, 6)}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Card-creation toolbar. Every button dispatches `addOutput` on the draft —
+ * the new recipient card appears through the flow projection and is
+ * auto-selected, so the inspector opens on it immediately.
+ */
+export default function BuilderPalette({
+  contacts,
+  signers,
+  selfAddress,
+}: {
+  contacts: PaletteEntry[];
+  signers: PaletteEntry[];
+  selfAddress: string;
+}) {
+  const addOutput = useTxBuilderStore((state) => state.addOutput);
+
+  return (
+    <Panel position="top-left">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          data-testid="tx-builder-add-recipient"
+          onClick={() => addOutput()}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add recipient
+        </Button>
+        <AddressDropdown
+          triggerLabel="Contact"
+          icon={Users}
+          entries={contacts}
+          emptyText="No contacts yet"
+          onPick={(address) => addOutput({ address })}
+          testId="tx-builder-add-contact"
+        />
+        <AddressDropdown
+          triggerLabel="Signer"
+          icon={User}
+          entries={signers}
+          emptyText="No signer addresses"
+          onPick={(address) => addOutput({ address })}
+          testId="tx-builder-add-signer"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          data-testid="tx-builder-add-self"
+          onClick={() => addOutput({ address: selfAddress })}
+        >
+          <Landmark className="h-3.5 w-3.5" />
+          Self
+        </Button>
+      </div>
+    </Panel>
+  );
+}

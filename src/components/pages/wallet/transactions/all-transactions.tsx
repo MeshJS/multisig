@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog, ArrowLeftRight } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog, ArrowLeftRight, ChevronDown, ChevronUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/empty-state";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
@@ -33,6 +33,7 @@ import ResponsiveTransactionsTable from "./responsive-transactions-table";
 import type { LucideIcon } from "lucide-react";
 import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import Pagination from "@/components/common/overall-layout/pagination";
+import { TokenFlowContent } from "@/components/common/token-flow/token-flow-section";
 
 type CertificateInfo = {
   type: string;
@@ -188,6 +189,7 @@ function TransactionRow({
       assetName: string;
     }[]
   >([]);
+  const [flowOpen, setFlowOpen] = useState(false);
 
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
@@ -308,6 +310,7 @@ function TransactionRow({
   }, [dbTransaction]);
 
   return (
+    <React.Fragment>
     <TableRow style={{ backgroundColor: "none" }} className="hover:bg-muted/50">
       <TableCell className="align-top py-4">
         <div className="flex flex-col gap-1.5 min-w-0">
@@ -390,9 +393,39 @@ function TransactionRow({
         </div>
       </TableCell>
       <TableCell className="align-top py-4">
-        <RowAction transaction={transaction} appWallet={appWallet} />
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            data-testid={`tx-flow-toggle-${transaction.hash}`}
+            aria-label="Toggle token flow"
+            onClick={() => setFlowOpen((open) => !open)}
+          >
+            {flowOpen ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+          <RowAction transaction={transaction} appWallet={appWallet} />
+        </div>
       </TableCell>
     </TableRow>
+    {flowOpen && (
+      <TableRow className="hover:bg-transparent">
+        <TableCell colSpan={4} className="p-2">
+          <TokenFlowContent
+            source={{
+              type: "onchain",
+              txHash: transaction.hash,
+              description: dbTransaction?.description,
+            }}
+            appWallet={appWallet}
+          />
+        </TableCell>
+      </TableRow>
+    )}
+    </React.Fragment>
   );
 }
 

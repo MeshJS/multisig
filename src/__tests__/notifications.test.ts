@@ -105,6 +105,38 @@ describe("notification recipient resolution", () => {
       ]),
     );
   });
+
+  it("applies the signable preference flag for signable resources", async () => {
+    const db = {
+      walletSignerNotificationSetting: {
+        findMany: jest.fn(async () => [
+          {
+            signerAddress: "addr_signables_off",
+            email: "signables@example.com",
+            emailNormalized: "signables@example.com",
+            emailVerifiedAt: new Date(),
+            emailOptIn: true,
+            notifyTransactionSignatures: true,
+            notifySignableSignatures: false,
+          },
+        ]),
+      },
+    };
+
+    const result = await resolveSignatureRecipients(db as any, {
+      walletId: "wallet_1",
+      signerAddresses: ["addr_signables_off"],
+      resourceType: "signable",
+    });
+
+    expect(result.eligible).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        address: "addr_signables_off",
+        reason: NOTIFICATION_STATUS_SKIPPED_DISABLED,
+      },
+    ]);
+  });
 });
 
 describe("notification email templates", () => {

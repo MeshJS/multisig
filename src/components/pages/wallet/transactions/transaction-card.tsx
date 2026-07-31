@@ -54,6 +54,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -1050,6 +1051,17 @@ export default function TransactionCard({
               <Separator className="my-2" />
             </>
           )}
+
+          {/* Token Flow - Collapsible */}
+          <TokenFlowSection
+            source={{
+              type: "pending",
+              txId: transaction.id,
+              txJson,
+              description: transaction.description,
+            }}
+            appWallet={appWallet}
+          />
 
           {/* Signers List - Collapsible */}
           <Collapsible open={isSignersOpen} onOpenChange={setIsSignersOpen}>

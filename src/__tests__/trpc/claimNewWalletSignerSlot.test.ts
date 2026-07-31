@@ -9,15 +9,6 @@ import {
 import { paymentKeyHash } from "@/utils/multisigSDK";
 import { mockKeyHashes } from "../testUtils";
 
-jest.mock("@/env", () => ({
-  __esModule: true,
-  env: {
-    DATABASE_URL: process.env.DATABASE_URL,
-    DIRECT_URL: process.env.DIRECT_URL,
-    NODE_ENV: "test",
-  },
-}), { virtual: true });
-
 jest.mock("superjson", () => ({
   __esModule: true,
   default: {

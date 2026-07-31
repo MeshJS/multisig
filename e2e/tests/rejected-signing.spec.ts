@@ -15,6 +15,7 @@
 
 import { test, expect } from "../fixtures/authFixture";
 import { loadContext } from "../helpers/contextLoader";
+import { mockTxFlowReads } from "../helpers/phase3Mocks";
 import {
   createThrowawayWallet,
   getPendingTransactionsRest,
@@ -219,6 +220,19 @@ test.describe("rejected wallet signing", () => {
         `[data-testid="sign-button-${transactionId}"]`,
       );
       await expect(signButton).toBeVisible({ timeout: 30_000 });
+
+      // The pending card's token-flow section mounts lazily on first open;
+      // its chain reads (resolving input provenance) are mocked.
+      await mockTxFlowReads(page, wallet.address);
+      await page.getByTestId(`tx-flow-toggle-${transactionId}`).click();
+      await expect(
+        page.getByTestId(`tx-flow-canvas-${transactionId}`),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByTestId(`tx-flow-node-txp:${transactionId}`),
+      ).toBeVisible({ timeout: 30_000 });
+      // Collapse again so the sign flow below is unaffected.
+      await page.getByTestId(`tx-flow-toggle-${transactionId}`).click();
 
       await makeSignTxReject(page);
       await signButton.click();

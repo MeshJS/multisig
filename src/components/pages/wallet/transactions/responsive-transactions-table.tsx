@@ -17,6 +17,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import { useMemo } from "react";
+import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
 
 interface ResponsiveTransactionsTableProps {
   appWallet: Wallet;
@@ -272,6 +273,16 @@ function TransactionCard({
           </div>
         </div>
       )}
+
+      <TokenFlowSection
+        source={{
+          type: "onchain",
+          txHash: transaction.hash,
+          description: dbTransaction?.description,
+        }}
+        appWallet={appWallet}
+        testIdSuffix="-mobile"
+      />
     </div>
   );
 }
