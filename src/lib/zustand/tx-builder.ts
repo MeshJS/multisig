@@ -34,6 +34,13 @@ interface TxBuilderState {
   draft: TxDraft;
   selection: BuilderSelection;
   positions: Record<string, { x: number; y: number }>;
+  /**
+   * Output ids the user has edited or navigated away from. A pristine output
+   * (just added, still selected, never edited) keeps its empty-field
+   * validation errors out of the UI until the user has had a chance to fill
+   * it in — the Build gate still sees them.
+   */
+  touched: Record<string, true>;
 
   addOutput: (partial?: Partial<DraftOutput>) => string;
   updateOutput: (
@@ -54,33 +61,64 @@ interface TxBuilderState {
   resetDraft: (walletId?: string) => void;
 }
 
+function withTouched(
+  touched: Record<string, true>,
+  outputId: string | undefined,
+): Record<string, true> {
+  if (!outputId || touched[outputId]) return touched;
+  return { ...touched, [outputId]: true };
+}
+
+function selectedOutputId(selection: BuilderSelection): string | undefined {
+  return selection?.kind === "output" ? selection.outputId : undefined;
+}
+
 export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   walletId: undefined,
   draft: createDraft(),
   selection: null,
   positions: {},
+  touched: {},
 
   addOutput: (partial) => {
-    const { draft, outputId } = addOutput(get().draft, partial);
-    set({ draft, selection: { kind: "output", outputId } });
+    const state = get();
+    const { draft, outputId } = addOutput(state.draft, partial);
+    set({
+      draft,
+      selection: { kind: "output", outputId },
+      // Moving on to a new card counts as abandoning the previous one.
+      touched: withTouched(state.touched, selectedOutputId(state.selection)),
+    });
     return outputId;
   },
-  updateOutput: (outputId, patch) =>
-    set({ draft: updateOutput(get().draft, outputId, patch) }),
+  updateOutput: (outputId, patch) => {
+    const state = get();
+    set({
+      draft: updateOutput(state.draft, outputId, patch),
+      touched: withTouched(state.touched, outputId),
+    });
+  },
   removeOutput: (outputId) => {
-    const { draft, selection, positions } = get();
+    const { draft, selection, positions, touched } = get();
     const { [outputId]: _removed, ...remaining } = positions;
+    const { [outputId]: _untouched, ...remainingTouched } = touched;
     set({
       draft: removeOutput(draft, outputId),
       positions: remaining,
+      touched: remainingTouched,
       selection:
         selection?.kind === "output" && selection.outputId === outputId
           ? null
           : selection,
     });
   },
-  setOutputAsset: (outputId, unit, quantity) =>
-    set({ draft: setOutputAsset(get().draft, outputId, unit, quantity) }),
+  setOutputAsset: (outputId, unit, quantity) => {
+    const state = get();
+    set({
+      draft: setOutputAsset(state.draft, outputId, unit, quantity),
+      touched: withTouched(state.touched, outputId),
+    });
+  },
   setUtxoSelection: (selection) =>
     set({ draft: setUtxoSelection(get().draft, selection) }),
   setChangeAddress: (changeAddress) =>
@@ -90,7 +128,19 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   setMetadata: (metadata) =>
     set({ draft: setMetadata(get().draft, metadata) }),
 
-  select: (selection) => set({ selection }),
+  select: (selection) => {
+    const state = get();
+    const previous = selectedOutputId(state.selection);
+    const stillSelected = selectedOutputId(selection) === previous;
+    set({
+      selection,
+      // Deselecting an output means the user left it behind — from now on
+      // its incomplete-field errors are fair game for the problems panel.
+      touched: stillSelected
+        ? state.touched
+        : withTouched(state.touched, previous),
+    });
+  },
   setPosition: (entityId, position) =>
     set({ positions: { ...get().positions, [entityId]: position } }),
   clearPositions: () => set({ positions: {} }),
@@ -100,5 +150,6 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
       draft: createDraft(),
       selection: null,
       positions: {},
+      touched: {},
     }),
 }));

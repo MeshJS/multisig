@@ -5,6 +5,7 @@ import { Hammer, Loader2 } from "lucide-react";
 
 import type { BuilderCanvasProps } from "./builder-canvas";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import SectionTitle from "@/components/ui/section-title";
 import useAddressLabels from "@/hooks/useAddressLabels";
@@ -55,6 +56,7 @@ export default function PageBuild() {
   const draft = useTxBuilderStore((state) => state.draft);
   const storeWalletId = useTxBuilderStore((state) => state.walletId);
   const resetDraft = useTxBuilderStore((state) => state.resetDraft);
+  const touched = useTxBuilderStore((state) => state.touched);
 
   const [building, setBuilding] = useState(false);
 
@@ -111,6 +113,20 @@ export default function PageBuild() {
   );
   const errors = issues.filter((issue) => issue.level === "error");
 
+  // A freshly added card legitimately has no address/amount yet — hold those
+  // two errors back until the user has edited the card or moved away from it.
+  // The Build button still gates on the unfiltered list above.
+  const visibleIssues = useMemo(
+    () =>
+      issues.filter(
+        (issue) =>
+          !issue.outputId ||
+          touched[issue.outputId] ||
+          (issue.code !== "missing-address" && issue.code !== "no-amount"),
+      ),
+    [issues, touched],
+  );
+
   async function buildAndPropose() {
     if (!appWallet?.scriptCbor || errors.length > 0) return;
     setBuilding(true);
@@ -155,7 +171,22 @@ export default function PageBuild() {
   return (
     <main className="flex h-[calc(100vh-4rem)] flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex items-center justify-between gap-4">
-        <SectionTitle>Transaction Builder</SectionTitle>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <SectionTitle>Transaction Builder</SectionTitle>
+            <Badge
+              variant="outline"
+              className="text-xs"
+              data-testid="tx-builder-new-badge"
+            >
+              New
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The visual builder is a new feature with limited transaction-type
+            support &mdash; more transaction types will be added over time.
+          </p>
+        </div>
         <Button
           data-testid="tx-builder-build"
           onClick={() => void buildAndPropose()}
@@ -179,10 +210,10 @@ export default function PageBuild() {
             contacts={contactEntries}
             signers={signerEntries}
           />
-          <ProblemsPanel issues={issues} />
+          <ProblemsPanel issues={visibleIssues} />
         </div>
         <aside className="w-full shrink-0 overflow-y-auto lg:w-[380px]">
-          <Inspector appWallet={appWallet} issues={issues} />
+          <Inspector appWallet={appWallet} issues={visibleIssues} />
         </aside>
       </div>
     </main>
