@@ -3,8 +3,11 @@ import { csl } from "@meshsdk/core-csl";
 import { resolveTxHash } from "@meshsdk/core-cst";
 
 import {
-  mergeSignerWitnesses,
+  addUniqueVkeyWitnessToTx,
+  createVkeyWitnessFromHex,
+  extractVkeyWitnesses,
   filterWitnessesToScripts,
+  mergeSignerWitnesses,
 } from "@/utils/txSignUtils";
 
 function buildMinimalTxHex(): string {
@@ -179,5 +182,100 @@ describe("filterWitnessesToScripts", () => {
     expect(Buffer.from(keptPub).toString("hex")).toEqual(
       Buffer.from(A.to_public().as_bytes()).toString("hex"),
     );
+  });
+});
+
+describe("extractVkeyWitnesses", () => {
+  it("reads vkeys from a full signed transaction payload", () => {
+    const txHex = buildMinimalTxHex();
+    const signer = csl.PrivateKey.generate_ed25519();
+    const sig = signer.sign(Buffer.from(resolveTxHash(txHex), "hex"));
+    const tx = csl.Transaction.from_hex(txHex);
+    const witnessSet = csl.TransactionWitnessSet.from_bytes(
+      tx.witness_set().to_bytes(),
+    );
+    const vkeys = csl.Vkeywitnesses.new();
+    vkeys.add(csl.Vkeywitness.new(csl.Vkey.new(signer.to_public()), sig));
+    witnessSet.set_vkeys(vkeys);
+    const signedTxHex = csl.Transaction.new(
+      csl.TransactionBody.from_bytes(tx.body().to_bytes()),
+      witnessSet,
+      tx.auxiliary_data(),
+    ).to_hex();
+
+    const extracted = extractVkeyWitnesses(signedTxHex);
+    expect(extracted.len()).toBe(1);
+    expect(
+      Buffer.from(extracted.get(0).vkey().public_key().as_bytes()).toString("hex"),
+    ).toEqual(Buffer.from(signer.to_public().as_bytes()).toString("hex"));
+  });
+
+  it("falls back to parsing a witness-set-only payload (CIP-30 partial sign)", () => {
+    const signer = csl.PrivateKey.generate_ed25519();
+    const payload = witnessSetHexFor(signer, "ab".repeat(32));
+
+    const extracted = extractVkeyWitnesses(payload);
+    expect(extracted.len()).toBe(1);
+  });
+
+  it("returns an empty set when the payload carries no vkeys", () => {
+    expect(extractVkeyWitnesses(buildMinimalTxHex()).len()).toBe(0);
+    expect(
+      extractVkeyWitnesses(csl.TransactionWitnessSet.new().to_hex()).len(),
+    ).toBe(0);
+  });
+});
+
+describe("createVkeyWitnessFromHex", () => {
+  it("builds a witness whose key hash matches the public key", () => {
+    const signer = csl.PrivateKey.generate_ed25519();
+    const bodyHash = "cd".repeat(32);
+    const signatureHex = signer.sign(Buffer.from(bodyHash, "hex")).to_hex();
+    const keyHex = signer.to_public().to_hex();
+
+    const created = createVkeyWitnessFromHex(keyHex, signatureHex);
+
+    expect(created.keyHashHex).toBe(
+      Buffer.from(signer.to_public().hash().to_bytes()).toString("hex"),
+    );
+    expect(created.witness.signature().to_hex()).toBe(signatureHex);
+    expect(
+      created.publicKey.verify(
+        Buffer.from(bodyHash, "hex"),
+        created.signature,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("addUniqueVkeyWitnessToTx", () => {
+  it("adds a new vkey witness while preserving the body bytes", () => {
+    const txHex = buildMinimalTxHex();
+    const signer = csl.PrivateKey.generate_ed25519();
+    const sig = signer.sign(Buffer.from(resolveTxHash(txHex), "hex"));
+    const witness = csl.Vkeywitness.new(csl.Vkey.new(signer.to_public()), sig);
+
+    const result = addUniqueVkeyWitnessToTx(txHex, witness);
+
+    expect(result.witnessAdded).toBe(true);
+    expect(result.vkeyWitnesses.len()).toBe(1);
+    expect(resolveTxHash(result.txHex)).toEqual(resolveTxHash(txHex));
+    expect(
+      csl.Transaction.from_hex(result.txHex).witness_set().vkeys()?.len(),
+    ).toBe(1);
+  });
+
+  it("is a no-op when the same key hash is already witnessed", () => {
+    const txHex = buildMinimalTxHex();
+    const signer = csl.PrivateKey.generate_ed25519();
+    const sig = signer.sign(Buffer.from(resolveTxHash(txHex), "hex"));
+    const witness = csl.Vkeywitness.new(csl.Vkey.new(signer.to_public()), sig);
+
+    const once = addUniqueVkeyWitnessToTx(txHex, witness);
+    const twice = addUniqueVkeyWitnessToTx(once.txHex, witness);
+
+    expect(twice.witnessAdded).toBe(false);
+    expect(twice.txHex).toBe(once.txHex);
+    expect(twice.vkeyWitnesses.len()).toBe(1);
   });
 });

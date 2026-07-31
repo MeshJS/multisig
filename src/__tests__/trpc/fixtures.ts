@@ -3,16 +3,21 @@ import type { PrismaClient } from "@prisma/client";
 
 type DbClient = PrismaClient;
 
-export async function seedWallet(db: DbClient, signerAddress: string): Promise<{ walletId: string }> {
+export async function seedWallet(
+  db: DbClient,
+  signerAddress: string,
+  extraSigners: string[] = [],
+): Promise<{ walletId: string }> {
   const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
+  const signersAddresses = [signerAddress, ...extraSigners];
   const wallet = await db.wallet.create({
     data: {
       name: `trpc-wallet-${suffix}`,
       description: `tRPC test wallet ${suffix}`,
-      signersAddresses: [signerAddress],
+      signersAddresses,
       signersStakeKeys: [],
       signersDRepKeys: [],
-      signersDescriptions: [""],
+      signersDescriptions: signersAddresses.map(() => ""),
       numRequiredSigners: 1,
       verified: [],
       scriptCbor: "deadbeef",
@@ -47,6 +52,11 @@ export async function cleanupFixtures(
       await db.transaction.deleteMany({ where: { walletId: ids.walletId } });
       await db.proxy.deleteMany({ where: { walletId: ids.walletId } });
       await db.walletBotAccess.deleteMany({ where: { walletId: ids.walletId } });
+      // Routers under test enqueue notification rows as a side effect of
+      // creating state-0 transactions/signables — clean those up too.
+      await db.notificationDelivery.deleteMany({ where: { walletId: ids.walletId } });
+      await db.walletSignerNotificationSetting.deleteMany({ where: { walletId: ids.walletId } });
+      await db.emailVerificationToken.deleteMany({ where: { walletId: ids.walletId } });
     }
 
     if (ids.userId) {
