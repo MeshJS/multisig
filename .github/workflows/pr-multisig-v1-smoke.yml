@@ -61,7 +61,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Dependabot-triggered runs never receive repo Actions secrets. When no
+      # core secret is present at all, skip the smoke instead of failing so
+      # dependabot PRs are not systematically red. A partial secret set still
+      # fails loudly in the validate step below.
+      - name: Check CI secrets configured
+        id: check-secrets
+        shell: bash
+        run: |
+          if [[ -z "$CI_JWT_SECRET" && -z "$CI_MNEMONIC_1" && -z "$CI_MNEMONIC_2" && -z "$CI_MNEMONIC_3" && -z "$CI_BLOCKFROST_PREPROD_API_KEY" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Multisig v1 smoke skipped: CI_* secrets not available to this run (e.g. dependabot-triggered)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Validate required CI secrets
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: |
           missing=()
@@ -99,6 +115,7 @@ jobs:
           fi
 
       - name: Pull base image (with retry)
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: |
           for i in 1 2 3; do
@@ -108,14 +125,17 @@ jobs:
           done
 
       - name: Build CI containers
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: docker compose -f docker-compose.ci.yml build
 
       - name: Start Postgres + App containers
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: docker compose -f docker-compose.ci.yml up -d postgres app
 
       - name: Wait for app healthcheck
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: |
           for i in {1..60}; do
@@ -132,11 +152,12 @@ jobs:
           exit 1
 
       - name: Run CI wallet bootstrap + v1 route-chain smoke
+        if: steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: docker compose -f docker-compose.ci.yml --profile ci-test run --rm ci-runner
 
       - name: Dump container logs on failure
-        if: failure()
+        if: failure() && steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: |
           docker compose -f docker-compose.ci.yml logs --no-color \
@@ -153,14 +174,14 @@ jobs:
             > docker-compose-ci.log
 
       - name: Upload logs on failure
-        if: failure()
+        if: failure() && steps.check-secrets.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: docker-compose-ci-logs
           path: docker-compose-ci.log
 
       - name: Upload route-chain report
-        if: always()
+        if: always() && steps.check-secrets.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ci-route-chain-report
@@ -168,7 +189,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Tear down CI containers
-        if: always()
+        if: always() && steps.check-secrets.outputs.configured == 'true'
         shell: bash
         run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
 
