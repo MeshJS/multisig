@@ -1,11 +1,15 @@
 # Running the Playwright E2E Tests Locally
 
 The Playwright runner is the single local entry point for browser E2E tests in
-`e2e/tests`. It currently includes the ring-transfer suite, which drives a real
-Cardano preprod browser flow:
-CIP-0030 wallet injection -> transaction propose -> multi-sign -> on-chain broadcast.
+`e2e/tests`. The suite includes the ring-transfer specs, which drive a real
+Cardano preprod browser flow
+(CIP-0030 wallet injection -> transaction propose -> multi-sign -> on-chain broadcast),
+plus UI specs covering wallet creation, new-transaction validation, rejected
+signing, staking, governance/DRep, proxies, bot management, notification
+settings, wallet access control, and responsive smoke checks.
 
-Use the Docker flow below when you want the local run to match CI. It starts Postgres,
+Use the Docker flow below when you want the local run to match CI
+(`.github/workflows/pr-playwright-browser.yml`). It starts Postgres,
 starts the app, bootstraps the three CI wallets, then runs the full Playwright suite
 against the app container.
 
@@ -213,7 +217,8 @@ until docker compose -f docker-compose.playwright.yml exec app \
 
 ### View the HTML report
 
-Artifacts are written to `ci-artifacts/`.
+Artifacts are written to `ci-artifacts/`. Failure traces, screenshots, and videos
+land in `ci-artifacts/playwright-traces/`.
 
 ```bash
 npx playwright show-report ci-artifacts/playwright-report
@@ -244,7 +249,7 @@ docker compose -f docker-compose.playwright.yml --env-file .env.playwright down 
 | `APP_URL` | No | Base URL of the running app; provided by Docker Compose for the runner. |
 | `CI_TRANSFER_LOVELACE` | No | Lovelace sent per ring-transfer leg. Defaults to `2000000` (2 ADA). |
 | `CI_STAKE_POOL_ID_HEX` | Yes for `staking-ui.spec.ts` | Hex (28-byte) preprod stake pool id. A bech32 `pool1...` value is normalized in-test, but bootstrap and route-chain expect hex. Forwarded to both the bootstrap and Playwright runners. |
-| `CI_DREP_ANCHOR_URL` | No | Used as the mocked anchor URL in `governance-drep-ui.spec.ts` (a fallback URL is used when unset). Required separately by the route-chain CI runner. |
+| `CI_DREP_ANCHOR_URL` | No | Not read by any current spec; Docker Compose forwards it to the runner only for parity. Required separately by the route-chain CI runner. |
 | `CI_DREP_ANCHOR_JSON` | Yes for `governance-drep-ui.spec.ts` | CIP-119 anchor JSON used to fill the DRep register/update validation forms. It must stay single-line JSON because `docker compose --env-file` cannot parse multi-line values. |
 | `CI_NETWORK_ID` | No | `0` for preprod. Defaults to `0`. |
 | `CI_NUM_REQUIRED_SIGNERS` | No | Signing threshold. Defaults to `2`. |
