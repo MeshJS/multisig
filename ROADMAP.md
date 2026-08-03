@@ -65,7 +65,7 @@ Mesh 2.0 groundwork (Prisma 7.8 + Next 16, tx-builder hardfork upgrade, wallet o
 
 ---
 
-## Month 1 — May 2026
+## Month 1 — April 2026
 
 **Focus:** Establish foundations and fix critical blockers.
 
@@ -93,7 +93,7 @@ Status of M1 tasks. Last updated 2026-04-23.
 
 ---
 
-## Month 2 — June 2026
+## Month 2 — May 2026
 
 **Focus:** Mesh 2.0 migration groundwork, signing/auth reliability, in-app governance voting, and platform UX + CI hardening.
 
@@ -132,7 +132,7 @@ Mid-month snapshot. Last updated 2026-06-17.
 
 ---
 
-## Month 3 — July 2026
+## Month 3 — June 2026
 
 **Focus:** Mesh 2.0 cutover, on-chain wallet discovery (Wallet V2), and FROST research kickoff.
 
@@ -167,7 +167,7 @@ End-of-month snapshot. Last updated 2026-07-26.
 
 ---
 
-## Month 4 — August 2026
+## Month 4 — July 2026
 
 **Focus:** Close the production release gap, then start Document Sign-Off (see [Flagship feature](#flagship-feature--document-sign-off)).
 
@@ -186,13 +186,13 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (build) — Documents section UI, six-state lifecycle, signer review screen | |
+| Transaction visualization MVP (build) — Token-flow viz component, new tx building page that uses new component | |
 | Unblock dependabot CI — port the skip-when-unconfigured guard from `ci-smoke-preprod.yml` into `pr-multisig-v1-smoke.yml`, then clear the 7 open dependency PRs (oldest open since 2026-06-15) | |
 | Notification center follow-ups — gov-proposal improvements, Playwright coverage in CI, and a scheduled drain for the outbox (no cron currently runs `drainNotificationOutbox`) | #327 |
 
 ---
 
-## Month 5 — September 2026
+## Month 5 — August 2026
 
 **Focus:** Document Sign-Off MVP — ship (8–10 wk effort completes); discovery consolidation.
 
@@ -200,7 +200,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route. Ready = a pilot team runs all six user stories end-to-end without developer help (PRD-001's own bar) | |
+| Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display all tx types multisig is capable of doing| |
 | Test depth — extend the Playwright suite to cover the Sign-Off flows, plus transaction-builder & tRPC integration tests | #255 |
 
 **Andre**
@@ -214,7 +214,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 ---
 
-## Month 6 — October 2026
+## Month 6 — September 2026
 
 **Focus:** Document Sign-Off provenance, FROST findings, hardware wallets.
 
@@ -234,7 +234,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 ---
 
-## Month 7 — November 2026
+## Month 7 — October 2026
 
 **Focus:** Governance polish, dApp connector, bot platform.
 
@@ -257,7 +257,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ---
 
-## Month 8 — December 2026
+## Month 8 — November 2026
 
 **Focus:** Proxy voting, testing, backlog.
 
@@ -277,7 +277,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ---
 
-## Month 9 — January 2027
+## Month 9 — December 2026
 
 **Focus:** Document Sign-Off checkpoints, vesting, growth.
 
@@ -296,7 +296,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ---
 
-## Month 10 — February 2027
+## Month 10 — January 2027
 
 **Focus:** Invite flow.
 
@@ -314,7 +314,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ---
 
-## Month 11 — March 2027
+## Month 11 — February 2027
 
 **Focus:** Polish, wrap-up, and forward-looking research.
 
@@ -334,7 +334,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ---
 
-## Month 12 — April 2027
+## Month 12 — March 2027
 
 **Focus:** Buffer / catch-up — absorb slippage from earlier months, finalize reporting, plan next cycle.
 
