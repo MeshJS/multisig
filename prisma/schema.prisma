@@ -245,26 +245,26 @@ model EmailVerificationToken {
 }
 
 model NotificationDelivery {
-  id                 String    @id @default(cuid())
-  eventType          String
-  channel            String
-  recipientAddress   String
-  recipientEmail     String?
-  resourceType       String
-  resourceId         String
-  walletId           String?
-  idempotencyKey     String    @unique
-  subject            String
-  payload            Json
-  status             String    @default("pending")
-  provider           String?
-  providerMessageId  String?
-  attempts           Int       @default(0)
-  lastError          String?
-  nextAttemptAt      DateTime  @default(now())
-  sentAt             DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  eventType         String
+  channel           String
+  recipientAddress  String
+  recipientEmail    String?
+  resourceType      String
+  resourceId        String
+  walletId          String?
+  idempotencyKey    String    @unique
+  subject           String
+  payload           Json
+  status            String    @default("pending")
+  provider          String?
+  providerMessageId String?
+  attempts          Int       @default(0)
+  lastError         String?
+  nextAttemptAt     DateTime  @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status, nextAttemptAt])
   @@index([recipientAddress])
@@ -388,4 +388,143 @@ model ProposalTally {
   updatedAt  DateTime @updatedAt
 
   @@unique([network, proposalId])
+}
+
+// ---------------------------------------------------------------------------
+// Document Sign-Off (PRD-001) — five-entity model.
+//
+// A wallet-native, off-chain approval layer. Approval binds to an exact
+// content hash, never to the mutable document container, and inherits the
+// wallet's signer set + threshold frozen at the moment a review round starts.
+// No on-chain dependency in the MVP.
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  Draft
+  InReview
+  Approved
+  Rejected
+  Superseded
+  Archived
+}
+
+enum DocumentReviewAction {
+  approve
+  reject
+}
+
+// How the version's bytes are retained. The MVP never requires the bytes —
+// the content hash is the binding — so `hashOnly` is the privacy-preserving
+// default (see the vault's "Storage Privacy Risk").
+enum DocumentStorageMode {
+  hashOnly
+  inline
+  external
+}
+
+// The stable container. Title/description may change; approval never attaches
+// here, only to a DocumentVersion.
+model Document {
+  id           String            @id @default(cuid())
+  walletId     String
+  title        String
+  description  String?
+  documentType String?
+  createdBy    String // signer address that created it
+  status       DocumentStatus    @default(Draft)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+  versions     DocumentVersion[]
+  events       DocumentEvent[]
+
+  @@index([walletId])
+  @@index([walletId, status])
+  @@index([createdBy])
+}
+
+// Each version is its own approval object — this is what makes version-bound
+// approval and approval-reset-on-new-version possible.
+model DocumentVersion {
+  id                 String                  @id @default(cuid())
+  documentId         String
+  document           Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber      Int
+  contentHash        String // lowercase hex digest of the exact bytes
+  hashAlgorithm      String                  @default("sha256")
+  fileName           String?
+  mimeType           String?
+  fileSize           Int?
+  storageMode        DocumentStorageMode     @default(hashOnly)
+  contentRef         String? // external URI when storageMode = external
+  contentInline      String? // base64 bytes when storageMode = inline
+  reviewInstructions String?
+  status             DocumentStatus          @default(Draft)
+  createdBy          String
+  createdAt          DateTime                @default(now())
+  reviewStartedAt    DateTime?
+  decidedAt          DateTime? // approved or rejected
+  supersededAt       DateTime?
+  reviews            DocumentReview[]
+  signerSnapshot     DocumentSignerSnapshot?
+  events             DocumentEvent[]
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@index([contentHash])
+  @@index([status])
+}
+
+// One signer's action on one version, with the exact payload that was signed.
+// Append-only: a signer gets one action per version, and a new version starts
+// a fresh round at zero approvals.
+model DocumentReview {
+  id            String               @id @default(cuid())
+  versionId     String
+  version       DocumentVersion      @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  signerAddress String
+  action        DocumentReviewAction
+  comment       String?
+  payload       String // canonical JSON string that was signed (CIP-8 payload)
+  signature     String // COSE_Sign1 hex
+  signatureKey  String // COSE key hex
+  signedAt      DateTime // client-asserted, server-validated against a window
+  createdAt     DateTime             @default(now())
+
+  @@unique([versionId, signerAddress])
+  @@index([versionId])
+  @@index([signerAddress])
+}
+
+// The signer set and threshold that applied when the round started. Frozen so
+// later membership changes never rewrite history.
+model DocumentSignerSnapshot {
+  id                  String          @id @default(cuid())
+  versionId           String          @unique
+  version             DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  walletId            String
+  signersAddresses    String[]
+  signersDescriptions String[]
+  requiredSigners     Int
+  walletPolicyHash    String // sha256 of the wallet's scriptCbor — binds the round to the policy
+  capturedAt          DateTime        @default(now())
+
+  @@index([walletId])
+}
+
+// Append-only audit log. Feeds the detail page history and the proof export.
+model DocumentEvent {
+  id           String           @id @default(cuid())
+  documentId   String
+  document     Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionId    String?
+  version      DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  type         String // "document.created" | "version.uploaded" | "review.started" | ...
+  actorAddress String?
+  metadata     Json?
+  createdAt    DateTime         @default(now())
+
+  @@index([documentId, createdAt])
+  @@index([versionId])
+  @@index([type])
 }
