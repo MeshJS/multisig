@@ -86,7 +86,7 @@ export const routeSeo: Record<string, RouteSeo> = {
   "/roadmap": {
     title: "Roadmap",
     description:
-      "The twelve-month Mesh Multisig roadmap: what has shipped, what is in progress and what is planned for the Cardano multi-signature wallet, from May 2026 to April 2027.",
+      "The twelve-month Mesh Multisig roadmap: what has shipped, what is in progress and what is planned for the Cardano multi-signature wallet, from April 2026 to March 2027.",
   },
   "/roadmap/graph": {
     title: "Feature Graph",
