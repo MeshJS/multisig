@@ -24,41 +24,41 @@ const proxy = {
 jest.mock("@/env", () => ({
   __esModule: true,
   env: { BLOCKFROST_API_KEY_PREPROD: "preprod-key" },
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {},
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/proxyAccess", () => ({
   __esModule: true,
   authorizeProxyReadForV1: authorizeProxyReadForV1Mock,
   loadActiveProxyForWallet: loadActiveProxyForWalletMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/proxyTxBuilders", () => ({
   __esModule: true,
   deriveProxyScripts: deriveProxyScriptsMock,
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

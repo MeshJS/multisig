@@ -24,36 +24,36 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
   BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core", () => ({
   __esModule: true,
   resolvePaymentKeyHash: resolvePaymentKeyHashMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core-csl", () => ({
   __esModule: true,
   calculateTxHash: calculateTxHashMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/txSignUtils", () => ({
   __esModule: true,
@@ -61,17 +61,17 @@ jest.mock("@/utils/txSignUtils", () => ({
   addUniqueVkeyWitnessToTx: addUniqueVkeyWitnessToTxMock,
   shouldSubmitMultisigTx: shouldSubmitMultisigTxMock,
   submitTxWithScriptRecovery: submitTxWithScriptRecoveryMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: () => ({ submitTx: jest.fn() }),
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/multisigSDK", () => ({
   __esModule: true,
   addressToNetwork: () => 0,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -82,17 +82,17 @@ jest.mock("@/server/db", () => ({
       updateMany: updateManyTransactionMock,
     },
   },
-}), { virtual: true });
+}));
 
 jest.mock("@/server/api/root", () => ({
   __esModule: true,
   createCaller: () => ({ wallet: { getWallet: jest.fn() } }),
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/rateLimit", () => ({
   __esModule: true,
   getClientIP: () => "127.0.0.1",
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

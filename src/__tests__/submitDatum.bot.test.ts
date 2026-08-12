@@ -18,32 +18,32 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
   BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   botHasScope: botHasScopeMock,
   __esModule: true,
   assertBotWalletAccess: assertBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core-cst", () => ({
   __esModule: true,
   checkSignature: checkSignatureMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -51,7 +51,7 @@ jest.mock("@/server/db", () => ({
     signable: { create: createSignableMock },
     wallet: { findUnique: jest.fn() },
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

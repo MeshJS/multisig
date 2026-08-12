@@ -21,13 +21,13 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyStrictRateLimit: applyStrictRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -36,7 +36,7 @@ jest.mock("@/server/db", () => ({
     pendingBot: { findFirst: findPendingBotMock },
     $transaction: (fn: (tx: typeof txClient) => unknown) => fn(txClient),
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
