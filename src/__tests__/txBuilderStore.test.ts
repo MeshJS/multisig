@@ -1,3 +1,4 @@
+import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 
 /**
@@ -175,5 +176,72 @@ describe("tx-builder store position tracking", () => {
     const state = useTxBuilderStore.getState();
     expect(state.positions).toEqual({});
     expect(state.draft.outputs).toHaveLength(1);
+  });
+});
+
+describe("tx-builder store editing a pending transaction", () => {
+  beforeEach(() => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+  });
+
+  function loadedDraft() {
+    return addOutput(createDraft("loaded"), {
+      id: "out-1",
+      address: "addr1recipient",
+      assets: [{ unit: "lovelace", quantity: "2000000" }],
+    }).draft;
+  }
+
+  it("loadDraft replaces the draft and records the editing context", () => {
+    const stale = useTxBuilderStore.getState().addOutput();
+    useTxBuilderStore.getState().setPosition(stale, { x: 9, y: 9 });
+
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-2",
+      draft: loadedDraft(),
+      editingTxId: "tx-1",
+    });
+
+    const state = useTxBuilderStore.getState();
+    expect(state.walletId).toBe("wallet-2");
+    expect(state.editingTxId).toBe("tx-1");
+    expect(state.draft.id).toBe("loaded");
+    expect(state.selection).toBeNull();
+    expect(state.positions).toEqual({});
+  });
+
+  it("loadDraft marks every loaded output as touched", () => {
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft: loadedDraft(),
+      editingTxId: "tx-1",
+    });
+    expect(useTxBuilderStore.getState().touched).toEqual({ "out-1": true });
+  });
+
+  it("cancelEditing keeps the draft but detaches the pending tx", () => {
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft: loadedDraft(),
+      editingTxId: "tx-1",
+    });
+
+    useTxBuilderStore.getState().cancelEditing();
+
+    const state = useTxBuilderStore.getState();
+    expect(state.editingTxId).toBeUndefined();
+    expect(state.draft.outputs).toHaveLength(1);
+  });
+
+  it("resetDraft clears the editing context", () => {
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft: loadedDraft(),
+      editingTxId: "tx-1",
+    });
+
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+
+    expect(useTxBuilderStore.getState().editingTxId).toBeUndefined();
   });
 });

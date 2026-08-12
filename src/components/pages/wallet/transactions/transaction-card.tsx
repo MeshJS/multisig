@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 
 import {
   checkSignature,
@@ -55,6 +56,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
+import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -220,6 +222,16 @@ export default function TransactionCard({
       return null;
     }
   }, [transaction.txJson]);
+  const router = useRouter();
+  // Whether this pending tx can round-trip into the visual builder (simple
+  // sends only — certificates, votes, mints etc. have no draft representation).
+  const editCompat = useMemo(
+    () =>
+      txJson
+        ? isDraftCompatible(txJson)
+        : { compatible: false, reasons: ["Unreadable transaction"] },
+    [txJson],
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   // Set once an on-chain broadcast succeeds during signing; surfaces a hidden
@@ -784,13 +796,26 @@ export default function TransactionCard({
                 Copy Tx CBOR
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {/* <DropdownMenuItem
-                onClick={() => {
-                  rebuildTx(); // todo add confirmation
-                }}
-              >
-                Rebuild Transaction
-              </DropdownMenuItem> */}
+              {transaction.state === 0 && (
+                <DropdownMenuItem
+                  disabled={!editCompat.compatible}
+                  data-testid={`edit-in-builder-${transaction.id}`}
+                  onClick={() =>
+                    void router.push(
+                      `/wallets/${walletId}/build?tx=${transaction.id}`,
+                    )
+                  }
+                >
+                  <div className="flex flex-col">
+                    <span>Edit in Builder</span>
+                    {!editCompat.compatible && (
+                      <span className="text-xs text-muted-foreground">
+                        {editCompat.reasons[0]}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => {
                   deleteTx(); // todo add confirmation

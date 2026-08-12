@@ -38,6 +38,10 @@ export default function useTransaction() {
           { walletId: newTransaction.walletId },
           (old) => {
             if (!old) return old;
+            // A replace atomically deletes the edited pending tx server-side.
+            const withoutReplaced = newTransaction.replaces
+              ? old.filter((tx) => tx.id !== newTransaction.replaces!.transactionId)
+              : old;
             const optimisticTx = {
               id: `temp-${Date.now()}`,
               walletId: newTransaction.walletId,
@@ -51,7 +55,7 @@ export default function useTransaction() {
               createdAt: new Date(),
               updatedAt: new Date(),
             };
-            return [optimisticTx, ...old];
+            return [optimisticTx, ...withoutReplaced];
           }
         );
 
@@ -88,6 +92,11 @@ export default function useTransaction() {
       metadataValue?: {
         label: string;
         value: string;
+      };
+      /** Atomically replaces this pending transaction (edit-in-builder flow). */
+      replaces?: {
+        transactionId: string;
+        knownSignedCount: number;
       };
     }) => {
       if (!appWallet) throw new Error("No wallet");
@@ -158,6 +167,7 @@ export default function useTransaction() {
         state: submitTx ? 1 : 0,
         description: data.description,
         txHash: txHash,
+        replaces: data.replaces,
       });
 
       setLoading(false);

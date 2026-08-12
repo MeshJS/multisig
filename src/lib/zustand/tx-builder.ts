@@ -32,6 +32,11 @@ import {
 interface TxBuilderState {
   walletId?: string;
   draft: TxDraft;
+  /**
+   * Set when the draft was loaded from an existing pending transaction;
+   * building then replaces that transaction instead of creating a new one.
+   */
+  editingTxId?: string;
   selection: BuilderSelection;
   positions: Record<string, { x: number; y: number }>;
   /**
@@ -59,6 +64,14 @@ interface TxBuilderState {
   clearPositions: () => void;
   /** Starts a fresh draft; call on wallet change and after a successful build. */
   resetDraft: (walletId?: string) => void;
+  /** Replaces the draft wholesale, e.g. when loading a pending transaction. */
+  loadDraft: (args: {
+    walletId: string;
+    draft: TxDraft;
+    editingTxId?: string;
+  }) => void;
+  /** Detaches the draft from the pending tx it was loaded from. */
+  cancelEditing: () => void;
 }
 
 function withTouched(
@@ -76,6 +89,7 @@ function selectedOutputId(selection: BuilderSelection): string | undefined {
 export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   walletId: undefined,
   draft: createDraft(),
+  editingTxId: undefined,
   selection: null,
   positions: {},
   touched: {},
@@ -148,8 +162,23 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
     set({
       walletId,
       draft: createDraft(),
+      editingTxId: undefined,
       selection: null,
       positions: {},
       touched: {},
     }),
+  loadDraft: ({ walletId, draft, editingTxId }) =>
+    set({
+      walletId,
+      draft,
+      editingTxId,
+      selection: null,
+      positions: {},
+      // Loaded outputs are complete — if the user later empties a field, its
+      // validation error should surface immediately.
+      touched: Object.fromEntries(
+        draft.outputs.map((output) => [output.id, true as const]),
+      ),
+    }),
+  cancelEditing: () => set({ editingTxId: undefined }),
 }));
