@@ -14,7 +14,7 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Database, Bot, Code, Download, Check, Sparkles } from "lucide-react";
+import { Database, Bot, Code, Download, Check, Sparkles, Plug } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { Typewriter } from "@/components/ui/typewriter";
 import {
@@ -29,14 +29,15 @@ import {
   StakingPreview,
 } from "@/components/pages/homepage/previews";
 
-// Example prompts cycled by the "Connect your AI agent" typewriter. The first
-// is the literal flow most users start with; the rest hint at what an agent can
-// do once it holds the multisig skill.
+// Prompts cycled by the hero typewriter. Deliberately phrased as things you
+// ask an assistant, not as commands for one product — the endpoint is plain MCP
+// and works with any client. Each maps to a tool we actually expose.
 const AGENT_PROMPTS = [
-  "Connect to my https://multisig.meshjs.dev/ wallet",
   "List the pending transactions on our treasury",
-  "Draft a 200 ₳ payout to the dev fund and request signatures",
-  "Show who still needs to sign the pending payout",
+  "Which governance proposals still need our vote?",
+  "How did we vote on the last treasury withdrawal?",
+  "Draft a rationale for voting No on the budget action",
+  "What can we actually spend right now?",
 ];
 
 // DApp Card Component
@@ -302,48 +303,71 @@ export function PageHomepage() {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
                   <Sparkles className="h-3.5 w-3.5" />
-                  AI-native multisig
+                  Model Context Protocol
                 </div>
                 <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
-                  Connect your AI agent
+                  Connect any AI agent
                 </h2>
                 <p className="mt-3 text-muted-foreground">
-                  Drop the multisig skill into Claude Code, Cursor, or any agent and let
-                  it work alongside your treasury — read pending transactions, draft
-                  payouts, and track approvals through the authenticated v1 API. The
-                  agent can&apos;t sign for you: keys and signatures always stay with you
-                  and your co-signers.
+                  We speak <strong className="text-foreground">MCP</strong>, the open
+                  standard for connecting AI assistants to real systems. Point any MCP
+                  client at the endpoint, approve it with your wallet, and it can read
+                  your treasury and governance — pending transactions, spendable UTxOs,
+                  open proposals and your voting record.
+                </p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No API key to paste, and no vendor lock-in: authorization is standard
+                  OAuth, so the client handles it for you.
                 </p>
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Button asChild size="lg">
+                    <Link href="#connect-mcp">
+                      <Plug className="mr-2 h-4 w-4" />
+                      Setup guide
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
                     <a href="/api/skill" download="multisig-skill.md">
                       <Download className="mr-2 h-4 w-4" />
                       Download skill
                     </a>
                   </Button>
-                  <Button asChild size="lg" variant="outline">
-                    <Link href="#developers-and-bots">
-                      <Bot className="mr-2 h-4 w-4" />
-                      Developer &amp; bot docs
-                    </Link>
-                  </Button>
                 </div>
               </div>
 
-              {/* Animated agent prompt */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
-                <div className="flex items-center gap-1.5 pb-3">
-                  <span className="h-3 w-3 rounded-full bg-red-400/80" />
-                  <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
-                  <span className="h-3 w-3 rounded-full bg-green-400/80" />
-                  <span className="ml-2 text-xs text-zinc-500">agent</span>
+              {/* Endpoint + a vendor-neutral config, then a taste of what to ask. */}
+              <div className="flex flex-col gap-3">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
+                  <div className="pb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                    MCP endpoint
+                  </div>
+                  <code className="block break-all text-emerald-300">
+                    https://multisig.meshjs.dev/api/mcp
+                  </code>
+                  <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] uppercase tracking-wide text-zinc-500">
+                    Any MCP client
+                  </div>
+                  <pre className="mt-2 overflow-x-auto leading-relaxed text-zinc-300">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "https://multisig.meshjs.dev/api/mcp"
+    }
+  }
+}`}
+                  </pre>
                 </div>
-                <div className="flex min-h-[5rem] items-start gap-2 leading-relaxed">
-                  <span className="select-none text-emerald-400">›</span>
-                  <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
-                </div>
-                <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
-                  Read &amp; draft only — signing stays with you and your co-signers.
+
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
+                  <div className="flex min-h-[3.5rem] items-start gap-2 leading-relaxed">
+                    <span className="select-none text-emerald-400">›</span>
+                    <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
+                  </div>
+                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                    Reads and drafts only — submitting a vote and signing stay with you
+                    and your co-signers.
+                  </div>
                 </div>
               </div>
             </div>
@@ -657,10 +681,10 @@ export function PageHomepage() {
             </CardUI>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-8" id="connect-mcp">
             <CardUI
               title="Connect an AI agent (MCP)"
-              description="A Model Context Protocol endpoint, so Claude and other MCP clients can read your wallets directly."
+              description="An open Model Context Protocol endpoint — works with any MCP-capable client, no vendor lock-in."
             >
               <div className="mt-4 space-y-5 text-sm">
                 <ol className="space-y-4">
@@ -669,15 +693,25 @@ export function PageHomepage() {
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
                       <span className="font-medium">Add the server</span>
                     </div>
-                    <p className="pl-7 text-muted-foreground">In Claude Code:</p>
+                    <p className="pl-7 text-muted-foreground">
+                      Most clients read a JSON config. Add one entry:
+                    </p>
                     <pre className="ml-7 overflow-x-auto rounded bg-muted p-3 text-xs">
-                      <code>claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "https://multisig.meshjs.dev/api/mcp"
+    }
+  }
+}`}
                     </pre>
                     <p className="pl-7 text-xs text-muted-foreground">
-                      For other clients, point them at{" "}
-                      <code className="rounded bg-muted px-1">https://multisig.meshjs.dev/api/mcp</code>{" "}
-                      over streamable HTTP. There is no API key to paste — the
-                      server advertises OAuth and the client discovers the rest.
+                      Some clients have a CLI for the same thing — for example{" "}
+                      <code className="rounded bg-muted px-1">claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>.
+                      Anything that speaks streamable HTTP MCP works; there is no
+                      API key to paste, because the server advertises OAuth and the
+                      client discovers the rest.
                     </p>
                   </li>
 
@@ -687,10 +721,11 @@ export function PageHomepage() {
                       <span className="font-medium">Authorize with your wallet</span>
                     </div>
                     <p className="pl-7 text-muted-foreground">
-                      Run <code className="rounded bg-muted px-1">/mcp</code> and
-                      pick the server. A consent screen opens here: connect your
-                      wallet, sign, and approve. You&apos;ll see exactly which
-                      client is asking and what it will be able to read.
+                      Your client will send you here to a consent screen the first
+                      time it connects: connect your wallet, sign, and approve.
+                      You&apos;ll see exactly which client is asking and what it
+                      will be able to read, and you can revoke it any time from
+                      your profile.
                     </p>
                   </li>
 

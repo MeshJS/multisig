@@ -155,3 +155,48 @@ export const BALLOT_UPSERT_INPUT: JsonSchema = {
   required: ["walletId", "proposals"],
   additionalProperties: false,
 };
+
+export const WALLET_BALLOTS_INPUT: JsonSchema = {
+  type: "object",
+  properties: { walletId },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const VOTE_HISTORY_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 100,
+      default: 25,
+      description: "Most recent votes to return, newest first.",
+    },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const OPEN_PROPOSALS_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    count: {
+      type: "integer",
+      minimum: 1,
+      maximum: 25,
+      default: 10,
+      description: "Active proposals to consider (max 25).",
+    },
+    includeVoted: {
+      type: "boolean",
+      default: false,
+      description:
+        "Include proposals this wallet's DRep has already voted on, annotated with the vote. Off by default, so the result is the outstanding decisions.",
+    },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
