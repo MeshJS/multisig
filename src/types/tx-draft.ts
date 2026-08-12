@@ -25,24 +25,54 @@ export type DraftUtxoSelection =
   | { mode: "auto" } // keepRelevant over available UTxOs at build time
   | { mode: "manual"; utxos: UTxO[] };
 
+export type DraftVoteKind = "Yes" | "No" | "Abstain";
+
+/**
+ * A governance vote loaded from an existing pending transaction. Votes can't
+ * be created in the builder (that stays on the governance pages) — the
+ * choice can be changed, the rationale edited or cleared, or the vote
+ * removed. The voter is re-derived from the wallet's DRep identity at build
+ * time.
+ */
+export type DraftVote = {
+  /** Stable per-vote id; generated at load, drives inspector row identity. */
+  id: string;
+  /** Governance action ref; proposalId = `${govActionTxHash}#${govActionIndex}`. */
+  govActionTxHash: string;
+  govActionIndex: number;
+  voteKind: DraftVoteKind;
+  /**
+   * Rationale anchor preserved from the loaded tx; replaced at build time
+   * when `rationaleEdit` is set.
+   */
+  anchor?: { anchorUrl: string; anchorDataHash: string };
+  /**
+   * Edited rationale text; present ONLY when the user changed it.
+   * ""/whitespace clears the anchor on rebuild; non-empty re-uploads the
+   * CIP-100 document and attaches a new anchor.
+   */
+  rationaleEdit?: string;
+  /** Voter drepId as stored in the loaded txJson — provenance only. */
+  originalDrepId?: string;
+};
+
 export type TxDraft = {
   /** Draft id; the flow tx node id becomes `txd:<id>`. */
   id: string;
   outputs: DraftOutput[];
   utxoSelection: DraftUtxoSelection;
-  /** Defaults to the multisig wallet address at build time. */
-  changeAddress?: string;
   /** Off-chain description shown to signers (≤128 chars convention). */
   description: string;
   /** On-chain 674 metadata message ("" = none). */
   metadata: string;
   /**
-   * v1 extension points: typed as never[] so they can only be empty today;
-   * widened to real certificate/vote intents when staking, DRep and voting
-   * actions land in the builder.
+   * v1 extension point: typed as never[] so it can only be empty today;
+   * widened to real certificate intents when staking and DRep actions land
+   * in the builder.
    */
   certificates: never[];
-  votes: never[];
+  /** Governance votes loaded from an existing pending transaction. */
+  votes: DraftVote[];
 };
 
 /** What the builder UI currently has selected (canvas card or edge click). */

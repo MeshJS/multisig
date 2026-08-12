@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   blockfrostCertBadges,
+  draftVoteToBadge,
   meshCertificateToBadge,
   meshVoteToBadge,
 } from "@/utils/token-flow/certificates";
@@ -255,5 +256,74 @@ describe("blockfrostCertBadges", () => {
       { kind: "certificate", label: "Pool Registration / Update" },
       { kind: "certificate", label: "Pool Retirement" },
     ]);
+  });
+});
+
+describe("vote badge proposal titles", () => {
+  const GOV_HASH = "ab".repeat(32);
+  const resolver = (pid: string) =>
+    pid === `${GOV_HASH}#3` ? "Treasury Withdrawal Q3" : undefined;
+
+  test("meshVoteToBadge sets title via the resolver", () => {
+    const badge = meshVoteToBadge(
+      {
+        type: "BasicVote",
+        vote: {
+          voter: { type: "DRep", drepId: "drep1abc" },
+          govActionId: { txHash: GOV_HASH, txIndex: 3 },
+          votingProcedure: { voteKind: "Yes" },
+        },
+      },
+      resolver,
+    );
+    expect(badge.title).toBe("Treasury Withdrawal Q3");
+    expect(badge.label).toBe("Vote: Yes");
+  });
+
+  test("meshVoteToBadge without a resolver has no title (regression)", () => {
+    const badge = meshVoteToBadge({
+      type: "BasicVote",
+      vote: {
+        voter: { type: "DRep", drepId: "drep1abc" },
+        govActionId: { txHash: GOV_HASH, txIndex: 3 },
+        votingProcedure: { voteKind: "No" },
+      },
+    });
+    expect(badge.title).toBeUndefined();
+  });
+
+  test("draftVoteToBadge mirrors meshVoteToBadge for the same vote", () => {
+    const fromDraft = draftVoteToBadge(
+      {
+        id: "v-1",
+        govActionTxHash: GOV_HASH,
+        govActionIndex: 3,
+        voteKind: "Abstain",
+      },
+      resolver,
+    );
+    const fromMesh = meshVoteToBadge(
+      {
+        type: "SimpleScriptVote",
+        vote: {
+          voter: { type: "DRep", drepId: "drep1abc" },
+          govActionId: { txHash: GOV_HASH, txIndex: 3 },
+          votingProcedure: { voteKind: "Abstain" },
+        },
+      },
+      resolver,
+    );
+    expect(fromDraft).toEqual(fromMesh);
+  });
+
+  test("unresolved title falls back to no title, detail intact", () => {
+    const badge = draftVoteToBadge({
+      id: "v-1",
+      govActionTxHash: GOV_HASH,
+      govActionIndex: 9,
+      voteKind: "Yes",
+    }, resolver);
+    expect(badge.title).toBeUndefined();
+    expect(badge.detail).toContain("#9");
   });
 });

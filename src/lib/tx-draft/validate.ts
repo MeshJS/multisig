@@ -15,7 +15,8 @@ export type DraftIssueCode =
   | "no-amount"
   | "min-ada-topup"
   | "insufficient-funds"
-  | "duplicate-output";
+  | "duplicate-output"
+  | "vote-drep-missing";
 
 export type DraftIssue = {
   level: "error" | "warning";
@@ -34,6 +35,11 @@ export type ValidateDraftContext = {
    * the sufficiency check.
    */
   selectedFunds?: Map<string, bigint>;
+  /**
+   * Whether a DRep identity could be derived for the wallet. Omit while
+   * still loading (or when the draft has no votes) to skip the check.
+   */
+  hasDrepContext?: boolean;
 };
 
 function isValidPaymentAddress(address: string): boolean {
@@ -56,11 +62,20 @@ export function validateDraft(
 ): DraftIssue[] {
   const issues: DraftIssue[] = [];
 
-  if (draft.outputs.length === 0) {
+  if (draft.outputs.length === 0 && draft.votes.length === 0) {
     issues.push({
       level: "error",
       code: "no-outputs",
-      message: "Add at least one recipient.",
+      message: "Add at least one recipient or vote.",
+    });
+  }
+
+  if (draft.votes.length > 0 && ctx.hasDrepContext === false) {
+    issues.push({
+      level: "error",
+      code: "vote-drep-missing",
+      message:
+        "This wallet has no DRep identity — governance votes can't be rebuilt.",
     });
   }
 

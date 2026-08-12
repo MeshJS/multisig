@@ -1,4 +1,4 @@
-import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
+import { addOutput, addVote, createDraft } from "@/lib/tx-draft/mutations";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 
 /**
@@ -86,23 +86,19 @@ describe("tx-builder store draft mutations", () => {
     expect(state.positions).toEqual({});
   });
 
-  it("applies the utxo selection, change address, description, and metadata to the draft", () => {
+  it("applies the utxo selection, description, and metadata to the draft", () => {
     useTxBuilderStore.getState().setUtxoSelection({ mode: "manual", utxos: [] });
-    useTxBuilderStore.getState().setChangeAddress("addr1change");
     useTxBuilderStore.getState().setDescription("pay the team");
     useTxBuilderStore.getState().setMetadata("invoice #42");
 
     const { draft } = useTxBuilderStore.getState();
     expect(draft.utxoSelection).toEqual({ mode: "manual", utxos: [] });
-    expect(draft.changeAddress).toBe("addr1change");
     expect(draft.description).toBe("pay the team");
     expect(draft.metadata).toBe("invoice #42");
 
     useTxBuilderStore.getState().setUtxoSelection({ mode: "auto" });
-    useTxBuilderStore.getState().setChangeAddress(undefined);
     const after = useTxBuilderStore.getState().draft;
     expect(after.utxoSelection).toEqual({ mode: "auto" });
-    expect(after.changeAddress).toBeUndefined();
   });
 
   it("removing the selected output clears the selection, keeping others intact", () => {
@@ -243,5 +239,84 @@ describe("tx-builder store editing a pending transaction", () => {
     useTxBuilderStore.getState().resetDraft("wallet-1");
 
     expect(useTxBuilderStore.getState().editingTxId).toBeUndefined();
+  });
+});
+
+describe("tx-builder store vote actions", () => {
+  const voteBase = {
+    govActionTxHash: "c".repeat(64),
+    govActionIndex: 1,
+    voteKind: "Yes" as const,
+    anchor: { anchorUrl: "ipfs://cid", anchorDataHash: "d".repeat(64) },
+  };
+
+  beforeEach(() => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+    const draft = addVote(createDraft("loaded"), { ...voteBase, id: "v-1" }).draft;
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft,
+      editingTxId: "tx-1",
+    });
+  });
+
+  it("loadDraft preserves votes", () => {
+    expect(useTxBuilderStore.getState().draft.votes).toEqual([
+      { ...voteBase, id: "v-1" },
+    ]);
+  });
+
+  it("updateVoteKind flips the choice", () => {
+    useTxBuilderStore.getState().updateVoteKind("v-1", "No");
+    expect(useTxBuilderStore.getState().draft.votes[0]!.voteKind).toBe("No");
+  });
+
+  it("clearVoteAnchor detaches the rationale only", () => {
+    useTxBuilderStore.getState().clearVoteAnchor("v-1");
+    const vote = useTxBuilderStore.getState().draft.votes[0]!;
+    expect(vote.anchor).toBeUndefined();
+    expect(vote.voteKind).toBe("Yes");
+  });
+
+  it("removeVote drops the vote without touching selection", () => {
+    useTxBuilderStore.getState().select({ kind: "tx" });
+    useTxBuilderStore.getState().removeVote("v-1");
+    const state = useTxBuilderStore.getState();
+    expect(state.draft.votes).toHaveLength(0);
+    expect(state.selection).toEqual({ kind: "tx" });
+  });
+
+  it("resetDraft clears votes", () => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+    expect(useTxBuilderStore.getState().draft.votes).toEqual([]);
+  });
+});
+
+describe("tx-builder store vote rationale", () => {
+  beforeEach(() => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+    const draft = addVote(createDraft("loaded"), {
+      id: "v-1",
+      govActionTxHash: "c".repeat(64),
+      govActionIndex: 0,
+      voteKind: "Yes",
+      anchor: { anchorUrl: "ipfs://cid", anchorDataHash: "d".repeat(64) },
+    }).draft;
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft,
+      editingTxId: "tx-1",
+    });
+  });
+
+  it("setVoteRationale round-trips and reverts via undefined", () => {
+    useTxBuilderStore.getState().setVoteRationale("v-1", "new reasoning");
+    expect(useTxBuilderStore.getState().draft.votes[0]!.rationaleEdit).toBe(
+      "new reasoning",
+    );
+    useTxBuilderStore.getState().setVoteRationale("v-1", undefined);
+    expect(
+      "rationaleEdit" in useTxBuilderStore.getState().draft.votes[0]!,
+    ).toBe(false);
   });
 });

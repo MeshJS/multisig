@@ -1,6 +1,6 @@
 import type { UTxO } from "@meshsdk/core";
 
-import { addOutput, createDraft, setUtxoSelection } from "@/lib/tx-draft/mutations";
+import { addOutput, addVote, createDraft, setUtxoSelection } from "@/lib/tx-draft/mutations";
 import type { AddressLabeler, TokenFlow } from "@/types/token-flow";
 import type { TxDraft } from "@/types/tx-draft";
 import { draftToTokenFlow, flowIdToDraftEntity } from "@/utils/token-flow";
@@ -112,11 +112,10 @@ describe("draftToTokenFlow", () => {
     expect(inputs[0]!.note).toMatch(/#0$/);
   });
 
-  test("explicit change address wins", () => {
-    const draft: TxDraft = { ...createDraft("d1"), changeAddress: OTHER };
-    const flow = draftToTokenFlow(draft, OPTS);
+  test("change always returns to the wallet address", () => {
+    const flow = draftToTokenFlow(createDraft("d1"), OPTS);
     const change = outputEdges(flow).find((e) => e.note === "change");
-    expect(change).toMatchObject({ target: `addr:${OTHER}` });
+    expect(change).toMatchObject({ target: `addr:${SELF}` });
   });
 });
 
@@ -164,5 +163,51 @@ describe("flowIdToDraftEntity", () => {
     expect(flowIdToDraftEntity(draft, changeEdge.id)).toEqual({ kind: "tx" });
     const inputEdge = flow.edges.find((e) => e.kind === "input")!;
     expect(flowIdToDraftEntity(draft, inputEdge.id)).toEqual({ kind: "tx" });
+  });
+});
+
+describe("draftToTokenFlow votes", () => {
+  const GOV_HASH = "c".repeat(64);
+
+  function withVote(kind: "Yes" | "No" | "Abstain" = "Yes") {
+    return addVote(createDraft("d1"), {
+      id: "v-1",
+      govActionTxHash: GOV_HASH,
+      govActionIndex: 3,
+      voteKind: kind,
+    }).draft;
+  }
+
+  test("draft votes become badges on the tx node", () => {
+    const flow = draftToTokenFlow(withVote("No"), OPTS);
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges).toEqual([
+      expect.objectContaining({
+        kind: "vote",
+        label: "Vote: No",
+        color: "text-red-500 dark:text-red-400",
+      }),
+    ]);
+    expect(txNode.badges[0].title).toBeUndefined();
+  });
+
+  test("resolveProposalTitle populates the badge title", () => {
+    const flow = draftToTokenFlow(withVote(), {
+      ...OPTS,
+      resolveProposalTitle: (pid) =>
+        pid === `${GOV_HASH}#3` ? "Treasury Withdrawal Q3" : undefined,
+    });
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges[0].title).toBe("Treasury Withdrawal Q3");
+  });
+
+  test("vote-only draft still renders the auto input and change edges", () => {
+    const flow = draftToTokenFlow(withVote(), OPTS);
+    expect(flow.edges.find((e) => e.kind === "input")).toMatchObject({
+      note: "auto selection",
+    });
+    expect(
+      outputEdges(flow).find((e) => e.note === "change"),
+    ).toBeDefined();
   });
 });

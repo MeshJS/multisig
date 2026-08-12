@@ -1,6 +1,8 @@
 import type {
   DraftOutput,
   DraftUtxoSelection,
+  DraftVote,
+  DraftVoteKind,
   TxDraft,
 } from "@/types/tx-draft";
 import { safeBigInt } from "./assets";
@@ -103,17 +105,97 @@ export function setUtxoSelection(
   return { ...draft, utxoSelection };
 }
 
-export function setChangeAddress(
-  draft: TxDraft,
-  changeAddress: string | undefined,
-): TxDraft {
-  return { ...draft, changeAddress };
-}
-
 export function setDescription(draft: TxDraft, description: string): TxDraft {
   return { ...draft, description };
 }
 
 export function setMetadata(draft: TxDraft, metadata: string): TxDraft {
   return { ...draft, metadata };
+}
+
+/**
+ * Appends a vote loaded from an existing pending transaction. The builder
+ * never creates votes from scratch — this exists for `txJsonToDraft`.
+ */
+export function addVote(
+  draft: TxDraft,
+  partial: Omit<DraftVote, "id"> & { id?: string },
+): { draft: TxDraft; voteId: string } {
+  const voteId = partial.id ?? generateId();
+  const vote: DraftVote = { ...partial, id: voteId };
+  return { draft: { ...draft, votes: [...draft.votes, vote] }, voteId };
+}
+
+export function updateVoteKind(
+  draft: TxDraft,
+  voteId: string,
+  voteKind: DraftVoteKind,
+): TxDraft {
+  return {
+    ...draft,
+    votes: draft.votes.map((vote) =>
+      vote.id === voteId ? { ...vote, voteKind } : vote,
+    ),
+  };
+}
+
+export function removeVote(draft: TxDraft, voteId: string): TxDraft {
+  return {
+    ...draft,
+    votes: draft.votes.filter((vote) => vote.id !== voteId),
+  };
+}
+
+/**
+ * Detaches the rationale anchor from a vote. Also drops any pending
+ * rationale edit so a stale edit can't resurrect a rationale the user
+ * explicitly detached.
+ */
+export function clearVoteAnchor(draft: TxDraft, voteId: string): TxDraft {
+  return {
+    ...draft,
+    votes: draft.votes.map((vote) => {
+      if (vote.id !== voteId) return vote;
+      const { anchor: _anchor, rationaleEdit: _edit, ...rest } = vote;
+      return rest;
+    }),
+  };
+}
+
+/** Sets the edited rationale text; undefined reverts the vote to untouched. */
+export function setVoteRationale(
+  draft: TxDraft,
+  voteId: string,
+  text: string | undefined,
+): TxDraft {
+  return {
+    ...draft,
+    votes: draft.votes.map((vote) => {
+      if (vote.id !== voteId) return vote;
+      if (text === undefined) {
+        const { rationaleEdit: _edit, ...rest } = vote;
+        return rest;
+      }
+      return { ...vote, rationaleEdit: text };
+    }),
+  };
+}
+
+/**
+ * Replaces (or removes, when undefined) a vote's anchor and consumes its
+ * rationaleEdit — used by the build flow after uploading edited rationales.
+ */
+export function withVoteAnchor(
+  draft: TxDraft,
+  voteId: string,
+  anchor: { anchorUrl: string; anchorDataHash: string } | undefined,
+): TxDraft {
+  return {
+    ...draft,
+    votes: draft.votes.map((vote) => {
+      if (vote.id !== voteId) return vote;
+      const { anchor: _anchor, rationaleEdit: _edit, ...rest } = vote;
+      return anchor ? { ...rest, anchor } : rest;
+    }),
+  };
 }

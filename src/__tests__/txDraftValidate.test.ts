@@ -1,7 +1,7 @@
 import type { UTxO } from "@meshsdk/core";
 
 import { utxoFunds } from "@/lib/tx-draft/assets";
-import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
+import { addOutput, addVote, createDraft } from "@/lib/tx-draft/mutations";
 import { validateDraft, type DraftIssue } from "@/lib/tx-draft/validate";
 import type { TxDraft } from "@/types/tx-draft";
 import { realTestAddresses } from "./testUtils";
@@ -175,5 +175,51 @@ describe("validateDraft", () => {
     test("omitted selectedFunds skips the sufficiency check", () => {
       expect(codes(validateDraft(draft, TESTNET))).toEqual([]);
     });
+  });
+});
+
+describe("validateDraft votes", () => {
+  const voteBase = {
+    govActionTxHash: "c".repeat(64),
+    govActionIndex: 0,
+    voteKind: "Yes" as const,
+  };
+
+  function voteOnlyDraft() {
+    return addVote(createDraft("d1"), voteBase).draft;
+  }
+
+  test("vote-only draft has no no-outputs error", () => {
+    const issues = validateDraft(voteOnlyDraft(), { network: 0 });
+    expect(issues.map((i) => i.code)).not.toContain("no-outputs");
+  });
+
+  test("empty draft still errors with the widened message", () => {
+    const issues = validateDraft(createDraft("d1"), { network: 0 });
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: "no-outputs",
+        message: "Add at least one recipient or vote.",
+      }),
+    ]);
+  });
+
+  test("vote-drep-missing only fires on explicit false", () => {
+    const draft = voteOnlyDraft();
+    const withFalse = validateDraft(draft, { network: 0, hasDrepContext: false });
+    expect(withFalse).toEqual([
+      expect.objectContaining({ level: "error", code: "vote-drep-missing" }),
+    ]);
+    expect(withFalse[0]!.outputId).toBeUndefined(); // tx-level issue
+
+    const unknown = validateDraft(draft, { network: 0 });
+    expect(unknown.map((i) => i.code)).not.toContain("vote-drep-missing");
+
+    const withTrue = validateDraft(draft, { network: 0, hasDrepContext: true });
+    expect(withTrue.map((i) => i.code)).not.toContain("vote-drep-missing");
+
+    // Sendonly drafts never emit it, even with hasDrepContext false.
+    const send = validateDraft(createDraft("d1"), { network: 0, hasDrepContext: false });
+    expect(send.map((i) => i.code)).not.toContain("vote-drep-missing");
   });
 });

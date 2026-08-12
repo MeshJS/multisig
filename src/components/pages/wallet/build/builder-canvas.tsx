@@ -43,6 +43,8 @@ export type BuilderCanvasProps = {
   walletAssetMetadata?: AssetMetadataMap;
   contacts: PaletteEntry[];
   signers: PaletteEntry[];
+  /** Resolves "txHash#certIndex" to a proposal title for vote badges. */
+  resolveProposalTitle?: (proposalId: string) => string | undefined;
   className?: string;
 };
 
@@ -110,6 +112,7 @@ export default function BuilderCanvas({
   walletAssetMetadata,
   contacts,
   signers,
+  resolveProposalTitle,
   className,
 }: BuilderCanvasProps) {
   const draft = useTxBuilderStore((state) => state.draft);
@@ -122,8 +125,13 @@ export default function BuilderCanvas({
   const removeOutput = useTxBuilderStore((state) => state.removeOutput);
 
   const flow = useMemo(
-    () => draftToTokenFlow(draft, { labelAddress, walletAddress }),
-    [draft, labelAddress, walletAddress],
+    () =>
+      draftToTokenFlow(draft, {
+        labelAddress,
+        walletAddress,
+        resolveProposalTitle,
+      }),
+    [draft, labelAddress, walletAddress, resolveProposalTitle],
   );
   const layout = useMemo(() => layoutTokenFlow(flow), [flow]);
 

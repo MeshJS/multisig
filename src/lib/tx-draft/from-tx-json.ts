@@ -1,14 +1,14 @@
-import type { TxDraft } from "@/types/tx-draft";
-import { addOutput, createDraft } from "./mutations";
+import type { DraftVoteKind, TxDraft } from "@/types/tx-draft";
+import { addOutput, addVote, createDraft } from "./mutations";
 
 /**
  * Converts a stored pending transaction's parsed `txJson` (MeshTxBuilderBody
  * after `complete()`, or the hand-rolled subset written by importTransaction)
  * back into an editable TxDraft.
  *
- * Only simple send transactions round-trip — the draft model has no
- * representation for certificates, votes, withdrawals, mints or Plutus
- * scripts, so `isDraftCompatible` gates every load.
+ * Simple sends and native-script DRep votes round-trip — the draft model has
+ * no representation for certificates, withdrawals, mints or Plutus scripts,
+ * so `isDraftCompatible` gates every load.
  */
 
 export type TxJsonCompat = { compatible: boolean; reasons: string[] };
@@ -36,7 +36,6 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
 
   const nonEmpty: Array<[key: string, reason: string]> = [
     ["certificates", "Contains certificates — not yet supported by the builder"],
-    ["votes", "Contains governance votes — not yet supported by the builder"],
     ["withdrawals", "Contains reward withdrawals — not yet supported by the builder"],
     ["mints", "Mints or burns tokens — not yet supported by the builder"],
     ["collaterals", "Uses collateral inputs (smart contract transaction)"],
@@ -67,8 +66,34 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
     reasons.push("Transaction inputs are missing UTxO references");
   }
 
+  const votes = asArray(tx.votes) as any[];
+  for (const vote of votes) {
+    // Multi-vote ballots serialize earlier votes as BasicVote and only the
+    // last as SimpleScriptVote (voteScript is applied once after the loop),
+    // so both shapes must be accepted; the rebuild re-witnesses every vote.
+    if (vote?.type !== "BasicVote" && vote?.type !== "SimpleScriptVote") {
+      reasons.push("Contains Plutus script votes — not supported by the builder");
+      break;
+    }
+    const voter = vote?.vote?.voter;
+    if (voter?.type !== "DRep" || typeof voter?.drepId !== "string") {
+      reasons.push("Contains non-DRep votes — not supported by the builder");
+      break;
+    }
+    const govActionId = vote?.vote?.govActionId;
+    const voteKind = vote?.vote?.votingProcedure?.voteKind;
+    if (
+      typeof govActionId?.txHash !== "string" ||
+      typeof govActionId?.txIndex !== "number" ||
+      !["Yes", "No", "Abstain"].includes(voteKind)
+    ) {
+      reasons.push("Vote data is malformed");
+      break;
+    }
+  }
+
   const outputs = asArray(tx.outputs) as any[];
-  if (outputs.length === 0) {
+  if (outputs.length === 0 && votes.length === 0) {
     reasons.push("Transaction has no outputs");
   }
   if (outputs.some((output) => output?.datum || output?.referenceScript)) {
@@ -92,16 +117,20 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
  * After `complete()` Mesh appends the computed change output(s) to
  * `body.outputs` (they are never re-sorted, so change is always trailing).
  * Strip them so the draft only shows intended recipients — but only when the
- * change address matches the builder's invariant (the wallet address), and
- * never below one remaining output so self-consolidation transactions keep
- * their payment.
+ * change address matches the builder's invariant (the wallet address).
+ * `minOutputs` protects self-consolidation payments (1 for send txs); vote
+ * transactions legitimately strip to zero outputs (0).
  */
 function stripTrailingChangeOutputs(
   outputs: { address: string; amount: unknown }[],
   changeAddress: string,
+  minOutputs: number,
 ): { address: string; amount: unknown }[] {
   const kept = [...outputs];
-  while (kept.length > 1 && kept[kept.length - 1]!.address === changeAddress) {
+  while (
+    kept.length > minOutputs &&
+    kept[kept.length - 1]!.address === changeAddress
+  ) {
     kept.pop();
   }
   return kept;
@@ -117,6 +146,8 @@ export function txJsonToDraft(
 ): TxJsonToDraftResult {
   const warnings: TxJsonWarning[] = [];
 
+  const rawVotes = asArray(body?.votes) as any[];
+
   const rawOutputs = asArray(body?.outputs).filter(
     (output: any): output is { address: string; amount: unknown } =>
       typeof output?.address === "string",
@@ -126,7 +157,12 @@ export function txJsonToDraft(
     typeof body?.changeAddress === "string" ? body.changeAddress : "";
   let outputs = rawOutputs;
   if (changeAddress && changeAddress === opts.walletAddress) {
-    outputs = stripTrailingChangeOutputs(rawOutputs, changeAddress);
+    // A vote-only body's outputs are pure change — those strip to zero.
+    outputs = stripTrailingChangeOutputs(
+      rawOutputs,
+      changeAddress,
+      rawVotes.length > 0 ? 0 : 1,
+    );
   } else if (changeAddress) {
     // importTransaction guesses changeAddress = outputs[0].address; there is
     // no way to tell which output (if any) is change, so keep them all.
@@ -146,6 +182,28 @@ export function txJsonToDraft(
         .map((asset: any) => ({ unit: asset.unit, quantity: asset.quantity })),
     }).draft;
   }
+  for (const raw of rawVotes) {
+    const procedure = raw?.vote?.votingProcedure;
+    const anchor = procedure?.anchor;
+    draft = addVote(draft, {
+      govActionTxHash: raw?.vote?.govActionId?.txHash ?? "",
+      govActionIndex: raw?.vote?.govActionId?.txIndex ?? 0,
+      voteKind: (procedure?.voteKind ?? "Abstain") as DraftVoteKind,
+      ...(typeof anchor?.anchorUrl === "string" &&
+      typeof anchor?.anchorDataHash === "string"
+        ? {
+            anchor: {
+              anchorUrl: anchor.anchorUrl,
+              anchorDataHash: anchor.anchorDataHash,
+            },
+          }
+        : {}),
+      ...(typeof raw?.vote?.voter?.drepId === "string"
+        ? { originalDrepId: raw.vote.voter.drepId }
+        : {}),
+    }).draft;
+  }
+
   draft = {
     ...draft,
     description: opts.description ?? "",

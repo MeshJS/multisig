@@ -56,6 +56,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
+import useProposalTitles from "@/hooks/useProposalTitles";
 import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -224,13 +225,33 @@ export default function TransactionCard({
   }, [transaction.txJson]);
   const router = useRouter();
   // Whether this pending tx can round-trip into the visual builder (simple
-  // sends only — certificates, votes, mints etc. have no draft representation).
+  // sends and DRep votes — certificates, mints etc. have no draft
+  // representation).
   const editCompat = useMemo(
     () =>
       txJson
         ? isDraftCompatible(txJson)
         : { compatible: false, reasons: ["Unreadable transaction"] },
     [txJson],
+  );
+  // Proposal titles for the Votes section, so signers can see what
+  // governance action each vote targets.
+  const voteProposalIds = useMemo(() => {
+    if (!Array.isArray(txJson?.votes)) return [];
+    return txJson.votes
+      .filter(
+        (vote: any) =>
+          typeof vote?.vote?.govActionId?.txHash === "string" &&
+          typeof vote?.vote?.govActionId?.txIndex === "number",
+      )
+      .map(
+        (vote: any) =>
+          `${vote.vote.govActionId.txHash}#${vote.vote.govActionId.txIndex}`,
+      );
+  }, [txJson]);
+  const { resolveProposalTitle } = useProposalTitles(
+    walletId,
+    voteProposalIds,
   );
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
@@ -946,15 +967,23 @@ export default function TransactionCard({
                     const anchor = vote.vote?.votingProcedure?.anchor;
                     const anchorUrl: string | undefined = anchor?.anchorUrl;
                     const anchorHash: string | undefined = anchor?.anchorDataHash;
+                    const proposalTitle = resolveProposalTitle(
+                      `${govActionHash}#${govActionIndex}`,
+                    );
 
                     return (
                       <div key={index} className="space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <VoteBadge voteKind={voteKindDisplay} />
                           <span className="text-xs text-muted-foreground">on</span>
-                          <div className="flex items-center gap-1.5">
-                            <Vote className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs font-medium">Governance Action</span>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <Vote className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span
+                              className="truncate text-xs font-medium"
+                              title={proposalTitle}
+                            >
+                              {proposalTitle ?? "Governance Action"}
+                            </span>
                           </div>
                         </div>
                         <div className="space-y-1.5 pl-5">

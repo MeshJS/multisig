@@ -21,8 +21,16 @@ import SectionTitle from "@/components/ui/section-title";
 import useAddressLabels from "@/hooks/useAddressLabels";
 import useAppWallet from "@/hooks/useAppWallet";
 import useAvailableUtxos from "@/hooks/useAvailableUtxos";
+import useMultisigWallet from "@/hooks/useMultisigWallet";
+import useProposalTitles from "@/hooks/useProposalTitles";
 import useTransaction from "@/hooks/useTransaction";
 import { useToast } from "@/hooks/use-toast";
+import { deriveDrepVoteContext } from "@/lib/governance/drep-context";
+import {
+  findBallotRowForVote,
+  uploadRationale,
+} from "@/lib/governance/rationale";
+import { withVoteAnchor } from "@/lib/tx-draft/mutations";
 import { utxoFunds } from "@/lib/tx-draft/assets";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
@@ -72,7 +80,12 @@ export default function PageBuild() {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const { labelAddress } = useAddressLabels(appWallet);
   const { newTransaction } = useTransaction();
+  const { multisigWallet, isLoading: multisigWalletLoading } =
+    useMultisigWallet();
   const apiUtils = api.useUtils();
+  const updateProposalAnchor = api.ballot.updateProposalAnchor.useMutation();
+  const updateProposalRationale =
+    api.ballot.updateProposalRationale.useMutation();
 
   const draft = useTxBuilderStore((state) => state.draft);
   const storeWalletId = useTxBuilderStore((state) => state.walletId);
@@ -161,9 +174,33 @@ export default function PageBuild() {
     return availableUtxos.length > 0 ? utxoFunds(availableUtxos) : undefined;
   }, [draft.utxoSelection, availableUtxos]);
 
+  // DRep identity for re-emitting loaded votes; undefined while the wallet
+  // query loads so validation doesn't flash a blocking error.
+  const voteCtx = useMemo(
+    () => deriveDrepVoteContext(multisigWallet, appWallet ?? undefined),
+    [multisigWallet, appWallet],
+  );
+  const hasDrepContext =
+    draft.votes.length === 0 || (multisigWalletLoading && !voteCtx)
+      ? undefined
+      : !!voteCtx;
+
+  // Proposal titles for the vote badges on the canvas and in the inspector.
+  const voteProposalIds = useMemo(
+    () =>
+      draft.votes.map(
+        (vote) => `${vote.govActionTxHash}#${vote.govActionIndex}`,
+      ),
+    [draft.votes],
+  );
+  const { resolveProposalTitle } = useProposalTitles(
+    appWallet?.id,
+    voteProposalIds,
+  );
+
   const issues = useMemo(
-    () => validateDraft(draft, { network, selectedFunds }),
-    [draft, network, selectedFunds],
+    () => validateDraft(draft, { network, selectedFunds, hasDrepContext }),
+    [draft, network, selectedFunds, hasDrepContext],
   );
   const errors = issues.filter((issue) => issue.level === "error");
 
@@ -273,7 +310,8 @@ export default function PageBuild() {
   function requestLoadPendingTx(transaction: Transaction) {
     setLoadDialogOpen(false);
     const draftIsDirty =
-      draft.outputs.length > 0 && editingTxId !== transaction.id;
+      (draft.outputs.length > 0 || draft.votes.length > 0) &&
+      editingTxId !== transaction.id;
     if (draftIsDirty) {
       setPendingLoad(transaction);
     } else {
@@ -319,17 +357,40 @@ export default function PageBuild() {
     if (!appWallet?.scriptCbor || errors.length > 0) return;
     setBuilding(true);
     try {
+      // Resolve rationale edits into a LOCAL draft: edited rationales are
+      // uploaded as fresh CIP-100 documents and their votes get the new
+      // anchor; untouched votes keep their anchor byte-for-byte. The store
+      // keeps the edits, so a failed build doesn't lose the user's text.
+      const editedVotes = draft.votes.filter(
+        (vote) => vote.rationaleEdit !== undefined,
+      );
+      let buildDraft = draft;
+      const newAnchors = new Map<
+        string,
+        { anchorUrl: string; anchorDataHash: string } | undefined
+      >();
+      for (const vote of editedVotes) {
+        const text = vote.rationaleEdit!.trim();
+        const anchor = text ? await uploadRationale(text) : undefined;
+        newAnchors.set(vote.id, anchor);
+        buildDraft = withVoteAnchor(buildDraft, vote.id, anchor);
+      }
+
       const txBuilder = await getTxBuilder(network);
       // Prefer the script whose hash matches the wallet address — for
       // imported/legacy wallets the stored scriptCbor can be a differently
       // encoded variant, which the node rejects (MissingScriptWitnessesUTXOW)
       // until submitTxWithScriptRecovery swaps it at submit time.
-      applyDraftToTxBuilder(txBuilder, draft, {
+      applyDraftToTxBuilder(txBuilder, buildDraft, {
         scriptCbor:
           resolveExpectedPaymentScriptCbor(appWallet, network) ??
           appWallet.scriptCbor,
         walletAddress: appWallet.address,
         availableUtxos,
+        // DRep identity for re-emitting loaded votes; validation has already
+        // errored (vote-drep-missing) if the draft has votes without it.
+        drepId: voteCtx?.dRepId,
+        drepScriptCbor: voteCtx?.drepScriptCbor,
       });
       await newTransaction({
         txBuilder,
@@ -343,6 +404,45 @@ export default function PageBuild() {
           ? "The pending transaction has been replaced — signers have been notified"
           : undefined,
       });
+      // Best-effort ballot sync: the pending card resolves rationale text
+      // from ballot rows first, so point the matching row (found via the
+      // vote's OLD anchor, else the proposal id) at the new anchor + text.
+      if (editedVotes.length > 0) {
+        try {
+          const ballots = await apiUtils.ballot.getByWallet.fetch({
+            walletId: appWallet.id,
+          });
+          for (const vote of editedVotes) {
+            const row = findBallotRowForVote(ballots ?? [], vote);
+            if (!row) continue;
+            const anchor = newAnchors.get(vote.id);
+            await updateProposalAnchor.mutateAsync({
+              ballotId: row.ballotId,
+              index: row.index,
+              anchorUrl: anchor?.anchorUrl,
+              anchorHash: anchor?.anchorDataHash,
+            });
+            await updateProposalRationale.mutateAsync({
+              ballotId: row.ballotId,
+              index: row.index,
+              rationaleComment: vote.rationaleEdit!.trim(),
+            });
+          }
+          void apiUtils.ballot.getByWallet.invalidate({
+            walletId: appWallet.id,
+          });
+        } catch (syncError) {
+          // The transaction already carries the new rationale; only the
+          // ballot's cached copy failed to refresh.
+          console.warn("ballot rationale sync failed", syncError);
+          toast({
+            title: "Ballot note not updated",
+            description:
+              "The vote carries the new rationale, but the ballot's cached copy could not be refreshed.",
+            duration: 6000,
+          });
+        }
+      }
       setReplaceConfirmOpen(false);
       resetDraft(appWallet.id);
       void router.push(`/wallets/${appWallet.id}/transactions`);
@@ -498,6 +598,7 @@ export default function PageBuild() {
             walletAssetMetadata={walletAssetMetadata}
             contacts={contactEntries}
             signers={signerEntries}
+            resolveProposalTitle={resolveProposalTitle}
           />
           <ProblemsPanel issues={visibleIssues} />
         </div>

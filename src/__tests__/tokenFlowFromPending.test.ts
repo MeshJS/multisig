@@ -389,3 +389,32 @@ describe("mergeTokenFlows", () => {
     expect(merged.nodes).toHaveLength(1);
   });
 });
+
+describe("pendingTxToTokenFlow vote titles", () => {
+  test("threads resolveProposalTitle into vote badges", () => {
+    const txJson = {
+      votes: [
+        {
+          type: "SimpleScriptVote",
+          vote: {
+            voter: { type: "DRep", drepId: "drep1abc" },
+            govActionId: { txHash: "aabbccddeeff00112233", txIndex: 3 },
+            votingProcedure: { voteKind: "Yes" },
+          },
+        },
+      ],
+    };
+    const flow = pendingTxToTokenFlow(txJson, {
+      labelAddress,
+      txId: "db-1",
+      resolveProposalTitle: (pid) =>
+        pid === "aabbccddeeff00112233#3" ? "Hard Fork to v11" : undefined,
+    });
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges[0]).toMatchObject({
+      kind: "vote",
+      label: "Vote: Yes",
+      title: "Hard Fork to v11",
+    });
+  });
+});

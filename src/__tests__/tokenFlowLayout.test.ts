@@ -306,3 +306,72 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(a.edges).toEqual(b.edges);
   });
 });
+
+describe("estimateHeight with titled vote badges", () => {
+  const A = "addr_test1aaa";
+  const B = "addr_test1bbb";
+
+  function voteFlow(withTitles: boolean): TokenFlow {
+    const badges = Array.from({ length: 4 }, (_, i) => ({
+      kind: "vote" as const,
+      label: "Vote: Yes",
+      ...(withTitles ? { title: `Proposal number ${i}` } : {}),
+    }));
+    return {
+      nodes: [
+        { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        { id: "txp:one", kind: "transaction", status: "pending", badges },
+      ],
+      edges: [
+        { id: `addr:${A}->txp:one:input`, source: `addr:${A}`, target: "txp:one", kind: "input", assets: [] },
+        { id: `txp:one->addr:${B}:output`, source: "txp:one", target: `addr:${B}`, kind: "output", assets: [] },
+      ],
+    };
+  }
+
+  test("titled badges make the tx card taller (addresses re-center lower)", () => {
+    const plain = layoutTokenFlow(voteFlow(false));
+    const titled = layoutTokenFlow(voteFlow(true));
+    const yOf = (result: ReturnType<typeof layoutTokenFlow>, id: string) =>
+      result.nodes.find((n) => n.id === id)!.position.y;
+    // 4 titled rows (20px each) estimate taller than 2 wrap rows (24px each),
+    // so the shorter address cards get centered further down.
+    expect(yOf(titled, `addr:${A}`)).toBeGreaterThan(yOf(plain, `addr:${A}`));
+  });
+
+  test("longer wrapped titles estimate taller than short ones", () => {
+    const short = voteFlowWithTitles(["Short title"]);
+    const long = voteFlowWithTitles([
+      "A very long governance proposal title that certainly wraps across multiple lines on the 240px transaction card",
+    ]);
+    const yOf = (result: ReturnType<typeof layoutTokenFlow>, id: string) =>
+      result.nodes.find((n) => n.id === id)!.position.y;
+    expect(yOf(layoutTokenFlow(long), `addr:${A}`)).toBeGreaterThan(
+      yOf(layoutTokenFlow(short), `addr:${A}`),
+    );
+  });
+
+  function voteFlowWithTitles(titles: string[]): TokenFlow {
+    return {
+      nodes: [
+        { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        {
+          id: "txp:one",
+          kind: "transaction",
+          status: "pending",
+          badges: titles.map((title) => ({
+            kind: "vote" as const,
+            label: "Vote: Yes",
+            title,
+          })),
+        },
+      ],
+      edges: [
+        { id: `addr:${A}->txp:one:input`, source: `addr:${A}`, target: "txp:one", kind: "input", assets: [] },
+        { id: `txp:one->addr:${B}:output`, source: "txp:one", target: `addr:${B}`, kind: "output", assets: [] },
+      ],
+    };
+  }
+});

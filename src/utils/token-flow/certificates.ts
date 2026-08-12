@@ -3,6 +3,7 @@ import type {
   BlockfrostTxDelegation,
   BlockfrostTxStakeCert,
 } from "@/types/blockfrost";
+import type { DraftVote } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
 
 /**
@@ -104,24 +105,63 @@ function describeDrep(drep: any): string | undefined {
   return undefined;
 }
 
-/** Maps a Mesh `Vote` (from MeshTxBuilderBody JSON) to a badge. */
-export function meshVoteToBadge(vote: any): FlowBadge {
-  const voteKind: string = vote?.vote?.votingProcedure?.voteKind ?? "Abstain";
-  const govActionId = vote?.vote?.govActionId;
-  const detail = govActionId?.txHash
-    ? `${getFirstAndLast(govActionId.txHash)}#${govActionId.txIndex ?? "?"}`
+const VOTE_COLORS: Record<string, string> = {
+  yes: "text-green-500 dark:text-green-400",
+  no: "text-red-500 dark:text-red-400",
+  abstain: "text-muted-foreground",
+};
+
+/** Resolves "txHash#certIndex" to a proposal title; injected, may be absent. */
+export type ProposalTitleResolver = (proposalId: string) => string | undefined;
+
+function voteBadge(
+  voteKind: string,
+  govActionTxHash: string | undefined,
+  govActionIndex: number | string | undefined,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  const detail = govActionTxHash
+    ? `${getFirstAndLast(govActionTxHash)}#${govActionIndex ?? "?"}`
     : undefined;
-  const colors: Record<string, string> = {
-    yes: "text-green-500 dark:text-green-400",
-    no: "text-red-500 dark:text-red-400",
-    abstain: "text-muted-foreground",
-  };
+  const title =
+    govActionTxHash && govActionIndex !== undefined
+      ? resolveProposalTitle?.(`${govActionTxHash}#${govActionIndex}`)
+      : undefined;
   return {
     kind: "vote",
     label: `Vote: ${voteKind}`,
     detail,
-    color: colors[voteKind.toLowerCase()] ?? "text-muted-foreground",
+    color: VOTE_COLORS[voteKind.toLowerCase()] ?? "text-muted-foreground",
+    ...(title ? { title } : {}),
   };
+}
+
+/** Maps a Mesh `Vote` (from MeshTxBuilderBody JSON) to a badge. */
+export function meshVoteToBadge(
+  vote: any,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  const voteKind: string = vote?.vote?.votingProcedure?.voteKind ?? "Abstain";
+  const govActionId = vote?.vote?.govActionId;
+  return voteBadge(
+    voteKind,
+    govActionId?.txHash,
+    govActionId?.txIndex,
+    resolveProposalTitle,
+  );
+}
+
+/** Maps a builder DraftVote to a badge; mirrors `meshVoteToBadge`. */
+export function draftVoteToBadge(
+  vote: DraftVote,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  return voteBadge(
+    vote.voteKind,
+    vote.govActionTxHash,
+    vote.govActionIndex,
+    resolveProposalTitle,
+  );
 }
 
 /** Badges for on-chain certificates reported by Blockfrost tx endpoints. */

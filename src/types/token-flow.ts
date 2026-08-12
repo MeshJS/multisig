@@ -30,6 +30,8 @@ export type FlowBadge = {
   detail?: string;
   /** Tailwind text color class, matching existing certificate conventions. */
   color?: string;
+  /** Resolved governance proposal title, rendered as visible text (votes). */
+  title?: string;
 };
 
 export type AddressFlowNode = {

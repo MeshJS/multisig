@@ -40,9 +40,21 @@ function estimateHeight(node: FlowNode, ports = 1): number {
   if (node.kind === "protocol") return 36;
   let content = 68;
   if (node.kind === "transaction") {
-    const badgeRows = Math.ceil(node.badges.length / 2);
+    // Titled badges (votes with a resolved proposal name) render the full
+    // wrapped title plus a vote pill below it; untitled badges wrap ~2 pills
+    // per row. Title wrapping estimate: ~45 chars per line on the 240px card
+    // at 9px, ~12px per line, plus ~22px for the pill row.
+    const titledBadges = node.badges.filter((badge) => badge.title);
+    const titledHeight = titledBadges.reduce(
+      (sum, badge) =>
+        sum + Math.ceil(badge.title!.length / 45) * 12 + 22,
+      0,
+    );
+    const badgeRows = Math.ceil(
+      (node.badges.length - titledBadges.length) / 2,
+    );
     const detailRows = node.blockHeight !== undefined ? 1 : 0;
-    content = 84 + detailRows * 16 + badgeRows * 24;
+    content = 84 + detailRows * 16 + badgeRows * 24 + titledHeight;
   }
   return Math.max(content, portStackHeight(ports));
 }

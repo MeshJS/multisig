@@ -4,18 +4,22 @@ import type {
   BuilderSelection,
   DraftOutput,
   DraftUtxoSelection,
+  DraftVoteKind,
   TxDraft,
 } from "@/types/tx-draft";
 import {
   addOutput,
+  clearVoteAnchor,
   createDraft,
   removeOutput,
-  setChangeAddress,
+  removeVote,
   setDescription,
   setMetadata,
   setOutputAsset,
   setUtxoSelection,
+  setVoteRationale,
   updateOutput,
+  updateVoteKind,
 } from "@/lib/tx-draft/mutations";
 
 /**
@@ -55,9 +59,13 @@ interface TxBuilderState {
   removeOutput: (outputId: string) => void;
   setOutputAsset: (outputId: string, unit: string, quantity: string) => void;
   setUtxoSelection: (selection: DraftUtxoSelection) => void;
-  setChangeAddress: (changeAddress: string | undefined) => void;
   setDescription: (description: string) => void;
   setMetadata: (metadata: string) => void;
+  updateVoteKind: (voteId: string, voteKind: DraftVoteKind) => void;
+  removeVote: (voteId: string) => void;
+  clearVoteAnchor: (voteId: string) => void;
+  /** undefined reverts the vote's rationale to untouched. */
+  setVoteRationale: (voteId: string, text: string | undefined) => void;
 
   select: (selection: BuilderSelection) => void;
   setPosition: (entityId: string, position: { x: number; y: number }) => void;
@@ -135,12 +143,17 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   },
   setUtxoSelection: (selection) =>
     set({ draft: setUtxoSelection(get().draft, selection) }),
-  setChangeAddress: (changeAddress) =>
-    set({ draft: setChangeAddress(get().draft, changeAddress) }),
   setDescription: (description) =>
     set({ draft: setDescription(get().draft, description) }),
   setMetadata: (metadata) =>
     set({ draft: setMetadata(get().draft, metadata) }),
+  updateVoteKind: (voteId, voteKind) =>
+    set({ draft: updateVoteKind(get().draft, voteId, voteKind) }),
+  removeVote: (voteId) => set({ draft: removeVote(get().draft, voteId) }),
+  clearVoteAnchor: (voteId) =>
+    set({ draft: clearVoteAnchor(get().draft, voteId) }),
+  setVoteRationale: (voteId, text) =>
+    set({ draft: setVoteRationale(get().draft, voteId, text) }),
 
   select: (selection) => {
     const state = get();

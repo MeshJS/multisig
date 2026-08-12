@@ -80,19 +80,51 @@ export default function TransactionNode({ id, data }: NodeProps) {
       {/* The fee itself is shown on the edge to the Network-fee pill, not
           repeated on the card. */}
       {node.badges.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {node.badges.map((badge, i) => (
-            <span
-              key={i}
-              title={badge.detail}
-              className={cn(
-                "rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
-                badge.color ?? "text-muted-foreground",
-              )}
-            >
-              {badge.label}
-            </span>
-          ))}
+        <div className="mt-1.5 flex flex-col gap-1">
+          {/* Untitled badges keep the compact wrap-row pills. */}
+          {node.badges.some((badge) => !badge.title) && (
+            <div className="flex flex-wrap gap-1">
+              {node.badges
+                .filter((badge) => !badge.title)
+                .map((badge, i) => (
+                  <span
+                    key={i}
+                    title={badge.detail}
+                    className={cn(
+                      "rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
+                      badge.color ?? "text-muted-foreground",
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+            </div>
+          )}
+          {/* Titled badges (votes with a resolved proposal name): the full
+              title wraps across lines, with the vote pill underneath. */}
+          {node.badges
+            .filter((badge) => badge.title)
+            .map((badge, i) => (
+              <div
+                key={`titled-${i}`}
+                className="flex min-w-0 flex-col gap-0.5"
+                title={
+                  badge.detail ? `${badge.title} (${badge.detail})` : badge.title
+                }
+              >
+                <span className="whitespace-normal break-words text-[9px] leading-snug text-muted-foreground">
+                  {badge.title}
+                </span>
+                <span
+                  className={cn(
+                    "self-start rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
+                    badge.color ?? "text-muted-foreground",
+                  )}
+                >
+                  {badge.label}
+                </span>
+              </div>
+            ))}
         </div>
       )}
       {Array.from({ length: outPortCount }, (_, i) => (

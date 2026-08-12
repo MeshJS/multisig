@@ -7,6 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import useAddressLabels from "@/hooks/useAddressLabels";
+import useProposalTitles from "@/hooks/useProposalTitles";
 import { useResolvedInputs, useTxFlowData } from "@/hooks/useTxFlowData";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
@@ -60,6 +61,27 @@ export function TokenFlowContent({
     { enabled: source.type === "pending" && unresolvedRefs.length > 0 },
   );
 
+  // Proposal titles for pending vote badges, so signers can see what
+  // governance action the vote targets.
+  const voteProposalIds = useMemo(() => {
+    if (source.type !== "pending" || !Array.isArray(source.txJson?.votes))
+      return [];
+    return source.txJson.votes
+      .filter(
+        (vote: any) =>
+          typeof vote?.vote?.govActionId?.txHash === "string" &&
+          typeof vote?.vote?.govActionId?.txIndex === "number",
+      )
+      .map(
+        (vote: any) =>
+          `${vote.vote.govActionId.txHash}#${vote.vote.govActionId.txIndex}`,
+      );
+  }, [source]);
+  const { resolveProposalTitle } = useProposalTitles(
+    appWallet?.id,
+    voteProposalIds,
+  );
+
   const flow = useMemo(() => {
     if (source.type === "pending") {
       return pendingTxToTokenFlow(source.txJson, {
@@ -67,6 +89,7 @@ export function TokenFlowContent({
         txId: source.txId,
         description: source.description,
         resolvedInputs,
+        resolveProposalTitle,
       });
     }
     if (!onChainQuery.data) return null;
@@ -74,7 +97,7 @@ export function TokenFlowContent({
       labelAddress,
       description: source.description ?? undefined,
     });
-  }, [source, labelAddress, resolvedInputs, onChainQuery.data]);
+  }, [source, labelAddress, resolvedInputs, resolveProposalTitle, onChainQuery.data]);
 
   const txKey = source.type === "onchain" ? source.txHash : source.txId;
 

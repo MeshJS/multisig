@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from "react";
 import type { UTxO } from "@meshsdk/core";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 
 import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -17,14 +18,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import useProposalTitles from "@/hooks/useProposalTitles";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import type { DraftIssue } from "@/lib/tx-draft/validate";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
+import type { DraftVoteKind } from "@/types/tx-draft";
 import type { Wallet } from "@/types/wallet";
 import { getFirstAndLast } from "@/utils/strings";
 import IssueList from "./issue-list";
+import VoteRationaleEditor from "./vote-rationale-editor";
+
+const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
+  Yes: "text-green-500 dark:text-green-400",
+  No: "text-red-500 dark:text-red-400",
+  Abstain: "text-muted-foreground",
+};
 
 export default function TxInspector({
   appWallet,
@@ -40,24 +50,21 @@ export default function TxInspector({
   const draft = useTxBuilderStore((state) => state.draft);
   const setDescription = useTxBuilderStore((state) => state.setDescription);
   const setMetadata = useTxBuilderStore((state) => state.setMetadata);
-  const setChangeAddress = useTxBuilderStore((state) => state.setChangeAddress);
   const setUtxoSelection = useTxBuilderStore((state) => state.setUtxoSelection);
+  const updateVoteKind = useTxBuilderStore((state) => state.updateVoteKind);
+  const removeVote = useTxBuilderStore((state) => state.removeVote);
 
-  const changeOptions = useMemo(() => {
-    const options = [
-      { address: appWallet.address, label: "Self (Multisig)" },
-    ];
-    appWallet.signersAddresses?.forEach((address, index) => {
-      if (address !== appWallet.address) {
-        options.push({
-          address,
-          label:
-            appWallet.signersDescriptions?.[index] || `Signer ${index + 1}`,
-        });
-      }
-    });
-    return options;
-  }, [appWallet]);
+  const voteProposalIds = useMemo(
+    () =>
+      draft.votes.map(
+        (vote) => `${vote.govActionTxHash}#${vote.govActionIndex}`,
+      ),
+    [draft.votes],
+  );
+  const { resolveProposalTitle } = useProposalTitles(
+    appWallet.id,
+    voteProposalIds,
+  );
 
   // The UTxO selector reports required funds per recipient in display units;
   // flatten the draft's (output, asset) pairs into its parallel arrays.
@@ -115,29 +122,91 @@ export default function TxInspector({
 
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs">Change address</Label>
-        <Select
-          value={draft.changeAddress ?? appWallet.address}
-          onValueChange={(value) =>
-            setChangeAddress(value === appWallet.address ? undefined : value)
-          }
-        >
-          <SelectTrigger className="h-9 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {changeOptions.map((option) => (
-              <SelectItem key={option.address} value={option.address}>
-                <span className="flex flex-col items-start">
-                  <span>{option.label}</span>
-                  <span className="font-mono text-[10px] text-muted-foreground">
-                    {getFirstAndLast(option.address, 10, 6)}
-                  </span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Fixed to the wallet itself: a configurable change address could
+            quietly drain the wallet's remaining funds to another address. */}
+        <div className="flex flex-col rounded-md border border-border/50 px-3 py-1.5 text-xs">
+          <span>Self (Multisig)</span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {getFirstAndLast(appWallet.address, 10, 6)}
+          </span>
+        </div>
       </div>
+
+      {draft.votes.length > 0 && (
+        <Collapsible defaultOpen>
+          <CollapsibleTrigger
+            data-testid="tx-builder-votes-toggle"
+            className="flex w-full items-center justify-between rounded-md border border-border/50 px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50"
+          >
+            <span>Votes — {draft.votes.length}</span>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-2 pt-2">
+            {draft.votes.map((vote) => {
+              const proposalId = `${vote.govActionTxHash}#${vote.govActionIndex}`;
+              const title = resolveProposalTitle(proposalId);
+              return (
+                <div
+                  key={vote.id}
+                  data-testid={`tx-builder-vote-${vote.id}`}
+                  className="flex flex-col gap-1.5 rounded-md border border-border/50 p-2"
+                >
+                  <span
+                    className="truncate text-xs font-medium"
+                    title={title ?? proposalId}
+                  >
+                    {title ?? "Governance action"}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {getFirstAndLast(vote.govActionTxHash, 8, 4)}#
+                    {vote.govActionIndex}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={vote.voteKind}
+                      onValueChange={(value) =>
+                        updateVoteKind(vote.id, value as DraftVoteKind)
+                      }
+                    >
+                      <SelectTrigger
+                        data-testid={`tx-builder-vote-kind-${vote.id}`}
+                        className={`h-8 flex-1 text-xs font-medium ${VOTE_KIND_COLORS[vote.voteKind]}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(["Yes", "No", "Abstain"] as const).map((kind) => (
+                          <SelectItem key={kind} value={kind}>
+                            <span className={VOTE_KIND_COLORS[kind]}>
+                              {kind}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      title="Remove this vote from the transaction"
+                      data-testid={`tx-builder-vote-remove-${vote.id}`}
+                      onClick={() => removeVote(vote.id)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <VoteRationaleEditor walletId={appWallet.id} vote={vote} />
+                </div>
+              );
+            })}
+            <p className="text-[10px] text-muted-foreground">
+              Changing a vote keeps its attached rationale unless cleared or
+              edited — editing uploads a new rationale document when you
+              build. New votes are cast from the Governance pages.
+            </p>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       <Collapsible>
         <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/50 px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50">

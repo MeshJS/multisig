@@ -5,6 +5,10 @@ import type {
 } from "@/types/token-flow";
 import type { BuilderSelection, TxDraft } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
+import {
+  draftVoteToBadge,
+  type ProposalTitleResolver,
+} from "./certificates";
 import { FlowGraphBuilder } from "./graph-builder";
 
 /**
@@ -20,7 +24,12 @@ import { FlowGraphBuilder } from "./graph-builder";
  */
 export function draftToTokenFlow(
   draft: TxDraft,
-  opts: { labelAddress: AddressLabeler; walletAddress: string },
+  opts: {
+    labelAddress: AddressLabeler;
+    walletAddress: string;
+    /** Optional "txHash#certIndex" → proposal title lookup for vote badges. */
+    resolveProposalTitle?: ProposalTitleResolver;
+  },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
   const txNodeId = `txd:${draft.id}`;
@@ -30,7 +39,9 @@ export function draftToTokenFlow(
     kind: "transaction",
     status: "pending",
     label: draft.description || "New transaction",
-    badges: [],
+    badges: draft.votes.map((vote) =>
+      draftVoteToBadge(vote, opts.resolveProposalTitle),
+    ),
   };
   graph.addNode(txNode);
 
@@ -79,7 +90,7 @@ export function draftToTokenFlow(
   }
 
   // Change — amount-less edge, same convention as pending flows.
-  const changeNode = graph.addressNode(draft.changeAddress ?? opts.walletAddress);
+  const changeNode = graph.addressNode(opts.walletAddress);
   graph.addEdge(txNodeId, changeNode.id, "output", [], "change");
 
   return graph.build();

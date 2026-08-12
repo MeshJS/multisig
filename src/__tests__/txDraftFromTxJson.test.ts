@@ -30,6 +30,27 @@ function output(address: string, amount: { unit: string; quantity: string }[]) {
   return { address, amount };
 }
 
+function drepVote(overrides: Record<string, unknown> = {}, type = "BasicVote") {
+  return {
+    type,
+    vote: {
+      voter: { type: "DRep", drepId: "drep1abc" },
+      govActionId: { txHash: "c".repeat(64), txIndex: 3 },
+      votingProcedure: { voteKind: "Yes" },
+      ...overrides,
+    },
+  };
+}
+
+function scriptVote() {
+  return {
+    type: "ScriptVote",
+    vote: drepVote().vote,
+    redeemer: {},
+    scriptSource: { type: "Provided" },
+  };
+}
+
 /** Minimal completed simple-send body, in the shape complete() leaves it. */
 function sendBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -72,7 +93,9 @@ describe("isDraftCompatible", () => {
 
   test.each([
     ["certificates", { certificates: [{ type: "BasicCertificate" }] }],
-    ["votes", { votes: [{ type: "BasicVote" }] }],
+    ["Plutus script votes", { votes: [scriptVote()] }],
+    ["non-DRep votes", { votes: [drepVote({ voter: { type: "StakingPool", keyHash: "kh" } })] }],
+    ["malformed vote data", { votes: [drepVote({ votingProcedure: { voteKind: "Maybe" } })] }],
     ["withdrawals", { withdrawals: [{ address: "stake1...", coin: "1" }] }],
     ["mints", { mints: [{ policyId: "p", mintValue: [] }] }],
     ["collaterals", { collaterals: [input(9)] }],
@@ -133,7 +156,6 @@ describe("txJsonToDraft", () => {
       assets: [{ unit: "lovelace", quantity: "2000000" }],
     });
     expect(draft.utxoSelection).toEqual({ mode: "auto" });
-    expect(draft.changeAddress).toBeUndefined();
     expect(draft.description).toBe("Payroll");
     expect(draft.metadata).toBe("hello chain");
     expect(inputRefs).toEqual([{ txHash: TX_HASH, txIndex: 0 }]);
@@ -259,5 +281,82 @@ describe("txJsonToDraft", () => {
       ]),
     );
     expect(inputRefs).toEqual([{ txHash: TX_HASH, txIndex: 0 }]);
+  });
+});
+
+describe("vote transactions", () => {
+  const GOV_HASH = "c".repeat(64);
+
+  function voteBody(votes: unknown[], overrides: Record<string, unknown> = {}) {
+    return sendBody({
+      votes,
+      // A completed vote-only body: the only output is the change output.
+      outputs: [
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "9800000" }]),
+      ],
+      ...overrides,
+    });
+  }
+
+  test("accepts the mixed BasicVote + SimpleScriptVote ballot shape", () => {
+    const body = voteBody([
+      drepVote(),
+      { ...drepVote(), type: "SimpleScriptVote", simpleScriptSource: { type: "Provided" } },
+    ]);
+    expect(isDraftCompatible(body)).toEqual({ compatible: true, reasons: [] });
+  });
+
+  test("vote-only body does not trip the no-outputs gate", () => {
+    const body = voteBody([drepVote()], { outputs: [] });
+    expect(isDraftCompatible(body).compatible).toBe(true);
+  });
+
+  test("txJsonToDraft maps votes and strips the lone change output to zero", () => {
+    const anchor = { anchorUrl: "ipfs://cid", anchorDataHash: "d".repeat(64) };
+    const body = voteBody([
+      drepVote({ votingProcedure: { voteKind: "No", anchor } }),
+      drepVote({ govActionId: { txHash: GOV_HASH, txIndex: 7 } }),
+    ]);
+
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+
+    expect(draft.outputs).toHaveLength(0);
+    expect(draft.votes).toHaveLength(2);
+    expect(draft.votes[0]).toMatchObject({
+      govActionTxHash: GOV_HASH,
+      govActionIndex: 3,
+      voteKind: "No",
+      anchor,
+      originalDrepId: "drep1abc",
+    });
+    expect(draft.votes[1]).toMatchObject({
+      govActionIndex: 7,
+      voteKind: "Yes",
+    });
+    expect(draft.votes[1]!.anchor).toBeUndefined();
+    expect(draft.votes[0]!.id).not.toBe(draft.votes[1]!.id);
+  });
+
+  test("vote tx with a real payment keeps the payment, strips only change", () => {
+    const body = voteBody([drepVote()], {
+      outputs: [
+        output(RECIPIENT, [{ unit: "lovelace", quantity: "2000000" }]),
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "7000000" }]),
+      ],
+    });
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.outputs.map((o) => o.address)).toEqual([RECIPIENT]);
+    expect(draft.votes).toHaveLength(1);
+  });
+
+  test("send-only bodies still keep at least one output (regression)", () => {
+    const body = sendBody({
+      outputs: [
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "9000000" }]),
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "800000" }]),
+      ],
+    });
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.outputs).toHaveLength(1);
   });
 });

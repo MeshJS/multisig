@@ -6,7 +6,11 @@ import type {
 } from "@/types/token-flow";
 import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import { getFirstAndLast } from "@/utils/strings";
-import { meshCertificateToBadge, meshVoteToBadge } from "./certificates";
+import {
+  meshCertificateToBadge,
+  meshVoteToBadge,
+  type ProposalTitleResolver,
+} from "./certificates";
 import { FlowGraphBuilder, lovelace } from "./graph-builder";
 
 export type ResolvedInputMap = Map<
@@ -32,6 +36,8 @@ export function pendingTxToTokenFlow(
     txId: string;
     description?: string | null;
     resolvedInputs?: ResolvedInputMap;
+    /** Optional "txHash#certIndex" → proposal title lookup for vote badges. */
+    resolveProposalTitle?: ProposalTitleResolver;
   },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
@@ -41,7 +47,11 @@ export function pendingTxToTokenFlow(
     ...(Array.isArray(txJson?.certificates)
       ? txJson.certificates.map(meshCertificateToBadge)
       : []),
-    ...(Array.isArray(txJson?.votes) ? txJson.votes.map(meshVoteToBadge) : []),
+    ...(Array.isArray(txJson?.votes)
+      ? txJson.votes.map((vote: unknown) =>
+          meshVoteToBadge(vote, opts.resolveProposalTitle),
+        )
+      : []),
   ];
 
   const fee =
