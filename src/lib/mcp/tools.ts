@@ -6,6 +6,9 @@ import type { McpScope } from "@/lib/mcp/scopes";
 import {
   ACTIVE_PROPOSALS_INPUT,
   BALLOT_UPSERT_INPUT,
+  OPEN_PROPOSALS_INPUT,
+  VOTE_HISTORY_INPUT,
+  WALLET_BALLOTS_INPUT,
   EMPTY_INPUT,
   FREE_UTXOS_INPUT,
   LOOKUP_WALLET_INPUT,
@@ -75,6 +78,41 @@ const load = {
   governanceActiveProposals: () =>
     import("@/pages/api/v1/governanceActiveProposals"),
   botBallotsUpsert: () => import("@/pages/api/v1/botBallotsUpsert"),
+  botBallots: () => import("@/pages/api/v1/botBallots"),
+  drepInfo: () => import("@/pages/api/v1/drepInfo"),
+  drepVotes: () => import("@/pages/api/governance/drepVotes"),
+};
+
+/** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
+async function loadVoteHistory(
+  walletId: string,
+  ctx: ToolContext,
+): Promise<{ status: number; body: unknown }> {
+  const info = await callV1(load.drepInfo, ctx, {
+    method: "GET",
+    query: { walletId, address: ctx.caller.subject },
+  });
+  const dRepId = (info.body as { dRepId?: string } | null)?.dRepId;
+  if (info.status >= 400 || !dRepId) {
+    return info.status >= 400
+      ? info
+      : { status: 400, body: { error: "This wallet has no DRep configured" } };
+  }
+
+  // Koios is queried per network, and the wallet's own address tells us which.
+  const network = ctx.caller.subject.includes("test") ? "0" : "1";
+  const votes = await callV1(load.drepVotes, ctx, {
+    method: "GET",
+    query: { drepId: dRepId, network },
+  });
+  return votes;
+}
+
+type VoteRow = {
+  proposalId: string;
+  vote: string;
+  proposalTitle: string | null;
+  blockTime: number;
 };
 
 async function callV1(
@@ -275,6 +313,96 @@ export const MCP_TOOLS: McpToolDef[] = [
           details: args.details === true ? "true" : "false",
         },
       }),
+  },
+  {
+    name: "governance_list_ballots",
+    title: "List governance ballots",
+    description:
+      "List this wallet's governance ballots — the internal record of how the signers decided on each proposal, including any drafted rationale. This is the team's own decision log, not what is recorded on-chain; use governance_vote_history for that.",
+    scope: "governance:read",
+    inputSchema: WALLET_BALLOTS_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "botBallots.ts",
+    run: async (args, ctx) =>
+      callV1(load.botBallots, ctx, {
+        method: "GET",
+        query: { walletId: str(args.walletId) },
+      }),
+  },
+  {
+    name: "governance_vote_history",
+    title: "On-chain vote history",
+    description:
+      "Votes this wallet's DRep has actually cast on-chain, newest first, with the proposal title where available. This is the settled public record; governance_list_ballots is the internal decision log that precedes it.",
+    scope: "governance:read",
+    inputSchema: VOTE_HISTORY_INPUT,
+    annotations: READ_ONLY_CHAIN,
+    v1Path: "drepInfo.ts",
+    run: async (args, ctx) => {
+      const result = await loadVoteHistory(str(args.walletId) ?? "", ctx);
+      if (result.status >= 400) return result;
+      const body = result.body as { drepId?: string; votes?: VoteRow[] };
+      const limit = typeof args.limit === "number" ? args.limit : 25;
+      const votes = (body.votes ?? []).slice(0, limit);
+      return {
+        status: 200,
+        body: { drepId: body.drepId ?? null, votes, count: votes.length },
+      };
+    },
+  },
+  {
+    name: "governance_open_proposals",
+    title: "Proposals still open to vote",
+    description:
+      "Active governance proposals this wallet has NOT yet voted on — the outstanding decisions. Cross-references live proposals against the wallet DRep's on-chain vote history. Set includeVoted to see the whole active set annotated with how this wallet voted.",
+    scope: "governance:read",
+    inputSchema: OPEN_PROPOSALS_INPUT,
+    annotations: READ_ONLY_CHAIN,
+    v1Path: "governanceActiveProposals.ts",
+    run: async (args, ctx) => {
+      const network = ctx.caller.subject.includes("test") ? "0" : "1";
+      const count = typeof args.count === "number" ? args.count : 10;
+
+      const active = await callV1(load.governanceActiveProposals, ctx, {
+        method: "GET",
+        query: { network, count: String(count), page: "1", order: "desc", details: "false" },
+      });
+      if (active.status >= 400) return active;
+
+      const proposals =
+        (active.body as { proposals?: { proposalId: string }[] }).proposals ?? [];
+
+      // A missing DRep or a Koios hiccup must not sink the whole answer — fall
+      // back to "we don't know what was voted" rather than failing the call.
+      let voted = new Map<string, VoteRow>();
+      let voteLookupFailed = false;
+      const history = await loadVoteHistory(str(args.walletId) ?? "", ctx);
+      if (history.status >= 400) {
+        voteLookupFailed = true;
+      } else {
+        const rows = (history.body as { votes?: VoteRow[] }).votes ?? [];
+        voted = new Map(rows.map((v) => [v.proposalId, v]));
+      }
+
+      const annotated = proposals.map((p) => {
+        const ours = voted.get(p.proposalId);
+        return { ...p, alreadyVoted: Boolean(ours), ourVote: ours?.vote ?? null };
+      });
+      const includeVoted = args.includeVoted === true;
+      const rows = includeVoted ? annotated : annotated.filter((p) => !p.alreadyVoted);
+
+      return {
+        status: 200,
+        body: {
+          proposals: rows,
+          count: rows.length,
+          activeConsidered: proposals.length,
+          // Surfaced so the model can say "I could not check" instead of
+          // implying nothing has been voted on.
+          voteHistoryUnavailable: voteLookupFailed,
+        },
+      };
+    },
   },
   {
     name: "ballot_upsert",

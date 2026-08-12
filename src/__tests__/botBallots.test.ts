@@ -9,6 +9,8 @@ const applyBotRateLimitMock = jest.fn<() => boolean>();
 const enforceBodySizeMock = jest.fn<() => boolean>();
 const verifyJwtMock: jest.Mock = jest.fn();
 const isBotJwtMock: jest.Mock = jest.fn();
+const applyAddressRateLimitMock = jest.fn<() => boolean>();
+const assertWalletAccessMock: jest.Mock = jest.fn();
 const assertBotWalletAccessMock: jest.Mock = jest.fn();
 const findBotUserMock: jest.Mock = jest.fn();
 const ballotFindManyMock: jest.Mock = jest.fn();
@@ -34,6 +36,7 @@ jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
+  applyAddressRateLimit: applyAddressRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
 }));
 
@@ -41,6 +44,16 @@ jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
+}));
+
+jest.mock("@/lib/security/rateLimit", () => ({
+  __esModule: true,
+  getClientIP: () => "127.0.0.1",
+}));
+
+jest.mock("@/server/api/auth", () => ({
+  __esModule: true,
+  assertWalletAccess: assertWalletAccessMock,
 }));
 
 jest.mock("@/lib/auth/botKey", () => ({
@@ -101,6 +114,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
+  applyAddressRateLimitMock.mockReturnValue(true);
+  (assertWalletAccessMock as any).mockResolvedValue({ id: "wallet-1" });
   enforceBodySizeMock.mockReturnValue(true);
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_bot", botId: "bot-1", type: "bot" });
@@ -171,5 +186,51 @@ describe("botBallots API", () => {
     const res = createMockResponse();
     await handler(request("DELETE", { body: { walletId: "wallet-1", ballotId: "gone" } }), res);
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  describe("human (non-bot) callers", () => {
+    const asHuman = () => {
+      verifyJwtMock.mockReturnValue({ address: "addr_test1qphuman" });
+      isBotJwtMock.mockReturnValue(false);
+    };
+
+    it("lets a wallet signer read the ballots", async () => {
+      asHuman();
+      const res = createMockResponse();
+      await handler(request("GET", { query: { walletId: "wallet-1" } }), res);
+
+      // Authorized by the shared signer-or-owner predicate, not the bot path.
+      expect(assertWalletAccessMock).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("does not require the ballot:write bot scope of a human", async () => {
+      asHuman();
+      const res = createMockResponse();
+      await handler(request("GET", { query: { walletId: "wallet-1" } }), res);
+
+      // A human has no bot key, so the scope lookup must never run for them.
+      expect(findBotUserMock).not.toHaveBeenCalled();
+      expect(applyBotRateLimitMock).not.toHaveBeenCalled();
+      expect(applyAddressRateLimitMock).toHaveBeenCalled();
+    });
+
+    it("returns 403 when the human is neither signer nor owner", async () => {
+      asHuman();
+      (assertWalletAccessMock as any).mockRejectedValue(
+        Object.assign(new Error("Not authorized for this wallet"), { code: "FORBIDDEN" }),
+      );
+      const res = createMockResponse();
+      await handler(request("GET", { query: { walletId: "wallet-1" } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("still gates bot callers on wallet access", async () => {
+      // Regression guard: the human branch must not weaken the bot branch.
+      const res = createMockResponse();
+      await handler(request("GET", { query: { walletId: "wallet-1" } }), res);
+      expect(assertBotWalletAccessMock).toHaveBeenCalled();
+      expect(assertWalletAccessMock).not.toHaveBeenCalled();
+    });
   });
 });

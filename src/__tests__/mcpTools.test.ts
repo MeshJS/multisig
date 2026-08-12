@@ -27,6 +27,9 @@ describe("MCP tool registry", () => {
       "multisig_proxy_drep_info",
       "multisig_lookup_wallet",
       "governance_list_active_proposals",
+      "governance_list_ballots",
+      "governance_vote_history",
+      "governance_open_proposals",
       "ballot_upsert",
     ]);
   });
