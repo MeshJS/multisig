@@ -102,16 +102,43 @@ export function pendingTxToTokenFlow(
     graph.addEdge("addr:unknown-inputs", txNodeId, "input", [], "unknown amount");
   }
 
-  // Outputs (the builder body excludes the change output — represent it as
-  // an amount-less edge to the change address so the flow stays honest).
-  for (const output of Array.isArray(txJson?.outputs) ? txJson.outputs : []) {
-    if (!output?.address) continue;
-    const node = graph.addressNode(output.address);
-    graph.addEdge(txNodeId, node.id, "output", output.amount ?? []);
+  // Outputs. After Mesh's `complete()` the stored body INCLUDES the computed
+  // change output(s), appended last (outputs are never re-sorted) — mark the
+  // trailing run at the change address as change so it isn't double-rendered.
+  // Never mark everything: a consolidation tx paying only the wallet keeps
+  // its first output as the payment. Bodies without an embedded change
+  // output (rows from older Mesh versions, hand-built imports) fall back to
+  // the amount-less synthetic edge so the flow stays honest.
+  const outputs = (Array.isArray(txJson?.outputs) ? txJson.outputs : []).filter(
+    (output: any) => output?.address,
+  );
+  const changeAddress =
+    typeof txJson?.changeAddress === "string" ? txJson.changeAddress : "";
+  let firstChangeIndex = outputs.length;
+  while (
+    changeAddress &&
+    firstChangeIndex > 1 &&
+    outputs[firstChangeIndex - 1].address === changeAddress
+  ) {
+    firstChangeIndex--;
   }
-  if (typeof txJson?.changeAddress === "string" && txJson.changeAddress) {
-    const node = graph.addressNode(txJson.changeAddress);
-    graph.addEdge(txNodeId, node.id, "output", [], "change");
+  outputs.forEach((output: any, index: number) => {
+    const node = graph.addressNode(output.address);
+    const isChange = index >= firstChangeIndex;
+    // The "change" discriminator keeps change separate from a genuine
+    // payment edge to the same address (self-sends).
+    graph.addEdge(
+      txNodeId,
+      node.id,
+      "output",
+      output.amount ?? [],
+      isChange ? "change" : undefined,
+      isChange ? "change" : undefined,
+    );
+  });
+  if (changeAddress && firstChangeIndex === outputs.length) {
+    const node = graph.addressNode(changeAddress);
+    graph.addEdge(txNodeId, node.id, "output", [], "change", "change");
   }
 
   // Withdrawals

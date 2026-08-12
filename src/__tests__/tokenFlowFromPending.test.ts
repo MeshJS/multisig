@@ -50,9 +50,96 @@ describe("pendingTxToTokenFlow", () => {
       assets: [{ unit: "lovelace", quantity: "5000000" }],
     });
     const outputs = flow.edges.filter((e) => e.kind === "output");
-    expect(outputs).toHaveLength(2); // recipient + change edge
+    expect(outputs).toHaveLength(2); // recipient + synthetic change edge
     const changeEdge = outputs.find((e) => e.note === "change");
     expect(changeEdge).toMatchObject({ target: `addr:${SELF}`, assets: [] });
+  });
+
+  test("trailing change output embedded by complete() renders once, with amounts", () => {
+    const txJson = {
+      inputs: [],
+      outputs: [
+        { address: OTHER, amount: [{ unit: "lovelace", quantity: "2000000" }] },
+        // complete() appends the computed change output(s) last
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "7800000" }] },
+      ],
+      changeAddress: SELF,
+    };
+    const flow = pendingTxToTokenFlow(txJson, { labelAddress, txId: "db-1" });
+
+    const outputs = flow.edges.filter((e) => e.kind === "output");
+    expect(outputs).toHaveLength(2); // no third synthetic edge
+    expect(outputs.find((e) => e.target === `addr:${OTHER}`)).toMatchObject({
+      note: undefined,
+      assets: [{ unit: "lovelace", quantity: "2000000" }],
+    });
+    expect(outputs.find((e) => e.note === "change")).toMatchObject({
+      target: `addr:${SELF}`,
+      assets: [{ unit: "lovelace", quantity: "7800000" }],
+    });
+  });
+
+  test("split change outputs aggregate into one change edge", () => {
+    const txJson = {
+      outputs: [
+        { address: OTHER, amount: [{ unit: "lovelace", quantity: "2000000" }] },
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "4000000" }] },
+        { address: SELF, amount: [{ unit: "policy1token", quantity: "3" }] },
+      ],
+      changeAddress: SELF,
+    };
+    const flow = pendingTxToTokenFlow(txJson, { labelAddress, txId: "db-1" });
+
+    const changeEdges = flow.edges.filter((e) => e.note === "change");
+    expect(changeEdges).toHaveLength(1);
+    expect(changeEdges[0]!.assets).toEqual([
+      { unit: "lovelace", quantity: "4000000" },
+      { unit: "policy1token", quantity: "3" },
+    ]);
+  });
+
+  test("self-consolidation keeps the first output as the payment", () => {
+    const txJson = {
+      outputs: [
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "9000000" }] },
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "800000" }] },
+      ],
+      changeAddress: SELF,
+    };
+    const flow = pendingTxToTokenFlow(txJson, { labelAddress, txId: "db-1" });
+
+    const outputs = flow.edges.filter((e) => e.kind === "output");
+    // Payment and change stay separate edges to the same node.
+    expect(outputs).toHaveLength(2);
+    expect(outputs.find((e) => !e.note)).toMatchObject({
+      assets: [{ unit: "lovelace", quantity: "9000000" }],
+    });
+    expect(outputs.find((e) => e.note === "change")).toMatchObject({
+      assets: [{ unit: "lovelace", quantity: "800000" }],
+    });
+  });
+
+  test("interior output to the change address is not marked as change", () => {
+    const txJson = {
+      outputs: [
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "1500000" }] },
+        { address: OTHER, amount: [{ unit: "lovelace", quantity: "2000000" }] },
+        { address: SELF, amount: [{ unit: "lovelace", quantity: "7000000" }] },
+      ],
+      changeAddress: SELF,
+    };
+    const flow = pendingTxToTokenFlow(txJson, { labelAddress, txId: "db-1" });
+
+    const selfEdges = flow.edges.filter(
+      (e) => e.kind === "output" && e.target === `addr:${SELF}`,
+    );
+    expect(selfEdges).toHaveLength(2);
+    expect(selfEdges.find((e) => !e.note)).toMatchObject({
+      assets: [{ unit: "lovelace", quantity: "1500000" }],
+    });
+    expect(selfEdges.find((e) => e.note === "change")).toMatchObject({
+      assets: [{ unit: "lovelace", quantity: "7000000" }],
+    });
   });
 
   test("inputs without address/amount resolve via resolvedInputs map", () => {
