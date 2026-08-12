@@ -210,6 +210,13 @@ describe("POST /api/mcp — transport", () => {
     expect(challenge).toMatch(/^Bearer /);
     expect(challenge).toContain("resource_metadata=");
     expect(challenge).toContain("/.well-known/oauth-protected-resource");
+    // Clients request exactly the challenge's `scope`, not scopes_supported, so
+    // both read scopes must appear here or their tools are unreachable in
+    // practice. ballots:write is intentionally absent — the one write scope
+    // stays opt-in.
+    expect(challenge).toContain("wallets:read");
+    expect(challenge).toContain("governance:read");
+    expect(challenge).not.toContain("ballots:write");
   });
 
   it("serves tools/list on the modern protocol era", async () => {

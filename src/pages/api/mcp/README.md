@@ -61,6 +61,14 @@ Defined in `src/lib/mcp/scopes.ts` — the MCP spec deliberately defines no voca
 - `governance:read` — active governance proposals
 - `ballots:write` — ballot drafts, including rationale text (no on-chain vote)
 
+**What a client gets by default.** The `WWW-Authenticate` challenge advertises
+`wallets:read governance:read`. That is what clients actually request — Claude
+Code uses the challenge's `scope` rather than `scopes_supported` from the
+metadata document — so a scope omitted there is unreachable in practice, however
+well documented. `ballots:write` is deliberately excluded: it is the only scope
+that writes anything, so a client must ask for it explicitly (in Claude Code,
+pin `oauth.scopes` for the server). Re-authorize after changing it.
+
 These are intentionally *not* the `BOT_SCOPES` strings from `src/lib/auth/botKey.ts`.
 When a bot key authenticates, `mcpScopesForBot` projects one onto the other so a bot never
 gains MCP reach it lacks over REST — notably, `multisig:sign` maps to nothing.

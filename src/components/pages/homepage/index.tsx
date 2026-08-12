@@ -662,16 +662,65 @@ export function PageHomepage() {
               title="Connect an AI agent (MCP)"
               description="A Model Context Protocol endpoint, so Claude and other MCP clients can read your wallets directly."
             >
-              <div className="mt-4 space-y-3 text-sm">
-                <p className="text-muted-foreground">
-                  Endpoint: <code className="rounded bg-muted px-1">POST /api/mcp</code>. Add it to Claude Code with:
-                </p>
-                <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
-                  <code>claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>
-                </pre>
-                <p className="text-muted-foreground">
-                  You&apos;ll be sent to a consent screen to approve access with your wallet — no secrets to copy. The connection is <strong>read-only</strong> apart from governance ballot drafts: it can list wallets, pending transactions, UTxOs, proxies and active proposals, but it cannot sign transactions, move funds, or vote on-chain.
-                </p>
+              <div className="mt-4 space-y-5 text-sm">
+                <ol className="space-y-4">
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
+                      <span className="font-medium">Add the server</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">In Claude Code:</p>
+                    <pre className="ml-7 overflow-x-auto rounded bg-muted p-3 text-xs">
+                      <code>claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>
+                    </pre>
+                    <p className="pl-7 text-xs text-muted-foreground">
+                      For other clients, point them at{" "}
+                      <code className="rounded bg-muted px-1">https://multisig.meshjs.dev/api/mcp</code>{" "}
+                      over streamable HTTP. There is no API key to paste — the
+                      server advertises OAuth and the client discovers the rest.
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
+                      <span className="font-medium">Authorize with your wallet</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Run <code className="rounded bg-muted px-1">/mcp</code> and
+                      pick the server. A consent screen opens here: connect your
+                      wallet, sign, and approve. You&apos;ll see exactly which
+                      client is asking and what it will be able to read.
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="font-medium">Ask it something</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      &ldquo;List the pending transactions on our treasury&rdquo; ·
+                      &ldquo;What can we actually spend right now?&rdquo; ·
+                      &ldquo;Which active governance proposals still need a decision?&rdquo;
+                    </p>
+                  </li>
+                </ol>
+
+                <div className="rounded-lg border border-dashed p-3">
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-foreground">Read-only, by design.</strong>{" "}
+                    A connected client can list wallets, pending transactions,
+                    spendable UTxOs, proxies and active proposals, and draft
+                    governance ballot rationales. It <strong>cannot</strong> sign
+                    transactions, move funds, or submit a vote on-chain. Manage or
+                    revoke connections any time under{" "}
+                    <Link href="/user" className="underline underline-offset-2">
+                      your profile
+                    </Link>
+                    .
+                  </p>
+                </div>
               </div>
             </CardUI>
           </div>
