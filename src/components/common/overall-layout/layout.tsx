@@ -520,14 +520,22 @@ export default function RootLayout({
   const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
   const walletPageRoute = useMemo(() => router.pathname.split("/wallets/[wallet]/")[1], [router.pathname]);
   const walletPageNames = useMemo(() => walletPageRoute ? walletPageRoute.split("/") : [], [walletPageRoute]);
-  const pageIsPublic = useMemo(() => publicRoutes.includes(router.pathname), [router.pathname]);
+  // OAuth flow pages must render for a signed-out visitor — arriving without a
+  // connected wallet is the normal case for a consent screen, since the user is
+  // being sent here by a third-party client. They are not marketing surfaces,
+  // so they render without the site footer.
+  const isAuthFlow = useMemo(() => router.pathname.startsWith("/oauth/"), [router.pathname]);
+  const pageIsPublic = useMemo(
+    () => publicRoutes.includes(router.pathname) || isAuthFlow,
+    [router.pathname, isAuthFlow],
+  );
   const isLoggedIn = useMemo(() => !!user, [user]);
   const isHomepage = useMemo(() => router.pathname === "/", [router.pathname]);
   // Marketing footer on public surfaces, but not on the logged-in homepage
   // (which renders the wallet dashboard rather than the landing page).
   const showFooter = useMemo(
-    () => pageIsPublic && !(isHomepage && isLoggedIn),
-    [pageIsPublic, isHomepage, isLoggedIn],
+    () => pageIsPublic && !isAuthFlow && !(isHomepage && isLoggedIn),
+    [pageIsPublic, isAuthFlow, isHomepage, isLoggedIn],
   );
 
   // Keep track of the last visited wallet to show wallet menu even on other pages
