@@ -2,13 +2,14 @@ import { MeshTxBuilder, type UTxO } from "@meshsdk/core";
 
 import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
 import {
+  addCertificate,
   addOutput,
   addVote,
   createDraft,
   setUtxoSelection,
 } from "@/lib/tx-draft/mutations";
-import type { TxDraft } from "@/types/tx-draft";
-import { realTestAddresses } from "./testUtils";
+import type { DraftCertificate, TxDraft } from "@/types/tx-draft";
+import { externalStakeCredential, realTestAddresses } from "./testUtils";
 
 const WALLET_ADDRESS = realTestAddresses.address1;
 const RECIPIENT = realTestAddresses.address2;
@@ -205,7 +206,7 @@ describe("applyDraftToTxBuilder votes", () => {
   test("empty draft still throws", () => {
     expect(() =>
       applyDraftToTxBuilder(bareTxBuilder(), createDraft("d1"), voteCtx),
-    ).toThrow(/no outputs or votes/i);
+    ).toThrow(/no outputs, votes or certificates/i);
   });
 
   test("every vote serializes as SimpleScriptVote with per-vote script", () => {
@@ -261,6 +262,152 @@ describe("applyDraftToTxBuilder votes", () => {
     expect(built.inputs).toHaveLength(2);
     expect(built.outputs).toHaveLength(1);
     expect(built.votes).toHaveLength(1);
+  });
+});
+
+describe("applyDraftToTxBuilder certificates", () => {
+  const REWARD_ADDRESS = externalStakeCredential;
+  const STAKE_SCRIPT_CBOR = "8201828200581c22";
+  const ORIGINAL_STAKE_ADDRESS = "stake_test1uzoriginal";
+  const POOL_ID = "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy";
+
+  function certDraft(
+    certs: Array<Omit<DraftCertificate, "id">>,
+    base?: TxDraft,
+  ): TxDraft {
+    let draft = base ?? createDraft("d1");
+    certs.forEach((cert, index) => {
+      draft = addCertificate(draft, { id: `c-${index}`, ...cert }).draft;
+    });
+    return draft;
+  }
+
+  const certCtx = {
+    scriptCbor: SCRIPT_CBOR,
+    walletAddress: WALLET_ADDRESS,
+    availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "10000000" }])],
+    stakeRewardAddress: REWARD_ADDRESS,
+    stakeScriptCbor: STAKE_SCRIPT_CBOR,
+  };
+
+  test("cert-only draft builds; auto selection gets the fee floor", () => {
+    const built = body(
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([{ kind: "DelegateStake", poolId: POOL_ID }]),
+        certCtx,
+      ),
+    );
+    expect(built.inputs).toHaveLength(1);
+    expect(built.outputs).toHaveLength(0);
+    expect(built.certificates).toHaveLength(1);
+    expect(built.changeAddress).toBe(WALLET_ADDRESS);
+  });
+
+  test("certs are re-emitted against the derived reward address, witnessed per cert, in load order", () => {
+    const built = body(
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([
+          {
+            kind: "RegisterStake",
+            originalStakeAddress: ORIGINAL_STAKE_ADDRESS,
+          },
+          {
+            kind: "DelegateStake",
+            poolId: POOL_ID,
+            originalStakeAddress: ORIGINAL_STAKE_ADDRESS,
+          },
+        ]),
+        certCtx,
+      ),
+    );
+
+    expect(built.certificates).toHaveLength(2);
+    for (const cert of built.certificates) {
+      // Per-cert certificateScript: no cert is left unwitnessed.
+      expect(cert.type).toBe("SimpleScriptCertificate");
+      // Provenance stakeKeyAddress must NOT leak into the rebuilt tx.
+      expect((cert as any).certType.stakeKeyAddress).toBe(REWARD_ADDRESS);
+    }
+    expect(built.certificates.map((c: any) => c.certType.type)).toEqual([
+      "RegisterStake",
+      "DelegateStake",
+    ]);
+    expect((built.certificates[1] as any).certType.poolId).toBe(POOL_ID);
+  });
+
+  test("an edited pool id lands in the built body", () => {
+    const otherPool = "pool1" + "q".repeat(48);
+    const built = body(
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([{ kind: "DelegateStake", poolId: otherPool }]),
+        certCtx,
+      ),
+    );
+    expect((built.certificates[0] as any).certType.poolId).toBe(otherPool);
+  });
+
+  test("throws without staking context or a delegation pool id", () => {
+    expect(() =>
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([{ kind: "DelegateStake", poolId: POOL_ID }]),
+        {
+          scriptCbor: SCRIPT_CBOR,
+          walletAddress: WALLET_ADDRESS,
+          availableUtxos: certCtx.availableUtxos,
+        },
+      ),
+    ).toThrow(/no staking context/i);
+
+    expect(() =>
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([{ kind: "DelegateStake" }]),
+        certCtx,
+      ),
+    ).toThrow(/no pool id/i);
+  });
+
+  test("RegisterStake adds 2 ADA deposit headroom to the auto-selection floor", () => {
+    // 5 ADA fee floor + 2 ADA deposit = 7 ADA: the 6 ADA UTxO alone is not
+    // enough, so keepRelevant must pull in the second one.
+    const built = body(
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([
+          { kind: "RegisterStake" },
+          { kind: "DelegateStake", poolId: POOL_ID },
+        ]),
+        {
+          ...certCtx,
+          availableUtxos: [
+            utxo(0, [{ unit: "lovelace", quantity: "6000000" }]),
+            utxo(1, [{ unit: "lovelace", quantity: "2000000" }]),
+          ],
+        },
+      ),
+    );
+    expect(built.inputs).toHaveLength(2);
+  });
+
+  test("deregister-only draft builds without deposit headroom", () => {
+    const built = body(
+      applyDraftToTxBuilder(
+        bareTxBuilder(),
+        certDraft([{ kind: "DeregisterStake" }]),
+        {
+          ...certCtx,
+          availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "6000000" }])],
+        },
+      ),
+    );
+    expect(built.inputs).toHaveLength(1);
+    expect((built.certificates[0] as any).certType.type).toBe(
+      "DeregisterStake",
+    );
   });
 });
 

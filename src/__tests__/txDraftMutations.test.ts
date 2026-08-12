@@ -1,7 +1,9 @@
 import {
+  addCertificate,
   addOutput,
   addVote,
   clearVoteAnchor,
+  updateCertificatePool,
   createDraft,
   removeOutput,
   removeVote,
@@ -163,6 +165,52 @@ describe("tx-draft vote mutations", () => {
     });
     expect(next.votes[0]!.anchor).toBeUndefined();
     expect(draft.votes[0]!.anchor).toEqual(baseVote.anchor);
+  });
+});
+
+describe("tx-draft certificate mutations", () => {
+  const baseCert = {
+    kind: "DelegateStake" as const,
+    poolId: "pool1old",
+    originalStakeAddress: "stake_test1abc",
+  };
+
+  test("addCertificate appends with a generated id without mutating the input", () => {
+    const original = createDraft("d1");
+    const { draft, certificateId } = addCertificate(original, baseCert);
+    expect(original.certificates).toHaveLength(0); // immutability
+    expect(draft.certificates).toEqual([{ ...baseCert, id: certificateId }]);
+    // Explicit ids are respected.
+    const { draft: withId } = addCertificate(draft, {
+      kind: "RegisterStake",
+      id: "c-2",
+    });
+    expect(withId.certificates[1]!.id).toBe("c-2");
+  });
+
+  test("updateCertificatePool patches only the target delegation cert", () => {
+    let { draft } = addCertificate(createDraft("d1"), {
+      ...baseCert,
+      id: "c-1",
+    });
+    ({ draft } = addCertificate(draft, { ...baseCert, id: "c-2" }));
+
+    const next = updateCertificatePool(draft, "c-1", "pool1new");
+    expect(next.certificates[0]).toMatchObject({
+      poolId: "pool1new",
+      originalStakeAddress: baseCert.originalStakeAddress,
+    });
+    expect(next.certificates[1]!.poolId).toBe("pool1old");
+    expect(draft.certificates[0]!.poolId).toBe("pool1old"); // original untouched
+  });
+
+  test("updateCertificatePool is a no-op on non-delegation certs", () => {
+    const { draft } = addCertificate(createDraft("d1"), {
+      kind: "RegisterStake",
+      id: "c-1",
+    });
+    const next = updateCertificatePool(draft, "c-1", "pool1new");
+    expect(next.certificates[0]!.poolId).toBeUndefined();
   });
 });
 

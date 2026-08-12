@@ -1,4 +1,5 @@
 import type {
+  DraftCertificate,
   DraftOutput,
   DraftUtxoSelection,
   DraftVote,
@@ -111,6 +112,44 @@ export function setDescription(draft: TxDraft, description: string): TxDraft {
 
 export function setMetadata(draft: TxDraft, metadata: string): TxDraft {
   return { ...draft, metadata };
+}
+
+/**
+ * Appends a staking certificate loaded from an existing pending transaction.
+ * The builder never creates certificates from scratch — this exists for
+ * `txJsonToDraft`.
+ */
+export function addCertificate(
+  draft: TxDraft,
+  partial: Omit<DraftCertificate, "id"> & { id?: string },
+): { draft: TxDraft; certificateId: string } {
+  const certificateId = partial.id ?? generateId();
+  const certificate: DraftCertificate = { ...partial, id: certificateId };
+  return {
+    draft: { ...draft, certificates: [...draft.certificates, certificate] },
+    certificateId,
+  };
+}
+
+/**
+ * Changes the target pool of a delegation certificate. Guarded to
+ * DelegateStake so a stray call can't attach a pool to a register/deregister
+ * cert. There is deliberately no removeCertificate: dropping one half of a
+ * register/delegate pair would build a chain-invalid transaction.
+ */
+export function updateCertificatePool(
+  draft: TxDraft,
+  certificateId: string,
+  poolId: string,
+): TxDraft {
+  return {
+    ...draft,
+    certificates: draft.certificates.map((certificate) =>
+      certificate.id === certificateId && certificate.kind === "DelegateStake"
+        ? { ...certificate, poolId }
+        : certificate,
+    ),
+  };
 }
 
 /**

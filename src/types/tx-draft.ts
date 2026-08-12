@@ -56,6 +56,29 @@ export type DraftVote = {
   originalDrepId?: string;
 };
 
+export type DraftCertificateKind =
+  | "RegisterStake"
+  | "DelegateStake"
+  | "DeregisterStake";
+
+/**
+ * A staking certificate loaded from an existing pending transaction.
+ * Certificates can't be created in the builder (that stays on the staking
+ * page) — only the delegation pool can be changed, and certs can't be
+ * removed individually: a register/delegate pair must stay intact, and a
+ * lone delegation cert is the whole point of its transaction. The reward
+ * address and staking script are re-derived from the wallet at build time.
+ */
+export type DraftCertificate = {
+  /** Stable per-cert id; generated at load, drives inspector row identity. */
+  id: string;
+  kind: DraftCertificateKind;
+  /** Canonical bech32 pool id (pool1...); present only on DelegateStake. */
+  poolId?: string;
+  /** stakeKeyAddress as stored in the loaded txJson — provenance only. */
+  originalStakeAddress?: string;
+};
+
 export type TxDraft = {
   /** Draft id; the flow tx node id becomes `txd:<id>`. */
   id: string;
@@ -65,12 +88,8 @@ export type TxDraft = {
   description: string;
   /** On-chain 674 metadata message ("" = none). */
   metadata: string;
-  /**
-   * v1 extension point: typed as never[] so it can only be empty today;
-   * widened to real certificate intents when staking and DRep actions land
-   * in the builder.
-   */
-  certificates: never[];
+  /** Staking certificates loaded from an existing pending transaction. */
+  certificates: DraftCertificate[];
   /** Governance votes loaded from an existing pending transaction. */
   votes: DraftVote[];
 };

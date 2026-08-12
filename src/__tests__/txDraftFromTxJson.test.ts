@@ -1,12 +1,16 @@
-import { MeshTxBuilder } from "@meshsdk/core";
+import { MeshTxBuilder, resolvePoolId } from "@meshsdk/core";
 
 import {
   isDraftCompatible,
   txJsonToDraft,
 } from "@/lib/tx-draft/from-tx-json";
 import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
-import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
-import { realTestAddresses } from "./testUtils";
+import {
+  addCertificate,
+  addOutput,
+  createDraft,
+} from "@/lib/tx-draft/mutations";
+import { externalStakeCredential, realTestAddresses } from "./testUtils";
 
 const WALLET_ADDRESS = realTestAddresses.address1;
 const RECIPIENT = realTestAddresses.address2;
@@ -51,6 +55,30 @@ function scriptVote() {
   };
 }
 
+const STAKE_ADDRESS = externalStakeCredential;
+const POOL_HEX = "f".repeat(56);
+const POOL_BECH32 = resolvePoolId(POOL_HEX);
+
+function stakeCert(
+  certType: Record<string, unknown>,
+  type = "SimpleScriptCertificate",
+) {
+  return {
+    type,
+    certType,
+    ...(type === "SimpleScriptCertificate"
+      ? { simpleScriptSource: { type: "Provided", scriptCode: "00" } }
+      : {}),
+  };
+}
+
+function delegateCert(poolId: string = POOL_HEX, type?: string) {
+  return stakeCert(
+    { type: "DelegateStake", stakeKeyAddress: STAKE_ADDRESS, poolId },
+    type,
+  );
+}
+
 /** Minimal completed simple-send body, in the shape complete() leaves it. */
 function sendBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -92,7 +120,59 @@ describe("isDraftCompatible", () => {
   });
 
   test.each([
-    ["certificates", { certificates: [{ type: "BasicCertificate" }] }],
+    [
+      "Plutus script certificates",
+      {
+        certificates: [
+          {
+            type: "ScriptCertificate",
+            certType: delegateCert().certType,
+            scriptSource: { type: "Provided" },
+          },
+        ],
+      },
+    ],
+    [
+      "unsupported certificate types (VoteDelegation)",
+      {
+        certificates: [
+          stakeCert({
+            type: "VoteDelegation",
+            stakeKeyAddress: STAKE_ADDRESS,
+            drep: { dRepId: "drep1abc" },
+          }),
+        ],
+      },
+    ],
+    [
+      "unsupported certificate types (RegisterPool)",
+      { certificates: [stakeCert({ type: "RegisterPool" })] },
+    ],
+    [
+      "unsupported certificate types (StakeRegistrationAndDelegation)",
+      {
+        certificates: [
+          stakeCert({
+            type: "StakeRegistrationAndDelegation",
+            stakeKeyAddress: STAKE_ADDRESS,
+            poolId: POOL_HEX,
+            coin: 2000000,
+          }),
+        ],
+      },
+    ],
+    [
+      "malformed certificate (missing stakeKeyAddress)",
+      { certificates: [stakeCert({ type: "RegisterStake" })] },
+    ],
+    [
+      "malformed certificate (DelegateStake without poolId)",
+      {
+        certificates: [
+          stakeCert({ type: "DelegateStake", stakeKeyAddress: STAKE_ADDRESS }),
+        ],
+      },
+    ],
     ["Plutus script votes", { votes: [scriptVote()] }],
     ["non-DRep votes", { votes: [drepVote({ voter: { type: "StakingPool", keyHash: "kh" } })] }],
     ["malformed vote data", { votes: [drepVote({ votingProcedure: { voteKind: "Maybe" } })] }],
@@ -358,5 +438,156 @@ describe("vote transactions", () => {
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
     expect(draft.outputs).toHaveLength(1);
+  });
+});
+
+describe("staking certificate transactions", () => {
+  function certBody(
+    certificates: unknown[],
+    overrides: Record<string, unknown> = {},
+  ) {
+    return sendBody({
+      certificates,
+      // A completed delegation-only body: the only output is the change.
+      outputs: [
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "9800000" }]),
+      ],
+      ...overrides,
+    });
+  }
+
+  test("accepts a delegation-only body (SimpleScriptCertificate)", () => {
+    expect(isDraftCompatible(certBody([delegateCert()]))).toEqual({
+      compatible: true,
+      reasons: [],
+    });
+  });
+
+  test("accepts the BasicCertificate shape too", () => {
+    const body = certBody([delegateCert(POOL_HEX, "BasicCertificate")]);
+    expect(isDraftCompatible(body).compatible).toBe(true);
+  });
+
+  test("accepts a register + delegate pair and a deregister body", () => {
+    const pair = certBody([
+      stakeCert({ type: "RegisterStake", stakeKeyAddress: STAKE_ADDRESS }),
+      delegateCert(),
+    ]);
+    expect(isDraftCompatible(pair).compatible).toBe(true);
+
+    const deregister = certBody([
+      stakeCert({ type: "DeregisterStake", stakeKeyAddress: STAKE_ADDRESS }),
+    ]);
+    expect(isDraftCompatible(deregister).compatible).toBe(true);
+  });
+
+  test("cert-only body does not trip the no-outputs gate", () => {
+    const body = certBody([delegateCert()], { outputs: [] });
+    expect(isDraftCompatible(body).compatible).toBe(true);
+  });
+
+  test("withdrawals are still rejected even alongside certificates", () => {
+    const body = certBody([delegateCert()], {
+      withdrawals: [{ address: STAKE_ADDRESS, coin: "1" }],
+    });
+    expect(isDraftCompatible(body).compatible).toBe(false);
+  });
+
+  test("txJsonToDraft maps certs in order, normalizes hex pool ids and strips the lone change output", () => {
+    const body = certBody([
+      stakeCert({ type: "RegisterStake", stakeKeyAddress: STAKE_ADDRESS }),
+      delegateCert(POOL_HEX),
+    ]);
+
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+
+    expect(draft.outputs).toHaveLength(0);
+    expect(draft.certificates).toHaveLength(2);
+    expect(draft.certificates[0]).toMatchObject({
+      kind: "RegisterStake",
+      originalStakeAddress: STAKE_ADDRESS,
+    });
+    expect(draft.certificates[0]!.poolId).toBeUndefined();
+    expect(draft.certificates[1]).toMatchObject({
+      kind: "DelegateStake",
+      poolId: POOL_BECH32,
+      originalStakeAddress: STAKE_ADDRESS,
+    });
+    expect(draft.certificates[0]!.id).not.toBe(draft.certificates[1]!.id);
+  });
+
+  test("bech32 pool ids come back unchanged", () => {
+    const body = certBody([delegateCert(POOL_BECH32)]);
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.certificates[0]!.poolId).toBe(POOL_BECH32);
+  });
+
+  test("a non-normalizable pool id is kept raw for validation to flag", () => {
+    const body = certBody([delegateCert("not-a-pool-id")]);
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.certificates[0]!.poolId).toBe("not-a-pool-id");
+  });
+
+  test("cert tx with a real payment keeps the payment, strips only change", () => {
+    const body = certBody([delegateCert()], {
+      outputs: [
+        output(RECIPIENT, [{ unit: "lovelace", quantity: "2000000" }]),
+        output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "7000000" }]),
+      ],
+    });
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.outputs.map((o) => o.address)).toEqual([RECIPIENT]);
+    expect(draft.certificates).toHaveLength(1);
+  });
+
+  test("round-trips a delegation draft through applyDraftToTxBuilder and back", () => {
+    let original = createDraft("d2");
+    original = addCertificate(original, {
+      kind: "RegisterStake",
+      originalStakeAddress: STAKE_ADDRESS,
+    }).draft;
+    original = addCertificate(original, {
+      kind: "DelegateStake",
+      poolId: POOL_BECH32,
+      originalStakeAddress: STAKE_ADDRESS,
+    }).draft;
+
+    const txBuilder = applyDraftToTxBuilder(new MeshTxBuilder({}), original, {
+      scriptCbor: "8201828200581c00",
+      walletAddress: WALLET_ADDRESS,
+      availableUtxos: [
+        {
+          input: { txHash: TX_HASH, outputIndex: 0 },
+          output: {
+            address: WALLET_ADDRESS,
+            amount: [{ unit: "lovelace", quantity: "10000000" }],
+          },
+        } as any,
+      ],
+      stakeRewardAddress: STAKE_ADDRESS,
+      stakeScriptCbor: "8201828200581c11",
+    });
+    (txBuilder as any).queueAllLastItem();
+    const body = JSON.parse(JSON.stringify(txBuilder.meshTxBuilderBody));
+    // Simulate what complete() adds: fee and a trailing change output.
+    body.fee = "180000";
+    body.outputs.push(
+      output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "7600000" }]),
+    );
+
+    // Per-cert certificateScript means every cert serializes witnessed.
+    expect(body.certificates.map((c: any) => c.type)).toEqual([
+      "SimpleScriptCertificate",
+      "SimpleScriptCertificate",
+    ]);
+    expect(isDraftCompatible(body).compatible).toBe(true);
+
+    const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
+    expect(draft.outputs).toHaveLength(0);
+    expect(draft.certificates.map((c) => c.kind)).toEqual([
+      "RegisterStake",
+      "DelegateStake",
+    ]);
+    expect(draft.certificates[1]!.poolId).toBe(POOL_BECH32);
   });
 });

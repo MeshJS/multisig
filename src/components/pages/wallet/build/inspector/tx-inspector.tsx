@@ -27,6 +27,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { DraftVoteKind } from "@/types/tx-draft";
 import type { Wallet } from "@/types/wallet";
 import { getFirstAndLast } from "@/utils/strings";
+import CertificateEditor from "./certificate-editor";
 import IssueList from "./issue-list";
 import VoteRationaleEditor from "./vote-rationale-editor";
 
@@ -131,6 +132,31 @@ export default function TxInspector({
           </span>
         </div>
       </div>
+
+      {draft.certificates.length > 0 && (
+        <Collapsible defaultOpen>
+          <CollapsibleTrigger
+            data-testid="tx-builder-certs-toggle"
+            className="flex w-full items-center justify-between rounded-md border border-border/50 px-2.5 py-1.5 text-xs font-medium hover:bg-muted/50"
+          >
+            <span>Staking — {draft.certificates.length}</span>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-2 pt-2">
+            {draft.certificates.map((certificate) => (
+              <CertificateEditor
+                key={certificate.id}
+                certificate={certificate}
+              />
+            ))}
+            <p className="text-[10px] text-muted-foreground">
+              Staking certificates were loaded from the pending transaction —
+              only the delegation pool can be changed here. Other staking
+              actions are managed from the Staking page.
+            </p>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {draft.votes.length > 0 && (
         <Collapsible defaultOpen>

@@ -225,8 +225,8 @@ export default function TransactionCard({
   }, [transaction.txJson]);
   const router = useRouter();
   // Whether this pending tx can round-trip into the visual builder (simple
-  // sends and DRep votes — certificates, mints etc. have no draft
-  // representation).
+  // sends, DRep votes and staking certificates — withdrawals, mints etc.
+  // have no draft representation).
   const editCompat = useMemo(
     () =>
       txJson

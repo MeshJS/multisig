@@ -15,7 +15,7 @@ import {
   buildStakingCertificateActions,
   type StakingActionApi,
 } from "@/utils/stakingCertificates";
-import { normalizePoolIdForDelegation } from "@/lib/server/normalizePoolId";
+import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";

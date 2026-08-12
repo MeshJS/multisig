@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   blockfrostCertBadges,
+  draftCertificateToBadge,
   draftVoteToBadge,
   meshCertificateToBadge,
   meshVoteToBadge,
@@ -163,6 +164,47 @@ describe("meshCertificateToBadge", () => {
     });
     expect(meshCertificateToBadge(undefined).label).toBe("Certificate");
     expect(meshCertificateToBadge({}).label).toBe("Certificate");
+  });
+});
+
+describe("draftCertificateToBadge", () => {
+  it("maps a draft delegation with the target pool and teal color", () => {
+    const badge = draftCertificateToBadge({
+      id: "c-1",
+      kind: "DelegateStake",
+      poolId: POOL_ID,
+      originalStakeAddress: STAKE_ADDRESS,
+    });
+    expect(badge).toEqual({
+      kind: "certificate",
+      label: "Stake Delegation",
+      detail: `to ${getFirstAndLast(POOL_ID)}`,
+      color: "text-teal-500 dark:text-teal-400",
+    });
+  });
+
+  it("maps register/deregister with the provenance stake address detail", () => {
+    const reg = draftCertificateToBadge({
+      id: "c-1",
+      kind: "RegisterStake",
+      originalStakeAddress: STAKE_ADDRESS,
+    });
+    expect(reg.label).toBe("Stake Registration");
+    expect(reg.detail).toBe(getFirstAndLast(STAKE_ADDRESS));
+    expect(reg.color).toBe("text-blue-500 dark:text-blue-400");
+
+    const dereg = draftCertificateToBadge({
+      id: "c-2",
+      kind: "DeregisterStake",
+    });
+    expect(dereg.label).toBe("Stake Deregistration");
+    expect(dereg.detail).toBeUndefined();
+    expect(dereg.color).toBe("text-orange-500 dark:text-orange-400");
+  });
+
+  it("omits the detail when a delegation has no pool yet", () => {
+    const badge = draftCertificateToBadge({ id: "c-1", kind: "DelegateStake" });
+    expect(badge.detail).toBeUndefined();
   });
 });
 

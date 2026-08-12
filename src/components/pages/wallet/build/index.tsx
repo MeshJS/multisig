@@ -26,6 +26,7 @@ import useProposalTitles from "@/hooks/useProposalTitles";
 import useTransaction from "@/hooks/useTransaction";
 import { useToast } from "@/hooks/use-toast";
 import { deriveDrepVoteContext } from "@/lib/governance/drep-context";
+import { deriveStakeCertContext } from "@/lib/staking/stake-context";
 import {
   findBallotRowForVote,
   uploadRationale,
@@ -61,13 +62,14 @@ const BuilderCanvas = dynamic<BuilderCanvasProps>(
 /**
  * Canvas transaction builder: compose a multisig transaction by creating
  * recipient cards and connecting them to the transaction card, then propose
- * it through the standard multisig flow. V1 covers sends; certificates,
- * votes and other actions plug into the TxDraft model later.
+ * it through the standard multisig flow. Covers sends; governance votes and
+ * staking certificates can be loaded from a pending transaction and edited,
+ * but not created here (that stays on the governance/staking pages).
  *
- * Pending simple-send transactions can be loaded for editing (via the "Load
- * pending" picker or `?tx=<id>` from the transactions page). Since editing
- * changes the transaction body, building then atomically replaces the
- * original — discarding any collected signatures after explicit confirmation.
+ * Pending transactions can be loaded for editing (via the "Load pending"
+ * picker or `?tx=<id>` from the transactions page). Since editing changes
+ * the transaction body, building then atomically replaces the original —
+ * discarding any collected signatures after explicit confirmation.
  */
 export default function PageBuild() {
   const router = useRouter();
@@ -185,6 +187,17 @@ export default function PageBuild() {
       ? undefined
       : !!voteCtx;
 
+  // Staking identity for re-emitting loaded certificates; same tri-state as
+  // the DRep context above.
+  const stakeCtx = useMemo(
+    () => deriveStakeCertContext(multisigWallet, appWallet ?? undefined),
+    [multisigWallet, appWallet],
+  );
+  const hasStakeContext =
+    draft.certificates.length === 0 || (multisigWalletLoading && !stakeCtx)
+      ? undefined
+      : !!stakeCtx;
+
   // Proposal titles for the vote badges on the canvas and in the inspector.
   const voteProposalIds = useMemo(
     () =>
@@ -199,8 +212,14 @@ export default function PageBuild() {
   );
 
   const issues = useMemo(
-    () => validateDraft(draft, { network, selectedFunds, hasDrepContext }),
-    [draft, network, selectedFunds, hasDrepContext],
+    () =>
+      validateDraft(draft, {
+        network,
+        selectedFunds,
+        hasDrepContext,
+        hasStakeContext,
+      }),
+    [draft, network, selectedFunds, hasDrepContext, hasStakeContext],
   );
   const errors = issues.filter((issue) => issue.level === "error");
 
@@ -310,7 +329,9 @@ export default function PageBuild() {
   function requestLoadPendingTx(transaction: Transaction) {
     setLoadDialogOpen(false);
     const draftIsDirty =
-      (draft.outputs.length > 0 || draft.votes.length > 0) &&
+      (draft.outputs.length > 0 ||
+        draft.votes.length > 0 ||
+        draft.certificates.length > 0) &&
       editingTxId !== transaction.id;
     if (draftIsDirty) {
       setPendingLoad(transaction);
@@ -391,6 +412,10 @@ export default function PageBuild() {
         // errored (vote-drep-missing) if the draft has votes without it.
         drepId: voteCtx?.dRepId,
         drepScriptCbor: voteCtx?.drepScriptCbor,
+        // Staking identity for re-emitting loaded certificates; validation
+        // has already errored (cert-stake-missing) when absent but needed.
+        stakeRewardAddress: stakeCtx?.rewardAddress,
+        stakeScriptCbor: stakeCtx?.stakeScriptCbor,
       });
       await newTransaction({
         txBuilder,

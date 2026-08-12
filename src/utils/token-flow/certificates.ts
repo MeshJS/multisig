@@ -3,7 +3,7 @@ import type {
   BlockfrostTxDelegation,
   BlockfrostTxStakeCert,
 } from "@/types/blockfrost";
-import type { DraftVote } from "@/types/tx-draft";
+import type { DraftCertificate, DraftVote } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
 
 /**
@@ -94,6 +94,37 @@ export function meshCertificateToBadge(cert: any): CertBadge {
       return badge("Committee Cold Key Resignation");
     default:
       return badge("Certificate");
+  }
+}
+
+/** Maps a builder DraftCertificate to a badge; mirrors `meshCertificateToBadge`. */
+export function draftCertificateToBadge(cert: DraftCertificate): FlowBadge {
+  switch (cert.kind) {
+    case "RegisterStake":
+      return {
+        kind: "certificate",
+        label: "Stake Registration",
+        detail: cert.originalStakeAddress
+          ? getFirstAndLast(cert.originalStakeAddress)
+          : undefined,
+        color: "text-blue-500 dark:text-blue-400",
+      };
+    case "DeregisterStake":
+      return {
+        kind: "certificate",
+        label: "Stake Deregistration",
+        detail: cert.originalStakeAddress
+          ? getFirstAndLast(cert.originalStakeAddress)
+          : undefined,
+        color: "text-orange-500 dark:text-orange-400",
+      };
+    case "DelegateStake":
+      return {
+        kind: "certificate",
+        label: "Stake Delegation",
+        detail: cert.poolId ? `to ${getFirstAndLast(cert.poolId)}` : undefined,
+        color: "text-teal-500 dark:text-teal-400",
+      };
   }
 }
 

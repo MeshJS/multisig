@@ -1,4 +1,9 @@
-import { addOutput, addVote, createDraft } from "@/lib/tx-draft/mutations";
+import {
+  addCertificate,
+  addOutput,
+  addVote,
+  createDraft,
+} from "@/lib/tx-draft/mutations";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 
 /**
@@ -289,6 +294,45 @@ describe("tx-builder store vote actions", () => {
   it("resetDraft clears votes", () => {
     useTxBuilderStore.getState().resetDraft("wallet-1");
     expect(useTxBuilderStore.getState().draft.votes).toEqual([]);
+  });
+});
+
+describe("tx-builder store certificate actions", () => {
+  const certBase = {
+    kind: "DelegateStake" as const,
+    poolId: "pool1old",
+    originalStakeAddress: "stake_test1abc",
+  };
+
+  beforeEach(() => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+    const draft = addCertificate(createDraft("loaded"), {
+      ...certBase,
+      id: "c-1",
+    }).draft;
+    useTxBuilderStore.getState().loadDraft({
+      walletId: "wallet-1",
+      draft,
+      editingTxId: "tx-1",
+    });
+  });
+
+  it("loadDraft preserves certificates", () => {
+    expect(useTxBuilderStore.getState().draft.certificates).toEqual([
+      { ...certBase, id: "c-1" },
+    ]);
+  });
+
+  it("updateCertificatePool swaps the delegation target", () => {
+    useTxBuilderStore.getState().updateCertificatePool("c-1", "pool1new");
+    expect(
+      useTxBuilderStore.getState().draft.certificates[0]!.poolId,
+    ).toBe("pool1new");
+  });
+
+  it("resetDraft clears certificates", () => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+    expect(useTxBuilderStore.getState().draft.certificates).toEqual([]);
   });
 });
 

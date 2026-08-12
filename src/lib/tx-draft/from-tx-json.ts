@@ -1,15 +1,27 @@
-import type { DraftVoteKind, TxDraft } from "@/types/tx-draft";
-import { addOutput, addVote, createDraft } from "./mutations";
+import type {
+  DraftCertificateKind,
+  DraftVoteKind,
+  TxDraft,
+} from "@/types/tx-draft";
+import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
+import { addCertificate, addOutput, addVote, createDraft } from "./mutations";
 
 /**
  * Converts a stored pending transaction's parsed `txJson` (MeshTxBuilderBody
  * after `complete()`, or the hand-rolled subset written by importTransaction)
  * back into an editable TxDraft.
  *
- * Simple sends and native-script DRep votes round-trip — the draft model has
- * no representation for certificates, withdrawals, mints or Plutus scripts,
- * so `isDraftCompatible` gates every load.
+ * Simple sends, native-script DRep votes and native-script staking
+ * certificates round-trip — the draft model has no representation for
+ * withdrawals, mints or Plutus scripts, so `isDraftCompatible` gates every
+ * load.
  */
+
+const SUPPORTED_CERT_KINDS: DraftCertificateKind[] = [
+  "RegisterStake",
+  "DelegateStake",
+  "DeregisterStake",
+];
 
 export type TxJsonCompat = { compatible: boolean; reasons: string[] };
 
@@ -35,7 +47,6 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   const tx = body as Record<string, unknown>;
 
   const nonEmpty: Array<[key: string, reason: string]> = [
-    ["certificates", "Contains certificates — not yet supported by the builder"],
     ["withdrawals", "Contains reward withdrawals — not yet supported by the builder"],
     ["mints", "Mints or burns tokens — not yet supported by the builder"],
     ["collaterals", "Uses collateral inputs (smart contract transaction)"],
@@ -66,6 +77,40 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
     reasons.push("Transaction inputs are missing UTxO references");
   }
 
+  const certificates = asArray(tx.certificates) as any[];
+  for (const cert of certificates) {
+    // Same Mesh serialization duality as votes below: certs may appear as
+    // BasicCertificate or SimpleScriptCertificate depending on when
+    // certificateScript was applied — both are fine, the rebuild
+    // re-witnesses every certificate.
+    if (
+      cert?.type !== "BasicCertificate" &&
+      cert?.type !== "SimpleScriptCertificate"
+    ) {
+      reasons.push(
+        "Contains Plutus script certificates — not supported by the builder",
+      );
+      break;
+    }
+    const certType = cert?.certType;
+    if (!SUPPORTED_CERT_KINDS.includes(certType?.type)) {
+      // VoteDelegation, DRep and pool certificates, combined
+      // stake+vote-delegation certs etc. stay blocked.
+      reasons.push(
+        "Contains certificate types not yet supported by the builder",
+      );
+      break;
+    }
+    if (
+      typeof certType?.stakeKeyAddress !== "string" ||
+      (certType.type === "DelegateStake" &&
+        typeof certType?.poolId !== "string")
+    ) {
+      reasons.push("Certificate data is malformed");
+      break;
+    }
+  }
+
   const votes = asArray(tx.votes) as any[];
   for (const vote of votes) {
     // Multi-vote ballots serialize earlier votes as BasicVote and only the
@@ -93,7 +138,7 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   }
 
   const outputs = asArray(tx.outputs) as any[];
-  if (outputs.length === 0 && votes.length === 0) {
+  if (outputs.length === 0 && votes.length === 0 && certificates.length === 0) {
     reasons.push("Transaction has no outputs");
   }
   if (outputs.some((output) => output?.datum || output?.referenceScript)) {
@@ -147,6 +192,7 @@ export function txJsonToDraft(
   const warnings: TxJsonWarning[] = [];
 
   const rawVotes = asArray(body?.votes) as any[];
+  const rawCerts = asArray(body?.certificates) as any[];
 
   const rawOutputs = asArray(body?.outputs).filter(
     (output: any): output is { address: string; amount: unknown } =>
@@ -157,11 +203,12 @@ export function txJsonToDraft(
     typeof body?.changeAddress === "string" ? body.changeAddress : "";
   let outputs = rawOutputs;
   if (changeAddress && changeAddress === opts.walletAddress) {
-    // A vote-only body's outputs are pure change — those strip to zero.
+    // A vote-only or certificate-only body's outputs are pure change —
+    // those strip to zero.
     outputs = stripTrailingChangeOutputs(
       rawOutputs,
       changeAddress,
-      rawVotes.length > 0 ? 0 : 1,
+      rawVotes.length > 0 || rawCerts.length > 0 ? 0 : 1,
     );
   } else if (changeAddress) {
     // importTransaction guesses changeAddress = outputs[0].address; there is
@@ -180,6 +227,28 @@ export function txJsonToDraft(
             typeof asset?.quantity === "string",
         )
         .map((asset: any) => ({ unit: asset.unit, quantity: asset.quantity })),
+    }).draft;
+  }
+  for (const raw of rawCerts) {
+    const certType = raw?.certType;
+    let poolId: string | undefined;
+    if (certType?.type === "DelegateStake") {
+      // Stored poolIds vary by producer (hex from the staking page, bech32
+      // from the bot API) — canonicalize to bech32 so display, comparison
+      // and editing all happen in one space. Keep the raw value on failure;
+      // validateDraft flags it instead of the load crashing.
+      try {
+        poolId = normalizePoolIdForDelegation(String(certType?.poolId ?? ""));
+      } catch {
+        poolId = String(certType?.poolId ?? "");
+      }
+    }
+    draft = addCertificate(draft, {
+      kind: certType?.type as DraftCertificateKind,
+      ...(poolId !== undefined ? { poolId } : {}),
+      ...(typeof certType?.stakeKeyAddress === "string"
+        ? { originalStakeAddress: certType.stakeKeyAddress }
+        : {}),
     }).draft;
   }
   for (const raw of rawVotes) {

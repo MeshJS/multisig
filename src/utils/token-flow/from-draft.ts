@@ -6,6 +6,7 @@ import type {
 import type { BuilderSelection, TxDraft } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
 import {
+  draftCertificateToBadge,
   draftVoteToBadge,
   type ProposalTitleResolver,
 } from "./certificates";
@@ -39,9 +40,13 @@ export function draftToTokenFlow(
     kind: "transaction",
     status: "pending",
     label: draft.description || "New transaction",
-    badges: draft.votes.map((vote) =>
-      draftVoteToBadge(vote, opts.resolveProposalTitle),
-    ),
+    // Certificates before votes, matching the pending-view badge order.
+    badges: [
+      ...draft.certificates.map(draftCertificateToBadge),
+      ...draft.votes.map((vote) =>
+        draftVoteToBadge(vote, opts.resolveProposalTitle),
+      ),
+    ],
   };
   graph.addNode(txNode);
 

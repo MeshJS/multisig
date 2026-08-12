@@ -18,6 +18,7 @@ import {
   setOutputAsset,
   setUtxoSelection,
   setVoteRationale,
+  updateCertificatePool,
   updateOutput,
   updateVoteKind,
 } from "@/lib/tx-draft/mutations";
@@ -62,6 +63,8 @@ interface TxBuilderState {
   setDescription: (description: string) => void;
   setMetadata: (metadata: string) => void;
   updateVoteKind: (voteId: string, voteKind: DraftVoteKind) => void;
+  /** Changes the target pool of a loaded DelegateStake certificate. */
+  updateCertificatePool: (certificateId: string, poolId: string) => void;
   removeVote: (voteId: string) => void;
   clearVoteAnchor: (voteId: string) => void;
   /** undefined reverts the vote's rationale to untouched. */
@@ -149,6 +152,8 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
     set({ draft: setMetadata(get().draft, metadata) }),
   updateVoteKind: (voteId, voteKind) =>
     set({ draft: updateVoteKind(get().draft, voteId, voteKind) }),
+  updateCertificatePool: (certificateId, poolId) =>
+    set({ draft: updateCertificatePool(get().draft, certificateId, poolId) }),
   removeVote: (voteId) => set({ draft: removeVote(get().draft, voteId) }),
   clearVoteAnchor: (voteId) =>
     set({ draft: clearVoteAnchor(get().draft, voteId) }),

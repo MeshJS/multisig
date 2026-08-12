@@ -1,6 +1,12 @@
 import type { UTxO } from "@meshsdk/core";
 
-import { addOutput, addVote, createDraft, setUtxoSelection } from "@/lib/tx-draft/mutations";
+import {
+  addCertificate,
+  addOutput,
+  addVote,
+  createDraft,
+  setUtxoSelection,
+} from "@/lib/tx-draft/mutations";
 import type { AddressLabeler, TokenFlow } from "@/types/token-flow";
 import type { TxDraft } from "@/types/tx-draft";
 import { draftToTokenFlow, flowIdToDraftEntity } from "@/utils/token-flow";
@@ -209,5 +215,46 @@ describe("draftToTokenFlow votes", () => {
     expect(
       outputEdges(flow).find((e) => e.note === "change"),
     ).toBeDefined();
+  });
+});
+
+describe("draftToTokenFlow certificates", () => {
+  const POOL_ID = "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy";
+
+  test("draft certificates become badges on the tx node, before vote badges", () => {
+    let draft = addCertificate(createDraft("d1"), {
+      id: "c-1",
+      kind: "DelegateStake",
+      poolId: POOL_ID,
+    }).draft;
+    draft = addVote(draft, {
+      id: "v-1",
+      govActionTxHash: "c".repeat(64),
+      govActionIndex: 0,
+      voteKind: "Yes",
+    }).draft;
+
+    const flow = draftToTokenFlow(draft, OPTS);
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges.map((b: any) => b.kind)).toEqual([
+      "certificate",
+      "vote",
+    ]);
+    expect(txNode.badges[0]).toMatchObject({
+      label: "Stake Delegation",
+      color: "text-teal-500 dark:text-teal-400",
+    });
+  });
+
+  test("cert-only draft still renders the auto input and change edges", () => {
+    const draft = addCertificate(createDraft("d1"), {
+      id: "c-1",
+      kind: "DeregisterStake",
+    }).draft;
+    const flow = draftToTokenFlow(draft, OPTS);
+    expect(flow.edges.find((e) => e.kind === "input")).toMatchObject({
+      note: "auto selection",
+    });
+    expect(outputEdges(flow).find((e) => e.note === "change")).toBeDefined();
   });
 });
