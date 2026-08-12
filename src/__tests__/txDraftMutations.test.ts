@@ -1,10 +1,12 @@
 import {
   addCertificate,
   addOutput,
+  addStakeAction,
   addVote,
   clearVoteAnchor,
   updateCertificatePool,
   createDraft,
+  removeCertificate,
   removeOutput,
   removeVote,
   setDescription,
@@ -211,6 +213,107 @@ describe("tx-draft certificate mutations", () => {
     });
     const next = updateCertificatePool(draft, "c-1", "pool1new");
     expect(next.certificates[0]!.poolId).toBeUndefined();
+  });
+});
+
+describe("tx-draft stake action mutations", () => {
+  test("registerAndDelegate adds a register-first pair sharing a pairId", () => {
+    const original = createDraft("d1");
+    const { draft, certificateIds } = addStakeAction(original, {
+      type: "registerAndDelegate",
+      poolId: "pool1new",
+    });
+    expect(original.certificates).toHaveLength(0); // immutability
+    expect(certificateIds).toHaveLength(2);
+    const [register, delegate] = draft.certificates;
+    expect(register).toMatchObject({
+      id: certificateIds[0],
+      kind: "RegisterStake",
+      origin: "user",
+    });
+    expect(delegate).toMatchObject({
+      id: certificateIds[1],
+      kind: "DelegateStake",
+      poolId: "pool1new",
+      origin: "user",
+    });
+    expect(register!.poolId).toBeUndefined();
+    expect(register!.pairId).toBeDefined();
+    expect(delegate!.pairId).toBe(register!.pairId);
+  });
+
+  test("delegate adds a single unpaired user cert with the pool", () => {
+    const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
+      type: "delegate",
+      poolId: "pool1new",
+    });
+    expect(certificateIds).toHaveLength(1);
+    expect(draft.certificates).toEqual([
+      {
+        id: certificateIds[0],
+        kind: "DelegateStake",
+        poolId: "pool1new",
+        origin: "user",
+      },
+    ]);
+  });
+
+  test("deregister adds a single unpaired user cert without a pool", () => {
+    const { draft } = addStakeAction(createDraft("d1"), {
+      type: "deregister",
+    });
+    expect(draft.certificates).toHaveLength(1);
+    expect(draft.certificates[0]).toMatchObject({
+      kind: "DeregisterStake",
+      origin: "user",
+    });
+    expect(draft.certificates[0]!.poolId).toBeUndefined();
+    expect(draft.certificates[0]!.pairId).toBeUndefined();
+  });
+
+  test("removeCertificate drops a lone user cert", () => {
+    const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
+      type: "delegate",
+      poolId: "pool1new",
+    });
+    const next = removeCertificate(draft, certificateIds[0]!);
+    expect(next.certificates).toHaveLength(0);
+    expect(draft.certificates).toHaveLength(1); // original untouched
+  });
+
+  test("removeCertificate removes both halves of a pair from either half", () => {
+    const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: "pool1new",
+    });
+    for (const id of certificateIds) {
+      expect(removeCertificate(draft, id).certificates).toHaveLength(0);
+    }
+  });
+
+  test("removeCertificate is a no-op on loaded certs and unknown ids", () => {
+    const { draft } = addCertificate(createDraft("d1"), {
+      kind: "DelegateStake",
+      poolId: "pool1old",
+      originalStakeAddress: "stake_test1abc",
+      id: "loaded-1",
+    });
+    expect(removeCertificate(draft, "loaded-1")).toBe(draft);
+    expect(removeCertificate(draft, "missing")).toBe(draft);
+  });
+
+  test("removeCertificate leaves other certs intact", () => {
+    const { draft } = addCertificate(createDraft("d1"), {
+      kind: "DeregisterStake",
+      originalStakeAddress: "stake_test1abc",
+      id: "loaded-1",
+    });
+    const added = addStakeAction(draft, {
+      type: "delegate",
+      poolId: "pool1new",
+    });
+    const next = removeCertificate(added.draft, added.certificateIds[0]!);
+    expect(next.certificates.map((c) => c.id)).toEqual(["loaded-1"]);
   });
 });
 

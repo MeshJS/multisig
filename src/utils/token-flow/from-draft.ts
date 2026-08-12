@@ -8,6 +8,7 @@ import { getFirstAndLast } from "@/utils/strings";
 import {
   draftCertificateToBadge,
   draftVoteToBadge,
+  type PoolNameResolver,
   type ProposalTitleResolver,
 } from "./certificates";
 import { FlowGraphBuilder } from "./graph-builder";
@@ -30,6 +31,8 @@ export function draftToTokenFlow(
     walletAddress: string;
     /** Optional "txHash#certIndex" → proposal title lookup for vote badges. */
     resolveProposalTitle?: ProposalTitleResolver;
+    /** Optional pool id → pool name lookup for delegation badges. */
+    resolvePoolName?: PoolNameResolver;
   },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
@@ -42,7 +45,9 @@ export function draftToTokenFlow(
     label: draft.description || "New transaction",
     // Certificates before votes, matching the pending-view badge order.
     badges: [
-      ...draft.certificates.map(draftCertificateToBadge),
+      ...draft.certificates.map((cert) =>
+        draftCertificateToBadge(cert, opts.resolvePoolName),
+      ),
       ...draft.votes.map((vote) =>
         draftVoteToBadge(vote, opts.resolveProposalTitle),
       ),

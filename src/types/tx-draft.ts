@@ -28,11 +28,10 @@ export type DraftUtxoSelection =
 export type DraftVoteKind = "Yes" | "No" | "Abstain";
 
 /**
- * A governance vote loaded from an existing pending transaction. Votes can't
- * be created in the builder (that stays on the governance pages) — the
- * choice can be changed, the rationale edited or cleared, or the vote
- * removed. The voter is re-derived from the wallet's DRep identity at build
- * time.
+ * A governance vote, either loaded from an existing pending transaction or
+ * created in the builder. The choice can be changed, the rationale edited or
+ * cleared, or the vote removed. The voter is re-derived from the wallet's
+ * DRep identity at build time.
  */
 export type DraftVote = {
   /** Stable per-vote id; generated at load, drives inspector row identity. */
@@ -62,21 +61,26 @@ export type DraftCertificateKind =
   | "DeregisterStake";
 
 /**
- * A staking certificate loaded from an existing pending transaction.
- * Certificates can't be created in the builder (that stays on the staking
- * page) — only the delegation pool can be changed, and certs can't be
- * removed individually: a register/delegate pair must stay intact, and a
- * lone delegation cert is the whole point of its transaction. The reward
+ * A staking certificate, either loaded from an existing pending transaction
+ * or created in the builder. Loaded certs (no `origin`) can only change
+ * their delegation pool and can't be removed individually: a
+ * register/delegate pair must stay intact, and a lone delegation cert is the
+ * whole point of its transaction. User-created certs are removable, but a
+ * register+delegate pair (shared `pairId`) is removed atomically. The reward
  * address and staking script are re-derived from the wallet at build time.
  */
 export type DraftCertificate = {
-  /** Stable per-cert id; generated at load, drives inspector row identity. */
+  /** Stable per-cert id; generated at load/add, drives inspector row identity. */
   id: string;
   kind: DraftCertificateKind;
   /** Canonical bech32 pool id (pool1...); present only on DelegateStake. */
   poolId?: string;
   /** stakeKeyAddress as stored in the loaded txJson — provenance only. */
   originalStakeAddress?: string;
+  /** Present only on certs created in the builder; absent = loaded. */
+  origin?: "user";
+  /** Shared by the two certs of a user-created register+delegate pair. */
+  pairId?: string;
 };
 
 export type TxDraft = {
@@ -88,9 +92,9 @@ export type TxDraft = {
   description: string;
   /** On-chain 674 metadata message ("" = none). */
   metadata: string;
-  /** Staking certificates loaded from an existing pending transaction. */
+  /** Staking certificates, loaded from a pending transaction or added here. */
   certificates: DraftCertificate[];
-  /** Governance votes loaded from an existing pending transaction. */
+  /** Governance votes, loaded from a pending transaction or added here. */
   votes: DraftVote[];
 };
 

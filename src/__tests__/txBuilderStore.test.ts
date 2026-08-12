@@ -334,6 +334,62 @@ describe("tx-builder store certificate actions", () => {
     useTxBuilderStore.getState().resetDraft("wallet-1");
     expect(useTxBuilderStore.getState().draft.certificates).toEqual([]);
   });
+
+  it("removeCertificate is a no-op on loaded certs", () => {
+    useTxBuilderStore.getState().removeCertificate("c-1");
+    expect(useTxBuilderStore.getState().draft.certificates).toHaveLength(1);
+  });
+});
+
+describe("tx-builder store creating stake actions and votes", () => {
+  beforeEach(() => {
+    useTxBuilderStore.getState().resetDraft("wallet-1");
+  });
+
+  it("addStakeAction adds the pair and focuses the tx inspector", () => {
+    const outputId = useTxBuilderStore.getState().addOutput();
+    useTxBuilderStore.getState().addStakeAction({
+      type: "registerAndDelegate",
+      poolId: "pool1new",
+    });
+    const state = useTxBuilderStore.getState();
+    expect(state.draft.certificates.map((c) => c.kind)).toEqual([
+      "RegisterStake",
+      "DelegateStake",
+    ]);
+    expect(state.selection).toEqual({ kind: "tx" });
+    // Moving to the tx inspector abandons the pristine output card.
+    expect(state.touched[outputId]).toBe(true);
+  });
+
+  it("removeCertificate drops a user-added pair atomically", () => {
+    useTxBuilderStore.getState().addStakeAction({
+      type: "registerAndDelegate",
+      poolId: "pool1new",
+    });
+    const certId =
+      useTxBuilderStore.getState().draft.certificates[0]!.id;
+    useTxBuilderStore.getState().removeCertificate(certId);
+    expect(useTxBuilderStore.getState().draft.certificates).toEqual([]);
+  });
+
+  it("addVote adds an anchor-less vote and focuses the tx inspector", () => {
+    useTxBuilderStore.getState().addVote({
+      govActionTxHash: "e".repeat(64),
+      govActionIndex: 3,
+      voteKind: "No",
+    });
+    const state = useTxBuilderStore.getState();
+    expect(state.draft.votes).toHaveLength(1);
+    expect(state.draft.votes[0]).toMatchObject({
+      govActionTxHash: "e".repeat(64),
+      govActionIndex: 3,
+      voteKind: "No",
+    });
+    expect(state.draft.votes[0]!.anchor).toBeUndefined();
+    expect(state.draft.votes[0]!.originalDrepId).toBeUndefined();
+    expect(state.selection).toEqual({ kind: "tx" });
+  });
 });
 
 describe("tx-builder store vote rationale", () => {

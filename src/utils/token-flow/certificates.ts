@@ -97,8 +97,14 @@ export function meshCertificateToBadge(cert: any): CertBadge {
   }
 }
 
+/** Resolves a bech32 pool id to a display name; injected, may be absent. */
+export type PoolNameResolver = (poolId: string) => string | undefined;
+
 /** Maps a builder DraftCertificate to a badge; mirrors `meshCertificateToBadge`. */
-export function draftCertificateToBadge(cert: DraftCertificate): FlowBadge {
+export function draftCertificateToBadge(
+  cert: DraftCertificate,
+  resolvePoolName?: PoolNameResolver,
+): FlowBadge {
   switch (cert.kind) {
     case "RegisterStake":
       return {
@@ -118,13 +124,18 @@ export function draftCertificateToBadge(cert: DraftCertificate): FlowBadge {
           : undefined,
         color: "text-orange-500 dark:text-orange-400",
       };
-    case "DelegateStake":
+    case "DelegateStake": {
+      // A resolved pool name goes into `title` — on the tx card only titled
+      // badges render visible text (detail is just the hover tooltip).
+      const poolName = cert.poolId ? resolvePoolName?.(cert.poolId) : undefined;
       return {
         kind: "certificate",
         label: "Stake Delegation",
         detail: cert.poolId ? `to ${getFirstAndLast(cert.poolId)}` : undefined,
         color: "text-teal-500 dark:text-teal-400",
+        ...(poolName ? { title: poolName } : {}),
       };
+    }
   }
 }
 

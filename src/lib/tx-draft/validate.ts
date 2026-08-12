@@ -19,7 +19,9 @@ export type DraftIssueCode =
   | "duplicate-output"
   | "vote-drep-missing"
   | "cert-stake-missing"
-  | "cert-pool-missing";
+  | "cert-pool-missing"
+  | "duplicate-vote"
+  | "cert-duplicate";
 
 export type DraftIssue = {
   level: "error" | "warning";
@@ -119,6 +121,37 @@ export function validateDraft(
       });
       break; // one summary issue is enough
     }
+  }
+
+  // Two votes on the same governance action collide in the on-chain
+  // voting_procedures map — only one would survive.
+  const seenActions = new Set<string>();
+  for (const vote of draft.votes) {
+    const actionId = `${vote.govActionTxHash}#${vote.govActionIndex}`;
+    if (seenActions.has(actionId)) {
+      issues.push({
+        level: "error",
+        code: "duplicate-vote",
+        message: "Two votes target the same governance action.",
+      });
+      break; // one summary issue is enough
+    }
+    seenActions.add(actionId);
+  }
+
+  // A single reward address can't meaningfully carry two certs of the same
+  // kind; the add-stake dialog prevents this, so this is a backstop.
+  const seenKinds = new Set<string>();
+  for (const cert of draft.certificates) {
+    if (seenKinds.has(cert.kind)) {
+      issues.push({
+        level: "error",
+        code: "cert-duplicate",
+        message: "The draft has two staking certificates of the same kind.",
+      });
+      break; // one summary issue is enough
+    }
+    seenKinds.add(cert.kind);
   }
 
   const seenAddresses = new Set<string>();

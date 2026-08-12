@@ -4,6 +4,7 @@ import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
 import {
   addCertificate,
   addOutput,
+  addStakeAction,
   addVote,
   createDraft,
   setUtxoSelection,
@@ -244,6 +245,24 @@ describe("applyDraftToTxBuilder votes", () => {
     });
   });
 
+  test("a builder-created anchor-less vote emits without an anchor", () => {
+    const draft = addVote(createDraft("d1"), {
+      id: "v-user",
+      govActionTxHash: GOV_HASH,
+      govActionIndex: 2,
+      voteKind: "No",
+    }).draft;
+    const built = body(applyDraftToTxBuilder(bareTxBuilder(), draft, voteCtx));
+    expect(built.votes).toHaveLength(1);
+    expect((built.votes[0] as any).vote.votingProcedure).toEqual({
+      voteKind: "No",
+    });
+    expect((built.votes[0] as any).vote.voter).toEqual({
+      type: "DRep",
+      drepId: DREP_ID,
+    });
+  });
+
   test("votes alongside outputs keep the larger lovelace requirement", () => {
     const draft = voteDraft(
       [{}],
@@ -391,6 +410,34 @@ describe("applyDraftToTxBuilder certificates", () => {
       ),
     );
     expect(built.inputs).toHaveLength(2);
+  });
+
+  test("a builder-created register+delegate pair emits like a loaded one", () => {
+    const { draft } = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    });
+    const built = body(
+      applyDraftToTxBuilder(bareTxBuilder(), draft, {
+        ...certCtx,
+        // 5 ADA floor + 2 ADA deposit: the deposit headroom must apply to
+        // user-created registrations too.
+        availableUtxos: [
+          utxo(0, [{ unit: "lovelace", quantity: "6000000" }]),
+          utxo(1, [{ unit: "lovelace", quantity: "2000000" }]),
+        ],
+      }),
+    );
+    expect(built.inputs).toHaveLength(2);
+    expect(built.certificates.map((c: any) => c.certType.type)).toEqual([
+      "RegisterStake",
+      "DelegateStake",
+    ]);
+    for (const cert of built.certificates) {
+      expect(cert.type).toBe("SimpleScriptCertificate");
+      expect((cert as any).certType.stakeKeyAddress).toBe(REWARD_ADDRESS);
+    }
+    expect((built.certificates[1] as any).certType.poolId).toBe(POOL_ID);
   });
 
   test("deregister-only draft builds without deposit headroom", () => {

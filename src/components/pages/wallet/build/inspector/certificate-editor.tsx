@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 
 import PoolSelector from "@/components/pages/wallet/staking/poolSelector";
 import { Button } from "@/components/ui/button";
@@ -22,10 +23,12 @@ const CERT_KIND_LABELS: Record<DraftCertificateKind, string> = {
 };
 
 /**
- * One staking certificate row in the tx inspector. Certificates are loaded
- * from a pending transaction and can't be added or removed here; only the
- * target pool of a delegation certificate is editable — via the pool browser
- * or a manual pool id (bech32 or hex, canonicalized to bech32 on apply).
+ * One staking certificate row in the tx inspector. The target pool of a
+ * delegation certificate is editable — via the pool browser or a manual pool
+ * id (bech32 or hex, canonicalized to bech32 on apply). Certificates added
+ * in the builder are removable (a register+delegate pair as a unit); ones
+ * loaded from a pending transaction are not, since dropping one would
+ * rebuild a chain-invalid or pointless transaction.
  */
 export default function CertificateEditor({
   certificate,
@@ -34,6 +37,9 @@ export default function CertificateEditor({
 }) {
   const updateCertificatePool = useTxBuilderStore(
     (state) => state.updateCertificatePool,
+  );
+  const removeCertificate = useTxBuilderStore(
+    (state) => state.removeCertificate,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [manualPoolId, setManualPoolId] = useState("");
@@ -57,9 +63,27 @@ export default function CertificateEditor({
       data-testid={`tx-builder-cert-${certificate.id}`}
       className="flex flex-col gap-1.5 rounded-md border border-border/50 p-2"
     >
-      <span className="text-xs font-medium">
-        {CERT_KIND_LABELS[certificate.kind]}
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium">
+          {CERT_KIND_LABELS[certificate.kind]}
+        </span>
+        {certificate.origin === "user" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            title={
+              certificate.pairId
+                ? "Removes the registration + delegation pair from the transaction"
+                : "Remove this staking action from the transaction"
+            }
+            data-testid={`tx-builder-cert-remove-${certificate.id}`}
+            onClick={() => removeCertificate(certificate.id)}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
       {certificate.originalStakeAddress && (
         <span
           className="font-mono text-[10px] text-muted-foreground"

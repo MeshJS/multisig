@@ -22,6 +22,7 @@ import useAddressLabels from "@/hooks/useAddressLabels";
 import useAppWallet from "@/hooks/useAppWallet";
 import useAvailableUtxos from "@/hooks/useAvailableUtxos";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
+import usePoolNames from "@/hooks/usePoolNames";
 import useProposalTitles from "@/hooks/useProposalTitles";
 import useTransaction from "@/hooks/useTransaction";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +45,8 @@ import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
+import AddStakeDialog from "./add-stake-dialog";
+import AddVoteDialog from "./add-vote-dialog";
 import Inspector from "./inspector";
 import LoadPendingDialog from "./load-pending-dialog";
 import ProblemsPanel from "./problems-panel";
@@ -62,9 +65,11 @@ const BuilderCanvas = dynamic<BuilderCanvasProps>(
 /**
  * Canvas transaction builder: compose a multisig transaction by creating
  * recipient cards and connecting them to the transaction card, then propose
- * it through the standard multisig flow. Covers sends; governance votes and
- * staking certificates can be loaded from a pending transaction and edited,
- * but not created here (that stays on the governance/staking pages).
+ * it through the standard multisig flow. Covers sends, staking actions
+ * (register/delegate/deregister certificates, added via the palette), and
+ * DRep governance votes — created here or loaded from a pending transaction
+ * and edited. Reward withdrawals and vote-power delegation stay on the
+ * staking/governance pages.
  *
  * Pending transactions can be loaded for editing (via the "Load pending"
  * picker or `?tx=<id>` from the transactions page). Since editing changes
@@ -100,6 +105,8 @@ export default function PageBuild() {
   const [building, setBuilding] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
+  const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
+  const [voteDialogOpen, setVoteDialogOpen] = useState(false);
   /** Selected for loading while the current draft still has unsaved work. */
   const [pendingLoad, setPendingLoad] = useState<Transaction | null>(null);
   /** Tx ids already auto-loaded from the URL; blocks re-loading loops. */
@@ -198,6 +205,26 @@ export default function PageBuild() {
       ? undefined
       : !!stakeCtx;
 
+  // DRep registration status (loaded by the wallet data loader). undefined
+  // means "loading OR unregistered" — usable only for a non-blocking notice,
+  // never as a hard gate.
+  const drepInfo = useWalletsStore((state) => state.drepInfo);
+
+  // Palette add-button gating: identity context only. Registration state is
+  // checked inside the dialogs, where it can inform instead of block.
+  const addStakeDisabledReason = stakeCtx
+    ? draft.certificates.length > 0
+      ? "The draft already has a staking action"
+      : undefined
+    : multisigWalletLoading
+      ? "Loading wallet…"
+      : "This wallet has no staking identity";
+  const addVoteDisabledReason = voteCtx
+    ? undefined
+    : multisigWalletLoading
+      ? "Loading wallet…"
+      : "This wallet has no DRep identity";
+
   // Proposal titles for the vote badges on the canvas and in the inspector.
   const voteProposalIds = useMemo(
     () =>
@@ -210,6 +237,16 @@ export default function PageBuild() {
     appWallet?.id,
     voteProposalIds,
   );
+
+  // Pool names for the delegation badge on the canvas tx card.
+  const delegationPoolIds = useMemo(
+    () =>
+      draft.certificates.flatMap((cert) =>
+        cert.kind === "DelegateStake" && cert.poolId ? [cert.poolId] : [],
+      ),
+    [draft.certificates],
+  );
+  const { resolvePoolName } = usePoolNames(delegationPoolIds);
 
   const issues = useMemo(
     () =>
@@ -624,6 +661,11 @@ export default function PageBuild() {
             contacts={contactEntries}
             signers={signerEntries}
             resolveProposalTitle={resolveProposalTitle}
+            resolvePoolName={resolvePoolName}
+            onAddStakeAction={() => setStakeDialogOpen(true)}
+            addStakeDisabledReason={addStakeDisabledReason}
+            onAddVote={() => setVoteDialogOpen(true)}
+            addVoteDisabledReason={addVoteDisabledReason}
           />
           <ProblemsPanel issues={visibleIssues} />
         </div>
@@ -631,6 +673,20 @@ export default function PageBuild() {
           <Inspector appWallet={appWallet} issues={visibleIssues} />
         </aside>
       </div>
+      {stakeCtx && (
+        <AddStakeDialog
+          open={stakeDialogOpen}
+          onOpenChange={setStakeDialogOpen}
+          stakeAddress={stakeCtx.rewardAddress}
+        />
+      )}
+      <AddVoteDialog
+        open={voteDialogOpen}
+        onOpenChange={setVoteDialogOpen}
+        walletId={appWallet.id}
+        existingProposalIds={voteProposalIds}
+        drepRegistered={drepInfo?.active === true ? true : undefined}
+      />
       <LoadPendingDialog
         open={loadDialogOpen}
         onOpenChange={setLoadDialogOpen}

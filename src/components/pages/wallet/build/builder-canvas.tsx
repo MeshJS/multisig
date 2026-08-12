@@ -45,6 +45,16 @@ export type BuilderCanvasProps = {
   signers: PaletteEntry[];
   /** Resolves "txHash#certIndex" to a proposal title for vote badges. */
   resolveProposalTitle?: (proposalId: string) => string | undefined;
+  /** Resolves a bech32 pool id to a pool name for delegation badges. */
+  resolvePoolName?: (poolId: string) => string | undefined;
+  /** Opens the add-stake-action dialog owned by the page. */
+  onAddStakeAction: () => void;
+  /** When set, the stake button is disabled with this tooltip. */
+  addStakeDisabledReason?: string;
+  /** Opens the add-vote dialog owned by the page. */
+  onAddVote: () => void;
+  /** When set, the vote button is disabled with this tooltip. */
+  addVoteDisabledReason?: string;
   className?: string;
 };
 
@@ -113,6 +123,11 @@ export default function BuilderCanvas({
   contacts,
   signers,
   resolveProposalTitle,
+  resolvePoolName,
+  onAddStakeAction,
+  addStakeDisabledReason,
+  onAddVote,
+  addVoteDisabledReason,
   className,
 }: BuilderCanvasProps) {
   const draft = useTxBuilderStore((state) => state.draft);
@@ -130,8 +145,9 @@ export default function BuilderCanvas({
         labelAddress,
         walletAddress,
         resolveProposalTitle,
+        resolvePoolName,
       }),
-    [draft, labelAddress, walletAddress, resolveProposalTitle],
+    [draft, labelAddress, walletAddress, resolveProposalTitle, resolvePoolName],
   );
   const layout = useMemo(() => layoutTokenFlow(flow), [flow]);
 
@@ -293,6 +309,10 @@ export default function BuilderCanvas({
           contacts={contacts}
           signers={signers}
           selfAddress={walletAddress}
+          onAddStakeAction={onAddStakeAction}
+          addStakeDisabledReason={addStakeDisabledReason}
+          onAddVote={onAddVote}
+          addVoteDisabledReason={addVoteDisabledReason}
         />
         <ResetLayoutButton onReset={clearPositions} />
       </ReactFlow>

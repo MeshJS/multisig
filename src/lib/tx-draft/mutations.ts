@@ -115,9 +115,8 @@ export function setMetadata(draft: TxDraft, metadata: string): TxDraft {
 }
 
 /**
- * Appends a staking certificate loaded from an existing pending transaction.
- * The builder never creates certificates from scratch — this exists for
- * `txJsonToDraft`.
+ * Appends a staking certificate. Used by `txJsonToDraft` for certs loaded
+ * from a pending transaction and by `addStakeAction` for user-created ones.
  */
 export function addCertificate(
   draft: TxDraft,
@@ -134,8 +133,7 @@ export function addCertificate(
 /**
  * Changes the target pool of a delegation certificate. Guarded to
  * DelegateStake so a stray call can't attach a pool to a register/deregister
- * cert. There is deliberately no removeCertificate: dropping one half of a
- * register/delegate pair would build a chain-invalid transaction.
+ * cert.
  */
 export function updateCertificatePool(
   draft: TxDraft,
@@ -152,9 +150,72 @@ export function updateCertificatePool(
   };
 }
 
+export type StakeActionInput =
+  | { type: "registerAndDelegate"; poolId: string }
+  | { type: "delegate"; poolId: string }
+  | { type: "deregister" };
+
 /**
- * Appends a vote loaded from an existing pending transaction. The builder
- * never creates votes from scratch — this exists for `txJsonToDraft`.
+ * Adds the certificate(s) for a user-chosen staking action. A
+ * register+delegate action becomes two certs (register first — on-chain
+ * order matters) sharing a pairId so removal stays atomic.
+ */
+export function addStakeAction(
+  draft: TxDraft,
+  action: StakeActionInput,
+): { draft: TxDraft; certificateIds: string[] } {
+  let partials: Omit<DraftCertificate, "id">[];
+  if (action.type === "registerAndDelegate") {
+    const pairId = generateId();
+    partials = [
+      { kind: "RegisterStake", origin: "user", pairId },
+      { kind: "DelegateStake", poolId: action.poolId, origin: "user", pairId },
+    ];
+  } else if (action.type === "delegate") {
+    partials = [
+      { kind: "DelegateStake", poolId: action.poolId, origin: "user" },
+    ];
+  } else {
+    partials = [{ kind: "DeregisterStake", origin: "user" }];
+  }
+
+  const certificateIds: string[] = [];
+  let next = draft;
+  for (const partial of partials) {
+    const result = addCertificate(next, partial);
+    next = result.draft;
+    certificateIds.push(result.certificateId);
+  }
+  return { draft: next, certificateIds };
+}
+
+/**
+ * Removes a user-created certificate, along with its pairId sibling so a
+ * register/delegate pair can't be broken. Certs loaded from a pending
+ * transaction (no `origin`) are untouched — dropping one would rebuild a
+ * chain-invalid or pointless transaction.
+ */
+export function removeCertificate(
+  draft: TxDraft,
+  certificateId: string,
+): TxDraft {
+  const target = draft.certificates.find(
+    (certificate) => certificate.id === certificateId,
+  );
+  if (!target || target.origin !== "user") return draft;
+  return {
+    ...draft,
+    certificates: draft.certificates.filter((certificate) =>
+      target.pairId
+        ? certificate.pairId !== target.pairId
+        : certificate.id !== certificateId,
+    ),
+  };
+}
+
+/**
+ * Appends a vote. Used by `txJsonToDraft` for votes loaded from a pending
+ * transaction and by the builder's add-vote dialog for new ones.
  */
 export function addVote(
   draft: TxDraft,

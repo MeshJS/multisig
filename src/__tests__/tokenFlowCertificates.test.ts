@@ -206,6 +206,40 @@ describe("draftCertificateToBadge", () => {
     const badge = draftCertificateToBadge({ id: "c-1", kind: "DelegateStake" });
     expect(badge.detail).toBeUndefined();
   });
+
+  it("sets the resolved pool name as the delegation badge title", () => {
+    const named = draftCertificateToBadge(
+      { id: "c-1", kind: "DelegateStake", poolId: POOL_ID },
+      (poolId) => (poolId === POOL_ID ? "[TICKER] My Pool" : undefined),
+    );
+    // Title renders as visible text on the tx card; detail stays the
+    // truncated pool id (hover tooltip).
+    expect(named.title).toBe("[TICKER] My Pool");
+    expect(named.detail).toBe(`to ${getFirstAndLast(POOL_ID)}`);
+
+    // Resolver misses leave the badge untitled (compact pill).
+    const missed = draftCertificateToBadge(
+      { id: "c-1", kind: "DelegateStake", poolId: POOL_ID },
+      () => undefined,
+    );
+    expect(missed.title).toBeUndefined();
+    expect(missed.detail).toBe(`to ${getFirstAndLast(POOL_ID)}`);
+  });
+
+  it("maps a builder-created cert (no provenance address) cleanly", () => {
+    const badge = draftCertificateToBadge({
+      id: "c-1",
+      kind: "RegisterStake",
+      origin: "user",
+      pairId: "p-1",
+    });
+    expect(badge).toEqual({
+      kind: "certificate",
+      label: "Stake Registration",
+      detail: undefined,
+      color: "text-blue-500 dark:text-blue-400",
+    });
+  });
 });
 
 describe("meshVoteToBadge", () => {

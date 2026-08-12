@@ -246,6 +246,28 @@ describe("draftToTokenFlow certificates", () => {
     });
   });
 
+  test("resolvePoolName populates the delegation badge title", () => {
+    const draft = addCertificate(createDraft("d1"), {
+      id: "c-1",
+      kind: "DelegateStake",
+      poolId: POOL_ID,
+    }).draft;
+
+    const flow = draftToTokenFlow(draft, {
+      ...OPTS,
+      resolvePoolName: (poolId) =>
+        poolId === POOL_ID ? "[TICKER] My Pool" : undefined,
+    });
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges[0].title).toBe("[TICKER] My Pool");
+    expect(txNode.badges[0].detail).toMatch(/^to pool1/);
+
+    // Unresolved names leave the badge untitled (compact pill).
+    const bare = draftToTokenFlow(draft, OPTS);
+    const bareNode = bare.nodes.find((n) => n.kind === "transaction") as any;
+    expect(bareNode.badges[0].title).toBeUndefined();
+  });
+
   test("cert-only draft still renders the auto input and change edges", () => {
     const draft = addCertificate(createDraft("d1"), {
       id: "c-1",

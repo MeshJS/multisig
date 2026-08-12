@@ -4,6 +4,7 @@ import { utxoFunds } from "@/lib/tx-draft/assets";
 import {
   addCertificate,
   addOutput,
+  addStakeAction,
   addVote,
   createDraft,
 } from "@/lib/tx-draft/mutations";
@@ -227,6 +228,25 @@ describe("validateDraft votes", () => {
     const send = validateDraft(createDraft("d1"), { network: 0, hasDrepContext: false });
     expect(send.map((i) => i.code)).not.toContain("vote-drep-missing");
   });
+
+  test("duplicate-vote fires when two votes target the same action", () => {
+    const duplicated = addVote(voteOnlyDraft(), {
+      ...voteBase,
+      voteKind: "No",
+    }).draft;
+    expect(
+      codes(validateDraft(duplicated, { network: 0, hasDrepContext: true })),
+    ).toContain("duplicate-vote");
+
+    // Distinct actions (different index or hash) pass.
+    const distinct = addVote(voteOnlyDraft(), {
+      ...voteBase,
+      govActionIndex: 1,
+    }).draft;
+    expect(
+      codes(validateDraft(distinct, { network: 0, hasDrepContext: true })),
+    ).not.toContain("duplicate-vote");
+  });
 });
 
 describe("validateDraft certificates", () => {
@@ -293,6 +313,46 @@ describe("validateDraft certificates", () => {
     expect(
       validateDraft(register, { network: 0 }).map((i) => i.code),
     ).not.toContain("cert-pool-missing");
+  });
+
+  test("cert-duplicate fires on two certs of the same kind", () => {
+    const doubled = addCertificate(delegationDraft(POOL_ID), {
+      kind: "DelegateStake",
+      poolId: POOL_ID,
+    }).draft;
+    expect(codes(validateDraft(doubled, { network: 0 }))).toContain(
+      "cert-duplicate",
+    );
+
+    // A register+delegate pair is two different kinds and passes.
+    const pair = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    }).draft;
+    expect(
+      codes(validateDraft(pair, { network: 0, hasStakeContext: true })),
+    ).toEqual([]);
+  });
+
+  test("user-added certs get the same stake-context and deposit checks", () => {
+    const pair = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    }).draft;
+    expect(
+      codes(validateDraft(pair, { network: 0, hasStakeContext: false })),
+    ).toContain("cert-stake-missing");
+
+    const tight = utxoFunds([utxo([{ unit: "lovelace", quantity: "1999999" }])]);
+    expect(
+      codes(
+        validateDraft(pair, {
+          network: 0,
+          selectedFunds: tight,
+          hasStakeContext: true,
+        }),
+      ),
+    ).toContain("insufficient-funds");
   });
 
   test("RegisterStake deposit counts toward the lovelace requirement", () => {

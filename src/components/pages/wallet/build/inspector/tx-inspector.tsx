@@ -150,9 +150,9 @@ export default function TxInspector({
               />
             ))}
             <p className="text-[10px] text-muted-foreground">
-              Staking certificates were loaded from the pending transaction —
-              only the delegation pool can be changed here. Other staking
-              actions are managed from the Staking page.
+              Loaded certificates can only change their delegation pool;
+              certificates added here can be removed. Reward withdrawals are
+              managed from the Staking page.
             </p>
           </CollapsibleContent>
         </Collapsible>
@@ -228,7 +228,7 @@ export default function TxInspector({
             <p className="text-[10px] text-muted-foreground">
               Changing a vote keeps its attached rationale unless cleared or
               edited — editing uploads a new rationale document when you
-              build. New votes are cast from the Governance pages.
+              build.
             </p>
           </CollapsibleContent>
         </Collapsible>
