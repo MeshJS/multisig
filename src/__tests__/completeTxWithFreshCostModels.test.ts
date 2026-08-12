@@ -96,8 +96,7 @@ jest.mock(
       Transaction: MockTransaction,
       hash_script_data: hashScriptDataMock,
     },
-  }),
-  { virtual: true },
+  })
 );
 
 jest.mock(
@@ -108,8 +107,7 @@ jest.mock(
       NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: "preprod-key",
       NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: "mainnet-key",
     },
-  }),
-  { virtual: true },
+  })
 );
 
 describe("refreshScriptDataHash", () => {
