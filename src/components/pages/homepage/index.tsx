@@ -659,6 +659,25 @@ export function PageHomepage() {
 
           <div className="mt-8">
             <CardUI
+              title="Connect an AI agent (MCP)"
+              description="A Model Context Protocol endpoint, so Claude and other MCP clients can read your wallets directly."
+            >
+              <div className="mt-4 space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Endpoint: <code className="rounded bg-muted px-1">POST /api/mcp</code>. Add it to Claude Code with:
+                </p>
+                <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
+                  <code>claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>
+                </pre>
+                <p className="text-muted-foreground">
+                  You&apos;ll be sent to a consent screen to approve access with your wallet — no secrets to copy. The connection is <strong>read-only</strong> apart from governance ballot drafts: it can list wallets, pending transactions, UTxOs, proxies and active proposals, but it cannot sign transactions, move funds, or vote on-chain.
+                </p>
+              </div>
+            </CardUI>
+          </div>
+
+          <div className="mt-8">
+            <CardUI
               title="Quick reference (bots)"
               description="Same REST v1 as wallet users; identity is the bot's registered payment address."
             >

@@ -643,3 +643,22 @@ Current route-chain scenarios include:
 
 To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
 Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.
+
+## MCP endpoint (`POST /api/mcp`)
+
+A Model Context Protocol server exposing a **read-only** subset of this API to AI agents,
+plus governance ballot drafts. It does not add business logic: each tool invokes the v1
+handler above in-process, so authorization, validation and error codes stay defined once.
+
+Tools and the endpoint contract: **[src/pages/api/mcp/README.md](../mcp/README.md)**.
+Its OAuth 2.1 authorization server: **[src/pages/api/oauth/README.md](../oauth/README.md)**.
+
+Two v1 handlers gained a human-JWT path so the MCP surface can reach them; bot behaviour
+is unchanged in both cases:
+
+- **`governanceActiveProposals`** — was bot-only. It is a pure Blockfrost passthrough over
+  public chain data touching no wallet, so a human JWT is now accepted, metered per
+  address instead of per bot.
+- **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
+  same signer-or-owner check every ballot procedure in the tRPC router already applies, so
+  the REST path is no more permissive than the app's own UI.

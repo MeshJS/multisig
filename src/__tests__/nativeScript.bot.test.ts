@@ -15,43 +15,43 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/common", () => ({
   __esModule: true,
   buildMultisigWallet: buildMultisigWalletMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/api/root", () => ({
   __esModule: true,
   createCaller: createCallerMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {},
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/rateLimit", () => ({
   __esModule: true,
   getClientIP: () => "127.0.0.1",
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/nativeScriptUtils", () => ({
   __esModule: true,
   decodeNativeScriptFromCbor: decodeNativeScriptFromCborMock,
   decodedToNativeScript: decodedToNativeScriptMock,
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

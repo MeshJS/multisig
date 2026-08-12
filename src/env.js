@@ -41,6 +41,17 @@ export const env = createEnv({
     NOTIFICATIONS_EMAIL_ENABLED: z
       .enum(["true", "false"])
       .default("false"),
+    /**
+     * Canonical origin of the OAuth 2.1 authorization server that protects the
+     * MCP endpoint (`/api/mcp`). Issued tokens carry this as `iss`, and the
+     * RFC 9728 / RFC 8414 discovery documents are built from it.
+     *
+     * Falls back to NEXT_PUBLIC_SITE_URL. Set it only when the OAuth issuer must
+     * differ from the public site origin. It is deliberately NOT derived from
+     * the request Host header in production — a header-derived issuer would let
+     * anyone who controls DNS publish metadata pointing at their own server.
+     */
+    OAUTH_ISSUER_URL: z.string().url().optional(),
     // NEXTAUTH_SECRET / NEXTAUTH_URL / DISCORD_* are intentionally commented.
     // NextAuth runs with PrismaAdapter only — no auth providers configured yet.
     // Uncomment and add to runtimeEnv below when adding an OAuth provider.
@@ -129,6 +140,7 @@ export const env = createEnv({
     NOTIFICATION_DRAIN_SECRET: process.env.NOTIFICATION_DRAIN_SECRET,
     NOTIFICATIONS_EMAIL_ENABLED:
       process.env.NOTIFICATIONS_EMAIL_ENABLED ?? "false",
+    OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

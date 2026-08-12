@@ -28,32 +28,32 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botKey", () => ({
   __esModule: true,
   parseScope: (scope: string) => JSON.parse(scope) as string[],
   scopeIncludes: (scopes: string[], required: string) => scopes.includes(required),
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
   __esModule: true,
   BotAccessError: BotAccessErrorMock,
   assertBotWalletAccess: assertBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -65,7 +65,7 @@ jest.mock("@/server/db", () => ({
       delete: ballotDeleteMock,
     },
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
+import { applyRateLimit, applyBotRateLimit, applyAddressRateLimit } from "@/lib/security/requestGuards";
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { getProvider } from "@/utils/get-provider";
 import { getProposalStatus } from "@/lib/governance";
@@ -173,23 +173,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!payload) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
-  if (!isBotJwt(payload)) {
-    return res.status(403).json({ error: "Only bot tokens can access this endpoint" });
-  }
-  if (!applyBotRateLimit(req, res, payload.botId)) {
-    return;
-  }
+  // Bot callers keep the scope check and the per-bot budget they always had.
+  // Human callers are allowed through: this endpoint is a pure Blockfrost
+  // passthrough over public chain data — it reads no wallet, takes no walletId,
+  // and never touches signersAddresses — so there is nothing bot-specific to
+  // protect. It is metered per address instead, so an authenticated human
+  // cannot use it as an unbounded Blockfrost proxy.
+  if (isBotJwt(payload)) {
+    if (!applyBotRateLimit(req, res, payload.botId)) {
+      return;
+    }
 
-  const botUser = await db.botUser.findUnique({
-    where: { id: payload.botId },
-    include: { botKey: true },
-  });
-  if (!botUser?.botKey) {
-    return res.status(401).json({ error: "Bot not found" });
-  }
-  const scopes = parseScope(botUser.botKey.scope);
-  if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
-    return res.status(403).json({ error: "Insufficient scope: governance:read required" });
+    const botUser = await db.botUser.findUnique({
+      where: { id: payload.botId },
+      include: { botKey: true },
+    });
+    if (!botUser?.botKey) {
+      return res.status(401).json({ error: "Bot not found" });
+    }
+    const scopes = parseScope(botUser.botKey.scope);
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+      return res.status(403).json({ error: "Insufficient scope: governance:read required" });
+    }
+  } else if (!applyAddressRateLimit(req, res, payload.address)) {
+    return;
   }
 
   const networkRaw = req.query.network;

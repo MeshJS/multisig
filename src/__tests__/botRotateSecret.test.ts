@@ -15,37 +15,37 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyStrictRateLimit: applyStrictRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botKey", () => ({
   __esModule: true,
   verifyBotKeySecret: verifyBotKeySecretMock,
   generateBotKeySecret: () => "new-secret-hex",
   hashBotKeySecret: (secret: string) => `hashed:${secret}`,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/observability/audit", () => ({
   __esModule: true,
   audit: auditMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/rateLimit", () => ({
   __esModule: true,
   getClientIP: () => "1.2.3.4",
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {
     botKey: { findUnique: findBotKeyMock, update: updateBotKeyMock },
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

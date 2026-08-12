@@ -2,9 +2,16 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import {
+  applyRateLimit,
+  applyBotRateLimit,
+  applyAddressRateLimit,
+  enforceBodySize,
+} from "@/lib/security/requestGuards";
+import { getClientIP } from "@/lib/security/rateLimit";
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { assertBotWalletAccess, BotAccessError } from "@/lib/auth/botAccess";
+import { assertWalletAccess } from "@/server/api/auth";
 import { isValidChoice, parseProposalId } from "@/lib/governance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
@@ -122,23 +129,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!payload) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
-  if (!isBotJwt(payload)) {
-    return res.status(403).json({ error: "Only bot tokens can access this endpoint" });
-  }
-  if (!applyBotRateLimit(req, res, payload.botId)) {
-    return;
-  }
+  // Bots keep the scope gate and per-bot budget they always had. Humans are
+  // allowed through because a wallet signer can already create and edit ballots
+  // freely through the app's own tRPC router (see the wallet-access branch
+  // below) — refusing them here would only mean the UI can do something the API
+  // cannot, not that anything is safer.
+  if (isBotJwt(payload)) {
+    if (!applyBotRateLimit(req, res, payload.botId)) {
+      return;
+    }
 
-  const botUser = await db.botUser.findUnique({
-    where: { id: payload.botId },
-    include: { botKey: true },
-  });
-  if (!botUser?.botKey) {
-    return res.status(401).json({ error: "Bot not found" });
-  }
-  const scopes = parseScope(botUser.botKey.scope);
-  if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
-    return res.status(403).json({ error: "Insufficient scope: ballot:write required" });
+    const botUser = await db.botUser.findUnique({
+      where: { id: payload.botId },
+      include: { botKey: true },
+    });
+    if (!botUser?.botKey) {
+      return res.status(401).json({ error: "Bot not found" });
+    }
+    const scopes = parseScope(botUser.botKey.scope);
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+      return res.status(403).json({ error: "Insufficient scope: ballot:write required" });
+    }
+  } else if (!applyAddressRateLimit(req, res, payload.address)) {
+    return;
   }
 
   const walletId = typeof req.body?.walletId === "string" ? req.body.walletId : "";
@@ -157,15 +170,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let accessWallet: { signersAddresses: string[] } | null = null;
   try {
-    // Non-mutating access: ballot drafts are unsigned advisory rows (choice +
-    // rationaleComment only — anchors are rejected below), so an observer
-    // grant is enough. Cosigner-for-drafts would lock advisory bots out of
-    // existing wallets entirely, since signer lists are fixed at creation.
-    // The ballot:write scope (owner-approved at claim) still gates this.
-    ({ wallet: accessWallet } = await assertBotWalletAccess(db, walletId, payload, false));
+    if (isBotJwt(payload)) {
+      // Non-mutating access: ballot drafts are unsigned advisory rows (choice +
+      // rationaleComment only — anchors are rejected below), so an observer
+      // grant is enough. Cosigner-for-drafts would lock advisory bots out of
+      // existing wallets entirely, since signer lists are fixed at creation.
+      // The ballot:write scope (owner-approved at claim) still gates this.
+      ({ wallet: accessWallet } = await assertBotWalletAccess(db, walletId, payload, false));
+    } else {
+      // Humans get exactly the authorization every ballot procedure in
+      // src/server/api/routers/ballot.ts applies: signer OR owner. Reusing the
+      // canonical predicate rather than re-deriving it keeps the REST and tRPC
+      // paths from drifting apart. Note this accepts a non-signer owner, which
+      // the signer-only v1 helpers (proxyAccess, v1WalletAuth) would reject —
+      // matching the app's own behaviour is the right call for ballots.
+      accessWallet = await assertWalletAccess(
+        {
+          db,
+          session: null,
+          sessionAddress: payload.address,
+          sessionWallets: [payload.address],
+          primaryWallet: payload.address,
+          ip: getClientIP(req),
+        },
+        walletId,
+      );
+    }
   } catch (err) {
     if (err instanceof BotAccessError) {
       return res.status(err.status).json({ error: err.message });
+    }
+    const code = (err as { code?: string })?.code;
+    if (code === "NOT_FOUND") {
+      return res.status(404).json({ error: "Wallet not found" });
     }
     return res
       .status(403)

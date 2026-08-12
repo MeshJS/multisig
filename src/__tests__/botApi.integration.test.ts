@@ -11,7 +11,7 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
@@ -19,7 +19,7 @@ jest.mock("@/lib/security/requestGuards", () => ({
   applyBotRateLimit: () => true,
   applyStrictRateLimit: () => true,
   enforceBodySize: () => true,
-}), { virtual: true });
+}));
 
 jest.mock("@/env", () => ({
   __esModule: true,
@@ -27,7 +27,7 @@ jest.mock("@/env", () => ({
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: "test",
   },
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core-cst", () => ({
   __esModule: true,
