@@ -200,14 +200,14 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display all tx types multisig is capable of doing| |
+| Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route. Ready = a pilot team runs all six user stories end-to-end without developer help (PRD-001's own bar)| |
 | Test depth — extend the Playwright suite to cover the Sign-Off flows, plus transaction-builder & tRPC integration tests | #255 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (ship) — diffs where feasible, status grouping, polish | |
+| Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display/build all tx types multisig is capable of doing | |
 | Discover page — fold into the delivered Wallet V2 registration/discovery rather than building it standalone; add lookup by signer/policy *(moved up from M10)* | #52, #33 |
 | Notification digests & deadline reminders — ballot-deadline and threshold-reached emails on the existing outbox (product work, infrastructure already exists) | |
 | Monthly report | |
