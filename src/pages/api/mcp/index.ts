@@ -116,13 +116,28 @@ export default async function handler(
 }
 
 /**
+ * Scopes advertised in the 401 challenge — what a client asks for by default.
+ *
+ * This is load-bearing, not cosmetic. Claude Code (and clients following the
+ * same rule) request exactly the `scope` from the challenge rather than the
+ * full `scopes_supported` catalogue in the metadata document, so anything
+ * omitted here is unreachable in practice: the tools exist, but no grant ever
+ * covers them.
+ *
+ * Both read scopes are included so the read surface works out of the box.
+ * `ballots:write` is deliberately left out — it is the only scope that writes
+ * anything, so it stays opt-in for a client that asks for it explicitly.
+ */
+const CHALLENGE_SCOPES = ["wallets:read", "governance:read"] as const;
+
+/**
  * RFC 9728 challenge. `resource_metadata` is what lets an MCP client discover
  * the authorization server and start an OAuth flow unprompted.
  */
 function unauthorized(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader(
     "WWW-Authenticate",
-    `Bearer resource_metadata="${protectedResourceMetadataUrl(req)}", scope="${formatMcpScopes(["wallets:read"])}"`,
+    `Bearer resource_metadata="${protectedResourceMetadataUrl(req)}", scope="${formatMcpScopes(CHALLENGE_SCOPES)}"`,
   );
   return jsonRpcError(res, 401, -32001, "Unauthorized");
 }

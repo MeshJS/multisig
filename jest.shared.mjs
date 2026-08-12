@@ -34,6 +34,7 @@ export const ESM_TESTS = [
   'apiSecurity',
   'botBallotsUpsert',
   'governanceActiveProposals',
+  'mcpConnections',
   'og',
   'pendingTransactions',
   'reviewSignersCardKey',

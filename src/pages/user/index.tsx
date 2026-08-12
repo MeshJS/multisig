@@ -18,6 +18,7 @@ import useActiveWallet from "@/hooks/useActiveWallet";
 import useUTXOS from "@/hooks/useUTXOS";
 import { Badge } from "@/components/ui/badge";
 import BotManagementCard from "@/components/pages/user/BotManagementCard";
+import McpConnectionsCard from "@/components/pages/user/McpConnectionsCard";
 
 export const getServerSideProps = () => ({ props: {} });
 
@@ -357,6 +358,8 @@ export default function UserInfoPage() {
         </CardUI>
 
         <BotManagementCard />
+
+        <McpConnectionsCard />
 
         <CardUI
           title="Account Details"
