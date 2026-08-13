@@ -200,3 +200,49 @@ export const OPEN_PROPOSALS_INPUT: JsonSchema = {
   required: ["walletId"],
   additionalProperties: false,
 };
+
+export const PUBLISH_RATIONALE_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    ballotId: {
+      type: "string",
+      minLength: 1,
+      description: "Ballot id, as returned by governance_list_ballots.",
+    },
+    proposalId: {
+      type: "string",
+      minLength: 1,
+      description: "Governance proposal id (<txHash>#<certIndex>) on that ballot.",
+    },
+    summary: {
+      type: "string",
+      maxLength: 300,
+      description:
+        "Short stance and reason, plain text, max 300 chars. Defaults to the rationale already drafted on the ballot.",
+    },
+    rationaleStatement: {
+      type: "string",
+      description:
+        "The full argument; markdown allowed. Defaults to the rationale already drafted on the ballot.",
+    },
+    precedentDiscussion: { type: "string" },
+    counterargumentDiscussion: { type: "string" },
+    conclusion: { type: "string", description: "Plain text, no markdown." },
+    references: {
+      type: "array",
+      maxItems: 20,
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string", minLength: 1 },
+          uri: { type: "string", minLength: 1 },
+        },
+        required: ["label", "uri"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["walletId", "ballotId", "proposalId"],
+  additionalProperties: false,
+};

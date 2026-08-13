@@ -7,6 +7,7 @@ import {
   ACTIVE_PROPOSALS_INPUT,
   BALLOT_UPSERT_INPUT,
   OPEN_PROPOSALS_INPUT,
+  PUBLISH_RATIONALE_INPUT,
   VOTE_HISTORY_INPUT,
   WALLET_BALLOTS_INPUT,
   EMPTY_INPUT,
@@ -81,6 +82,7 @@ const load = {
   botBallots: () => import("@/pages/api/v1/botBallots"),
   drepInfo: () => import("@/pages/api/v1/drepInfo"),
   drepVotes: () => import("@/pages/api/governance/drepVotes"),
+  ballotRationaleAnchor: () => import("@/pages/api/v1/ballotRationaleAnchor"),
 };
 
 /** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
@@ -428,6 +430,45 @@ export const MCP_TOOLS: McpToolDef[] = [
             ? { ballotName: args.ballotName }
             : {}),
           proposals: args.proposals,
+        },
+      }),
+  },
+  {
+    name: "ballot_publish_rationale",
+    title: "Publish a rationale to IPFS",
+    description:
+      "Publish a ballot proposal's rationale as a CIP-100/136 JSON-LD document on IPFS, and record the resulting anchor URL and hash on the ballot. Defaults to the rationale already drafted on the ballot; pass summary/rationaleStatement to override. This prepares the anchor for a vote — it does NOT cast or submit one. Submitting the vote and signing stay with the wallet's signers.",
+    scope: "ballots:write",
+    inputSchema: PUBLISH_RATIONALE_INPUT,
+    annotations: {
+      readOnlyHint: false,
+      // Writes an anchor onto the ballot and pins a document, but destroys
+      // nothing and casts no vote. Re-running replaces the anchor for that
+      // proposal with an equivalent one.
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    v1Path: "ballotRationaleAnchor.ts",
+    run: async (args, ctx) =>
+      callV1(load.ballotRationaleAnchor, ctx, {
+        method: "POST",
+        body: {
+          walletId: args.walletId,
+          ballotId: args.ballotId,
+          proposalId: args.proposalId,
+          ...(args.summary !== undefined ? { summary: args.summary } : {}),
+          ...(args.rationaleStatement !== undefined
+            ? { rationaleStatement: args.rationaleStatement }
+            : {}),
+          ...(args.precedentDiscussion !== undefined
+            ? { precedentDiscussion: args.precedentDiscussion }
+            : {}),
+          ...(args.counterargumentDiscussion !== undefined
+            ? { counterargumentDiscussion: args.counterargumentDiscussion }
+            : {}),
+          ...(args.conclusion !== undefined ? { conclusion: args.conclusion } : {}),
+          ...(args.references !== undefined ? { references: args.references } : {}),
         },
       }),
   },
