@@ -31,6 +31,7 @@ describe("MCP tool registry", () => {
       "governance_vote_history",
       "governance_open_proposals",
       "ballot_upsert",
+      "ballot_publish_rationale",
     ]);
   });
 
@@ -49,10 +50,20 @@ describe("MCP tool registry", () => {
   });
 
   it("exposes no tool that can sign, spend or broadcast", () => {
-    // This release is read-only plus ballot drafts. Any new write tool must be a
-    // deliberate decision that updates this test, not a quiet registry addition.
+    // The agreed boundary: agents may read, draft ballots, and publish a
+    // rationale to IPFS. Submitting a vote and signing stay with humans. Any
+    // further write tool must be a deliberate decision that updates this list,
+    // not a quiet registry addition.
     const writable = MCP_TOOLS.filter((t) => !t.annotations.readOnlyHint);
-    expect(writable.map((t) => t.name)).toEqual(["ballot_upsert"]);
+    expect(writable.map((t) => t.name)).toEqual([
+      "ballot_upsert",
+      "ballot_publish_rationale",
+    ]);
+    // Neither write tool may be destructive: they add or replace drafts and
+    // anchors, they never remove a ballot or move value.
+    for (const tool of writable) {
+      expect(tool.annotations.destructiveHint).toBe(false);
+    }
 
     const forbidden = [
       "signTransaction",
@@ -73,7 +84,7 @@ describe("MCP tool registry", () => {
     }
   });
 
-  it("marks the one write tool as non-destructive", () => {
+  it("marks the ballot draft tool as non-destructive and idempotent", () => {
     const ballot = MCP_TOOLS.find((t) => t.name === "ballot_upsert");
     expect(ballot?.annotations.destructiveHint).toBe(false);
     expect(ballot?.annotations.idempotentHint).toBe(true);
