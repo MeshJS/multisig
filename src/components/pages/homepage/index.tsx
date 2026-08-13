@@ -269,7 +269,10 @@ export function PageHomepage() {
             </CardUI>
           )}
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          {/* Wraps because three CTAs no longer fit one line below ~780px, and
+              aligns to the top rather than the centre: the first CTA carries a
+              subtitle underneath, so centring floats the other two off its axis. */}
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:items-start">
             {user ? (
               <>
                 <Button size="lg" asChild>
@@ -308,9 +311,14 @@ export function PageHomepage() {
       <section className="container mx-auto px-4 pb-8">
         <Reveal className="mx-auto max-w-5xl">
           <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/60 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/40 sm:p-8 md:p-10">
+            {/* min-w-0 throughout: a grid/flex item defaults to min-width:auto,
+                so it refuses to shrink below the min-content width of the config
+                block below. That widened the single mobile column to 395px inside
+                a 261px card and the wrapper's overflow-hidden silently clipped the
+                heading and body copy. Zeroing it lets the <pre> scroll on its own. */}
             <div className="grid items-center gap-8 md:grid-cols-2">
               {/* Copy + actions */}
-              <div>
+              <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
                   <Sparkles className="h-3.5 w-3.5" />
                   Model Context Protocol
@@ -329,7 +337,10 @@ export function PageHomepage() {
                   No API key to paste, and no vendor lock-in: authorization is standard
                   OAuth, so the client handles it for you.
                 </p>
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                {/* This row turns horizontal at sm, but its grid column halves
+                    at md — so between md and lg the two buttons overflowed into
+                    the panel alongside. Wrapping self-corrects at every width. */}
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <Button asChild size="lg">
                     <Link href="#connect-mcp">
                       <Plug className="mr-2 h-4 w-4" />
@@ -346,8 +357,8 @@ export function PageHomepage() {
               </div>
 
               {/* Endpoint + a vendor-neutral config, then a taste of what to ask. */}
-              <div className="flex flex-col gap-3">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
                   <div className="pb-2 text-[11px] uppercase tracking-wide text-zinc-500">
                     MCP endpoint
                   </div>
