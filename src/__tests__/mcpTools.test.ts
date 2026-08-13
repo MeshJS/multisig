@@ -1,10 +1,12 @@
 import { describe, expect, it } from "@jest/globals";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import { MCP_TOOLS, toolsForScopes } from "@/lib/mcp/tools";
 import { MCP_SCOPES, isMcpScope, parseMcpScopes } from "@/lib/mcp/scopes";
 import { mcpScopesForBot } from "@/lib/mcp/auth";
+import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+import { MCP_TOOL_ACTION } from "@/lib/mcp/server";
 import type { BotScope } from "@/lib/auth/botKey";
 
 const V1_DIR = join(process.cwd(), "src", "pages", "api", "v1");
@@ -178,5 +180,43 @@ describe("bot scope projection", () => {
       "governance:read",
       "ballots:write",
     ]);
+  });
+});
+
+describe("published tool list (src/data/mcp-tools.ts)", () => {
+  // The landing page cannot import the real registry — it pulls the API
+  // handlers and the Mesh WASM with them — so the displayed list is a separate
+  // data file. This keeps the two honest.
+  it("lists exactly the registered tools, in the same order", () => {
+    expect(MCP_TOOL_SUMMARIES.map((t) => t.name)).toEqual(
+      MCP_TOOLS.map((t) => t.name),
+    );
+  });
+
+  it("states the same scope the registry enforces", () => {
+    const actual = new Map(MCP_TOOLS.map((t) => [t.name, t.scope]));
+    for (const summary of MCP_TOOL_SUMMARIES) {
+      expect(summary.scope).toBe(actual.get(summary.name));
+    }
+  });
+
+  it("gives every tool a blurb", () => {
+    for (const summary of MCP_TOOL_SUMMARIES) {
+      expect(summary.blurb.length).toBeGreaterThan(15);
+    }
+  });
+});
+
+describe("audit action constant", () => {
+  // src/server/api/routers/mcp.ts hard-codes this string rather than importing
+  // it, because importing src/lib/mcp/server.ts would drag the MCP SDK and the
+  // whole tool registry into the tRPC bundle. If they drift, the wallet
+  // activity view silently returns nothing.
+  it("matches the literal the tRPC router queries on", () => {
+    const router = readFileSync(
+      join(process.cwd(), "src", "server", "api", "routers", "mcp.ts"),
+      "utf8",
+    );
+    expect(router).toContain(`const MCP_TOOL_ACTION = "${MCP_TOOL_ACTION}"`);
   });
 });

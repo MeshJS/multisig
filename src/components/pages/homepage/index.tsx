@@ -28,6 +28,7 @@ import {
   DRepPreview,
   StakingPreview,
 } from "@/components/pages/homepage/previews";
+import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
 
 // Prompts cycled by the hero typewriter. Deliberately phrased as things you
 // ask an assistant, not as commands for one product — the endpoint is plain MCP
@@ -751,14 +752,40 @@ export function PageHomepage() {
                   </li>
                 </ol>
 
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium">What it can do</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Thirteen tools, grouped by the permission they need. You choose
+                    which permissions to grant, and can change them later.
+                  </p>
+                  <div className="mt-1 flex flex-col gap-3">
+                    {(["wallets:read", "governance:read", "ballots:write"] as const).map(
+                      (scope) => (
+                        <div key={scope}>
+                          <code className="text-xs font-medium text-foreground">{scope}</code>
+                          <ul className="mt-1 flex flex-col gap-1">
+                            {MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).map((t) => (
+                              <li key={t.name} className="text-xs text-muted-foreground">
+                                <code className="rounded bg-muted px-1">{t.name}</code>{" "}
+                                — {t.blurb}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
                 <div className="rounded-lg border border-dashed p-3">
                   <p className="text-xs text-muted-foreground">
                     <strong className="text-foreground">Read-only, by design.</strong>{" "}
-                    A connected client can list wallets, pending transactions,
-                    spendable UTxOs, proxies and active proposals, and draft
-                    governance ballot rationales. It <strong>cannot</strong> sign
-                    transactions, move funds, or submit a vote on-chain. Manage or
-                    revoke connections any time under{" "}
+                    A connected client can read your wallets and governance, draft
+                    ballots, and publish a rationale to IPFS. It{" "}
+                    <strong>cannot</strong> sign transactions, move funds, or
+                    submit a vote on-chain — those stay with you and your
+                    co-signers. Manage permissions or revoke a connection any time
+                    under{" "}
                     <Link href="/user" className="underline underline-offset-2">
                       your profile
                     </Link>

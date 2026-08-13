@@ -12,6 +12,7 @@ import ProxyControlCard from "./proxy-control";
 import { UpgradeGovernanceWallet } from "./upgrade-governance-wallet";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 import { WalletNotificationSettings } from "./wallet-notification-settings";
+import McpActivityCard from "./mcp-activity";
 
 export default function WalletInfo() {
   const { appWallet } = useAppWallet();
@@ -28,6 +29,7 @@ export default function WalletInfo() {
           <RegisterWallet appWallet={appWallet} mWallet={multisigWallet} />
         )}
         <WalletNotificationSettings appWallet={appWallet} />
+        <McpActivityCard appWallet={appWallet} />
         <ManageContacts appWallet={appWallet} />
         <MigrateWallet appWallet={appWallet} />
         <ProxyControlCard />
