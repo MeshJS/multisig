@@ -64,10 +64,10 @@ describe("layoutTokenFlow — txOrder timeline layering", () => {
     expect(columnOf(reversed, "tx:one")).toBe(3);
   });
 
-  test("dependency join preserved: shared address stays a single join node", () => {
-    // tx:one pays B; tx:two spends from B — chronological order agrees with
-    // dependency order (consuming requires confirmation), so the join keeps
-    // working exactly as in the default layout.
+  test("external address bridging two events splits into lane cards, never on the line", () => {
+    // tx:one pays B; tx:two spends from B. B is EXTERNAL, so it may not sit
+    // ON the divider line: it renders as a received (@out) card left of the
+    // line and a sending (@in) card right of it. Only self joins stay single.
     const txTwo: TokenFlow = {
       nodes: [
         { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
@@ -82,11 +82,22 @@ describe("layoutTokenFlow — txOrder timeline layering", () => {
     const merged = mergeTokenFlows([simpleTxFlow("one", A, B), txTwo]);
     const result = layoutTokenFlow(merged, { txOrder: ["tx:one", "tx:two"] });
 
-    const bInstances = result.nodes.filter((n) => n.id.startsWith(`addr:${B}`));
-    expect(bInstances.map((n) => n.id)).toEqual([`addr:${B}`]);
-    expect(columnOf(result, "tx:one")).toBe(1);
-    expect(columnOf(result, `addr:${B}`)).toBe(2);
-    expect(columnOf(result, "tx:two")).toBe(3);
+    const bInstances = result.nodes
+      .filter((n) => n.id.startsWith(`addr:${B}`))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    expect(bInstances.map((n) => n.id)).toEqual([
+      `addr:${B}@c2@in`,
+      `addr:${B}@c2@out`,
+    ]);
+    // Received card settles left of the line, sending card enters right.
+    const x = (id: string) => result.nodes.find((n) => n.id === id)!.position.x;
+    expect(x(`addr:${B}@c2@out`)).toBe(2 * TIMELINE_COLUMN_WIDTH - TIMELINE_LANE_OFFSET);
+    expect(x(`addr:${B}@c2@in`)).toBe(2 * TIMELINE_COLUMN_WIDTH + TIMELINE_LANE_OFFSET);
+    // Edges rewire to the matching side.
+    const output = result.edges.find((e) => e.data!.edge.kind === "output" && e.source === "tx:one")!;
+    expect(output.target).toBe(`addr:${B}@c2@out`);
+    const input = result.edges.find((e) => e.target === "tx:two")!;
+    expect(input.source).toBe(`addr:${B}@c2@in`);
 
     // No value edge flows backwards under explicit ordering either.
     const nodeX = new Map(result.nodes.map((n) => [n.id, n.position.x]));
@@ -288,29 +299,34 @@ describe("layoutTokenFlow — txOrder dividers & lanes", () => {
     return [one, two];
   }
 
-  test("boundary column splits into left / join / right lanes around the divider", () => {
+  test("boundary column splits into left / right lanes around the divider", () => {
     const result = layoutTokenFlow(mergeTokenFlows(boundaryFlows()), {
       txOrder: ["tx:one", "tx:two"],
     });
     const x = (id: string) =>
       result.nodes.find((n) => n.id === id)!.position.x;
 
-    // Boundary column 2: spent-only output left of the line, join on it,
-    // fresh sender right of it.
+    // Boundary column 2: everything the left event produced settles left of
+    // the line, everything entering the right event comes in from the
+    // right. The external bridge B splits across both lanes — no external
+    // card sits ON the line.
     expect(x("addr:xxx")).toBe(2 * TIMELINE_COLUMN_WIDTH - TIMELINE_LANE_OFFSET);
-    expect(x(`addr:${B}`)).toBe(2 * TIMELINE_COLUMN_WIDTH);
+    expect(x(`addr:${B}@c2@out`)).toBe(2 * TIMELINE_COLUMN_WIDTH - TIMELINE_LANE_OFFSET);
+    expect(x(`addr:${B}@c2@in`)).toBe(2 * TIMELINE_COLUMN_WIDTH + TIMELINE_LANE_OFFSET);
     expect(x("addr:yyy")).toBe(2 * TIMELINE_COLUMN_WIDTH + TIMELINE_LANE_OFFSET);
     // First and last columns have no boundary — unshifted.
     expect(x(`addr:${A}`)).toBe(0);
     expect(x(`addr:${C}`)).toBe(4 * TIMELINE_COLUMN_WIDTH);
 
-    // The divider sits on the join card's centerline, and lane cards keep
-    // clearance from it on both sides.
+    // The divider sits on the unshifted card centerline, and lane cards
+    // keep clearance from it on both sides.
     expect(result.dividers).toEqual([
       { index: 0, x: 2 * TIMELINE_COLUMN_WIDTH + ADDRESS_CARD_WIDTH / 2 },
     ]);
     const lineX = result.dividers[0]!.x;
     expect(x("addr:xxx") + ADDRESS_CARD_WIDTH).toBeLessThan(lineX);
+    expect(x(`addr:${B}@c2@out`) + ADDRESS_CARD_WIDTH).toBeLessThan(lineX);
+    expect(x(`addr:${B}@c2@in`)).toBeGreaterThan(lineX);
     expect(x("addr:yyy")).toBeGreaterThan(lineX);
   });
 
@@ -528,9 +544,17 @@ describe("timeline integration: on-chain adapters → merge → ordered layout",
 
     expect(columnOf(result, "tx:first")).toBe(1);
     expect(columnOf(result, "tx:second")).toBe(3);
-    // A is produced by "first" and consumed by "second": a single join node
-    // between the two transactions.
-    expect(columnOf(result, `addr:${A}`)).toBe(2);
+    // A (external) is produced by "first" and consumed by "second": it
+    // splits into a received card left of the event line and a sending
+    // card right of it — only the wallet itself may sit ON the line.
+    const xOf = (id: string) =>
+      result.nodes.find((n) => n.id === id)!.position.x;
+    expect(xOf(`addr:${A}@c2@out`)).toBe(
+      2 * TIMELINE_COLUMN_WIDTH - TIMELINE_LANE_OFFSET,
+    );
+    expect(xOf(`addr:${A}@c2@in`)).toBe(
+      2 * TIMELINE_COLUMN_WIDTH + TIMELINE_LANE_OFFSET,
+    );
     expect(result.txLayer.get("tx:first")).toBe(0);
     expect(result.txLayer.get("tx:second")).toBe(1);
     expect(

@@ -281,13 +281,47 @@ export function layoutTokenFlow(
       // presence) so positions never shift as tx detail streams in.
       const laneMaxCol = 2 * (opts.txOrder.length - 1);
       for (const [col, group] of byCol) {
-        const id = single ? node.id : `${node.id}@c${col}`;
         // The wallet's own cards never lane-shift: its UTxOs persist across
         // event boundaries, so self rides the divider line whether it only
         // received (change held) or only sends (spending older UTxOs) —
         // only external parties settle left or enter right.
         const boundary =
           col >= 2 && col <= laneMaxCol && node.partyType !== "self";
+        const hasBoth =
+          group.producers.length > 0 && group.consumers.length > 0;
+
+        // Only the wallet itself may sit ON the divider line. An external
+        // address that both receives from the left event and sends into the
+        // right one splits into two lane cards: a received (@out) card left
+        // of the line and a sending (@in) card right of it.
+        if (node.partyType !== "self" && hasBoth) {
+          const outId = `${node.id}@c${col}@out`;
+          const inId = `${node.id}@c${col}@in`;
+          instances.push({
+            id: outId,
+            node,
+            column: col,
+            role: "out",
+            changeHint: group.producers.some((p) => consumers.includes(p)),
+            xOffset: boundary ? -TIMELINE_LANE_OFFSET : 0,
+          });
+          instances.push({
+            id: inId,
+            node,
+            column: col,
+            role: "in",
+            xOffset: boundary ? TIMELINE_LANE_OFFSET : 0,
+          });
+          for (const c of group.consumers)
+            consumerInstance.set(`${node.id}|${c}`, inId);
+          for (const p of group.producers)
+            producerInstance.set(`${node.id}|${p}`, outId);
+          column.set(outId, col);
+          column.set(inId, col);
+          continue;
+        }
+
+        const id = single ? node.id : `${node.id}@c${col}`;
         const producerOnly =
           group.producers.length > 0 && group.consumers.length === 0;
         const consumerOnly =
@@ -297,7 +331,7 @@ export function layoutTokenFlow(
           node,
           column: col,
           role:
-            single || (group.producers.length > 0 && group.consumers.length > 0)
+            single || hasBoth
               ? undefined
               : group.producers.length > 0
                 ? "out"
