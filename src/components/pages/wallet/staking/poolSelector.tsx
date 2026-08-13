@@ -65,42 +65,56 @@ export default function PoolSelector({
       {!loading && pools.length === 0 && <p>No pools found.</p>}
 
       {!loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        // auto-fill sizes columns from the container, not the viewport —
+        // viewport breakpoints over-split the grid inside width-capped
+        // dialogs (sm:max-w-4xl) on large screens.
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-4">
           {pools.map((pool) => (
             <div
               key={pool.hex}
-              className="p-4 border rounded hover:shadow cursor-pointer transition-colors duration-200 bg-white hover:bg-gray-50 flex flex-col space-y-2"
+              className="flex cursor-pointer flex-col space-y-2 rounded border border-border/60 bg-card/60 p-4 transition-colors duration-200 hover:bg-muted/50 hover:shadow"
               onClick={() => onSelect(pool.hex)}
             >
-              <div className="flex justify-between items-center">
-                <span className="text-base font-semibold text-gray-800">
+              <div className="flex items-start justify-between gap-2">
+                {/* min-w-0 lets the flex item shrink below its content size so
+                    long unbroken pool names wrap inside the card instead of
+                    overflowing it; break-words handles names with no spaces. */}
+                <span className="min-w-0 break-words text-base font-semibold text-foreground">
                   {pool.metadata?.name || pool.pool_id.slice(0, 12) + "..."}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {pool.metadata?.ticker || "N/A"}
                 </span>
               </div>
-              <hr className="border-gray-200" />
-              <div className="text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>Live Stake:</span>
-                  <span>₳ {(Number(pool.live_stake) / 1_000_000)}</span>
+              <hr className="border-border/60" />
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex justify-between gap-2">
+                  <span className="shrink-0">Live Stake:</span>
+                  <span className="text-right">
+                    ₳ {(Number(pool.live_stake) / 1_000_000)}
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Saturation:</span>
-                  <span>{(pool.live_saturation * 100).toFixed(2)}%</span>
+                <div className="flex justify-between gap-2">
+                  <span className="shrink-0">Saturation:</span>
+                  <span className="text-right">
+                    {(pool.live_saturation * 100).toFixed(2)}%
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Margin:</span>
-                  <span>{(pool.margin_cost * 100).toFixed(2)}%</span>
+                <div className="flex justify-between gap-2">
+                  <span className="shrink-0">Margin:</span>
+                  <span className="text-right">
+                    {(pool.margin_cost * 100).toFixed(2)}%
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Blocks Minted:</span>
-                  <span>{pool.blocks_minted}</span>
+                <div className="flex justify-between gap-2">
+                  <span className="shrink-0">Blocks Minted:</span>
+                  <span className="text-right">{pool.blocks_minted}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Pledge:</span>
-                  <span>₳ {(Number(pool.declared_pledge) / 1_000_000)}</span>
+                <div className="flex justify-between gap-2">
+                  <span className="shrink-0">Pledge:</span>
+                  <span className="text-right">
+                    ₳ {(Number(pool.declared_pledge) / 1_000_000)}
+                  </span>
                 </div>
               </div>
             </div>

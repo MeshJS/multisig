@@ -57,7 +57,7 @@ export default function LoadPendingDialog({
             will need to be collected again.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto py-2">
+        <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto py-2 pr-2">
           {rows.map(({ transaction, compat }) => (
             <button
               key={transaction.id}

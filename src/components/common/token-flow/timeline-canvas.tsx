@@ -24,6 +24,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import type { TxFlowData } from "@/types/blockfrost";
+import type { AddressLabeler } from "@/types/token-flow";
 import type { Wallet } from "@/types/wallet";
 import useAddressLabels from "@/hooks/useAddressLabels";
 import { fetchTxFlowData } from "@/hooks/useTxFlowData";
@@ -44,6 +45,7 @@ import {
 import {
   CANVAS_BUTTON_CLASS,
   EDGE_TYPES,
+  GLASS_PANEL_CLASS,
   NODE_TYPES,
   ResetLayoutButton,
 } from "./flow-canvas";
@@ -82,6 +84,11 @@ export type TokenFlowTimelineProps = {
   /** Transactions to include; any order — sorted chronologically inside. */
   txs: TimelineTxRef[];
   appWallet?: Wallet;
+  /** Overrides the site-store network (0 = preprod, 1 = mainnet) so callers
+   *  outside the wallet app (e.g. the marketing demo) can pin one. */
+  network?: number;
+  /** Overrides useAddressLabels(appWallet), for callers without a wallet. */
+  labelAddress?: AddressLabeler;
   className?: string;
   /** Disambiguates testids from per-tx canvases rendering the same nodes. */
   testIdSuffix?: string;
@@ -208,13 +215,17 @@ function TimelineViewportController({
 export default function TimelineCanvas({
   txs,
   appWallet,
+  network: networkProp,
+  labelAddress: labelAddressProp,
   className,
   testIdSuffix = "-timeline",
   batchSize = DEFAULT_BATCH_SIZE,
   "data-testid": dataTestId,
 }: TokenFlowTimelineProps) {
-  const network = useSiteStore((state) => state.network);
-  const { labelAddress } = useAddressLabels(appWallet);
+  const siteNetwork = useSiteStore((state) => state.network);
+  const network = networkProp ?? siteNetwork;
+  const { labelAddress: walletLabelAddress } = useAddressLabels(appWallet);
+  const labelAddress = labelAddressProp ?? walletLabelAddress;
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
@@ -388,7 +399,7 @@ export default function TimelineCanvas({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        colorMode="dark"
+        colorMode="system"
         minZoom={0.15}
         maxZoom={1.5}
         nodesDraggable
@@ -404,7 +415,12 @@ export default function TimelineCanvas({
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         {(detailPending || failedQueries.length > 0) && (
           <Panel position="top-left">
-            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground",
+                GLASS_PANEL_CLASS,
+              )}
+            >
               {detailPending && (
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin" />

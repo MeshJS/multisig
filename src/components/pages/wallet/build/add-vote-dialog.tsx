@@ -17,8 +17,10 @@ import {
   parseProposalId,
   type ProposalStatus,
 } from "@/lib/governance";
+import { GLASS_DIALOG_CLASS } from "@/components/common/token-flow/flow-canvas";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
+import { cn } from "@/lib/utils";
 import type { ProposalDetails } from "@/types/governance";
 import type { DraftVoteKind } from "@/types/tx-draft";
 import { getProvider } from "@/utils/get-provider";
@@ -217,7 +219,9 @@ export default function AddVoteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Header and footer stay pinned; only the middle scrolls, so the
           confirm button is never pushed out of view by the proposal list. */}
-      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-lg">
+      <DialogContent
+        className={cn("flex max-h-[80vh] flex-col sm:max-w-lg", GLASS_DIALOG_CLASS)}
+      >
         <DialogHeader>
           <DialogTitle>Add governance vote</DialogTitle>
           <DialogDescription>
@@ -227,9 +231,9 @@ export default function AddVoteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
         {drepRegistered === undefined && (
-          <p className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs">
+          <p className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
             This wallet&apos;s DRep doesn&apos;t appear to be registered —
             register it from the Governance page to enable voting.
           </p>

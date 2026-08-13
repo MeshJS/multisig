@@ -612,7 +612,7 @@ export default function PageBuild() {
           data-testid="tx-builder-editing-banner"
           className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${
             editingTx
-              ? "border-amber-500/50 bg-amber-500/10"
+              ? "border-warning/50 bg-warning/10"
               : "border-destructive/50 bg-destructive/10"
           }`}
         >

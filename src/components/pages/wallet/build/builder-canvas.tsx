@@ -5,13 +5,11 @@ import {
   BackgroundVariant,
   Panel,
   ReactFlow,
-  useReactFlow,
   type Connection,
   type Edge,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { RotateCcw } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 
@@ -19,6 +17,7 @@ import {
   EDGE_TYPES,
   FIT_VIEW_OPTIONS,
   NODE_TYPES,
+  ResetLayoutButton,
 } from "@/components/common/token-flow/flow-canvas";
 import {
   isValuePortIn,
@@ -84,27 +83,6 @@ function sameSelection(a: BuilderSelection, b: BuilderSelection): boolean {
   if (a === null || b === null) return a === b;
   if (a.kind !== b.kind) return false;
   return a.kind === "tx" || a.outputId === (b as { outputId: string }).outputId;
-}
-
-function ResetLayoutButton({ onReset }: { onReset: () => void }) {
-  const { fitView } = useReactFlow();
-  return (
-    <Panel position="top-right">
-      <button
-        type="button"
-        data-testid="tx-builder-reset"
-        title="Reset layout"
-        onClick={() => {
-          onReset();
-          window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
-        }}
-        className="flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <RotateCcw className="h-3 w-3" />
-        Reset layout
-      </button>
-    </Panel>
-  );
 }
 
 /**
@@ -285,7 +263,7 @@ export default function BuilderCanvas({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        colorMode="dark"
+        colorMode="system"
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.2}
@@ -314,7 +292,12 @@ export default function BuilderCanvas({
           onAddVote={onAddVote}
           addVoteDisabledReason={addVoteDisabledReason}
         />
-        <ResetLayoutButton onReset={clearPositions} />
+        <Panel position="top-right">
+          <ResetLayoutButton
+            onReset={clearPositions}
+            data-testid="tx-builder-reset"
+          />
+        </Panel>
       </ReactFlow>
     </div>
   );

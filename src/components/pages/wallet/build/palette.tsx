@@ -9,7 +9,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { GLASS_PANEL_CLASS } from "@/components/common/token-flow/flow-canvas";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
+import { cn } from "@/lib/utils";
 import { getFirstAndLast } from "@/utils/strings";
 
 export type PaletteEntry = { address: string; label: string };
@@ -95,7 +97,12 @@ export default function BuilderPalette({
 
   return (
     <Panel position="top-left">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1.5 rounded-lg p-1.5",
+          GLASS_PANEL_CLASS,
+        )}
+      >
         <Button
           size="sm"
           className="h-7 gap-1 px-2 text-xs"

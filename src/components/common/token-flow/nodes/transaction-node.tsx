@@ -56,8 +56,8 @@ export default function TransactionNode({ id, data }: NodeProps) {
           className={cn(
             "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
             node.status === "pending"
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-              : "bg-green-500/15 text-green-600 dark:text-green-400",
+              ? "bg-warning/15 text-warning"
+              : "bg-success/15 text-success",
           )}
         >
           {node.status === "pending" ? "Pending" : "On-chain"}

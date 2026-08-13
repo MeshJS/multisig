@@ -147,7 +147,7 @@ export default function VoteRationaleEditor({
           ) : (
             <>
               {loadError && !dirty && (
-                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                <p className="text-[10px] text-warning">
                   Couldn&apos;t load the existing rationale — saving new text
                   will replace it.
                 </p>
@@ -163,7 +163,7 @@ export default function VoteRationaleEditor({
                 <div className="flex items-center justify-between gap-2">
                   <span
                     data-testid={`tx-builder-vote-rationale-dirty-${vote.id}`}
-                    className="text-[10px] text-amber-600 dark:text-amber-400"
+                    className="text-[10px] text-warning"
                   >
                     {willRemove
                       ? "Rationale will be removed when you build."

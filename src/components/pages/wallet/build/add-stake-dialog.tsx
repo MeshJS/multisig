@@ -11,8 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { GLASS_DIALOG_CLASS } from "@/components/common/token-flow/flow-canvas";
 import type { StakeActionInput } from "@/lib/tx-draft/mutations";
 import { useSiteStore } from "@/lib/zustand/site";
+import { cn } from "@/lib/utils";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { getProvider } from "@/utils/get-provider";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
@@ -123,7 +125,9 @@ export default function AddStakeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Header and footer stay pinned; only the middle scrolls, so the
           footer buttons are never pushed out of view by the pool browser. */}
-      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-4xl">
+      <DialogContent
+        className={cn("flex max-h-[80vh] flex-col sm:max-w-4xl", GLASS_DIALOG_CLASS)}
+      >
         <DialogHeader>
           <DialogTitle>Add staking action</DialogTitle>
           <DialogDescription>
@@ -132,14 +136,14 @@ export default function AddStakeDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
         {accountState === null && (
           <p className="text-sm text-muted-foreground">
             Checking the wallet&apos;s stake registration…
           </p>
         )}
         {accountState === "error" && (
-          <p className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs">
+          <p className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
             Couldn&apos;t check the current registration state — pick the
             action that matches it, or the transaction will fail on-chain.
           </p>

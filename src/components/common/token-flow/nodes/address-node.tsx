@@ -96,7 +96,7 @@ export default function AddressNode({ id, data }: NodeProps) {
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.label || style.fallbackLabel}</span>
         {changeHint && (
-          <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:text-amber-400">
+          <span className="ml-auto shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-medium text-warning">
             change
           </span>
         )}

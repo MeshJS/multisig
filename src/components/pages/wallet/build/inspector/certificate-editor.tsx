@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
+import { GLASS_DIALOG_CLASS } from "@/components/common/token-flow/flow-canvas";
 import PoolSelector from "@/components/pages/wallet/staking/poolSelector";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
+import { cn } from "@/lib/utils";
 import type { DraftCertificate, DraftCertificateKind } from "@/types/tx-draft";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { getFirstAndLast } from "@/utils/strings";
@@ -116,7 +118,12 @@ export default function CertificateEditor({
       )}
       {certificate.kind === "DelegateStake" && (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-4xl">
+          <DialogContent
+            className={cn(
+              "max-h-[80vh] overflow-y-auto sm:max-w-4xl",
+              GLASS_DIALOG_CLASS,
+            )}
+          >
             <DialogHeader>
               <DialogTitle>Change stake pool</DialogTitle>
               <DialogDescription>
