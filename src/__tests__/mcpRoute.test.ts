@@ -17,6 +17,8 @@ const enforceBodySizeMock = jest.fn<() => boolean>();
 const verifyJwtMock: jest.Mock = jest.fn();
 const isBotJwtMock: jest.Mock = jest.fn();
 const findBotUserMock: jest.Mock = jest.fn();
+const grantFindUniqueMock: jest.Mock = jest.fn();
+const auditCreateMock: jest.Mock = jest.fn();
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -40,7 +42,11 @@ jest.mock("@/lib/verifyJwt", () => ({
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
-  db: { botUser: { findUnique: findBotUserMock } },
+  db: {
+    botUser: { findUnique: findBotUserMock },
+    oAuthGrant: { findUnique: grantFindUniqueMock },
+    auditLog: { create: auditCreateMock },
+  },
 }));
 
 const HUMAN_ADDRESS = "addr_test1qphuman000000000000000000000000000000";
@@ -178,6 +184,7 @@ beforeEach(() => {
   enforceBodySizeMock.mockReturnValue(true);
   verifyJwtMock.mockReturnValue({ address: HUMAN_ADDRESS });
   isBotJwtMock.mockReturnValue(false);
+  (auditCreateMock as any).mockResolvedValue({});
 });
 
 describe("POST /api/mcp — transport", () => {
@@ -400,5 +407,74 @@ describe("POST /api/mcp — tools/call", () => {
     expect(res._status).toBe(200);
     const payload = res.body() as { result?: { isError?: boolean } };
     expect(typeof payload.result?.isError).toBe("boolean");
+  });
+});
+
+describe("POST /api/mcp — the stored grant is authoritative", () => {
+  // Access tokens are self-contained and live an hour. If the token's `scope`
+  // claim were trusted on its own, revoking a connection or removing a
+  // permission in the profile would not take effect until it expired.
+  const OAUTH_SUBJECT = "addr_test1qpoauth";
+
+  function oauthToken(scopes: string[]) {
+    const jwt = require("jsonwebtoken") as typeof import("jsonwebtoken");
+    return jwt.sign(
+      {
+        sub: OAUTH_SUBJECT,
+        aud: "http://localhost:3000/api/mcp",
+        typ: "mcp_at",
+        cid: "https://claude.ai/x",
+        scope: scopes.join(" "),
+        addrs: [OAUTH_SUBJECT],
+        jti: "t1",
+      },
+      process.env.JWT_SECRET as string,
+      { issuer: "http://localhost:3000", expiresIn: "1h" },
+    );
+  }
+
+  const listWith = (token: string) => {
+    const { headers, body } = modern("tools/list");
+    const res = createResponse();
+    return handler(
+      createRequest(body, { ...headers, authorization: `Bearer ${token}` }),
+      res,
+    ).then(() => res);
+  };
+
+  it("401s when the grant has been revoked", async () => {
+    (grantFindUniqueMock as any).mockResolvedValue(null);
+    const res = await listWith(oauthToken(["wallets:read"]));
+    expect(res._status).toBe(401);
+  });
+
+  it("drops a permission removed from the grant, even though the token still claims it", async () => {
+    (grantFindUniqueMock as any).mockResolvedValue({
+      scopes: ["wallets:read"],
+      grantedAddresses: [OAUTH_SUBJECT],
+    });
+
+    const res = await listWith(oauthToken(["wallets:read", "ballots:write"]));
+
+    const payload = res.body() as { result?: { tools?: { name: string }[] } };
+    const names = payload.result?.tools?.map((t) => t.name) ?? [];
+    expect(names).toContain("multisig_list_wallets");
+    expect(names).not.toContain("ballot_upsert");
+  });
+
+  it("never widens a token beyond what it was issued with", async () => {
+    // Grant widened after the token was minted: the token must not gain reach.
+    (grantFindUniqueMock as any).mockResolvedValue({
+      scopes: ["wallets:read", "governance:read", "ballots:write"],
+      grantedAddresses: [OAUTH_SUBJECT],
+    });
+
+    const res = await listWith(oauthToken(["wallets:read"]));
+
+    const payload = res.body() as { result?: { tools?: { name: string }[] } };
+    const names = payload.result?.tools?.map((t) => t.name) ?? [];
+    expect(names).toContain("multisig_list_wallets");
+    expect(names).not.toContain("ballot_upsert");
+    expect(names).not.toContain("governance_open_proposals");
   });
 });
