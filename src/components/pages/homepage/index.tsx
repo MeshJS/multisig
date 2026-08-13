@@ -286,6 +286,15 @@ export function PageHomepage() {
                 </Button>
               </>
             )}
+            {/* Third CTA in both states: connecting an agent is a first-class
+                entry point, not a developer footnote, and it is the one thing
+                you can set up before owning a wallet. */}
+            <Button size="lg" variant="outline" asChild>
+              <Link href="#connect-mcp">
+                <Plug className="mr-2 h-4 w-4" />
+                Connect via MCP
+              </Link>
+            </Button>
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
@@ -323,7 +332,7 @@ export function PageHomepage() {
                   <Button asChild size="lg">
                     <Link href="#connect-mcp">
                       <Plug className="mr-2 h-4 w-4" />
-                      Setup guide
+                      MCP setup guide
                     </Link>
                   </Button>
                   <Button asChild size="lg" variant="outline">
