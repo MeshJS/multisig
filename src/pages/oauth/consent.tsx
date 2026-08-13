@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import type { GetServerSidePropsContext, InferGetServerSidePropsType } from "next";
-import { AlertCircle, Check, ShieldCheck } from "lucide-react";
+import { AlertCircle, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getWalletSessionFromReq } from "@/lib/auth/walletSession";
 import { MCP_SCOPE_DESCRIPTIONS, type McpScope } from "@/lib/mcp/scopes";
 import { decodeAuthorizationRequest } from "@/lib/oauth/requests";
@@ -79,6 +80,11 @@ export default function OAuthConsentPage({
   const userAddress = useUserStore((state) => state.userAddress);
   const [busy, setBusy] = useState<null | "approve" | "deny">(null);
   const [error, setError] = useState<string | null>(null);
+  // Pre-ticked with everything the client asked for: the request is the
+  // proposal, and this screen is where it gets cut down. /api/oauth/decision
+  // re-intersects against the signed handle, so unticking here is enforced
+  // server-side rather than trusted.
+  const [selected, setSelected] = useState<McpScope[]>(request?.scopes ?? []);
 
   const signedIn = addresses.length > 0;
 
@@ -114,7 +120,7 @@ export default function OAuthConsentPage({
       const response = await fetch("/api/oauth/decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request: handle, approved }),
+        body: JSON.stringify({ request: handle, approved, scopes: selected }),
       });
       const payload = (await response.json()) as {
         redirectTo?: string;
@@ -188,17 +194,38 @@ export default function OAuthConsentPage({
           </section>
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">It will be able to:</h3>
+            <h3 className="text-sm font-medium">It is asking to:</h3>
             <ul className="flex flex-col gap-2">
-              {request.scopes.map((scope) => (
-                <li key={scope} className="flex items-start gap-2 text-sm">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="text-muted-foreground">
-                    {MCP_SCOPE_DESCRIPTIONS[scope] ?? scope}
-                  </span>
-                </li>
-              ))}
+              {request.scopes.map((scope) => {
+                const checked = selected.includes(scope);
+                return (
+                  <li key={scope}>
+                    <label className="flex cursor-pointer items-start gap-2 text-sm">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={checked}
+                        onCheckedChange={(value) =>
+                          setSelected((current) =>
+                            value === true
+                              ? request.scopes.filter(
+                                  (s) => s === scope || current.includes(s),
+                                )
+                              : current.filter((s) => s !== scope),
+                          )
+                        }
+                      />
+                      <span className="text-muted-foreground">
+                        {MCP_SCOPE_DESCRIPTIONS[scope] ?? scope}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
             </ul>
+            <p className="text-xs text-muted-foreground">
+              Untick anything you would rather not grant. You can change this
+              later, or revoke the connection entirely, from your profile.
+            </p>
           </section>
 
           <section className="flex flex-col gap-2">
@@ -231,10 +258,13 @@ export default function OAuthConsentPage({
             )}
           </section>
 
+          {/* True whichever boxes are ticked: no scope above reaches a signing
+              key, so this holds even with every permission granted. */}
           <Alert>
             <AlertDescription className="text-xs">
-              This connection is read-only apart from governance ballot drafts. It
-              cannot sign transactions, move funds, or submit votes on-chain.
+              Whatever you grant, this connection cannot sign transactions, move
+              funds, or submit a vote on-chain. Those stay with you and your
+              co-signers.
             </AlertDescription>
           </Alert>
 
@@ -254,9 +284,16 @@ export default function OAuthConsentPage({
           >
             {busy === "deny" ? "Cancelling…" : "Cancel"}
           </Button>
+          {/* Nothing ticked is a denial, not an approval — Cancel says so to the
+              client, where an empty grant would look like a broken server. */}
           <Button
             onClick={() => void decide(true)}
-            disabled={busy !== null || !signedIn}
+            disabled={busy !== null || !signedIn || selected.length === 0}
+            title={
+              selected.length === 0
+                ? "Select at least one permission, or cancel to deny."
+                : undefined
+            }
           >
             {busy === "approve" ? "Authorizing…" : "Authorize"}
           </Button>
