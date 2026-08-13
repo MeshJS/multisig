@@ -6,6 +6,7 @@ import {
   isValuePortOut,
   portStackHeight,
   portTopPercent,
+  protoPort,
   valuePortIn,
   valuePortOut,
 } from "@/components/common/token-flow/handles";
@@ -16,6 +17,8 @@ describe("value port ids", () => {
     expect(valuePortIn(12)).toBe("in-12");
     expect(valuePortOut(0)).toBe("out-0");
     expect(valuePortOut(3)).toBe("out-3");
+    expect(protoPort(0)).toBe("proto-0");
+    expect(protoPort(2)).toBe("proto-2");
   });
 
   it("recognizes exactly its own id shapes", () => {
@@ -26,7 +29,7 @@ describe("value port ids", () => {
     // rejected, including cross-direction ids and the fixed protocol handles.
     expect(isValuePortIn(valuePortOut(4))).toBe(false);
     expect(isValuePortOut(valuePortIn(4))).toBe(false);
-    expect(isValuePortIn("proto-in")).toBe(false);
+    expect(isValuePortIn(protoPort(0))).toBe(false);
     expect(isValuePortIn("in-")).toBe(false);
     expect(isValuePortIn("in-1x")).toBe(false);
     expect(isValuePortIn(null)).toBe(false);

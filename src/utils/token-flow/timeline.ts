@@ -1,6 +1,7 @@
 import type { OnChainTransaction, UTXO } from "@/types/transaction";
 import type {
   AddressLabeler,
+  FlowBadge,
   TokenFlow,
   TransactionFlowNode,
 } from "@/types/token-flow";
@@ -68,7 +69,15 @@ export function timelineTxsFromOnChain(
  */
 export function storeTxToTokenFlow(
   ref: TimelineTxRef,
-  opts: { labelAddress: AddressLabeler },
+  opts: {
+    labelAddress: AddressLabeler;
+    /**
+     * Badges known without the detail fetch (e.g. the wallet DRep's
+     * votes/certificates cross-referenced by tx hash) so staking/voting
+     * indication shows on the instant rendering too.
+     */
+    extraBadges?: FlowBadge[];
+  },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
   const txId = timelineTxNodeId(ref.txHash);
@@ -79,7 +88,7 @@ export function storeTxToTokenFlow(
     status: "onchain",
     label: ref.description ?? undefined,
     blockHeight: ref.blockHeight,
-    badges: [],
+    badges: opts.extraBadges ?? [],
   };
   graph.addNode(txNode);
   for (const input of ref.utxos?.inputs ?? []) {

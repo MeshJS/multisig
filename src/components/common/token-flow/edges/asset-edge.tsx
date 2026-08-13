@@ -1,3 +1,4 @@
+import Image from "next/image";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -7,10 +8,35 @@ import {
 } from "@xyflow/react";
 
 import type { FlowEdge } from "@/types/token-flow";
+import { IPFSImage } from "@/components/common/ipfs-image";
 import { cn } from "@/lib/utils";
-import { formatAssetQuantity, type AssetMetadataMap } from "../format";
+import { describeAsset, type AssetMetadataMap } from "../format";
 
 const MAX_ASSET_LINES = 3;
+
+/** ~14px token/NFT thumbnail; same source branching as the assets page
+ *  (ipfs:// ref via gateway, anything else is a base64 payload). */
+function AssetThumb({ image, alt }: { image: string; alt: string }) {
+  const className = "h-3.5 w-3.5 shrink-0 rounded-[3px] object-cover";
+  return image.startsWith("ipfs://") ? (
+    <IPFSImage
+      src={image}
+      alt={alt}
+      width={14}
+      height={14}
+      className={className}
+    />
+  ) : (
+    <Image
+      src={`data:image/jpeg;base64, ${image}`}
+      alt={alt}
+      width={14}
+      height={14}
+      unoptimized
+      className={className}
+    />
+  );
+}
 
 /**
  * Bezier edge with a chip listing the assets moving along it. Asset metadata
@@ -82,11 +108,25 @@ export default function AssetEdge(props: EdgeProps) {
               isDebit ? "text-red-500 dark:text-red-400" : "text-foreground",
             )}
           >
-            {shown.map((asset) => (
-              <div key={asset.unit} className="whitespace-nowrap">
-                {formatAssetQuantity(asset, data?.assetMetadata)}
-              </div>
-            ))}
+            {shown.map((asset) => {
+              const desc = describeAsset(asset, data?.assetMetadata);
+              return (
+                <div
+                  key={asset.unit}
+                  className="flex items-center gap-1 whitespace-nowrap"
+                >
+                  {desc.image && (
+                    <AssetThumb image={desc.image} alt={desc.text} />
+                  )}
+                  <span>{desc.text}</span>
+                  {desc.isNft && (
+                    <span className="shrink-0 rounded-sm bg-muted/60 px-0.5 text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      NFT
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             {hidden > 0 && (
               <div className="text-muted-foreground">+{hidden} more</div>
             )}

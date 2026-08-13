@@ -96,7 +96,7 @@ export default function BuilderPalette({
   const addOutput = useTxBuilderStore((state) => state.addOutput);
 
   return (
-    <Panel position="top-left">
+    <Panel position="top-left" className="max-w-[calc(100%-8.5rem)]">
       <div
         className={cn(
           "flex flex-wrap items-center gap-1.5 rounded-lg p-1.5",

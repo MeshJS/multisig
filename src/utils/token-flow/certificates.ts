@@ -3,6 +3,7 @@ import type {
   BlockfrostTxDelegation,
   BlockfrostTxStakeCert,
 } from "@/types/blockfrost";
+import type { TxGovernanceItem } from "@/types/governance";
 import type { DraftCertificate, DraftVote } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
 
@@ -204,6 +205,91 @@ export function draftVoteToBadge(
     vote.govActionIndex,
     resolveProposalTitle,
   );
+}
+
+/**
+ * Koios tx_info cert types → badge labels/colors, matching
+ * `meshCertificateToBadge` so pending and on-chain cards read identically.
+ * Stake/pool types are ABSENT on purpose: those are already badged from
+ * Blockfrost per-tx detail (`blockfrostCertBadges`) and must not duplicate.
+ */
+const KOIOS_CERT_BADGES: Record<string, { label: string; color?: string }> = {
+  drep_registration: {
+    label: "DRep Registration",
+    color: CERT_COLORS.DRepRegistration,
+  },
+  drep_retire: {
+    label: "DRep Deregistration",
+    color: CERT_COLORS.DRepDeregistration,
+  },
+  drep_deregistration: {
+    label: "DRep Deregistration",
+    color: CERT_COLORS.DRepDeregistration,
+  },
+  drep_update: { label: "DRep Update", color: CERT_COLORS.DRepUpdate },
+  vote_delegation: { label: "Vote Delegation" },
+  stake_vote_delegation: { label: "Stake + Vote Delegation" },
+  vote_reg_delegation: { label: "Vote Registration + Delegation" },
+  stake_vote_reg_delegation: {
+    label: "Stake + Vote Registration + Delegation",
+  },
+  auth_committee_hot: { label: "Committee Hot Key Authorization" },
+  resign_committee_cold: { label: "Committee Cold Key Resignation" },
+};
+
+const KOIOS_STAKE_POOL_CERT_TYPES = new Set([
+  "stake_registration",
+  "stake_deregistration",
+  "delegation",
+  "pool_delegation",
+  "pool_update",
+  "pool_retire",
+]);
+
+/**
+ * Badges for one tx's governance activity from /api/governance/txGovernance
+ * (Koios tx_info). Certificates order before votes, matching the pending-tx
+ * adapter. Proposal titles arrive pre-joined server-side.
+ */
+export function txGovernanceToBadges(
+  item: Pick<TxGovernanceItem, "certs" | "votes">,
+): FlowBadge[] {
+  const badges: FlowBadge[] = [];
+  for (const cert of item.certs) {
+    const type = cert.type.toLowerCase();
+    // The route filters these out already; skip defensively on drift.
+    if (KOIOS_STAKE_POOL_CERT_TYPES.has(type)) continue;
+    const known = KOIOS_CERT_BADGES[type];
+    badges.push({
+      kind: "certificate",
+      label: known?.label ?? "Certificate",
+      detail: cert.drepId ? getFirstAndLast(cert.drepId) : undefined,
+      color: known?.color,
+    });
+  }
+  for (const vote of item.votes) {
+    badges.push(
+      voteBadge(
+        vote.voteKind,
+        vote.proposalTxHash,
+        vote.proposalIndex,
+        () => vote.proposalTitle ?? undefined,
+      ),
+    );
+  }
+  return badges;
+}
+
+/** Timeline join index: tx hash (lowercased) → governance badges. */
+export function buildTxGovernanceBadgeMap(
+  items: TxGovernanceItem[],
+): Map<string, FlowBadge[]> {
+  const map = new Map<string, FlowBadge[]>();
+  for (const item of items) {
+    const badges = txGovernanceToBadges(item);
+    if (badges.length > 0) map.set(item.txHash.toLowerCase(), badges);
+  }
+  return map;
 }
 
 /** Badges for on-chain certificates reported by Blockfrost tx endpoints. */

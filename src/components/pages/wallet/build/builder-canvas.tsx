@@ -127,7 +127,12 @@ export default function BuilderCanvas({
       }),
     [draft, labelAddress, walletAddress, resolveProposalTitle, resolvePoolName],
   );
-  const layout = useMemo(() => layoutTokenFlow(flow), [flow]);
+  // connectablePorts: empty card sides keep a dot as the drag-to-connect
+  // source/drop target (viewer canvases render none there).
+  const layout = useMemo(
+    () => layoutTokenFlow(flow, { connectablePorts: true }),
+    [flow],
+  );
 
   const computedNodes = useMemo(
     () =>

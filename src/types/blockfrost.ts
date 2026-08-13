@@ -64,6 +64,13 @@ export type BlockfrostTxStakeCert = {
   registration: boolean;
 };
 
+/** GET /governance/dreps/{drep_id}/updates */
+export type BlockfrostDrepUpdate = {
+  tx_hash: string;
+  cert_index: number;
+  action: "registered" | "updated" | "deregistered";
+};
+
 /** Everything the token-flow visualization needs for one on-chain tx. */
 export type TxFlowData = {
   info: BlockfrostTxInfo;

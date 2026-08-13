@@ -6,7 +6,6 @@ import type { TransactionFlowNode } from "@/types/token-flow";
 import { getFirstAndLast, numberWithCommas } from "@/utils/strings";
 import { cn } from "@/lib/utils";
 import {
-  HANDLES,
   portStackHeight,
   portTopPercent,
   valuePortIn,
@@ -18,17 +17,15 @@ export default function TransactionNode({ id, data }: NodeProps) {
     node,
     inPortCount = 1,
     outPortCount = 1,
-    usedProtoHandles = [],
+    protoPorts = [],
     testIdSuffix = "",
   } = data as {
     node: TransactionFlowNode;
     inPortCount?: number;
     outPortCount?: number;
-    usedProtoHandles?: string[];
+    protoPorts?: { id: string; type: "source" | "target" }[];
     testIdSuffix?: string;
   };
-  const protoOut = usedProtoHandles.includes(HANDLES.transaction.protoOut);
-  const protoIn = usedProtoHandles.includes(HANDLES.transaction.protoIn);
   return (
     <div
       data-testid={`tx-flow-node-${id}${testIdSuffix}`}
@@ -138,26 +135,20 @@ export default function TransactionNode({ id, data }: NodeProps) {
         />
       ))}
       {/* Bottom ports: protocol edges (fee/deposit/burn out, mint/refund in)
-          drop vertically to the protocol pills beneath the card. Only ports
-          an edge actually uses are rendered; a lone port sits centered. */}
-      {protoOut && (
+          drop vertically to the protocol pills beneath the card. Each edge
+          has its OWN connector, spread evenly and ordered left-to-right by
+          the layout to match the pills, so the vertical edges never cross
+          or share a fan-out point. */}
+      {protoPorts.map((port, index) => (
         <Handle
-          type="source"
+          key={port.id}
+          type={port.type}
           position={Position.Bottom}
-          id={HANDLES.transaction.protoOut}
-          style={{ left: protoIn ? "38%" : "50%" }}
+          id={port.id}
+          style={{ left: `${portTopPercent(index, protoPorts.length)}%` }}
           className="!bg-muted-foreground"
         />
-      )}
-      {protoIn && (
-        <Handle
-          type="target"
-          position={Position.Bottom}
-          id={HANDLES.transaction.protoIn}
-          style={{ left: protoOut ? "62%" : "50%" }}
-          className="!bg-muted-foreground"
-        />
-      )}
+      ))}
     </div>
   );
 }

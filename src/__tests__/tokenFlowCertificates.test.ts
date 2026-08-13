@@ -2,12 +2,15 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   blockfrostCertBadges,
+  buildTxGovernanceBadgeMap,
   draftCertificateToBadge,
   draftVoteToBadge,
   meshCertificateToBadge,
   meshVoteToBadge,
+  txGovernanceToBadges,
 } from "@/utils/token-flow/certificates";
 import { getFirstAndLast } from "@/utils/strings";
+import type { TxGovernanceItem } from "@/types/governance";
 
 const DREP_ID = "drep1abcdefghijklmnopqrstuvwxyz0123456789abcdef";
 const STAKE_ADDRESS = "stake_test1uprrw2j075m8yq4wk60l2cwcc02943cueny9qc9q93s7ejgeu5ll8";
@@ -401,5 +404,197 @@ describe("vote badge proposal titles", () => {
     }, resolver);
     expect(badge.title).toBeUndefined();
     expect(badge.detail).toContain("#9");
+  });
+});
+
+const PROPOSAL_TX = "cd".repeat(32);
+
+function govItem(overrides: Partial<TxGovernanceItem> = {}): TxGovernanceItem {
+  return {
+    txHash: "ef".repeat(32),
+    certs: [],
+    votes: [],
+    ...overrides,
+  };
+}
+
+function govVote(
+  overrides: Partial<TxGovernanceItem["votes"][number]> = {},
+): TxGovernanceItem["votes"][number] {
+  return {
+    voterRole: "DRep",
+    voteKind: "Yes",
+    proposalTxHash: PROPOSAL_TX,
+    proposalIndex: 0,
+    proposalTitle: null,
+    ...overrides,
+  };
+}
+
+describe("txGovernanceToBadges", () => {
+  it("maps DRep lifecycle certs with meshCertificateToBadge's labels and colors", () => {
+    const reg = txGovernanceToBadges(
+      govItem({ certs: [{ type: "drep_registration", drepId: DREP_ID }] }),
+    );
+    expect(reg).toEqual([
+      {
+        kind: "certificate",
+        label: meshCertificateToBadge(cert({ type: "DRepRegistration" })).label,
+        detail: getFirstAndLast(DREP_ID),
+        color: "text-blue-500 dark:text-blue-400",
+      },
+    ]);
+
+    const retire = txGovernanceToBadges(
+      govItem({ certs: [{ type: "drep_retire", drepId: null }] }),
+    );
+    expect(retire[0]).toMatchObject({
+      label: "DRep Deregistration",
+      detail: undefined,
+      color: "text-orange-500 dark:text-orange-400",
+    });
+
+    const update = txGovernanceToBadges(
+      govItem({ certs: [{ type: "drep_update", drepId: DREP_ID }] }),
+    );
+    expect(update[0]).toMatchObject({
+      label: "DRep Update",
+      color: "text-purple-500 dark:text-purple-400",
+    });
+  });
+
+  it("maps vote-delegation and committee certs", () => {
+    const labels = (types: string[]) =>
+      txGovernanceToBadges(
+        govItem({ certs: types.map((type) => ({ type, drepId: null })) }),
+      ).map((badge) => badge.label);
+    expect(
+      labels([
+        "vote_delegation",
+        "stake_vote_delegation",
+        "auth_committee_hot",
+        "resign_committee_cold",
+      ]),
+    ).toEqual([
+      "Vote Delegation",
+      "Stake + Vote Delegation",
+      "Committee Hot Key Authorization",
+      "Committee Cold Key Resignation",
+    ]);
+  });
+
+  it("skips stake/pool certs (already badged from Blockfrost detail)", () => {
+    const badges = txGovernanceToBadges(
+      govItem({
+        certs: [
+          { type: "stake_registration", drepId: null },
+          { type: "pool_delegation", drepId: null },
+          { type: "drep_registration", drepId: null },
+        ],
+      }),
+    );
+    expect(badges.map((badge) => badge.label)).toEqual(["DRep Registration"]);
+  });
+
+  it("falls back to a generic badge for unknown cert types", () => {
+    const badges = txGovernanceToBadges(
+      govItem({ certs: [{ type: "something_new", drepId: null }] }),
+    );
+    expect(badges[0]).toMatchObject({ kind: "certificate", label: "Certificate" });
+    expect(badges[0]!.color).toBeUndefined();
+  });
+
+  it("maps votes with colors, proposal detail, and optional title", () => {
+    const badges = txGovernanceToBadges(
+      govItem({
+        votes: [
+          govVote({ voteKind: "Yes", proposalIndex: 3, proposalTitle: "Treasury Withdrawal Q3" }),
+          govVote({ voteKind: "No" }),
+          govVote({ voteKind: "Abstain" }),
+        ],
+      }),
+    );
+    expect(badges[0]).toMatchObject({
+      kind: "vote",
+      label: "Vote: Yes",
+      detail: `${getFirstAndLast(PROPOSAL_TX)}#3`,
+      color: "text-green-500 dark:text-green-400",
+      title: "Treasury Withdrawal Q3",
+    });
+    expect(badges[1]).toMatchObject({
+      label: "Vote: No",
+      color: "text-red-500 dark:text-red-400",
+    });
+    expect(badges[1]!.title).toBeUndefined();
+    expect(badges[2]).toMatchObject({
+      label: "Vote: Abstain",
+      color: "text-muted-foreground",
+    });
+  });
+
+  it("mirrors draftVoteToBadge for the same vote and title", () => {
+    const fromGovernance = txGovernanceToBadges(
+      govItem({
+        votes: [
+          govVote({
+            voteKind: "Abstain",
+            proposalIndex: 3,
+            proposalTitle: "Treasury Withdrawal Q3",
+          }),
+        ],
+      }),
+    )[0];
+    const fromDraft = draftVoteToBadge(
+      {
+        id: "v-1",
+        govActionTxHash: PROPOSAL_TX,
+        govActionIndex: 3,
+        voteKind: "Abstain",
+      },
+      (pid) =>
+        pid === `${PROPOSAL_TX}#3` ? "Treasury Withdrawal Q3" : undefined,
+    );
+    expect(fromGovernance).toEqual(fromDraft);
+  });
+
+  it("orders certificate badges before vote badges", () => {
+    const badges = txGovernanceToBadges(
+      govItem({
+        certs: [{ type: "drep_registration", drepId: null }],
+        votes: [govVote()],
+      }),
+    );
+    expect(badges.map((badge) => badge.kind)).toEqual(["certificate", "vote"]);
+  });
+});
+
+describe("buildTxGovernanceBadgeMap", () => {
+  it("returns an empty map for no items", () => {
+    expect(buildTxGovernanceBadgeMap([]).size).toBe(0);
+  });
+
+  it("keys by lowercased tx hash and groups certs plus votes", () => {
+    const MIXED_CASE_TX = "AB".repeat(32);
+    const map = buildTxGovernanceBadgeMap([
+      govItem({
+        txHash: MIXED_CASE_TX,
+        certs: [{ type: "drep_registration", drepId: null }],
+        votes: [govVote({ voteKind: "Yes" }), govVote({ voteKind: "No", proposalIndex: 1 })],
+      }),
+    ]);
+    expect(map.get(MIXED_CASE_TX)).toBeUndefined();
+    const badges = map.get(MIXED_CASE_TX.toLowerCase())!;
+    expect(badges.map((badge) => badge.label)).toEqual([
+      "DRep Registration",
+      "Vote: Yes",
+      "Vote: No",
+    ]);
+  });
+
+  it("omits items whose certs all filter out", () => {
+    const map = buildTxGovernanceBadgeMap([
+      govItem({ certs: [{ type: "stake_registration", drepId: null }] }),
+    ]);
+    expect(map.size).toBe(0);
   });
 });

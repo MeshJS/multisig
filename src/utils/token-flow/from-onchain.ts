@@ -1,5 +1,10 @@
 import type { TxFlowData } from "@/types/blockfrost";
-import type { AddressLabeler, TokenFlow, TransactionFlowNode } from "@/types/token-flow";
+import type {
+  AddressLabeler,
+  FlowBadge,
+  TokenFlow,
+  TransactionFlowNode,
+} from "@/types/token-flow";
 import { getFirstAndLast } from "@/utils/strings";
 import { blockfrostCertBadges } from "./certificates";
 import {
@@ -15,7 +20,16 @@ import {
  */
 export function onChainTxToTokenFlow(
   data: TxFlowData,
-  opts: { labelAddress: AddressLabeler; description?: string },
+  opts: {
+    labelAddress: AddressLabeler;
+    description?: string;
+    /**
+     * Badges known from outside the tx detail — e.g. the wallet DRep's
+     * votes/certificates cross-referenced by tx hash, which Blockfrost's
+     * per-tx endpoints don't expose. Appended after the detail-derived ones.
+     */
+    extraBadges?: FlowBadge[];
+  },
 ): TokenFlow {
   const { info, utxos } = data;
   const graph = new FlowGraphBuilder(opts.labelAddress);
@@ -30,12 +44,15 @@ export function onChainTxToTokenFlow(
     fee: info.fees,
     blockHeight: info.block_height,
     deposit: info.deposit !== "0" ? info.deposit : undefined,
-    badges: blockfrostCertBadges({
-      delegations: data.delegations,
-      stakes: data.stakes,
-      poolUpdateCount: info.pool_update_count,
-      poolRetireCount: info.pool_retire_count,
-    }),
+    badges: [
+      ...blockfrostCertBadges({
+        delegations: data.delegations,
+        stakes: data.stakes,
+        poolUpdateCount: info.pool_update_count,
+        poolRetireCount: info.pool_retire_count,
+      }),
+      ...(opts.extraBadges ?? []),
+    ],
   };
   graph.addNode(txNode);
 

@@ -1,7 +1,13 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { FlowEdge, FlowNode, TokenFlow } from "@/types/token-flow";
-import { HANDLES, portStackHeight, valuePortIn, valuePortOut } from "./handles";
+import {
+  HANDLES,
+  portStackHeight,
+  protoPort,
+  valuePortIn,
+  valuePortOut,
+} from "./handles";
 
 /**
  * Deterministic columnar layout for the bipartite token-flow graph — no
@@ -24,6 +30,21 @@ import { HANDLES, portStackHeight, valuePortIn, valuePortOut } from "./handles";
 // Wide enough that edge-label chips (asset amounts) between two columns
 // don't collide with the nodes on either side.
 export const COLUMN_WIDTH = 380;
+// Timeline (txOrder) mode uses wider columns: boundary columns split into
+// three lanes around the event divider line, and the extra width is what
+// buys each lane card clearance from the line and from the tx cards beside
+// it.
+export const TIMELINE_COLUMN_WIDTH = 460;
+// Must match the address card's Tailwind w-[220px].
+export const ADDRESS_CARD_WIDTH = 220;
+// Timeline lanes: inside a boundary column (between two timeline events)
+// producer-only cards shift left by this and consumer-only cards right,
+// while joins — and the wallet's own (partyType "self") cards regardless of
+// role, since the wallet's UTxOs persist across boundaries — stay centered
+// ON the divider line at the column's unshifted card centerline. 150 = half
+// the address card + 40px of clearance between a lane card's edge and the
+// line.
+export const TIMELINE_LANE_OFFSET = 150;
 const VERTICAL_GAP = 28;
 const PROTOCOL_ROW_GAP = 90;
 const PROTOCOL_SPACING = 190;
@@ -65,11 +86,14 @@ export type TokenFlowNodeData = {
   instanceRole?: "in" | "out";
   /** True on the output-side instance when the same tx also spends from it. */
   changeHint?: boolean;
-  /** Number of per-edge connector dots to render on each side (min 1). */
+  /** Per-edge connector dots to render on each side (0 when nothing
+   *  attaches, unless LayoutOptions.connectablePorts keeps a min of 1). */
   inPortCount?: number;
   outPortCount?: number;
-  /** Which protocol ports carry an edge; unused ones aren't rendered. */
+  /** Pill top ports that carry an edge; unused ones aren't rendered. */
   usedProtoHandles?: string[];
+  /** Tx bottom ports, one per protocol edge, in left→right (pill x) order. */
+  protoPorts?: { id: string; type: "source" | "target" }[];
   /** Appended to the node testid; see LayoutOptions.testIdSuffix. */
   testIdSuffix?: string;
   [key: string]: unknown;
@@ -85,31 +109,23 @@ type AddressInstance = {
   column: number;
   role?: "in" | "out";
   changeHint?: boolean;
+  /** Timeline lane shift within a boundary column; see TIMELINE_LANE_OFFSET. */
+  xOffset?: number;
 };
 
-const PROTOCOL_EDGE_HANDLES: Partial<
-  Record<FlowEdge["kind"], { sourceHandle: string; targetHandle: string }>
+/**
+ * Protocol edge classification: the fixed pill-side handle plus which end
+ * the transaction card is on. The tx side gets a per-edge `proto-N` port
+ * assigned after positioning (in pill x-order, so edges never cross).
+ */
+const PROTOCOL_EDGE_SPEC: Partial<
+  Record<FlowEdge["kind"], { pillHandle: string; txIsSource: boolean }>
 > = {
-  fee: {
-    sourceHandle: HANDLES.transaction.protoOut,
-    targetHandle: HANDLES.protocol.topIn,
-  },
-  deposit: {
-    sourceHandle: HANDLES.transaction.protoOut,
-    targetHandle: HANDLES.protocol.topIn,
-  },
-  burn: {
-    sourceHandle: HANDLES.transaction.protoOut,
-    targetHandle: HANDLES.protocol.topIn,
-  },
-  "deposit-refund": {
-    sourceHandle: HANDLES.protocol.topOut,
-    targetHandle: HANDLES.transaction.protoIn,
-  },
-  mint: {
-    sourceHandle: HANDLES.protocol.topOut,
-    targetHandle: HANDLES.transaction.protoIn,
-  },
+  fee: { pillHandle: HANDLES.protocol.topIn, txIsSource: true },
+  deposit: { pillHandle: HANDLES.protocol.topIn, txIsSource: true },
+  burn: { pillHandle: HANDLES.protocol.topIn, txIsSource: true },
+  "deposit-refund": { pillHandle: HANDLES.protocol.topOut, txIsSource: false },
+  mint: { pillHandle: HANDLES.protocol.topOut, txIsSource: false },
 };
 
 export type LayoutOptions = {
@@ -130,6 +146,13 @@ export type LayoutOptions = {
    * timeline plus an expanded per-row viz) don't collide.
    */
   testIdSuffix?: string;
+  /**
+   * Keep at least one connector dot per card side even when no value edge
+   * attaches there. The builder canvas needs this: drag-to-connect requires
+   * an existing in-0/out-0 Handle as the gesture's source or drop target.
+   * Viewer canvases omit it so empty sides render no dots.
+   */
+  connectablePorts?: boolean;
 };
 
 export function layoutTokenFlow(
@@ -138,9 +161,25 @@ export function layoutTokenFlow(
 ): {
   nodes: Node<TokenFlowNodeData>[];
   edges: Edge<TokenFlowEdgeData>[];
-  /** Layer per tx node id, as laid out (dependency- or txOrder-based). */
+  /**
+   * Layer per tx node id, as laid out (dependency- or txOrder-based). In
+   * txOrder mode this covers every listed id — including ones with no nodes
+   * yet — so viewport-visibility math can address unloaded columns.
+   */
   txLayer: Map<string, number>;
+  /**
+   * Timeline event boundaries: one per pair of consecutive loaded txOrder
+   * txs, at the boundary column's unshifted card centerline. `index` is the
+   * left tx's txOrder index (stable while gaps fill in). Empty in default
+   * mode.
+   */
+  dividers: { index: number; x: number }[];
+  /** Vertical extent of the laid-out content, protocol row included. */
+  bounds: { minY: number; maxY: number };
 } {
+  // Timeline mode spreads columns wider so boundary-lane cards keep
+  // clearance around the divider lines.
+  const colWidth = opts?.txOrder ? TIMELINE_COLUMN_WIDTH : COLUMN_WIDTH;
   const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
   const txIds = flow.nodes
     .filter((node) => node.kind === "transaction")
@@ -178,11 +217,12 @@ export function layoutTokenFlow(
 
   const layer = new Map<string, number>(txIds.map((id) => [id, 0]));
   if (opts?.txOrder) {
-    // Explicit chronological layering; indices of ids missing from the flow
-    // are intentionally left as gaps (empty columns) for position stability.
-    opts.txOrder.forEach((id, index) => {
-      if (nodesById.has(id)) layer.set(id, index);
-    });
+    // Explicit chronological layering for EVERY listed id, loaded or not.
+    // Unloaded ids position no nodes (their columns stay empty gaps), but
+    // they must be in txLayer so the timeline's viewport controller can
+    // report their columns as visible and demand their detail — keying off
+    // loaded nodes only deadlocks hash-only callers at the seeded batch.
+    opts.txOrder.forEach((id, index) => layer.set(id, index));
   } else {
     // Longest-path layering; graphs are tiny, so simple relaxation is fine.
     for (let i = 0; i < txIds.length; i++) {
@@ -235,8 +275,23 @@ export function layoutTokenFlow(
       if (byCol.size === 0) at(0);
 
       const single = byCol.size === 1;
+      // Boundary columns lie strictly between the first tx's input column
+      // and the last tx's output column. Only they get lane offsets; the
+      // range comes from the FULL txOrder list (not loaded-neighbour
+      // presence) so positions never shift as tx detail streams in.
+      const laneMaxCol = 2 * (opts.txOrder.length - 1);
       for (const [col, group] of byCol) {
         const id = single ? node.id : `${node.id}@c${col}`;
+        // The wallet's own cards never lane-shift: its UTxOs persist across
+        // event boundaries, so self rides the divider line whether it only
+        // received (change held) or only sends (spending older UTxOs) —
+        // only external parties settle left or enter right.
+        const boundary =
+          col >= 2 && col <= laneMaxCol && node.partyType !== "self";
+        const producerOnly =
+          group.producers.length > 0 && group.consumers.length === 0;
+        const consumerOnly =
+          group.consumers.length > 0 && group.producers.length === 0;
         instances.push({
           id,
           node,
@@ -250,6 +305,13 @@ export function layoutTokenFlow(
           // "change" when a tx paying this instance also spends from the
           // same address (its own input instance sits two columns left).
           changeHint: group.producers.some((p) => consumers.includes(p)),
+          xOffset: !boundary
+            ? 0
+            : producerOnly
+              ? -TIMELINE_LANE_OFFSET
+              : consumerOnly
+                ? TIMELINE_LANE_OFFSET
+                : 0,
         });
         for (const c of group.consumers) consumerInstance.set(`${node.id}|${c}`, id);
         for (const p of group.producers) producerInstance.set(`${node.id}|${p}`, id);
@@ -315,9 +377,13 @@ export function layoutTokenFlow(
       targetHandle: valuePortIn(0),
     };
 
-    const protocolHandles = PROTOCOL_EDGE_HANDLES[edge.kind];
-    if (protocolHandles) {
-      handles = protocolHandles;
+    const protocolSpec = PROTOCOL_EDGE_SPEC[edge.kind];
+    if (protocolSpec) {
+      // Pill side is fixed; the tx side is a placeholder overwritten by the
+      // per-edge port assignment after positioning (pill x-order).
+      handles = protocolSpec.txIsSource
+        ? { sourceHandle: protoPort(0), targetHandle: protocolSpec.pillHandle }
+        : { sourceHandle: protocolSpec.pillHandle, targetHandle: protoPort(0) };
       // Timeline mode: protocol edges attach to the per-tx pill instance
       // (see the protocol placement section below).
       if (opts?.txOrder) {
@@ -352,7 +418,7 @@ export function layoutTokenFlow(
   // converging on one shared handle). Counting ports up front lets the
   // stacking below grow cards vertically to fit their connector stacks.
   const valueEdges = edges.filter(
-    (edge) => !PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind],
+    (edge) => !PROTOCOL_EDGE_SPEC[edge.data!.edge.kind],
   );
   const inPorts = new Map<string, number>();
   const outPorts = new Map<string, number>();
@@ -360,13 +426,16 @@ export function layoutTokenFlow(
     outPorts.set(edge.source, (outPorts.get(edge.source) ?? 0) + 1);
     inPorts.set(edge.target, (inPorts.get(edge.target) ?? 0) + 1);
   }
-  const inPortCount = (id: string) => Math.max(1, inPorts.get(id) ?? 0);
-  const outPortCount = (id: string) => Math.max(1, outPorts.get(id) ?? 0);
+  const minPorts = opts?.connectablePorts ? 1 : 0;
+  const inPortCount = (id: string) => Math.max(minPorts, inPorts.get(id) ?? 0);
+  const outPortCount = (id: string) =>
+    Math.max(minPorts, outPorts.get(id) ?? 0);
   const portCount = (id: string) =>
     Math.max(inPortCount(id), outPortCount(id));
 
-  // Protocol ports (tx bottom, pill top) render only when an edge actually
-  // uses them — otherwise cards show stray unconnected dots.
+  // Pill top ports render only when an edge actually uses them — otherwise
+  // pills show stray unconnected dots. (Tx bottom ports are per-edge and
+  // assigned after positioning; see the protoPorts pass below.)
   const usedProtoHandles = new Map<string, string[]>();
   const markProto = (nodeId: string, handle: string) => {
     const list = usedProtoHandles.get(nodeId) ?? [];
@@ -375,10 +444,9 @@ export function layoutTokenFlow(
   // Iterate the remapped edges so marks land on per-tx pill instances in
   // timeline mode (ids are unchanged in default mode).
   for (const edge of edges) {
-    const protoHandles = PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind];
-    if (!protoHandles) continue;
-    markProto(edge.source, protoHandles.sourceHandle);
-    markProto(edge.target, protoHandles.targetHandle);
+    const spec = PROTOCOL_EDGE_SPEC[edge.data!.edge.kind];
+    if (!spec) continue;
+    markProto(spec.txIsSource ? edge.target : edge.source, spec.pillHandle);
   }
 
   // --- Stack instances per column ----------------------------------------
@@ -392,6 +460,7 @@ export function layoutTokenFlow(
     node: FlowNode;
     role?: "in" | "out";
     changeHint?: boolean;
+    xOffset?: number;
   };
   const byColumn = new Map<number, ColumnEntry[]>();
   const pushEntry = (col: number, entry: ColumnEntry) =>
@@ -402,6 +471,7 @@ export function layoutTokenFlow(
       node: instance.node,
       role: instance.role,
       changeHint: instance.changeHint,
+      xOffset: instance.xOffset,
     });
   }
   for (const tx of txIds) {
@@ -422,7 +492,7 @@ export function layoutTokenFlow(
   // Neighbours in lower columns, per instance id (from the remapped edges).
   const lowerNeighbors = new Map<string, string[]>();
   for (const edge of edges) {
-    if (PROTOCOL_EDGE_HANDLES[edge.data!.edge.kind]) continue;
+    if (PROTOCOL_EDGE_SPEC[edge.data!.edge.kind]) continue;
     const sourceCol = column.get(edge.source);
     const targetCol = column.get(edge.target);
     if (sourceCol === undefined || targetCol === undefined) continue;
@@ -456,14 +526,11 @@ export function layoutTokenFlow(
       positioned.push({
         id: entry.id,
         type: entry.node.kind,
-        position: { x: col * COLUMN_WIDTH, y },
+        position: { x: col * colWidth + (entry.xOffset ?? 0), y },
         data: {
           node: entry.node,
           inPortCount: inPortCount(entry.id),
           outPortCount: outPortCount(entry.id),
-          ...(usedProtoHandles.has(entry.id)
-            ? { usedProtoHandles: usedProtoHandles.get(entry.id) }
-            : {}),
           ...(entry.role ? { instanceRole: entry.role } : {}),
           ...(entry.changeHint ? { changeHint: true } : {}),
           ...(opts?.testIdSuffix ? { testIdSuffix: opts.testIdSuffix } : {}),
@@ -549,7 +616,7 @@ export function layoutTokenFlow(
         ? instance.txColumns.reduce((a, b) => a + b, 0) /
           instance.txColumns.length
         : 1;
-    return averageColumn * COLUMN_WIDTH + TX_BOTTOM_CENTER_OFFSET;
+    return averageColumn * colWidth + TX_BOTTOM_CENTER_OFFSET;
   });
   // Spread pills sharing (roughly) the same anchor so they never overlap.
   const anchorGroups = new Map<number, number[]>(); // rounded anchor -> indices
@@ -557,10 +624,12 @@ export function layoutTokenFlow(
     const key = Math.round(anchor / 10) * 10;
     anchorGroups.set(key, [...(anchorGroups.get(key) ?? []), i]);
   });
+  const pillX = new Map<string, number>();
   sortedProtocol.forEach((instance, i) => {
     const group = [...anchorGroups.values()].find((g) => g.includes(i))!;
     const posInGroup = group.indexOf(i);
     const x = anchors[i]! + (posInGroup - (group.length - 1) / 2) * PROTOCOL_SPACING;
+    pillX.set(instance.id, x);
     positioned.push({
       id: instance.id,
       type: instance.node.kind,
@@ -573,5 +642,65 @@ export function layoutTokenFlow(
     });
   });
 
-  return { nodes: positioned, edges, txLayer: layer };
+  // Per-edge bottom ports: every protocol edge gets its OWN connector on
+  // its tx card (like value edges' side ports — no shared fan-out point),
+  // ordered left → right by the x of the pill it connects to so the
+  // vertical protocol edges never cross.
+  const protoPortsByTx = new Map<
+    string,
+    { id: string; type: "source" | "target" }[]
+  >();
+  for (const tx of txIds) {
+    const touching: { edge: Edge<TokenFlowEdgeData>; pillId: string }[] = [];
+    for (const edge of edges) {
+      if (!PROTOCOL_EDGE_SPEC[edge.data!.edge.kind]) continue;
+      if (edge.source === tx) touching.push({ edge, pillId: edge.target });
+      else if (edge.target === tx) touching.push({ edge, pillId: edge.source });
+    }
+    if (touching.length === 0) continue;
+    touching.sort((a, b) => {
+      const dx = (pillX.get(a.pillId) ?? 0) - (pillX.get(b.pillId) ?? 0);
+      if (dx !== 0) return dx;
+      return a.edge.id < b.edge.id ? -1 : 1;
+    });
+    protoPortsByTx.set(
+      tx,
+      touching.map(({ edge }, index) => {
+        const isSource = edge.source === tx;
+        const id = protoPort(index);
+        if (isSource) edge.sourceHandle = id;
+        else edge.targetHandle = id;
+        return { id, type: isSource ? ("source" as const) : ("target" as const) };
+      }),
+    );
+  }
+  for (const node of positioned) {
+    const ports = protoPortsByTx.get(node.id);
+    if (ports) node.data.protoPorts = ports;
+  }
+
+  // --- Timeline event dividers --------------------------------------------
+  // One per boundary between consecutive loaded txs. No line into unloaded
+  // gaps: there is no join and nothing to separate there; lines simply
+  // appear as neighbours load while card positions (driven by the always-on
+  // lane offsets above) never move.
+  const order = opts?.txOrder ?? [];
+  const dividers: { index: number; x: number }[] = [];
+  order.forEach((id, index) => {
+    const next = order[index + 1];
+    if (next !== undefined && nodesById.has(id) && nodesById.has(next)) {
+      dividers.push({
+        index,
+        // The boundary column's unshifted card centerline, where joins stay.
+        x: (2 * index + 2) * colWidth + ADDRESS_CARD_WIDTH / 2,
+      });
+    }
+  });
+  const bounds = {
+    minY: 0,
+    // 36 = protocol pill estimateHeight.
+    maxY: protocolInstances.length > 0 ? bottomY + 36 : maxHeight,
+  };
+
+  return { nodes: positioned, edges, txLayer: layer, dividers, bounds };
 }
