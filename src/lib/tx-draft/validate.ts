@@ -1,6 +1,7 @@
 import { deserializeAddress } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
+import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import {
   materializeOutputAssets,
   requiredAssetTotals,
@@ -15,7 +16,12 @@ export type DraftIssueCode =
   | "no-amount"
   | "min-ada-topup"
   | "insufficient-funds"
-  | "duplicate-output";
+  | "duplicate-output"
+  | "vote-drep-missing"
+  | "cert-stake-missing"
+  | "cert-pool-missing"
+  | "duplicate-vote"
+  | "cert-duplicate";
 
 export type DraftIssue = {
   level: "error" | "warning";
@@ -34,6 +40,17 @@ export type ValidateDraftContext = {
    * the sufficiency check.
    */
   selectedFunds?: Map<string, bigint>;
+  /**
+   * Whether a DRep identity could be derived for the wallet. Omit while
+   * still loading (or when the draft has no votes) to skip the check.
+   */
+  hasDrepContext?: boolean;
+  /**
+   * Whether a staking identity (reward address + staking script) could be
+   * derived for the wallet. Omit while still loading (or when the draft has
+   * no certificates) to skip the check.
+   */
+  hasStakeContext?: boolean;
 };
 
 function isValidPaymentAddress(address: string): boolean {
@@ -56,12 +73,85 @@ export function validateDraft(
 ): DraftIssue[] {
   const issues: DraftIssue[] = [];
 
-  if (draft.outputs.length === 0) {
+  if (
+    draft.outputs.length === 0 &&
+    draft.votes.length === 0 &&
+    draft.certificates.length === 0
+  ) {
     issues.push({
       level: "error",
       code: "no-outputs",
-      message: "Add at least one recipient.",
+      message: "Add at least one recipient, vote, or certificate.",
     });
+  }
+
+  if (draft.votes.length > 0 && ctx.hasDrepContext === false) {
+    issues.push({
+      level: "error",
+      code: "vote-drep-missing",
+      message:
+        "This wallet has no DRep identity — governance votes can't be rebuilt.",
+    });
+  }
+
+  if (draft.certificates.length > 0 && ctx.hasStakeContext === false) {
+    issues.push({
+      level: "error",
+      code: "cert-stake-missing",
+      message:
+        "This wallet has no staking identity — staking certificates can't be rebuilt.",
+    });
+  }
+
+  // Defensive: the inspector normalizes pool ids on entry, but a loaded tx
+  // may carry a pool id that didn't normalize (kept raw by txJsonToDraft).
+  for (const cert of draft.certificates) {
+    if (cert.kind !== "DelegateStake") continue;
+    let valid = false;
+    try {
+      valid = !!cert.poolId && !!normalizePoolIdForDelegation(cert.poolId);
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      issues.push({
+        level: "error",
+        code: "cert-pool-missing",
+        message: "Delegation certificate has no valid stake pool id.",
+      });
+      break; // one summary issue is enough
+    }
+  }
+
+  // Two votes on the same governance action collide in the on-chain
+  // voting_procedures map — only one would survive.
+  const seenActions = new Set<string>();
+  for (const vote of draft.votes) {
+    const actionId = `${vote.govActionTxHash}#${vote.govActionIndex}`;
+    if (seenActions.has(actionId)) {
+      issues.push({
+        level: "error",
+        code: "duplicate-vote",
+        message: "Two votes target the same governance action.",
+      });
+      break; // one summary issue is enough
+    }
+    seenActions.add(actionId);
+  }
+
+  // A single reward address can't meaningfully carry two certs of the same
+  // kind; the add-stake dialog prevents this, so this is a backstop.
+  const seenKinds = new Set<string>();
+  for (const cert of draft.certificates) {
+    if (seenKinds.has(cert.kind)) {
+      issues.push({
+        level: "error",
+        code: "cert-duplicate",
+        message: "The draft has two staking certificates of the same kind.",
+      });
+      break; // one summary issue is enough
+    }
+    seenKinds.add(cert.kind);
   }
 
   const seenAddresses = new Set<string>();
@@ -126,7 +216,19 @@ export function validateDraft(
   }
 
   if (ctx.selectedFunds) {
-    for (const [unit, required] of requiredAssetTotals(draft)) {
+    const totals = requiredAssetTotals(draft);
+    // The 2 ADA stake key deposit is paid from inputs but appears in no
+    // output, so fold it into the required lovelace.
+    const registerCount = draft.certificates.filter(
+      (cert) => cert.kind === "RegisterStake",
+    ).length;
+    if (registerCount > 0) {
+      totals.set(
+        "lovelace",
+        (totals.get("lovelace") ?? 0n) + 2_000_000n * BigInt(registerCount),
+      );
+    }
+    for (const [unit, required] of totals) {
       const available = ctx.selectedFunds.get(unit) ?? 0n;
       if (required > available) {
         issues.push({

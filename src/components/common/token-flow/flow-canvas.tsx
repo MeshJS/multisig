@@ -37,7 +37,21 @@ export const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
 // Shared button chrome for the small canvas-corner controls (reset layout,
 // timeline expand, …).
 export const CANVAS_BUTTON_CLASS =
-  "flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/60 hover:text-foreground";
+  "flex items-center gap-1.5 rounded-md border border-border/60 bg-card/75 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted/60 hover:text-foreground";
+
+// Shared glass chrome for static panels floating over the canvas dot grid.
+// backdrop-blur is reserved for these few static overlays: blurring
+// draggable nodes/edge chips forces per-frame compositing during drag/pan
+// and shimmers under React Flow's zoom transform.
+export const GLASS_PANEL_CLASS =
+  "border border-border/60 bg-card/75 shadow-md backdrop-blur-md";
+
+// Glass variant for DialogContent: swaps only the surface (border color,
+// translucent bg, heavier blur since body text sits over blurred page
+// content) and keeps the dialog's own sizing/shadow/animation classes —
+// tailwind-merge resolves these against DialogContent's base bg-background.
+export const GLASS_DIALOG_CLASS =
+  "border-border/60 bg-card/75 backdrop-blur-xl";
 
 /**
  * Restores the computed layout after the user has dragged nodes around.
@@ -115,7 +129,10 @@ export default function FlowCanvas({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        colorMode="dark"
+        // "system" matches _app.tsx, which derives html.dark from the same
+        // prefers-color-scheme query — no drift possible without a manual
+        // theme toggle.
+        colorMode="system"
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.3}

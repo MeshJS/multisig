@@ -272,4 +272,25 @@ describe("onChainTxToTokenFlow", () => {
       expect.objectContaining({ kind: "certificate", label: "Stake Delegation" }),
     ]);
   });
+
+  test("extraBadges are appended after the detail-derived badges", () => {
+    const voteBadge = {
+      kind: "vote" as const,
+      label: "Vote: Yes",
+      color: "text-green-500 dark:text-green-400",
+    };
+    const flow = onChainTxToTokenFlow(
+      {
+        info: baseInfo({ stake_cert_count: 1 }),
+        utxos: { hash: "abc123", inputs: [], outputs: [] },
+        stakes: [{ cert_index: 0, address: STAKE, registration: true }],
+      },
+      { labelAddress, extraBadges: [voteBadge] },
+    );
+    const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
+    expect(txNode.badges.map((b: any) => b.label)).toEqual([
+      "Stake Registration",
+      "Vote: Yes",
+    ]);
+  });
 });

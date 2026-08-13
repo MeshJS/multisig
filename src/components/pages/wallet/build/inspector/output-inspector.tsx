@@ -144,7 +144,7 @@ export default function OutputInspector({
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 gap-1 px-2 text-xs text-red-500 hover:text-red-600"
+          className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive/80"
           data-testid="tx-builder-remove-output"
           onClick={() => removeOutput(output.id)}
         >

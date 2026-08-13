@@ -35,23 +35,74 @@ export const transactionRouter = createTRPCRouter({
         state: z.number(),
         description: z.string().optional(),
         txHash: z.string().optional(),
+        /**
+         * Atomically deletes this pending transaction in the same database
+         * transaction that creates the new one — the "edit pending tx" flow.
+         * `knownSignedCount` is the signature count the user confirmed
+         * discarding; more signatures having arrived since is a conflict.
+         */
+        replaces: z
+          .object({
+            transactionId: z.string(),
+            knownSignedCount: z.number().int().nonnegative(),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const wallet = await assertWalletAccess(ctx, input.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
-      const tx = await ctx.db.transaction.create({
-        data: {
-          walletId: input.walletId,
-          txJson: input.txJson,
-          signedAddresses: input.signedAddresses,
-          rejectedAddresses: [],
-          txCbor: input.txCbor,
-          state: input.state,
-          description: input.description,
-          txHash: input.txHash,
-        },
-      });
+      const data = {
+        walletId: input.walletId,
+        txJson: input.txJson,
+        signedAddresses: input.signedAddresses,
+        rejectedAddresses: [],
+        txCbor: input.txCbor,
+        state: input.state,
+        description: input.description,
+        txHash: input.txHash,
+      };
+      const tx = input.replaces
+        ? await ctx.db.$transaction(async (db) => {
+            const replaces = input.replaces!;
+            const old = await db.transaction.findUnique({
+              where: { id: replaces.transactionId },
+            });
+            if (!old || old.walletId !== input.walletId) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "The transaction being replaced no longer exists",
+              });
+            }
+            if (old.state !== 0) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "The transaction being replaced was already submitted",
+              });
+            }
+            if (old.signedAddresses.length > replaces.knownSignedCount) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message:
+                  "New signatures were collected while you were editing",
+              });
+            }
+            await db.transaction.delete({ where: { id: old.id } });
+            return db.transaction.create({ data });
+          })
+        : await ctx.db.transaction.create({ data });
+      if (input.replaces) {
+        void audit(ctx.db, {
+          actorAddress: sessionAddress,
+          actorType: "user",
+          action: "transaction.delete",
+          resourceType: "transaction",
+          resourceId: input.replaces.transactionId,
+          ip: ctx.ip ?? null,
+          outcome: "success",
+          metadata: { walletId: input.walletId, replacedBy: tx.id },
+        });
+      }
       void audit(ctx.db, {
         actorAddress: sessionAddress,
         actorType: "user",
@@ -65,6 +116,7 @@ export const transactionRouter = createTRPCRouter({
           state: input.state,
           txHash: input.txHash ?? null,
           initialSigners: input.signedAddresses.length,
+          replaces: input.replaces?.transactionId ?? null,
         },
       });
       if (tx.state === 0) {

@@ -6,7 +6,6 @@ import type { TransactionFlowNode } from "@/types/token-flow";
 import { getFirstAndLast, numberWithCommas } from "@/utils/strings";
 import { cn } from "@/lib/utils";
 import {
-  HANDLES,
   portStackHeight,
   portTopPercent,
   valuePortIn,
@@ -18,17 +17,15 @@ export default function TransactionNode({ id, data }: NodeProps) {
     node,
     inPortCount = 1,
     outPortCount = 1,
-    usedProtoHandles = [],
+    protoPorts = [],
     testIdSuffix = "",
   } = data as {
     node: TransactionFlowNode;
     inPortCount?: number;
     outPortCount?: number;
-    usedProtoHandles?: string[];
+    protoPorts?: { id: string; type: "source" | "target" }[];
     testIdSuffix?: string;
   };
-  const protoOut = usedProtoHandles.includes(HANDLES.transaction.protoOut);
-  const protoIn = usedProtoHandles.includes(HANDLES.transaction.protoIn);
   return (
     <div
       data-testid={`tx-flow-node-${id}${testIdSuffix}`}
@@ -56,8 +53,8 @@ export default function TransactionNode({ id, data }: NodeProps) {
           className={cn(
             "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
             node.status === "pending"
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-              : "bg-green-500/15 text-green-600 dark:text-green-400",
+              ? "bg-warning/15 text-warning"
+              : "bg-success/15 text-success",
           )}
         >
           {node.status === "pending" ? "Pending" : "On-chain"}
@@ -80,19 +77,51 @@ export default function TransactionNode({ id, data }: NodeProps) {
       {/* The fee itself is shown on the edge to the Network-fee pill, not
           repeated on the card. */}
       {node.badges.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {node.badges.map((badge, i) => (
-            <span
-              key={i}
-              title={badge.detail}
-              className={cn(
-                "rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
-                badge.color ?? "text-muted-foreground",
-              )}
-            >
-              {badge.label}
-            </span>
-          ))}
+        <div className="mt-1.5 flex flex-col gap-1">
+          {/* Untitled badges keep the compact wrap-row pills. */}
+          {node.badges.some((badge) => !badge.title) && (
+            <div className="flex flex-wrap gap-1">
+              {node.badges
+                .filter((badge) => !badge.title)
+                .map((badge, i) => (
+                  <span
+                    key={i}
+                    title={badge.detail}
+                    className={cn(
+                      "rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
+                      badge.color ?? "text-muted-foreground",
+                    )}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+            </div>
+          )}
+          {/* Titled badges (votes with a resolved proposal name): the full
+              title wraps across lines, with the vote pill underneath. */}
+          {node.badges
+            .filter((badge) => badge.title)
+            .map((badge, i) => (
+              <div
+                key={`titled-${i}`}
+                className="flex min-w-0 flex-col gap-0.5"
+                title={
+                  badge.detail ? `${badge.title} (${badge.detail})` : badge.title
+                }
+              >
+                <span className="whitespace-normal break-words text-[9px] leading-snug text-muted-foreground">
+                  {badge.title}
+                </span>
+                <span
+                  className={cn(
+                    "self-start rounded-full border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium",
+                    badge.color ?? "text-muted-foreground",
+                  )}
+                >
+                  {badge.label}
+                </span>
+              </div>
+            ))}
         </div>
       )}
       {Array.from({ length: outPortCount }, (_, i) => (
@@ -106,26 +135,20 @@ export default function TransactionNode({ id, data }: NodeProps) {
         />
       ))}
       {/* Bottom ports: protocol edges (fee/deposit/burn out, mint/refund in)
-          drop vertically to the protocol pills beneath the card. Only ports
-          an edge actually uses are rendered; a lone port sits centered. */}
-      {protoOut && (
+          drop vertically to the protocol pills beneath the card. Each edge
+          has its OWN connector, spread evenly and ordered left-to-right by
+          the layout to match the pills, so the vertical edges never cross
+          or share a fan-out point. */}
+      {protoPorts.map((port, index) => (
         <Handle
-          type="source"
+          key={port.id}
+          type={port.type}
           position={Position.Bottom}
-          id={HANDLES.transaction.protoOut}
-          style={{ left: protoIn ? "38%" : "50%" }}
+          id={port.id}
+          style={{ left: `${portTopPercent(index, protoPorts.length)}%` }}
           className="!bg-muted-foreground"
         />
-      )}
-      {protoIn && (
-        <Handle
-          type="target"
-          position={Position.Bottom}
-          id={HANDLES.transaction.protoIn}
-          style={{ left: protoOut ? "62%" : "50%" }}
-          className="!bg-muted-foreground"
-        />
-      )}
+      ))}
     </div>
   );
 }

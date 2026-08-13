@@ -28,11 +28,14 @@ export const portTopPercent = (index: number, count: number): number =>
 export const portStackHeight = (count: number): number =>
   (count + 1) * PORT_SPACING;
 
+/**
+ * Per-edge bottom port on a transaction card: every protocol edge
+ * (fee/deposit/burn out, mint/refund in) gets its own connector dot, indexed
+ * left → right in pill order by the layout — no shared fan-out point.
+ */
+export const protoPort = (index: number): string => `proto-${index}`;
+
 export const HANDLES = {
-  transaction: {
-    protoOut: "proto-out", // source, bottom — fee / deposit / burn
-    protoIn: "proto-in", // target, bottom — mint / deposit refund
-  },
   protocol: {
     topIn: "top-in", // target, top
     topOut: "top-out", // source, top
