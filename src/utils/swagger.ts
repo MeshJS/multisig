@@ -121,6 +121,47 @@ This API uses **Bearer Token** authentication (JWT).
       },
     ],
     paths: {
+      "/api/mcp": {
+        post: {
+          tags: ["MCP"],
+          summary: "Model Context Protocol endpoint (stateless)",
+          description:
+            "A stateless MCP server for AI agents. One POST is one complete JSON-RPC exchange — there is no session, so GET and DELETE return 405. Serves both the 2026-07-28 and 2025-era protocol revisions.\n\nThe tool surface is read-only plus governance ballot drafts: it can list wallets, pending transactions, free UTxOs, proxies and active proposals, but cannot sign, spend or broadcast.\n\nAuthenticate with an OAuth 2.1 access token (discoverable via the `WWW-Authenticate` challenge on a 401) or an existing v1 bearer token. Full contract: src/pages/api/mcp/README.md.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  description: "A JSON-RPC 2.0 request, e.g. tools/list or tools/call.",
+                  properties: {
+                    jsonrpc: { type: "string", example: "2.0" },
+                    id: { type: "integer", example: 1 },
+                    method: { type: "string", example: "tools/list" },
+                    params: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "JSON-RPC result",
+              content: {
+                "application/json": { schema: { type: "object" } },
+              },
+            },
+            401: {
+              description:
+                "Missing or invalid token. Carries a WWW-Authenticate header naming the RFC 9728 resource-metadata URL.",
+            },
+            403: { description: "Request carried an Origin header (browser-driven)" },
+            405: { description: "Method Not Allowed — POST only" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
       "/api/v1/nativeScript": {
         get: {
           tags: ["V1"],

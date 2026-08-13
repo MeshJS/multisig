@@ -6,7 +6,7 @@ const submitTxMock = jest.fn<(txCbor: string) => Promise<string>>();
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: () => ({ submitTx: submitTxMock }),
-}), { virtual: true });
+}));
 
 let createPendingMultisigTransaction: typeof import("@/lib/server/createPendingMultisigTransaction").createPendingMultisigTransaction;
 

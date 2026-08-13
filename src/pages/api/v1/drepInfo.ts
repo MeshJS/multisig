@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
+import { authorizeProxyReadForV1 } from "@/lib/server/proxyAccess";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { db } from "@/server/db";
 import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
@@ -41,7 +42,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Missing or invalid address parameter" });
   }
 
-  const walletRow = await db.wallet.findUnique({ where: { id: walletId } });
+  // Authorize before reading. This endpoint previously looked up any walletId
+  // for any authenticated caller, which let anyone map a wallet id to its DRep
+  // credential. authorizeProxyReadForV1 is the canonical dual-identity read
+  // check (address must match the JWT, then bot grant or signer membership);
+  // it is proxy-agnostic despite the filename.
+  let walletRow: Awaited<ReturnType<typeof db.wallet.findUnique>>;
+  try {
+    ({ wallet: walletRow } = await authorizeProxyReadForV1({
+      db,
+      payload,
+      walletId,
+      address,
+    }));
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "NOT_FOUND") return res.status(404).json({ error: "Wallet not found" });
+    if (code === "ADDRESS_MISMATCH") return res.status(403).json({ error: "Address mismatch" });
+    return res.status(403).json({ error: "Not authorized for this wallet" });
+  }
   if (!walletRow) return res.status(404).json({ error: "Wallet not found" });
 
   const wallet = walletRow as DbWalletWithLegacy;

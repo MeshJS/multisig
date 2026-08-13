@@ -8,11 +8,33 @@
  * The two modes are mutually exclusive per file, so they run as separate jest
  * invocations (see jest.config.mjs for CJS and jest.esm.config.mjs for ESM),
  * both built from this shared base.
+ *
+ * ## Never pass `{ virtual: true }` to `jest.mock()` for a module that exists
+ *
+ * `transform` below matches TypeScript only, so **no transformer applies to
+ * `.js` files** — including ESM-only packages in node_modules that
+ * `transformIgnorePatterns` permits. `superjson` v2 is the live example:
+ * `"type": "module"`, a single ESM export, no CommonJS build. Loading it in the
+ * CJS project throws "Cannot use import statement outside a module", every
+ * time, with no cache or ordering involved.
+ *
+ * CJS tests therefore depend on their mocks actually applying, so that the real
+ * module (and its unloadable dependencies) is never reached. `virtual: true` is
+ * for modules with *no file on disk*; used on a real one it registers the mock
+ * under the bare specifier instead of the resolved path, and whether a given
+ * importer gets the mock then varies with resolution order — which shifts with
+ * test count and load. That was the cause of a ~1-in-8 intermittent failure in
+ * walletIds.bot.test.ts, whose `@/server/api/root` mock would occasionally miss
+ * and pull the real tRPC root, and superjson with it.
+ *
+ * `src/__tests__/jestMockHygiene.test.ts` fails the build if the pattern
+ * returns.
  */
 export const ESM_TESTS = [
   'apiSecurity',
   'botBallotsUpsert',
   'governanceActiveProposals',
+  'mcpConnections',
   'og',
   'pendingTransactions',
   'reviewSignersCardKey',
