@@ -21,9 +21,13 @@ export type McpScope = (typeof MCP_SCOPES)[number];
 export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   "wallets:read":
     "Read your multisig wallets, their pending transactions, spendable UTxOs and proxies.",
-  "governance:read": "Read active on-chain governance proposals.",
+  "governance:read":
+    "Read governance proposals, your team's internal ballots and rationales, and your DRep voting history.",
+  // Names the IPFS side effect explicitly. This string is what the consent
+  // screen shows at the moment of the decision, and a pinned rationale is
+  // public and effectively permanent — "ballot drafts" alone undersells that.
   "ballots:write":
-    "Create and update governance ballot drafts, including rationale text. Does not vote on-chain.",
+    "Create and update governance ballot drafts, and publish rationale documents publicly to IPFS. Cannot vote on-chain.",
 };
 
 export function isMcpScope(value: string): value is McpScope {

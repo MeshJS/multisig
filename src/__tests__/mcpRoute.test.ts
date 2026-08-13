@@ -1,6 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextApiRequest, NextApiResponse } from "next";
 
+import { MCP_SCOPES } from "@/lib/mcp/scopes";
+
 /**
  * Drives the real MCP protocol through the real route.
  *
@@ -218,12 +220,13 @@ describe("POST /api/mcp — transport", () => {
     expect(challenge).toContain("resource_metadata=");
     expect(challenge).toContain("/.well-known/oauth-protected-resource");
     // Clients request exactly the challenge's `scope`, not scopes_supported, so
-    // both read scopes must appear here or their tools are unreachable in
-    // practice. ballots:write is intentionally absent — the one write scope
-    // stays opt-in.
-    expect(challenge).toContain("wallets:read");
-    expect(challenge).toContain("governance:read");
-    expect(challenge).not.toContain("ballots:write");
+    // every grantable scope must appear here or its tools are unreachable in
+    // practice however the user connects. Leaving ballots:write out is what
+    // hid the two ballot tools from every real client; the consent screen, not
+    // this header, is where a scope gets withheld.
+    for (const scope of MCP_SCOPES) {
+      expect(challenge).toContain(scope);
+    }
   });
 
   it("serves tools/list on the modern protocol era", async () => {

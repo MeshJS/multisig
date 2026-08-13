@@ -52,6 +52,11 @@ async function decide(req: NextApiRequest, res: NextApiResponse) {
 
   const handle = typeof req.body?.request === "string" ? req.body.request : null;
   const approved = req.body?.approved === true;
+  const chosenScopes = Array.isArray(req.body?.scopes)
+    ? (req.body.scopes as unknown[]).filter(
+        (s): s is string => typeof s === "string",
+      )
+    : null;
   if (!handle) {
     return res.status(400).json({ error: "invalid_request", error_description: "Missing request handle" });
   }
@@ -100,6 +105,26 @@ async function decide(req: NextApiRequest, res: NextApiResponse) {
     });
   }
 
+  // The user may hand over less than the client asked for, never more. The
+  // signed handle is the ceiling; the body only ever narrows it, so a tampered
+  // `scopes` array cannot reach past what /authorize already validated.
+  // Omitting the field grants everything requested, which is what a client
+  // driving this endpoint directly (and every pre-checkbox consent) expects.
+  const grantedScopes = chosenScopes
+    ? request.scopes.filter((scope) => chosenScopes.includes(scope))
+    : request.scopes;
+
+  // An approval that grants nothing is not an approval. It would mint a token
+  // that authenticates and exposes no tools — indistinguishable, from the
+  // client's side, from the server being broken. Denying says what happened.
+  if (grantedScopes.length === 0) {
+    return res.status(400).json({
+      error: "invalid_scope",
+      error_description:
+        "Select at least one permission, or cancel to deny the request.",
+    });
+  }
+
   const code = generateOpaqueToken();
 
   await db.$transaction(async (tx) => {
@@ -109,7 +134,7 @@ async function decide(req: NextApiRequest, res: NextApiResponse) {
         clientId: request.clientId,
         subjectAddress: subject,
         grantedAddresses: addresses,
-        scopes: request.scopes,
+        scopes: grantedScopes,
         resource: request.resource,
         redirectUri: request.redirectUri,
         codeChallenge: request.codeChallenge,
@@ -126,11 +151,11 @@ async function decide(req: NextApiRequest, res: NextApiResponse) {
           clientId: request.clientId,
         },
       },
-      update: { scopes: request.scopes, grantedAddresses: addresses },
+      update: { scopes: grantedScopes, grantedAddresses: addresses },
       create: {
         subjectAddress: subject,
         clientId: request.clientId,
-        scopes: request.scopes,
+        scopes: grantedScopes,
         grantedAddresses: addresses,
       },
     });
