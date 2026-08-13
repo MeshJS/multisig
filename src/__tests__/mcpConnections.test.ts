@@ -12,6 +12,9 @@ type AnyAsyncMock = jest.Mock<(...args: any[]) => any>;
 const grantFindMany = jest.fn() as AnyAsyncMock;
 const grantFindUnique = jest.fn() as AnyAsyncMock;
 const grantDelete = jest.fn() as AnyAsyncMock;
+const grantUpdate = jest.fn() as AnyAsyncMock;
+const auditFindMany = jest.fn() as AnyAsyncMock;
+const walletFindUnique = jest.fn() as AnyAsyncMock;
 const clientFindMany = jest.fn() as AnyAsyncMock;
 const tokenFindMany = jest.fn() as AnyAsyncMock;
 const tokenUpdateMany = jest.fn() as AnyAsyncMock;
@@ -41,7 +44,10 @@ function ctx(session: { primaryWallet?: string | null; sessionWallets?: string[]
         findMany: grantFindMany,
         findUnique: grantFindUnique,
         delete: grantDelete,
+        update: grantUpdate,
       },
+      auditLog: { findMany: auditFindMany },
+      wallet: { findUnique: walletFindUnique },
       oAuthClient: { findMany: clientFindMany },
       oAuthRefreshToken: { findMany: tokenFindMany, updateMany: tokenUpdateMany },
       $transaction: transaction,
@@ -54,6 +60,11 @@ let caller: (c: unknown) => any;
 beforeEach(async () => {
   jest.clearAllMocks();
   transaction.mockImplementation(async (ops: unknown[]) => [undefined, { count: 2 }]);
+  grantUpdate.mockResolvedValue({});
+  auditFindMany.mockResolvedValue([]);
+  walletFindUnique.mockResolvedValue({
+    id: "w1", signersAddresses: [ADDR], ownerAddress: ADDR,
+  });
   grantDelete.mockResolvedValue({});
   tokenUpdateMany.mockResolvedValue({ count: 2 });
   const { mcpRouter } = await import("@/server/api/routers/mcp");
@@ -187,5 +198,129 @@ describe("revokeConnection", () => {
         requesterAddress: ADDR,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("updateConnectionScopes", () => {
+  it("narrows a grant and keeps refresh tokens in step", async () => {
+    grantFindUnique.mockResolvedValue({
+      id: "g1", scopes: ["wallets:read", "governance:read", "ballots:write"],
+    });
+
+    const out = await caller(ctx({ primaryWallet: ADDR })).updateConnectionScopes({
+      clientId: "c1",
+      requesterAddress: ADDR,
+      scopes: ["wallets:read"],
+    });
+
+    expect(out).toEqual({ ok: true, scopes: ["wallets:read"] });
+    // Grant and refresh tokens move together, or a refresh would re-widen it.
+    expect(transaction).toHaveBeenCalled();
+    expect(tokenUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { scopes: ["wallets:read"] } }),
+    );
+  });
+
+  it("normalises to catalogue order regardless of input order", async () => {
+    grantFindUnique.mockResolvedValue({ id: "g1", scopes: [] });
+    const out = await caller(ctx({ primaryWallet: ADDR })).updateConnectionScopes({
+      clientId: "c1",
+      requesterAddress: ADDR,
+      scopes: ["ballots:write", "wallets:read"],
+    });
+    expect(out.scopes).toEqual(["wallets:read", "ballots:write"]);
+  });
+
+  it("refuses to empty a grant — revoking is the honest action", async () => {
+    grantFindUnique.mockResolvedValue({ id: "g1", scopes: ["wallets:read"] });
+    await expect(
+      caller(ctx({ primaryWallet: ADDR })).updateConnectionScopes({
+        clientId: "c1", requesterAddress: ADDR, scopes: [],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses an address the session does not hold", async () => {
+    await expect(
+      caller(ctx({ primaryWallet: ADDR })).updateConnectionScopes({
+        clientId: "c1", requesterAddress: OTHER, scopes: ["wallets:read"],
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("404s on a grant that does not exist", async () => {
+    grantFindUnique.mockResolvedValue(null);
+    await expect(
+      caller(ctx({ primaryWallet: ADDR })).updateConnectionScopes({
+        clientId: "nope", requesterAddress: ADDR, scopes: ["wallets:read"],
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("wallet activity", () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: "a1",
+    actorAddress: ADDR,
+    outcome: "success",
+    reason: null,
+    createdAt: new Date("2026-08-13T10:00:00Z"),
+    metadata: { tool: "multisig_list_wallets", client: "https://claude.ai/x", scope: "wallets:read", readOnly: true, status: 200, durationMs: 12 },
+    ...over,
+  });
+
+  it("groups calls by client with counts and failures", async () => {
+    auditFindMany.mockResolvedValue([
+      row(),
+      row({ id: "a2", metadata: { ...row().metadata, tool: "multisig_list_free_utxos" } }),
+      row({ id: "a3", outcome: "denied" }),
+    ]);
+
+    const [client] = await caller(ctx({ primaryWallet: ADDR })).walletClients({
+      walletId: "w1",
+    });
+
+    expect(client).toMatchObject({
+      client: "https://claude.ai/x",
+      calls: 3,
+      failures: 1,
+      tools: ["multisig_list_free_utxos", "multisig_list_wallets"],
+    });
+  });
+
+  it("only reads MCP tool rows for this wallet", async () => {
+    await caller(ctx({ primaryWallet: ADDR })).walletClients({ walletId: "w1" });
+    expect(auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          action: "mcp.tool.called",
+          resourceType: "wallet",
+          resourceId: "w1",
+        },
+      }),
+    );
+  });
+
+  it("filters the drill-down to one client", async () => {
+    auditFindMany.mockResolvedValue([
+      row(),
+      row({ id: "a2", metadata: { ...row().metadata, client: "other-client" } }),
+    ]);
+    const rows = await caller(ctx({ primaryWallet: ADDR })).walletToolUsage({
+      walletId: "w1",
+      client: "other-client",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ client: "other-client" });
+  });
+
+  it("refuses a wallet the caller is not a signer of", async () => {
+    walletFindUnique.mockResolvedValue({
+      id: "w1", signersAddresses: [OTHER], ownerAddress: OTHER,
+    });
+    await expect(
+      caller(ctx({ primaryWallet: ADDR })).walletClients({ walletId: "w1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

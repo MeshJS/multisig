@@ -4,7 +4,7 @@ import type { NextApiRequest } from "next";
 import { db } from "@/server/db";
 import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
 import { isBotJwt, verifyJwt } from "@/lib/verifyJwt";
-import { MCP_SCOPES, type McpScope } from "@/lib/mcp/scopes";
+import { MCP_SCOPES, isMcpScope, type McpScope } from "@/lib/mcp/scopes";
 import { issuerOrigin, resourceUrl } from "@/lib/oauth/config";
 import { verifyAccessToken } from "@/lib/oauth/accessToken";
 
@@ -85,10 +85,35 @@ export async function resolveMcpCaller(
     resource: resourceUrl(req),
   });
   if (oauth) {
+    // The stored grant is authoritative, not the token's `scope` claim.
+    //
+    // Access tokens are self-contained and live for an hour, so trusting the
+    // claim alone would mean a permission removed in the profile — or the whole
+    // connection revoked — kept working until the token happened to expire.
+    // Re-reading the grant costs one indexed lookup and makes the UI mean what
+    // it says: changes apply on the very next request.
+    const grant = await db.oAuthGrant.findUnique({
+      where: {
+        subjectAddress_clientId: {
+          subjectAddress: oauth.subject,
+          clientId: oauth.clientId,
+        },
+      },
+    });
+    if (!grant) return null; // revoked, or never granted
+
+    // Intersect rather than replace: a token must never gain reach it was not
+    // issued with, even if the grant was later widened.
+    const granted = grant.scopes.filter(isMcpScope);
+    const scopes = oauth.scopes.filter((s) => granted.includes(s));
+
     return {
       subject: oauth.subject,
-      addresses: oauth.addresses,
-      scopes: oauth.scopes,
+      // The grant also decides which wallets are in play.
+      addresses: grant.grantedAddresses.length > 0
+        ? oauth.addresses.filter((a) => grant.grantedAddresses.includes(a))
+        : oauth.addresses,
+      scopes,
       clientName: oauth.clientId,
       botId: null,
       expiresAt: oauth.expiresAt,

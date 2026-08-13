@@ -13,7 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MCP_SCOPE_DESCRIPTIONS, type McpScope } from "@/lib/mcp/scopes";
+import { Checkbox } from "@/components/ui/checkbox";
+import { MCP_SCOPES, MCP_SCOPE_DESCRIPTIONS, type McpScope } from "@/lib/mcp/scopes";
 import { useUserStore } from "@/lib/zustand/user";
 import { api } from "@/utils/api";
 
@@ -32,12 +33,31 @@ export default function McpConnectionsCard() {
     clientId: string;
     clientName: string;
   } | null>(null);
+  /** Per-connection scope edits, keyed by clientId, until saved. */
+  const [drafts, setDrafts] = useState<Record<string, McpScope[]>>({});
 
   const utils = api.useUtils();
   const { data: connections, isLoading } = api.mcp.listConnections.useQuery(
     { requesterAddress: userAddress ?? "" },
     { enabled: Boolean(userAddress) },
   );
+
+  const updateScopes = api.mcp.updateConnectionScopes.useMutation({
+    onSuccess: (_r, vars) => {
+      void utils.mcp.listConnections.invalidate();
+      setDrafts((d) => {
+        const next = { ...d };
+        delete next[vars.clientId];
+        return next;
+      });
+      toast({
+        title: "Permissions updated",
+        description: "Applies to the client's next request.",
+      });
+    },
+    onError: (error) =>
+      toast({ title: "Could not update", description: error.message, variant: "destructive" }),
+  });
 
   const revoke = api.mcp.revokeConnection.useMutation({
     onSuccess: (result) => {
@@ -112,14 +132,68 @@ export default function McpConnectionsCard() {
                     {c.clientId}
                   </code>
 
-                  <ul className="flex flex-col gap-1">
-                    {c.scopes.map((scope) => (
-                      <li key={scope} className="text-xs text-muted-foreground">
-                        •{" "}
-                        {MCP_SCOPE_DESCRIPTIONS[scope as McpScope] ?? scope}
-                      </li>
-                    ))}
-                  </ul>
+                  <fieldset className="flex flex-col gap-2">
+                    <legend className="mb-1 text-xs font-medium">Permissions</legend>
+                    {MCP_SCOPES.map((scope) => {
+                      const current = drafts[c.clientId] ?? (c.scopes as McpScope[]);
+                      const checked = current.includes(scope);
+                      return (
+                        <label
+                          key={scope}
+                          className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground"
+                        >
+                          <Checkbox
+                            className="mt-0.5"
+                            checked={checked}
+                            onCheckedChange={(v) =>
+                              setDrafts((d) => {
+                                const base = d[c.clientId] ?? (c.scopes as McpScope[]);
+                                const next = v === true
+                                  ? MCP_SCOPES.filter((s) => s === scope || base.includes(s))
+                                  : base.filter((s) => s !== scope);
+                                return { ...d, [c.clientId]: next };
+                              })
+                            }
+                          />
+                          <span>
+                            <span className="font-mono text-foreground">{scope}</span>
+                            {" — "}
+                            {MCP_SCOPE_DESCRIPTIONS[scope]}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {drafts[c.clientId] && (
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          disabled={updateScopes.isPending}
+                          onClick={() =>
+                            updateScopes.mutate({
+                              clientId: c.clientId,
+                              requesterAddress: userAddress,
+                              scopes: drafts[c.clientId] ?? [],
+                            })
+                          }
+                        >
+                          {updateScopes.isPending ? "Saving…" : "Save permissions"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setDrafts((d) => {
+                              const next = { ...d };
+                              delete next[c.clientId];
+                              return next;
+                            })
+                          }
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </fieldset>
 
                   <p className="text-xs text-muted-foreground">
                     Approved {new Date(c.approvedAt).toLocaleDateString()}

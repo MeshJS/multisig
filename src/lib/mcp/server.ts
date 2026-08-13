@@ -1,8 +1,10 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 
+import { db } from "@/server/db";
+import { audit } from "@/lib/observability/audit";
 import type { McpCaller } from "@/lib/mcp/auth";
 import type { V1Result } from "@/lib/mcp/invokeV1";
-import { toolsForScopes } from "@/lib/mcp/tools";
+import { toolsForScopes, type McpToolDef } from "@/lib/mcp/tools";
 
 export const MCP_SERVER_NAME = "mesh-multisig";
 export const MCP_SERVER_VERSION = "0.1.0";
@@ -34,16 +36,86 @@ export function createMcpServer(caller: McpCaller, clientIp: string): McpServer 
         annotations: tool.annotations,
       },
       async (args: unknown) => {
-        const result = await tool.run(
-          (args ?? {}) as Record<string, unknown>,
-          { caller, clientIp },
-        );
+        const input = (args ?? {}) as Record<string, unknown>;
+        const startedAt = Date.now();
+        let result;
+        try {
+          result = await tool.run(input, { caller, clientIp });
+        } catch (error) {
+          void recordToolCall({
+            tool,
+            caller,
+            input,
+            clientIp,
+            status: 0,
+            durationMs: Date.now() - startedAt,
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+        void recordToolCall({
+          tool,
+          caller,
+          input,
+          clientIp,
+          status: result.status,
+          durationMs: Date.now() - startedAt,
+        });
         return toToolResult(result);
       },
     );
   }
 
   return server;
+}
+
+/** Action name for every MCP tool invocation in the audit log. */
+export const MCP_TOOL_ACTION = "mcp.tool.called";
+
+/**
+ * Record one tool call.
+ *
+ * Written against the wallet the call touched (`resourceType: "wallet"`), so
+ * the per-wallet activity view is an indexed lookup rather than a scan. Fire
+ * and forget: `audit` swallows its own failures, and an audit miss must never
+ * break a tool call.
+ *
+ * Only the walletId is taken from the arguments. Tool inputs can carry
+ * user-authored prose — ballot rationales, descriptions — which has no place in
+ * an audit row.
+ */
+function recordToolCall(args: {
+  tool: McpToolDef;
+  caller: McpCaller;
+  input: Record<string, unknown>;
+  clientIp: string;
+  status: number;
+  durationMs: number;
+  reason?: string;
+}) {
+  const walletId =
+    typeof args.input.walletId === "string" ? args.input.walletId : null;
+
+  return audit(db, {
+    actorAddress: args.caller.subject,
+    actorType: args.caller.botId ? "bot" : "user",
+    action: MCP_TOOL_ACTION,
+    resourceType: walletId ? "wallet" : "mcp",
+    resourceId: walletId,
+    ip: args.clientIp,
+    outcome:
+      args.status === 0 ? "error" : args.status >= 400 ? "denied" : "success",
+    ...(args.reason ? { reason: args.reason.slice(0, 200) } : {}),
+    metadata: {
+      tool: args.tool.name,
+      scope: args.tool.scope,
+      // The OAuth client id, or null for a v1 bearer / bot caller.
+      client: args.caller.clientName,
+      readOnly: args.tool.annotations.readOnlyHint,
+      status: args.status,
+      durationMs: args.durationMs,
+    },
+  });
 }
 
 /**
