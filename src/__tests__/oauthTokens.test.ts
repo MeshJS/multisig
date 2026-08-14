@@ -136,6 +136,14 @@ describe("client id metadata documents", () => {
     expect(isMetadataUrlClientId("https://claude.ai")).toBe(false);
     expect(isMetadataUrlClientId("mcp-1234")).toBe(false);
   });
+
+  it("rejects a non-default port (SSRF port pinning) but accepts :443", () => {
+    // The CIMD fetch is an SSRF sink; an explicit port would let a client_id
+    // probe arbitrary services on any public host.
+    expect(isMetadataUrlClientId("https://claude.ai:8443/oauth/meta")).toBe(false);
+    // URL normalises ":443" to the default, so this stays acceptable.
+    expect(isMetadataUrlClientId("https://claude.ai:443/oauth/meta")).toBe(true);
+  });
 });
 
 describe("access tokens", () => {

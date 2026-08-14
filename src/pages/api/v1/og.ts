@@ -94,6 +94,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
+  // URL normalises ":443" away, so any explicit port is a non-default one —
+  // reject it so the allowlist can't be used to probe arbitrary services.
+  if (parsed.port !== "") {
+    res.status(400).json({ error: "Only the default https port is allowed" });
+    return;
+  }
+
   const { hosts, wildcard } = loadAllowedHosts();
   const host = parsed.hostname.toLowerCase();
   if (!wildcard && !hosts.has(host)) {

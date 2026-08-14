@@ -17,7 +17,12 @@ export const MAX_REDIRECT_URIS = 10;
 export function isMetadataUrlClientId(clientId: string): boolean {
   try {
     const url = new URL(clientId);
-    return url.protocol === "https:" && url.pathname.length > 1;
+    // Default port only: the CIMD fetch is an SSRF sink, and allowing an
+    // explicit port would let a client_id probe arbitrary services on any
+    // public host. URL normalises ":443" away, so "" means the default.
+    return (
+      url.protocol === "https:" && url.port === "" && url.pathname.length > 1
+    );
   } catch {
     return false;
   }

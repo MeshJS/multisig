@@ -15,9 +15,11 @@ import { safeBigInt } from "./assets";
  */
 
 function generateId(): string {
-  const cryptoObj = globalThis.crypto as Crypto | undefined;
-  if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
-  return `id-${Math.random().toString(36).slice(2, 10)}`;
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj.randomUUID) return cryptoObj.randomUUID();
+  // randomUUID is unavailable outside secure contexts; getRandomValues is not.
+  const bytes = cryptoObj.getRandomValues(new Uint8Array(8));
+  return `id-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 export function createDraft(id?: string): TxDraft {
