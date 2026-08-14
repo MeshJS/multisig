@@ -163,6 +163,24 @@ model Proxy {
   @@index([userId, isActive])
 }
 
+/// In-app access grants for a Proxy. Membership controls who can see and manage
+/// a proxy inside the app; it never grants on-chain authority, which stays with
+/// the multisig signers holding the auth token.
+model ProxyMember {
+  id        String   @id @default(cuid())
+  proxyId   String
+  address   String
+  role      String   @default("viewer")
+  label     String?
+  invitedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([proxyId, address])
+  @@index([proxyId])
+  @@index([address])
+}
+
 model BalanceSnapshot {
   id            String   @id @default(cuid())
   walletId      String
