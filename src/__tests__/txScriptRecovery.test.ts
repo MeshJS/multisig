@@ -35,8 +35,14 @@ function sigScript(keyHash: string): NativeScript {
   return { type: "all", scripts: [{ type: "sig", keyHash }] };
 }
 
-const scriptA = serializeNativeScript(sigScript(mockKeyHashes.payment1), undefined, 0, true);
-const scriptB = serializeNativeScript(sigScript(mockKeyHashes.payment2), undefined, 0, true);
+function serializedScript(keyHash: string): { address: string; scriptCbor: string } {
+  const { address, scriptCbor } = serializeNativeScript(sigScript(keyHash), undefined, 0, true);
+  if (!scriptCbor) throw new Error("serializeNativeScript returned no scriptCbor");
+  return { address, scriptCbor };
+}
+
+const scriptA = serializedScript(mockKeyHashes.payment1);
+const scriptB = serializedScript(mockKeyHashes.payment2);
 const hashA = scriptHashFromCbor(scriptA.scriptCbor)!;
 
 function recoveryWallet(overrides: Partial<ScriptRecoveryWallet> = {}): ScriptRecoveryWallet {
