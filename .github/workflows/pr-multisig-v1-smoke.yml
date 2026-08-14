@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Dependabot-triggered runs never receive repo Actions secrets. When no
       # core secret is present at all, skip the smoke instead of failing so
