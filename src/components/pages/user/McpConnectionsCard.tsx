@@ -50,9 +50,13 @@ export default function McpConnectionsCard() {
         delete next[vars.clientId];
         return next;
       });
+      // Both halves, always: the old copy said only "next request", which is
+      // true of a removal and false of an addition — the client keeps using the
+      // token it already holds, so a newly granted permission looks broken.
       toast({
         title: "Permissions updated",
-        description: "Applies to the client's next request.",
+        description:
+          "Removals apply on the next request. An added permission needs the client to reconnect, or up to an hour for its token to refresh.",
       });
     },
     onError: (error) =>
