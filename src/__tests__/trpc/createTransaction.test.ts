@@ -4,15 +4,6 @@ import { realTestAddresses } from "../testUtils";
 import { cleanupFixtures, seedWallet } from "./fixtures";
 import { makeWalletCtx } from "./helpers";
 
-jest.mock("@/env", () => ({
-  __esModule: true,
-  env: {
-    DATABASE_URL: process.env.DATABASE_URL,
-    DIRECT_URL: process.env.DIRECT_URL,
-    NODE_ENV: "test",
-  },
-}), { virtual: true });
-
 jest.mock("superjson", () => ({
   __esModule: true,
   default: {
@@ -56,8 +47,8 @@ describeWithDb("transaction.createTransaction", () => {
     }
   });
 
-  async function seedCaller(address = SIGNER) {
-    ({ walletId } = await seedWallet(db, SIGNER));
+  async function seedCaller(address = SIGNER, extraSigners: string[] = []) {
+    ({ walletId } = await seedWallet(db, SIGNER, extraSigners));
     return createCaller(makeWalletCtx(address, db) as any);
   }
 
@@ -161,5 +152,69 @@ describeWithDb("transaction.createTransaction", () => {
         updatedAt: expect.any(Date),
       }),
     );
+  });
+
+  // Creating a state-0 transaction enqueues signature-required notifications
+  // for every co-signer who still needs to sign (the creator is excluded).
+  describe("signature-required notification side effect", () => {
+    const COSIGNER = realTestAddresses.address2;
+
+    it("enqueues a pending delivery for a verified, opted-in co-signer", async () => {
+      const caller = await seedCaller(SIGNER, [COSIGNER]);
+      await db.walletSignerNotificationSetting.create({
+        data: {
+          walletId: walletId!,
+          signerAddress: COSIGNER,
+          email: "cosigner@example.com",
+          emailNormalized: "cosigner@example.com",
+          emailVerifiedAt: new Date(),
+          emailOptIn: true,
+          notifyTransactionSignatures: true,
+          notifySignableSignatures: true,
+        },
+      });
+
+      const result = await caller.transaction.createTransaction(baseInput());
+
+      const deliveries = await db.notificationDelivery.findMany({
+        where: { walletId },
+      });
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]).toMatchObject({
+        eventType: "signature.required",
+        channel: "email",
+        recipientAddress: COSIGNER,
+        recipientEmail: "cosigner@example.com",
+        resourceType: "transaction",
+        resourceId: result.id,
+        status: "pending",
+      });
+    });
+
+    it("records a skipped delivery for a co-signer without notification settings", async () => {
+      const caller = await seedCaller(SIGNER, [COSIGNER]);
+
+      await caller.transaction.createTransaction(baseInput());
+
+      const deliveries = await db.notificationDelivery.findMany({
+        where: { walletId },
+      });
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]).toMatchObject({
+        recipientAddress: COSIGNER,
+        recipientEmail: null,
+        status: "skipped_no_email",
+      });
+    });
+
+    it("does not enqueue notifications for a non-pending creation", async () => {
+      const caller = await seedCaller(SIGNER, [COSIGNER]);
+
+      await caller.transaction.createTransaction({ ...baseInput(), state: 1 });
+
+      await expect(
+        db.notificationDelivery.findMany({ where: { walletId } }),
+      ).resolves.toHaveLength(0);
+    });
   });
 });

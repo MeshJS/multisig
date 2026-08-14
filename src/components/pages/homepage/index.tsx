@@ -14,8 +14,9 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Database, Bot, Code, Download, Check } from "lucide-react";
+import { Database, Bot, Code, Download, Check, Sparkles, Plug } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
+import { Typewriter } from "@/components/ui/typewriter";
 import {
   MultisigWalletPreview,
   WalletListPreview,
@@ -27,6 +28,18 @@ import {
   DRepPreview,
   StakingPreview,
 } from "@/components/pages/homepage/previews";
+import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+
+// Prompts cycled by the hero typewriter. Deliberately phrased as things you
+// ask an assistant, not as commands for one product — the endpoint is plain MCP
+// and works with any client. Each maps to a tool we actually expose.
+const AGENT_PROMPTS = [
+  "List the pending transactions on our treasury",
+  "Which governance proposals still need our vote?",
+  "How did we vote on the last treasury withdrawal?",
+  "Draft a rationale for voting No on the budget action",
+  "What can we actually spend right now?",
+];
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -256,7 +269,10 @@ export function PageHomepage() {
             </CardUI>
           )}
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          {/* Wraps because three CTAs no longer fit one line below ~780px, and
+              aligns to the top rather than the centre: the first CTA carries a
+              subtitle underneath, so centring floats the other two off its axis. */}
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:items-start">
             {user ? (
               <>
                 <Button size="lg" asChild>
@@ -274,11 +290,109 @@ export function PageHomepage() {
                 </Button>
               </>
             )}
+            {/* Third CTA in both states: connecting an agent is a first-class
+                entry point, not a developer footnote, and it is the one thing
+                you can set up before owning a wallet. */}
+            <Button size="lg" variant="outline" asChild>
+              <Link href="#connect-mcp">
+                <Plug className="mr-2 h-4 w-4" />
+                Connect via MCP
+              </Link>
+            </Button>
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
             Secure Treasuries • Participate in Governance • Collaborate
           </p>
+        </Reveal>
+      </section>
+
+      {/* Connect your AI agent – skill download + live prompt demo, up top */}
+      <section className="container mx-auto px-4 pb-8">
+        <Reveal className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/60 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/40 sm:p-8 md:p-10">
+            {/* min-w-0 throughout: a grid/flex item defaults to min-width:auto,
+                so it refuses to shrink below the min-content width of the config
+                block below. That widened the single mobile column to 395px inside
+                a 261px card and the wrapper's overflow-hidden silently clipped the
+                heading and body copy. Zeroing it lets the <pre> scroll on its own. */}
+            <div className="grid items-center gap-8 md:grid-cols-2">
+              {/* Copy + actions */}
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Model Context Protocol
+                </div>
+                <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+                  Connect any AI agent
+                </h2>
+                <p className="mt-3 text-muted-foreground">
+                  We speak <strong className="text-foreground">MCP</strong>, the open
+                  standard for connecting AI assistants to real systems. Point any MCP
+                  client at the endpoint, approve it with your wallet, and it can read
+                  your treasury and governance — pending transactions, spendable UTxOs,
+                  open proposals and your voting record.
+                </p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No API key to paste, and no vendor lock-in: authorization is standard
+                  OAuth, so the client handles it for you.
+                </p>
+                {/* This row turns horizontal at sm, but its grid column halves
+                    at md — so between md and lg the two buttons overflowed into
+                    the panel alongside. Wrapping self-corrects at every width. */}
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button asChild size="lg">
+                    <Link href="#connect-mcp">
+                      <Plug className="mr-2 h-4 w-4" />
+                      MCP setup guide
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
+                    <a href="/api/skill" download="multisig-skill.md">
+                      <Download className="mr-2 h-4 w-4" />
+                      Download skill
+                    </a>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Endpoint + a vendor-neutral config, then a taste of what to ask. */}
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
+                  <div className="pb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                    MCP endpoint
+                  </div>
+                  <code className="block break-all text-emerald-300">
+                    https://multisig.meshjs.dev/api/mcp
+                  </code>
+                  <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] uppercase tracking-wide text-zinc-500">
+                    Any MCP client
+                  </div>
+                  <pre className="mt-2 overflow-x-auto leading-relaxed text-zinc-300">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "https://multisig.meshjs.dev/api/mcp"
+    }
+  }
+}`}
+                  </pre>
+                </div>
+
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
+                  <div className="flex min-h-[3.5rem] items-start gap-2 leading-relaxed">
+                    <span className="select-none text-emerald-400">›</span>
+                    <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
+                  </div>
+                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                    Reads and drafts only — submitting a vote and signing stay with you
+                    and your co-signers.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </Reveal>
       </section>
 
@@ -584,6 +698,111 @@ export function PageHomepage() {
                     Reference bot client
                   </a>
                 </Button>
+              </div>
+            </CardUI>
+          </div>
+
+          <div className="mt-8" id="connect-mcp">
+            <CardUI
+              title="Connect an AI agent (MCP)"
+              description="An open Model Context Protocol endpoint — works with any MCP-capable client, no vendor lock-in."
+            >
+              <div className="mt-4 space-y-5 text-sm">
+                <ol className="space-y-4">
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
+                      <span className="font-medium">Add the server</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Most clients read a JSON config. Add one entry:
+                    </p>
+                    <pre className="ml-7 overflow-x-auto rounded bg-muted p-3 text-xs">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "https://multisig.meshjs.dev/api/mcp"
+    }
+  }
+}`}
+                    </pre>
+                    <p className="pl-7 text-xs text-muted-foreground">
+                      Some clients have a CLI for the same thing — for example{" "}
+                      <code className="rounded bg-muted px-1">claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>.
+                      Anything that speaks streamable HTTP MCP works; there is no
+                      API key to paste, because the server advertises OAuth and the
+                      client discovers the rest.
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
+                      <span className="font-medium">Authorize with your wallet</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client will send you here to a consent screen the first
+                      time it connects: connect your wallet, sign, and approve.
+                      You&apos;ll see exactly which client is asking and what it
+                      will be able to read, and you can revoke it any time from
+                      your profile.
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="font-medium">Ask it something</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      &ldquo;List the pending transactions on our treasury&rdquo; ·
+                      &ldquo;What can we actually spend right now?&rdquo; ·
+                      &ldquo;Which active governance proposals still need a decision?&rdquo;
+                    </p>
+                  </li>
+                </ol>
+
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium">What it can do</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Thirteen tools, grouped by the permission they need. You choose
+                    which permissions to grant, and can change them later.
+                  </p>
+                  <div className="mt-1 flex flex-col gap-3">
+                    {(["wallets:read", "governance:read", "ballots:write"] as const).map(
+                      (scope) => (
+                        <div key={scope}>
+                          <code className="text-xs font-medium text-foreground">{scope}</code>
+                          <ul className="mt-1 flex flex-col gap-1">
+                            {MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).map((t) => (
+                              <li key={t.name} className="text-xs text-muted-foreground">
+                                <code className="rounded bg-muted px-1">{t.name}</code>{" "}
+                                — {t.blurb}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-dashed p-3">
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-foreground">Read-only, by design.</strong>{" "}
+                    A connected client can read your wallets and governance, draft
+                    ballots, and publish a rationale to IPFS. It{" "}
+                    <strong>cannot</strong> sign transactions, move funds, or
+                    submit a vote on-chain — those stay with you and your
+                    co-signers. Manage permissions or revoke a connection any time
+                    under{" "}
+                    <Link href="/user" className="underline underline-offset-2">
+                      your profile
+                    </Link>
+                    .
+                  </p>
+                </div>
               </div>
             </CardUI>
           </div>

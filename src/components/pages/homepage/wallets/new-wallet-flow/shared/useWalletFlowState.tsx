@@ -10,6 +10,12 @@ import { resolvePaymentKeyHash, resolveStakeKeyHash, resolveRewardAddress } from
 import type { MultisigKey } from "@/utils/multisigSDK";
 import { MultisigWallet } from "@/utils/multisigSDK";
 import type { RawImportBodies } from "@/types/wallet";
+import {
+  deriveStakeCredentialFromKeys,
+  keyHashToEnterpriseAddress,
+  stakeCredentialFromAddress,
+  verifyScriptCborAddress,
+} from "@/utils/cip146Discovery";
 
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
@@ -74,6 +80,9 @@ export interface WalletFlowState {
   isValidForCreate: boolean;
   hasSignerHashInAddresses: boolean;
   hasValidRawImportBodies: boolean;
+  /** Fixed-signer draft (e.g. CIP-0146 discovery invite): the signer set
+   * and script are fixed on-chain, so signer/rule editing is disabled. */
+  lockedSigners: boolean;
   
   // Bypass options
   allowCreateWithHashSigners: boolean;
@@ -117,6 +126,7 @@ export interface WalletFlowState {
 
 export function useWalletFlowState(): WalletFlowState {
   const router = useRouter();
+  const utils = api.useUtils();
   const [signersAddresses, setSignerAddresses] = useState<string[]>([]);
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
@@ -234,6 +244,9 @@ export function useWalletFlowState(): WalletFlowState {
       if (pathIsWalletInvite) {
         deleteWalletInvite({ walletId: walletInviteId || (Array.isArray(router.query.id) ? router.query.id[0] : router.query.id)! });
       }
+      void utils.wallet.getUserWallets.invalidate();
+      void utils.wallet.getUserNewWallets.invalidate();
+      void utils.wallet.getUserNewWalletsNotOwner.invalidate();
       setLoading(false);
       // Redirect to success page instead of wallets list
       void router.push(`/wallets/new-wallet-flow/ready/${data.id}`);
@@ -305,6 +318,24 @@ export function useWalletFlowState(): WalletFlowState {
     { walletId: (walletInviteId || router.query.id) as string },
     {
       enabled: Boolean(walletInviteId || router.query.id),
+      // Fixed-signer discovery drafts fill up out-of-band as co-signers
+      // claim their slots via the invite link — poll while any 56-hex
+      // placeholder slot remains so claims appear without a reload.
+      // Polling stops automatically once every slot is claimed.
+      refetchInterval: (query) => {
+        const data = query.state.data as
+          | {
+              rawImportBodies?: { lockedSigners?: boolean } | null;
+              signersAddresses?: string[];
+            }
+          | null
+          | undefined;
+        const isLocked = !!data?.rawImportBodies?.lockedSigners;
+        const hasUnclaimed = !!data?.signersAddresses?.some((addr) =>
+          /^[0-9a-fA-F]{56}$/.test(addr),
+        );
+        return isLocked && hasUnclaimed ? 5000 : false;
+      },
     },
   );
 
@@ -374,11 +405,21 @@ export function useWalletFlowState(): WalletFlowState {
       const bothEmpty = !hasPayment && !hasStake;
       const bothHave = hasPayment && hasStake;
       const equal = bothHave && paymentCbor === stakeCbor;
-      const incomingStakeKeys = equal
-        ? []
-        : (bothHave || bothEmpty)
-          ? (walletInvite.signersStakeKeys || [])
-          : [];
+      // Fixed-signer discovery drafts carry claim-contributed stake keys
+      // and set paymentCbor without stakeCbor — the payment/stake CBOR
+      // policy below would blank them, so load them verbatim instead.
+      // (They're verified against the on-chain stake credential at
+      // finalization, not trusted here.)
+      const isLockedDraft = !!(
+        (walletInvite as any)?.rawImportBodies as { lockedSigners?: boolean } | null
+      )?.lockedSigners;
+      const incomingStakeKeys = isLockedDraft
+        ? (walletInvite.signersStakeKeys || [])
+        : equal
+          ? []
+          : (bothHave || bothEmpty)
+            ? (walletInvite.signersStakeKeys || [])
+            : [];
       setSignerStakeKeys(incomingStakeKeys);
       setSignerDRepKeys((walletInvite as any).signersDRepKeys ?? []);
       // Keep synthetic ids stable across refetches: only mint new ids
@@ -492,17 +533,139 @@ export function useWalletFlowState(): WalletFlowState {
       throw new Error("scriptCbor is undefined");
     }
 
+    let signersAddressesToUse = signersAddresses;
+    let signersStakeKeysToUse = signersStakeKeys;
+    let signersDRepKeysToUse = signersDRepKeys;
+    let stakeCredentialHashToUse: string | undefined =
+      stakeKey.length > 0 ? stakeKey : undefined;
+    const isLockedDraft = !!inviteExtras.rawImportBodies?.lockedSigners;
+    if (isLockedDraft) {
+      // Safety assertion for on-chain-discovered wallets: the stored
+      // script must still reproduce the exact on-chain address.
+      const provenance = inviteExtras.rawImportBodies?.provenance as
+        | {
+            expectedAddress?: string;
+            stakeCredentialHash?: string | null;
+            types?: number[];
+            participants?: string[];
+            recovered?: { stake?: boolean; drep?: boolean };
+          }
+        | undefined;
+      if (
+        provenance?.expectedAddress &&
+        !verifyScriptCborAddress({
+          scriptCbor: scriptCborToUse,
+          stakeCredentialHash: stakeKey || null,
+          networkId: network,
+          expectedAddress: provenance.expectedAddress,
+        })
+      ) {
+        setLoading(false);
+        toast({
+          title: "Address mismatch",
+          description:
+            "The reconstructed script no longer matches the on-chain wallet address — refusing to create the wallet.",
+          variant: "destructive",
+          duration: 10000,
+        });
+        return;
+      }
+      // Convert unclaimed 56-hex placeholder slots to derived enterprise
+      // addresses so no raw key hashes persist on the final wallet.
+      signersAddressesToUse = signersAddresses.map((addr) =>
+        /^[0-9a-fA-F]{56}$/.test(addr)
+          ? keyHashToEnterpriseAddress(addr.toLowerCase(), network)
+          : addr,
+      );
+
+      // Stake restoration: claims contributed per-signer stake keys. Only
+      // persist them when the derived role-2 script hash equals the
+      // wallet's on-chain stake credential — proving the reconstruction is
+      // identical to the original SDK wallet. Otherwise fall back to the
+      // external stake credential (read-only staking).
+      const expectedStakeHash = (
+        provenance?.stakeCredentialHash ??
+        (provenance?.expectedAddress
+          ? stakeCredentialFromAddress(provenance.expectedAddress)
+          : undefined) ??
+        (stakeKey || undefined)
+      )?.toLowerCase();
+      const requiredForScripts =
+        numRequiredSigners || signersAddressesToUse.length;
+      const allStakePresent =
+        signersStakeKeys.length === signersAddressesToUse.length &&
+        signersStakeKeys.every((k) => k.trim().length > 0);
+      const derivedStakeHash = allStakePresent
+        ? deriveStakeCredentialFromKeys({
+            stakeKeys: signersStakeKeys,
+            numRequiredSigners: requiredForScripts,
+            scriptType: nativeScriptType,
+            networkId: network,
+          })
+        : undefined;
+      const stakeRestored =
+        !!derivedStakeHash &&
+        !!expectedStakeHash &&
+        derivedStakeHash === expectedStakeHash;
+      if (stakeRestored) {
+        stakeCredentialHashToUse = undefined;
+      } else {
+        signersStakeKeysToUse = signersStakeKeys.map(() => "");
+        if (allStakePresent) {
+          toast({
+            title: "Staking not restored",
+            description:
+              "Contributed stake keys couldn't be verified against the on-chain stake credential — the wallet is created with an external stake credential instead.",
+            duration: 8000,
+          });
+        }
+      }
+
+      // DRep restoration. When the draft's dRep set was recovered from
+      // the registration itself (provenance.recovered.drep), a partial
+      // set is the registered truth — some signers legitimately have no
+      // role-3 key — so it's persisted as long as every non-empty key is
+      // a registration participant. Otherwise (claim-contributed keys)
+      // all slots must have contributed AND the registration declares
+      // role 3 AND every key is a registration participant; partial
+      // claim-contributed sets are never persisted (they would corrupt
+      // the wallet's role types and future 1854 update payloads).
+      const participants = provenance?.participants?.map((p) => p.toLowerCase());
+      const drepRecoveredFromRegistration =
+        provenance?.recovered?.drep === true;
+      const drepRestored =
+        signersDRepKeys.length === signersAddressesToUse.length &&
+        !!participants &&
+        (provenance?.types ?? []).includes(3) &&
+        (drepRecoveredFromRegistration
+          ? signersDRepKeys.some((k) => k.trim().length > 0) &&
+            signersDRepKeys.every(
+              (k) =>
+                k.trim().length === 0 ||
+                participants.includes(k.trim().toLowerCase()),
+            )
+          : signersDRepKeys.every((k) => k.trim().length > 0) &&
+            signersDRepKeys.every((k) =>
+              participants.includes(k.trim().toLowerCase()),
+            ));
+      if (!drepRestored) {
+        signersDRepKeysToUse = signersDRepKeys.map(() => "");
+      }
+    }
+
     createWallet({
       name: name,
       description: description,
-      signersAddresses: signersAddresses,
+      signersAddresses: signersAddressesToUse,
       signersDescriptions: signersDescriptions,
-      signersStakeKeys: signersStakeKeys,
-      signersDRepKeys: signersDRepKeys,
-      numRequiredSigners: numRequiredSigners,
+      signersStakeKeys: signersStakeKeysToUse,
+      signersDRepKeys: signersDRepKeysToUse,
+      numRequiredSigners: isLockedDraft
+        ? numRequiredSigners || signersAddressesToUse.length
+        : numRequiredSigners,
       scriptCbor: scriptCborToUse,
       rawImportBodies: inviteExtras.rawImportBodies ?? null,
-      stakeCredentialHash: stakeKey.length > 0 ? stakeKey : undefined,
+      stakeCredentialHash: stakeCredentialHashToUse,
       type: nativeScriptType,
       ownerAddress: (walletInvite as { ownerAddress?: string } | null)?.ownerAddress,
     });
@@ -681,6 +844,14 @@ export function useWalletFlowState(): WalletFlowState {
     });
   }, [signersAddresses, signersStakeKeys, signersDRepKeys, walletInviteId, router.query.id, name, description, signersDescriptions, numRequiredSigners, nativeScriptType, saveToBackend, toast]);
 
+  // Fixed-signer drafts (e.g. CIP-0146 discovery invites): signer set and
+  // script are fixed by an on-chain script, so editing is disabled.
+  const lockedSigners = useMemo(() => {
+    const raw = (walletInvite as { rawImportBodies?: RawImportBodies | null } | null)
+      ?.rawImportBodies;
+    return !!raw?.lockedSigners;
+  }, [walletInvite]);
+
   // Validation
   const isValidForSave = !loading && !!name.trim();
   const hasSignerHashInAddresses = useMemo(() => {
@@ -704,7 +875,10 @@ export function useWalletFlowState(): WalletFlowState {
     (nativeScriptType !== "atLeast" || numRequiredSigners > 0) &&
     name.length > 0 &&
     !loading &&
-    (!hasSignerHashInAddresses || allowCreateWithHashSigners) &&
+    // Fixed-signer discovery drafts hard-block creation until every slot
+    // is claimed — creating early would permanently hide the wallet from
+    // unclaimed signers (addresses aren't editable after creation).
+    (!hasSignerHashInAddresses || (allowCreateWithHashSigners && !lockedSigners)) &&
     // Allow creation if we have valid rawImportBodies, otherwise require multisigWallet
     (hasValidRawImportBodies || !!multisigWallet);
 
@@ -735,11 +909,12 @@ export function useWalletFlowState(): WalletFlowState {
     setNumRequiredSigners,
     nativeScriptType,
     setNativeScriptType,
-    
+
     // Advanced options
     stakeKey,
     setStakeKey,
     removeExternalStakeAndBackfill,
+    lockedSigners,
     
     // UI state
     loading,

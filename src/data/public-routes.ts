@@ -4,8 +4,12 @@ export const publicRoutes = [
   "/governance/drep",
   "/governance/drep/[id]",
   "/features",
+  "/roadmap",
+  "/roadmap/graph",
   "/api-docs",
   "/dapps",
+  "/blog",
+  "/blog/[slug]",
   // The import wizard renders before a wallet is connected so the user
   // can see what's available; per-tab actions (sign, submit) still gate
   // on a live wallet connection.

@@ -69,6 +69,19 @@ export type WalletImportProvenance =
       originalWalletId: string;
       payloadHash: string;
       importedAt: string;
+    }
+  | {
+      origin: "cip146-discovery";
+      registrationTxHash: string;
+      expectedAddress: string;
+      network: number;
+      importedAt: string;
+      /** On-chain stake credential (script hash) of the wallet address */
+      stakeCredentialHash?: string | null;
+      /** Registration metadata `types` (roles present on-chain) */
+      types?: number[];
+      /** Lowercased registration participant key hashes (all roles) */
+      participants?: string[];
     };
 
 export type DbWalletWithLegacy = DbWallet & {

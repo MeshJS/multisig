@@ -1,4 +1,5 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { TRPCError } from "@trpc/server";
 import { NextApiRequest, NextApiResponse } from "next";
 import { Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
@@ -46,7 +47,7 @@ export default async function handler(
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
     if (!token) {
-      return res.status(401).json({ error: "Unauthorized - Missing token" });
+      return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
     }
 
     const payload = verifyJwt(token);
@@ -71,7 +72,21 @@ export default async function handler(
       primaryWallet: payload.address,
       ip: getClientIP(req),
     });
-    const walletFetch: DbWallet | null = await caller.wallet.getWallet({ walletId, address });
+    // getWallet throws TRPCErrors for unknown/inaccessible wallets — map them
+    // to proper statuses instead of letting them surface as a 500.
+    let walletFetch: DbWallet | null = null;
+    try {
+      walletFetch = await caller.wallet.getWallet({ walletId, address });
+    } catch (err) {
+      if (err instanceof TRPCError) {
+        const status =
+          err.code === "NOT_FOUND" ? 404
+          : err.code === "FORBIDDEN" || err.code === "UNAUTHORIZED" ? 403
+          : 400;
+        return res.status(status).json({ error: "Wallet not found or not accessible" });
+      }
+      throw err;
+    }
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }

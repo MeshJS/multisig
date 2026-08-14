@@ -1,0 +1,13 @@
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+
+WORKDIR /app
+
+# Install app dependencies (needed for @meshsdk/* imports in Phase 2 helpers).
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+
+# Copy e2e suite and the CI framework types it imports.
+COPY e2e/ ./e2e/
+COPY scripts/ci/framework/ ./scripts/ci/framework/
+COPY tsconfig*.json ./

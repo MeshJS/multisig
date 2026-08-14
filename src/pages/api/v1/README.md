@@ -231,7 +231,7 @@ Endpoints:
 - **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
 - **Authentication**: Required (bot JWT Bearer token)
 - **Scope**: `ballot:write`
-- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Wallet Access**: Any granted role for `walletId` — **observer is enough** (ballot drafts are unsigned advisory rows; bots cannot set anchors)
 - **Features**:
   - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
   - `409` on ambiguous `ballotName` matches
@@ -239,13 +239,30 @@ Endpoints:
   - Upserts proposals and choices while preserving omitted rationale comments on existing entries
   - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
   - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+  - Validates `proposalId`s: `txHash` must be 64-char hex **and the governance action must exist on-chain** (unknown ids → 400 listing them; indexer outages fail open)
 - **Request Body**:
   - `walletId`: string (required)
   - `ballotId`: string (optional, recommended when updating existing ballots)
   - `ballotName`: string (optional)
   - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
-- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
-- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+- **Response**: `{ created: boolean, ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments` — track `ballot.id` for later upserts and deletes
+- **Error Handling**: 400 (validation, unknown proposalIds), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
+#### `botBallots.ts` - GET/DELETE `/api/v1/botBallots`
+
+- **Purpose**: Read and clean up bot ballot drafts — the other half of the drafting lifecycle
+- **Authentication**: Required (bot JWT Bearer token); scope `ballot:write`; any wallet grant (**observer is enough**)
+- **GET**: `?walletId=` — lists all governance ballots (type 1) on the wallet, newest first
+- **DELETE**: body `{ walletId, ballotId }` — deletes one governance ballot (400 if it belongs to another wallet or isn't type 1)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballot), 429, 500
+
+#### `botRotateSecret.ts` - POST `/api/v1/botRotateSecret`
+
+- **Purpose**: Self-service rotation of a (possibly leaked) bot key secret without re-registering
+- **Authentication**: None (proving possession of the current secret is the credential); strict rate limit 5/min per IP
+- **Request Body**: `{ botKeyId, secret }` (current secret)
+- **Response**: `{ botKeyId, secret }` — the **new** secret, returned exactly once; the old secret stops working immediately
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 429, 500
 
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
@@ -335,11 +352,11 @@ Endpoints:
   - Creates a `PendingBot` record in `UNCLAIMED` state
   - Generates one-time claim code and hashed claim token
   - Validates requested scopes against allowed bot scopes
-  - Rejects already-registered bot payment addresses
+  - Rejects already-registered bot payment addresses (when an address is provided)
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (required)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
   - `stakeAddress`: string (optional)
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
@@ -386,8 +403,9 @@ Endpoints:
 - **Features**:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
-  - BotUser upsert with payment and optional stake address
+  - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
   - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)
@@ -431,10 +449,10 @@ Endpoints:
 
 ### Bot Onboarding Flow
 
-1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes — initially without a `paymentAddress` (the bot typically has no wallet yet)
 2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
 3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
-4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT — this binds the bot's `paymentAddress` (creating its `BotUser` if registration was address-less)
 5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs, and certificate builders **`/api/v1/botStakeCertificate`** / **`/api/v1/botDRepCertificate`** when `multisig:sign` is granted)
 
 ### Error Handling
@@ -625,3 +643,22 @@ Current route-chain scenarios include:
 
 To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
 Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.
+
+## MCP endpoint (`POST /api/mcp`)
+
+A Model Context Protocol server exposing a **read-only** subset of this API to AI agents,
+plus governance ballot drafts. It does not add business logic: each tool invokes the v1
+handler above in-process, so authorization, validation and error codes stay defined once.
+
+Tools and the endpoint contract: **[src/pages/api/mcp/README.md](../mcp/README.md)**.
+Its OAuth 2.1 authorization server: **[src/pages/api/oauth/README.md](../oauth/README.md)**.
+
+Two v1 handlers gained a human-JWT path so the MCP surface can reach them; bot behaviour
+is unchanged in both cases:
+
+- **`governanceActiveProposals`** — was bot-only. It is a pure Blockfrost passthrough over
+  public chain data touching no wallet, so a human JWT is now accepted, metered per
+  address instead of per bot.
+- **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
+  same signer-or-owner check every ballot procedure in the tRPC router already applies, so
+  the REST path is no more permissive than the app's own UI.

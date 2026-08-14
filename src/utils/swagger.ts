@@ -1,8 +1,19 @@
 import swaggerJSDoc from "swagger-jsdoc";
 
+import { SITE_URL } from "@/lib/seo";
+
 export const swaggerSpec = swaggerJSDoc({
   definition: {
     openapi: "3.0.0",
+    // Absolute base URL so the spec is self-locating: tooling / codegen / LLMs
+    // can resolve every path against the real deployment without extra config.
+    servers: [
+      {
+        url: SITE_URL,
+        description:
+          "Deployment origin. All endpoints live under /api/v1 (e.g. <origin>/api/v1/botAuth).",
+      },
+    ],
     info: {
       title: "Multisig API",
       version: "1.0.0",
@@ -74,7 +85,7 @@ For example, \`/api/v1/nativeScript\` would be accessed at:
 
 ### Rate Limiting
 
-Please be mindful of rate limits when testing endpoints. Excessive requests may result in temporary restrictions.
+Endpoints are rate limited per IP (and per bot for bot-authenticated calls, default 40/min). Every guarded response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Reset\`; a 429 additionally carries \`Retry-After\` (seconds). Space your requests and back off using these headers — rejected requests never extend the window.
 
 ### Support
 
@@ -110,6 +121,47 @@ This API uses **Bearer Token** authentication (JWT).
       },
     ],
     paths: {
+      "/api/mcp": {
+        post: {
+          tags: ["MCP"],
+          summary: "Model Context Protocol endpoint (stateless)",
+          description:
+            "A stateless MCP server for AI agents. One POST is one complete JSON-RPC exchange — there is no session, so GET and DELETE return 405. Serves both the 2026-07-28 and 2025-era protocol revisions.\n\nThe tool surface is read-only plus governance ballot drafts: it can list wallets, pending transactions, free UTxOs, proxies and active proposals, but cannot sign, spend or broadcast.\n\nAuthenticate with an OAuth 2.1 access token (discoverable via the `WWW-Authenticate` challenge on a 401) or an existing v1 bearer token. Full contract: src/pages/api/mcp/README.md.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  description: "A JSON-RPC 2.0 request, e.g. tools/list or tools/call.",
+                  properties: {
+                    jsonrpc: { type: "string", example: "2.0" },
+                    id: { type: "integer", example: 1 },
+                    method: { type: "string", example: "tools/list" },
+                    params: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "JSON-RPC result",
+              content: {
+                "application/json": { schema: { type: "object" } },
+              },
+            },
+            401: {
+              description:
+                "Missing or invalid token. Carries a WWW-Authenticate header naming the RFC 9728 resource-metadata URL.",
+            },
+            403: { description: "Request carried an Origin header (browser-driven)" },
+            405: { description: "Method Not Allowed — POST only" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
       "/api/v1/nativeScript": {
         get: {
           tags: ["V1"],
@@ -1210,8 +1262,9 @@ This API uses **Bearer Token** authentication (JWT).
         post: {
           tags: ["Auth", "Bot"],
           summary: "Self-register a bot for human claim approval",
+          security: [],
           description:
-            "Creates a pending bot registration and returns a short-lived claim code for a human owner to approve.",
+            "Creates a pending bot registration and returns a claim code (valid 30 minutes) for a human owner to approve. New bots should initially register WITHOUT a paymentAddress — a fresh bot usually has no wallet yet; the address is bound at the bot's first POST /api/v1/botAuth instead.",
           requestBody: {
             required: true,
             content: {
@@ -1220,7 +1273,12 @@ This API uses **Bearer Token** authentication (JWT).
                   type: "object",
                   properties: {
                     name: { type: "string", minLength: 1, maxLength: 100 },
-                    paymentAddress: { type: "string", minLength: 20 },
+                    paymentAddress: {
+                      type: "string",
+                      minLength: 20,
+                      description:
+                        "Optional. Omit on first registration; the bot binds its address at first botAuth.",
+                    },
                     stakeAddress: { type: "string" },
                     requestedScopes: {
                       type: "array",
@@ -1237,7 +1295,7 @@ This API uses **Bearer Token** authentication (JWT).
                       minItems: 1,
                     },
                   },
-                  required: ["name", "paymentAddress", "requestedScopes"],
+                  required: ["name", "requestedScopes"],
                 },
               },
             },
@@ -1333,6 +1391,7 @@ This API uses **Bearer Token** authentication (JWT).
       "/api/v1/botPickupSecret": {
         get: {
           tags: ["Auth", "Bot"],
+          security: [],
           summary: "Retrieve one-time bot secret after claim",
           description:
             "Returns bot credentials exactly once after a successful claim. Requires pendingBotId query parameter.",
@@ -1373,8 +1432,9 @@ This API uses **Bearer Token** authentication (JWT).
         post: {
           tags: ["Auth", "Bot"],
           summary: "Bot authentication",
+          security: [],
           description:
-            "Authenticate a bot key and return a bot JWT. botKeyId and secret are issued by the claim flow: POST /api/v1/botRegister -> human POST /api/v1/botClaim -> GET /api/v1/botPickupSecret.",
+            "Authenticate a bot key and return a bot JWT (valid ~1 hour; re-run botAuth to refresh — there is no separate refresh endpoint). botKeyId and secret are issued by the claim flow: POST /api/v1/botRegister -> human POST /api/v1/botClaim -> GET /api/v1/botPickupSecret. The secret can only be picked up ONCE but stays valid for repeated botAuth calls — store it securely. paymentAddress is required on the FIRST auth (it binds the bot's identity) and optional afterwards; the JWT always carries the server-side bound address, and a mismatching supplied address is rejected with 409.",
           requestBody: {
             required: true,
             content: {
@@ -1383,11 +1443,15 @@ This API uses **Bearer Token** authentication (JWT).
                   type: "object",
                   properties: {
                     botKeyId: { type: "string", description: "Bot key ID from bot claim flow" },
-                    secret: { type: "string", description: "One-time secret from botPickupSecret" },
-                    paymentAddress: { type: "string", description: "Cardano payment address for this bot" },
+                    secret: { type: "string", description: "Secret from botPickupSecret (one-time pickup, reusable for auth)" },
+                    paymentAddress: {
+                      type: "string",
+                      description:
+                        "Cardano payment address for this bot. Required on first auth (binds the address); optional afterwards and must match the bound address if provided.",
+                    },
                     stakeAddress: { type: "string", description: "Optional stake address" },
                   },
-                  required: ["botKeyId", "secret", "paymentAddress"],
+                  required: ["botKeyId", "secret"],
                 },
               },
             },
@@ -1407,10 +1471,13 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing or invalid botKeyId, secret, or paymentAddress" },
+            400: { description: "Missing or invalid botKeyId/secret, or paymentAddress missing on first auth" },
             401: { description: "Invalid bot key" },
             403: { description: "Insufficient scope" },
-            409: { description: "paymentAddress already registered to another bot" },
+            409: {
+              description:
+                "paymentAddress does not match the address bound to this bot key, or is already registered to another bot",
+            },
             405: { description: "Method not allowed" },
             429: { description: "Too many requests" },
             500: { description: "Internal server error" },
@@ -1422,7 +1489,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Get authenticated bot profile",
           description:
-            "Returns the authenticated bot's own identity and owner address. Requires bot JWT.",
+            "Returns the authenticated bot's own identity, owner address, and wallet grants (botWallets: [{walletId, walletName, role}]) so a bot can self-discover where it may read/write. Requires bot JWT.",
           responses: {
             200: {
               description: "Bot profile",
@@ -1574,7 +1641,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot", "Governance"],
           summary: "List active governance proposals for bots",
           description:
-            "Returns active on-chain governance proposals only (enacted/dropped/expired/ratified are filtered out). Requires bot JWT and governance:read scope.",
+            "Returns active on-chain governance proposals. 'Active' means no terminal epoch (enacted/dropped/expired/ratified) has been stamped by the chain indexer — this can be a smaller set than explorer 'active' headers, which often still display ratified-but-not-enacted actions (outcome decided, enactment waiting for the epoch boundary) as open. Pass includeRatified=true to also get those boundary cases (status 'ratified'). The response includes currentEpoch so deadlines can be computed from details.expiration. Requires bot JWT and governance:read scope.",
           parameters: [
             {
               in: "query",
@@ -1606,12 +1673,22 @@ This API uses **Bearer Token** authentication (JWT).
               name: "details",
               required: false,
               schema: { type: "string", enum: ["true", "false"], default: "false" },
-              description: "Set true to include extra per-proposal details fields.",
+              description:
+                "Set true to include extra per-proposal details fields (expiration epoch, deposit, parameters — recommended for advisory bots).",
+            },
+            {
+              in: "query",
+              name: "includeRatified",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"], default: "false" },
+              description:
+                "Set true to also include ratified-but-not-enacted proposals (status 'ratified') — the boundary cases explorers may still display as open.",
             },
           ],
           responses: {
             200: {
-              description: "Active proposals list (after active-status filtering)",
+              description:
+                "Proposals list plus paging echo, currentEpoch (null if unavailable), sourceCount and activeCount",
             },
             400: { description: "Invalid query parameter" },
             401: { description: "Unauthorized" },
@@ -1621,12 +1698,144 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/botBallots": {
+        get: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "List governance ballots on a granted wallet",
+          description:
+            "Read side of bot ballot drafting: returns every governance ballot (type=1) on the wallet so a bot can reconcile its drafts. Requires bot JWT, ballot:write scope, and any wallet grant (observer is enough).",
+          parameters: [
+            { in: "query", name: "walletId", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            200: {
+              description: "Ballot list",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      ballots: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            walletId: { type: "string" },
+                            description: { type: "string", nullable: true },
+                            items: { type: "array", items: { type: "string" } },
+                            itemDescriptions: { type: "array", items: { type: "string" } },
+                            choices: { type: "array", items: { type: "string" } },
+                            rationaleComments: { type: "array", items: { type: "string" } },
+                            createdAt: { type: "string", format: "date-time" },
+                            updatedAt: { type: "string", format: "date-time" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "walletId missing" },
+            401: { description: "Unauthorized" },
+            403: { description: "Not a bot token, missing ballot:write scope, or no wallet grant" },
+            404: { description: "Wallet not found" },
+            429: { description: "Too many requests" },
+          },
+        },
+        delete: {
+          tags: ["V1", "Bot", "Governance"],
+          summary: "Delete a governance ballot draft",
+          description:
+            "Removes a governance ballot (type=1) from a granted wallet — lets bots clean up stale drafts without UI intervention. Same auth as GET.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    ballotId: { type: "string" },
+                  },
+                  required: ["walletId", "ballotId"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "Deleted",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      deleted: { type: "boolean" },
+                      ballotId: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing ids, wallet mismatch, or non-governance ballot" },
+            401: { description: "Unauthorized" },
+            403: { description: "Not permitted" },
+            404: { description: "Wallet or ballot not found" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
+      "/api/v1/botRotateSecret": {
+        post: {
+          tags: ["Auth", "Bot"],
+          summary: "Rotate the bot key secret",
+          security: [],
+          description:
+            "Proving possession of the current secret mints a replacement and invalidates the old one immediately. The new secret is returned exactly once — store it. Use this if a secret may have leaked; no re-registration needed. Strictly rate limited (5/min per IP).",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    botKeyId: { type: "string" },
+                    secret: { type: "string", description: "Current secret" },
+                  },
+                  required: ["botKeyId", "secret"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: "New secret (returned once)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      botKeyId: { type: "string" },
+                      secret: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing botKeyId or secret" },
+            401: { description: "Invalid bot key or secret" },
+            429: { description: "Too many requests" },
+          },
+        },
+      },
       "/api/v1/botBallotsUpsert": {
         post: {
           tags: ["V1", "Bot", "Governance"],
           summary: "Create or update governance ballots from bot decisions",
           description:
-            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. Requires bot JWT, ballot:write scope, and cosigner wallet access.",
+            "Upserts proposals and vote choices into a governance ballot (type=1). Bots may only submit rationaleComment drafts; anchorUrl/anchorHash are rejected. proposalIds are validated: txHash must be 64-char hex and the governance action must exist on-chain (unknown ids get a 400 listing them; indexer outages fail open). Upserts key on ballotId first, then exact ballotName match (409 if ambiguous), else a new dated ballot is created — the response carries created:true|false plus the full ballot (track ballot.id for later upserts and cleanup). Requires bot JWT, ballot:write scope, and any granted wallet access — observer is enough (drafts are unsigned advisory rows; the wallet owner grants access under User → Bot Management → Wallet access).",
           requestBody: {
             required: true,
             content: {

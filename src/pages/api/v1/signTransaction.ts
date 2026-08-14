@@ -73,7 +73,7 @@ export default async function handler(
     : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -143,7 +143,13 @@ export default async function handler(
     let wallet: Awaited<ReturnType<ReturnType<typeof createCaller>["wallet"]["getWallet"]>>;
     if (isBotJwt(payload)) {
       const access = await getBotWalletAccess(db, walletId, payload.botId);
-      if (!access.allowed || access.role !== "cosigner") {
+      if (!access.allowed) {
+        // Convention: 404 = unknown wallet, 403 = known but not permitted.
+        return access.reason === "wallet_not_found"
+          ? res.status(404).json({ error: "Wallet not found" })
+          : res.status(403).json({ error: "Not authorized for this wallet" });
+      }
+      if (access.role !== "cosigner") {
         return res.status(403).json({ error: "Not authorized for this wallet" });
       }
       const w = await db.wallet.findUnique({ where: { id: walletId } });

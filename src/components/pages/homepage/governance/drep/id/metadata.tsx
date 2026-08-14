@@ -17,7 +17,7 @@ export default function Metadata({
 }) {
   if (!drepMetadata) {
     return (
-      <p className="text-center text-gray-500">
+      <p className="text-center text-muted-foreground">
         No metadata available for this DRep.
       </p>
     );
@@ -82,13 +82,13 @@ export default function Metadata({
 
   //  Icon Mapping for Social Media
   const iconMap: Record<string, React.ReactElement> = {
-    "x.com": <Twitter className="h-7 w-7 text-gray-200 hover:text-blue-400" />,
+    "x.com": <Twitter className="h-7 w-7 text-muted-foreground transition-colors hover:text-blue-500" />,
     "twitter.com": (
-      <Twitter className="h-7 w-7 text-gray-200 hover:text-blue-400" />
+      <Twitter className="h-7 w-7 text-muted-foreground transition-colors hover:text-blue-500" />
     ),
     "discord.gg": (
       <svg
-        className="h-7 w-7 text-gray-200 hover:text-blue-400"
+        className="h-7 w-7 text-muted-foreground transition-colors hover:text-blue-500"
         fill="currentColor"
         viewBox="0 0 16 16"
         aria-hidden="true"
@@ -105,7 +105,7 @@ export default function Metadata({
     ),
     "github.com": (
       <svg
-        className="h-7 w-7 text-gray-200 hover:text-blue-400"
+        className="h-7 w-7 text-muted-foreground transition-colors hover:text-blue-500"
         fill="currentColor"
         viewBox="0 0 24 24"
         aria-hidden="true"
@@ -153,7 +153,7 @@ export default function Metadata({
                   rel="noopener noreferrer"
                 >
                   {iconMap[social.domain] || (
-                    <LinkIcon className="h-5 w-5 text-gray-400" />
+                    <LinkIcon className="h-5 w-5 text-muted-foreground" />
                   )}
                 </a>
               ))}
@@ -185,10 +185,10 @@ export default function Metadata({
         {/*  Metadata Details */}
         <div >
           <h3 className="text-lg font-semibold">Metadata Details</h3>
-          <p>
+          <p className="break-all">
             <strong>Metadata Hex:</strong> {metadataHex}
           </p>
-          <p>
+          <p className="break-all">
             <strong>Metadata Hash:</strong> {metadataHash}
           </p>
           <p className="text-muted-foreground">

@@ -14,6 +14,7 @@ import {
 } from "../../scripts/ci/scenarios/steps/proxyBot";
 import type { CIBootstrapContext, CIWalletType } from "../../scripts/ci/framework/types";
 import type { requestJson } from "../../scripts/ci/framework/http";
+import { reserveProxyLifecycleCollateral } from "../../scripts/ci/scenarios/proxyCollateralReservations";
 
 type TestUtxo = Parameters<typeof assertProxyFullLifecyclePreflight>[0]["walletUtxos"][number];
 
@@ -68,6 +69,16 @@ const mkContext = (walletTypes: CIWalletType[]): CIBootstrapContext => ({
   signerAddresses: ["addr_test_signer_1", "addr_test_signer_2", "addr_test_signer_3"],
   signerStakeAddresses: ["stake_test_1", "stake_test_2", "stake_test_3"],
 });
+
+const scenarioStepIds = (scenario: ReturnType<typeof createScenarioProxyFullLifecycle>): string[] => [
+  ...scenario.steps.map((step) => step.id),
+  ...(scenario.parallelBranches ?? []).flatMap((branch) => branch.steps.map((step) => step.id)),
+];
+
+const scenarioBranchStepIds = (
+  scenario: ReturnType<typeof createScenarioProxyFullLifecycle>,
+  branchId: string,
+): string[] => scenario.parallelBranches?.find((branch) => branch.id === branchId)?.steps.map((step) => step.id) ?? [];
 
 describe("proxy full lifecycle preflight", () => {
   it("classifies an already usable UTxO shape as pass", () => {
@@ -208,9 +219,15 @@ describe("proxy scenario composition", () => {
 
   it("runs full lifecycle for legacy, hierarchical, and SDK wallets", () => {
     const scenario = createScenarioProxyFullLifecycle(mkContext(["legacy", "hierarchical", "sdk"]));
-    const stepIds = scenario.steps.map((step) => step.id);
+    const stepIds = scenarioStepIds(scenario);
 
     expect(PROXY_FULL_LIFECYCLE_WALLET_TYPES).toEqual(["legacy", "hierarchical", "sdk"]);
+    expect(scenario.steps.map((step) => step.id)).toContain("v1.proxy.full.parallelIsolation");
+    expect(scenario.parallelBranches?.map((branch) => branch.id)).toEqual([
+      "proxy-full-lifecycle.legacy",
+      "proxy-full-lifecycle.hierarchical",
+      "proxy-full-lifecycle.sdk",
+    ]);
     expect(stepIds).toContain("v1.proxy.full.recoverFromChain.legacy");
     expect(stepIds).toContain("v1.proxy.full.adoptOrphans.legacy");
     expect(stepIds).toContain("v1.proxy.full.hygiene.legacy");
@@ -266,7 +283,7 @@ describe("proxy scenario composition", () => {
 
   it("signs proxy lifecycle transactions with signer index 0 before the broadcaster", () => {
     const scenario = createScenarioProxyFullLifecycle(mkContext(["legacy"]));
-    const stepIds = scenario.steps.map((step) => step.id);
+    const stepIds = scenarioStepIds(scenario);
 
     const setupProposeIndex = stepIds.indexOf("v1.proxy.lifecycle.setup.propose.legacy");
     expect(stepIds.slice(setupProposeIndex + 1, setupProposeIndex + 3)).toEqual([
@@ -281,6 +298,79 @@ describe("proxy scenario composition", () => {
     ]);
     expect(stepIds).not.toContain("v1.proxy.lifecycle.setup.sign1.legacy");
     expect(stepIds).not.toContain("v1.proxy.full.spend.legacy.sign1");
+  });
+
+  it("can disable proxy full lifecycle branch parallelism with an env flag", () => {
+    const previous = process.env.CI_PROXY_FULL_LIFECYCLE_PARALLEL;
+    process.env.CI_PROXY_FULL_LIFECYCLE_PARALLEL = "false";
+    try {
+      const scenario = createScenarioProxyFullLifecycle(mkContext(["legacy", "sdk"]));
+
+      expect(scenario.parallelBranches).toBeUndefined();
+      expect(scenario.steps.map((step) => step.id)).toContain("v1.proxy.full.parallelIsolation");
+      expect(scenario.steps.map((step) => step.id)).toContain("v1.proxy.full.recoverFromChain.legacy");
+      expect(scenario.steps.map((step) => step.id)).toContain("v1.proxy.full.recoverFromChain.sdk");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CI_PROXY_FULL_LIFECYCLE_PARALLEL;
+      } else {
+        process.env.CI_PROXY_FULL_LIFECYCLE_PARALLEL = previous;
+      }
+    }
+  });
+
+  it("keeps each proxy lifecycle branch internally ordered", () => {
+    const scenario = createScenarioProxyFullLifecycle(mkContext(["legacy", "sdk"]));
+    const stepIds = scenarioBranchStepIds(scenario, "proxy-full-lifecycle.legacy");
+
+    expect(stepIds).toEqual(expect.arrayContaining([
+      "v1.proxy.full.recoverFromChain.legacy",
+      "v1.proxy.full.adoptOrphans.legacy",
+      "v1.proxy.full.hygiene.legacy",
+      "v1.proxy.full.utxoShape.legacy",
+      "v1.proxy.full.preflight.legacy",
+    ]));
+    expect(stepIds.indexOf("v1.proxy.full.recoverFromChain.legacy")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.adoptOrphans.legacy"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.adoptOrphans.legacy")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.hygiene.legacy"),
+    );
+    expect(stepIds.indexOf("v1.proxy.full.hygiene.legacy")).toBeLessThan(
+      stepIds.indexOf("v1.proxy.full.utxoShape.legacy"),
+    );
+  });
+
+  it("reserves distinct signer-0 collateral UTxOs in deterministic order", () => {
+    const reservations = reserveProxyLifecycleCollateral({
+      walletTypes: ["legacy", "hierarchical", "sdk"],
+      collateralUtxos: [
+        mkCollateralUtxo("8000000", "b", 0),
+        mkCollateralUtxo("6000000", "a", 2),
+        mkCollateralUtxo("6000000", "a", 1),
+      ],
+    });
+
+    expect(reservations.get("legacy")?.collateralRef).toEqual({ txHash: "a", outputIndex: 1 });
+    expect(reservations.get("hierarchical")?.collateralRef).toEqual({ txHash: "a", outputIndex: 2 });
+    expect(reservations.get("sdk")?.collateralRef).toEqual({ txHash: "b", outputIndex: 0 });
+  });
+
+  it("fails collateral reservation when not enough distinct candidates exist", () => {
+    expect(() =>
+      reserveProxyLifecycleCollateral({
+        walletTypes: ["legacy", "sdk"],
+        collateralUtxos: [mkCollateralUtxo("6000000", "a", 1)],
+      }),
+    ).toThrow(/requires 2 distinct ADA-only signer-0 collateral UTxO/);
+  });
+
+  it("detects duplicate wallet addresses before parallel execution", async () => {
+    const ctx = mkContext(["legacy", "sdk"]);
+    ctx.wallets[1]!.walletAddress = ctx.wallets[0]!.walletAddress;
+    const scenario = createScenarioProxyFullLifecycle(ctx);
+
+    await expect(scenario.steps[0]?.execute(ctx)).rejects.toThrow(/share walletAddress/);
   });
 
   it("fails clearly instead of using a setup transaction id as a txHash", () => {

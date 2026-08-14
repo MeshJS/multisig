@@ -96,8 +96,7 @@ jest.mock(
       Transaction: MockTransaction,
       hash_script_data: hashScriptDataMock,
     },
-  }),
-  { virtual: true },
+  })
 );
 
 jest.mock(
@@ -108,8 +107,7 @@ jest.mock(
       NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: "preprod-key",
       NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET: "mainnet-key",
     },
-  }),
-  { virtual: true },
+  })
 );
 
 describe("refreshScriptDataHash", () => {
@@ -118,6 +116,10 @@ describe("refreshScriptDataHash", () => {
     costModelValues.length = 0;
     setScriptDataHashMock.mockClear();
     hashScriptDataMock.mockClear();
+    delete process.env.BLOCKFROST_API_KEY_PREPROD;
+    delete process.env.BLOCKFROST_API_KEY_MAINNET;
+    delete process.env.CI_BLOCKFROST_PREPROD_API_KEY;
+    delete process.env.CI_BLOCKFROST_MAINNET_API_KEY;
     MockTransaction.configure({ redeemerCount: 0 });
   });
 
@@ -204,5 +206,35 @@ describe("refreshScriptDataHash", () => {
         },
       ),
     ).toThrow(/cost_models_raw/);
+  });
+
+  it("uses server-side Blockfrost env names when completing transactions", async () => {
+    process.env.BLOCKFROST_API_KEY_PREPROD = "server-preprod-key";
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ cost_models_raw: { PlutusV3: [10, 20] } }),
+    } as Response);
+    const { completeTxWithFreshCostModels } = await import(
+      "@/lib/completeTxWithFreshCostModels"
+    );
+
+    await expect(
+      completeTxWithFreshCostModels(
+        {
+          complete: async () => "unsigned-tx-hex",
+        } as never,
+        0,
+      ),
+    ).resolves.toBe("unsigned-tx-hex");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cardano-preprod.blockfrost.io/api/v0/epochs/latest/parameters",
+      {
+        headers: {
+          project_id: "server-preprod-key",
+        },
+      },
+    );
+    fetchMock.mockRestore();
   });
 });

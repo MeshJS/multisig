@@ -15,6 +15,7 @@ import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards"
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
+import { isProviderNotFoundError } from "@/lib/server/providerErrors";
 
 export default async function handler(
   req: NextApiRequest,
@@ -39,7 +40,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -84,7 +85,10 @@ export default async function handler(
     if (isBotJwt(payload)) {
       const access = await getBotWalletAccess(db, walletId, payload.botId);
       if (!access.allowed) {
-        return res.status(403).json({ error: "Not authorized for this wallet" });
+        // Convention: 404 = unknown wallet, 403 = known but not permitted.
+        return access.reason === "wallet_not_found"
+          ? res.status(404).json({ error: "Wallet not found" })
+          : res.status(403).json({ error: "Not authorized for this wallet" });
       }
       pendingTxsResult = await db.transaction.findMany({
         where: { walletId, state: 0 },
@@ -125,11 +129,30 @@ export default async function handler(
     const fresh = req.query.fresh === "true";
 
     let utxos: UTxO[];
-    if (fresh) {
-      utxos = await blockchainProvider.fetchAddressUTxOs(addr);
-    } else {
-      const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
-      utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    try {
+      if (fresh) {
+        utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+      } else {
+        const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+        try {
+          utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+        } catch (cacheError) {
+          if (isProviderNotFoundError(cacheError)) {
+            utxos = [];
+          } else {
+            console.warn("cached freeUtxos fetch failed; retrying without cache", {
+              message: (cacheError as Error)?.message,
+            });
+            utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+          }
+        }
+      }
+    } catch (providerError) {
+      if (isProviderNotFoundError(providerError)) {
+        utxos = [];
+      } else {
+        throw providerError;
+      }
     }
 
     const blockedUtxos: { hash: string; index: number }[] =

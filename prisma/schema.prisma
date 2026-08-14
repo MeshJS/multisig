@@ -211,6 +211,67 @@ model Contact {
   @@index([address])
 }
 
+model WalletSignerNotificationSetting {
+  id                          String    @id @default(cuid())
+  walletId                    String
+  signerAddress               String
+  email                       String?
+  emailNormalized             String?
+  emailVerifiedAt             DateTime?
+  emailOptIn                  Boolean   @default(true)
+  notifyTransactionSignatures Boolean   @default(true)
+  notifySignableSignatures    Boolean   @default(true)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@unique([walletId, signerAddress])
+  @@index([walletId])
+  @@index([signerAddress])
+  @@index([emailNormalized])
+}
+
+model EmailVerificationToken {
+  id              String    @id @default(cuid())
+  walletId        String
+  signerAddress   String
+  emailNormalized String
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([walletId, signerAddress])
+  @@index([expiresAt])
+}
+
+model NotificationDelivery {
+  id                 String    @id @default(cuid())
+  eventType          String
+  channel            String
+  recipientAddress   String
+  recipientEmail     String?
+  resourceType       String
+  resourceId         String
+  walletId           String?
+  idempotencyKey     String    @unique
+  subject            String
+  payload            Json
+  status             String    @default("pending")
+  provider           String?
+  providerMessageId  String?
+  attempts           Int       @default(0)
+  lastError          String?
+  nextAttemptAt      DateTime  @default(now())
+  sentAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([recipientAddress])
+  @@index([walletId])
+  @@index([resourceType, resourceId])
+}
+
 model BotKey {
   id           String   @id @default(cuid())
   ownerAddress String // Human creator
@@ -259,11 +320,14 @@ enum PendingBotStatus {
 model PendingBot {
   id              String           @id @default(cuid())
   name            String
-  paymentAddress  String
+  // Optional: new bots normally register before they have a wallet; the
+  // address is bound to the BotUser at first botAuth instead.
+  paymentAddress  String?
   stakeAddress    String?
   requestedScopes String // JSON array of requested scopes
   status          PendingBotStatus @default(UNCLAIMED)
   claimedBy       String? // ownerAddress of the claiming human
+  botKeyId        String? // BotKey minted at claim; lets pickup work without an address
   secretCipher    String? // Encrypted secret (set on claim, cleared on pickup)
   pickedUp        Boolean          @default(false)
   expiresAt       DateTime
@@ -324,4 +388,96 @@ model ProposalTally {
   updatedAt  DateTime @updatedAt
 
   @@unique([network, proposalId])
+}
+
+// ---------------------------------------------------------------------------
+// OAuth 2.1 authorization server
+//
+// Backs the MCP endpoint (`/api/mcp`) acting as an OAuth 2.0 Resource Server.
+// Secrets are never stored in plaintext: authorization codes, refresh tokens and
+// client secrets are all persisted as SHA-256 hashes, mirroring the existing
+// BotClaimToken pattern.
+// ---------------------------------------------------------------------------
+
+model OAuthClient {
+  id String @id @default(cuid())
+
+  /// Either an opaque DCR-issued id, or — for a Client ID Metadata Document —
+  /// the https URL the metadata was fetched from.
+  clientId                String   @unique
+  /// True when clientId is a CIMD URL. CIMD clients are portable across
+  /// authorization servers and are re-validated against their document.
+  isMetadataUrl           Boolean  @default(false)
+  clientName              String
+  clientUri               String?
+  redirectUris            String[]
+  /// "none" for public clients (the MCP norm), "client_secret_basic"/"post" otherwise.
+  tokenEndpointAuthMethod String   @default("none")
+  /// SHA-256 of the client secret; null for public clients.
+  secretHash              String?
+  createdAt               DateTime @default(now())
+  lastSeenAt              DateTime @default(now())
+
+  @@index([clientId])
+}
+
+model OAuthAuthorizationCode {
+  id String @id @default(cuid())
+
+  /// SHA-256 of the code. The plaintext is only ever in the redirect URL.
+  codeHash         String    @unique
+  clientId         String
+  /// Cardano address of the human who approved this grant.
+  subjectAddress   String
+  /// Every wallet address the approval covers.
+  grantedAddresses String[]
+  scopes           String[]
+  /// RFC 8707 audience. The issued token is bound to this and nothing else.
+  resource         String
+  redirectUri      String
+  /// PKCE. S256 only — `plain` is not accepted.
+  codeChallenge    String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([expiresAt])
+}
+
+model OAuthRefreshToken {
+  id String @id @default(cuid())
+
+  tokenHash        String    @unique
+  clientId         String
+  subjectAddress   String
+  grantedAddresses String[]
+  scopes           String[]
+  resource         String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  /// Set when this token has been rotated away. Presenting a token that already
+  /// has a successor indicates replay, and the whole chain is revoked.
+  replacedById     String?
+  createdAt        DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([subjectAddress])
+  @@index([expiresAt])
+}
+
+/// The durable record of "this user approved this client". One row per pair, so
+/// re-consenting updates the grant rather than accumulating duplicates.
+model OAuthGrant {
+  id String @id @default(cuid())
+
+  subjectAddress   String
+  clientId         String
+  scopes           String[]
+  grantedAddresses String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([subjectAddress, clientId])
+  @@index([subjectAddress])
 }

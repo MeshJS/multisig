@@ -8,13 +8,14 @@ import {
   enforceBodySize,
 } from "@/lib/security/requestGuards";
 import { authorizeWalletSignerForV1Tx } from "@/lib/server/v1WalletAuth";
+import { BotAccessError, botHasScope } from "@/lib/auth/botAccess";
 import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
   buildStakingCertificateActions,
   type StakingActionApi,
 } from "@/utils/stakingCertificates";
-import { normalizePoolIdForDelegation } from "@/lib/server/normalizePoolId";
+import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
@@ -57,7 +58,7 @@ export default async function handler(
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -67,6 +68,12 @@ export default async function handler(
 
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
     return;
+  }
+
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
   const body = req.body as {
@@ -106,15 +113,15 @@ export default async function handler(
   try {
     await authorizeWalletSignerForV1Tx(payload, walletId, address);
   } catch (err) {
+    if (err instanceof BotAccessError) {
+      // Convention: 404 = unknown wallet, 403 = known but not permitted.
+      return res.status(err.status).json({ error: err.message });
+    }
     const code = (err as { code?: string }).code;
     if (code === "INSUFFICIENT_SCOPE") {
       return res.status(403).json({ error: (err as Error).message });
     }
-    const status =
-      code === "ADDRESS_MISMATCH" || code === "NOT_SIGNER" || code === "BOT_NOT_FOUND"
-        ? 403
-        : 403;
-    return res.status(status).json({
+    return res.status(403).json({
       error: err instanceof Error ? err.message : "Not authorized for this wallet",
     });
   }

@@ -35,6 +35,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Use repo npm version
+        run: npm install -g "$(node -p 'require("./package.json").packageManager')" && npm --version
+
       - name: Check secrets configured
         id: check-secrets
         run: |

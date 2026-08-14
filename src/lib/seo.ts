@@ -83,6 +83,28 @@ export const routeSeo: Record<string, RouteSeo> = {
     description:
       "Use Mesh Multisig with your favourite Cardano DApps in multi-signature mode.",
   },
+  "/roadmap": {
+    title: "Roadmap",
+    description:
+      "The twelve-month Mesh Multisig roadmap: what has shipped, what is in progress and what is planned for the Cardano multi-signature wallet, from May 2026 to April 2027.",
+  },
+  "/roadmap/graph": {
+    title: "Feature Graph",
+    description:
+      "An interactive knowledge graph of every Mesh Multisig feature and the state it is in — delivered, planned or blocked — linked to its area and the features it touches.",
+  },
+  "/blog": {
+    title: "Blog",
+    description:
+      "Guides and updates on Cardano multisig treasuries, governance and AI-agent automation from the team behind Mesh Multisig.",
+  },
+  "/blog/[slug]": {
+    // Per-post title/description/Article JSON-LD are supplied at request time via
+    // `pageProps.seo` (see buildPostSeo); these are only the fallback.
+    title: "Blog",
+    description:
+      "Guides and updates on Cardano multisig treasuries, governance and AI-agent automation from the team behind Mesh Multisig.",
+  },
   "/wallets/import-wallet": {
     title: "Import a Multisig Wallet",
     description:
@@ -103,6 +125,10 @@ export const NOINDEX_PREFIXES = [
   "/wallets/invite",
   "/wallets/new-wallet",
   "/user",
+  // OAuth consent screens are per-request authorization prompts, never content.
+  // Indexing one would publish a canonical URL that invites users to land on a
+  // consent page outside any real authorization flow.
+  "/oauth",
 ];
 
 export type ResolvedSeo = {
@@ -140,9 +166,13 @@ export type SitemapRoute = {
 export const INDEXABLE_ROUTES: SitemapRoute[] = [
   { path: "/", changefreq: "weekly", priority: 1.0 },
   { path: "/features", changefreq: "monthly", priority: 0.8 },
+  { path: "/roadmap", changefreq: "monthly", priority: 0.6 },
+  { path: "/roadmap/graph", changefreq: "monthly", priority: 0.5 },
+  { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/governance", changefreq: "daily", priority: 0.8 },
   { path: "/governance/drep", changefreq: "daily", priority: 0.7 },
   { path: "/api-docs", changefreq: "monthly", priority: 0.6 },
+  { path: "/llms.txt", changefreq: "monthly", priority: 0.5 },
   { path: "/wallets/import-wallet", changefreq: "monthly", priority: 0.5 },
 ];
 
@@ -191,4 +221,85 @@ export function buildJsonLd(pathname: string): Record<string, any>[] {
   };
 
   return [organization, website, application];
+}
+
+/**
+ * A fully-resolved SEO override a page can return from its data fetcher as
+ * `pageProps.seo`. `_app.tsx` renders it through {@link Metatags} *outside* the
+ * `ssr:false` boundary, so dynamic pages (e.g. blog posts) get a server-rendered
+ * `<head>` with per-page title, description, OG image and JSON-LD.
+ */
+export type PageSeo = {
+  title: string;
+  description: string;
+  keywords?: string;
+  /** Site-relative OG image path. */
+  image?: string;
+  /** Open Graph object type, e.g. "article". */
+  type?: string;
+  noindex?: boolean;
+  /** Extra JSON-LD blocks appended to the site-wide ones (e.g. Article). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  jsonLd?: Record<string, any>[];
+};
+
+/** Front-matter metadata for a blog post, shared between the data layer and pages. */
+export type ArticleMeta = {
+  slug: string;
+  title: string;
+  description: string;
+  /** ISO date (YYYY-MM-DD) the post was published. */
+  date: string;
+  /** ISO date the post was last updated; defaults to `date`. */
+  updated?: string;
+  tags?: string[];
+  /** Site-relative social image; defaults to the site OG image. */
+  image?: string;
+  author?: string;
+};
+
+/** Default byline for blog posts. */
+export const BLOG_AUTHOR = "Mesh";
+
+/** schema.org/Article structured data for a single post. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildArticleJsonLd(meta: ArticleMeta): Record<string, any> {
+  const url = absoluteUrl(`/blog/${meta.slug}`);
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: meta.title,
+    description: meta.description,
+    image: absoluteUrl(meta.image ?? OG_IMAGE_PATH),
+    datePublished: meta.date,
+    dateModified: meta.updated ?? meta.date,
+    author: {
+      "@type": "Organization",
+      name: meta.author ?? BLOG_AUTHOR,
+      url: SITE_URL,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      logo: {
+        "@type": "ImageObject",
+        url: absoluteUrl("/favicon/apple-touch-icon.png"),
+      },
+    },
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    ...(meta.tags?.length ? { keywords: meta.tags.join(", ") } : {}),
+  };
+}
+
+/** Build the resolved {@link PageSeo} override for a blog post. */
+export function buildPostSeo(meta: ArticleMeta): PageSeo {
+  return {
+    title: `${meta.title} · ${SITE_NAME}`,
+    description: meta.description,
+    keywords: meta.tags?.length ? meta.tags.join(", ") : DEFAULT_KEYWORDS,
+    image: meta.image ?? OG_IMAGE_PATH,
+    type: "article",
+    noindex: false,
+    jsonLd: [buildArticleJsonLd(meta)],
+  };
 }

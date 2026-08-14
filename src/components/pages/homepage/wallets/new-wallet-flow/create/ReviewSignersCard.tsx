@@ -3,6 +3,7 @@ import { getFirstAndLast } from "@/utils/strings";
 import { checkValidAddress, checkValidStakeKey } from "@/utils/multisigSDK";
 import { useToast } from "@/hooks/use-toast";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -41,6 +42,38 @@ import {
 import { deserializeAddress, serializeRewardAddress } from "@meshsdk/core";
 
 const MAX_SIGNER_NAME_LENGTH = 32;
+
+// Unclaimed slot on a fixed-signer (discovery invite) draft: a bare
+// 28-byte key hash instead of a bech32 address.
+const isPlaceholderHash = (addr: string) => /^[0-9a-fA-F]{56}$/.test(addr);
+
+function SignerAddressDisplay({
+  signer,
+  lockedSigners,
+  chars,
+}: {
+  signer: string;
+  lockedSigners: boolean;
+  chars: [number, number];
+}) {
+  if (!signer) return <>-</>;
+  if (lockedSigners && isPlaceholderHash(signer)) {
+    return (
+      <span className="flex flex-wrap items-center gap-2">
+        <Badge
+          variant="outline"
+          className="bg-amber-400/10 border-amber-400/30 text-amber-600 dark:text-amber-300"
+        >
+          Awaiting claim
+        </Badge>
+        <span className="font-mono text-xs text-muted-foreground">
+          key: {getFirstAndLast(signer, 10, 8)}
+        </span>
+      </span>
+    );
+  }
+  return <>{getFirstAndLast(signer, chars[0], chars[1])}</>;
+}
 
 // Same SignerConfig interface as original
 interface SignerConfig {
@@ -304,7 +337,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
 
                       {/* Address */}
                       <TableCell className="font-mono text-xs">
-                        {signer ? getFirstAndLast(signer, 20, 15) : "-"}
+                        <SignerAddressDisplay
+                          signer={signer}
+                          lockedSigners={lockedSigners}
+                          chars={[20, 15]}
+                        />
                       </TableCell>
 
                       {/* Stake Key */}
@@ -444,7 +481,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                   <div>
                     <p className="text-xs text-muted-foreground">Address</p>
                     <p className="break-all font-mono text-xs">
-                      {signer ? getFirstAndLast(signer, 20, 15) : "-"}
+                      <SignerAddressDisplay
+                        signer={signer}
+                        lockedSigners={lockedSigners}
+                        chars={[20, 15]}
+                      />
                     </p>
                   </div>
 
@@ -655,7 +696,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                     placeholder={hasExternalStakeCredential ? "External stake credential configured" : "Staking address"}
                     value={tempStakeKey}
                     onChange={(e) => setTempStakeKey(e.target.value)}
-                    disabled={editMode === "edit" && editIndex === 0 || hasExternalStakeCredential}
+                    disabled={hasExternalStakeCredential}
                   />
                   {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
                     <div className="mt-1 flex items-center gap-1">

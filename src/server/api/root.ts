@@ -10,6 +10,8 @@ import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
 import { botRouter } from "./routers/bot";
 import { governanceRouter } from "./routers/governance";
+import { notificationRouter } from "./routers/notifications";
+import { mcpRouter } from "./routers/mcp";
 
 /**
  * This is the primary router for your server.
@@ -23,11 +25,13 @@ export const appRouter = createTRPCRouter({
   signable: signableRouter,
   ballot: ballotRouter,
   proxy: proxyRouter,
+  mcp: mcpRouter,
   migration: migrationRouter,
   auth: authRouter,
   contact: contactRouter,
   bot: botRouter,
   governance: governanceRouter,
+  notification: notificationRouter,
 });
 
 // export type definition of API

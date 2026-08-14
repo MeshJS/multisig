@@ -22,7 +22,7 @@
     "test": "node scripts/run-tests.mjs",
     "test:cjs": "jest",
     "test:esm": "node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.esm.config.mjs --passWithNoTests",
-    "test:bot:unit": "node scripts/run-tests.mjs src/__tests__/botAuth.test.ts src/__tests__/botMe.test.ts src/__tests__/createWallet.bot.test.ts src/__tests__/walletIds.bot.test.ts src/__tests__/pendingTransactions.bot.test.ts src/__tests__/freeUtxos.bot.test.ts src/__tests__/addTransaction.bot.test.ts src/__tests__/nativeScript.bot.test.ts src/__tests__/governanceActiveProposals.test.ts src/__tests__/botBallotsUpsert.test.ts src/__tests__/signTransaction.bot.test.ts src/__tests__/submitDatum.bot.test.ts src/__tests__/resolveUtxoRefsFromChain.test.ts src/__tests__/resolveDRepAnchorFromUrl.test.ts src/__tests__/normalizePoolId.test.ts src/__tests__/createPendingMultisigTransaction.test.ts src/__tests__/proxyUtxos.test.ts src/__tests__/proxyTxBuilders.test.ts src/__tests__/proxySetup.bot.test.ts src/__tests__/proxyCleanup.bot.test.ts src/__tests__/proxyAccess.test.ts src/__tests__/proxySetupFinalization.test.ts src/__tests__/proxyCleanupFinalization.test.ts src/__tests__/proxyCiPreflight.test.ts src/__tests__/proxyCiOrphanAdoption.test.ts src/__tests__/proxyCiChainRecovery.test.ts src/__tests__/proxyBotSelection.test.ts src/__tests__/proxyCleanupRuntime.test.ts src/__tests__/ciSigningSelection.test.ts src/__tests__/ciScenarioManifest.test.ts",
+    "test:bot:unit": "node scripts/run-tests.mjs src/__tests__/botAuth.test.ts src/__tests__/botMe.test.ts src/__tests__/createWallet.bot.test.ts src/__tests__/walletIds.bot.test.ts src/__tests__/pendingTransactions.bot.test.ts src/__tests__/freeUtxos.bot.test.ts src/__tests__/addTransaction.bot.test.ts src/__tests__/nativeScript.bot.test.ts src/__tests__/governanceActiveProposals.test.ts src/__tests__/botBallotsUpsert.test.ts src/__tests__/signTransaction.bot.test.ts src/__tests__/submitDatum.bot.test.ts src/__tests__/resolveUtxoRefsFromChain.test.ts src/__tests__/resolveDRepAnchorFromUrl.test.ts src/__tests__/normalizePoolId.test.ts src/__tests__/createPendingMultisigTransaction.test.ts src/__tests__/proxyUtxos.test.ts src/__tests__/proxyTxBuilders.test.ts src/__tests__/proxySetup.bot.test.ts src/__tests__/proxyCleanup.bot.test.ts src/__tests__/proxyAccess.test.ts src/__tests__/proxySetupFinalization.test.ts src/__tests__/proxyCleanupFinalization.test.ts src/__tests__/proxyCiPreflight.test.ts src/__tests__/proxyCiOrphanAdoption.test.ts src/__tests__/proxyCiChainRecovery.test.ts src/__tests__/proxyBotSelection.test.ts src/__tests__/proxyCleanupRuntime.test.ts src/__tests__/ciSigningSelection.test.ts src/__tests__/ciScenarioManifest.test.ts src/__tests__/mcpTools.test.ts src/__tests__/mcpRoute.test.ts src/__tests__/oauthTokens.test.ts src/__tests__/oauthFlow.test.ts src/__tests__/oauthDecision.test.ts src/__tests__/oauthRefreshStore.test.ts src/__tests__/jestMockHygiene.test.ts src/__tests__/rationaleAnchor.test.ts src/__tests__/mcpConnections.test.ts",
     "test:bot:integration": "jest src/__tests__/botApi.integration.test.ts --runInBand",
     "test:bot": "npm run test:bot:unit && npm run test:bot:integration",
     "test:watch": "jest --watch",
@@ -30,7 +30,8 @@
     "test:ci": "node scripts/run-tests.mjs --ci --coverage --runInBand",
     "test:trpc": "jest -c jest.trpc.config.mjs --runInBand",
     "analyze": "ANALYZE=true npm run build",
-    "apply-project": "node scripts/apply-project-to-github.mjs"
+    "apply-project": "node scripts/apply-project-to-github.mjs",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -39,6 +40,7 @@
     "@meshsdk/core-cst": "^1.9.0",
     "@meshsdk/provider": "^1.9.0-beta.101",
     "@meshsdk/react": "^2.0.0-beta.2",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@octokit/core": "^6.1.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
@@ -67,6 +69,7 @@
     "@trpc/react-query": "^11.0.0-rc.446",
     "@trpc/server": "^11.0.0-rc.446",
     "@utxos/sdk": "^0.0.78",
+    "@xyflow/react": "^12.11.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
@@ -87,6 +90,7 @@
     "react-dropzone": "^14.3.5",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "resend": "^6.12.4",
     "superjson": "^2.2.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-react": "^5.22.0",
@@ -103,6 +107,7 @@
     "@eslint/eslintrc": "^3.3.3",
     "@jest/globals": "^30.1.2",
     "@next/bundle-analyzer": "^16.2.6",
+    "@playwright/test": "1.60.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.17.7",
     "@types/cors": "^2.8.18",
@@ -134,7 +139,7 @@
   "ct3aMetadata": {
     "initVersion": "7.37.0"
   },
-  "packageManager": "npm@10.7.0",
+  "packageManager": "npm@11.14.1",
   "overrides": {
     "ip": "^2.0.1",
     "rimraf": "^6.1.2",

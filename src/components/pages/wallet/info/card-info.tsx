@@ -265,17 +265,6 @@ function MultisigScriptSection({ mWallet }: { mWallet: MultisigWallet }) {
           <Code className="block text-xs sm:text-sm whitespace-pre">{JSON.stringify(mWallet?.getJsonMetadata(), null, 2)}</Code>
         </div>
       </div>
-      
-      {/* Register Wallet Section */}
-      <div className="pt-3 border-t border-border/30">
-        <div className="mb-2">
-          <div className="text-xs sm:text-sm font-medium text-muted-foreground">Register Wallet</div>
-          <div className="text-xs text-muted-foreground/70 mt-0.5">Register your Wallet through a CIP-0146 registration transaction.</div>
-        </div>
-        <div className="p-4 bg-muted/50 rounded-lg border border-border/30">
-          <p className="text-sm text-muted-foreground">Coming soon.</p>
-        </div>
-      </div>
     </div>,
     <div key="payment" className="w-full space-y-3">
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full">
