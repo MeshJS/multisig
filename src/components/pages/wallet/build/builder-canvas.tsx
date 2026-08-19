@@ -5,13 +5,11 @@ import {
   BackgroundVariant,
   Panel,
   ReactFlow,
-  useReactFlow,
   type Connection,
   type Edge,
   type Node,
   type NodeChange,
 } from "@xyflow/react";
-import { RotateCcw } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 
@@ -19,6 +17,7 @@ import {
   EDGE_TYPES,
   FIT_VIEW_OPTIONS,
   NODE_TYPES,
+  ResetLayoutButton,
 } from "@/components/common/token-flow/flow-canvas";
 import {
   isValuePortIn,
@@ -43,6 +42,18 @@ export type BuilderCanvasProps = {
   walletAssetMetadata?: AssetMetadataMap;
   contacts: PaletteEntry[];
   signers: PaletteEntry[];
+  /** Resolves "txHash#certIndex" to a proposal title for vote badges. */
+  resolveProposalTitle?: (proposalId: string) => string | undefined;
+  /** Resolves a bech32 pool id to a pool name for delegation badges. */
+  resolvePoolName?: (poolId: string) => string | undefined;
+  /** Opens the add-stake-action dialog owned by the page. */
+  onAddStakeAction: () => void;
+  /** When set, the stake button is disabled with this tooltip. */
+  addStakeDisabledReason?: string;
+  /** Opens the add-vote dialog owned by the page. */
+  onAddVote: () => void;
+  /** When set, the vote button is disabled with this tooltip. */
+  addVoteDisabledReason?: string;
   className?: string;
 };
 
@@ -74,27 +85,6 @@ function sameSelection(a: BuilderSelection, b: BuilderSelection): boolean {
   return a.kind === "tx" || a.outputId === (b as { outputId: string }).outputId;
 }
 
-function ResetLayoutButton({ onReset }: { onReset: () => void }) {
-  const { fitView } = useReactFlow();
-  return (
-    <Panel position="top-right">
-      <button
-        type="button"
-        data-testid="tx-builder-reset"
-        title="Reset layout"
-        onClick={() => {
-          onReset();
-          window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
-        }}
-        className="flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <RotateCcw className="h-3 w-3" />
-        Reset layout
-      </button>
-    </Panel>
-  );
-}
-
 /**
  * Interactive canvas for the transaction builder. The TxDraft in the zustand
  * store is the source of truth; this component renders `draftToTokenFlow`
@@ -110,6 +100,12 @@ export default function BuilderCanvas({
   walletAssetMetadata,
   contacts,
   signers,
+  resolveProposalTitle,
+  resolvePoolName,
+  onAddStakeAction,
+  addStakeDisabledReason,
+  onAddVote,
+  addVoteDisabledReason,
   className,
 }: BuilderCanvasProps) {
   const draft = useTxBuilderStore((state) => state.draft);
@@ -122,10 +118,21 @@ export default function BuilderCanvas({
   const removeOutput = useTxBuilderStore((state) => state.removeOutput);
 
   const flow = useMemo(
-    () => draftToTokenFlow(draft, { labelAddress, walletAddress }),
-    [draft, labelAddress, walletAddress],
+    () =>
+      draftToTokenFlow(draft, {
+        labelAddress,
+        walletAddress,
+        resolveProposalTitle,
+        resolvePoolName,
+      }),
+    [draft, labelAddress, walletAddress, resolveProposalTitle, resolvePoolName],
   );
-  const layout = useMemo(() => layoutTokenFlow(flow), [flow]);
+  // connectablePorts: empty card sides keep a dot as the drag-to-connect
+  // source/drop target (viewer canvases render none there).
+  const layout = useMemo(
+    () => layoutTokenFlow(flow, { connectablePorts: true }),
+    [flow],
+  );
 
   const computedNodes = useMemo(
     () =>
@@ -261,7 +268,7 @@ export default function BuilderCanvas({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        colorMode="dark"
+        colorMode="system"
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.2}
@@ -285,8 +292,17 @@ export default function BuilderCanvas({
           contacts={contacts}
           signers={signers}
           selfAddress={walletAddress}
+          onAddStakeAction={onAddStakeAction}
+          addStakeDisabledReason={addStakeDisabledReason}
+          onAddVote={onAddVote}
+          addVoteDisabledReason={addVoteDisabledReason}
         />
-        <ResetLayoutButton onReset={clearPositions} />
+        <Panel position="top-right">
+          <ResetLayoutButton
+            onReset={clearPositions}
+            data-testid="tx-builder-reset"
+          />
+        </Panel>
       </ReactFlow>
     </div>
   );

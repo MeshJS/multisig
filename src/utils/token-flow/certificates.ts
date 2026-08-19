@@ -3,6 +3,8 @@ import type {
   BlockfrostTxDelegation,
   BlockfrostTxStakeCert,
 } from "@/types/blockfrost";
+import type { TxGovernanceItem } from "@/types/governance";
+import type { DraftCertificate, DraftVote } from "@/types/tx-draft";
 import { getFirstAndLast } from "@/utils/strings";
 
 /**
@@ -96,6 +98,48 @@ export function meshCertificateToBadge(cert: any): CertBadge {
   }
 }
 
+/** Resolves a bech32 pool id to a display name; injected, may be absent. */
+export type PoolNameResolver = (poolId: string) => string | undefined;
+
+/** Maps a builder DraftCertificate to a badge; mirrors `meshCertificateToBadge`. */
+export function draftCertificateToBadge(
+  cert: DraftCertificate,
+  resolvePoolName?: PoolNameResolver,
+): FlowBadge {
+  switch (cert.kind) {
+    case "RegisterStake":
+      return {
+        kind: "certificate",
+        label: "Stake Registration",
+        detail: cert.originalStakeAddress
+          ? getFirstAndLast(cert.originalStakeAddress)
+          : undefined,
+        color: "text-blue-500 dark:text-blue-400",
+      };
+    case "DeregisterStake":
+      return {
+        kind: "certificate",
+        label: "Stake Deregistration",
+        detail: cert.originalStakeAddress
+          ? getFirstAndLast(cert.originalStakeAddress)
+          : undefined,
+        color: "text-orange-500 dark:text-orange-400",
+      };
+    case "DelegateStake": {
+      // A resolved pool name goes into `title` — on the tx card only titled
+      // badges render visible text (detail is just the hover tooltip).
+      const poolName = cert.poolId ? resolvePoolName?.(cert.poolId) : undefined;
+      return {
+        kind: "certificate",
+        label: "Stake Delegation",
+        detail: cert.poolId ? `to ${getFirstAndLast(cert.poolId)}` : undefined,
+        color: "text-teal-500 dark:text-teal-400",
+        ...(poolName ? { title: poolName } : {}),
+      };
+    }
+  }
+}
+
 function describeDrep(drep: any): string | undefined {
   if (!drep) return undefined;
   if (typeof drep.dRepId === "string") return `to ${getFirstAndLast(drep.dRepId)}`;
@@ -104,24 +148,148 @@ function describeDrep(drep: any): string | undefined {
   return undefined;
 }
 
-/** Maps a Mesh `Vote` (from MeshTxBuilderBody JSON) to a badge. */
-export function meshVoteToBadge(vote: any): FlowBadge {
-  const voteKind: string = vote?.vote?.votingProcedure?.voteKind ?? "Abstain";
-  const govActionId = vote?.vote?.govActionId;
-  const detail = govActionId?.txHash
-    ? `${getFirstAndLast(govActionId.txHash)}#${govActionId.txIndex ?? "?"}`
+const VOTE_COLORS: Record<string, string> = {
+  yes: "text-green-500 dark:text-green-400",
+  no: "text-red-500 dark:text-red-400",
+  abstain: "text-muted-foreground",
+};
+
+/** Resolves "txHash#certIndex" to a proposal title; injected, may be absent. */
+export type ProposalTitleResolver = (proposalId: string) => string | undefined;
+
+function voteBadge(
+  voteKind: string,
+  govActionTxHash: string | undefined,
+  govActionIndex: number | string | undefined,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  const detail = govActionTxHash
+    ? `${getFirstAndLast(govActionTxHash)}#${govActionIndex ?? "?"}`
     : undefined;
-  const colors: Record<string, string> = {
-    yes: "text-green-500 dark:text-green-400",
-    no: "text-red-500 dark:text-red-400",
-    abstain: "text-muted-foreground",
-  };
+  const title =
+    govActionTxHash && govActionIndex !== undefined
+      ? resolveProposalTitle?.(`${govActionTxHash}#${govActionIndex}`)
+      : undefined;
   return {
     kind: "vote",
     label: `Vote: ${voteKind}`,
     detail,
-    color: colors[voteKind.toLowerCase()] ?? "text-muted-foreground",
+    color: VOTE_COLORS[voteKind.toLowerCase()] ?? "text-muted-foreground",
+    ...(title ? { title } : {}),
   };
+}
+
+/** Maps a Mesh `Vote` (from MeshTxBuilderBody JSON) to a badge. */
+export function meshVoteToBadge(
+  vote: any,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  const voteKind: string = vote?.vote?.votingProcedure?.voteKind ?? "Abstain";
+  const govActionId = vote?.vote?.govActionId;
+  return voteBadge(
+    voteKind,
+    govActionId?.txHash,
+    govActionId?.txIndex,
+    resolveProposalTitle,
+  );
+}
+
+/** Maps a builder DraftVote to a badge; mirrors `meshVoteToBadge`. */
+export function draftVoteToBadge(
+  vote: DraftVote,
+  resolveProposalTitle?: ProposalTitleResolver,
+): FlowBadge {
+  return voteBadge(
+    vote.voteKind,
+    vote.govActionTxHash,
+    vote.govActionIndex,
+    resolveProposalTitle,
+  );
+}
+
+/**
+ * Koios tx_info cert types → badge labels/colors, matching
+ * `meshCertificateToBadge` so pending and on-chain cards read identically.
+ * Stake/pool types are ABSENT on purpose: those are already badged from
+ * Blockfrost per-tx detail (`blockfrostCertBadges`) and must not duplicate.
+ */
+const KOIOS_CERT_BADGES: Record<string, { label: string; color?: string }> = {
+  drep_registration: {
+    label: "DRep Registration",
+    color: CERT_COLORS.DRepRegistration,
+  },
+  drep_retire: {
+    label: "DRep Deregistration",
+    color: CERT_COLORS.DRepDeregistration,
+  },
+  drep_deregistration: {
+    label: "DRep Deregistration",
+    color: CERT_COLORS.DRepDeregistration,
+  },
+  drep_update: { label: "DRep Update", color: CERT_COLORS.DRepUpdate },
+  vote_delegation: { label: "Vote Delegation" },
+  stake_vote_delegation: { label: "Stake + Vote Delegation" },
+  vote_reg_delegation: { label: "Vote Registration + Delegation" },
+  stake_vote_reg_delegation: {
+    label: "Stake + Vote Registration + Delegation",
+  },
+  auth_committee_hot: { label: "Committee Hot Key Authorization" },
+  resign_committee_cold: { label: "Committee Cold Key Resignation" },
+};
+
+const KOIOS_STAKE_POOL_CERT_TYPES = new Set([
+  "stake_registration",
+  "stake_deregistration",
+  "delegation",
+  "pool_delegation",
+  "pool_update",
+  "pool_retire",
+]);
+
+/**
+ * Badges for one tx's governance activity from /api/governance/txGovernance
+ * (Koios tx_info). Certificates order before votes, matching the pending-tx
+ * adapter. Proposal titles arrive pre-joined server-side.
+ */
+export function txGovernanceToBadges(
+  item: Pick<TxGovernanceItem, "certs" | "votes">,
+): FlowBadge[] {
+  const badges: FlowBadge[] = [];
+  for (const cert of item.certs) {
+    const type = cert.type.toLowerCase();
+    // The route filters these out already; skip defensively on drift.
+    if (KOIOS_STAKE_POOL_CERT_TYPES.has(type)) continue;
+    const known = KOIOS_CERT_BADGES[type];
+    badges.push({
+      kind: "certificate",
+      label: known?.label ?? "Certificate",
+      detail: cert.drepId ? getFirstAndLast(cert.drepId) : undefined,
+      color: known?.color,
+    });
+  }
+  for (const vote of item.votes) {
+    badges.push(
+      voteBadge(
+        vote.voteKind,
+        vote.proposalTxHash,
+        vote.proposalIndex,
+        () => vote.proposalTitle ?? undefined,
+      ),
+    );
+  }
+  return badges;
+}
+
+/** Timeline join index: tx hash (lowercased) → governance badges. */
+export function buildTxGovernanceBadgeMap(
+  items: TxGovernanceItem[],
+): Map<string, FlowBadge[]> {
+  const map = new Map<string, FlowBadge[]>();
+  for (const item of items) {
+    const badges = txGovernanceToBadges(item);
+    if (badges.length > 0) map.set(item.txHash.toLowerCase(), badges);
+  }
+  return map;
 }
 
 /** Badges for on-chain certificates reported by Blockfrost tx endpoints. */

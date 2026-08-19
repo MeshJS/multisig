@@ -96,6 +96,66 @@ describe("layoutTokenFlow", () => {
     expect(fee.position.y).toBe(deposit.position.y);
   });
 
+  test("each outgoing protocol edge gets its own bottom port (registration: fee + deposit)", () => {
+    // A DRep/stake registration pays a fee AND a deposit — two OUTGOING
+    // edges. They must leave from two distinct connectors (no shared
+    // fan-out point), ordered to match the pills: deposit pill sorts left
+    // of the fee pill.
+    const flow = singleTxFlow();
+    flow.nodes.push({ id: "protocol:deposit", kind: "protocol", role: "deposit", label: "Protocol deposit" });
+    flow.edges.push({
+      id: "tx:one->protocol:deposit:deposit",
+      source: "tx:one",
+      target: "protocol:deposit",
+      kind: "deposit",
+      assets: [{ unit: "lovelace", quantity: "500000000" }],
+    });
+    const result = layoutTokenFlow(flow);
+
+    const depositPill = result.nodes.find((n) => n.id === "protocol:deposit")!;
+    const feePill = result.nodes.find((n) => n.id === "protocol:fee")!;
+    expect(depositPill.position.x).toBeLessThan(feePill.position.x);
+
+    const deposit = result.edges.find((e) => e.data!.edge.kind === "deposit")!;
+    const fee = result.edges.find((e) => e.data!.edge.kind === "fee")!;
+    expect(deposit.sourceHandle).toBe("proto-0"); // left port → left pill
+    expect(fee.sourceHandle).toBe("proto-1"); // right port → right pill
+    const tx = result.nodes.find((n) => n.id === "tx:one")!;
+    expect(tx.data.protoPorts).toEqual([
+      { id: "proto-0", type: "source" },
+      { id: "proto-1", type: "source" },
+    ]);
+  });
+
+  test("bottom ports follow pill order: refund-in renders left of fee-out", () => {
+    // A deregistration: refund comes IN from the deposit pill (left), fee
+    // goes OUT to the fee pill (right) — ports must order the same way or
+    // the two vertical edges cross.
+    const flow = singleTxFlow();
+    flow.nodes.push({ id: "protocol:deposit", kind: "protocol", role: "deposit", label: "Protocol deposit" });
+    flow.edges.push({
+      id: "protocol:deposit->tx:one:deposit-refund",
+      source: "protocol:deposit",
+      target: "tx:one",
+      kind: "deposit-refund",
+      assets: [{ unit: "lovelace", quantity: "500" }],
+    });
+    const result = layoutTokenFlow(flow);
+
+    const deposit = result.nodes.find((n) => n.id === "protocol:deposit")!;
+    const fee = result.nodes.find((n) => n.id === "protocol:fee")!;
+    expect(deposit.position.x).toBeLessThan(fee.position.x); // the premise
+    const refund = result.edges.find((e) => e.data!.edge.kind === "deposit-refund")!;
+    const feeEdge = result.edges.find((e) => e.data!.edge.kind === "fee")!;
+    expect(refund.targetHandle).toBe("proto-0");
+    expect(feeEdge.sourceHandle).toBe("proto-1");
+    const tx = result.nodes.find((n) => n.id === "tx:one")!;
+    expect(tx.data.protoPorts).toEqual([
+      { id: "proto-0", type: "target" },
+      { id: "proto-1", type: "source" },
+    ]);
+  });
+
   test("edges carrying assets are animated; empty ones are not", () => {
     const flow = singleTxFlow();
     flow.edges.push({
@@ -207,20 +267,22 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(input.sourceHandle).toBe("out-0");
     expect(input.targetHandle).toBe("in-0");
 
+    // Fee pill (left of mint pill) gets the tx's first bottom port; mint
+    // arrives on the second. Pill side keeps the fixed top handles.
     const fee = result.edges.find((e) => e.data!.edge.kind === "fee")!;
-    expect(fee.sourceHandle).toBe(HANDLES.transaction.protoOut);
+    expect(fee.sourceHandle).toBe("proto-0");
     expect(fee.targetHandle).toBe(HANDLES.protocol.topIn);
 
     const mint = result.edges.find((e) => e.data!.edge.kind === "mint")!;
     expect(mint.sourceHandle).toBe(HANDLES.protocol.topOut);
-    expect(mint.targetHandle).toBe(HANDLES.transaction.protoIn);
+    expect(mint.targetHandle).toBe("proto-1");
 
-    // Nodes advertise which protocol ports carry an edge; the components
-    // skip rendering the unused ones.
+    // The tx advertises one bottom port per protocol edge, in pill order,
+    // each with the direction its edge needs.
     const tx = result.nodes.find((n) => n.id === "tx:one")!;
-    expect([...(tx.data.usedProtoHandles as string[])].sort()).toEqual([
-      HANDLES.transaction.protoIn,
-      HANDLES.transaction.protoOut,
+    expect(tx.data.protoPorts).toEqual([
+      { id: "proto-0", type: "source" },
+      { id: "proto-1", type: "target" },
     ]);
     const feePill = result.nodes.find((n) => n.id === "protocol:fee")!;
     expect(feePill.data.usedProtoHandles).toEqual([HANDLES.protocol.topIn]);
@@ -228,12 +290,13 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(mintPill.data.usedProtoHandles).toEqual([HANDLES.protocol.topOut]);
 
     // Drift guard: every emitted handle id must be one the node components
-    // render — a protocol port constant or an indexed value port.
+    // render — a pill top-port constant, an indexed value port, or an
+    // indexed tx bottom port.
     const protocolHandles = new Set<string>(
       Object.values(HANDLES).flatMap((group) => Object.values(group)),
     );
     const isKnown = (id: string) =>
-      protocolHandles.has(id) || /^(in|out)-\d+$/.test(id);
+      protocolHandles.has(id) || /^(in|out|proto)-\d+$/.test(id);
     for (const edge of result.edges) {
       expect(isKnown(edge.sourceHandle as string)).toBe(true);
       expect(isKnown(edge.targetHandle as string)).toBe(true);
@@ -263,10 +326,11 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(inputs.map((e) => e.targetHandle)).toEqual(["in-0", "in-1"]);
 
     // The cards advertise matching port counts so the node components render
-    // one connector dot per edge and grow vertically to fit the stack.
+    // one connector dot per edge and grow vertically to fit the stack. Sides
+    // with no edges advertise 0 — no stray unconnected dots.
     const inInstance = result.nodes.find((n) => n.id === `addr:${A}@in`)!;
     expect(inInstance.data.outPortCount).toBe(2);
-    expect(inInstance.data.inPortCount).toBe(1);
+    expect(inInstance.data.inPortCount).toBe(0);
     const tx = result.nodes.find((n) => n.id === "tx:one")!;
     expect(tx.data.inPortCount).toBe(2);
     expect(tx.data.outPortCount).toBe(2);
@@ -277,6 +341,26 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
       "out-0",
       "out-1",
     ]);
+  });
+
+  test("connectablePorts keeps a min-1 dot per side for the builder's drag-to-connect", () => {
+    const flow = selfChangeFlow();
+    const trimmed = layoutTokenFlow(flow);
+    const clamped = layoutTokenFlow(flow, { connectablePorts: true });
+
+    // Pure recipient card: no out-edges → no right dot by default, but the
+    // builder still gets one as the connection affordance.
+    const recipient = (r: ReturnType<typeof layoutTokenFlow>) =>
+      r.nodes.find((n) => n.id === `addr:${B}`)!;
+    expect(recipient(trimmed).data.outPortCount).toBe(0);
+    expect(recipient(clamped).data.outPortCount).toBe(1);
+    expect(recipient(trimmed).data.inPortCount).toBe(1); // real edge on both
+
+    // Input-side split instance: no in-edges → same story on its left.
+    const inInstance = (r: ReturnType<typeof layoutTokenFlow>) =>
+      r.nodes.find((n) => n.id === `addr:${A}@in`)!;
+    expect(inInstance(trimmed).data.inPortCount).toBe(0);
+    expect(inInstance(clamped).data.inPortCount).toBe(1);
   });
 
   test("protocol pill hangs beneath its transaction", () => {
@@ -305,4 +389,73 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     expect(a.nodes).toEqual(b.nodes);
     expect(a.edges).toEqual(b.edges);
   });
+});
+
+describe("estimateHeight with titled vote badges", () => {
+  const A = "addr_test1aaa";
+  const B = "addr_test1bbb";
+
+  function voteFlow(withTitles: boolean): TokenFlow {
+    const badges = Array.from({ length: 4 }, (_, i) => ({
+      kind: "vote" as const,
+      label: "Vote: Yes",
+      ...(withTitles ? { title: `Proposal number ${i}` } : {}),
+    }));
+    return {
+      nodes: [
+        { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        { id: "txp:one", kind: "transaction", status: "pending", badges },
+      ],
+      edges: [
+        { id: `addr:${A}->txp:one:input`, source: `addr:${A}`, target: "txp:one", kind: "input", assets: [] },
+        { id: `txp:one->addr:${B}:output`, source: "txp:one", target: `addr:${B}`, kind: "output", assets: [] },
+      ],
+    };
+  }
+
+  test("titled badges make the tx card taller (addresses re-center lower)", () => {
+    const plain = layoutTokenFlow(voteFlow(false));
+    const titled = layoutTokenFlow(voteFlow(true));
+    const yOf = (result: ReturnType<typeof layoutTokenFlow>, id: string) =>
+      result.nodes.find((n) => n.id === id)!.position.y;
+    // 4 titled rows (20px each) estimate taller than 2 wrap rows (24px each),
+    // so the shorter address cards get centered further down.
+    expect(yOf(titled, `addr:${A}`)).toBeGreaterThan(yOf(plain, `addr:${A}`));
+  });
+
+  test("longer wrapped titles estimate taller than short ones", () => {
+    const short = voteFlowWithTitles(["Short title"]);
+    const long = voteFlowWithTitles([
+      "A very long governance proposal title that certainly wraps across multiple lines on the 240px transaction card",
+    ]);
+    const yOf = (result: ReturnType<typeof layoutTokenFlow>, id: string) =>
+      result.nodes.find((n) => n.id === id)!.position.y;
+    expect(yOf(layoutTokenFlow(long), `addr:${A}`)).toBeGreaterThan(
+      yOf(layoutTokenFlow(short), `addr:${A}`),
+    );
+  });
+
+  function voteFlowWithTitles(titles: string[]): TokenFlow {
+    return {
+      nodes: [
+        { id: `addr:${A}`, kind: "address", address: A, partyType: "self" },
+        { id: `addr:${B}`, kind: "address", address: B, partyType: "unknown" },
+        {
+          id: "txp:one",
+          kind: "transaction",
+          status: "pending",
+          badges: titles.map((title) => ({
+            kind: "vote" as const,
+            label: "Vote: Yes",
+            title,
+          })),
+        },
+      ],
+      edges: [
+        { id: `addr:${A}->txp:one:input`, source: `addr:${A}`, target: "txp:one", kind: "input", assets: [] },
+        { id: `txp:one->addr:${B}:output`, source: "txp:one", target: `addr:${B}`, kind: "output", assets: [] },
+      ],
+    };
+  }
 });

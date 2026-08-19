@@ -14,7 +14,7 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Database, Bot, Code, Download, Check, Sparkles } from "lucide-react";
+import { Database, Bot, Code, Download, Check, Sparkles, Plug } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { Typewriter } from "@/components/ui/typewriter";
 import {
@@ -28,15 +28,27 @@ import {
   DRepPreview,
   StakingPreview,
 } from "@/components/pages/homepage/previews";
+import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+import { SITE_URL } from "@/lib/seo";
 
-// Example prompts cycled by the "Connect your AI agent" typewriter. The first
-// is the literal flow most users start with; the rest hint at what an agent can
-// do once it holds the multisig skill.
+/**
+ * The endpoint a user pastes into their client.
+ *
+ * Derived rather than hardcoded: this was printing the production host on
+ * every environment, so preprod handed out setup instructions pointing at a
+ * different deployment than the one you were reading them on.
+ */
+const MCP_ENDPOINT = `${SITE_URL}/api/mcp`;
+
+// Prompts cycled by the hero typewriter. Deliberately phrased as things you
+// ask an assistant, not as commands for one product — the endpoint is plain MCP
+// and works with any client. Each maps to a tool we actually expose.
 const AGENT_PROMPTS = [
-  "Connect to my https://multisig.meshjs.dev/ wallet",
   "List the pending transactions on our treasury",
-  "Draft a 200 ₳ payout to the dev fund and request signatures",
-  "Show who still needs to sign the pending payout",
+  "Which governance proposals still need our vote?",
+  "How did we vote on the last treasury withdrawal?",
+  "Draft a rationale for voting No on the budget action",
+  "What can we actually spend right now?",
 ];
 
 // DApp Card Component
@@ -267,7 +279,10 @@ export function PageHomepage() {
             </CardUI>
           )}
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          {/* Wraps because three CTAs no longer fit one line below ~780px, and
+              aligns to the top rather than the centre: the first CTA carries a
+              subtitle underneath, so centring floats the other two off its axis. */}
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:items-start">
             {user ? (
               <>
                 <Button size="lg" asChild>
@@ -285,6 +300,15 @@ export function PageHomepage() {
                 </Button>
               </>
             )}
+            {/* Third CTA in both states: connecting an agent is a first-class
+                entry point, not a developer footnote, and it is the one thing
+                you can set up before owning a wallet. */}
+            <Button size="lg" variant="outline" asChild>
+              <Link href="#connect-mcp">
+                <Plug className="mr-2 h-4 w-4" />
+                Connect via MCP
+              </Link>
+            </Button>
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
@@ -297,53 +321,84 @@ export function PageHomepage() {
       <section className="container mx-auto px-4 pb-8">
         <Reveal className="mx-auto max-w-5xl">
           <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/60 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/40 sm:p-8 md:p-10">
+            {/* min-w-0 throughout: a grid/flex item defaults to min-width:auto,
+                so it refuses to shrink below the min-content width of the config
+                block below. That widened the single mobile column to 395px inside
+                a 261px card and the wrapper's overflow-hidden silently clipped the
+                heading and body copy. Zeroing it lets the <pre> scroll on its own. */}
             <div className="grid items-center gap-8 md:grid-cols-2">
               {/* Copy + actions */}
-              <div>
+              <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
                   <Sparkles className="h-3.5 w-3.5" />
-                  AI-native multisig
+                  Model Context Protocol
                 </div>
                 <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
-                  Connect your AI agent
+                  Connect any AI agent
                 </h2>
                 <p className="mt-3 text-muted-foreground">
-                  Drop the multisig skill into Claude Code, Cursor, or any agent and let
-                  it work alongside your treasury — read pending transactions, draft
-                  payouts, and track approvals through the authenticated v1 API. The
-                  agent can&apos;t sign for you: keys and signatures always stay with you
-                  and your co-signers.
+                  We speak <strong className="text-foreground">MCP</strong>, the open
+                  standard for connecting AI assistants to real systems. Point any MCP
+                  client at the endpoint, approve it with your wallet, and it can read
+                  your treasury and governance — pending transactions, spendable UTxOs,
+                  open proposals and your voting record.
                 </p>
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No API key to paste, and no vendor lock-in: authorization is standard
+                  OAuth, so the client handles it for you.
+                </p>
+                {/* This row turns horizontal at sm, but its grid column halves
+                    at md — so between md and lg the two buttons overflowed into
+                    the panel alongside. Wrapping self-corrects at every width. */}
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <Button asChild size="lg">
+                    <Link href="#connect-mcp">
+                      <Plug className="mr-2 h-4 w-4" />
+                      MCP setup guide
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
                     <a href="/api/skill" download="multisig-skill.md">
                       <Download className="mr-2 h-4 w-4" />
                       Download skill
                     </a>
                   </Button>
-                  <Button asChild size="lg" variant="outline">
-                    <Link href="#developers-and-bots">
-                      <Bot className="mr-2 h-4 w-4" />
-                      Developer &amp; bot docs
-                    </Link>
-                  </Button>
                 </div>
               </div>
 
-              {/* Animated agent prompt */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
-                <div className="flex items-center gap-1.5 pb-3">
-                  <span className="h-3 w-3 rounded-full bg-red-400/80" />
-                  <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
-                  <span className="h-3 w-3 rounded-full bg-green-400/80" />
-                  <span className="ml-2 text-xs text-zinc-500">agent</span>
+              {/* Endpoint + a vendor-neutral config, then a taste of what to ask. */}
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
+                  <div className="pb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                    MCP endpoint
+                  </div>
+                  <code className="block break-all text-emerald-300">
+                    {MCP_ENDPOINT}
+                  </code>
+                  <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] uppercase tracking-wide text-zinc-500">
+                    Any MCP client
+                  </div>
+                  <pre className="mt-2 overflow-x-auto leading-relaxed text-zinc-300">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "${MCP_ENDPOINT}"
+    }
+  }
+}`}
+                  </pre>
                 </div>
-                <div className="flex min-h-[5rem] items-start gap-2 leading-relaxed">
-                  <span className="select-none text-emerald-400">›</span>
-                  <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
-                </div>
-                <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
-                  Read &amp; draft only — signing stays with you and your co-signers.
+
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
+                  <div className="flex min-h-[3.5rem] items-start gap-2 leading-relaxed">
+                    <span className="select-none text-emerald-400">›</span>
+                    <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
+                  </div>
+                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                    Reads and drafts only — submitting a vote and signing stay with you
+                    and your co-signers.
+                  </div>
                 </div>
               </div>
             </div>
@@ -653,6 +708,194 @@ export function PageHomepage() {
                     Reference bot client
                   </a>
                 </Button>
+              </div>
+            </CardUI>
+          </div>
+
+          <div className="mt-8" id="connect-mcp">
+            <CardUI
+              title="Connect an AI agent (MCP)"
+              description="An open Model Context Protocol endpoint — works with any MCP-capable client, no vendor lock-in."
+            >
+              <div className="mt-4 space-y-5 text-sm">
+                <ol className="space-y-4">
+                  {/* The GUI path comes first and in full. Leading with a JSON
+                      config file sent desktop and web users hunting for a file
+                      their client does not have. */}
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
+                      <span className="font-medium">Add the connector</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      This is the only thing you need — there is no API key,
+                      because the server advertises OAuth and your client
+                      discovers the rest:
+                    </p>
+                    <div className="ml-7 flex flex-col gap-1">
+                      <code className="block break-all rounded bg-muted p-3 text-xs">
+                        {MCP_ENDPOINT}
+                      </code>
+                    </div>
+
+                    <div className="ml-7 mt-3 flex flex-col gap-3 text-xs">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In an app with a connector screen
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          Claude (desktop or web) and most other assistant apps:
+                          open <span className="text-foreground">Settings →
+                          Connectors</span>, choose{" "}
+                          <span className="text-foreground">Add custom
+                          connector</span>, paste the URL above, and connect. A
+                          browser window opens for step 2. Nothing to install and
+                          no file to edit.
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In a client that reads a config file
+                        </p>
+                        <pre className="mt-1 overflow-x-auto rounded bg-muted p-3">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "${MCP_ENDPOINT}"
+    }
+  }
+}`}
+                        </pre>
+                        <p className="mt-1 text-muted-foreground">
+                          Or from a terminal:{" "}
+                          <code className="rounded bg-muted px-1">
+                            claude mcp add --transport http mesh-multisig {MCP_ENDPOINT}
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
+                      <span className="font-medium">
+                        Approve it, and pick what it may do
+                      </span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client sends you here to a consent screen: connect your
+                      wallet, sign, and approve. You see which client is asking and
+                      the exact address set it will cover.
+                    </p>
+                    <p className="pl-7 text-muted-foreground">
+                      The three permissions below are listed there as separate
+                      checkboxes, ticked by default. Untick any you would rather
+                      not grant — the tools it covers then simply do not exist for
+                      that client.
+                    </p>
+                  </li>
+
+                  {/* Added because there was no way to tell a successful connect
+                      from a half-scoped one: both look like a working server, and
+                      the only visible difference is how many tools appear. */}
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="font-medium">Check what you got</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client&apos;s tool list should show{" "}
+                      <strong className="text-foreground">
+                        {MCP_TOOL_SUMMARIES.length} tools
+                      </strong>{" "}
+                      if you granted everything. Fewer means fewer permissions,
+                      not a broken connection — the counts are{" "}
+                      {(["wallets:read", "governance:read", "ballots:write"] as const)
+                        .map(
+                          (scope) =>
+                            `${MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).length} for ${scope}`,
+                        )
+                        .join(", ")}
+                      .
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">4</span>
+                      <span className="font-medium">Ask it something</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      &ldquo;List the pending transactions on our treasury&rdquo; ·
+                      &ldquo;What can we actually spend right now?&rdquo; ·
+                      &ldquo;Which active governance proposals still need a decision?&rdquo;
+                    </p>
+                  </li>
+                </ol>
+
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium">What it can do</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Thirteen tools, grouped by the permission they need. You choose
+                    which permissions to grant, and can change them later.
+                  </p>
+                  <div className="mt-1 flex flex-col gap-3">
+                    {(["wallets:read", "governance:read", "ballots:write"] as const).map(
+                      (scope) => (
+                        <div key={scope}>
+                          <code className="text-xs font-medium text-foreground">{scope}</code>
+                          <ul className="mt-1 flex flex-col gap-1">
+                            {MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).map((t) => (
+                              <li key={t.name} className="text-xs text-muted-foreground">
+                                <code className="rounded bg-muted px-1">{t.name}</code>{" "}
+                                — {t.blurb}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {/* The asymmetry here is not obvious and is easy to read as a
+                    bug: an access token carries the scopes it was minted with,
+                    and the server intersects them with the grant, so taking a
+                    permission away bites at once while adding one cannot reach
+                    a token already issued. */}
+                <div className="rounded-lg border border-dashed p-3">
+                  <h4 className="text-sm font-medium">
+                    Changing permissions later
+                  </h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Under{" "}
+                    <Link href="/user" className="underline underline-offset-2">
+                      your profile
+                    </Link>{" "}
+                    each connection lists its permissions.{" "}
+                    <strong className="text-foreground">Removing one takes
+                    effect on the client&apos;s very next request.</strong>{" "}
+                    Adding one does not: the client is holding a token issued
+                    with the old set, and refreshing its tool list just re-asks
+                    with that same token. Reconnect the connector to pick up a
+                    wider permission — or wait for its token to expire, within
+                    the hour.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-dashed p-3">
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-foreground">Read-only, by design.</strong>{" "}
+                    A connected client can read your wallets and governance, draft
+                    ballots, and publish a rationale to IPFS. It{" "}
+                    <strong>cannot</strong> sign transactions, move funds, or
+                    submit a vote on-chain — those stay with you and your
+                    co-signers, whichever permissions you grant.
+                  </p>
+                </div>
               </div>
             </CardUI>
           </div>

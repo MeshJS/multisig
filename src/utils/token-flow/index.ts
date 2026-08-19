@@ -18,6 +18,10 @@ export {
 export {
   meshCertificateToBadge,
   meshVoteToBadge,
+  draftVoteToBadge,
   blockfrostCertBadges,
+  buildTxGovernanceBadgeMap,
+  txGovernanceToBadges,
   type CertBadge,
+  type ProposalTitleResolver,
 } from "./certificates";

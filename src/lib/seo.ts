@@ -125,6 +125,10 @@ export const NOINDEX_PREFIXES = [
   "/wallets/invite",
   "/wallets/new-wallet",
   "/user",
+  // OAuth consent screens are per-request authorization prompts, never content.
+  // Indexing one would publish a canonical URL that invites users to land on a
+  // consent page outside any real authorization flow.
+  "/oauth",
 ];
 
 export type ResolvedSeo = {

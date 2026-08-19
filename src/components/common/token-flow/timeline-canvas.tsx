@@ -11,6 +11,7 @@ import {
   useOnViewportChange,
   useReactFlow,
   useStore,
+  ViewportPortal,
 } from "@xyflow/react";
 import {
   ChevronLeft,
@@ -24,9 +25,11 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import type { TxFlowData } from "@/types/blockfrost";
+import type { AddressLabeler } from "@/types/token-flow";
 import type { Wallet } from "@/types/wallet";
 import useAddressLabels from "@/hooks/useAddressLabels";
 import { fetchTxFlowData } from "@/hooks/useTxFlowData";
+import { useTxGovernanceBadges } from "@/hooks/useTxGovernanceBadges";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { cn } from "@/lib/utils";
@@ -44,10 +47,15 @@ import {
 import {
   CANVAS_BUTTON_CLASS,
   EDGE_TYPES,
+  GLASS_PANEL_CLASS,
   NODE_TYPES,
   ResetLayoutButton,
 } from "./flow-canvas";
-import { COLUMN_WIDTH, layoutTokenFlow } from "./layout";
+import {
+  layoutTokenFlow,
+  TIMELINE_COLUMN_WIDTH,
+  TIMELINE_LANE_OFFSET,
+} from "./layout";
 
 /**
  * Linked multi-transaction timeline: the wallet's on-chain transactions
@@ -77,11 +85,18 @@ const BATCH_DELAY_MS = 500;
 /** Columns beyond the viewport edges that still count as "in view", so
  *  stepping to a neighbour usually lands on already-enriched cards. */
 const VISIBLE_BUFFER_COLUMNS = 4;
+/** Vertical overshoot of the event divider lines past the content bounds. */
+const DIVIDER_MARGIN = 20;
 
 export type TokenFlowTimelineProps = {
   /** Transactions to include; any order — sorted chronologically inside. */
   txs: TimelineTxRef[];
   appWallet?: Wallet;
+  /** Overrides the site-store network (0 = preprod, 1 = mainnet) so callers
+   *  outside the wallet app (e.g. the marketing demo) can pin one. */
+  network?: number;
+  /** Overrides useAddressLabels(appWallet), for callers without a wallet. */
+  labelAddress?: AddressLabeler;
   className?: string;
   /** Disambiguates testids from per-tx canvases rendering the same nodes. */
   testIdSuffix?: string;
@@ -119,8 +134,9 @@ function TimelineViewportController({
     if (canvasWidth <= 0) return;
     const { x, zoom } = getViewport();
     if (zoom <= 0) return;
-    const minCol = -x / zoom / COLUMN_WIDTH - VISIBLE_BUFFER_COLUMNS;
-    const maxCol = (canvasWidth - x) / zoom / COLUMN_WIDTH + VISIBLE_BUFFER_COLUMNS;
+    const minCol = -x / zoom / TIMELINE_COLUMN_WIDTH - VISIBLE_BUFFER_COLUMNS;
+    const maxCol =
+      (canvasWidth - x) / zoom / TIMELINE_COLUMN_WIDTH + VISIBLE_BUFFER_COLUMNS;
     const visible: string[] = [];
     for (const [txId, layer] of txLayer) {
       const col = 2 * layer + 1;
@@ -140,8 +156,10 @@ function TimelineViewportController({
         focusPair(orderedLoadedTxIds, index),
       );
       if (!range) return;
-      const minX = range.minCol * COLUMN_WIDTH - 1;
-      const maxX = range.maxCol * COLUMN_WIDTH + 1;
+      // Widened by the lane offset so boundary cards shifted out of the
+      // band's edge columns still count toward the fitted bounds.
+      const minX = range.minCol * TIMELINE_COLUMN_WIDTH - TIMELINE_LANE_OFFSET - 1;
+      const maxX = range.maxCol * TIMELINE_COLUMN_WIDTH + TIMELINE_LANE_OFFSET + 1;
       const band = getNodes().filter(
         (node) => node.position.x >= minX && node.position.x <= maxX,
       );
@@ -208,13 +226,17 @@ function TimelineViewportController({
 export default function TimelineCanvas({
   txs,
   appWallet,
+  network: networkProp,
+  labelAddress: labelAddressProp,
   className,
   testIdSuffix = "-timeline",
   batchSize = DEFAULT_BATCH_SIZE,
   "data-testid": dataTestId,
 }: TokenFlowTimelineProps) {
-  const network = useSiteStore((state) => state.network);
-  const { labelAddress } = useAddressLabels(appWallet);
+  const siteNetwork = useSiteStore((state) => state.network);
+  const network = networkProp ?? siteNetwork;
+  const { labelAddress: walletLabelAddress } = useAddressLabels(appWallet);
+  const labelAddress = labelAddressProp ?? walletLabelAddress;
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
   );
@@ -228,6 +250,17 @@ export default function TimelineCanvas({
 
   const ordered = useMemo(() => orderTimelineTxs(txs), [txs]);
   const newestFirst = useMemo(() => [...ordered].reverse(), [ordered]);
+  const timelineTxHashes = useMemo(
+    () => ordered.map((ref) => ref.txHash),
+    [ordered],
+  );
+  // Per-tx governance activity (votes, DRep/committee certs) joined in as
+  // extra badges — Blockfrost's per-tx endpoints don't expose these, and a
+  // known-DRep-id lookup would miss per-run DReps (see the hook docs).
+  const govBadgesByTx = useTxGovernanceBadges({
+    txHashes: timelineTxHashes,
+    network,
+  });
 
   const handleVisibleTxs = useCallback((txNodeIds: string[]) => {
     // Node ids are `tx:<hash>` (timelineTxNodeId).
@@ -286,7 +319,7 @@ export default function TimelineCanvas({
 
   // Stable-size dependency: stamps change whenever any query resolves.
   const dataStamp = queries.map((query) => query.dataUpdatedAt).join(",");
-  const { layoutNodes, edges, txLayer, presentTxIds } =
+  const { layoutNodes, edges, txLayer, presentTxIds, dividers, bounds } =
     useMemo(() => {
       const detailByHash = new Map<string, TxFlowData>();
       newestFirst.forEach((ref, index) => {
@@ -298,18 +331,20 @@ export default function TimelineCanvas({
       const present: string[] = [];
       const flows = ordered.flatMap((ref) => {
         const detail = detailByHash.get(ref.txHash);
+        const extraBadges = govBadgesByTx.get(ref.txHash.toLowerCase());
         if (detail) {
           present.push(timelineTxNodeId(ref.txHash));
           return [
             onChainTxToTokenFlow(detail, {
               labelAddress,
               description: ref.description ?? undefined,
+              extraBadges,
             }),
           ];
         }
         if (!ref.utxos) return [];
         present.push(timelineTxNodeId(ref.txHash));
-        return [storeTxToTokenFlow(ref, { labelAddress })];
+        return [storeTxToTokenFlow(ref, { labelAddress, extraBadges })];
       });
       const layout = layoutTokenFlow(mergeTokenFlows(flows), {
         txOrder: ordered.map((ref) => timelineTxNodeId(ref.txHash)),
@@ -323,9 +358,11 @@ export default function TimelineCanvas({
         })),
         txLayer: layout.txLayer,
         presentTxIds: present,
+        dividers: layout.dividers,
+        bounds: layout.bounds,
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [newestFirst, ordered, dataStamp, labelAddress, walletAssetMetadata, testIdSuffix]);
+    }, [newestFirst, ordered, dataStamp, labelAddress, walletAssetMetadata, testIdSuffix, govBadgesByTx]);
 
   // Node positions are stateful so users can drag cards around; new data
   // resets to the computed layout (the viewport is left untouched).
@@ -388,7 +425,7 @@ export default function TimelineCanvas({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        colorMode="dark"
+        colorMode="system"
         minZoom={0.15}
         maxZoom={1.5}
         nodesDraggable
@@ -402,9 +439,36 @@ export default function TimelineCanvas({
         className="!bg-muted/20 rounded-lg border border-border/50"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        {/* Event boundary lines, one between each pair of loaded adjacent
+            txs. ViewportPortal pans/zooms with the graph but stays out of
+            getNodes(), so fitBounds and drag state never see them; zIndex -1
+            paints them behind cards, edges, and chips (nodes carry inline
+            z-index 0) while staying above the dot background. */}
+        {dividers.length > 0 && (
+          <ViewportPortal>
+            {dividers.map((divider) => (
+              <div
+                key={divider.index}
+                data-testid={`tx-flow-divider-${divider.index}${testIdSuffix}`}
+                className="pointer-events-none absolute w-0.5 rounded-full bg-border dark:bg-foreground/25"
+                style={{
+                  left: divider.x - 1,
+                  top: bounds.minY - DIVIDER_MARGIN,
+                  height: bounds.maxY - bounds.minY + 2 * DIVIDER_MARGIN,
+                  zIndex: -1,
+                }}
+              />
+            ))}
+          </ViewportPortal>
+        )}
         {(detailPending || failedQueries.length > 0) && (
-          <Panel position="top-left">
-            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+          <Panel position="top-left" className="max-w-[calc(100%-10rem)]">
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground",
+                GLASS_PANEL_CLASS,
+              )}
+            >
               {detailPending && (
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin" />

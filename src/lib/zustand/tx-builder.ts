@@ -4,18 +4,28 @@ import type {
   BuilderSelection,
   DraftOutput,
   DraftUtxoSelection,
+  DraftVote,
+  DraftVoteKind,
   TxDraft,
 } from "@/types/tx-draft";
+import type { StakeActionInput } from "@/lib/tx-draft/mutations";
 import {
   addOutput,
+  addStakeAction,
+  addVote,
+  clearVoteAnchor,
   createDraft,
+  removeCertificate,
   removeOutput,
-  setChangeAddress,
+  removeVote,
   setDescription,
   setMetadata,
   setOutputAsset,
   setUtxoSelection,
+  setVoteRationale,
+  updateCertificatePool,
   updateOutput,
+  updateVoteKind,
 } from "@/lib/tx-draft/mutations";
 
 /**
@@ -32,6 +42,11 @@ import {
 interface TxBuilderState {
   walletId?: string;
   draft: TxDraft;
+  /**
+   * Set when the draft was loaded from an existing pending transaction;
+   * building then replaces that transaction instead of creating a new one.
+   */
+  editingTxId?: string;
   selection: BuilderSelection;
   positions: Record<string, { x: number; y: number }>;
   /**
@@ -50,15 +65,37 @@ interface TxBuilderState {
   removeOutput: (outputId: string) => void;
   setOutputAsset: (outputId: string, unit: string, quantity: string) => void;
   setUtxoSelection: (selection: DraftUtxoSelection) => void;
-  setChangeAddress: (changeAddress: string | undefined) => void;
   setDescription: (description: string) => void;
   setMetadata: (metadata: string) => void;
+  updateVoteKind: (voteId: string, voteKind: DraftVoteKind) => void;
+  /** Changes the target pool of a DelegateStake certificate. */
+  updateCertificatePool: (certificateId: string, poolId: string) => void;
+  /** Adds the cert(s) for a staking action and focuses the tx inspector. */
+  addStakeAction: (action: StakeActionInput) => void;
+  /** Removes a user-added certificate (and its register/delegate sibling). */
+  removeCertificate: (certificateId: string) => void;
+  /** Adds a new anchor-less vote and focuses the tx inspector. */
+  addVote: (
+    vote: Pick<DraftVote, "govActionTxHash" | "govActionIndex" | "voteKind">,
+  ) => void;
+  removeVote: (voteId: string) => void;
+  clearVoteAnchor: (voteId: string) => void;
+  /** undefined reverts the vote's rationale to untouched. */
+  setVoteRationale: (voteId: string, text: string | undefined) => void;
 
   select: (selection: BuilderSelection) => void;
   setPosition: (entityId: string, position: { x: number; y: number }) => void;
   clearPositions: () => void;
   /** Starts a fresh draft; call on wallet change and after a successful build. */
   resetDraft: (walletId?: string) => void;
+  /** Replaces the draft wholesale, e.g. when loading a pending transaction. */
+  loadDraft: (args: {
+    walletId: string;
+    draft: TxDraft;
+    editingTxId?: string;
+  }) => void;
+  /** Detaches the draft from the pending tx it was loaded from. */
+  cancelEditing: () => void;
 }
 
 function withTouched(
@@ -76,6 +113,7 @@ function selectedOutputId(selection: BuilderSelection): string | undefined {
 export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   walletId: undefined,
   draft: createDraft(),
+  editingTxId: undefined,
   selection: null,
   positions: {},
   touched: {},
@@ -121,12 +159,39 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   },
   setUtxoSelection: (selection) =>
     set({ draft: setUtxoSelection(get().draft, selection) }),
-  setChangeAddress: (changeAddress) =>
-    set({ draft: setChangeAddress(get().draft, changeAddress) }),
   setDescription: (description) =>
     set({ draft: setDescription(get().draft, description) }),
   setMetadata: (metadata) =>
     set({ draft: setMetadata(get().draft, metadata) }),
+  updateVoteKind: (voteId, voteKind) =>
+    set({ draft: updateVoteKind(get().draft, voteId, voteKind) }),
+  updateCertificatePool: (certificateId, poolId) =>
+    set({ draft: updateCertificatePool(get().draft, certificateId, poolId) }),
+  addStakeAction: (action) => {
+    const state = get();
+    set({
+      draft: addStakeAction(state.draft, action).draft,
+      // Focus the tx inspector so the new certificate row is visible.
+      selection: { kind: "tx" },
+      touched: withTouched(state.touched, selectedOutputId(state.selection)),
+    });
+  },
+  removeCertificate: (certificateId) =>
+    set({ draft: removeCertificate(get().draft, certificateId) }),
+  addVote: (vote) => {
+    const state = get();
+    set({
+      draft: addVote(state.draft, vote).draft,
+      // Focus the tx inspector so the new vote row is visible.
+      selection: { kind: "tx" },
+      touched: withTouched(state.touched, selectedOutputId(state.selection)),
+    });
+  },
+  removeVote: (voteId) => set({ draft: removeVote(get().draft, voteId) }),
+  clearVoteAnchor: (voteId) =>
+    set({ draft: clearVoteAnchor(get().draft, voteId) }),
+  setVoteRationale: (voteId, text) =>
+    set({ draft: setVoteRationale(get().draft, voteId, text) }),
 
   select: (selection) => {
     const state = get();
@@ -148,8 +213,23 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
     set({
       walletId,
       draft: createDraft(),
+      editingTxId: undefined,
       selection: null,
       positions: {},
       touched: {},
     }),
+  loadDraft: ({ walletId, draft, editingTxId }) =>
+    set({
+      walletId,
+      draft,
+      editingTxId,
+      selection: null,
+      positions: {},
+      // Loaded outputs are complete — if the user later empties a field, its
+      // validation error should surface immediately.
+      touched: Object.fromEntries(
+        draft.outputs.map((output) => [output.id, true as const]),
+      ),
+    }),
+  cancelEditing: () => set({ editingTxId: undefined }),
 }));

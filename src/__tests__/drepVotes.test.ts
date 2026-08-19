@@ -7,7 +7,7 @@ const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, o
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

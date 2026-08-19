@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CircleAlert, TriangleAlert, X } from "lucide-react";
 
+import { GLASS_PANEL_CLASS } from "@/components/common/token-flow/flow-canvas";
 import type { DraftIssue } from "@/lib/tx-draft/validate";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { cn } from "@/lib/utils";
@@ -48,20 +49,21 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
         data-testid="tx-builder-problems-toggle"
         aria-label="Show problems"
         className={cn(
-          "absolute bottom-0 left-0 flex items-center gap-2 whitespace-nowrap rounded-full border border-border/60 bg-card/95 px-2.5 py-1 text-xs shadow-md transition-opacity duration-300 hover:bg-muted/50",
+          "absolute bottom-0 left-0 flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1 text-xs transition-opacity duration-300 hover:bg-muted/50",
+          GLASS_PANEL_CLASS,
           open && "pointer-events-none opacity-0",
         )}
         onClick={() => setPinned(true)}
       >
         {errorCount > 0 && (
           <span className="flex items-center gap-1">
-            <CircleAlert className="h-3.5 w-3.5 text-red-500" />
+            <CircleAlert className="h-3.5 w-3.5 text-destructive" />
             {errorCount}
           </span>
         )}
         {warningCount > 0 && (
           <span className="flex items-center gap-1">
-            <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
+            <TriangleAlert className="h-3.5 w-3.5 text-warning" />
             {warningCount}
           </span>
         )}
@@ -70,7 +72,8 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
       <div
         data-testid="tx-builder-problems"
         className={cn(
-          "absolute bottom-0 left-0 w-80 rounded-md border border-border/60 bg-card/95 shadow-md transition-opacity duration-500",
+          "absolute bottom-0 left-0 w-80 rounded-md transition-opacity duration-500",
+          GLASS_PANEL_CLASS,
           !open && "pointer-events-none opacity-0",
         )}
       >
@@ -108,9 +111,9 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
                 }}
               >
                 {issue.level === "error" ? (
-                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                 ) : (
-                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                 )}
                 <span
                   className={cn(

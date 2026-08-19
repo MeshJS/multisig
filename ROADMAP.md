@@ -247,14 +247,14 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display all tx types multisig is capable of doing| |
+| Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route. Ready = a pilot team runs all six user stories end-to-end without developer help (PRD-001's own bar)| |
 | Test depth — extend the Playwright suite to cover the Sign-Off flows, plus transaction-builder & tRPC integration tests | #255 |
 
 **Andre**
 
 | Task | Issues |
 |------|--------|
-| Document Sign-Off MVP (ship) — diffs where feasible, status grouping, polish | |
+| Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display/build all tx types multisig is capable of doing | |
 | Discover page — fold into the delivered Wallet V2 registration/discovery rather than building it standalone; add lookup by signer/policy *(moved up from M10)* | #52, #33 |
 | Notification digests & deadline reminders — ballot-deadline and threshold-reached emails on the existing outbox (product work, infrastructure already exists) | |
 | Monthly report | |
@@ -263,7 +263,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 ## Month 6 — September 2026
 
-**Focus:** Document Sign-Off provenance, FROST findings, hardware wallets.
+**Focus:** Document Sign-Off provenance, FROST findings, and MCP transaction review.
 
 **Quirin**
 
@@ -276,14 +276,14 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Hardware wallet support — Ledger/Trezor. **Scope the CIP-8 `signData` constraint during the M4–M5 Sign-Off build, not after** — Ledger/Trezor support for `signData` is limited, and Document Sign-Off approvals depend on it | #44 |
-| UX papercut batch — full-address verification (#196), transaction pagination (#30), better 404 page (#22) | #196, #30, #22 |
+| MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review | |
+| Transaction review PNG & in-chat review — generate a clear PNG summary containing the key transaction details and display it in the user's chat for human review; MCP must not sign or broadcast on the user's behalf | |
 
 ---
 
 ## Month 7 — October 2026
 
-**Focus:** Governance polish, dApp connector, bot platform.
+**Focus:** Governance polish, dApp connector, and advanced transaction building.
 
 Revised 2026-07-26: the governance metadata fix closed in June, and the bot platform and developer portal shipped in July, so this month absorbs the work those slots were holding.
 
@@ -298,9 +298,8 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
-| Bot platform — webhooks. The rest of "v2" (scoped auth, reference client, example bots, OpenAPI) shipped in July; webhooks are the only unbuilt piece — no webhook code exists in `src/` today | |
-| Multisig MCP server — expose the existing bot API as an MCP server so an agent can act as a wallet observer or ballot drafter. Small step from `/llms.txt` + `/api/skill` + the scoped bot JWT, and a genuine differentiator | |
-| Verify and close pending-transactions-on-homepage (#125), already surfaced on the wallets dashboard | #125 |
+| Output datum controls — let users attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction | |
+| Plutus script-spend and redeemer controls — let users configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221 | |
 
 ---
 
@@ -491,11 +490,10 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M4–5] Document Sign-Off MVP — Documents UI, six-state lifecycle, signer review, diffs
 - [M5] Discover page + lookup by signer/policy (#52, #33) — moved up from M10
 - [M5] Notification digests & deadline reminders
-- [M6] Hardware wallet support — Ledger/Trezor (#44); CIP-8 `signData` constraint scoped during M4–M5
-- [M6] UX papercut batch — full-address verification (#196), tx pagination (#30), 404 page (#22)
-- [M7] Bot platform — webhooks (the rest of "v2" shipped in July)
-- [M7] Multisig MCP server — agent access over the existing bot API
-- [M7] Verify and close pending transactions on homepage (#125)
+- [M6] MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review
+- [M6] Transaction review PNG & in-chat review — generate and display a visual transaction summary in chat without signing or broadcasting
+- [M7] Output datum controls — attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction
+- [M7] Plutus script-spend and redeemer controls — configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221
 - [M8] Backlog cleanup, dependency/security updates
 - [M9] User profiles and contacts
 - [M11] Document Sign-Off v3 — Collaboration & standards (research)

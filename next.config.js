@@ -92,6 +92,34 @@ const config = {
     "@sidan-lab/whisky-js-nodejs",
   ],
 
+  // OAuth discovery documents must live under /.well-known/, but Next ignores
+  // dot-directories inside pages/, so they cannot be files. Rewrites map the
+  // well-known paths onto real API routes.
+  //
+  // RFC 9728 defines a path-aware form for protected-resource metadata
+  // (/.well-known/oauth-protected-resource + the resource's path). Clients probe
+  // that first and fall back to the root form, so both are served.
+  async rewrites() {
+    return [
+      {
+        source: '/.well-known/oauth-authorization-server',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-authorization-server/:path*',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource/:path*',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
+    ];
+  },
+
   // Basic security headers applied to all routes.
   // NOTE: Content-Security-Policy and Strict-Transport-Security are intentionally
   // omitted — CSP would break inline scripts/styles and HSTS locks browsers to

@@ -1,7 +1,13 @@
 import type { UTxO } from "@meshsdk/core";
 
 import { utxoFunds } from "@/lib/tx-draft/assets";
-import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
+import {
+  addCertificate,
+  addOutput,
+  addStakeAction,
+  addVote,
+  createDraft,
+} from "@/lib/tx-draft/mutations";
 import { validateDraft, type DraftIssue } from "@/lib/tx-draft/validate";
 import type { TxDraft } from "@/types/tx-draft";
 import { realTestAddresses } from "./testUtils";
@@ -175,5 +181,217 @@ describe("validateDraft", () => {
     test("omitted selectedFunds skips the sufficiency check", () => {
       expect(codes(validateDraft(draft, TESTNET))).toEqual([]);
     });
+  });
+});
+
+describe("validateDraft votes", () => {
+  const voteBase = {
+    govActionTxHash: "c".repeat(64),
+    govActionIndex: 0,
+    voteKind: "Yes" as const,
+  };
+
+  function voteOnlyDraft() {
+    return addVote(createDraft("d1"), voteBase).draft;
+  }
+
+  test("vote-only draft has no no-outputs error", () => {
+    const issues = validateDraft(voteOnlyDraft(), { network: 0 });
+    expect(issues.map((i) => i.code)).not.toContain("no-outputs");
+  });
+
+  test("empty draft still errors with the widened message", () => {
+    const issues = validateDraft(createDraft("d1"), { network: 0 });
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: "no-outputs",
+        message: "Add at least one recipient, vote, or certificate.",
+      }),
+    ]);
+  });
+
+  test("vote-drep-missing only fires on explicit false", () => {
+    const draft = voteOnlyDraft();
+    const withFalse = validateDraft(draft, { network: 0, hasDrepContext: false });
+    expect(withFalse).toEqual([
+      expect.objectContaining({ level: "error", code: "vote-drep-missing" }),
+    ]);
+    expect(withFalse[0]!.outputId).toBeUndefined(); // tx-level issue
+
+    const unknown = validateDraft(draft, { network: 0 });
+    expect(unknown.map((i) => i.code)).not.toContain("vote-drep-missing");
+
+    const withTrue = validateDraft(draft, { network: 0, hasDrepContext: true });
+    expect(withTrue.map((i) => i.code)).not.toContain("vote-drep-missing");
+
+    // Sendonly drafts never emit it, even with hasDrepContext false.
+    const send = validateDraft(createDraft("d1"), { network: 0, hasDrepContext: false });
+    expect(send.map((i) => i.code)).not.toContain("vote-drep-missing");
+  });
+
+  test("duplicate-vote fires when two votes target the same action", () => {
+    const duplicated = addVote(voteOnlyDraft(), {
+      ...voteBase,
+      voteKind: "No",
+    }).draft;
+    expect(
+      codes(validateDraft(duplicated, { network: 0, hasDrepContext: true })),
+    ).toContain("duplicate-vote");
+
+    // Distinct actions (different index or hash) pass.
+    const distinct = addVote(voteOnlyDraft(), {
+      ...voteBase,
+      govActionIndex: 1,
+    }).draft;
+    expect(
+      codes(validateDraft(distinct, { network: 0, hasDrepContext: true })),
+    ).not.toContain("duplicate-vote");
+  });
+});
+
+describe("validateDraft certificates", () => {
+  const POOL_ID = "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy";
+
+  function delegationDraft(poolId?: string) {
+    return addCertificate(createDraft("d1"), {
+      kind: "DelegateStake",
+      ...(poolId !== undefined ? { poolId } : {}),
+    }).draft;
+  }
+
+  test("cert-only draft has no no-outputs error", () => {
+    const issues = validateDraft(delegationDraft(POOL_ID), { network: 0 });
+    expect(issues.map((i) => i.code)).not.toContain("no-outputs");
+  });
+
+  test("cert-stake-missing only fires on explicit false", () => {
+    const draft = delegationDraft(POOL_ID);
+    const withFalse = validateDraft(draft, {
+      network: 0,
+      hasStakeContext: false,
+    });
+    expect(withFalse).toEqual([
+      expect.objectContaining({ level: "error", code: "cert-stake-missing" }),
+    ]);
+
+    const unknown = validateDraft(draft, { network: 0 });
+    expect(unknown.map((i) => i.code)).not.toContain("cert-stake-missing");
+
+    const withTrue = validateDraft(draft, {
+      network: 0,
+      hasStakeContext: true,
+    });
+    expect(withTrue.map((i) => i.code)).not.toContain("cert-stake-missing");
+
+    // Cert-less drafts never emit it, even with hasStakeContext false.
+    const send = validateDraft(createDraft("d1"), {
+      network: 0,
+      hasStakeContext: false,
+    });
+    expect(send.map((i) => i.code)).not.toContain("cert-stake-missing");
+  });
+
+  test("cert-pool-missing fires on absent or invalid pool ids", () => {
+    const missing = validateDraft(delegationDraft(), { network: 0 });
+    expect(missing.map((i) => i.code)).toContain("cert-pool-missing");
+
+    const invalid = validateDraft(delegationDraft("not-a-pool"), {
+      network: 0,
+    });
+    expect(invalid.map((i) => i.code)).toContain("cert-pool-missing");
+
+    const bech32 = validateDraft(delegationDraft(POOL_ID), { network: 0 });
+    expect(bech32.map((i) => i.code)).not.toContain("cert-pool-missing");
+
+    const hex = validateDraft(delegationDraft("f".repeat(56)), { network: 0 });
+    expect(hex.map((i) => i.code)).not.toContain("cert-pool-missing");
+
+    // Register/deregister certs have no pool and never emit it.
+    const register = addCertificate(createDraft("d1"), {
+      kind: "RegisterStake",
+    }).draft;
+    expect(
+      validateDraft(register, { network: 0 }).map((i) => i.code),
+    ).not.toContain("cert-pool-missing");
+  });
+
+  test("cert-duplicate fires on two certs of the same kind", () => {
+    const doubled = addCertificate(delegationDraft(POOL_ID), {
+      kind: "DelegateStake",
+      poolId: POOL_ID,
+    }).draft;
+    expect(codes(validateDraft(doubled, { network: 0 }))).toContain(
+      "cert-duplicate",
+    );
+
+    // A register+delegate pair is two different kinds and passes.
+    const pair = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    }).draft;
+    expect(
+      codes(validateDraft(pair, { network: 0, hasStakeContext: true })),
+    ).toEqual([]);
+  });
+
+  test("user-added certs get the same stake-context and deposit checks", () => {
+    const pair = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    }).draft;
+    expect(
+      codes(validateDraft(pair, { network: 0, hasStakeContext: false })),
+    ).toContain("cert-stake-missing");
+
+    const tight = utxoFunds([utxo([{ unit: "lovelace", quantity: "1999999" }])]);
+    expect(
+      codes(
+        validateDraft(pair, {
+          network: 0,
+          selectedFunds: tight,
+          hasStakeContext: true,
+        }),
+      ),
+    ).toContain("insufficient-funds");
+  });
+
+  test("RegisterStake deposit counts toward the lovelace requirement", () => {
+    const draft = addCertificate(delegationDraft(POOL_ID), {
+      kind: "RegisterStake",
+    }).draft;
+
+    const tight = utxoFunds([utxo([{ unit: "lovelace", quantity: "1999999" }])]);
+    expect(
+      codes(
+        validateDraft(draft, {
+          network: 0,
+          selectedFunds: tight,
+          hasStakeContext: true,
+        }),
+      ),
+    ).toContain("insufficient-funds");
+
+    const enough = utxoFunds([utxo([{ unit: "lovelace", quantity: "2000000" }])]);
+    expect(
+      codes(
+        validateDraft(draft, {
+          network: 0,
+          selectedFunds: enough,
+          hasStakeContext: true,
+        }),
+      ),
+    ).not.toContain("insufficient-funds");
+
+    // Delegation-only drafts have no deposit requirement.
+    const delegateOnly = delegationDraft(POOL_ID);
+    expect(
+      codes(
+        validateDraft(delegateOnly, {
+          network: 0,
+          selectedFunds: utxoFunds([utxo([{ unit: "lovelace", quantity: "0" }])]),
+          hasStakeContext: true,
+        }),
+      ),
+    ).not.toContain("insufficient-funds");
   });
 });

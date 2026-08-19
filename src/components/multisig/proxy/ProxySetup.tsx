@@ -14,6 +14,7 @@ import {
   Check
 } from "lucide-react";
 import { MeshTxBuilder } from "@meshsdk/core";
+import ProxyFlowAnimation from "./ProxyFlowAnimation";
 
 interface ProxySetupProps {
   setupStep: number;
@@ -86,6 +87,10 @@ const ProxySetup = memo(function ProxySetup({
       </div>
 
       <StepIndicator currentStep={setupStep} totalSteps={3} />
+
+      {/* What the transaction being built actually does on-chain. Freezes once
+          the setup has landed so the completed state reads as settled. */}
+      <ProxyFlowAnimation variant="setup" animate={setupStep < 2} />
 
       {/* Collateral Requirement Alert */}
       <Alert>

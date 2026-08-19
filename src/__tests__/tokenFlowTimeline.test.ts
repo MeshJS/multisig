@@ -161,6 +161,21 @@ describe("storeTxToTokenFlow", () => {
     expect(flow.nodes).toHaveLength(1);
     expect(flow.edges).toHaveLength(0);
   });
+
+  test("extraBadges land on the tx node of the instant flow", () => {
+    const badge = {
+      kind: "vote" as const,
+      label: "Vote: Yes",
+      color: "text-green-500 dark:text-green-400",
+    };
+    const flow = storeTxToTokenFlow(ref({ txHash: "abc123" }), {
+      labelAddress,
+      extraBadges: [badge],
+    });
+    expect(flow.nodes.find((n) => n.kind === "transaction")).toMatchObject({
+      badges: [badge],
+    });
+  });
 });
 
 describe("focusPair", () => {

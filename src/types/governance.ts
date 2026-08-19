@@ -78,6 +78,45 @@ export type DrepVoteHistoryResponse = {
   votes: DrepVoteHistoryItem[];
 };
 
+/**
+ * Per-transaction governance activity, served by POST
+ * /api/governance/txGovernance (Koios tx_info). Lets the token-flow
+ * timeline badge votes and DRep certificates on arbitrary txs — Blockfrost
+ * has no per-tx endpoint for either, and cross-referencing by a known DRep
+ * id misses per-run DReps (the CI wallet registers, votes with, and retires
+ * a fresh DRep every run).
+ */
+export type TxGovernanceRequest = {
+  network: string | number;
+  txHashes: string[];
+};
+
+export type TxGovernanceCert = {
+  /** Koios cert type, e.g. "drep_registration" | "drep_retire" | "vote_delegation". */
+  type: string;
+  /** CIP-129 DRep id from the cert info, when present. */
+  drepId: string | null;
+};
+
+export type TxGovernanceVote = {
+  /** "DRep" | "SPO" | "ConstitutionalCommittee" — carried, never branched on. */
+  voterRole: string;
+  voteKind: "Yes" | "No" | "Abstain";
+  proposalTxHash: string;
+  proposalIndex: number;
+  proposalTitle: string | null;
+};
+
+export type TxGovernanceItem = {
+  txHash: string; // lowercased
+  certs: TxGovernanceCert[];
+  votes: TxGovernanceVote[];
+};
+
+export type TxGovernanceResponse = {
+  items: TxGovernanceItem[];
+};
+
 export type BlockfrostDrepInfo = {
   drep_id: string;
   hex: string;

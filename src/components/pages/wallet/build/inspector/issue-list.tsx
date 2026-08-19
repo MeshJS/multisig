@@ -13,9 +13,9 @@ export default function IssueList({ issues }: { issues: DraftIssue[] }) {
           className="flex items-start gap-1.5 text-xs"
         >
           {issue.level === "error" ? (
-            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
           ) : (
-            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
           )}
           <span className="text-muted-foreground">{issue.message}</span>
         </li>

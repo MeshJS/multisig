@@ -14,33 +14,33 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
   __esModule: true,
   getWalletAccessForBot: jest.fn(async () => [
     { walletId: "wallet-1", walletName: "drep.collective", role: "observer" },
   ]),
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {
     botUser: { findUnique: findBotUserMock },
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

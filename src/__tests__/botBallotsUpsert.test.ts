@@ -8,7 +8,9 @@ const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse
 const enforceBodySizeMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, maxBytes: number) => boolean>();
 const verifyJwtMock = jest.fn<() => unknown>();
 const isBotJwtMock = jest.fn<() => boolean>();
+const applyAddressRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, address: string) => boolean>();
 const assertBotWalletAccessMock = jest.fn<() => Promise<unknown>>();
+const assertWalletAccessMock = jest.fn<() => Promise<unknown>>();
 const findBotUserMock = jest.fn<() => Promise<unknown>>();
 const transactionMock = jest.fn<(cb: (tx: typeof txMock) => Promise<unknown>) => Promise<unknown>>();
 const parseScopeMock = jest.fn<(scope: string) => string[]>();
@@ -42,7 +44,24 @@ jest.unstable_mockModule(
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
+    applyAddressRateLimit: applyAddressRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
+  }),
+);
+
+jest.unstable_mockModule(
+  "@/lib/security/rateLimit",
+  () => ({
+    __esModule: true,
+    getClientIP: () => "127.0.0.1",
+  }),
+);
+
+jest.unstable_mockModule(
+  "@/server/api/auth",
+  () => ({
+    __esModule: true,
+    assertWalletAccess: assertWalletAccessMock,
   }),
 );
 
@@ -125,6 +144,7 @@ beforeEach(() => {
   global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as never;
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
+  applyAddressRateLimitMock.mockReturnValue(true);
   enforceBodySizeMock.mockReturnValue(true);
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_test1", botId: "bot-1", type: "bot" });
@@ -278,5 +298,90 @@ describe("botBallotsUpsert API", () => {
     const res = createMockResponse();
     await handler(req, res);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  describe("human (non-bot) callers", () => {
+    const asHuman = () => {
+      verifyJwtMock.mockReturnValue({ address: "addr_test1qphuman" });
+      isBotJwtMock.mockReturnValue(false);
+      assertWalletAccessMock.mockResolvedValue({ id: "wallet-1" });
+    };
+
+    const humanRequest = () =>
+      ({
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: {
+          walletId: "wallet-1",
+          ballotName: "Gov",
+          proposals: [{ proposalId: "tx#0", proposalTitle: "Title", choice: "Yes" }],
+        },
+      }) as unknown as NextApiRequest;
+
+    it("authorizes a human via the shared signer-or-owner check", async () => {
+      asHuman();
+      txMock.ballot.findMany.mockResolvedValue([]);
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      // The canonical predicate from @/server/api/auth, not a local copy, and
+      // not the bot-only path.
+      expect(assertWalletAccessMock).toHaveBeenCalled();
+      expect(assertBotWalletAccessMock).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalledWith(403);
+    });
+
+    it("returns 403 when the human is neither signer nor owner", async () => {
+      asHuman();
+      assertWalletAccessMock.mockRejectedValue(
+        Object.assign(new Error("Not authorized for this wallet"), {
+          code: "FORBIDDEN",
+        }),
+      );
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(transactionMock).not.toHaveBeenCalled();
+    });
+
+    it("maps an unknown wallet to 404 rather than 403", async () => {
+      asHuman();
+      assertWalletAccessMock.mockRejectedValue(
+        Object.assign(new Error("Wallet not found"), { code: "NOT_FOUND" }),
+      );
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("does not require the ballot:write bot scope of a human", async () => {
+      asHuman();
+      // A human has no bot key at all; the scope lookup must never run for them.
+      txMock.ballot.findMany.mockResolvedValue([]);
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(findBotUserMock).not.toHaveBeenCalled();
+      expect(scopeIncludesMock).not.toHaveBeenCalled();
+    });
+
+    it("still requires cosigner access for bot callers", async () => {
+      // Regression guard: the human branch must not weaken the bot branch.
+      assertBotWalletAccessMock.mockRejectedValue(
+        new Error("Bot observer cannot perform this action"),
+      );
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(assertWalletAccessMock).not.toHaveBeenCalled();
+    });
   });
 });

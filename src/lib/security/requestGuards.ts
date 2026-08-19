@@ -55,6 +55,16 @@ export function applyBotRateLimit(req: any, res: any, botId: string, maxRequests
   return applyRateLimitResult(res, checkRateLimitWithInfo(`bot:${botId}`, maxRequests, 60 * 1000));
 }
 
+/**
+ * Rate limit for human-authenticated requests, keyed on the JWT address rather
+ * than the IP. The counterpart to applyBotRateLimit, for endpoints both
+ * identities can call. Keyed on the principal so it survives IP rotation.
+ * Call after verifying the JWT. Default 40/min per address.
+ */
+export function applyAddressRateLimit(req: any, res: any, address: string, maxRequests: number = 40): boolean {
+  return applyRateLimitResult(res, checkRateLimitWithInfo(`addr:${address}`, maxRequests, 60 * 1000));
+}
+
 export function isBodyTooLarge(body: unknown, maxBytes: number): boolean {
   try {
     const size = Buffer.byteLength(JSON.stringify(body ?? ""), "utf8");

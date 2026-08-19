@@ -24,33 +24,33 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botKey", () => ({
   __esModule: true,
   parseScope: parseScopeMock,
   scopeIncludes: scopeIncludesMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core", () => ({
   __esModule: true,
   resolvePaymentKeyHash: resolvePaymentKeyHashMock,
   resolveStakeKeyHash: resolveStakeKeyHashMock,
   serializeNativeScript: serializeNativeScriptMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/multisigSDK", () => ({
   __esModule: true,
@@ -59,7 +59,7 @@ jest.mock("@/utils/multisigSDK", () => ({
       return getScriptMock();
     }
   },
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -68,7 +68,7 @@ jest.mock("@/server/db", () => ({
     wallet: { create: createWalletMock },
     walletBotAccess: { upsert: upsertWalletAccessMock },
   },
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
