@@ -34,6 +34,8 @@ describe("MCP tool registry", () => {
       "governance_open_proposals",
       "ballot_upsert",
       "ballot_publish_rationale",
+      "document_list",
+      "document_get",
     ]);
   });
 

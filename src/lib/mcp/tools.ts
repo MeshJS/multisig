@@ -6,6 +6,8 @@ import type { McpScope } from "@/lib/mcp/scopes";
 import {
   ACTIVE_PROPOSALS_INPUT,
   BALLOT_UPSERT_INPUT,
+  DOCUMENT_GET_INPUT,
+  DOCUMENT_LIST_INPUT,
   OPEN_PROPOSALS_INPUT,
   PUBLISH_RATIONALE_INPUT,
   VOTE_HISTORY_INPUT,
@@ -57,8 +59,16 @@ export type McpToolDef = {
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<V1Result>;
 };
 
-const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
-const READ_ONLY_CHAIN = { readOnlyHint: true, idempotentHint: true, openWorldHint: true } as const;
+const READ_ONLY = {
+  readOnlyHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+const READ_ONLY_CHAIN = {
+  readOnlyHint: true,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
 
 /**
  * Lazy handler imports.
@@ -83,6 +93,8 @@ const load = {
   drepInfo: () => import("@/pages/api/v1/drepInfo"),
   drepVotes: () => import("@/pages/api/governance/drepVotes"),
   ballotRationaleAnchor: () => import("@/pages/api/v1/ballotRationaleAnchor"),
+  documents: () => import("@/pages/api/v1/documents"),
+  documentDetail: () => import("@/pages/api/v1/documentDetail"),
 };
 
 /** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
@@ -367,12 +379,19 @@ export const MCP_TOOLS: McpToolDef[] = [
 
       const active = await callV1(load.governanceActiveProposals, ctx, {
         method: "GET",
-        query: { network, count: String(count), page: "1", order: "desc", details: "false" },
+        query: {
+          network,
+          count: String(count),
+          page: "1",
+          order: "desc",
+          details: "false",
+        },
       });
       if (active.status >= 400) return active;
 
       const proposals =
-        (active.body as { proposals?: { proposalId: string }[] }).proposals ?? [];
+        (active.body as { proposals?: { proposalId: string }[] }).proposals ??
+        [];
 
       // A missing DRep or a Koios hiccup must not sink the whole answer — fall
       // back to "we don't know what was voted" rather than failing the call.
@@ -388,10 +407,16 @@ export const MCP_TOOLS: McpToolDef[] = [
 
       const annotated = proposals.map((p) => {
         const ours = voted.get(p.proposalId);
-        return { ...p, alreadyVoted: Boolean(ours), ourVote: ours?.vote ?? null };
+        return {
+          ...p,
+          alreadyVoted: Boolean(ours),
+          ourVote: ours?.vote ?? null,
+        };
       });
       const includeVoted = args.includeVoted === true;
-      const rows = includeVoted ? annotated : annotated.filter((p) => !p.alreadyVoted);
+      const rows = includeVoted
+        ? annotated
+        : annotated.filter((p) => !p.alreadyVoted);
 
       return {
         status: 200,
@@ -467,8 +492,52 @@ export const MCP_TOOLS: McpToolDef[] = [
           ...(args.counterargumentDiscussion !== undefined
             ? { counterargumentDiscussion: args.counterargumentDiscussion }
             : {}),
-          ...(args.conclusion !== undefined ? { conclusion: args.conclusion } : {}),
-          ...(args.references !== undefined ? { references: args.references } : {}),
+          ...(args.conclusion !== undefined
+            ? { conclusion: args.conclusion }
+            : {}),
+          ...(args.references !== undefined
+            ? { references: args.references }
+            : {}),
+        },
+      }),
+  },
+  {
+    name: "document_list",
+    title: "List sign-off documents",
+    description:
+      "List a wallet's sign-off documents with their version history: content hashes, approval counts, the threshold each round needs, and which signers have not signed yet. Read-only — approving a document requires a signature from a wallet signer and cannot be done through this tool.",
+    scope: "documents:read",
+    inputSchema: DOCUMENT_LIST_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "documents.ts",
+    run: async (args, ctx) =>
+      wrapArray(
+        await callV1(load.documents, ctx, {
+          method: "GET",
+          query: {
+            walletId: String(args.walletId),
+            address: ctx.caller.subject,
+            ...(args.includeArchived ? { includeArchived: "true" } : {}),
+          },
+        }),
+        "documents",
+      ),
+  },
+  {
+    name: "document_get",
+    title: "Get a sign-off document",
+    description:
+      "Get one sign-off document by id: every version with its content hash and status, who approved or rejected each one, and the document's audit history. Read-only.",
+    scope: "documents:read",
+    inputSchema: DOCUMENT_GET_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "documentDetail.ts",
+    run: async (args, ctx) =>
+      callV1(load.documentDetail, ctx, {
+        method: "GET",
+        query: {
+          documentId: String(args.documentId),
+          address: ctx.caller.subject,
         },
       }),
   },
