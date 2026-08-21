@@ -122,16 +122,21 @@ const OG_CARDS = [
     subhead: ["Import from another instance, Summon, raw CBOR or a backup."],
     chips: ["Instance", "Summon", "CBOR", "JSON"],
   },
+  {
+    file: "public/og/vault.png",
+    accent: "#6aa8a0",
+    eyebrow: "Shielded sign-off",
+    headline: ["Prove one document.", "Reveal nothing else."],
+    subhead: ["A hash-linked document vault with selective disclosure."],
+    chips: ["Trust graph", "Selective disclosure"],
+  },
 ];
 
 const FONT = "Helvetica, Arial, sans-serif";
 
 /** XML-escape a copy string before it goes into the SVG. */
 const esc = (s) =>
-  String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
  * Rough advance-width estimate for Helvetica, calibrated against the rendered
@@ -274,7 +279,10 @@ function buildSvg(card) {
 const logo = await sharp(
   join(root, "public/logo-mesh/white/logo-mesh-white-512x512.png"),
 )
-  .resize(84, 84, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .resize(84, 84, {
+    fit: "contain",
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  })
   .png()
   .toBuffer();
 
