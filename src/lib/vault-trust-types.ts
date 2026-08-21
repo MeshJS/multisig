@@ -47,12 +47,28 @@ export function disclosureFor(
   const note = view.notes.find((n) => n.id === noteId);
   if (!note) return null;
 
+  // Everything the root commits to directly: the hubs, plus any feature whose
+  // `area:` matched no hub and therefore hangs off the root on its own.
+  const otherRoots = (keep: string) =>
+    [...view.hubs, ...view.orphans].filter((id) => id !== keep);
+
   if (note.kind === "area") {
-    return { path: [note.id], withheld: view.hubs.filter((h) => h !== note.id) };
+    // Disclosing a hub reveals the hub document and the HASHES of the documents
+    // under it. Those children are withheld too — leaving them out made the
+    // first thing every visitor sees under-report what a hub disclosure costs.
+    const children = view.trustEdges
+      .filter((e) => e.from === note.id)
+      .map((e) => e.to);
+    return { path: [note.id], withheld: [...children, ...otherRoots(note.id)] };
   }
 
   const edge = view.trustEdges.find((e) => e.to === noteId);
-  if (!edge) return { path: [noteId], withheld: [] };
+  if (!edge) {
+    // An orphan is its own root: nothing sits between it and the commitment,
+    // but every other root is still sealed. Reporting "nothing withheld" here
+    // claimed a disclosure was free when it is not.
+    return { path: [noteId], withheld: otherRoots(noteId) };
+  }
 
   // Siblings under the same hub stay sealed: the disclosure carries their
   // hashes and nothing else.
@@ -62,6 +78,6 @@ export function disclosureFor(
 
   return {
     path: [noteId, edge.from],
-    withheld: [...siblings, ...view.hubs.filter((h) => h !== edge.from)],
+    withheld: [...siblings, ...otherRoots(edge.from)],
   };
 }

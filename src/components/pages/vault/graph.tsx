@@ -74,12 +74,18 @@ export default function VaultGraph({
   const [showLogical, setShowLogical] = useState(true);
   const [showTrust, setShowTrust] = useState(true);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [pos, setPos] = useState<Map<string, Pt>>(new Map());
+  // Seeded synchronously rather than starting empty. Nodes only render once
+  // `pos` has an entry for them, and the first entry used to arrive on the
+  // first animation frame — which never fires in a background tab, so opening
+  // the page in one showed an empty box until it was focused.
+  const [pos, setPos] = useState<Map<string, Pt>>(
+    () => new Map(seedPositions(view).map((n) => [n.id, n])),
+  );
 
   const gRef = useRef<SVGGElement | null>(null);
   const nodesRef = useRef<Pt[]>([]);
   const alphaRef = useRef(1);
-  const dragRef = useRef<string | null>(null);
+  const dragRef = useRef<{ id: string; pointerId: number } | null>(null);
   const frameRef = useRef<number | null>(null);
 
   const byId = useMemo(
@@ -177,7 +183,7 @@ export default function VaultGraph({
       n.vx += (VB_W / 2 - n.x) * 0.0025;
       n.vy += (VB_H / 2 - n.y) * 0.0075;
 
-      if (dragRef.current === n.id) {
+      if (dragRef.current?.id === n.id) {
         n.vx = 0;
         n.vy = 0;
         continue;
@@ -197,6 +203,9 @@ export default function VaultGraph({
   useEffect(() => {
     nodesRef.current = seedPositions(view);
     alphaRef.current = 1;
+    // Paint the seeded layout immediately, so a view change never blanks the
+    // graph while it waits for a frame.
+    setPos(new Map(nodesRef.current.map((n) => [n.id, { ...n }])));
 
     const reduced =
       typeof window !== "undefined" &&
@@ -208,18 +217,21 @@ export default function VaultGraph({
         tick();
         alphaRef.current *= 0.985;
       }
-      return;
+      alphaRef.current = 0;
+    } else {
+      const loop = () => {
+        tick();
+        alphaRef.current *= 0.985;
+        if (alphaRef.current > 0.02)
+          frameRef.current = requestAnimationFrame(loop);
+        else frameRef.current = null;
+      };
+      frameRef.current = requestAnimationFrame(loop);
     }
 
-    const loop = () => {
-      tick();
-      alphaRef.current *= 0.985;
-      if (alphaRef.current > 0.02)
-        frameRef.current = requestAnimationFrame(loop);
-      else frameRef.current = null;
-    };
-    frameRef.current = requestAnimationFrame(loop);
-
+    // Registered on BOTH paths. Dragging calls reheat(), which starts a loop
+    // even under reduced motion, so returning early here leaked a live
+    // requestAnimationFrame past unmount.
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -249,8 +261,11 @@ export default function VaultGraph({
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const id = dragRef.current;
-    if (!id) return;
+    const drag = dragRef.current;
+    // Only the pointer that started the drag may move the node. Without this a
+    // second finger, or the mouse during a touch drag, hijacks it.
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const id = drag.id;
     const p = toGraph(e);
     if (!p) return;
     const node = nodesRef.current.find((n) => n.id === id);
@@ -261,7 +276,8 @@ export default function VaultGraph({
   };
 
   const endDrag = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
     dragRef.current = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
     reheat();
@@ -303,6 +319,9 @@ export default function VaultGraph({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
+        // Without this a cancelled gesture (scroll takeover, palm rejection)
+        // leaves dragRef set and the node keeps following the cursor.
+        onPointerCancel={endDrag}
       >
         <defs>
           <marker
@@ -377,7 +396,8 @@ export default function VaultGraph({
                 opacity={dim ? 0.22 : 1}
                 className="cursor-pointer"
                 onPointerDown={(e) => {
-                  dragRef.current = note.id;
+                  if (dragRef.current) return;
+                  dragRef.current = { id: note.id, pointerId: e.pointerId };
                   e.currentTarget.setPointerCapture?.(e.pointerId);
                 }}
                 onClick={() => onSelect(note.id)}

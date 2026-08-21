@@ -91,9 +91,20 @@ export function hashRoot(topLevelHashes: readonly string[]): string {
 }
 
 /**
- * A document's hash covers its salt, its exact bytes, and the hashes of
+ * A document's hash covers its id, its salt, its exact bytes, and the hashes of
  * everything it trusts. Children are sorted by hash rather than by declaration
  * order so that reordering the frontmatter list does not change the commitment.
+ *
+ * The id is part of the hash because this library models identity BY id: trust
+ * edges name their targets by id, and both Disclosure and VerifyResult hand ids
+ * back to a relying party. Leaving it out let an honest disclosure be
+ * relabelled — same bytes, different `targetId` — and still verify, and let two
+ * vaults whose documents differ only in name share one root hash.
+ *
+ * This does not weaken the blinded root. Blinding means the root does not
+ * REVEAL titles: it is a hash over salted node hashes, so there is nothing to
+ * read out of it. It never meant the root should be invariant to titles, which
+ * is precisely what made relabelling possible.
  */
 export function hashNode(
   doc: VaultDoc,
@@ -101,6 +112,7 @@ export function hashNode(
 ): string {
   return sha256([
     NODE_DOMAIN,
+    doc.id,
     doc.salt,
     doc.content,
     [...childHashes].sort().join(""),
@@ -139,13 +151,17 @@ export function buildTrustGraph(docs: readonly VaultDoc[]): BuildResult {
 
   // Depth-first with an explicit path, so a cycle can be reported as the actual
   // chain a human has to go and break rather than as "a cycle was detected".
-  const state = new Map<string, "visiting" | "done">();
+  const state = new Map<string, "visiting" | "done" | "failed">();
   const nodes = new Map<string, TrustNode>();
   const path: string[] = [];
 
   const visit = (id: string): number | null => {
     const seen = state.get(id);
     if (seen === "done") return nodes.get(id)!.height;
+    // Already known-bad. Stay quiet: the cycle it belongs to has been reported
+    // once, and re-reporting it from every other branch that reaches it buries
+    // the real chain under invented ones.
+    if (seen === "failed") return null;
     if (seen === "visiting") {
       const from = path.indexOf(id);
       errors.push(
@@ -164,7 +180,12 @@ export function buildTrustGraph(docs: readonly VaultDoc[]): BuildResult {
     for (const target of doc.trusts) {
       const childHeight = visit(target);
       if (childHeight === null) {
+        // "failed", not "done": no node was built for this id, so a later
+        // branch reaching it must not look one up. And not left as "visiting"
+        // either, which would make every later branch report it as a fresh
+        // cycle.
         path.pop();
+        state.set(id, "failed");
         return null;
       }
       childHashes.push(nodes.get(target)!.hash);

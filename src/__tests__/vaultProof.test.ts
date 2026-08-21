@@ -27,7 +27,10 @@ function doc(
 /** Banking and audit hubs sharing one child, under a blinded root. */
 function vault(): VaultDoc[] {
   return [
-    doc("Banking Hub", "# Banking\n\nsee [[Charter]]", ["Signer Set", "Spending Limits"]),
+    doc("Banking Hub", "# Banking\n\nsee [[Charter]]", [
+      "Signer Set",
+      "Spending Limits",
+    ]),
     doc("Audit Hub", "# Audit", ["Spending Limits", "Controls"]),
     doc("Signer Set", "Alice, Bob, Carol. 2-of-3."),
     doc("Spending Limits", "Ceiling 50000 EUR. Expires 2026-12-31."),
@@ -66,6 +69,23 @@ describe("buildTrustGraph", () => {
     expect(built.errors[0]).toMatch(/wikilink/);
   });
 
+  it("names one cycle when another document also points into it", () => {
+    // D also trusts B, so the walk reaches B again after the A->B->C->B cycle
+    // has already failed. That second visit must neither look up a node that
+    // was never built nor report a second, invented cycle.
+    const built = buildTrustGraph([
+      doc("A", "a", ["B"]),
+      doc("B", "b", ["C"]),
+      doc("C", "c", ["B"]),
+      doc("D", "d", ["B"]),
+    ]);
+    expect(built.ok).toBe(false);
+    if (built.ok) throw new Error("expected failure");
+    expect(built.errors.filter((e) => e.includes("Trust cycle"))).toHaveLength(
+      1,
+    );
+  });
+
   it("refuses a trust edge to a document that does not exist", () => {
     const built = buildTrustGraph([doc("Hub", "h", ["Ghost"])]);
     expect(built.ok).toBe(false);
@@ -81,7 +101,9 @@ describe("buildTrustGraph", () => {
   it("propagates a leaf edit all the way to the root", () => {
     const before = graphOf(vault()).rootHash;
     const edited = vault().map((d) =>
-      d.id === "Spending Limits" ? doc(d.id, "Ceiling 900000 EUR.", d.trusts) : d,
+      d.id === "Spending Limits"
+        ? doc(d.id, "Ceiling 900000 EUR.", d.trusts)
+        : d,
     );
     expect(graphOf(edited).rootHash).not.toBe(before);
   });
@@ -91,7 +113,10 @@ describe("buildTrustGraph", () => {
     // Adding Charter as an untrusted document must not change the hub's hash —
     // that is what keeps the trust graph acyclic while the logical graph is not.
     const base = graphOf(vault());
-    const withCharter = graphOf([...vault(), doc("Charter", "unrelated prose")]);
+    const withCharter = graphOf([
+      ...vault(),
+      doc("Charter", "unrelated prose"),
+    ]);
     expect(withCharter.nodes.get("Banking Hub")!.hash).toBe(
       base.nodes.get("Banking Hub")!.hash,
     );
@@ -100,7 +125,9 @@ describe("buildTrustGraph", () => {
   it("ignores the order trust edges are declared in", () => {
     const a = graphOf(vault()).nodes.get("Banking Hub")!.hash;
     const reordered = vault().map((d) =>
-      d.id === "Banking Hub" ? doc(d.id, d.content, ["Spending Limits", "Signer Set"]) : d,
+      d.id === "Banking Hub"
+        ? doc(d.id, d.content, ["Spending Limits", "Signer Set"])
+        : d,
     );
     expect(graphOf(reordered).nodes.get("Banking Hub")!.hash).toBe(a);
   });
@@ -113,13 +140,35 @@ describe("buildTrustGraph", () => {
     expect(g.nodes.get("A")!.hash).not.toBe(g.nodes.get("B")!.hash);
   });
 
-  it("blinds the root — a hub's title is not part of the commitment", () => {
+  it("binds a hub's identity — renaming it changes the commitment", () => {
     const renamed = vault().map((d) =>
-      d.id === "Audit Hub" ? { ...d, id: "Q3 Restructuring Hub", salt: "salt-Audit Hub" } : d,
+      d.id === "Audit Hub"
+        ? { ...d, id: "Q3 Restructuring Hub", salt: "salt-Audit Hub" }
+        : d,
     );
-    // Same content, same salts, same shape — only the title changed, and the
-    // root must not notice, or disclosing it would leak the table of contents.
-    expect(graphOf(renamed).rootHash).toBe(graphOf(vault()).rootHash);
+    // Blinding means the root does not REVEAL titles — it is a hash over salted
+    // hashes, so there is nothing to read out of it. It must NOT mean the root
+    // is invariant to titles: that would let an honest disclosure be relabelled
+    // and still verify. Identity is part of what is signed.
+    expect(graphOf(renamed).rootHash).not.toBe(graphOf(vault()).rootHash);
+  });
+
+  it("does not let two vaults that differ only in names share a root", () => {
+    const base = [
+      doc("Alice", "signer weight 3"),
+      doc("Bob", "signer weight 1"),
+      doc("Signers", "# Signers", ["Alice", "Bob"]),
+    ];
+    // The same two documents with their names exchanged, each keeping the other
+    // one's salt — so every (salt, content) pair in the vault is unchanged and
+    // only the identities move. A commitment that ignores ids cannot tell these
+    // apart, and a signature over the root would not say who holds weight 3.
+    const swapped = [
+      { ...doc("Bob", "signer weight 3"), salt: "salt-Alice" },
+      { ...doc("Alice", "signer weight 1"), salt: "salt-Bob" },
+      doc("Signers", "# Signers", ["Alice", "Bob"]),
+    ];
+    expect(graphOf(swapped).rootHash).not.toBe(graphOf(base).rootHash);
   });
 });
 
@@ -140,7 +189,12 @@ describe("disclose and verify", () => {
 
   it("reveals the path and nothing else", () => {
     const docs = vault();
-    const d = disclose(graphOf(docs), asMap(docs), "Spending Limits", "Banking Hub");
+    const d = disclose(
+      graphOf(docs),
+      asMap(docs),
+      "Spending Limits",
+      "Banking Hub",
+    );
     if (!d.ok) throw new Error(d.error);
 
     const revealed = d.disclosure.path.map((n) => n.id);
@@ -175,13 +229,37 @@ describe("disclose and verify", () => {
     const tampered = {
       ...d.disclosure,
       path: d.disclosure.path.map((n) =>
-        n.id === "Spending Limits" ? { ...n, content: "Ceiling 9000000 EUR." } : n,
+        n.id === "Spending Limits"
+          ? { ...n, content: "Ceiling 9000000 EUR." }
+          : n,
       ),
     };
     const result = verifyDisclosure(tampered, g.rootHash);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected failure");
     expect(result.error).toMatch(/does not commit to the hash/);
+  });
+
+  it("refuses a disclosure whose documents have been relabelled", () => {
+    const docs = vault();
+    const g = graphOf(docs);
+    const d = disclose(g, asMap(docs), "Signer Set", "Banking Hub");
+    if (!d.ok) throw new Error(d.error);
+
+    // Every byte stays honest; only the labels a relying party reads are
+    // swapped. If ids are outside the commitment this verifies happily and the
+    // verifier hands back an attacker-chosen targetId.
+    const relabelled = {
+      ...d.disclosure,
+      targetId: "Spending Limits",
+      path: d.disclosure.path.map((n, i) =>
+        i === 0
+          ? { ...n, id: "Spending Limits" }
+          : { ...n, id: "Treasury Hub" },
+      ),
+    };
+
+    expect(verifyDisclosure(relabelled, g.rootHash).ok).toBe(false);
   });
 
   it("rejects a disclosure checked against the wrong root", () => {
@@ -201,7 +279,12 @@ describe("disclose and verify", () => {
       ...d.disclosure,
       path: d.disclosure.path.map((n) =>
         n.id === "Banking Hub"
-          ? { ...n, children: n.children.map((c) => (c.disclosed ? c : { ...c, hash: "f".repeat(64) })) }
+          ? {
+              ...n,
+              children: n.children.map((c) =>
+                c.disclosed ? c : { ...c, hash: "f".repeat(64) },
+              ),
+            }
           : n,
       ),
     };

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { buildTrustGraph, type VaultDoc } from "@/lib/vault-proof/trust-graph";
-import { splitFrontmatter } from "@/lib/vault";
+import { extractWikilinks, splitFrontmatter } from "@/lib/vault";
 import type { VaultTrustView } from "@/lib/vault-trust-types";
 
 /**
@@ -60,15 +60,20 @@ function readDir(dir: string): { title: string; raw: string }[] {
     }));
 }
 
-/** Every `[[wikilink]]` in a body, de-duplicated, ignoring `|` display aliases. */
-function wikilinks(body: string): string[] {
-  return [
-    ...new Set(
-      [...body.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g)].map((m) =>
-        m[1]!.trim(),
-      ),
-    ),
-  ];
+let cached: VaultTrustView | null = null;
+
+/**
+ * Memoised accessor, matching `loadVaultGraph` in @/lib/vault.
+ *
+ * `/vault` is public, sitemap-indexed and server-rendered per request, so
+ * without this every crawler hit re-reads ~67 files and re-hashes the whole
+ * vault. The vault only changes on deploy, so one build per process is enough.
+ * Skipped outside production so an edit shows up without a restart.
+ */
+export function loadVaultTrustView(): VaultTrustView {
+  if (process.env.NODE_ENV !== "production") return buildVaultTrustView();
+  cached ??= buildVaultTrustView();
+  return cached;
 }
 
 export function buildVaultTrustView(): VaultTrustView {
@@ -86,10 +91,16 @@ export function buildVaultTrustView(): VaultTrustView {
   for (const f of features) {
     const { frontmatter, body } = splitFrontmatter(f.raw);
     const area = typeof frontmatter.area === "string" ? frontmatter.area : "";
-    if (area && childrenOfArea.has(area)) childrenOfArea.get(area)!.push(f.title);
+    if (area && childrenOfArea.has(area))
+      childrenOfArea.get(area)!.push(f.title);
     else orphans.push(f.title);
 
-    docs.push({ id: f.title, salt: derivedSalt(f.title), content: f.raw, trusts: [] });
+    docs.push({
+      id: f.title,
+      salt: derivedSalt(f.title),
+      content: f.raw,
+      trusts: [],
+    });
     notes.push({
       id: f.title,
       kind: "feature",
@@ -97,7 +108,7 @@ export function buildVaultTrustView(): VaultTrustView {
       state: typeof frontmatter.state === "string" ? frontmatter.state : null,
       owner: typeof frontmatter.owner === "string" ? frontmatter.owner : null,
       body,
-      links: wikilinks(body),
+      links: extractWikilinks(body),
       hash: "",
     });
   }
@@ -117,7 +128,7 @@ export function buildVaultTrustView(): VaultTrustView {
       state: null,
       owner: null,
       body,
-      links: wikilinks(body),
+      links: extractWikilinks(body),
       hash: "",
     });
   }
@@ -136,7 +147,12 @@ export function buildVaultTrustView(): VaultTrustView {
 
   return {
     rootHash: built.graph.rootHash,
-    hubs: [...built.graph.roots],
+    // The AREA notes, not `graph.roots`. A feature whose `area:` matches no hub
+    // also has no parent, so it lands in roots too — listing that as a hub
+    // showed it twice (once as a hub, once under "outside the spine") and
+    // inflated the hub count. The root hash still commits to every root,
+    // orphans included; this is only what the vault presents as a hub.
+    hubs: areas.map((a) => a.title).sort((a, b) => a.localeCompare(b)),
     notes: notes.sort((a, b) => a.id.localeCompare(b.id)),
     trustEdges: [...childrenOfArea.entries()].flatMap(([hub, kids]) =>
       kids.map((child) => ({ from: hub, to: child })),

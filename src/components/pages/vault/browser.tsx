@@ -1,5 +1,5 @@
 import { FileText, Folder, Link2, Network, Shield } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import VaultGraph from "@/components/pages/vault/graph";
 import NoteBody from "@/components/pages/vault/note-body";
@@ -300,6 +300,31 @@ function TrustPath({ path, rootHash }: { path: string[]; rootHash: string }) {
   const rows = [...path].reverse();
   const step = 46;
   const height = (rows.length + 1) * step + 10;
+  const key = path.join(">");
+
+  // Stepped reveal driven by state rather than SMIL <animate>. SMIL `begin` is
+  // measured from the START OF THE DOCUMENT TIMELINE, not from when the element
+  // is inserted, so once those offsets are in the past a remounted <g> renders
+  // straight to its frozen end state — the trace played once on first paint and
+  // never again on any later selection.
+  const [revealed, setRevealed] = useState(0);
+
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setRevealed(rows.length);
+      return;
+    }
+    setRevealed(0);
+    const timers = rows.map((_, i) =>
+      setTimeout(() => setRevealed(i + 1), (i + 1) * 180),
+    );
+    return () => timers.forEach(clearTimeout);
+    // Keyed on the path itself so every selection change restarts the trace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, rows.length]);
 
   return (
     <svg
@@ -308,91 +333,60 @@ function TrustPath({ path, rootHash }: { path: string[]; rootHash: string }) {
       role="img"
       aria-label={`Trust path: ${["blinded root", ...rows].join(" then ")}`}
     >
-      <g key={path.join(">")}>
-        <g>
-          <rect
-            x="8"
-            y="6"
-            width="244"
-            height="30"
-            rx="5"
-            className="fill-primary/15 stroke-primary/50"
-            strokeWidth="1"
-          />
-          <text x="20" y="20" className="fill-current text-[10px] font-medium">
-            blinded root
-          </text>
-          <text
-            x="20"
-            y="31"
-            className="fill-current font-mono text-[9px] opacity-60"
-          >
-            {rootHash.slice(0, 16)}…
-          </text>
-        </g>
-
-        {rows.map((id, i) => {
-          const y = (i + 1) * step + 6;
-          return (
-            <g key={id}>
-              <line
-                x1="24"
-                y1={y - step + 36}
-                x2="24"
-                y2={y}
-                className="stroke-primary/60"
-                strokeWidth="1.5"
-                strokeDasharray="40"
-                strokeDashoffset="40"
-              >
-                <animate
-                  attributeName="stroke-dashoffset"
-                  from="40"
-                  to="0"
-                  dur="0.35s"
-                  begin={`${i * 0.18}s`}
-                  fill="freeze"
-                />
-              </line>
-              <rect
-                x="8"
-                y={y}
-                width="244"
-                height="30"
-                rx="5"
-                className="fill-muted stroke-border"
-                strokeWidth="1"
-                opacity="0"
-              >
-                <animate
-                  attributeName="opacity"
-                  from="0"
-                  to="1"
-                  dur="0.3s"
-                  begin={`${i * 0.18 + 0.15}s`}
-                  fill="freeze"
-                />
-              </rect>
-              <text
-                x="20"
-                y={y + 19}
-                className="fill-current text-[11px]"
-                opacity="0"
-              >
-                {id.length > 30 ? `${id.slice(0, 29)}…` : id}
-                <animate
-                  attributeName="opacity"
-                  from="0"
-                  to="1"
-                  dur="0.3s"
-                  begin={`${i * 0.18 + 0.15}s`}
-                  fill="freeze"
-                />
-              </text>
-            </g>
-          );
-        })}
+      <g>
+        <rect
+          x="8"
+          y="6"
+          width="244"
+          height="30"
+          rx="5"
+          className="fill-primary/15 stroke-primary/50"
+          strokeWidth="1"
+        />
+        <text x="20" y="20" className="fill-current text-[10px] font-medium">
+          blinded root
+        </text>
+        <text
+          x="20"
+          y="31"
+          className="fill-current font-mono text-[9px] opacity-60"
+        >
+          {rootHash.slice(0, 16)}…
+        </text>
       </g>
+
+      {rows.map((id, i) => {
+        const y = (i + 1) * step + 6;
+        const shown = i < revealed;
+        return (
+          <g
+            key={id}
+            className="transition-opacity duration-300 ease-out"
+            opacity={shown ? 1 : 0}
+          >
+            <line
+              x1="24"
+              y1={y - step + 36}
+              x2="24"
+              y2={y}
+              className="stroke-primary/60"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="8"
+              y={y}
+              width="244"
+              height="30"
+              rx="5"
+              className="fill-muted stroke-border"
+              strokeWidth="1"
+            />
+            <text x="20" y={y + 19} className="fill-current text-[11px]">
+              {id.length > 30 ? `${id.slice(0, 29)}…` : id}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
