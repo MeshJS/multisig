@@ -107,7 +107,12 @@ function RecipientRow({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Input
-              type="string"
+              data-testid={`recipient-address-input-${index}`}
+              type="text"
+              inputMode="text"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="addr1... or $handle"
               value={recipientAddresses[index]}
               onChange={(e) => {
@@ -144,7 +149,9 @@ function RecipientRow({
           style={{ minHeight: adaHandle ? "76px" : "auto" }}
         >
           <Input
+            data-testid={`amount-input-${index}`}
             type="number"
+            inputMode="decimal"
             value={amounts[index]}
             onChange={(e) => {
               const newAmounts = [...amounts];

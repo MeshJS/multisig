@@ -1,4 +1,4 @@
-import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2 } from "lucide-react";
+import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, Workflow } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -56,6 +56,15 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
               {transactions.length}
             </Badge>
           )}
+        </MenuLink>
+        <MenuLink
+          href={`${baseUrl}build`}
+          className={
+            router.pathname == "/wallets/[wallet]/build" ? "text-white" : ""
+          }
+        >
+          <Workflow className="h-5 w-5" />
+          Build
         </MenuLink>
         <MenuLink
           href={`${baseUrl}governance`}

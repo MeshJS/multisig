@@ -33,7 +33,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
-import RowLabelInfoCommon from "@/components/common/row-label-info";
 import { NativeScriptSection } from "./inspect-script";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -264,17 +263,6 @@ function MultisigScriptSection({ mWallet }: { mWallet: MultisigWallet }) {
         <div className="text-xs sm:text-sm font-medium text-muted-foreground min-w-0 sm:min-w-20 flex-shrink-0">1854:</div>
         <div className="flex-1 min-w-0 overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
           <Code className="block text-xs sm:text-sm whitespace-pre">{JSON.stringify(mWallet?.getJsonMetadata(), null, 2)}</Code>
-        </div>
-      </div>
-      
-      {/* Register Wallet Section */}
-      <div className="pt-3 border-t border-border/30">
-        <div className="mb-2">
-          <div className="text-xs sm:text-sm font-medium text-muted-foreground">Register Wallet</div>
-          <div className="text-xs text-muted-foreground/70 mt-0.5">Register your Wallet through a CIP-0146 registration transaction.</div>
-        </div>
-        <div className="p-4 bg-muted/50 rounded-lg border border-border/30">
-          <p className="text-sm text-muted-foreground">Coming soon.</p>
         </div>
       </div>
     </div>,

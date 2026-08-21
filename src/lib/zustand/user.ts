@@ -25,6 +25,11 @@ interface UserState {
   setPastWallet: (pastWallet: string | undefined) => void;
   pastUtxosEnabled: boolean;
   setPastUtxosEnabled: (enabled: boolean | ((prev: boolean) => boolean)) => void;
+  // Bumped when the user explicitly asks to re-run wallet authorization
+  // (e.g. after a failed/cancelled auto-authorize left them connected but
+  // unauthorized). The layout watches this to reopen the auth modal.
+  reauthNonce: number;
+  requestReauth: () => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -36,6 +41,8 @@ export const useUserStore = create<UserState>()(
       setUser: (user) => set({ user }),
       pastWallet: undefined,
       setPastWallet: (wallet) => set({ pastWallet: wallet }),
+      reauthNonce: 0,
+      requestReauth: () => set((state) => ({ reauthNonce: state.reauthNonce + 1 })),
       pastUtxosEnabled: false,
       setPastUtxosEnabled: (enabled) => {
         const newValue = typeof enabled === "function" ? enabled(get().pastUtxosEnabled) : enabled;

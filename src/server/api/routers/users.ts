@@ -33,11 +33,22 @@ export const userRouter = createTRPCRouter({
         stakeAddress: z.string().min(1, "stakeAddress required"),
         // DRep key hash is optional (not all wallets / networks expose it)
         drepKeyHash: z.string().optional().default(""),
+        // nostrKey is legacy — the chat system that used it was removed
+        // in #253; the column is nullable in the schema, callers no
+        // longer pass it. Kept in the input shape for backwards
+        // compatibility with any in-flight client bundles.
+        nostrKey: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      if (sessionAddress !== input.address) {
+      // The wallet session accumulates every nonce-verified address in
+      // this browser; any of them is "yourself". Requiring an exact match
+      // on the primary (most recently authorized) address 403s users who
+      // switched back to a previously authorized wallet.
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const callerAddresses = new Set([sessionAddress, ...sessionWallets]);
+      if (!callerAddresses.has(input.address)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Cannot create or modify a user other than yourself",
@@ -50,11 +61,13 @@ export const userRouter = createTRPCRouter({
         update: {
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
         create: {
           address: input.address,
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
       });
     }),

@@ -15,7 +15,7 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  transpilePackages: ["geist", "@meshsdk/react"],
+  transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors.
@@ -44,9 +44,13 @@ const config = {
     unoptimized: false,
   },
   // Turbopack configuration (Next.js 16+)
-  // Empty config silences the warning about webpack/turbopack conflict
-  // WebAssembly support is enabled by default in Turbopack
-  turbopack: {},
+  // Pin the workspace root to this config's directory. Without this, Turbopack
+  // can mis-detect the root when stray lockfiles exist higher up the tree (e.g.
+  // a git worktree under a parent that also has a package-lock.json), which
+  // breaks resolution of the whisky WASM during dev SSR. `import.meta.dirname`
+  // is the project root in every checkout, so this is safe in CI and prod too.
+  // WebAssembly support is enabled by default in Turbopack.
+  turbopack: { root: import.meta.dirname },
   
   // Webpack config for builds that explicitly use webpack (e.g., with --webpack flag)
   webpack: function (config, options) {
@@ -76,12 +80,43 @@ const config = {
     return config;
   },
   
-  // External packages for server components to avoid bundling issues
-  serverExternalPackages: ["@fabianbormann/cardano-peer-connect"],
+  // External packages for server components to avoid bundling issues.
+  // The whisky WASM packages (pulled by @meshsdk/core-csl 1.9) must be loaded as
+  // CommonJS at runtime rather than bundled — webpack can't statically resolve
+  // their WASM-backed ESM named exports during `next build` on Linux
+  // (`does not provide an export named 'js_evaluate_tx_scripts'`). Externalizing
+  // them makes Node `require` the cjs/ build, which loads the WASM synchronously.
+  serverExternalPackages: [
+    "@fabianbormann/cardano-peer-connect",
+    "whisky-evaluator",
+    "@sidan-lab/whisky-js-nodejs",
+  ],
 
+  // OAuth discovery documents must live under /.well-known/, but Next ignores
+  // dot-directories inside pages/, so they cannot be files. Rewrites map the
+  // well-known paths onto real API routes.
+  //
+  // RFC 9728 defines a path-aware form for protected-resource metadata
+  // (/.well-known/oauth-protected-resource + the resource's path). Clients probe
+  // that first and fall back to the root form, so both are served.
   async rewrites() {
     return [
-      { source: "/llms.txt", destination: "/api/llms-txt" },
+      {
+        source: '/.well-known/oauth-authorization-server',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-authorization-server/:path*',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource/:path*',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
     ];
   },
 

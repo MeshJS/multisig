@@ -2,6 +2,10 @@ import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
+import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { MarbleField } from "@/components/ui/marble-field";
+import { FeatureIcon } from "@/components/pages/homepage/feature-icons";
+import { MultisigSigningExplainer } from "@/components/pages/homepage/multisig-explainer";
 import Link from "next/link";
 import useUser from "@/hooks/useUser";
 import { useRouter } from "next/router";
@@ -9,8 +13,43 @@ import { api } from "@/utils/api";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { Database, Sparkles, Bot, Code, Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Database, Bot, Code, Download, Check, Sparkles, Plug } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
+import { Typewriter } from "@/components/ui/typewriter";
+import {
+  MultisigWalletPreview,
+  WalletListPreview,
+  SignersPreview,
+  CreateTransactionPreview,
+  TransactionHistoryPreview,
+  PendingTransactionsPreview,
+  ProposalPreview,
+  DRepPreview,
+  StakingPreview,
+} from "@/components/pages/homepage/previews";
+import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+import { SITE_URL } from "@/lib/seo";
+
+/**
+ * The endpoint a user pastes into their client.
+ *
+ * Derived rather than hardcoded: this was printing the production host on
+ * every environment, so preprod handed out setup instructions pointing at a
+ * different deployment than the one you were reading them on.
+ */
+const MCP_ENDPOINT = `${SITE_URL}/api/mcp`;
+
+// Prompts cycled by the hero typewriter. Deliberately phrased as things you
+// ask an assistant, not as commands for one product — the endpoint is plain MCP
+// and works with any client. Each maps to a tool we actually expose.
+const AGENT_PROMPTS = [
+  "List the pending transactions on our treasury",
+  "Which governance proposals still need our vote?",
+  "How did we vote on the last treasury withdrawal?",
+  "Draft a rationale for voting No on the budget action",
+  "What can we actually spend right now?",
+];
 
 // DApp Card Component
 function DappCard({ title, description, url }: { title: string; description: string; url: string }) {
@@ -122,40 +161,73 @@ export function PageHomepage() {
   const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
-  // Scroll detection for aurora fade-out
-  const [scrollY, setScrollY] = useState(0);
+  // Scroll-driven fade of the hero background layers. We write opacity straight
+  // to the layer DOM nodes via refs inside a requestAnimationFrame callback, so
+  // scrolling never triggers a React re-render of this (large) page — the old
+  // setState-on-every-scroll approach re-rendered the whole tree each frame,
+  // which is what made scrolling choppy.
+  const auroraRef = useRef<HTMLDivElement>(null);
+  const meshRef = useRef<HTMLDivElement>(null);
+
+  // The homepage hero background follows the same appearance setting as the rest
+  // of the app. Default-show until mounted so the SSR markup and first client
+  // paint agree (avoids a hydration mismatch on the persisted preference).
+  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
+  const [appearanceMounted, setAppearanceMounted] = useState(false);
+  useEffect(() => setAppearanceMounted(true), []);
+  const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
+  const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
 
   useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const currentScrollY = target.scrollTop;
-      setScrollY(currentScrollY);
+    if (!heroBackgroundOn) return;
+    const mainElement = document.querySelector("main");
+    if (!mainElement) return;
+
+    const root = document.documentElement;
+    let raf = 0;
+    let hideTimer = 0;
+    const apply = () => {
+      raf = 0;
+      const y = mainElement.scrollTop;
+      // Aurora fades 500→1500px; the marble mesh starts a touch more present.
+      const aurora = y < 500 ? 0.35 : y > 1500 ? 0 : 0.35 * (1 - (y - 500) / 1000);
+      const mesh = y < 500 ? 0.9 : y > 1500 ? 0 : 0.9 * (1 - (y - 500) / 1000);
+      if (auroraRef.current) auroraRef.current.style.opacity = String(aurora);
+      if (meshRef.current) meshRef.current.style.opacity = String(mesh);
+
+      // Once the background is fully faded out (invisible), stop animating it a
+      // beat later to save GPU — it keeps running the whole time it's visible
+      // or fading, and resumes instantly the moment it fades back in.
+      if (aurora === 0 && mesh === 0) {
+        if (!hideTimer && !root.hasAttribute("data-bg-hidden")) {
+          hideTimer = window.setTimeout(() => {
+            hideTimer = 0;
+            root.setAttribute("data-bg-hidden", "");
+          }, 800);
+        }
+      } else {
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = 0;
+        }
+        root.removeAttribute("data-bg-hidden");
+      }
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(apply);
     };
 
-    // Find the main element (scrollable container)
-    const mainElement = document.querySelector('main');
-
-    if (mainElement) {
-      // Initial call
-      setScrollY(mainElement.scrollTop);
-
-      // Listen to scroll on main element
-      mainElement.addEventListener("scroll", handleScroll, { passive: true });
-
-      return () => {
-        mainElement.removeEventListener("scroll", handleScroll);
-      };
-    }
-  }, []);
-
-  // Aurora Fade-Out (Top): 500px - 1500px
-  const calculateTopAuroraOpacity = () => {
-    if (scrollY < 500) return 0.4;
-    if (scrollY > 1500) return 0;
-    return 0.4 * (1 - (scrollY - 500) / 1000);
-  };
-
-  const topAuroraOpacity = calculateTopAuroraOpacity();
+    apply();
+    mainElement.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      mainElement.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      if (hideTimer) clearTimeout(hideTimer);
+      root.removeAttribute("data-bg-hidden");
+    };
+  }, [heroBackgroundOn]);
 
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
@@ -166,17 +238,28 @@ export function PageHomepage() {
 
   return (
     <div className="relative w-full min-h-screen">
-      {/* Aurora Background - Fixed with Smooth Fade-Out */}
-      <div
-        className="fixed inset-0 -z-10 transition-opacity duration-700 ease-out"
-        style={{ opacity: topAuroraOpacity }}
-      >
-        <Background variant="aurora" />
-      </div>
+      {heroBackgroundOn && (
+        <>
+          {/* Aurora Background — opacity is driven per-frame via the rAF scroll
+              effect above (ref), not React state, so scrolling stays smooth. */}
+          <div ref={auroraRef} className="fixed inset-0 -z-10" style={{ opacity: 0.35 }}>
+            <Background variant="aurora" preset={heroPreset} />
+          </div>
+
+          {/* Marble swirls under a soft wash, above the aurora. The wash is a
+              plain translucent fill (no backdrop-filter): blurring the live
+              canvas every frame was a major scroll cost, and the marble is now
+              rendered low-res, so it already reads soft. */}
+          <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
+            <MarbleField />
+            <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
+          </div>
+        </>
+      )}
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-4xl text-center">
+        <Reveal className="mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
             Manage Cardano Treasuries with Multisig Security
           </h1>
@@ -196,7 +279,10 @@ export function PageHomepage() {
             </CardUI>
           )}
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          {/* Wraps because three CTAs no longer fit one line below ~780px, and
+              aligns to the top rather than the centre: the first CTA carries a
+              subtitle underneath, so centring floats the other two off its axis. */}
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap sm:items-start">
             {user ? (
               <>
                 <Button size="lg" asChild>
@@ -207,14 +293,148 @@ export function PageHomepage() {
                 </Button>
               </>
             ) : (
-              <ConnectWallet />
+              <>
+                <ConnectWallet />
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/features">Explore features</Link>
+                </Button>
+              </>
             )}
+            {/* Third CTA in both states: connecting an agent is a first-class
+                entry point, not a developer footnote, and it is the one thing
+                you can set up before owning a wallet. */}
+            <Button size="lg" variant="outline" asChild>
+              <Link href="#connect-mcp">
+                <Plug className="mr-2 h-4 w-4" />
+                Connect via MCP
+              </Link>
+            </Button>
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
             Secure Treasuries • Participate in Governance • Collaborate
           </p>
-        </div>
+        </Reveal>
+      </section>
+
+      {/* Connect your AI agent – skill download + live prompt demo, up top */}
+      <section className="container mx-auto px-4 pb-8">
+        <Reveal className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200/70 bg-white/60 p-6 shadow-sm backdrop-blur-sm dark:border-zinc-800/70 dark:bg-zinc-900/40 sm:p-8 md:p-10">
+            {/* min-w-0 throughout: a grid/flex item defaults to min-width:auto,
+                so it refuses to shrink below the min-content width of the config
+                block below. That widened the single mobile column to 395px inside
+                a 261px card and the wrapper's overflow-hidden silently clipped the
+                heading and body copy. Zeroing it lets the <pre> scroll on its own. */}
+            <div className="grid items-center gap-8 md:grid-cols-2">
+              {/* Copy + actions */}
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground dark:border-zinc-800">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Model Context Protocol
+                </div>
+                <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+                  Connect any AI agent
+                </h2>
+                <p className="mt-3 text-muted-foreground">
+                  We speak <strong className="text-foreground">MCP</strong>, the open
+                  standard for connecting AI assistants to real systems. Point any MCP
+                  client at the endpoint, approve it with your wallet, and it can read
+                  your treasury and governance — pending transactions, spendable UTxOs,
+                  open proposals and your voting record.
+                </p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No API key to paste, and no vendor lock-in: authorization is standard
+                  OAuth, so the client handles it for you.
+                </p>
+                {/* This row turns horizontal at sm, but its grid column halves
+                    at md — so between md and lg the two buttons overflowed into
+                    the panel alongside. Wrapping self-corrects at every width. */}
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button asChild size="lg">
+                    <Link href="#connect-mcp">
+                      <Plug className="mr-2 h-4 w-4" />
+                      MCP setup guide
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
+                    <a href="/api/skill" download="multisig-skill.md">
+                      <Download className="mr-2 h-4 w-4" />
+                      Download skill
+                    </a>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Endpoint + a vendor-neutral config, then a taste of what to ask. */}
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 shadow-lg sm:p-5">
+                  <div className="pb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                    MCP endpoint
+                  </div>
+                  <code className="block break-all text-emerald-300">
+                    {MCP_ENDPOINT}
+                  </code>
+                  <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] uppercase tracking-wide text-zinc-500">
+                    Any MCP client
+                  </div>
+                  <pre className="mt-2 overflow-x-auto leading-relaxed text-zinc-300">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "${MCP_ENDPOINT}"
+    }
+  }
+}`}
+                  </pre>
+                </div>
+
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm text-zinc-100 shadow-lg sm:p-5">
+                  <div className="flex min-h-[3.5rem] items-start gap-2 leading-relaxed">
+                    <span className="select-none text-emerald-400">›</span>
+                    <Typewriter phrases={AGENT_PROMPTS} className="text-zinc-100" />
+                  </div>
+                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                    Reads and drafts only — submitting a vote and signing stay with you
+                    and your co-signers.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* Multisig signing explainer */}
+      <section className="container mx-auto px-4 py-12">
+        <Reveal className="mx-auto grid max-w-5xl items-center gap-8 md:grid-cols-2">
+          <div>
+            <h2 className="text-3xl font-bold">Every transaction needs a quorum</h2>
+            <p className="mt-4 text-muted-foreground">
+              With M-of-N multisig, funds only move when enough signers approve. In
+              this 3-of-5 wallet the transaction executes the moment the third
+              signature lands — no single key can ever act alone.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                No single point of failure
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                Set your own threshold — at least N, all, or any
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                Every signer is invited and verified
+              </li>
+            </ul>
+          </div>
+          <MultisigSigningExplainer />
+        </Reveal>
       </section>
 
       <Separator className="my-8" />
@@ -225,56 +445,41 @@ export function PageHomepage() {
           <h2 className="text-center text-3xl font-bold">
             Control Your Cardano Treasuries
           </h2>
-          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Reveal className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
 
             {/* Multisig */}
             <CardUI
+              profileImage={<FeatureIcon name="multisig" />}
               title="Multi-signature security"
               description="M-of-N signing: require multiple signers to approve every transaction. Choose at least, all, or any threshold per wallet."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/multi-wallets.png"
-                  alt="Multi-signature"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <MultisigWalletPreview />
               </div>
             </CardUI>
 
             {/* Wallet Management */}
             <CardUI
+              profileImage={<FeatureIcon name="signers" />}
               title="Invite and Verify Signers"
               description="Invite signers to your multisig wallet by sharing a link. Ensure all signers are verified and have access to the wallet."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/invite-signers.png"
-                  alt="Invite and verify signers"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <SignersPreview />
               </div>
             </CardUI>
             
             <CardUI
+              profileImage={<FeatureIcon name="wallets" />}
               title="Manage All Your Wallets"
               description="Multiple multisig wallets for every collaboration, project, or team you are part of"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/multi-wallets.png"
-                  alt="Multi-wallet management"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <WalletListPreview />
               </div>
             </CardUI>
 
@@ -283,55 +488,40 @@ export function PageHomepage() {
 
             
             <CardUI
+              profileImage={<FeatureIcon name="createTx" />}
               title="Create New Transactions"
               description="Intuitive interface to create new transactions and send them to required signers for their signatures"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/new-tx.png"
-                  alt="Create transactions"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <CreateTransactionPreview />
               </div>
             </CardUI>
 
 
             <CardUI
+              profileImage={<FeatureIcon name="history" />}
               title="Complete Transaction History"
               description="View all your transactions in one place, including who signed them and their purpose"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/all-tx.png"
-                  alt="Transaction history"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <TransactionHistoryPreview />
               </div>
             </CardUI>
 
             <CardUI
+              profileImage={<FeatureIcon name="pending" />}
               title="Pending Transactions"
               description="Required signers can view and approve pending transactions with ease"
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
-              <div className="mt-4 rounded-lg border border-border p-2">
-                <Image
-                  src="/features/pending-tx.png"
-                  alt="Pending transactions"
-                  width={400}
-                  height={300}
-                  className="h-auto w-full rounded object-contain"
-                />
+              <div className="mt-4">
+                <PendingTransactionsPreview />
               </div>
             </CardUI>
 
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -341,7 +531,7 @@ export function PageHomepage() {
       <section className="container mx-auto px-4 py-16">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-center text-3xl font-bold">
-            Participate in Governance
+            Participate in Governance &amp; Staking
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
             <Link href="/governance" className="text-foreground hover:underline font-medium">
@@ -349,43 +539,46 @@ export function PageHomepage() {
             </Link>
           </p>
 
-          <div className="mt-12 flex flex-wrap justify-center gap-6">
+          <Reveal className="mt-12 flex flex-wrap justify-center gap-6">
             <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
               <CardUI
+                profileImage={<FeatureIcon name="proposals" />}
                 title="Cardano proposals"
                 description="View all Cardano proposals and vote as a team with multisig security"
-                cardClassName="overflow-hidden"
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
               >
-                <div className="mt-4 rounded-lg border border-border p-2">
-                  <Image
-                    src="/features/proposals.png"
-                    alt="Governance proposals"
-                    width={400}
-                    height={300}
-                    className="h-auto w-full rounded object-contain"
-                  />
+                <div className="mt-4">
+                  <ProposalPreview />
                 </div>
               </CardUI>
             </div>
 
             <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
               <CardUI
+                profileImage={<FeatureIcon name="drep" />}
                 title="Register DRep"
                 description="Register your team as a Delegated Representative for Cardano governance"
-                cardClassName="overflow-hidden"
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
               >
-                <div className="mt-4 rounded-lg border border-border p-2">
-                  <Image
-                    src="/features/register-drep.png"
-                    alt="DRep registration"
-                    width={400}
-                    height={300}
-                    className="h-auto w-full rounded object-contain"
-                  />
+                <div className="mt-4">
+                  <DRepPreview />
                 </div>
               </CardUI>
             </div>
-          </div>
+
+            <div className="w-full md:w-[calc(33.333%-1rem)] lg:w-[calc(33.333%-1rem)]">
+              <CardUI
+                profileImage={<FeatureIcon name="staking" />}
+                title="Stake &amp; earn rewards"
+                description="Delegate your treasury to a Cardano stake pool and withdraw rewards securely through multisig."
+                cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
+              >
+                <div className="mt-4">
+                  <StakingPreview />
+                </div>
+              </CardUI>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -452,7 +645,7 @@ export function PageHomepage() {
             <CardUI
               title="Multisig skill (download)"
               description="Cursor/IDE skill for multisig: bot API, v1 endpoints, wallet flows, and conventions. Drop into your project for AI-assisted development."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4">
                 <Button asChild variant="outline" size="sm">
@@ -466,7 +659,7 @@ export function PageHomepage() {
             <CardUI
               title="Machine-readable API spec"
               description="OpenAPI 3.0 JSON for codegen and tooling."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <code className="rounded bg-muted px-2 py-1 text-sm font-mono">
@@ -490,7 +683,7 @@ export function PageHomepage() {
             <CardUI
               title="Bot authentication"
               description="Authenticate bots with a bot key; use the returned JWT for v1 endpoints."
-              cardClassName="overflow-hidden"
+              cardClassName="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-lg dark:hover:border-zinc-700"
             >
               <div className="mt-4 space-y-2 text-sm">
                 <p className="font-medium">POST /api/v1/botAuth</p>
@@ -515,6 +708,194 @@ export function PageHomepage() {
                     Reference bot client
                   </a>
                 </Button>
+              </div>
+            </CardUI>
+          </div>
+
+          <div className="mt-8" id="connect-mcp">
+            <CardUI
+              title="Connect an AI agent (MCP)"
+              description="An open Model Context Protocol endpoint — works with any MCP-capable client, no vendor lock-in."
+            >
+              <div className="mt-4 space-y-5 text-sm">
+                <ol className="space-y-4">
+                  {/* The GUI path comes first and in full. Leading with a JSON
+                      config file sent desktop and web users hunting for a file
+                      their client does not have. */}
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
+                      <span className="font-medium">Add the connector</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      This is the only thing you need — there is no API key,
+                      because the server advertises OAuth and your client
+                      discovers the rest:
+                    </p>
+                    <div className="ml-7 flex flex-col gap-1">
+                      <code className="block break-all rounded bg-muted p-3 text-xs">
+                        {MCP_ENDPOINT}
+                      </code>
+                    </div>
+
+                    <div className="ml-7 mt-3 flex flex-col gap-3 text-xs">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In an app with a connector screen
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          Claude (desktop or web) and most other assistant apps:
+                          open <span className="text-foreground">Settings →
+                          Connectors</span>, choose{" "}
+                          <span className="text-foreground">Add custom
+                          connector</span>, paste the URL above, and connect. A
+                          browser window opens for step 2. Nothing to install and
+                          no file to edit.
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In a client that reads a config file
+                        </p>
+                        <pre className="mt-1 overflow-x-auto rounded bg-muted p-3">
+{`{
+  "mcpServers": {
+    "mesh-multisig": {
+      "type": "http",
+      "url": "${MCP_ENDPOINT}"
+    }
+  }
+}`}
+                        </pre>
+                        <p className="mt-1 text-muted-foreground">
+                          Or from a terminal:{" "}
+                          <code className="rounded bg-muted px-1">
+                            claude mcp add --transport http mesh-multisig {MCP_ENDPOINT}
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
+                      <span className="font-medium">
+                        Approve it, and pick what it may do
+                      </span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client sends you here to a consent screen: connect your
+                      wallet, sign, and approve. You see which client is asking and
+                      the exact address set it will cover.
+                    </p>
+                    <p className="pl-7 text-muted-foreground">
+                      The three permissions below are listed there as separate
+                      checkboxes, ticked by default. Untick any you would rather
+                      not grant — the tools it covers then simply do not exist for
+                      that client.
+                    </p>
+                  </li>
+
+                  {/* Added because there was no way to tell a successful connect
+                      from a half-scoped one: both look like a working server, and
+                      the only visible difference is how many tools appear. */}
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="font-medium">Check what you got</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client&apos;s tool list should show{" "}
+                      <strong className="text-foreground">
+                        {MCP_TOOL_SUMMARIES.length} tools
+                      </strong>{" "}
+                      if you granted everything. Fewer means fewer permissions,
+                      not a broken connection — the counts are{" "}
+                      {(["wallets:read", "governance:read", "ballots:write"] as const)
+                        .map(
+                          (scope) =>
+                            `${MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).length} for ${scope}`,
+                        )
+                        .join(", ")}
+                      .
+                    </p>
+                  </li>
+
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">4</span>
+                      <span className="font-medium">Ask it something</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      &ldquo;List the pending transactions on our treasury&rdquo; ·
+                      &ldquo;What can we actually spend right now?&rdquo; ·
+                      &ldquo;Which active governance proposals still need a decision?&rdquo;
+                    </p>
+                  </li>
+                </ol>
+
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium">What it can do</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Thirteen tools, grouped by the permission they need. You choose
+                    which permissions to grant, and can change them later.
+                  </p>
+                  <div className="mt-1 flex flex-col gap-3">
+                    {(["wallets:read", "governance:read", "ballots:write"] as const).map(
+                      (scope) => (
+                        <div key={scope}>
+                          <code className="text-xs font-medium text-foreground">{scope}</code>
+                          <ul className="mt-1 flex flex-col gap-1">
+                            {MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).map((t) => (
+                              <li key={t.name} className="text-xs text-muted-foreground">
+                                <code className="rounded bg-muted px-1">{t.name}</code>{" "}
+                                — {t.blurb}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {/* The asymmetry here is not obvious and is easy to read as a
+                    bug: an access token carries the scopes it was minted with,
+                    and the server intersects them with the grant, so taking a
+                    permission away bites at once while adding one cannot reach
+                    a token already issued. */}
+                <div className="rounded-lg border border-dashed p-3">
+                  <h4 className="text-sm font-medium">
+                    Changing permissions later
+                  </h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Under{" "}
+                    <Link href="/user" className="underline underline-offset-2">
+                      your profile
+                    </Link>{" "}
+                    each connection lists its permissions.{" "}
+                    <strong className="text-foreground">Removing one takes
+                    effect on the client&apos;s very next request.</strong>{" "}
+                    Adding one does not: the client is holding a token issued
+                    with the old set, and refreshing its tool list just re-asks
+                    with that same token. Reconnect the connector to pick up a
+                    wider permission — or wait for its token to expire, within
+                    the hour.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-dashed p-3">
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-foreground">Read-only, by design.</strong>{" "}
+                    A connected client can read your wallets and governance, draft
+                    ballots, and publish a rationale to IPFS. It{" "}
+                    <strong>cannot</strong> sign transactions, move funds, or
+                    submit a vote on-chain — those stay with you and your
+                    co-signers, whichever permissions you grant.
+                  </p>
+                </div>
               </div>
             </CardUI>
           </div>
@@ -549,24 +930,6 @@ export function PageHomepage() {
               wallet in minutes.
             </p>
 
-            {!user && (
-              <div className="mt-6 mx-auto max-w-lg">
-                <div className="flex items-start gap-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
-                  <div className="mt-0.5 p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/50 flex-shrink-0">
-                    <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
-                      New to crypto?
-                    </p>
-                    <p className="text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-                      Try <span className="font-medium">UTXOS</span> - the easiest way to get started. No wallet extension required! Sign in with email or social login from the wallet dropdown.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               {user ? (
                 <Button size="lg" asChild>
@@ -578,72 +941,6 @@ export function PageHomepage() {
             </div>
           </div>
       </section>
-
-      <Separator className="my-8" />
-
-      {/* Footer with Social Links */}
-      <footer className="mx-auto max-w-4xl px-4 pb-16">
-        <div className="flex justify-between items-center">
-          <p className="text-sm text-muted-foreground">
-            {new Date().getFullYear()} Mesh •{" "}
-            <a
-              href="https://github.com/MeshJS/multisig/blob/main/LICENSE.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline"
-            >
-              Apache-2.0 license
-            </a>
-          </p>
-          <div className="flex items-center gap-1.5">
-          <Link
-            href="/#developers-and-bots"
-            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Developers & Bots
-          </Link>
-          <Link
-            href="/features"
-            className="mr-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Resources
-          </Link>
-          <a
-            href="https://x.com/meshsdk/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="X (Twitter)"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
-            </svg>
-          </a>
-          <a
-            href="https://discord.gg/dH48jH3BKa"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="Discord"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
-            </svg>
-          </a>
-          <a
-            href="https://github.com/MeshJS/multisig"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-gray-100/50 dark:hover:bg-white/5"
-            aria-label="GitHub"
-          >
-            <svg className="h-4 w-4 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-            </svg>
-          </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

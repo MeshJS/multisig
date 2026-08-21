@@ -7,8 +7,7 @@ import { getProvider } from "@/utils/get-provider";
 import { resolvePaymentKeyHash, resolveStakeKeyHash, type UTxO } from "@meshsdk/core";
 import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import type { Wallet as DbWallet } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Prisma, type Wallet as DbWallet } from "@prisma/client";
 import { DbWalletWithLegacy } from "@/types/wallet";
 
 interface WalletBalance {
@@ -442,7 +441,7 @@ export default async function handler(
               walletId: walletBalance.walletId,
               walletName: walletBalance.walletName,
               address: walletBalance.address,
-              adaBalance: new Decimal(walletBalance.adaBalance),
+              adaBalance: new Prisma.Decimal(walletBalance.adaBalance),
               assetBalances: walletBalance.balance,
               isArchived: walletBalance.isArchived,
             },

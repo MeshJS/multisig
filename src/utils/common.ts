@@ -129,13 +129,17 @@ function resolveSummonScriptCbors(args: {
  */
 export type WalletType = 'legacy' | 'sdk' | 'summon';
 
+function hasNonEmptyEntries(values?: string[] | null): boolean {
+  return !!values?.some((value) => value.trim().length > 0);
+}
+
 export function getWalletType(wallet: DbWalletWithLegacy): WalletType {
   if (wallet.rawImportBodies?.multisig) return 'summon';
   
   // Legacy: only payment keys (no stake keys, no DRep keys)
   // External stake credential hash doesn't make it SDK - it's still legacy if only payment keys
-  const hasStakeKeys = wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0;
-  const hasDRepKeys = wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0;
+  const hasStakeKeys = hasNonEmptyEntries(wallet.signersStakeKeys);
+  const hasDRepKeys = hasNonEmptyEntries(wallet.signersDRepKeys);
   if (!hasStakeKeys && !hasDRepKeys) return 'legacy';
   
   return 'sdk';
@@ -359,7 +363,7 @@ export function buildWallet(
 
   const nativeScript = buildNativeScriptFromPaymentSigners(wallet, validScripts);
 
-  // Use SDK address (prefer stakeable address if staking is enabled)
+  // Enterprise (payment-only) address for non-staking SDK wallets.
   const paymentAddress = serializeNativeScript(
     nativeScript as NativeScript,
     wallet.stakeCredentialHash as undefined | string,
@@ -368,10 +372,18 @@ export function buildWallet(
 
   let address = paymentAddress;
   const stakeableAddress = mWallet.getScript().address;
-  const paymentAddrEmpty =
-    utxos?.filter((f) => f.output.address === paymentAddress).length === 0;
+  // Prefer the canonical stakeable address for staking wallets unless we can see
+  // the wallet actually holds UTxOs at the bare payment (enterprise) address.
+  // `utxos` is undefined until the wallet data loads, so the previous
+  // `...length === 0` check evaluated to false then and defaulted to the
+  // enterprise address — which can collide with another wallet that shares the
+  // same payment script (e.g. a legacy wallet with identical signers + threshold).
+  // Treating unknown UTxOs as "no enterprise funds" keeps staking wallets on the
+  // address createWallet registered and resolveWalletScriptAddress resolves to.
+  const paymentAddrHasUtxos =
+    utxos?.some((f) => f.output.address === paymentAddress) ?? false;
 
-  if (paymentAddrEmpty && mWallet.stakingEnabled()) {
+  if (!paymentAddrHasUtxos && mWallet.stakingEnabled()) {
     address = stakeableAddress;
   }
 

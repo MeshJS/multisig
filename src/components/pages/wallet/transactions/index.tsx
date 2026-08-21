@@ -1,9 +1,11 @@
 import AllTransactions from "./all-transactions";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import TransactionCard from "./transaction-card";
+import TokenFlowTimelineSection from "./token-flow-timeline-section";
 import CardBalance from "./card-balance";
 import SectionTitle from "@/components/ui/section-title";
 import useAppWallet from "@/hooks/useAppWallet";
+import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 
 export default function PageTransactions() {
   const { appWallet } = useAppWallet();
@@ -12,7 +14,7 @@ export default function PageTransactions() {
     walletId: appWallet && appWallet.id,
   });
 
-  if (appWallet === undefined) return <></>;
+  if (appWallet === undefined) return <WalletDetailSkeleton />;
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6 lg:gap-8 lg:p-8">
@@ -46,6 +48,9 @@ export default function PageTransactions() {
           </div>
         </>
       )}
+      <div className="w-full">
+        <TokenFlowTimelineSection appWallet={appWallet} />
+      </div>
       <SectionTitle>All Transactions</SectionTitle>
       <div className="w-full">
         <AllTransactions appWallet={appWallet} />

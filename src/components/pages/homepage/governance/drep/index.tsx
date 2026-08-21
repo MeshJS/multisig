@@ -4,7 +4,7 @@ import Pagination from "@/components/common/overall-layout/pagination";
 import { getProvider } from "@/utils/get-provider";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
-import { useWallet } from "@meshsdk/react";
+import usePublicNetwork from "@/hooks/usePublicNetwork";
 import DelegateButton from "./id/delegateButton";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,34 +17,16 @@ export default function DrepOverviewPage() {
     Array<{ details: BlockfrostDrepInfo; metadata: BlockfrostDrepMetadata | null }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { wallet, connected } = useWallet();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [isLastPage, setIsLastPage] = useState<boolean>(false);
-  const [network, setNetwork] = useState<number>(3); // Default to mainnet
+  // Mainnet for anonymous visitors, the wallet's network once connected.
+  const network = usePublicNetwork();
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
 
   useEffect(() => {
-    async function fetchNetwork() {
-      if (connected && wallet) {
-        try {
-          const net = await wallet.getNetworkId();
-          setNetwork(net);
-        } catch (error) {
-        setNetwork(1);
-          console.error("Error fetching network ID:", error);
-        }
-      }
-    }
-  
-    fetchNetwork();
-  }, [connected, wallet]);
-  
-  useEffect(() => {
     async function loadDrepList() {
-      if (network === 3) return; // Prevent fetching if network is not set
-  
       setLoading(true);
       const blockchainProvider = getProvider(network);
   
@@ -75,10 +57,8 @@ export default function DrepOverviewPage() {
       }
     }
   
-    if (network !== null) {
-      loadDrepList();
-    }
-  }, [currentPage, pageSize, order, network]); // Dependency now waits for network
+    loadDrepList();
+  }, [currentPage, pageSize, order, network]);
 
   // Fetch DRep details
   const fetchDrepDetails = async (drepId: string) => {
@@ -138,7 +118,7 @@ export default function DrepOverviewPage() {
 
   return (
     <TooltipProvider>
-      <main className="flex flex-col gap-8 p-4 text-gray-300 md:p-8">
+      <main className="flex flex-col gap-8 p-4 text-foreground md:p-8">
         <SectionTitle>DREP Overview</SectionTitle>
 
         {/* Aggregate stats for current page */}
@@ -221,7 +201,7 @@ export default function DrepOverviewPage() {
               return (
                 <div
                   key={drepId}
-                  className="flex items-center gap-4 rounded-lg border-y border-gray-700 p-4 shadow-sm"
+                  className="flex flex-wrap items-center gap-4 rounded-lg border-y border-border p-4 shadow-sm"
                 >
                   {/* Profile Image or Placeholder */}
                   {imageUrl ? (
@@ -232,7 +212,7 @@ export default function DrepOverviewPage() {
                     />
                   ) : (
                     <svg
-                      className="h-12 w-12 text-gray-500"
+                      className="h-12 w-12 text-muted-foreground"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
@@ -245,12 +225,16 @@ export default function DrepOverviewPage() {
                   )}
 
                   {/* DRep Info */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
                       <ActiveIndicator isActive={isActive} />
                       {/* DRep Name */}
-                      <Link href={`/governance/drep/${drepId}`} passHref>
-                        <div className="cursor-pointer text-lg font-semibold text-gray-200 hover:underline">
+                      <Link
+                        href={`/governance/drep/${drepId}`}
+                        passHref
+                        className="min-w-0"
+                      >
+                        <div className="cursor-pointer truncate text-lg font-semibold text-foreground hover:underline">
                           {givenName}
                         </div>
                       </Link>
@@ -275,7 +259,7 @@ export default function DrepOverviewPage() {
                   </div>
 
                   {/* ADA Amount (Larger, Aligned Right) */}
-                  <p className="text-lg font-semibold text-gray-300">
+                  <p className="flex-shrink-0 whitespace-nowrap text-lg font-semibold text-foreground">
                     {adaAmount}
                   </p>
 
@@ -287,7 +271,7 @@ export default function DrepOverviewPage() {
           )}
 
           {!loading && drepList.length === 0 && (
-            <p className="text-gray-500">No DREP information available.</p>
+            <p className="text-muted-foreground">No DREP information available.</p>
           )}
           {!loading && drepList.length > 0 && visibleDreps.length === 0 && (
             <p className="text-gray-500">

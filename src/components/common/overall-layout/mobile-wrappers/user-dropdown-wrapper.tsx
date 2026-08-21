@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/router";
 import { useUserStore } from "@/lib/zustand/user";
@@ -24,7 +25,10 @@ export default function UserDropDownWrapper({
   mode, 
   onAction 
 }: UserDropDownWrapperProps) {
-  const { wallet, connected, disconnect } = useWallet();
+  // useWallet only for connection state/control; wallet ops go through the
+  // Mesh 1.9 bridge.
+  const { connected, disconnect } = useWallet();
+  const { wallet } = useMeshWallet();
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled, disable: disableUtxos } = useUTXOS();
   const { toast } = useToast();
   const router = useRouter();

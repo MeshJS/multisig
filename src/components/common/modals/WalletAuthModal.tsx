@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { useWallet } from "@meshsdk/react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import useUTXOS from "@/hooks/useUTXOS";
-import { useSiteStore } from "@/lib/zustand/site";
-import { deserializeAddress, pubKeyAddress, scriptAddress, serializeAddressObj } from "@meshsdk/core";
+import useMeshWallet from "@/hooks/useMeshWallet";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 interface WalletAuthModalProps {
   address: string; // display label; actual signing address is derived from wallet.getUsedAddresses()
@@ -16,9 +15,16 @@ interface WalletAuthModalProps {
 }
 
 export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuthorize = false }: WalletAuthModalProps) {
-  const { wallet, connected } = useWallet();
-  const network = useSiteStore((state) => state.network);
-  const netId = (network === 1 ? 1 : 0) as 0 | 1;
+  // Use the Mesh 1.9 BrowserWallet (via useMeshWallet), NOT react-2.0's
+  // useWallet().wallet. The latter is a low-level CIP-30 wallet whose
+  // signData(address, payload) argument order is SWAPPED relative to 1.9's
+  // signData(payload, address). Calling it with our (nonce, address) order
+  // made wallets (e.g. VESPR) sign with the nonce as the address and throw
+  // CIP-30 InternalError (-2). The 1.9 wallet matches the (payload, address)
+  // order used everywhere else in the app, and the UTXOS MeshWallet below is
+  // also payload-first — so a single signData(nonce, address) call is correct
+  // for both.
+  const { wallet: meshWallet, connected } = useMeshWallet();
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS();
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -27,22 +33,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
   const signingWallet =
     isUtxosEnabled && utxosWallet?.cardano
       ? utxosWallet.cardano
-      : (wallet && connected ? wallet : null);
-
-  const normalizePaymentAddress = useCallback((maybeHexOrBech: string): string => {
-    if (maybeHexOrBech.startsWith("addr1") || maybeHexOrBech.startsWith("addr_test1")) {
-      return maybeHexOrBech;
-    }
-    const d = deserializeAddress(maybeHexOrBech);
-    const stakeCredential = d.stakeCredentialHash || d.stakeScriptCredentialHash || "";
-    const rebuilt =
-      d.pubKeyHash
-        ? pubKeyAddress(d.pubKeyHash, stakeCredential, !!d.stakeScriptCredentialHash)
-        : d.scriptHash
-          ? scriptAddress(d.scriptHash, stakeCredential, !!d.stakeScriptCredentialHash)
-          : null;
-    return rebuilt ? serializeAddressObj(rebuilt, netId) : maybeHexOrBech;
-  }, [netId]);
+      : (meshWallet && connected ? meshWallet : null);
 
   const handleAuthorize = useCallback(async () => {
     if (!signingWallet) {
@@ -95,7 +86,10 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
       if (!signingAddress) {
         throw new Error("No addresses found for wallet");
       }
-      signingAddress = normalizePaymentAddress(signingAddress);
+      signingAddress = normalizeAddressToBech32(signingAddress);
+      if (!signingAddress.startsWith("addr1") && !signingAddress.startsWith("addr_test1")) {
+        throw new Error("Could not read a valid payment address from this wallet.");
+      }
 
       // 1) Get nonce from existing endpoint
       const nonceRes = await fetch(`/api/v1/getNonce?address=${encodeURIComponent(signingAddress)}`);
@@ -113,26 +107,31 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
 
       let signed: { signature: string; key: string } | undefined;
       try {
-        // Mirror the working Swagger token flow: signData(nonce, address)
+        // Mesh 1.9 / UTXOS order is signData(payload, address).
         signed = (await (signingWallet as any).signData(
           nonce,
           signingAddress,
         )) as { signature: string; key: string };
       } catch (error: any) {
-        if (error instanceof Error) {
-          const msg = error.message.toLowerCase();
-          if (
-            msg.includes("user") ||
-            msg.includes("cancel") ||
-            msg.includes("decline") ||
-            msg.includes("reject")
-          ) {
-            throw new Error(
-              "Signing cancelled. Please try again and approve the signing request.",
-            );
-          }
-        }
-        throw new Error("Failed to sign nonce. Please try again.");
+        const raw =
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : (() => {
+                  try {
+                    return JSON.stringify(error);
+                  } catch {
+                    return String(error);
+                  }
+                })();
+        // Surface the wallet's real error verbatim — some (e.g. the UTXOS
+        // smart wallet) fail inside signData with a provider-specific
+        // message we otherwise lose. The previous cancel/reject heuristic
+        // false-matched non-cancellation errors that merely contained the
+        // word "user", hiding the true cause, so always show the raw text.
+        console.error("[WalletAuthModal] signData failed:", error);
+        throw new Error(`Failed to sign nonce: ${raw || "unknown wallet error"}`);
       }
 
       if (!signed?.signature || !signed?.key) {
@@ -171,7 +170,7 @@ export function WalletAuthModal({ address, open, onClose, onAuthorized, autoAuth
     } finally {
       setSubmitting(false);
     }
-  }, [signingWallet, toast, onAuthorized, onClose, normalizePaymentAddress]);
+  }, [signingWallet, toast, onAuthorized, onClose]);
 
   // Auto-authorize when modal opens if autoAuthorize is true (only once)
   useEffect(() => {

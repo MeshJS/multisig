@@ -36,8 +36,53 @@ export interface RawImportBodies {
   multisig?: RawImportBodiesMultisig;
   timestamp?: string;
   users?: RawImportBodiesUser[];
+  provenance?: WalletImportProvenance;
+  // When true, the import-wallet flow filled this row and the signer set must
+  // not be edited on this instance — the canonical signer list lives on the
+  // origin. Surface in any UI that adds/removes/edits signers.
+  lockedSigners?: boolean;
   [key: string]: unknown;
 }
+
+export type WalletImportProvenance =
+  | {
+      origin: "summon";
+      validationToken: string;
+      summonWalletId: string;
+      importedAt: string;
+    }
+  | {
+      origin: "instance";
+      originUrl: string;
+      originalWalletId: string;
+      verifiedSigner: string;
+      importedAt: string;
+    }
+  | {
+      origin: "cbor";
+      verifiedSigner: string;
+      importedAt: string;
+    }
+  | {
+      origin: "json";
+      sourceInstance: string;
+      originalWalletId: string;
+      payloadHash: string;
+      importedAt: string;
+    }
+  | {
+      origin: "cip146-discovery";
+      registrationTxHash: string;
+      expectedAddress: string;
+      network: number;
+      importedAt: string;
+      /** On-chain stake credential (script hash) of the wallet address */
+      stakeCredentialHash?: string | null;
+      /** Registration metadata `types` (roles present on-chain) */
+      types?: number[];
+      /** Lowercased registration participant key hashes (all roles) */
+      participants?: string[];
+    };
 
 export type DbWalletWithLegacy = DbWallet & {
   rawImportBodies?: RawImportBodies | null;

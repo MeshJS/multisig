@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { checkSignature, generateNonce } from "@meshsdk/core";
 import { getFirstAndLast } from "@/utils/strings";
 import { useUserStore } from "@/lib/zustand/user";
@@ -67,7 +67,7 @@ function ProfileIconWithDiscord({ discordId, size = "md" }: ProfileIconWithDisco
 }
 
 export default function ShowSigners({ appWallet }: ShowSignersProps) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { toast } = useToast();
   const ctx = api.useUtils();
@@ -138,6 +138,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
     async function signVerify() {
       if (!userAddress) throw new Error("User address not found");
       if (!connected) throw new Error("Wallet not connected");
+      if (!wallet) throw new Error("Wallet not connected");
 
       const userRewardAddress = (await wallet.getRewardAddresses())[0];
       const nonce = generateNonce("Verify this wallet: ");
@@ -239,7 +240,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
                 </Button>
               )}
               {!discordId && !isLoadingDiscordIds && isCurrentUser && (
-                <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-xs flex-1">
+                <Button variant="outline" size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-xs flex-1">
                   Connect Discord
                 </Button>
               )}
@@ -312,7 +313,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
 
               {/* Connect Discord Button */}
               {!discordId && !isLoadingDiscordIds && isCurrentUser && (
-                <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-sm">
+                <Button variant="outline" size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-sm">
                   Connect Discord
                 </Button>
               )}

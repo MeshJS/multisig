@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Signable } from "@prisma/client";
 
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { sign } from "@/utils/signing";
 
 import { useToast } from "@/hooks/use-toast";
@@ -52,7 +52,7 @@ function SignableCard({
   walletId: string;
   signable: Signable;
 }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const [loading, setLoading] = useState<boolean>(false);
@@ -163,6 +163,7 @@ function SignableCard({
     if (!connected) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
 
     try {
       setLoading(true);
@@ -218,6 +219,7 @@ function SignableCard({
 
   const rejectPayload = useCallback(async () => {
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
 
     try {
       setLoading(true);

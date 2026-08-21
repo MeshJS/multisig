@@ -7,7 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
+import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog, ArrowLeftRight, ChevronDown, ChevronUp } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/common/empty-state";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
@@ -31,6 +33,7 @@ import ResponsiveTransactionsTable from "./responsive-transactions-table";
 import type { LucideIcon } from "lucide-react";
 import { DREP_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import Pagination from "@/components/common/overall-layout/pagination";
+import { TokenFlowContent } from "@/components/common/token-flow/token-flow-section";
 
 type CertificateInfo = {
   type: string;
@@ -76,8 +79,24 @@ export default function AllTransactions({ appWallet }: { appWallet: Wallet }) {
     setCurrentPage(1);
   }, [appWallet.id, walletTransactions?.length]);
 
+  // Distinguish loading (store value not yet populated) from genuinely empty.
   if (walletTransactions === undefined)
-    return <div className="text-center">No transactions yet</div>;
+    return (
+      <div className="space-y-2">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-14 w-full" />
+        ))}
+      </div>
+    );
+
+  if (walletTransactions.length === 0)
+    return (
+      <EmptyState
+        icon={ArrowLeftRight}
+        title="No transactions yet"
+        description="Transactions involving this wallet will appear here once it has on-chain activity."
+      />
+    );
 
   return (
     <CardUI
@@ -170,6 +189,7 @@ function TransactionRow({
       assetName: string;
     }[]
   >([]);
+  const [flowOpen, setFlowOpen] = useState(false);
 
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
@@ -290,26 +310,34 @@ function TransactionRow({
   }, [dbTransaction]);
 
   return (
+    <React.Fragment>
     <TableRow style={{ backgroundColor: "none" }} className="hover:bg-muted/50">
       <TableCell className="align-top py-4">
         <div className="flex flex-col gap-1.5 min-w-0">
-          <LinkCardanoscan
-            url={`transaction/${transaction.hash}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-          >
-            <span className="font-mono text-xs truncate">
-              {transaction.hash.substring(0, 8)}...{transaction.hash.slice(-8)}
-            </span>
-            <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
-          </LinkCardanoscan>
+          {/* Lead with the human-meaningful label (fall back to direction so
+              on-chain-only rows are never identified by a bare hash). */}
+          <div className="text-sm font-medium text-foreground break-words line-clamp-2">
+            {dbTransaction?.description ??
+              certificatesInfo?.[0]?.label ??
+              (transaction.inputs.some(
+                (i) => i.address === appWallet.address,
+              )
+                ? "Sent"
+                : "Received")}
+          </div>
           <span className="text-xs text-muted-foreground">
             {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
           </span>
-        {dbTransaction && (
-            <div className="text-sm font-medium break-words line-clamp-2">
-            {dbTransaction.description}
-          </div>
-        )}
+          {/* Hash demoted to a quiet mono link. */}
+          <LinkCardanoscan
+            url={`transaction/${transaction.hash}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors group"
+          >
+            <span className="font-mono">
+              {getFirstAndLast(transaction.hash, 8, 8)}
+            </span>
+            <ArrowUpRight className="h-3 w-3 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </LinkCardanoscan>
         {certificatesInfo && certificatesInfo.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {certificatesInfo.map((certInfo: CertificateInfo, idx: number) => {
@@ -365,9 +393,39 @@ function TransactionRow({
         </div>
       </TableCell>
       <TableCell className="align-top py-4">
-        <RowAction transaction={transaction} appWallet={appWallet} />
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            data-testid={`tx-flow-toggle-${transaction.hash}`}
+            aria-label="Toggle token flow"
+            onClick={() => setFlowOpen((open) => !open)}
+          >
+            {flowOpen ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+          <RowAction transaction={transaction} appWallet={appWallet} />
+        </div>
       </TableCell>
     </TableRow>
+    {flowOpen && (
+      <TableRow className="hover:bg-transparent">
+        <TableCell colSpan={4} className="p-2">
+          <TokenFlowContent
+            source={{
+              type: "onchain",
+              txHash: transaction.hash,
+              description: dbTransaction?.description,
+            }}
+            appWallet={appWallet}
+          />
+        </TableCell>
+      </TableRow>
+    )}
+    </React.Fragment>
   );
 }
 
@@ -387,7 +445,7 @@ function RowAction({
     );
 
     if (allTxInputsFromSameAddress) {
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       const _amount: { [unit: string]: number } = {};
 
