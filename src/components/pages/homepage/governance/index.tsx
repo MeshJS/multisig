@@ -3,6 +3,7 @@ import SectionTitle from "@/components/ui/section-title";
 import CardUI from "@/components/ui/card-content";
 import Button from "@/components/common/button";
 import Link from "next/link";
+import GovernanceNetworkStats from "./network-stats";
 
 export default function PageGovernance() {
   const governanceFeatures = [
@@ -80,6 +81,8 @@ export default function PageGovernance() {
         enable collaborative decision-making and enhance your multi-signature
         wallet experience.
       </p>
+
+      <GovernanceNetworkStats />
 
       {governanceFeatures.map((feature, index) => (
         <React.Fragment key={index}>
