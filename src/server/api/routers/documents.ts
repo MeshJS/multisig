@@ -24,9 +24,27 @@ import { TRPCError } from "@trpc/server";
 import { checkSignature } from "@meshsdk/core";
 import { Prisma, type Wallet } from "@prisma/client";
 
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
+import {
+  ATTESTATION_DOMAIN,
+  ATTESTATION_STATEMENT,
+  GENESIS_PREV,
+  attestationHash,
+  buildAttestationPayload,
+  canonicalizeAttestation,
+  verifyAttestationChain,
+  type AttestationRecord,
+} from "@/lib/documents/attestation";
+import {
+  getAttestationPublicKeys,
+  getAttestationSigner,
+} from "@/lib/documents/attestation-key";
 import {
   buildSignOffPayload,
   canonicalizeSignOffPayload,
@@ -105,7 +123,10 @@ const assertDocumentAccess = async (ctx: AuthCtx, documentId: string) => {
   if (!document) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
   }
-  const { wallet, addresses } = await assertWalletAccess(ctx, document.walletId);
+  const { wallet, addresses } = await assertWalletAccess(
+    ctx,
+    document.walletId,
+  );
   return { document, wallet, addresses };
 };
 
@@ -198,7 +219,10 @@ export const documentRouter = createTRPCRouter({
         include: { document: true, signerSnapshot: true, reviews: true },
       });
       if (!version) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found",
+        });
       }
       const { addresses } = await assertWalletAccess(
         ctx,
@@ -256,7 +280,9 @@ export const documentRouter = createTRPCRouter({
             fileName: z.string().max(300).optional(),
             mimeType: z.string().max(200).optional(),
             fileSize: z.number().int().nonnegative().optional(),
-            storageMode: z.enum(["hashOnly", "inline", "external"]).default("hashOnly"),
+            storageMode: z
+              .enum(["hashOnly", "inline", "external"])
+              .default("hashOnly"),
             contentRef: z.string().max(2000).optional(),
             contentInline: z.string().optional(),
             reviewInstructions: z.string().max(5000).optional(),
@@ -308,6 +334,7 @@ export const documentRouter = createTRPCRouter({
               },
             },
           });
+          await attestVersion(tx, version, input.walletId);
         }
 
         return created;
@@ -339,7 +366,9 @@ export const documentRouter = createTRPCRouter({
         fileName: z.string().max(300).optional(),
         mimeType: z.string().max(200).optional(),
         fileSize: z.number().int().nonnegative().optional(),
-        storageMode: z.enum(["hashOnly", "inline", "external"]).default("hashOnly"),
+        storageMode: z
+          .enum(["hashOnly", "inline", "external"])
+          .default("hashOnly"),
         contentRef: z.string().max(2000).optional(),
         contentInline: z.string().optional(),
         reviewInstructions: z.string().max(5000).optional(),
@@ -364,7 +393,11 @@ export const documentRouter = createTRPCRouter({
           orderBy: { versionNumber: "desc" },
         });
 
-        if (latest && latest.status !== "Superseded" && latest.status !== "Archived") {
+        if (
+          latest &&
+          latest.status !== "Superseded" &&
+          latest.status !== "Archived"
+        ) {
           await tx.documentVersion.update({
             where: { id: latest.id },
             data: { status: "Superseded", supersededAt: new Date() },
@@ -408,6 +441,8 @@ export const documentRouter = createTRPCRouter({
           },
         });
 
+        await attestVersion(tx, created, document.walletId);
+
         await tx.document.update({
           where: { id: document.id },
           data: { status: "Draft" },
@@ -431,7 +466,10 @@ export const documentRouter = createTRPCRouter({
         include: { document: true, signerSnapshot: true },
       });
       if (!version) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found",
+        });
       }
       const { wallet, addresses } = await assertWalletAccess(
         ctx,
@@ -542,7 +580,10 @@ export const documentRouter = createTRPCRouter({
         include: { document: true, signerSnapshot: true, reviews: true },
       });
       if (!version) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found",
+        });
       }
       const { addresses } = await assertWalletAccess(
         ctx,
@@ -550,7 +591,10 @@ export const documentRouter = createTRPCRouter({
       );
       const signerAddress = actingAddress(addresses, input.signerAddress);
 
-      const deny = (reason: string, code: "CONFLICT" | "FORBIDDEN" | "BAD_REQUEST" = "BAD_REQUEST"): never => {
+      const deny = (
+        reason: string,
+        code: "CONFLICT" | "FORBIDDEN" | "BAD_REQUEST" = "BAD_REQUEST",
+      ): never => {
         void audit(ctx.db, {
           actorAddress: signerAddress,
           actorType: "user",
@@ -565,7 +609,8 @@ export const documentRouter = createTRPCRouter({
       };
 
       const snapshot = version.signerSnapshot;
-      if (!snapshot) deny("No review round has been started for this version", "CONFLICT");
+      if (!snapshot)
+        deny("No review round has been started for this version", "CONFLICT");
       if (version.status !== "InReview") {
         deny(`Version is ${version.status}, not open for review`, "CONFLICT");
       }
@@ -577,7 +622,8 @@ export const documentRouter = createTRPCRouter({
       }
 
       const signedAt = new Date(input.signedAt);
-      if (Number.isNaN(signedAt.getTime())) deny("signedAt is not a valid date");
+      if (Number.isNaN(signedAt.getTime()))
+        deny("signedAt is not a valid date");
       if (!isSignedAtWithinTolerance(signedAt)) {
         deny("signedAt is outside the accepted time window");
       }
@@ -616,7 +662,8 @@ export const documentRouter = createTRPCRouter({
           `Signature verification failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (!signatureValid) deny("Invalid signature for this signer", "FORBIDDEN");
+      if (!signatureValid)
+        deny("Invalid signature for this signer", "FORBIDDEN");
 
       const result = await ctx.db.$transaction(async (tx) => {
         const review = await tx.documentReview.create({
@@ -636,7 +683,10 @@ export const documentRouter = createTRPCRouter({
           data: {
             documentId: version.documentId,
             versionId: version.id,
-            type: input.action === "approve" ? "review.approved" : "review.rejected",
+            type:
+              input.action === "approve"
+                ? "review.approved"
+                : "review.rejected",
             actorAddress: signerAddress,
             metadata: { versionNumber: version.versionNumber },
           },
@@ -667,7 +717,10 @@ export const documentRouter = createTRPCRouter({
             data: {
               documentId: version.documentId,
               versionId: version.id,
-              type: outcome === "Approved" ? "threshold.reached" : "version.rejected",
+              type:
+                outcome === "Approved"
+                  ? "threshold.reached"
+                  : "version.rejected",
               actorAddress: signerAddress,
               metadata: {
                 approvals,
@@ -711,7 +764,10 @@ export const documentRouter = createTRPCRouter({
         },
       });
       if (!version) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found",
+        });
       }
       const { addresses } = await assertWalletAccess(
         ctx,
@@ -830,6 +886,65 @@ export const documentRouter = createTRPCRouter({
       });
     }),
 
+  /**
+   * Export a document's attestation chain, with the public keys needed to check
+   * it. Deliberately separate from `exportProof`: that package is a versioned
+   * format (`...proof.v1`) whose field names are a contract, and quietly adding
+   * to it would change what every existing verifier is parsing.
+   */
+  exportAttestationChain: protectedProcedure
+    .input(z.object({ documentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { document } = await assertDocumentAccess(ctx, input.documentId);
+
+      const rows = await ctx.db.documentAttestation.findMany({
+        where: { documentId: document.id },
+        orderBy: { sequence: "asc" },
+      });
+
+      return {
+        format: ATTESTATION_DOMAIN,
+        documentId: document.id,
+        title: document.title,
+        // What the signature does and does not mean, carried with the export so
+        // it does not depend on the reader having found the docs.
+        statement: ATTESTATION_STATEMENT,
+        publicKeys: getAttestationPublicKeys(),
+        chain: rows.map((row) => ({
+          payload: JSON.parse(row.payload) as unknown,
+          signature: row.signature,
+          publicKeyId: row.publicKeyId,
+        })),
+      };
+    }),
+
+  /**
+   * Check an attestation chain. Public, like `verifyProof`, so a recipient can
+   * verify one without an account — though they do not need us at all: the
+   * algorithm is in src/lib/documents/attestation.ts and depends on nothing but
+   * node crypto.
+   */
+  verifyAttestationChain: publicProcedure
+    .input(
+      z.object({
+        chain: z.array(
+          z.object({
+            payload: z.unknown(),
+            signature: z.string(),
+            publicKeyId: z.string(),
+          }),
+        ),
+        /** Omit to check against the keys this deployment publishes. */
+        publicKeys: z.record(z.string(), z.string()).optional(),
+      }),
+    )
+    .mutation(({ input }) =>
+      verifyAttestationChain(
+        input.chain as AttestationRecord[],
+        input.publicKeys ?? getAttestationPublicKeys(),
+      ),
+    ),
+
   /** Archive a document — history is retained, it just leaves active use. */
   archiveDocument: protectedProcedure
     .input(z.object({ documentId: z.string().min(1) }))
@@ -880,6 +995,70 @@ type VersionRowInput = {
  * bytes it shipped is a version-drift bug or an attack; either way it must
  * never reach the signers.
  */
+/**
+ * Attest a newly created version: a signed timestamp-and-ordering record,
+ * linked to the previous attestation for this document.
+ *
+ * Explicitly NOT an approval — see src/lib/documents/attestation.ts. The
+ * platform key witnesses that a version existed at a time and in a position;
+ * enactment still requires CIP-8 signatures from the wallet's own signers.
+ *
+ * Runs inside the caller's transaction, on purpose. When a key is configured,
+ * every version gets an attestation or the version is not created at all: a
+ * silently unattested version would make the audit trail lie by omission, which
+ * is worse than a failed upload. When no key is configured this is a no-op and
+ * the rest of the feature behaves exactly as before.
+ *
+ * Concurrency is handled by @@unique([documentId, sequence]): two simultaneous
+ * uploads cannot both claim the same link, so one rolls back rather than
+ * forking the chain — the same way @@unique([documentId, versionNumber])
+ * already guards version numbers.
+ */
+async function attestVersion(
+  tx: Prisma.TransactionClient,
+  version: {
+    id: string;
+    documentId: string;
+    versionNumber: number;
+    contentHash: string;
+  },
+  walletId: string,
+) {
+  const signer = getAttestationSigner();
+  if (!signer) return;
+
+  const previous = await tx.documentAttestation.findFirst({
+    where: { documentId: version.documentId },
+    orderBy: { sequence: "desc" },
+  });
+
+  const payload = buildAttestationPayload({
+    attestedAt: new Date(),
+    contentHash: version.contentHash,
+    documentId: version.documentId,
+    prevAttestationHash: previous?.attestationHash ?? GENESIS_PREV,
+    sequence: (previous?.sequence ?? 0) + 1,
+    versionId: version.id,
+    versionNumber: version.versionNumber,
+    walletId,
+  });
+
+  await tx.documentAttestation.create({
+    data: {
+      versionId: version.id,
+      documentId: version.documentId,
+      sequence: payload.sequence,
+      contentHash: payload.contentHash,
+      prevAttestationHash: payload.prevAttestationHash,
+      attestationHash: attestationHash(payload),
+      payload: canonicalizeAttestation(payload),
+      signature: signer.sign(payload),
+      publicKeyId: signer.keyId,
+      attestedAt: new Date(payload.attestedAt),
+    },
+  });
+}
+
 async function createVersionRow(
   tx: Prisma.TransactionClient,
   input: VersionRowInput,
@@ -923,7 +1102,8 @@ async function createVersionRow(
       fileSize: input.fileSize ?? null,
       storageMode: input.storageMode,
       contentRef: input.contentRef ?? null,
-      contentInline: input.storageMode === "inline" ? input.contentInline : null,
+      contentInline:
+        input.storageMode === "inline" ? input.contentInline : null,
       reviewInstructions: input.reviewInstructions ?? null,
       status: "Draft",
       createdBy: input.createdBy,

@@ -486,6 +486,7 @@ model DocumentVersion {
   reviews            DocumentReview[]
   signerSnapshot     DocumentSignerSnapshot?
   events             DocumentEvent[]
+  attestation        DocumentAttestation?
 
   @@unique([documentId, versionNumber])
   @@index([documentId])
@@ -637,4 +638,36 @@ model OAuthGrant {
 
   @@unique([subjectAddress, clientId])
   @@index([subjectAddress])
+}
+
+/// Platform attestation over a document version: a timestamp and ordering
+/// record, signed by the platform's Ed25519 notary key.
+///
+/// Explicitly NOT an approval. Approval is DocumentReview, signed by the
+/// wallet's own signers. This row only witnesses that a version existed at a
+/// time and in a position, and each row commits to the hash of the previous
+/// one, so the history is tamper-evident independently of this table.
+model DocumentAttestation {
+  id                  String          @id @default(cuid())
+  versionId           String          @unique
+  version             DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  documentId          String
+  /// 1-based position in this document's chain.
+  sequence            Int
+  contentHash         String
+  /// Link to the previous attestation, or 64 zeroes for the first.
+  prevAttestationHash String
+  /// sha256 of the canonical payload — what the NEXT attestation commits to.
+  attestationHash     String          @unique
+  /// The exact canonical JSON that was signed.
+  payload             String
+  /// Ed25519 signature, lowercase hex.
+  signature           String
+  /// Which key signed it, so keys can be rotated without reissuing history.
+  publicKeyId         String
+  attestedAt          DateTime
+
+  @@unique([documentId, sequence])
+  @@index([documentId])
+  @@index([contentHash])
 }
