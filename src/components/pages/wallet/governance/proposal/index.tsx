@@ -17,6 +17,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Clock, Calendar, Coins, Hash, FileText, Wallet } from "lucide-react";
+import {
+  createProposalMetadataFallback,
+  fetchProposalMetadataWithFallback,
+} from "@/lib/governance/proposalMetadata";
 
 function WalletGovernanceProposalContent({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
@@ -52,21 +56,36 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
   useEffect(() => {
     const blockchainProvider = getProvider(network);
     async function fetchProposalData() {
-      const [txHash, certIndex] = id.split(":");
+      const [txHash = "", certIndex = "0"] = id.split(":");
       setLoadingDetails(true);
       
       try {
-        // Fetch metadata
-        const metadata = await blockchainProvider.get(
-          `/governance/proposals/${txHash}/${certIndex}/metadata`,
-        ) as ProposalMetadata;
-        setProposalMetadata(metadata);
+        const detailsPath = `/governance/proposals/${txHash}/${certIndex}`;
+        const detailsPromise = blockchainProvider
+          .get(detailsPath)
+          .catch(() => null) as Promise<ProposalDetails | null>;
+
+        const proposal = {
+          tx_hash: txHash,
+          cert_index: Number(certIndex),
+          governance_type: "",
+        };
+        const metadata = await fetchProposalMetadataWithFallback({
+          provider: blockchainProvider,
+          proposal,
+          fetchDetails: () => detailsPromise,
+        });
+
+        setProposalMetadata(
+          metadata ?? createProposalMetadataFallback(proposal),
+        );
 
         // Fetch proposal details
         try {
-          const details = await blockchainProvider.get(
-            `/governance/proposals/${txHash}/${certIndex}`,
-          ) as ProposalDetails;
+          const details = (await detailsPromise) as ProposalDetails | null;
+          if (!details) {
+            return;
+          }
           setProposalDetails(details);
 
           // Fetch parameters if it's a parameter update proposal

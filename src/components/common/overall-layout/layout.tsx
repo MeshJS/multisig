@@ -1,14 +1,17 @@
 import React, { useEffect, Component, ReactNode, useMemo, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useNostrChat } from "@jinglescode/nostr-chat-plugin";
-import { useWallet, useAddress } from "@meshsdk/react";
+import { useAddress } from "@meshsdk/react";
 import { publicRoutes } from "@/data/public-routes";
 import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
+import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { Background } from "@/components/ui/background";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useAppWallet from "@/hooks/useAppWallet";
 import useUTXOS from "@/hooks/useUTXOS";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -28,6 +31,7 @@ import {
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
+import SiteFooter from "@/components/common/overall-layout/site-footer";
 import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
@@ -94,73 +98,28 @@ class WalletErrorBoundary extends Component<
   }
 }
 
-// Component to track layout content changes
-function LayoutContentTracker({ 
-  children, 
-  router, 
-  pageIsPublic, 
-  userAddress 
-}: { 
-  children: ReactNode; 
-  router: ReturnType<typeof useRouter>;
-  pageIsPublic: boolean;
-  userAddress: string | undefined;
-}) {
-  const prevPathRef = useRef<string>(router.pathname);
-  const prevQueryRef = useRef<string>(JSON.stringify(router.query));
-  
-  useEffect(() => {
-    const handleRouteChangeStart = (url: string) => {
-      // Route change started
-    };
-    
-    const handleRouteChangeComplete = (url: string) => {
-      prevPathRef.current = router.pathname;
-      prevQueryRef.current = JSON.stringify(router.query);
-    };
-    
-    const handleRouteChangeError = (err: Error, url: string) => {
-      // Route change error
-    };
-    
-    router.events.on('routeChangeStart', handleRouteChangeStart);
-    router.events.on('routeChangeComplete', handleRouteChangeComplete);
-    router.events.on('routeChangeError', handleRouteChangeError);
-    
-    return () => {
-      router.events.off('routeChangeStart', handleRouteChangeStart);
-      router.events.off('routeChangeComplete', handleRouteChangeComplete);
-      router.events.off('routeChangeError', handleRouteChangeError);
-    };
-  }, [router]);
-  
-  useEffect(() => {
-    if (router.pathname !== prevPathRef.current || JSON.stringify(router.query) !== prevQueryRef.current) {
-      prevPathRef.current = router.pathname;
-      prevQueryRef.current = JSON.stringify(router.query);
-    }
-  }, [router.pathname, router.query]);
-  
-  return <>{children}</>;
-}
-
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { wallet } = useWallet();
+  // 1.9 IWallet bridge — used for getDRep(), which the react 2.0 wallet lacks.
+  const { wallet: meshWallet } = useMeshWallet();
   const { state: walletState, connectedWalletInstance } = useWalletContext();
-  const address = useAddress();
+  // react-2.0's useAddress can return hex-encoded address bytes; user records
+  // and sessions are keyed by bech32. Normalize once at the source so every
+  // consumer below (store sync, session check) uses the bech32 form.
+  const rawAddress = useAddress();
+  const address = rawAddress ? normalizeAddressToBech32(rawAddress) : rawAddress;
   const { user, isLoading: isLoadingUser } = useUser();
   const router = useRouter();
   const { appWallet } = useAppWallet();
   const { multisigWallet } = useMultisigWallet();
-  const { generateNsec } = useNostrChat();
-  const { isEnabled: isUtxosEnabled } = useUTXOS();
+  const { isEnabled: isUtxosEnabled, wallet: utxosWallet } = useUTXOS();
 
   const userAddress = useUserStore((state) => state.userAddress);
   const setUserAddress = useUserStore((state) => state.setUserAddress);
+  const reauthNonce = useUserStore((state) => state.reauthNonce);
   const ctx = api.useUtils();
   
   // State for wallet authorization modal
@@ -168,14 +127,22 @@ export default function RootLayout({
   const [checkingSession, setCheckingSession] = useState(false);
   const [hasCheckedSession, setHasCheckedSession] = useState(false); // Prevent duplicate checks
   const [showPostAuthLoading, setShowPostAuthLoading] = useState(false); // Show loading after authorization
-  
+
+  // Animated background preference (persisted to localStorage). Gate render on a
+  // mounted flag so the server (which can't read localStorage) and the first
+  // client paint agree, avoiding a hydration mismatch.
+  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
+  const [appearanceMounted, setAppearanceMounted] = useState(false);
+  useEffect(() => setAppearanceMounted(true), []);
+
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);
   const anyWalletConnected = connected || isUtxosEnabled;
   // Use connectedWalletInstance if available, otherwise fall back to wallet
-  const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0 
-    ? connectedWalletInstance 
-    : wallet;
+  const activeWallet = connectedWalletInstance && Object.keys(connectedWalletInstance).length > 0
+    ? connectedWalletInstance
+    : meshWallet;
 
   // Global error handler for unhandled promise rejections
   useEffect(() => {
@@ -229,7 +196,6 @@ export default function RootLayout({
             address: variables.address,
             stakeAddress: variables.stakeAddress,
             drepKeyHash: variables.drepKeyHash ?? "",
-            nostrKey: variables.nostrKey,
           }
         );
       }
@@ -308,7 +274,7 @@ export default function RootLayout({
       activeWallet.getUsedAddresses()
         .then((addresses) => {
           if (addresses && addresses.length > 0) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
             fetchingAddressRef.current = false;
           } else {
             return activeWallet.getUnusedAddresses();
@@ -316,7 +282,7 @@ export default function RootLayout({
         })
         .then((addresses) => {
           if (addresses && addresses.length > 0 && !userAddress) {
-            setUserAddress(addresses[0]!);
+            setUserAddress(normalizeAddressToBech32(addresses[0]!));
           }
           fetchingAddressRef.current = false;
         })
@@ -339,8 +305,8 @@ export default function RootLayout({
     }
 
     async function initializeWallet() {
-      if (!walletAddress) return;
-      
+      if (!walletAddress || !activeWallet) return;
+
       try {
         // Get stake address
         const stakeAddresses = await activeWallet.getRewardAddresses();
@@ -349,10 +315,11 @@ export default function RootLayout({
           return;
         }
 
-        // Get DRep key hash (optional)
+        // Get DRep key hash (optional). getDRep only exists on the 1.9 IWallet,
+        // so use the bridged wallet; if it isn't enabled yet, skip silently.
         let drepKeyHash = "";
         try {
-          const dRepKey = await activeWallet.getDRep();
+          const dRepKey = await meshWallet?.getDRep();
           if (dRepKey?.publicKeyHash) {
             drepKeyHash = dRepKey.publicKeyHash;
           }
@@ -361,12 +328,10 @@ export default function RootLayout({
         }
 
         // Create or update user
-        const nostrKey = generateNsec();
         createUser({
           address: walletAddress,
           stakeAddress,
           drepKeyHash,
-          nostrKey: JSON.stringify(nostrKey),
         });
       } catch (error) {
         if (error instanceof Error && error.message.includes("account changed")) {
@@ -374,9 +339,9 @@ export default function RootLayout({
         }
       }
     }
-    
+
     initializeWallet();
-  }, [connected, activeWallet, user, userAddress, address, createUser, generateNsec]);
+  }, [connected, activeWallet, meshWallet, user, userAddress, address, createUser]);
 
   // Check wallet session and show authorization modal for first-time connections
   // Check session as soon as wallet is connected and address is available (don't wait for user)
@@ -450,19 +415,90 @@ export default function RootLayout({
     // Don't refetch here - let the natural query refetch handle it if needed
   }, []);
 
+  // Manual re-authorization: when the user is connected but never got a
+  // session (e.g. the auto-authorize failed/was cancelled), hasCheckedSession
+  // stays true and the modal never reopens — leaving the connect button stuck
+  // on "Loading…". Bumping reauthNonce (from the connect dropdown) clears that
+  // latch and refetches the session so the session-check effect reopens the
+  // auth modal.
+  useEffect(() => {
+    if (reauthNonce > 0) {
+      setHasCheckedSession(false);
+      setCheckingSession(false);
+      setShowAuthModal(false);
+      void refetchWalletSession();
+    }
+  }, [reauthNonce, refetchWalletSession]);
+
   const handleAuthModalAuthorized = useCallback(async () => {
     setShowAuthModal(false);
     setCheckingSession(false);
     setHasCheckedSession(true); // Mark as checked so we don't check again
     // Show loading skeleton for smooth transition
     setShowPostAuthLoading(true);
-    
+
     // Wait a moment for the cookie to be set by the browser, then refetch session
     await new Promise(resolve => setTimeout(resolve, 200));
-    
+
     // Refetch session to update state
     await refetchWalletSession();
-    
+
+    // Create/ensure the User row now that the wallet session cookie exists.
+    //
+    // createUser is a protectedProcedure (it needs a session). The onboarding
+    // effects fire createUser on *connect* (regular wallets in initializeWallet
+    // below; UTXOS in connect-wallet) — which happens seconds before the user
+    // approves the signing prompt — so that first attempt always runs
+    // unauthenticated and is rejected UNAUTHORIZED, and it never retries once the
+    // cookie lands. The result: useUser() stays null and the connect button is
+    // stuck on "Authorize" even though signing succeeded. Re-run it here, after
+    // authorization, when the cookie is actually present — for both regular
+    // browser wallets and the UTXOS smart wallet.
+    try {
+      const authedAddress = userAddress || address;
+      if (authedAddress) {
+        let stakeAddress: string | undefined;
+        let drepKeyHash = "";
+
+        if (activeWallet) {
+          // Regular browser wallet: stake from the wallet, DRep from the 1.9 IWallet.
+          stakeAddress = (await activeWallet.getRewardAddresses())[0];
+          try {
+            const dRepKey = await meshWallet?.getDRep();
+            if (dRepKey?.publicKeyHash) {
+              drepKeyHash = dRepKey.publicKeyHash;
+            }
+          } catch {
+            // DRep key is optional
+          }
+        } else if (isUtxosEnabled && utxosWallet?.cardano) {
+          // UTXOS smart wallet: stake + DRep come from its CIP-30 interface.
+          stakeAddress = (await utxosWallet.cardano.getRewardAddresses())[0];
+          try {
+            if (typeof utxosWallet.cardano.getDRep === "function") {
+              const dRepKey = await utxosWallet.cardano.getDRep();
+              if (dRepKey && typeof dRepKey === "object" && "publicKeyHash" in dRepKey) {
+                drepKeyHash = (dRepKey as { publicKeyHash: string }).publicKeyHash;
+              }
+            }
+          } catch {
+            // DRep key is optional
+          }
+        }
+
+        if (stakeAddress) {
+          createUser({
+            address: authedAddress,
+            stakeAddress: normalizeAddressToBech32(stakeAddress),
+            drepKeyHash,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal: the onboarding effects will retry on a later render now that
+      // the session cookie is present.
+    }
+
     // Invalidate wallet queries so they refetch with the new session
     // Use a small delay to ensure cookie is available on subsequent requests
     setTimeout(() => {
@@ -478,15 +514,29 @@ export default function RootLayout({
     setTimeout(() => {
       setShowPostAuthLoading(false);
     }, 1500);
-  }, [refetchWalletSession, ctx.wallet, userAddress, address]);
+  }, [refetchWalletSession, ctx.wallet, userAddress, address, activeWallet, meshWallet, isUtxosEnabled, utxosWallet, createUser]);
 
   // Memoize computed route values
   const isWalletPath = useMemo(() => router.pathname.includes("/wallets/[wallet]"), [router.pathname]);
   const walletPageRoute = useMemo(() => router.pathname.split("/wallets/[wallet]/")[1], [router.pathname]);
   const walletPageNames = useMemo(() => walletPageRoute ? walletPageRoute.split("/") : [], [walletPageRoute]);
-  const pageIsPublic = useMemo(() => publicRoutes.includes(router.pathname), [router.pathname]);
+  // OAuth flow pages must render for a signed-out visitor — arriving without a
+  // connected wallet is the normal case for a consent screen, since the user is
+  // being sent here by a third-party client. They are not marketing surfaces,
+  // so they render without the site footer.
+  const isAuthFlow = useMemo(() => router.pathname.startsWith("/oauth/"), [router.pathname]);
+  const pageIsPublic = useMemo(
+    () => publicRoutes.includes(router.pathname) || isAuthFlow,
+    [router.pathname, isAuthFlow],
+  );
   const isLoggedIn = useMemo(() => !!user, [user]);
   const isHomepage = useMemo(() => router.pathname === "/", [router.pathname]);
+  // Marketing footer on public surfaces, but not on the logged-in homepage
+  // (which renders the wallet dashboard rather than the landing page).
+  const showFooter = useMemo(
+    () => pageIsPublic && !isAuthFlow && !(isHomepage && isLoggedIn),
+    [pageIsPublic, isAuthFlow, isHomepage, isLoggedIn],
+  );
 
   // Keep track of the last visited wallet to show wallet menu even on other pages
   const [lastVisitedWalletId, setLastVisitedWalletId] = React.useState<string | null>(null);
@@ -551,7 +601,26 @@ export default function RootLayout({
   const walletIdForMenu = useMemo(() => (router.query.wallet as string) || lastVisitedWalletId || undefined, [router.query.wallet, lastVisitedWalletId]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden">
+      {/* Animated app background (on by default; toggle in profile → Appearance).
+          Renders on every route including the homepage, behind the homepage's
+          own hero background. */}
+      {appearanceMounted && backgroundEnabled && (
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <Background
+            variant="aurora"
+            preset={backgroundPreset}
+            className="opacity-50"
+          />
+        </div>
+      )}
+      {/* Skip link for keyboard users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      >
+        Skip to main content
+      </a>
       {(shouldShowBackgroundLoading || showPostAuthLoading) && (
         <div className="fixed inset-0 z-50 transition-opacity duration-300 ease-in-out opacity-100">
           <Loading />
@@ -595,7 +664,9 @@ export default function RootLayout({
               {!isLoggedIn ? (
                 // On the homepage, the hero renders the wallet connector (avoid double-mount).
                 // On all other routes, show it in the header.
-                isHomepage ? null : <ConnectWallet key="wallet-connector" />
+                isHomepage ? null : (
+                  <ConnectWallet key="wallet-connector" variant="compact" />
+                )
               ) : (
                 <>
                   {/* Desktop buttons */}
@@ -623,7 +694,7 @@ export default function RootLayout({
         {/* Sidebar for larger screens - hidden only on public homepage (not logged in) */}
         {(isLoggedIn || !isHomepage) && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
-            <div className="flex h-full max-h-screen flex-col">
+            <div className="flex h-full max-h-[100dvh] flex-col">
               <nav className="flex-1 pt-2 overflow-y-auto">
                 <div className="flex flex-col">
                   {/* 1. Home Link - only when NOT logged in */}
@@ -677,7 +748,16 @@ export default function RootLayout({
         )}
 
         {/* Main content */}
-        <main className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="relative flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-8 focus:outline-none"
+        >
+          {/* When the marketing footer is shown, keep page content + footer in a
+              non-shrinking flex column so a `min-h-screen` page root can't be
+              flex-shrunk by <main> (which would let content overflow under the
+              footer). `contents` is a no-op passthrough for app pages. */}
+          <div className={showFooter ? "flex shrink-0 flex-col gap-4" : "contents"}>
           <WalletErrorBoundary
             fallback={
               <div className="flex flex-col items-center justify-center h-full min-h-[400px] px-4">
@@ -712,10 +792,10 @@ export default function RootLayout({
               </div>
             }
           >
-            <LayoutContentTracker router={router} pageIsPublic={pageIsPublic} userAddress={userAddress}>
-              {pageIsPublic || userAddress ? children : <PageHomepage />}
-            </LayoutContentTracker>
+            {pageIsPublic || userAddress ? children : <PageHomepage />}
           </WalletErrorBoundary>
+          {showFooter && <SiteFooter />}
+          </div>
         </main>
       </div>
       

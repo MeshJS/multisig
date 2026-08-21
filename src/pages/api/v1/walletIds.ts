@@ -31,7 +31,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -79,16 +79,11 @@ export default async function handler(
         ip: getClientIP(req),
       });
       const wallets = await caller.wallet.getUserWallets({ address });
-      if (!wallets) {
-        return res.status(404).json({ error: "Wallets not found" });
-      }
-      walletIds = wallets.map((w) => ({ walletId: w.id, walletName: w.name }));
+      walletIds = (wallets ?? []).map((w) => ({ walletId: w.id, walletName: w.name }));
     }
 
-    if (walletIds.length === 0) {
-      return res.status(404).json({ error: "Wallets not found" });
-    }
-
+    // No memberships is a valid answer, not an error — return an empty list
+    // so clients can tell "not in any wallets yet" from a bad request.
     res.setHeader("Cache-Control", "private, max-age=120, stale-while-revalidate=300");
     res.status(200).json(walletIds);
   } catch (error) {

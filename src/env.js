@@ -17,6 +17,44 @@ export const env = createEnv({
     JWT_SECRET: z.string().min(32),
     BLOCKFROST_API_KEY_PREPROD: z.string().optional(),
     BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
+    /**
+     * Base URL for the Ekklesia / Intersect Hydra voting API that the
+     * `/api/ekklesia/*` proxy forwards to. Defaults to the Intersect mainnet
+     * instance. Browser-direct calls are blocked by CORS, so all Ekklesia
+     * traffic must go through the server proxy.
+     */
+    EKKLESIA_API_BASE: z
+      .string()
+      .url()
+      .default("https://intersect.ekklesia.vote/api"),
+    /**
+     * Comma-separated list of hostnames the OG metadata fetcher (`/api/v1/og`)
+     * is allowed to talk to. Defaults to a small allow-list when unset; set to
+     * "*" to allow any public hostname (still SSRF-guarded against private ranges).
+     */
+    OG_ALLOWED_HOSTS: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    EMAIL_FROM: z.string().optional(),
+    EMAIL_REPLY_TO: z.string().email().optional(),
+    NOTIFICATION_LINK_BASE_URL: z.string().url().optional(),
+    NOTIFICATION_DRAIN_SECRET: z.string().optional(),
+    NOTIFICATIONS_EMAIL_ENABLED: z
+      .enum(["true", "false"])
+      .default("false"),
+    /**
+     * Canonical origin of the OAuth 2.1 authorization server that protects the
+     * MCP endpoint (`/api/mcp`). Issued tokens carry this as `iss`, and the
+     * RFC 9728 / RFC 8414 discovery documents are built from it.
+     *
+     * Falls back to NEXT_PUBLIC_SITE_URL. Set it only when the OAuth issuer must
+     * differ from the public site origin. It is deliberately NOT derived from
+     * the request Host header in production — a header-derived issuer would let
+     * anyone who controls DNS publish metadata pointing at their own server.
+     */
+    OAUTH_ISSUER_URL: z.string().url().optional(),
+    // NEXTAUTH_SECRET / NEXTAUTH_URL / DISCORD_* are intentionally commented.
+    // NextAuth runs with PrismaAdapter only — no auth providers configured yet.
+    // Uncomment and add to runtimeEnv below when adding an OAuth provider.
     // NEXTAUTH_SECRET:
     //   process.env.NODE_ENV === "production"
     //     ? z.string()
@@ -42,10 +80,28 @@ export const env = createEnv({
     NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD: z.string(),
     NEXT_PUBLIC_UTXOS_PROJECT_ID: z.string().optional(),
     NEXT_PUBLIC_NETWORK_ID: z.string().default("0"),
+    /**
+     * Canonical public origin of the deployment. Used for SEO: canonical tags,
+     * Open Graph / Twitter URLs, robots.txt and the sitemap. Defaults to the
+     * production domain; override per-environment (e.g. preview deployments).
+     */
+    NEXT_PUBLIC_SITE_URL: z
+      .string()
+      .url()
+      .default("https://multisig.meshjs.dev"),
     /** Umami analytics: website ID from your Umami dashboard (cloud or self-hosted) */
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: z.string().optional(),
     /** Umami script URL; default is Umami Cloud. Use your self-hosted URL if needed. */
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: z.string().url().optional(),
+    /**
+     * Dedicated Pinata IPFS gateway origin (e.g. https://<id>.mypinata.cloud
+     * or a bare host like <id>.mypinata.cloud). IPFS reads resolve through
+     * /api/ipfs/resolve, which tries this gateway first (our pinned content)
+     * before falling back to public gateways, and new uploads return a URL on
+     * this gateway instead of the flaky ipfs.io. A missing scheme is normalised
+     * to https:// in code, so a bare hostname is accepted here.
+     */
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: z.string().optional(),
   },
 
   /**
@@ -66,6 +122,8 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD,
     NEXT_PUBLIC_UTXOS_PROJECT_ID: process.env.NEXT_PUBLIC_UTXOS_PROJECT_ID,
     NEXT_PUBLIC_NETWORK_ID: process.env.NEXT_PUBLIC_NETWORK_ID ?? "0",
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_PINATA_GATEWAY_URL: process.env.NEXT_PUBLIC_PINATA_GATEWAY_URL,
     NEXT_PUBLIC_UMAMI_WEBSITE_ID: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
     NEXT_PUBLIC_UMAMI_SCRIPT_URL: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
     PINATA_JWT: process.env.PINATA_JWT,
@@ -73,6 +131,16 @@ export const env = createEnv({
     JWT_SECRET: process.env.JWT_SECRET,
     BLOCKFROST_API_KEY_PREPROD: process.env.BLOCKFROST_API_KEY_PREPROD,
     BLOCKFROST_API_KEY_MAINNET: process.env.BLOCKFROST_API_KEY_MAINNET,
+    EKKLESIA_API_BASE: process.env.EKKLESIA_API_BASE,
+    OG_ALLOWED_HOSTS: process.env.OG_ALLOWED_HOSTS,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
+    NOTIFICATION_LINK_BASE_URL: process.env.NOTIFICATION_LINK_BASE_URL,
+    NOTIFICATION_DRAIN_SECRET: process.env.NOTIFICATION_DRAIN_SECRET,
+    NOTIFICATIONS_EMAIL_ENABLED:
+      process.env.NOTIFICATIONS_EMAIL_ENABLED ?? "false",
+    OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

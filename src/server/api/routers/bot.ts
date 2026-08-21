@@ -4,6 +4,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { BOT_SCOPES, parseScope, type BotScope } from "@/lib/auth/botKey";
 import { ClaimError, performClaim } from "@/lib/auth/claimBot";
 import { BotWalletRole } from "@prisma/client";
+import { audit } from "@/lib/observability/audit";
 
 type SessionAddressContext = {
   primaryWallet?: string | null;
@@ -167,10 +168,12 @@ export const botRouter = createTRPCRouter({
       const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
       const ownerAddress = wallet.ownerAddress ?? null;
-      const isOwner =
-        ownerAddress !== null &&
-        (ownerAddress === "all" || ownerAddress === requester);
-      if (!isOwner) {
+      const isOwner = ownerAddress !== null && ownerAddress === requester;
+      const isTeamSigner =
+        ownerAddress === "all" &&
+        Array.isArray(wallet.signersAddresses) &&
+        wallet.signersAddresses.includes(requester);
+      if (!isOwner && !isTeamSigner) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Only the wallet owner can grant bot access" });
       }
 
@@ -198,6 +201,16 @@ export const botRouter = createTRPCRouter({
           role: input.role,
         },
       });
+      void audit(ctx.db, {
+        actorAddress: requester,
+        actorType: "user",
+        action: "bot.access_grant",
+        resourceType: "wallet",
+        resourceId: input.walletId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { botId: input.botId, role: input.role },
+      });
       return { ok: true };
     }),
 
@@ -211,14 +224,26 @@ export const botRouter = createTRPCRouter({
       const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
       const ownerAddress = wallet.ownerAddress ?? null;
-      const isOwner =
-        ownerAddress !== null &&
-        (ownerAddress === "all" || ownerAddress === requester);
-      if (!isOwner) {
+      const isOwner = ownerAddress !== null && ownerAddress === requester;
+      const isTeamSigner =
+        ownerAddress === "all" &&
+        Array.isArray(wallet.signersAddresses) &&
+        wallet.signersAddresses.includes(requester);
+      if (!isOwner && !isTeamSigner) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Only the wallet owner can revoke bot access" });
       }
       await ctx.db.walletBotAccess.deleteMany({
         where: { walletId: input.walletId, botId: input.botId },
+      });
+      void audit(ctx.db, {
+        actorAddress: requester,
+        actorType: "user",
+        action: "bot.access_revoke",
+        resourceType: "wallet",
+        resourceId: input.walletId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { botId: input.botId },
       });
       return { ok: true };
     }),
@@ -233,10 +258,12 @@ export const botRouter = createTRPCRouter({
       const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
       if (!wallet) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
       const ownerAddress = wallet.ownerAddress ?? null;
-      const isOwner =
-        ownerAddress !== null &&
-        (ownerAddress === "all" || ownerAddress === requester);
-      if (!isOwner) {
+      const isOwner = ownerAddress !== null && ownerAddress === requester;
+      const isTeamSigner =
+        ownerAddress === "all" &&
+        Array.isArray(wallet.signersAddresses) &&
+        wallet.signersAddresses.includes(requester);
+      if (!isOwner && !isTeamSigner) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Only the wallet owner can list bot access" });
       }
       return ctx.db.walletBotAccess.findMany({

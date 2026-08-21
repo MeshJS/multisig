@@ -1,12 +1,16 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { csl, calculateTxHash } from "@meshsdk/core-csl";
+import { csl } from "@meshsdk/core-csl";
+import { resolveTxHash } from "@meshsdk/core-cst";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
 import { buildWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { audit } from "@/lib/observability/audit";
+import { assertWalletAccess } from "@/server/api/auth";
+import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -20,40 +24,6 @@ function normalizeHex(value: string): string {
   return trimmed;
 }
 
-const getSessionAddresses = (ctx: any): string[] => {
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
-  if (Array.isArray(sessionWallets) && sessionWallets.length > 0) {
-    return sessionWallets;
-  }
-  const single = ctx.session?.user?.id ?? ctx.sessionAddress;
-  return single ? [single] : [];
-};
-
-const assertWalletAccess = async (ctx: any, walletId: string) => {
-  const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
-  if (!wallet) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
-  }
-
-  const addresses = getSessionAddresses(ctx);
-  if (addresses.length === 0) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-
-  const authorized = addresses.some((addr: string) => {
-    const isSigner =
-      Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr);
-    const isOwner = wallet.ownerAddress === addr || wallet.ownerAddress === "all";
-    return isSigner || isOwner;
-  });
-
-  if (!authorized) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
-  }
-
-  return wallet;
-};
-
 export const transactionRouter = createTRPCRouter({
   createTransaction: protectedProcedure
     .input(
@@ -65,21 +35,107 @@ export const transactionRouter = createTRPCRouter({
         state: z.number(),
         description: z.string().optional(),
         txHash: z.string().optional(),
+        /**
+         * Atomically deletes this pending transaction in the same database
+         * transaction that creates the new one — the "edit pending tx" flow.
+         * `knownSignedCount` is the signature count the user confirmed
+         * discarding; more signatures having arrived since is a conflict.
+         */
+        replaces: z
+          .object({
+            transactionId: z.string(),
+            knownSignedCount: z.number().int().nonnegative(),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await assertWalletAccess(ctx, input.walletId);
-      return ctx.db.transaction.create({
-        data: {
+      const wallet = await assertWalletAccess(ctx, input.walletId);
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const data = {
+        walletId: input.walletId,
+        txJson: input.txJson,
+        signedAddresses: input.signedAddresses,
+        rejectedAddresses: [],
+        txCbor: input.txCbor,
+        state: input.state,
+        description: input.description,
+        txHash: input.txHash,
+      };
+      const tx = input.replaces
+        ? await ctx.db.$transaction(async (db) => {
+            const replaces = input.replaces!;
+            const old = await db.transaction.findUnique({
+              where: { id: replaces.transactionId },
+            });
+            if (!old || old.walletId !== input.walletId) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "The transaction being replaced no longer exists",
+              });
+            }
+            if (old.state !== 0) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "The transaction being replaced was already submitted",
+              });
+            }
+            if (old.signedAddresses.length > replaces.knownSignedCount) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message:
+                  "New signatures were collected while you were editing",
+              });
+            }
+            await db.transaction.delete({ where: { id: old.id } });
+            return db.transaction.create({ data });
+          })
+        : await ctx.db.transaction.create({ data });
+      if (input.replaces) {
+        void audit(ctx.db, {
+          actorAddress: sessionAddress,
+          actorType: "user",
+          action: "transaction.delete",
+          resourceType: "transaction",
+          resourceId: input.replaces.transactionId,
+          ip: ctx.ip ?? null,
+          outcome: "success",
+          metadata: { walletId: input.walletId, replacedBy: tx.id },
+        });
+      }
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.create",
+        resourceType: "transaction",
+        resourceId: tx.id,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
           walletId: input.walletId,
-          txJson: input.txJson,
-          signedAddresses: input.signedAddresses,
-          txCbor: input.txCbor,
           state: input.state,
-          description: input.description,
-          txHash: input.txHash,
+          txHash: input.txHash ?? null,
+          initialSigners: input.signedAddresses.length,
+          replaces: input.replaces?.transactionId ?? null,
         },
       });
+      if (tx.state === 0) {
+        try {
+          await enqueueSignatureRequiredNotifications(ctx.db, {
+            wallet,
+            resourceType: "transaction",
+            resourceId: tx.id,
+            signedAddresses: tx.signedAddresses,
+            rejectedAddresses: tx.rejectedAddresses,
+            creatorAddress: sessionAddress,
+            description: tx.description,
+            txJson: tx.txJson,
+          });
+        } catch (error) {
+          console.error("Failed to enqueue transaction notifications", error);
+        }
+      }
+      return tx;
     }),
 
   updateTransaction: protectedProcedure
@@ -99,7 +155,8 @@ export const transactionRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
       await assertWalletAccess(ctx, tx.walletId);
-      return ctx.db.transaction.update({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const updated = await ctx.db.transaction.update({
         where: {
           id: input.transactionId,
         },
@@ -111,6 +168,38 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      const justSigned =
+        sessionAddress !== null &&
+        input.signedAddresses.includes(sessionAddress) &&
+        !tx.signedAddresses.includes(sessionAddress);
+      const justRejected =
+        sessionAddress !== null &&
+        input.rejectedAddresses.includes(sessionAddress) &&
+        !tx.rejectedAddresses.includes(sessionAddress);
+      const submitted = !tx.txHash && Boolean(input.txHash);
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: submitted
+          ? "transaction.submit"
+          : justRejected
+            ? "transaction.reject"
+            : justSigned
+              ? "transaction.sign"
+              : "transaction.update",
+        resourceType: "transaction",
+        resourceId: input.transactionId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: tx.walletId,
+          state: input.state,
+          signersCount: input.signedAddresses.length,
+          rejectionsCount: input.rejectedAddresses.length,
+          txHash: input.txHash ?? null,
+        },
+      });
+      return updated;
     }),
 
   deleteTransaction: protectedProcedure
@@ -121,11 +210,23 @@ export const transactionRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
       await assertWalletAccess(ctx, tx.walletId);
-      return ctx.db.transaction.delete({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const deleted = await ctx.db.transaction.delete({
         where: {
           id: input.transactionId,
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.delete",
+        resourceType: "transaction",
+        resourceId: input.transactionId,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: { walletId: tx.walletId },
+      });
+      return deleted;
     }),
 
   // Read-only queries require authenticated session whose address is a signer/owner
@@ -217,7 +318,10 @@ export const transactionRouter = createTRPCRouter({
       // Check if any signature matches wallet signers
       let hasValidSignature = false;
       const signedAddresses: string[] = [];
-      const txHashHex = calculateTxHash(parsedTx.to_hex()).toLowerCase();
+      // Verify signatures against the core-cst body hash (the build serializer),
+      // so multisig signatures on Conway votes are recognised. Equal to the old
+      // core-csl hash for ordinary txs.
+      const txHashHex = resolveTxHash(parsedTx.to_hex()).toLowerCase();
       const txHashBytes = Buffer.from(txHashHex, "hex");
 
       for (let i = 0; i < vkeyWitnesses.len(); i++) {
@@ -489,7 +593,8 @@ export const transactionRouter = createTRPCRouter({
       };
 
       // Create pending transaction
-      return await ctx.db.transaction.create({
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+      const created = await ctx.db.transaction.create({
         data: {
           walletId: input.walletId,
           txJson: JSON.stringify(txJson),
@@ -500,5 +605,33 @@ export const transactionRouter = createTRPCRouter({
           description: input.description || "Imported transaction",
         },
       });
+      void audit(ctx.db, {
+        actorAddress: sessionAddress,
+        actorType: "user",
+        action: "transaction.import",
+        resourceType: "transaction",
+        resourceId: created.id,
+        ip: ctx.ip ?? null,
+        outcome: "success",
+        metadata: {
+          walletId: input.walletId,
+          existingSigners: signedAddresses.length,
+        },
+      });
+      try {
+        await enqueueSignatureRequiredNotifications(ctx.db, {
+          wallet,
+          resourceType: "transaction",
+          resourceId: created.id,
+          signedAddresses: created.signedAddresses,
+          rejectedAddresses: created.rejectedAddresses,
+          creatorAddress: sessionAddress,
+          description: created.description,
+          txJson: created.txJson,
+        });
+      } catch (error) {
+        console.error("Failed to enqueue imported transaction notifications", error);
+      }
+      return created;
     }),
 });

@@ -1,5 +1,2 @@
-export const STAKE_KEY_DEPOSIT = 2_000_000;
-export const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
+/** Display / UX only — transaction deposits come from Mesh (chain protocol params). */
 export const DREP_DEPOSIT = 500_000_000;
-export const DREP_DEPOSIT_LOVELACE = 500_000_000n;
-export const DREP_DEPOSIT_STRING = "500000000";

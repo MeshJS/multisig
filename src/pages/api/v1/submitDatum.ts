@@ -5,7 +5,9 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { assertBotWalletAccess, BotAccessError, botHasScope } from "@/lib/auth/botAccess";
+import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
 export default async function handler(
   req: NextApiRequest,
@@ -35,7 +37,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -45,6 +47,12 @@ export default async function handler(
 
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
     return;
+  }
+
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
   const session = {
@@ -98,7 +106,10 @@ export default async function handler(
     try {
       const result = await assertBotWalletAccess(db, walletId, payload, true);
       wallet = result.wallet;
-    } catch {
+    } catch (err) {
+      if (err instanceof BotAccessError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       return res.status(403).json({ error: "Not authorized for this wallet" });
     }
   } else {
@@ -116,7 +127,7 @@ export default async function handler(
       data: {
         walletId,
         payload: datum,
-        signatures: [`signature: ${sig.signature}, key: ${sig.key}`],
+        signatures: [JSON.stringify({ signature: sig.signature, key: sig.key })],
         signedAddresses: [address],
         rejectedAddresses: [],
         description,
@@ -125,6 +136,36 @@ export default async function handler(
         state: 0,
       },
     });
+
+    try {
+      const walletRow = await db.wallet.findUnique({
+        where: { id: walletId },
+        select: {
+          id: true,
+          name: true,
+          signersAddresses: true,
+          numRequiredSigners: true,
+          type: true,
+        },
+      });
+      if (walletRow) {
+        await enqueueSignatureRequiredNotifications(db, {
+          wallet: walletRow,
+          resourceType: "signable",
+          resourceId: newSignable.id,
+          signedAddresses: newSignable.signedAddresses,
+          rejectedAddresses: newSignable.rejectedAddresses,
+          creatorAddress: address,
+          description: newSignable.description,
+          signatureContext: summarizeSignableSignatureContext({
+            method: newSignable.method,
+            description: newSignable.description,
+          }),
+        });
+      }
+    } catch (notificationError) {
+      console.error("Failed to enqueue signable notifications", notificationError);
+    }
 
     res.status(201).json(newSignable);
   } catch (error) {

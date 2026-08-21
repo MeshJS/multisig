@@ -25,6 +25,7 @@ import SectionExplanation from "./SectionExplanation";
 import WalletCardSkeleton from "./WalletCardSkeleton";
 import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
 import IPFSImage from "@/components/common/ipfs-image";
+import BotManagementCard from "@/components/pages/user/BotManagementCard";
 
 
 export default function PageWallets() {
@@ -122,6 +123,9 @@ export default function PageWallets() {
         <PageHeader pageTitle="Wallets">
           <Button size="sm" asChild>
             <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
+          </Button>
+          <Button size="sm" variant="secondary" asChild>
+            <Link href="/wallets/import-wallet">Import Wallet</Link>
           </Button>
           {wallets && wallets.some((wallet) => wallet.isArchived) && (
             <Button
@@ -231,6 +235,10 @@ export default function PageWallets() {
             </div>
           </>
         )}
+
+        {/* Claim and manage API bots without leaving the dashboard — the same
+            card as on the user page (it renders its own title and actions). */}
+        <BotManagementCard />
       </>
     </div>
   );

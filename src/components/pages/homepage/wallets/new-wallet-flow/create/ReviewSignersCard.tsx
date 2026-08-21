@@ -3,6 +3,7 @@ import { getFirstAndLast } from "@/utils/strings";
 import { checkValidAddress, checkValidStakeKey } from "@/utils/multisigSDK";
 import { useToast } from "@/hooks/use-toast";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -42,6 +43,38 @@ import { deserializeAddress, serializeRewardAddress } from "@meshsdk/core";
 
 const MAX_SIGNER_NAME_LENGTH = 32;
 
+// Unclaimed slot on a fixed-signer (discovery invite) draft: a bare
+// 28-byte key hash instead of a bech32 address.
+const isPlaceholderHash = (addr: string) => /^[0-9a-fA-F]{56}$/.test(addr);
+
+function SignerAddressDisplay({
+  signer,
+  lockedSigners,
+  chars,
+}: {
+  signer: string;
+  lockedSigners: boolean;
+  chars: [number, number];
+}) {
+  if (!signer) return <>-</>;
+  if (lockedSigners && isPlaceholderHash(signer)) {
+    return (
+      <span className="flex flex-wrap items-center gap-2">
+        <Badge
+          variant="outline"
+          className="bg-amber-400/10 border-amber-400/30 text-amber-600 dark:text-amber-300"
+        >
+          Awaiting claim
+        </Badge>
+        <span className="font-mono text-xs text-muted-foreground">
+          key: {getFirstAndLast(signer, 10, 8)}
+        </span>
+      </span>
+    );
+  }
+  return <>{getFirstAndLast(signer, chars[0], chars[1])}</>;
+}
+
 // Same SignerConfig interface as original
 interface SignerConfig {
   signersAddresses: string[];
@@ -52,15 +85,30 @@ interface SignerConfig {
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
   signersDRepKeys: string[];
   setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
+  signerIds?: string[];
   addSigner: () => void;
   removeSigner?: (index: number) => void;
 }
+
+// Synthetic React-key helper. The on-chain address is unique per signer in the
+// happy path, but during edits or paste flows it can briefly collide; using
+// the address as a key triggers React reconciliation bugs (lost focus,
+// duplicated DOM nodes). `signerIds` is kept index-aligned by the host hook
+// (`useWalletFlowState` / `useMigrationWalletFlowState`); this fallback runs
+// only when a caller hasn't wired it through yet.
+const rowKey = (signerIds: string[] | undefined, index: number): string =>
+  signerIds?.[index] ?? `signer-row-${index}`;
 
 interface ReviewSignersCardProps {
   signerConfig: SignerConfig;
   currentUserAddress?: string;
   walletId?: string;
   hasExternalStakeCredential?: boolean;
+  // Set when the wallet was imported from a source whose signer set is
+  // authoritative (Summon eject, cross-instance import, JSON backup).
+  // The local DB row may not safely diverge from the origin, so hide the
+  // add/edit/delete affordances and the invite-link block.
+  lockedSigners?: boolean;
   onSave?: (
     signersAddresses: string[],
     signersDescriptions: string[],
@@ -74,6 +122,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
   currentUserAddress,
   walletId,
   hasExternalStakeCredential = false,
+  lockedSigners = false,
   onSave,
 }) => {
   const {
@@ -85,6 +134,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
     setSignerStakeKeys,
     signersDRepKeys = [],
     setSignerDRepKeys,
+    signerIds,
     addSigner,
     removeSigner,
   } = signerConfig;
@@ -263,7 +313,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                 </TableHeader>
                 <TableBody>
                   {signersAddresses.map((signer, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={rowKey(signerIds, index)}>
                       {/* Signer name */}
                       <TableCell>
                         <span className="flex items-center gap-2">
@@ -287,7 +337,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
 
                       {/* Address */}
                       <TableCell className="font-mono text-xs">
-                        {signer ? getFirstAndLast(signer, 20, 15) : "-"}
+                        <SignerAddressDisplay
+                          signer={signer}
+                          lockedSigners={lockedSigners}
+                          chars={[20, 15]}
+                        />
                       </TableCell>
 
                       {/* Stake Key */}
@@ -340,18 +394,22 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
 
                       {/* Edit */}
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startEdit(index)}
-                        >
-                          Edit
-                        </Button>
+                        {lockedSigners ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => startEdit(index)}
+                          >
+                            Edit
+                          </Button>
+                        )}
                       </TableCell>
 
                       {/* Delete */}
                       <TableCell>
-                        {index > 0 && removeSigner ? (
+                        {!lockedSigners && index > 0 && removeSigner ? (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -374,7 +432,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
             <div className="space-y-3 sm:hidden">
               {signersAddresses.map((signer, index) => (
                 <div
-                  key={index}
+                  key={rowKey(signerIds, index)}
                   className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/5"
                 >
                   {/* Top row: Name and Actions */}
@@ -396,15 +454,17 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => startEdit(index)}
-                        className="h-8 px-2"
-                      >
-                        Edit
-                      </Button>
-                      {index > 0 && removeSigner && (
+                      {!lockedSigners && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => startEdit(index)}
+                          className="h-8 px-2"
+                        >
+                          Edit
+                        </Button>
+                      )}
+                      {!lockedSigners && index > 0 && removeSigner && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -421,7 +481,11 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                   <div>
                     <p className="text-xs text-muted-foreground">Address</p>
                     <p className="break-all font-mono text-xs">
-                      {signer ? getFirstAndLast(signer, 20, 15) : "-"}
+                      <SignerAddressDisplay
+                        signer={signer}
+                        lockedSigners={lockedSigners}
+                        chars={[20, 15]}
+                      />
                     </p>
                   </div>
 
@@ -474,21 +538,30 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
               ))}
             </div>
 
-            {/* Add Signer Button */}
-            <Button
-              onClick={startAdd}
-              variant="outline"
-              className="w-full sm:w-auto"
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add signer
-            </Button>
+            {/* Add Signer Button — hidden for imported wallets where the
+                signer set is authoritative on the origin. */}
+            {!lockedSigners && (
+              <Button
+                onClick={startAdd}
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add signer
+              </Button>
+            )}
+            {lockedSigners && (
+              <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-xs text-muted-foreground">
+                Signers were imported from another source and cannot be
+                edited here.
+              </div>
+            )}
 
             {/* Divider before optional section */}
-            {walletId && <div className="my-4 border-t" />}
+            {walletId && !lockedSigners && <div className="my-4 border-t" />}
 
             {/* Invite Link Section */}
-            {walletId && (
+            {walletId && !lockedSigners && (
               <div className="space-y-2">
                 <Label className="text-sm">Add signers by invitation</Label>
                 <p className="text-xs text-muted-foreground">
@@ -623,7 +696,7 @@ const ReviewSignersCard: React.FC<ReviewSignersCardProps> = ({
                     placeholder={hasExternalStakeCredential ? "External stake credential configured" : "Staking address"}
                     value={tempStakeKey}
                     onChange={(e) => setTempStakeKey(e.target.value)}
-                    disabled={editMode === "edit" && editIndex === 0 || hasExternalStakeCredential}
+                    disabled={hasExternalStakeCredential}
                   />
                   {tempStakeKey && checkValidStakeKey(tempStakeKey) && (
                     <div className="mt-1 flex items-center gap-1">

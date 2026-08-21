@@ -41,7 +41,7 @@ export default function BallotModal({
 }: BallotModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-5xl max-h-[90dvh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">

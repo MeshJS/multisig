@@ -13,8 +13,8 @@ import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { api } from "@/utils/api";
 import { useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { DREP_DEPOSIT_STRING } from "@/utils/protocol-deposit-constants";
 import useActiveWallet from "@/hooks/useActiveWallet";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; manualUtxos: UTxO[] }) {
   const network = useSiteStore((state) => state.network);
@@ -43,14 +43,15 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet.address, manualUtxos]);
 
   async function retireProxyDrep(): Promise<void> {
     if (!hasValidProxy) {
@@ -58,10 +59,10 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       return retireDrep();
     }
 
-    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
+    if (!activeWallet || !userAddress) {
       toast({
         title: "Connection Error",
-        description: "Proxy retirement requires both connected wallet signer and multisig wallet configuration.",
+        description: "Proxy retirement requires a connected wallet signer.",
         variant: "destructive",
       });
       return;
@@ -93,7 +94,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
       }
 
       // Create proxy contract instance
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
@@ -172,7 +173,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       
       // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
       // For SDK wallets, use multisigWallet to compute DRep ID and script
@@ -231,25 +232,14 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         return;
       }
       
-      for (const utxo of selectedUtxos) {
-        txBuilder.txIn(
-          utxo.input.txHash,
-          utxo.input.outputIndex,
-          utxo.output.amount,
-          utxo.output.address,
-        );
-      }
-
-      txBuilder
-        .txInScript(scriptCbor)
-        .changeAddress(changeAddress)
-        .drepDeregistrationCertificate(dRepId, DREP_DEPOSIT_STRING);
-      
-      // Only add certificateScript if it's different from the spending script
-      // to avoid "extraneous scripts" error
-      if (drepCbor !== scriptCbor) {
-        txBuilder.certificateScript(drepCbor);
-      }
+      applyDRepCert(txBuilder, {
+        action: "retire",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+      });
 
       await newTransaction({
         txBuilder,

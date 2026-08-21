@@ -97,6 +97,68 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Response**: Updated transaction object with witness metadata, submission state, and transaction hash
 - **Error Handling**: 400 (validation), 401 (signature), 403 (authorization), 404 (not found), 409 (state conflict), 502 (broadcast failure), 500 (server)
 
+#### `botStakeCertificate.ts` - POST `/api/v1/botStakeCertificate`
+
+- **Purpose**: Server-build a stake certificate transaction (register, deregister, delegate, or register-and-delegate) using the same Mesh patterns as the in-app staking UI, then persist or submit it using the same rules as `addTransaction`.
+- **Authentication**: Required (JWT Bearer token). `address` in the body must match the JWT `address` (human signer or bot payment address).
+- **Bot requirements**: Bot JWTs must include the **`multisig:sign`** scope. The bot must have **cosigner** access to the wallet (`assertBotWalletAccess` with mutating access). Observer bots are rejected.
+- **Wallet support**: **SDK multisig wallets only**, with `stakingEnabled()` true. Legacy and Summon wallets return **400** with a clear reason.
+- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON).
+- **Request Body**:
+  - `walletId`: string (required)
+  - `address`: string (required; must match JWT)
+  - `action`: `"register"` | `"deregister"` | `"delegate"` | `"register_and_delegate"` (required)
+  - `poolId`: string (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-character hex pool id)
+  - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
+  - `description`: string (optional; defaults to a short label for the action)
+- **Response**: Same as `addTransaction` — either a pending `Transaction` row (**201**) when multiple signatures are required, or the immediate **`submitTx`** result when the wallet submits in one step (single signer / `type === "any"`).
+- **Follow-up**: If the transaction is pending, co-signers call **`POST /api/v1/signTransaction`** as usual.
+- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 500 (server)
+
+#### `botDRepCertificate.ts` - POST `/api/v1/botDRepCertificate`
+
+- **Purpose**: Server-build a DRep **registration** or **retirement** transaction (non-proxy flows only), then persist or submit like `addTransaction`.
+- **Authentication**: Same as `botStakeCertificate` (JWT; body `address` must match JWT; bots need **`multisig:sign`** and cosigner access).
+- **Wallet support**: **Summon** wallets return **400** (unsupported in v1). **Legacy** and **SDK** paths mirror `registerDrep` / `retire` in the app (script and change-address selection). If DRep metadata cannot be derived (`getDRep` / `dRepId`), the handler returns **400**.
+- **Register — anchor**: `anchorUrl` and `anchorJson` are both required. The caller provides the JSON document at `anchorUrl` directly in the request body — the server never fetches any URL. The server computes **`hashDrepAnchor`** from `@meshsdk/core` using the provided `anchorJson` object.
+- **UTxOs**: Same `utxoRefs` policy as `botStakeCertificate` (chain-resolved, address-validated).
+- **Request Body**:
+  - `walletId`: string (required)
+  - `address`: string (required; must match JWT)
+  - `action`: `"register"` | `"retire"` (required)
+  - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
+  - `description`: string (optional)
+  - `anchorUrl`: string (required when `action === "register"`)
+  - `anchorJson`: object (required when `action === "register"`; the JSON document at `anchorUrl` — server computes the hash)
+- **Response**: Same pattern as `addTransaction` / `botStakeCertificate` (**201**).
+- **Error Handling**: 400 (validation, invalid anchorJson, unsupported wallet), 401 (auth), 403 (signer/bot scope/access), 405 (method), 500 (server)
+
+#### Proxy Bot API
+
+Proxy endpoints let bots propose proxy setup, proxy spending, proxy DRep certificates, and proxy votes through the same pending multisig transaction flow. They do not bypass the wallet threshold: bots need **`multisig:sign`** scope and **cosigner** access for all mutating proxy routes, while observer bots may call `GET /api/v1/proxies` and `GET /api/v1/proxyDRepInfo`.
+
+All Plutus proxy transaction routes accept UTxO references only. Do not send raw UTxO JSON. The server resolves each ref from chain, validates wallet UTxOs are at the multisig spend address, validates proxy spend inputs are at the selected proxy address, and requires an ADA-only `collateralRef` with at least 5 ADA at the request `address`. Server-built proxy transactions are persisted with no initial signed addresses, so the proposer still signs through `POST /api/v1/signTransaction`.
+
+Setup lifecycle:
+
+1. Call `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, and optional `description`.
+2. The response includes `{ transaction, setup }`, where `setup` contains `proxyAddress`, `authTokenId`, and `paramUtxo`.
+3. If `transaction` is pending, co-signers call `POST /api/v1/signTransaction` until the transaction is submitted.
+4. After the setup is confirmed on-chain, call `POST /api/v1/proxySetupFinalize` with the setup metadata and `txHash`. The server validates that the transaction created the proxy-address output, returned the auth token to the multisig wallet address, and that both are visible in current chain state before creating or reactivating the confirmed `Proxy` row.
+5. Use `GET /api/v1/proxies` to list active confirmed proxies.
+
+Endpoints:
+
+- `GET /api/v1/proxies`: query `walletId`, `address`; returns active confirmed proxies for that wallet.
+- `GET /api/v1/proxyDRepInfo`: query `walletId`, `address`, `proxyId`; returns `{ active, dRepId }` for the proxy script DRep credential.
+- `POST /api/v1/proxySetup`: body `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, optional `description`; returns pending/submitted transaction plus setup metadata. When omitted, `initialProxyLovelace` defaults to the current minimal proxy output amount.
+- `POST /api/v1/proxySetupFinalize`: body `walletId`, `address`, `txHash`, `proxyAddress`, `authTokenId`, `paramUtxo`, optional `description`; creates or reactivates the confirmed proxy row after chain validation.
+- `POST /api/v1/proxySpend`: body `walletId`, `address`, `proxyId`, `outputs`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `description`; requires one multisig input containing the proxy auth token. If `proxyUtxoRefs` is omitted, the server fetches proxy-address UTxOs and selects enough to cover `outputs` plus a fee buffer.
+- `POST /api/v1/proxyDRepCertificate`: body `walletId`, `address`, `proxyId`, `action` (`register`, `update`, `deregister`), `utxoRefs`, `collateralRef`, optional `description`; `anchorUrl` and `anchorJson` are required for `register` and `update`, and the server computes `hashDrepAnchor(anchorJson)` without fetching `anchorUrl`.
+- `POST /api/v1/proxyVote`: body `walletId`, `address`, `proxyId`, `votes`, `utxoRefs`, `collateralRef`, optional `description`; each vote has `proposalId` in `<txHash>#<certIndex>` form and `voteKind` (`Yes`, `No`, `Abstain`).
+- `POST /api/v1/proxyCleanup`: body `walletId`, `address`, `proxyId`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `deactivateProxy`, optional `description`; returns cleanup metadata with phase `sweep` while proxy-address UTxOs remain, then phase `burn` once the proxy address is empty. When `proxyUtxoRefs` is provided for cleanup, it must include every currently visible proxy UTxO.
+- `POST /api/v1/proxyCleanupFinalize`: body `walletId`, `address`, `proxyId`, `txHash`, optional `deactivateProxy`; validates that the confirmed burn spent the auth token without recreating it or a proxy-address output, then marks the proxy inactive only after auth tokens are gone and the proxy address is empty. `deactivateProxy: false` validates without changing the row.
+
 ### Wallet Management
 
 #### `walletIds.ts` - GET `/api/v1/walletIds`
@@ -139,6 +201,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `signersDRepKeys`: (string | null)[] (optional)
   - `numRequiredSigners`: number (optional, minimum 1, clamped to signer count, default 1; stored as `null` for `all`/`any`)
   - `scriptType`: `"atLeast"` | `"all"` | `"any"` (optional, default `"atLeast"`)
+  - `paymentNativeScript`: object (optional; explicit payment script tree with `sig`/`all`/`any`/`atLeast`; sig key hashes must match `signersAddresses` payment key hashes)
   - `stakeCredentialHash`: string (optional, external stake)
   - `network`: 0 | 1 (optional, default 1 = mainnet)
 - **Response**: `{ walletId, address, name }` (201)
@@ -168,7 +231,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
 - **Authentication**: Required (bot JWT Bearer token)
 - **Scope**: `ballot:write`
-- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Wallet Access**: Any granted role for `walletId` — **observer is enough** (ballot drafts are unsigned advisory rows; bots cannot set anchors)
 - **Features**:
   - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
   - `409` on ambiguous `ballotName` matches
@@ -176,13 +239,30 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - Upserts proposals and choices while preserving omitted rationale comments on existing entries
   - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
   - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+  - Validates `proposalId`s: `txHash` must be 64-char hex **and the governance action must exist on-chain** (unknown ids → 400 listing them; indexer outages fail open)
 - **Request Body**:
   - `walletId`: string (required)
   - `ballotId`: string (optional, recommended when updating existing ballots)
   - `ballotName`: string (optional)
   - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
-- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
-- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+- **Response**: `{ created: boolean, ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments` — track `ballot.id` for later upserts and deletes
+- **Error Handling**: 400 (validation, unknown proposalIds), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
+#### `botBallots.ts` - GET/DELETE `/api/v1/botBallots`
+
+- **Purpose**: Read and clean up bot ballot drafts — the other half of the drafting lifecycle
+- **Authentication**: Required (bot JWT Bearer token); scope `ballot:write`; any wallet grant (**observer is enough**)
+- **GET**: `?walletId=` — lists all governance ballots (type 1) on the wallet, newest first
+- **DELETE**: body `{ walletId, ballotId }` — deletes one governance ballot (400 if it belongs to another wallet or isn't type 1)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballot), 429, 500
+
+#### `botRotateSecret.ts` - POST `/api/v1/botRotateSecret`
+
+- **Purpose**: Self-service rotation of a (possibly leaked) bot key secret without re-registering
+- **Authentication**: None (proving possession of the current secret is the credential); strict rate limit 5/min per IP
+- **Request Body**: `{ botKeyId, secret }` (current secret)
+- **Response**: `{ botKeyId, secret }` — the **new** secret, returned exactly once; the old secret stops working immediately
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 429, 500
 
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
@@ -272,11 +352,11 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - Creates a `PendingBot` record in `UNCLAIMED` state
   - Generates one-time claim code and hashed claim token
   - Validates requested scopes against allowed bot scopes
-  - Rejects already-registered bot payment addresses
+  - Rejects already-registered bot payment addresses (when an address is provided)
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (required)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
   - `stakeAddress`: string (optional)
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
@@ -323,8 +403,9 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Features**:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
-  - BotUser upsert with payment and optional stake address
+  - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
   - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)
@@ -368,11 +449,11 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 
 ### Bot Onboarding Flow
 
-1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes — initially without a `paymentAddress` (the bot typically has no wallet yet)
 2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
 3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
-4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
-5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs)
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT — this binds the bot's `paymentAddress` (creating its `BotUser` if registration was address-less)
+5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs, and certificate builders **`/api/v1/botStakeCertificate`** / **`/api/v1/botDRepCertificate`** when `multisig:sign` is granted)
 
 ### Error Handling
 
@@ -435,6 +516,8 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - `JWT_SECRET`: Secret key for JWT token generation
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD`: Preprod network API key
 - `NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET`: Mainnet network API key
+- `BLOCKFROST_API_KEY_PREPROD`: Optional server-side override for preprod provider calls
+- `BLOCKFROST_API_KEY_MAINNET`: Optional server-side override for mainnet provider calls
 
 ### Database Configuration
 
@@ -493,4 +576,89 @@ const response = await fetch(
 const freeUtxos = await response.json();
 ```
 
+### Server-built stake / DRep certificates (bots or signers)
+
+Use `freeUtxos` to choose inputs, then pass only `txHash` and `outputIndex` for each UTxO. Bots must use a JWT from `botAuth` with the **`multisig:sign`** scope.
+
+```typescript
+// Stake delegate (SDK wallet; poolId required for delegate / register_and_delegate)
+await fetch("/api/v1/botStakeCertificate", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    walletId,
+    address: botPaymentAddress,
+    action: "delegate",
+    poolId: "pool1...",
+    utxoRefs: [{ txHash: "...", outputIndex: 0 }],
+    description: "Delegate via API",
+  }),
+});
+
+// DRep register — caller supplies anchorUrl + anchorJson; server computes the hash
+await fetch("/api/v1/botDRepCertificate", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    walletId,
+    address: botPaymentAddress,
+    action: "register",
+    utxoRefs: [{ txHash: "...", outputIndex: 0 }],
+    anchorUrl: "https://example.com/drep-metadata.jsonld",
+    anchorJson: { "@context": { ... }, "hashAlgorithm": "blake2b-256", "body": { ... } },
+  }),
+});
+```
+
 This API v1 directory provides a comprehensive, secure, and well-documented REST API for multisig wallet operations, supporting the entire application ecosystem with robust authentication, transaction management, and blockchain integration.
+
+## PR Route-Chain Smoke (Real-Chain CI)
+
+- Workflow: `.github/workflows/pr-multisig-v1-smoke.yml`
+- Bootstrap script: `scripts/ci/cli/bootstrap.ts` (stable context producer)
+- Route-chain runner: `scripts/ci/cli/route-chain.ts`
+- Scenario registry: `scripts/ci/scenarios/manifest.ts`
+
+The CI flow is split into:
+
+1. **Bootstrap**: create deterministic test wallets/context once.
+2. **Route chain**: execute composable v1 route steps against that context.
+
+Signing is always enabled in this route-chain flow, and signing steps run with broadcast enabled to validate real-chain submission behavior.
+
+Current route-chain scenarios include:
+
+- discovery and route health checks (`walletIds`, `proxies`, `freeUtxos`, `nativeScript`, public wallet lookup)
+- create-wallet, bot identity, auth-plane, and explicit auth-negative checks
+- proxy smoke checks plus full proxy lifecycle coverage for eligible CI wallets (`legacy`, `hierarchical`, `sdk`: `proxySetup` -> `proxySetupFinalize` -> `proxySpend` -> proxy DRep register/deregister -> optional `proxyVote` -> `proxyCleanup` -> `proxyCleanupFinalize`)
+- DRep and stake certificate builders, including payment/stake witness signing paths
+- real transfer flow (`addTransaction` -> `signTransaction` with broadcast)
+- final-state assertions (`pendingTransactions` consistency checks)
+
+To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
+Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.
+
+## MCP endpoint (`POST /api/mcp`)
+
+A Model Context Protocol server exposing a **read-only** subset of this API to AI agents,
+plus governance ballot drafts. It does not add business logic: each tool invokes the v1
+handler above in-process, so authorization, validation and error codes stay defined once.
+
+Tools and the endpoint contract: **[src/pages/api/mcp/README.md](../mcp/README.md)**.
+Its OAuth 2.1 authorization server: **[src/pages/api/oauth/README.md](../oauth/README.md)**.
+
+Two v1 handlers gained a human-JWT path so the MCP surface can reach them; bot behaviour
+is unchanged in both cases:
+
+- **`governanceActiveProposals`** — was bot-only. It is a pure Blockfrost passthrough over
+  public chain data touching no wallet, so a human JWT is now accepted, metered per
+  address instead of per bot.
+- **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
+  same signer-or-owner check every ballot procedure in the tRPC router already applies, so
+  the REST path is no more permissive than the app's own UI.

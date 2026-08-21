@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 
 import {
   checkSignature,
   generateNonce,
 } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "@/hooks/useActiveWallet";
 
@@ -24,7 +25,8 @@ import { Transaction } from "@prisma/client";
 
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 
-import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp, Award, UserMinus, UserPlus, UserCog } from "lucide-react";
+import { Check, Loader, MoreVertical, X, User, Copy, CheckCircle2, XCircle, MinusCircle, Vote, ChevronDown, ChevronUp, Award, UserMinus, UserPlus, UserCog, FileText, ExternalLink } from "lucide-react";
+import { fetchIpfsJson, extractCidPath, ipfsGatewayUrl } from "@/lib/ipfs";
 import { ToastAction } from "@/components/ui/toast";
 import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import DiscordIcon from "@/components/common/discordIcon";
@@ -53,14 +55,154 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { get } from "http";
+import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
+import useProposalTitles from "@/hooks/useProposalTitles";
+import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
+  filterWitnessesToScripts,
   mergeSignerWitnesses,
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+/**
+ * Renders the voting rationale for a single vote in a pending transaction.
+ * Prefers the DB-cached comment (saved when the ballot rationale was drafted /
+ * uploaded) so review needs no network call; falls back to resolving the IPFS
+ * anchor through /api/ipfs/resolve when there's no cache.
+ */
+function VoteRationale({
+  walletId,
+  anchorUrl,
+  anchorHash,
+}: {
+  walletId: string;
+  anchorUrl?: string;
+  anchorHash?: string;
+}) {
+  const { data: ballots } = api.ballot.getByWallet.useQuery(
+    { walletId },
+    { enabled: !!walletId },
+  );
+
+  const cachedComment = useMemo(() => {
+    if (!ballots) return undefined;
+    for (const b of ballots) {
+      const urls = b.anchorUrls ?? [];
+      const hashes = b.anchorHashes ?? [];
+      const comments = b.rationaleComments ?? [];
+      const len = Math.max(urls.length, hashes.length, comments.length);
+      for (let i = 0; i < len; i++) {
+        const urlMatch = !!anchorUrl && !!urls[i] && urls[i] === anchorUrl;
+        const hashMatch = !!anchorHash && !!hashes[i] && hashes[i] === anchorHash;
+        if (urlMatch || hashMatch) {
+          const c = comments[i]?.trim();
+          if (c) return c;
+        }
+      }
+    }
+    return undefined;
+  }, [ballots, anchorUrl, anchorHash]);
+
+  const [open, setOpen] = useState(false);
+  const [fetched, setFetched] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!open || cachedComment || fetched !== null || !anchorUrl) return;
+    let aborted = false;
+    setLoading(true);
+    setError(false);
+    fetchIpfsJson<{ body?: { comment?: string } }>(anchorUrl)
+      .then((data) => {
+        if (!aborted) setFetched(data?.body?.comment?.trim() ?? "");
+      })
+      .catch(() => {
+        if (!aborted) setError(true);
+      })
+      .finally(() => {
+        if (!aborted) setLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [open, cachedComment, fetched, anchorUrl]);
+
+  // Nothing to show: no on-chain anchor and no cached draft.
+  if (!anchorUrl && !cachedComment) return null;
+
+  const comment = cachedComment ?? (fetched || undefined);
+  // Link to the canonical document: a direct http(s) anchor as-is, otherwise the
+  // IPFS gateway URL for the CID (a human-openable page, not our JSON proxy).
+  const cidPath = anchorUrl ? extractCidPath(anchorUrl) : null;
+  const href = anchorUrl
+    ? anchorUrl.startsWith("http")
+      ? anchorUrl
+      : cidPath
+        ? ipfsGatewayUrl(cidPath)
+        : undefined
+    : undefined;
+
+  return (
+    <div className="pl-5">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex items-center gap-2">
+          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <FileText className="h-3 w-3" />
+            <span className="font-medium">Rationale</span>
+            {cachedComment && (
+              <Badge
+                variant="outline"
+                className="px-1 py-0 text-[9px] uppercase tracking-wide text-muted-foreground border-border/50"
+              >
+                cached
+              </Badge>
+            )}
+            {open ? (
+              <ChevronUp className="h-3 w-3" />
+            ) : (
+              <ChevronDown className="h-3 w-3" />
+            )}
+          </CollapsibleTrigger>
+          {href && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              <span>source</span>
+            </a>
+          )}
+        </div>
+        <CollapsibleContent className="mt-1.5">
+          {comment ? (
+            <p className="whitespace-pre-wrap rounded-md border border-border/50 bg-muted/30 p-2 text-xs text-foreground/90">
+              {comment}
+            </p>
+          ) : loading ? (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader className="h-3 w-3 animate-spin" />
+              <span>Loading rationale…</span>
+            </div>
+          ) : error ? (
+            <p className="text-xs text-muted-foreground">
+              Could not load rationale from IPFS.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No rationale comment attached.
+            </p>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 export default function TransactionCard({
   walletId,
   transaction,
@@ -68,13 +210,55 @@ export default function TransactionCard({
   walletId: string;
   transaction: Transaction;
 }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { activeWallet, isWalletReady, isAnyWalletConnected } = useActiveWallet();
   const { appWallet } = useAppWallet();
   const userAddress = useUserStore((state) => state.userAddress);
-  const txJson = JSON.parse(transaction.txJson);
+  // Parse defensively — a malformed txJson (e.g. from a row that slipped past
+  // earlier API validation) must not crash the whole Transactions page (#211).
+  const txJson = useMemo<any>(() => {
+    try {
+      return JSON.parse(transaction.txJson);
+    } catch {
+      return null;
+    }
+  }, [transaction.txJson]);
+  const router = useRouter();
+  // Whether this pending tx can round-trip into the visual builder (simple
+  // sends, DRep votes and staking certificates — withdrawals, mints etc.
+  // have no draft representation).
+  const editCompat = useMemo(
+    () =>
+      txJson
+        ? isDraftCompatible(txJson)
+        : { compatible: false, reasons: ["Unreadable transaction"] },
+    [txJson],
+  );
+  // Proposal titles for the Votes section, so signers can see what
+  // governance action each vote targets.
+  const voteProposalIds = useMemo(() => {
+    if (!Array.isArray(txJson?.votes)) return [];
+    return txJson.votes
+      .filter(
+        (vote: any) =>
+          typeof vote?.vote?.govActionId?.txHash === "string" &&
+          typeof vote?.vote?.govActionId?.txIndex === "number",
+      )
+      .map(
+        (vote: any) =>
+          `${vote.vote.govActionId.txHash}#${vote.vote.govActionId.txIndex}`,
+      );
+  }, [txJson]);
+  const { resolveProposalTitle } = useProposalTitles(
+    walletId,
+    voteProposalIds,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
+  // Set once an on-chain broadcast succeeds during signing; surfaces a hidden
+  // marker (data-testid="tx-broadcast-success") that e2e tests wait on before
+  // the pending card is removed by the refetch.
+  const [broadcastDone, setBroadcastDone] = useState<boolean>(false);
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
@@ -245,10 +429,26 @@ export default function TransactionCard({
 
       const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
 
-      let signedTx = mergeSignerWitnesses(
+      const mergeResult = mergeSignerWitnesses(
         transaction.txCbor,
         signerWitnessPayload,
       );
+      if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
+        setLoading(false);
+        console.error(
+          "Wallet returned witness that does not verify against tx body hash",
+          { invalidVkeyPubKeysHex: mergeResult.invalidVkeyPubKeysHex },
+        );
+        toast({
+          title: "Signature mismatch",
+          description:
+            "Your wallet's signature doesn't match this transaction's body. The Cardano SDK and your wallet disagree on CBOR encoding. Try a different wallet, or report this with the failing pubkey (see browser console).",
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
       // sanity check
       const tx = csl.Transaction.from_hex(signedTx);
@@ -284,6 +484,7 @@ export default function TransactionCard({
         });
         txHash = submitResult.txHash;
         signedTx = submitResult.txHex;
+        setBroadcastDone(true);
       }
 
       updateTransaction({
@@ -303,6 +504,7 @@ export default function TransactionCard({
 
   async function rejectTx() {
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
 
     try {
       setLoading(true);
@@ -371,6 +573,9 @@ export default function TransactionCard({
   // }, []);
 
   const outputList = useMemo((): React.ReactElement => {
+    if (!txJson || !Array.isArray(txJson.outputs)) {
+      return <></>;
+    }
     return (
       <>
         {txJson.outputs.map((output: any, i: number) => {
@@ -477,7 +682,51 @@ export default function TransactionCard({
   }
 
   if (!appWallet) return <></>;
-  
+
+  // Unreadable transaction — txJson failed to parse. Render a degraded card so
+  // the Transactions page still loads and the user can free locked UTxOs (#211).
+  if (!txJson) {
+    return (
+      <Card className="self-start overflow-hidden w-full border-destructive/40">
+        <CardHeader className="flex flex-col gap-3 bg-destructive/5 p-4 sm:p-6">
+          <CardTitle className="text-base sm:text-lg">
+            Unreadable transaction
+          </CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            {dateToFormatted(transaction.createdAt)}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 text-sm space-y-3">
+          <p className="text-muted-foreground">
+            This transaction&apos;s metadata could not be parsed and cannot be
+            signed. Rejecting it here will free any UTxOs it was holding.
+          </p>
+          <div className="text-xs font-mono text-muted-foreground break-all">
+            <div>
+              <span className="font-semibold">ID:</span> {transaction.id}
+            </div>
+            {transaction.txHash && (
+              <div>
+                <span className="font-semibold">Tx hash:</span>{" "}
+                {transaction.txHash}
+              </div>
+            )}
+          </div>
+        </CardContent>
+        <CardFooter className="flex items-center justify-end border-t bg-muted/50 px-4 sm:px-6 py-3">
+          <Button
+            variant="destructive"
+            onClick={() => deleteTx()}
+            disabled={loading}
+            loading={loading}
+          >
+            Reject & Delete
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
   // Calculate signing threshold info
   const signersCount = appWallet.signersAddresses.length;
   const requiredSigners = appWallet.numRequiredSigners ?? signersCount;
@@ -511,7 +760,13 @@ export default function TransactionCard({
   const pendingCount = signersCount - signedCount - rejectedCount;
   
   return (
-    <Card className="self-start overflow-hidden w-full">
+    <Card
+      className="self-start overflow-hidden w-full"
+      data-testid={`tx-card-${transaction.id}`}
+    >
+      {broadcastDone && (
+        <span data-testid="tx-broadcast-success" className="sr-only" />
+      )}
       <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
         <div className="flex flex-row items-start w-full">
           <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
@@ -562,13 +817,26 @@ export default function TransactionCard({
                 Copy Tx CBOR
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {/* <DropdownMenuItem
-                onClick={() => {
-                  rebuildTx(); // todo add confirmation
-                }}
-              >
-                Rebuild Transaction
-              </DropdownMenuItem> */}
+              {transaction.state === 0 && (
+                <DropdownMenuItem
+                  disabled={!editCompat.compatible}
+                  data-testid={`edit-in-builder-${transaction.id}`}
+                  onClick={() =>
+                    void router.push(
+                      `/wallets/${walletId}/build?tx=${transaction.id}`,
+                    )
+                  }
+                >
+                  <div className="flex flex-col">
+                    <span>Edit in Builder</span>
+                    {!editCompat.compatible && (
+                      <span className="text-xs text-muted-foreground">
+                        {editCompat.reasons[0]}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => {
                   deleteTx(); // todo add confirmation
@@ -696,15 +964,26 @@ export default function TransactionCard({
                     const govActionId = vote.vote?.govActionId;
                     const govActionHash = govActionId?.txHash || "Unknown";
                     const govActionIndex = govActionId?.txIndex ?? "Unknown";
+                    const anchor = vote.vote?.votingProcedure?.anchor;
+                    const anchorUrl: string | undefined = anchor?.anchorUrl;
+                    const anchorHash: string | undefined = anchor?.anchorDataHash;
+                    const proposalTitle = resolveProposalTitle(
+                      `${govActionHash}#${govActionIndex}`,
+                    );
 
                     return (
                       <div key={index} className="space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <VoteBadge voteKind={voteKindDisplay} />
                           <span className="text-xs text-muted-foreground">on</span>
-                          <div className="flex items-center gap-1.5">
-                            <Vote className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs font-medium">Governance Action</span>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <Vote className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span
+                              className="truncate text-xs font-medium"
+                              title={proposalTitle}
+                            >
+                              {proposalTitle ?? "Governance Action"}
+                            </span>
                           </div>
                         </div>
                         <div className="space-y-1.5 pl-5">
@@ -719,6 +998,11 @@ export default function TransactionCard({
                             </span>
                           </div>
                         </div>
+                        <VoteRationale
+                          walletId={walletId}
+                          anchorUrl={anchorUrl}
+                          anchorHash={anchorHash}
+                        />
                       </div>
                     );
                   })}
@@ -821,6 +1105,17 @@ export default function TransactionCard({
               <Separator className="my-2" />
             </>
           )}
+
+          {/* Token Flow - Collapsible */}
+          <TokenFlowSection
+            source={{
+              type: "pending",
+              txId: transaction.id,
+              txJson,
+              description: transaction.description,
+            }}
+            appWallet={appWallet}
+          />
 
           {/* Signers List - Collapsible */}
           <Collapsible open={isSignersOpen} onOpenChange={setIsSignersOpen}>
@@ -961,8 +1256,9 @@ export default function TransactionCard({
         !transaction.signedAddresses.includes(userAddress) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex items-center gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
-            <Button 
-              onClick={() => signTx()} 
+            <Button
+              data-testid={`sign-button-${transaction.id}`}
+              onClick={() => signTx()}
               disabled={loading}
               loading={loading}
               className={`flex-1 h-10 relative overflow-hidden transition-all duration-300 ${

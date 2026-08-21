@@ -10,6 +10,12 @@ import { Check } from "lucide-react";
 export default function PageReviewWallet() {
   const walletFlow = useWalletFlowState();
 
+  const totalSigners = walletFlow.signersAddresses.length;
+  const unclaimedCount = walletFlow.signersAddresses.filter((addr) =>
+    /^[0-9a-fA-F]{56}$/.test(addr),
+  ).length;
+  const claimedCount = totalSigners - unclaimedCount;
+
 
   return (
     <WalletFlowPageLayout currentStep={2}>
@@ -37,6 +43,7 @@ export default function PageReviewWallet() {
               setSignerStakeKeys: walletFlow.setSignerStakeKeys,
               signersDRepKeys: walletFlow.signersDRepKeys,
               setSignerDRepKeys: walletFlow.setSignerDRepKeys,
+              signerIds: walletFlow.signerIds,
               addSigner: walletFlow.addSigner,
               removeSigner: walletFlow.removeSigner,
             }}
@@ -44,31 +51,49 @@ export default function PageReviewWallet() {
             walletId={walletFlow.walletInviteId || walletFlow.router.query.id as string}
             hasExternalStakeCredential={!!walletFlow.stakeKey}
             onSave={walletFlow.handleSaveSigners}
+            lockedSigners={walletFlow.lockedSigners}
           />
 
-          {/* Required Signatures */}
-          <ReviewRequiredSignersCard
-            requiredSignersConfig={{
-              numRequiredSigners: walletFlow.numRequiredSigners,
-              setNumRequiredSigners: walletFlow.setNumRequiredSigners,
-              nativeScriptType: walletFlow.nativeScriptType,
-              signersCount: walletFlow.signersAddresses.length,
-            }}
-            onSave={walletFlow.handleSaveSignatureRules}
-          />
+          {/* Required Signatures — read-only for fixed-script drafts, the
+              policy is fixed by the on-chain script */}
+          {walletFlow.lockedSigners ? (
+            <div className="flex items-start gap-2 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm text-foreground">
+                <strong>Signing policy is fixed by the on-chain script:</strong>{" "}
+                {walletFlow.nativeScriptType === "all"
+                  ? `all ${walletFlow.signersAddresses.length} signers must approve`
+                  : walletFlow.nativeScriptType === "any"
+                    ? `any of ${walletFlow.signersAddresses.length} signers can approve`
+                    : `${walletFlow.numRequiredSigners} of ${walletFlow.signersAddresses.length} signers must approve`}
+                . Signers, threshold and script type cannot be changed.
+              </p>
+            </div>
+          ) : (
+            <>
+              <ReviewRequiredSignersCard
+                requiredSignersConfig={{
+                  numRequiredSigners: walletFlow.numRequiredSigners,
+                  setNumRequiredSigners: walletFlow.setNumRequiredSigners,
+                  nativeScriptType: walletFlow.nativeScriptType,
+                  signersCount: walletFlow.signersAddresses.length,
+                }}
+                onSave={walletFlow.handleSaveSignatureRules}
+              />
 
-          {/* Advanced Section - Single Collapsible */}
-          <CollapsibleAdvancedSection
-            advancedConfig={{
-              stakeKey: walletFlow.stakeKey,
-              setStakeKey: walletFlow.setStakeKey,
-              nativeScriptType: walletFlow.nativeScriptType,
-              setNativeScriptType: walletFlow.setNativeScriptType,
-              removeExternalStakeAndBackfill: walletFlow.removeExternalStakeAndBackfill,
-            }}
-            mWallet={walletFlow.multisigWallet}
-            onSave={walletFlow.handleSaveAdvanced}
-          />
+              {/* Advanced Section - Single Collapsible */}
+              <CollapsibleAdvancedSection
+                advancedConfig={{
+                  stakeKey: walletFlow.stakeKey,
+                  setStakeKey: walletFlow.setStakeKey,
+                  nativeScriptType: walletFlow.nativeScriptType,
+                  setNativeScriptType: walletFlow.setNativeScriptType,
+                  removeExternalStakeAndBackfill: walletFlow.removeExternalStakeAndBackfill,
+                }}
+                mWallet={walletFlow.multisigWallet}
+                onSave={walletFlow.handleSaveAdvanced}
+              />
+            </>
+          )}
 
           {/* Action Section - Warning and Create Button */}
           <div className="mt-6 sm:mt-8 flex flex-col gap-4">
@@ -83,9 +108,18 @@ export default function PageReviewWallet() {
                     <strong>Not yet compatible:</strong> This wallet was created with a stored script format that is not supported for creation here yet. Please check back soon.
                   </p>
                 ) : walletFlow.hasSignerHashInAddresses ? (
-                  <p className="text-sm text-foreground">
-                    <strong>Invite not completed:</strong> Not all signers visited the invite link.
-                  </p>
+                  walletFlow.lockedSigners ? (
+                    <p className="text-sm text-foreground">
+                      <strong>Waiting for co-signers:</strong> {claimedCount} of{" "}
+                      {totalSigners} signers have claimed their slot. The
+                      wallet can be created once everyone has claimed via the
+                      invite link — this page updates automatically.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-foreground">
+                      <strong>Invite not completed:</strong> Not all signers visited the invite link.
+                    </p>
+                  )
                 ) : (
                   <p className="text-sm text-foreground">
                     <strong>Important:</strong> Creation is final - signers and rules can not be changed afterwards.
@@ -102,8 +136,10 @@ export default function PageReviewWallet() {
                 {walletFlow.loading ? "Creating..." : "Create"}
               </Button>
             </div>
-            {/* Bypass option for hash signers */}
-            {walletFlow.hasSignerHashInAddresses && (
+            {/* Bypass option for hash signers — not offered for fixed-signer
+                discovery drafts: creating early would permanently hide the
+                wallet from unclaimed signers */}
+            {walletFlow.hasSignerHashInAddresses && !walletFlow.lockedSigners && (
               <button
                 type="button"
                 onClick={() => {

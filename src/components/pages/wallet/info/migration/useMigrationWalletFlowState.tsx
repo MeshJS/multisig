@@ -15,6 +15,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useToast } from "@/hooks/use-toast";
 import type { Wallet } from "@/types/wallet";
+import { makeSignerId } from "@/components/pages/homepage/wallets/new-wallet-flow/shared/signerRows";
 
 const apiClient = api;
 
@@ -34,9 +35,23 @@ export interface MigrationWalletFlowState {
   setSignerStakeKeys: React.Dispatch<React.SetStateAction<string[]>>;
   signersDRepKeys: string[];
   setSignerDRepKeys: React.Dispatch<React.SetStateAction<string[]>>;
-  addSigner: () => void;
+  // Stable synthetic identifiers for each signer row, parallel to
+  // signersAddresses. Used as React `key` so duplicate / empty addresses
+  // do not collide and stomp form state on re-render. Never sent to the
+  // backend — purely local UI identity.
+  signerIds: string[];
+  // Optional positional params let callers (e.g. ReviewSignersCard's
+  // "Add signer" dialog) push a fully-populated row through the hook so
+  // signerIds stays index-aligned with signersAddresses. Called with no
+  // args, it appends an empty row (legacy behavior).
+  addSigner: (
+    address?: string,
+    stakeKey?: string,
+    drepKey?: string,
+    description?: string,
+  ) => void;
   removeSigner: (index: number) => void;
-  
+
   // Signature rules
   numRequiredSigners: number;
   setNumRequiredSigners: React.Dispatch<React.SetStateAction<number>>;
@@ -81,6 +96,7 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
   const [signersDescriptions, setSignerDescriptions] = useState<string[]>([]);
   const [signersStakeKeys, setSignerStakeKeys] = useState<string[]>([]);
   const [signersDRepKeys, setSignerDRepKeys] = useState<string[]>([]);
+  const [signerIds, setSignerIds] = useState<string[]>([]);
   const [numRequiredSigners, setNumRequiredSigners] = useState<number>(1);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -147,6 +163,18 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
       setName(`${walletData.name} - Migration in Progress`);
       setDescription(walletData.description ?? "");
       setSignerAddresses(walletData.signersAddresses ?? []);
+      // Stable across refetches — only grow / shrink, never re-mint, so
+      // an in-flight description input does not lose focus / IME state.
+      setSignerIds((prev) => {
+        const incoming = walletData.signersAddresses ?? [];
+        if (prev.length === incoming.length) return prev;
+        if (prev.length < incoming.length) {
+          const next = prev.slice();
+          while (next.length < incoming.length) next.push(makeSignerId());
+          return next;
+        }
+        return prev.slice(0, incoming.length);
+      });
       setSignerDescriptions(walletData.signersDescriptions ?? []);
       setNumRequiredSigners(walletData.numRequiredSigners ?? 1);
       setNativeScriptType((walletData.type as "atLeast" | "all" | "any") ?? "atLeast");
@@ -183,6 +211,18 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
       setName(existingNewWallet.name);
       setDescription(existingNewWallet.description ?? "");
       setSignerAddresses(existingNewWallet.signersAddresses ?? []);
+      // Stable across refetches — only grow / shrink, never re-mint, so
+      // an in-flight description input does not lose focus / IME state.
+      setSignerIds((prev) => {
+        const incoming = existingNewWallet.signersAddresses ?? [];
+        if (prev.length === incoming.length) return prev;
+        if (prev.length < incoming.length) {
+          const next = prev.slice();
+          while (next.length < incoming.length) next.push(makeSignerId());
+          return next;
+        }
+        return prev.slice(0, incoming.length);
+      });
       setSignerDescriptions(existingNewWallet.signersDescriptions ?? []);
       setSignerStakeKeys(existingNewWallet.signersStakeKeys ?? []);
       setSignerDRepKeys(
@@ -354,29 +394,55 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
   });
 
   // Utility functions
-  function addSigner() {
-    setSignerAddresses([...signersAddresses, ""]);
-    setSignerDescriptions([...signersDescriptions, ""]);
-    setSignerStakeKeys([...signersStakeKeys, ""]);
-    setSignerDRepKeys([...signersDRepKeys, ""]);
+  function addSigner(
+    address: string = "",
+    newStakeKey: string = "",
+    drepKey: string = "",
+    description: string = "",
+  ) {
+    // Functional updaters so two synchronous addSigner() calls in the
+    // same render append two rows. With closure-reading non-functional
+    // setters, both calls would read the same `signersAddresses` and
+    // collapse into a single appended row, leaving signerIds.length
+    // out of sync with the other arrays.
+    setSignerAddresses((arr) => [...arr, address]);
+    setSignerDescriptions((arr) => [...arr, description]);
+    setSignerStakeKeys((arr) => [...arr, newStakeKey]);
+    setSignerDRepKeys((arr) => [...arr, drepKey]);
+    setSignerIds((arr) => [...arr, makeSignerId()]);
   }
 
   function removeSigner(index: number) {
-    const updatedAddresses = [...signersAddresses];
-    updatedAddresses.splice(index, 1);
-    setSignerAddresses(updatedAddresses);
-
-    const updatedDescriptions = [...signersDescriptions];
-    updatedDescriptions.splice(index, 1);
-    setSignerDescriptions(updatedDescriptions);
-
-    const updatedStakeKeys = [...signersStakeKeys];
-    updatedStakeKeys.splice(index, 1);
-    setSignerStakeKeys(updatedStakeKeys);
-
-    const updatedDRepKeys = [...signersDRepKeys];
-    updatedDRepKeys.splice(index, 1);
-    setSignerDRepKeys(updatedDRepKeys);
+    // Functional updaters mirror the Pass 3 fix in addSigner: two
+    // synchronous removeSigner() calls in the same render must each
+    // see the previous batch's update, otherwise the second call would
+    // splice from a stale closure-read array and the five parallel
+    // arrays could drift out of alignment.
+    setSignerAddresses((arr) => {
+      const next = arr.slice();
+      next.splice(index, 1);
+      return next;
+    });
+    setSignerDescriptions((arr) => {
+      const next = arr.slice();
+      next.splice(index, 1);
+      return next;
+    });
+    setSignerStakeKeys((arr) => {
+      const next = arr.slice();
+      next.splice(index, 1);
+      return next;
+    });
+    setSignerDRepKeys((arr) => {
+      const next = arr.slice();
+      next.splice(index, 1);
+      return next;
+    });
+    setSignerIds((arr) => {
+      const next = arr.slice();
+      next.splice(index, 1);
+      return next;
+    });
   }
 
   // Adjust numRequiredSigners if it exceeds the number of signers
@@ -629,6 +695,13 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
     setSignerDescriptions(paddedDescriptions);
     setSignerStakeKeys(paddedStakeKeys);
     setSignerDRepKeys(paddedDRepKeys);
+    // Keep synthetic ids parallel to the address array. Reuse existing ids
+    // for the rows that survive, mint fresh ones for any newly-added rows.
+    setSignerIds((prevIds) => {
+      const next = prevIds.slice(0, paddedAddresses.length);
+      while (next.length < paddedAddresses.length) next.push(makeSignerId());
+      return next;
+    });
     
     if (newWalletId) {
       const updateData = {
@@ -778,9 +851,10 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
     setSignerStakeKeys,
     signersDRepKeys,
     setSignerDRepKeys,
+    signerIds,
     addSigner,
     removeSigner,
-    
+
     // Signature rules
     numRequiredSigners,
     setNumRequiredSigners,

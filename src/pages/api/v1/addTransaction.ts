@@ -1,10 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { csl } from "@meshsdk/core-csl";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
-import { getProvider } from "@/utils/get-provider";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { assertBotWalletAccess, BotAccessError, botHasScope } from "@/lib/auth/botAccess";
+import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 
 export default async function handler(
   req: NextApiRequest,
@@ -33,7 +34,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -43,6 +44,12 @@ export default async function handler(
 
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
     return;
+  }
+
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
   const session = {
@@ -75,12 +82,37 @@ export default async function handler(
     return res.status(400).json({ error: "Missing required field txJson!" });
   }
 
+  // Reject unparseable CBOR/JSON up front so we never persist a row that
+  // the transactions page or the Cardano node cannot deserialize (#211).
+  if (typeof txCbor !== "string") {
+    return res.status(400).json({ error: "Invalid txCbor: must be a hex string" });
+  }
+  try {
+    csl.Transaction.from_hex(txCbor);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(400).json({ error: `Invalid transaction CBOR: ${msg}` });
+  }
+  if (typeof txJson === "string") {
+    try {
+      JSON.parse(txJson);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ error: `Invalid txJson: ${msg}` });
+    }
+  } else if (typeof txJson !== "object" || txJson === null) {
+    return res.status(400).json({ error: "Invalid txJson: must be a JSON object or string" });
+  }
+
   let wallet: { id: string; signersAddresses: string[]; numRequiredSigners: number | null; type: string };
   if (isBotJwt(payload)) {
     try {
       const result = await assertBotWalletAccess(db, walletId, payload, true);
       wallet = result.wallet;
     } catch (err) {
+      if (err instanceof BotAccessError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       return res.status(403).json({ error: err instanceof Error ? err.message : "Not authorized for this wallet" });
     }
   } else {
@@ -95,27 +127,31 @@ export default async function handler(
 
   const reqSigners = wallet.numRequiredSigners;
   const type = wallet.type;
-  const network = address.includes("test") ? 0 : 1;
+  // Derive network from the bech32 HRP (human-readable prefix) instead of
+  // the older `address.includes("test")` substring check, which would
+  // mis-classify any mainnet address whose bech32 body happened to contain
+  // the substring "test". Cardano HRPs:
+  //   `addr1...` / `stake1...` = mainnet
+  //   `addr_test1...` / `stake_test1...` = testnet
+  let network: 0 | 1;
+  if (/^(addr_test1|stake_test1)/.test(address)) {
+    network = 0;
+  } else if (/^(addr1|stake1)/.test(address)) {
+    network = 1;
+  } else {
+    return res.status(400).json({ error: "Invalid address" });
+  }
 
   try {
-    let newTx;
-    //ToDo refactor to more cases.
-    if (reqSigners === 1 || type === "any") {
-      const blockchainProvider = getProvider(network);
-      newTx = blockchainProvider.submitTx(txCbor);
-    } else {
-      newTx = await db.transaction.create({
-        data: {
-          walletId,
-          txJson: typeof txJson === "object" ? JSON.stringify(txJson) : txJson,
-          txCbor,
-          signedAddresses: [address],
-          rejectedAddresses: [],
-          description,
-          state: 0,
-        },
-      });
-    }
+    const newTx = await createPendingMultisigTransaction(db, {
+      walletId,
+      wallet: { numRequiredSigners: reqSigners, type },
+      proposerAddress: address,
+      txCbor,
+      txJson,
+      description,
+      network,
+    });
 
     res.status(201).json(newTx);
   } catch (error) {

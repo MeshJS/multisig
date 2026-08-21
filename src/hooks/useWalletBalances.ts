@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { serializeNativeScript } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
-import { scriptHashFromCbor } from "@/utils/nativeScriptUtils";
+import { buildWallet } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletBalancesStore } from "@/lib/zustand/wallet-balances";
 
@@ -93,11 +91,28 @@ export default function useWalletBalances(
     };
   }, []);
 
+  // The address to query Blockfrost with. `buildWallet()` resolves it once and
+  // caches it on `capabilities`, but `capabilities` is optional on `Wallet` —
+  // rows that reach this hook without going through `buildWallet()` (cached
+  // records, tests, future call sites) would otherwise crash here. Fall back to
+  // resolving it the old way, and to the stored address if even that throws.
   const getCanonicalWalletAddress = useCallback(
     (wallet: Wallet): string => {
-      return wallet.capabilities!.address;
+      if (wallet.capabilities?.address) return wallet.capabilities.address;
+      try {
+        const fallbackAddress =
+          wallet.rawImportBodies?.multisig?.address ||
+          wallet.signersAddresses?.find((a) => !!a) ||
+          wallet.address;
+        const walletNetwork = fallbackAddress
+          ? addressToNetwork(fallbackAddress)
+          : network;
+        return buildWallet(wallet, walletNetwork).address || wallet.address;
+      } catch {
+        return wallet.address;
+      }
     },
-    [],
+    [network],
   );
 
   const fetchWalletBalance = useCallback(

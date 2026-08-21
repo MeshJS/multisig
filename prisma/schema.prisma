@@ -3,25 +3,23 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // For Supabase + Vercel serverless optimization:
-  // - DATABASE_URL: Use Supabase's connection pooling URL (Transaction mode)
-  //   Example: postgresql://user:pass@host:6543/db?pgbouncer=true
-  // - DIRECT_URL: Use Supabase's direct connection URL (for migrations)
-  //   Example: postgresql://user:pass@host:5432/db
-  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL
-  //   This separation improves performance and prevents connection pool exhaustion
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  // Prisma 7 no longer accepts connection URLs in the schema. They live in
+  // prisma.config.ts (for CLI/migrations) and are passed to PrismaClient at
+  // runtime in src/server/db.ts. For Supabase + Vercel serverless:
+  // - DATABASE_URL: pooling URL (Transaction mode, port 6543, ?pgbouncer=true)
+  //   — used by the runtime client.
+  // - DIRECT_URL: direct connection (port 5432) — used by migrations.
+  //   For local dev without Supabase, set DIRECT_URL to DATABASE_URL.
 }
 
 model User {
-  id           String @id @default(cuid())
-  address      String @unique
-  stakeAddress String @unique
-  drepKeyHash  String @default("")
-  nostrKey     String @unique
-  discordId    String @default("")
+  id           String  @id @default(cuid())
+  address      String  @unique
+  stakeAddress String  @unique
+  drepKeyHash  String  @default("")
+  nostrKey     String? @unique
+  discordId    String  @default("")
 }
 
 model Wallet {
@@ -43,6 +41,9 @@ model Wallet {
   migrationTargetWalletId String?
   profileImageIpfsUrl     String?
   ownerAddress            String?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Transaction {
@@ -77,6 +78,10 @@ model Signable {
   updatedAt         DateTime @updatedAt
   callbackUrl       String?
   remoteOrigin      String?
+
+  @@index([walletId])
+  @@index([state])
+  @@index([walletId, state])
 }
 
 model NewWallet {
@@ -95,6 +100,9 @@ model NewWallet {
   paymentCbor         String?
   stakeCbor           String?
   rawImportBodies     Json?
+
+  @@index([ownerAddress])
+  @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
 
 model Nonce {
@@ -105,18 +113,36 @@ model Nonce {
 }
 
 model Ballot {
-  id               String   @id @default(cuid())
-  walletId         String
-  description      String?
-  items            String[]
-  itemDescriptions String[]
-  choices          String[]
-  anchorUrls       String[] @default([])
-  anchorHashes     String[] @default([])
+  id                String   @id @default(cuid())
+  walletId          String
+  description       String?
+  items             String[]
+  itemDescriptions  String[]
+  choices           String[]
+  anchorUrls        String[] @default([])
+  anchorHashes      String[] @default([])
   rationaleComments String[] @default([])
-  type             Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  type              Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([walletId])
+}
+
+// Retained to preserve the existing production table; feature is currently unused
+// in app code. Do not drop without an explicit data-migration plan.
+model Crowdfund {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  proposerKeyHashR0 String
+  authTokenId       String?
+  datum             String?
+  address           String?
+  paramUtxo         String?
+  govDatum          String?
+  govAddress        String?
+  createdAt         DateTime @default(now())
 }
 
 model Proxy {
@@ -137,6 +163,24 @@ model Proxy {
   @@index([userId, isActive])
 }
 
+/// In-app access grants for a Proxy. Membership controls who can see and manage
+/// a proxy inside the app; it never grants on-chain authority, which stays with
+/// the multisig signers holding the auth token.
+model ProxyMember {
+  id        String   @id @default(cuid())
+  proxyId   String
+  address   String
+  role      String   @default("viewer")
+  label     String?
+  invitedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([proxyId, address])
+  @@index([proxyId])
+  @@index([address])
+}
+
 model BalanceSnapshot {
   id            String   @id @default(cuid())
   walletId      String
@@ -146,6 +190,9 @@ model BalanceSnapshot {
   assetBalances Json
   isArchived    Boolean
   snapshotDate  DateTime @default(now())
+
+  @@index([walletId])
+  @@index([walletId, snapshotDate])
 }
 
 model Migration {
@@ -182,6 +229,67 @@ model Contact {
   @@index([address])
 }
 
+model WalletSignerNotificationSetting {
+  id                          String    @id @default(cuid())
+  walletId                    String
+  signerAddress               String
+  email                       String?
+  emailNormalized             String?
+  emailVerifiedAt             DateTime?
+  emailOptIn                  Boolean   @default(true)
+  notifyTransactionSignatures Boolean   @default(true)
+  notifySignableSignatures    Boolean   @default(true)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@unique([walletId, signerAddress])
+  @@index([walletId])
+  @@index([signerAddress])
+  @@index([emailNormalized])
+}
+
+model EmailVerificationToken {
+  id              String    @id @default(cuid())
+  walletId        String
+  signerAddress   String
+  emailNormalized String
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([walletId, signerAddress])
+  @@index([expiresAt])
+}
+
+model NotificationDelivery {
+  id                String    @id @default(cuid())
+  eventType         String
+  channel           String
+  recipientAddress  String
+  recipientEmail    String?
+  resourceType      String
+  resourceId        String
+  walletId          String?
+  idempotencyKey    String    @unique
+  subject           String
+  payload           Json
+  status            String    @default("pending")
+  provider          String?
+  providerMessageId String?
+  attempts          Int       @default(0)
+  lastError         String?
+  nextAttemptAt     DateTime  @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([recipientAddress])
+  @@index([walletId])
+  @@index([resourceType, resourceId])
+}
+
 model BotKey {
   id           String   @id @default(cuid())
   ownerAddress String // Human creator
@@ -195,13 +303,13 @@ model BotKey {
 }
 
 model BotUser {
-  id              String   @id @default(cuid())
-  botKeyId        String   @unique
-  paymentAddress  String   @unique // One bot, one address
-  stakeAddress    String?
-  displayName     String?
-  createdAt       DateTime @default(now())
-  botKey          BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  botKeyId       String   @unique
+  paymentAddress String   @unique // One bot, one address
+  stakeAddress   String?
+  displayName    String?
+  createdAt      DateTime @default(now())
+  botKey         BotKey   @relation(fields: [botKeyId], references: [id], onDelete: Cascade)
 
   @@index([paymentAddress])
 }
@@ -213,11 +321,11 @@ enum BotWalletRole {
 
 model WalletBotAccess {
   walletId  String
-  botId      String
-  role       BotWalletRole
-  createdAt  DateTime @default(now())
+  botId     String
+  role      BotWalletRole
+  createdAt DateTime      @default(now())
 
-  @@unique([walletId, botId])
+  @@id([walletId, botId])
   @@index([walletId])
   @@index([botId])
 }
@@ -230,12 +338,15 @@ enum PendingBotStatus {
 model PendingBot {
   id              String           @id @default(cuid())
   name            String
-  paymentAddress  String
+  // Optional: new bots normally register before they have a wallet; the
+  // address is bound to the BotUser at first botAuth instead.
+  paymentAddress  String?
   stakeAddress    String?
-  requestedScopes String           // JSON array of requested scopes
+  requestedScopes String // JSON array of requested scopes
   status          PendingBotStatus @default(UNCLAIMED)
-  claimedBy       String?          // ownerAddress of the claiming human
-  secretCipher    String?          // Encrypted secret (set on claim, cleared on pickup)
+  claimedBy       String? // ownerAddress of the claiming human
+  botKeyId        String? // BotKey minted at claim; lets pickup work without an address
+  secretCipher    String? // Encrypted secret (set on claim, cleared on pickup)
   pickedUp        Boolean          @default(false)
   expiresAt       DateTime
   createdAt       DateTime         @default(now())
@@ -249,11 +360,281 @@ model BotClaimToken {
   id           String     @id @default(cuid())
   pendingBotId String     @unique
   pendingBot   PendingBot @relation(fields: [pendingBotId], references: [id], onDelete: Cascade)
-  tokenHash    String     // SHA-256 hash of the claim code
+  tokenHash    String // SHA-256 hash of the claim code
   attempts     Int        @default(0)
   expiresAt    DateTime
   consumedAt   DateTime?
   createdAt    DateTime   @default(now())
 
   @@index([tokenHash])
+}
+
+// Append-only security audit trail. Writers should never UPDATE existing rows.
+// Events are emitted from auth flows, wallet/transaction mutations, and
+// privilege-changing actions (bot grants, signer changes, ownership transfers).
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorAddress String? // Wallet address that performed the action (null for system/anonymous)
+  actorType    String // "user" | "bot" | "system"
+  action       String // e.g. "wallet.create", "tx.sign", "bot.grant", "auth.login"
+  resourceType String? // "wallet" | "transaction" | "bot" | "ballot" | etc.
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  outcome      String // "success" | "denied" | "error"
+  reason       String? // Short reason on denied/error
+  metadata     Json? // Additional context (no secrets, redacted)
+  createdAt    DateTime @default(now())
+
+  @@index([actorAddress])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@index([actorAddress, createdAt])
+}
+
+model ProposalTally {
+  id         String   @id @default(cuid())
+  network    Int
+  proposalId String
+  yes        Int      @default(0)
+  no         Int      @default(0)
+  abstain    Int      @default(0)
+  total      Int      @default(0)
+  capped     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([network, proposalId])
+}
+
+// ---------------------------------------------------------------------------
+// Document Sign-Off (PRD-001) — five-entity model.
+//
+// A wallet-native, off-chain approval layer. Approval binds to an exact
+// content hash, never to the mutable document container, and inherits the
+// wallet's signer set + threshold frozen at the moment a review round starts.
+// No on-chain dependency in the MVP.
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  Draft
+  InReview
+  Approved
+  Rejected
+  Superseded
+  Archived
+}
+
+enum DocumentReviewAction {
+  approve
+  reject
+}
+
+// How the version's bytes are retained. The MVP never requires the bytes —
+// the content hash is the binding — so `hashOnly` is the privacy-preserving
+// default (see the vault's "Storage Privacy Risk").
+enum DocumentStorageMode {
+  hashOnly
+  inline
+  external
+}
+
+// The stable container. Title/description may change; approval never attaches
+// here, only to a DocumentVersion.
+model Document {
+  id           String            @id @default(cuid())
+  walletId     String
+  title        String
+  description  String?
+  documentType String?
+  createdBy    String // signer address that created it
+  status       DocumentStatus    @default(Draft)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+  versions     DocumentVersion[]
+  events       DocumentEvent[]
+
+  @@index([walletId])
+  @@index([walletId, status])
+  @@index([createdBy])
+}
+
+// Each version is its own approval object — this is what makes version-bound
+// approval and approval-reset-on-new-version possible.
+model DocumentVersion {
+  id                 String                  @id @default(cuid())
+  documentId         String
+  document           Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber      Int
+  contentHash        String // lowercase hex digest of the exact bytes
+  hashAlgorithm      String                  @default("sha256")
+  fileName           String?
+  mimeType           String?
+  fileSize           Int?
+  storageMode        DocumentStorageMode     @default(hashOnly)
+  contentRef         String? // external URI when storageMode = external
+  contentInline      String? // base64 bytes when storageMode = inline
+  reviewInstructions String?
+  status             DocumentStatus          @default(Draft)
+  createdBy          String
+  createdAt          DateTime                @default(now())
+  reviewStartedAt    DateTime?
+  decidedAt          DateTime? // approved or rejected
+  supersededAt       DateTime?
+  reviews            DocumentReview[]
+  signerSnapshot     DocumentSignerSnapshot?
+  events             DocumentEvent[]
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@index([contentHash])
+  @@index([status])
+}
+
+// One signer's action on one version, with the exact payload that was signed.
+// Append-only: a signer gets one action per version, and a new version starts
+// a fresh round at zero approvals.
+model DocumentReview {
+  id            String               @id @default(cuid())
+  versionId     String
+  version       DocumentVersion      @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  signerAddress String
+  action        DocumentReviewAction
+  comment       String?
+  payload       String // canonical JSON string that was signed (CIP-8 payload)
+  signature     String // COSE_Sign1 hex
+  signatureKey  String // COSE key hex
+  signedAt      DateTime // client-asserted, server-validated against a window
+  createdAt     DateTime             @default(now())
+
+  @@unique([versionId, signerAddress])
+  @@index([versionId])
+  @@index([signerAddress])
+}
+
+// The signer set and threshold that applied when the round started. Frozen so
+// later membership changes never rewrite history.
+model DocumentSignerSnapshot {
+  id                  String          @id @default(cuid())
+  versionId           String          @unique
+  version             DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  walletId            String
+  signersAddresses    String[]
+  signersDescriptions String[]
+  requiredSigners     Int
+  walletPolicyHash    String // sha256 of the wallet's scriptCbor — binds the round to the policy
+  capturedAt          DateTime        @default(now())
+
+  @@index([walletId])
+}
+
+// Append-only audit log. Feeds the detail page history and the proof export.
+model DocumentEvent {
+  id           String           @id @default(cuid())
+  documentId   String
+  document     Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionId    String?
+  version      DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  type         String // "document.created" | "version.uploaded" | "review.started" | ...
+  actorAddress String?
+  metadata     Json?
+  createdAt    DateTime         @default(now())
+
+  @@index([documentId, createdAt])
+  @@index([versionId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
+// OAuth 2.1 authorization server
+//
+// Backs the MCP endpoint (`/api/mcp`) acting as an OAuth 2.0 Resource Server.
+// Secrets are never stored in plaintext: authorization codes, refresh tokens and
+// client secrets are all persisted as SHA-256 hashes, mirroring the existing
+// BotClaimToken pattern.
+// ---------------------------------------------------------------------------
+
+model OAuthClient {
+  id String @id @default(cuid())
+
+  /// Either an opaque DCR-issued id, or — for a Client ID Metadata Document —
+  /// the https URL the metadata was fetched from.
+  clientId                String   @unique
+  /// True when clientId is a CIMD URL. CIMD clients are portable across
+  /// authorization servers and are re-validated against their document.
+  isMetadataUrl           Boolean  @default(false)
+  clientName              String
+  clientUri               String?
+  redirectUris            String[]
+  /// "none" for public clients (the MCP norm), "client_secret_basic"/"post" otherwise.
+  tokenEndpointAuthMethod String   @default("none")
+  /// SHA-256 of the client secret; null for public clients.
+  secretHash              String?
+  createdAt               DateTime @default(now())
+  lastSeenAt              DateTime @default(now())
+
+  @@index([clientId])
+}
+
+model OAuthAuthorizationCode {
+  id String @id @default(cuid())
+
+  /// SHA-256 of the code. The plaintext is only ever in the redirect URL.
+  codeHash         String    @unique
+  clientId         String
+  /// Cardano address of the human who approved this grant.
+  subjectAddress   String
+  /// Every wallet address the approval covers.
+  grantedAddresses String[]
+  scopes           String[]
+  /// RFC 8707 audience. The issued token is bound to this and nothing else.
+  resource         String
+  redirectUri      String
+  /// PKCE. S256 only — `plain` is not accepted.
+  codeChallenge    String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([expiresAt])
+}
+
+model OAuthRefreshToken {
+  id String @id @default(cuid())
+
+  tokenHash        String    @unique
+  clientId         String
+  subjectAddress   String
+  grantedAddresses String[]
+  scopes           String[]
+  resource         String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  /// Set when this token has been rotated away. Presenting a token that already
+  /// has a successor indicates replay, and the whole chain is revoked.
+  replacedById     String?
+  createdAt        DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([subjectAddress])
+  @@index([expiresAt])
+}
+
+/// The durable record of "this user approved this client". One row per pair, so
+/// re-consenting updates the grant rather than accumulating duplicates.
+model OAuthGrant {
+  id String @id @default(cuid())
+
+  subjectAddress   String
+  clientId         String
+  scopes           String[]
+  grantedAddresses String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([subjectAddress, clientId])
+  @@index([subjectAddress])
 }

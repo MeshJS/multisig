@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getProvider } from "@/utils/get-provider";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { isProviderNotFoundError } from "@/lib/server/providerErrors";
 
 export default async function handler(
   req: NextApiRequest,
@@ -31,17 +32,43 @@ export default async function handler(
       .json({ error: "Missing or invalid pubKeyHashes parameter" });
   }
 
-  const hashes = pubKeyHashes.split(",").map((s) => s.trim().toLowerCase());
-  console.log(hashes);
+  const hashes = pubKeyHashes
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => /^[0-9a-f]{56}$/.test(s));
+
+  if (hashes.length === 0) {
+    return res.status(400).json({ error: "No valid pubKeyHashes provided" });
+  }
+  if (hashes.length > 50) {
+    return res.status(400).json({ error: "Too many pubKeyHashes (max 50)" });
+  }
+
   const networkId = parseInt(network as string, 10);
+  if (networkId !== 0 && networkId !== 1) {
+    return res.status(400).json({ error: "Invalid network (expected 0 or 1)" });
+  }
 
   const provider = getProvider(networkId);
 
   try {
-    const response = await provider.get("/metadata/txs/labels/1854");
-
-    if (!Array.isArray(response)) {
-      throw new Error("Invalid response format from provider");
+    // Page through all label-1854 metadata (Blockfrost returns ascending,
+    // oldest first, 100 per page — a single unpaginated call silently
+    // misses registrations beyond the first page). MAX_PAGES bounds the
+    // provider fan-out; ascending order is preserved so consumers can
+    // treat the first match as the original registration.
+    const MAX_PAGES = 10;
+    const PAGE_SIZE = 100;
+    const response: unknown[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const batch = await provider.get(
+        `/metadata/txs/labels/1854?page=${page}&count=${PAGE_SIZE}`,
+      );
+      if (!Array.isArray(batch)) {
+        throw new Error("Invalid response format from provider");
+      }
+      response.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
     }
 
     const validItems = response.filter((item: any) => {
@@ -60,6 +87,10 @@ export default async function handler(
     res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
     res.status(200).json(matchedItems);
   } catch (error) {
+    if (isProviderNotFoundError(error)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.status(200).json([]);
+    }
     console.error("lookupWallet error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }

@@ -8,73 +8,11 @@ import { MultisigWallet } from "@/utils/multisigSDK";
 import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { STAKE_KEY_DEPOSIT } from "@/utils/protocol-deposit-constants";
 import useTransaction from "@/hooks/useTransaction";
+import { buildStakingActionConfigs, type StakingActionUi } from "@/utils/stakingCertificates";
 
-type StakingAction = "register" | "deregister" | "delegate" | "withdrawal" | "registerAndDelegate";
+type StakingAction = StakingActionUi;
 
-type StakingActionConfig = {
-  execute: () => void;
-  description: string;
-  successTitle: string;
-  successMessage: string;
-};
-
-function shouldApplyStakeDeposit(action: StakingAction): boolean {
-  return action === "register" || action === "registerAndDelegate";
-}
-
-function buildStakingActionConfigs({
-  txBuilder,
-  rewardAddress,
-  stakingScript,
-  poolHex,
-  rewards,
-}: {
-  txBuilder: ReturnType<typeof getTxBuilder>;
-  rewardAddress: string;
-  stakingScript: string;
-  poolHex: string;
-  rewards: string;
-}): Record<StakingAction, StakingActionConfig> {
-  return {
-    register: {
-      execute: () => txBuilder.registerStakeCertificate(rewardAddress).certificateScript(stakingScript),
-      description: "Register stake.",
-      successTitle: "Stake Registered",
-      successMessage: "Your stake address has been registered.",
-    },
-    deregister: {
-      execute: () => txBuilder.deregisterStakeCertificate(rewardAddress).certificateScript(stakingScript),
-      description: "Deregister stake.",
-      successTitle: "Stake Deregistered",
-      successMessage: "Your stake address has been deregistered.",
-    },
-    delegate: {
-      execute: () => txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript),
-      description: "Delegate stake.",
-      successTitle: "Stake Delegated",
-      successMessage: "Your stake has been delegated.",
-    },
-    withdrawal: {
-      execute: () => txBuilder.withdrawal(rewardAddress, rewards),
-      description: "Withdraw rewards.",
-      successTitle: "Rewards Withdrawn",
-      successMessage: "Your staking rewards have been withdrawn.",
-    },
-    registerAndDelegate: {
-      execute: () => {
-        txBuilder
-          .registerStakeCertificate(rewardAddress)
-          .certificateScript(stakingScript);
-        txBuilder.delegateStakeCertificate(rewardAddress, poolHex).certificateScript(stakingScript);
-      },
-      description: "Register & delegate stake.",
-      successTitle: "Stake Registered & Delegated",
-      successMessage: "Your stake address has been registered and delegated.",
-    },
-  };
-}
 export default function StakeButton({
   stakingInfo,
   appWallet,
@@ -107,7 +45,7 @@ export default function StakeButton({
       const stakingScript = appWallet.stakeScriptCbor || (mWallet ? mWallet.getStakingScript() : undefined);
       if (!stakingScript) throw new Error("Staking Script could not be built.");
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const selectedUtxos = utxos;
 
       for (const utxo of selectedUtxos) {
@@ -129,10 +67,6 @@ export default function StakeButton({
         rewards: stakingInfo.rewards,
       });
       const actionConfig = actionConfigs[action];
-
-      if (shouldApplyStakeDeposit(action)) {
-        txBuilder.protocolParams({ keyDeposit: STAKE_KEY_DEPOSIT });
-      }
 
       actionConfig.execute();
 

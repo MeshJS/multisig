@@ -124,7 +124,11 @@ function RecipientRowMobile({
           </label>
           <div className="flex items-center gap-2">
             <Input
-              type="string"
+              type="text"
+              inputMode="text"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="addr1... or $handle"
               value={recipientAddresses[index]}
               onChange={(e) => {
@@ -166,6 +170,7 @@ function RecipientRowMobile({
             </label>
             <Input
               type="number"
+              inputMode="decimal"
               value={amounts[index]}
               onChange={(e) => {
                 const newAmounts = [...amounts];

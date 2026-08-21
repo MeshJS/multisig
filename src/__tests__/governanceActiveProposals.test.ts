@@ -5,64 +5,62 @@ const addCorsCacheBustingHeadersMock = jest.fn<(res: NextApiResponse) => void>()
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => boolean>();
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
-const verifyJwtMock = jest.fn();
-const isBotJwtMock = jest.fn();
-const findBotUserMock = jest.fn();
-const providerGetMock = jest.fn();
-const parseScopeMock = jest.fn();
-const scopeIncludesMock = jest.fn();
+const applyAddressRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, address: string) => boolean>();
+const verifyJwtMock = jest.fn<() => unknown>();
+const isBotJwtMock = jest.fn<() => boolean>();
+const findBotUserMock = jest.fn<() => Promise<unknown>>();
+const getProviderMock = jest.fn();
+const providerGetMock = jest.fn<(path: string) => Promise<unknown>>();
+const parseScopeMock = jest.fn<(scope: string) => string[]>();
+const scopeIncludesMock = jest.fn<(scopes: string[], required: string) => boolean>();
 const getProposalStatusMock = jest.fn();
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/cors",
   () => ({
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/security/requestGuards",
   () => ({
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
+    applyAddressRateLimit: applyAddressRateLimitMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/verifyJwt",
   () => ({
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/governance",
   () => ({
     __esModule: true,
     getProposalStatus: getProposalStatusMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/lib/auth/botKey",
   () => ({
     __esModule: true,
     parseScope: parseScopeMock,
     scopeIncludes: scopeIncludesMock,
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/server/db",
   () => ({
     __esModule: true,
@@ -72,18 +70,14 @@ jest.mock(
       },
     },
   }),
-  { virtual: true },
 );
 
-jest.mock(
+jest.unstable_mockModule(
   "@/utils/get-provider",
   () => ({
     __esModule: true,
-    getProvider: () => ({
-      get: providerGetMock,
-    }),
+    getProvider: getProviderMock,
   }),
-  { virtual: true },
 );
 
 type ResponseMock = NextApiResponse & { statusCode?: number };
@@ -115,11 +109,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
+  applyAddressRateLimitMock.mockReturnValue(true);
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_test1", botId: "bot-1", type: "bot" });
   isBotJwtMock.mockReturnValue(true);
-  parseScopeMock.mockImplementation((scope: string) => JSON.parse(scope));
-  scopeIncludesMock.mockImplementation((scopes: string[], required: string) =>
+  parseScopeMock.mockImplementation((scope) => JSON.parse(scope) as string[]);
+  scopeIncludesMock.mockImplementation((scopes, required) =>
     scopes.includes(required),
   );
   getProposalStatusMock.mockImplementation((details: any) => {
@@ -132,6 +127,9 @@ beforeEach(() => {
     id: "bot-1",
     botKey: { scope: JSON.stringify(["multisig:read", "governance:read"]) },
   });
+  getProviderMock.mockReturnValue({
+    get: providerGetMock,
+  });
 });
 
 describe("governanceActiveProposals API", () => {
@@ -142,12 +140,12 @@ describe("governanceActiveProposals API", () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized - Missing token" });
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   });
 
   it("returns only active proposals and tolerates metadata 404", async () => {
-    providerGetMock.mockImplementation(async (path: string) => {
-      if (path.startsWith("governance/proposals?")) {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
         return [
           {
             tx_hash: "tx-active",
@@ -169,7 +167,7 @@ describe("governanceActiveProposals API", () => {
           },
         ];
       }
-      if (path === "governance/proposals/tx-active/0") {
+      if (path === "/governance/proposals/tx-active/0") {
         return {
           ratified_epoch: null,
           enacted_epoch: null,
@@ -180,7 +178,7 @@ describe("governanceActiveProposals API", () => {
           return_address: "addr_test1...",
         };
       }
-      if (path === "governance/proposals/tx-ratified/1") {
+      if (path === "/governance/proposals/tx-ratified/1") {
         return {
           ratified_epoch: 530,
           enacted_epoch: null,
@@ -191,7 +189,7 @@ describe("governanceActiveProposals API", () => {
           return_address: "addr_test1...",
         };
       }
-      if (path === "governance/proposals/tx-active/0/metadata") {
+      if (path === "/governance/proposals/tx-active/0/metadata") {
         throw JSON.stringify({
           data: {
             error: "Not Found",
@@ -214,7 +212,7 @@ describe("governanceActiveProposals API", () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    const payload = res.json.mock.calls[0]?.[0] as any;
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
     expect(Array.isArray(payload.proposals)).toBe(true);
     expect(payload.proposals).toHaveLength(1);
     expect(payload.proposals[0]).toMatchObject({
@@ -225,6 +223,371 @@ describe("governanceActiveProposals API", () => {
       motivation: null,
       rationale: null,
       authors: [],
+    });
+  });
+
+  it("returns an empty proposal list when Blockfrost has no governance proposals", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
+        throw {
+          response: {
+            data: {
+              error: "Not Found",
+              message: "The requested component has not been found.",
+              status_code: 404,
+            },
+          },
+        };
+      }
+      return null;
+    });
+
+    const req = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+      query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(payload).toMatchObject({
+      proposals: [],
+      activeCount: 0,
+      sourceCount: 0,
+      network: "0",
+      details: false,
+    });
+  });
+
+  it("still returns active proposals when optional details and metadata fetches fail", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
+        return [
+          {
+            tx_hash: "tx-active",
+            cert_index: 0,
+            governance_type: "info_action",
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            ratified_epoch: null,
+          },
+        ];
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        throw {
+          response: {
+            status: 500,
+            data: { status_code: 500 },
+          },
+        };
+      }
+      if (path === "/governance/proposals/tx-active/0/metadata") {
+        throw {
+          response: {
+            status: 500,
+            data: { status_code: 500 },
+          },
+        };
+      }
+      return null;
+    });
+
+    const req = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+      query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(payload.proposals).toHaveLength(1);
+    expect(payload.proposals[0]).toMatchObject({
+      proposalId: "tx-active#0",
+      title: null,
+      status: "active",
+    });
+    expect(payload.activeCount).toBe(1);
+  });
+
+  it("falls back to direct Blockfrost REST when provider list fetch fails without a status", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path.startsWith("/governance/proposals?")) {
+        throw new Error("Internal Server Error");
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        return {
+          ratified_epoch: null,
+          enacted_epoch: null,
+          dropped_epoch: null,
+          expired_epoch: null,
+          expiration: 999,
+          deposit: "1000000",
+          return_address: "addr_test1...",
+        };
+      }
+      if (path === "/governance/proposals/tx-active/0/metadata") {
+        throw { status: 404 };
+      }
+      return null;
+    });
+    const originalKey = process.env.BLOCKFROST_API_KEY_PREPROD;
+    process.env.BLOCKFROST_API_KEY_PREPROD = "preprod-key";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            tx_hash: "tx-active",
+            cert_index: 0,
+            governance_type: "info_action",
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            ratified_epoch: null,
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    try {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+
+      await handler(req, res);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://cardano-preprod.blockfrost.io/api/v0/governance/proposals?count=20&page=1&order=desc",
+        expect.objectContaining({
+          headers: expect.objectContaining({ project_id: "preprod-key" }),
+        }),
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+      expect(payload.proposals).toHaveLength(1);
+      expect(payload.activeCount).toBe(1);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.BLOCKFROST_API_KEY_PREPROD;
+      } else {
+        process.env.BLOCKFROST_API_KEY_PREPROD = originalKey;
+      }
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to direct Blockfrost REST when provider construction fails", async () => {
+    getProviderMock.mockImplementation(() => {
+      throw new TypeError("Cannot read properties of undefined (reading 'slice')");
+    });
+    const originalKey = process.env.BLOCKFROST_API_KEY_PREPROD;
+    process.env.BLOCKFROST_API_KEY_PREPROD = "preprod-key";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlString = String(url);
+      if (urlString.includes("/governance/proposals?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              tx_hash: "tx-active",
+              cert_index: 0,
+              governance_type: "info_action",
+              enacted_epoch: null,
+              dropped_epoch: null,
+              expired_epoch: null,
+              ratified_epoch: null,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (urlString.includes("/governance/proposals/tx-active/0/metadata")) {
+        return new Response(JSON.stringify({ error: "Not Found", status_code: 404 }), {
+          status: 404,
+        });
+      }
+      if (urlString.includes("/governance/proposals/tx-active/0")) {
+        return new Response(
+          JSON.stringify({
+            ratified_epoch: null,
+            enacted_epoch: null,
+            dropped_epoch: null,
+            expired_epoch: null,
+            expiration: 999,
+            deposit: "1000000",
+            return_address: "addr_test1...",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Unexpected path" }), { status: 500 });
+    });
+
+    try {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "0", count: "20", page: "1", order: "desc", details: "false" },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+
+      await handler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const payload = (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+      expect(payload.proposals).toHaveLength(1);
+      expect(payload.activeCount).toBe(1);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.BLOCKFROST_API_KEY_PREPROD;
+      } else {
+        process.env.BLOCKFROST_API_KEY_PREPROD = originalKey;
+      }
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("rejects out-of-bounds or malformed query params", async () => {
+    const cases: Array<Record<string, string>> = [
+      { count: "0" },
+      { count: "-5" },
+      { count: "101" },
+      { count: "abc" },
+      { page: "0" },
+      { details: "maybe" },
+      { includeRatified: "nah" },
+    ];
+    for (const query of cases) {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "1", ...query },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  });
+
+  it("includes ratified proposals only when includeRatified=true and reports currentEpoch", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path === "/epochs/latest") {
+        return { epoch: 644 };
+      }
+      if (path.startsWith("/governance/proposals?")) {
+        return [
+          { tx_hash: "tx-active", cert_index: 0, governance_type: "info_action" },
+          { tx_hash: "tx-ratified", cert_index: 1, governance_type: "treasury_withdrawals" },
+        ];
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        return { ratified_epoch: null, enacted_epoch: null, dropped_epoch: null, expired_epoch: null, expiration: 646 };
+      }
+      if (path === "/governance/proposals/tx-ratified/1") {
+        return { ratified_epoch: 644, enacted_epoch: null, dropped_epoch: null, expired_epoch: null, expiration: 645 };
+      }
+      return null;
+    });
+
+    const baseReq = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+    };
+
+    const resDefault = createMockResponse();
+    await handler(
+      { ...baseReq, query: { network: "1" } } as unknown as NextApiRequest,
+      resDefault,
+    );
+    const bodyDefault = (resDefault.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(bodyDefault.proposals).toHaveLength(1);
+    expect(bodyDefault.currentEpoch).toBe(644);
+    expect(bodyDefault.includeRatified).toBe(false);
+
+    const resRatified = createMockResponse();
+    await handler(
+      { ...baseReq, query: { network: "1", includeRatified: "true" } } as unknown as NextApiRequest,
+      resRatified,
+    );
+    const bodyRatified = (resRatified.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(bodyRatified.proposals).toHaveLength(2);
+    const statuses = bodyRatified.proposals.map((p: any) => p.status).sort();
+    expect(statuses).toEqual(["active", "ratified"]);
+  });
+
+  describe("human (non-bot) callers", () => {
+    const asHuman = () => {
+      verifyJwtMock.mockReturnValue({ address: "addr_test1qphuman" });
+      isBotJwtMock.mockReturnValue(false);
+      providerGetMock.mockImplementation(async (path) =>
+        path.startsWith("governance/proposals?") ? [] : null,
+      );
+    };
+
+    const humanRequest = () =>
+      ({
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "1", count: "10", page: "1", order: "desc" },
+      }) as unknown as NextApiRequest;
+
+    it("allows a human JWT through — this is public chain data", async () => {
+      asHuman();
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("meters humans per address, not per bot", async () => {
+      asHuman();
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(applyAddressRateLimitMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "addr_test1qphuman",
+      );
+      // The bot budget must not be charged for a caller that has no bot id.
+      expect(applyBotRateLimitMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 429 when a human exceeds the address budget", async () => {
+      asHuman();
+      applyAddressRateLimitMock.mockReturnValue(false);
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).not.toHaveBeenCalledWith(200);
+    });
+
+    it("still enforces the bot scope gate for bot callers", async () => {
+      // The human path must not have opened a hole in the bot path.
+      findBotUserMock.mockResolvedValue({
+        id: "bot-1",
+        botKey: { scope: JSON.stringify(["multisig:read"]) },
+      });
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: "Insufficient scope: governance:read required",
+      });
     });
   });
 });

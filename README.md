@@ -37,7 +37,6 @@ A comprehensive, enterprise-grade multi-signature wallet solution built on Carda
 - Secure multi-sig staking operations
 
 ### Collaboration
-- Real-time Nostr-based chat
 - Discord integration for notifications
 - Signer verification via message signing
 - Automated transaction alerts
@@ -188,11 +187,11 @@ graph TD
 ### Database Schema
 ```prisma
 model User {
-  id           String @id @default(cuid())
-  address      String @unique
-  stakeAddress String @unique
-  nostrKey     String @unique
-  discordId    String @default("")
+  id           String  @id @default(cuid())
+  address      String  @unique
+  stakeAddress String  @unique
+  nostrKey     String? @unique
+  discordId    String  @default("")
 }
 
 model Wallet {

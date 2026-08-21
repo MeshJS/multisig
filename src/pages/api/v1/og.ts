@@ -1,6 +1,79 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { env } from "@/env";
+import { assertSafeHost } from "@/lib/security/ssrf";
 
-// Simple OG metadata extractor using fetch + regex fallbacks
+const DEFAULT_ALLOWED_HOSTS = [
+  "github.com",
+  "www.github.com",
+  "twitter.com",
+  "x.com",
+  "youtube.com",
+  "www.youtube.com",
+  "cardano.org",
+  "www.cardano.org",
+  "meshjs.dev",
+  "www.meshjs.dev",
+];
+
+const MAX_BYTES = 1024 * 1024;
+const FETCH_TIMEOUT_MS = 5000;
+
+function loadAllowedHosts(): { hosts: Set<string>; wildcard: boolean } {
+  const raw = env.OG_ALLOWED_HOSTS?.trim();
+  if (!raw) {
+    return { hosts: new Set(DEFAULT_ALLOWED_HOSTS), wildcard: false };
+  }
+  if (raw === "*") {
+    return { hosts: new Set(), wildcard: true };
+  }
+  const list = raw
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => h.length > 0);
+  return { hosts: new Set(list), wildcard: false };
+}
+
+async function fetchCapped(target: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { "user-agent": "MeshMultisigOGFetcher/1.0" },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error("Blocked: redirect not followed");
+    }
+    if (!response.ok) {
+      throw new Error(`Upstream ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) {
+      const text = await response.text();
+      return text.length > MAX_BYTES ? text.slice(0, MAX_BYTES) : text;
+    }
+    const decoder = new TextDecoder();
+    let received = 0;
+    let html = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_BYTES) {
+        await reader.cancel();
+        break;
+      }
+      html += decoder.decode(value, { stream: true });
+    }
+    html += decoder.decode();
+    return html;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { url } = req.query;
   if (typeof url !== "string") {
@@ -8,9 +81,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
+  let parsed: URL;
   try {
-    const response = await fetch(url, { method: "GET" });
-    const html = await response.text();
+    parsed = new URL(url);
+  } catch {
+    res.status(400).json({ error: "Invalid url" });
+    return;
+  }
+
+  if (parsed.protocol !== "https:") {
+    res.status(400).json({ error: "Only https URLs are allowed" });
+    return;
+  }
+
+  // URL normalises ":443" away, so any explicit port is a non-default one —
+  // reject it so the allowlist can't be used to probe arbitrary services.
+  if (parsed.port !== "") {
+    res.status(400).json({ error: "Only the default https port is allowed" });
+    return;
+  }
+
+  const { hosts, wildcard } = loadAllowedHosts();
+  const host = parsed.hostname.toLowerCase();
+  if (!wildcard && !hosts.has(host)) {
+    res.status(400).json({ error: "Host not allowed" });
+    return;
+  }
+
+  try {
+    await assertSafeHost(host);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Blocked";
+    res.status(400).json({ error: msg });
+    return;
+  }
+
+  try {
+    const html = await fetchCapped(parsed.toString());
 
     const extract = (property: string, nameFallback?: string) => {
       const ogRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`, "i");
@@ -39,4 +146,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(500).json({ error: errorMessage });
   }
 }
-

@@ -4,135 +4,15 @@ import { useCallback } from "react";
 import { useSiteStore } from "@/lib/zustand/site";
 import useAppWallet from "./useAppWallet";
 import { MeshTxBuilder } from "@meshsdk/core";
-import { csl } from "@meshsdk/core-csl";
 import useActiveWallet from "./useActiveWallet";
 import {
+  filterWitnessesToScripts,
   mergeSignerWitnesses,
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
-import {
-  DREP_DEPOSIT_LOVELACE,
-  STAKE_KEY_DEPOSIT_LOVELACE,
-} from "@/utils/protocol-deposit-constants";
-
-function parseCoinToBigInt(value: unknown, fallback: bigint): bigint {
-  if (typeof value === "bigint") return value;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return BigInt(Math.trunc(value));
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    try {
-      return BigInt(value);
-    } catch {
-      return fallback;
-    }
-  }
-  return fallback;
-}
-
-function getCertificateCoinDelta(txBuilder: MeshTxBuilder): bigint {
-  const body = txBuilder.meshTxBuilderBody as {
-    certificates?: Array<{
-      certType?: {
-        type?: string;
-        coin?: string | number | bigint;
-        deposit?: string | number | bigint;
-      };
-    }>;
-  };
-  const certs = body.certificates ?? [];
-
-  let delta = 0n;
-  for (const cert of certs) {
-    const certType = cert?.certType?.type ?? "";
-    const normalized = certType.toLowerCase();
-    const certCoin = cert?.certType?.coin ?? cert?.certType?.deposit;
-
-    if (normalized.includes("drepregistration")) {
-      delta -= parseCoinToBigInt(certCoin, DREP_DEPOSIT_LOVELACE);
-      continue;
-    }
-    if (normalized.includes("drepderegistration")) {
-      delta += parseCoinToBigInt(certCoin, DREP_DEPOSIT_LOVELACE);
-      continue;
-    }
-
-    const isStakeRegister =
-      normalized.includes("registerstake") || normalized.includes("stakeregistration");
-    const isStakeDeregister =
-      normalized.includes("deregisterstake") ||
-      normalized.includes("unregisterstake") ||
-      normalized.includes("stakederegistration");
-
-    if (isStakeRegister) {
-      delta -= STAKE_KEY_DEPOSIT_LOVELACE;
-      continue;
-    }
-    if (isStakeDeregister) {
-      delta += STAKE_KEY_DEPOSIT_LOVELACE;
-    }
-  }
-
-  return delta;
-}
-
-function adjustTxForStakeKeyDeposit(
-  unsignedTxHex: string,
-  coinDelta: bigint,
-  changeAddress?: string,
-): string {
-  if (coinDelta === 0n) {
-    return unsignedTxHex;
-  }
-
-  const tx = csl.Transaction.from_hex(unsignedTxHex);
-  const bodyJson = JSON.parse(tx.body().to_json()) as {
-    outputs?: Array<{ address?: string; amount?: { coin?: string } }>;
-  };
-  const outputs = bodyJson.outputs ?? [];
-  if (outputs.length === 0) {
-    return unsignedTxHex;
-  }
-
-  let changeOutputIndex = -1;
-  if (changeAddress) {
-    for (let i = 0; i < outputs.length; i++) {
-      const output = outputs[i];
-      if (output?.address === changeAddress) {
-        changeOutputIndex = i;
-      }
-    }
-  }
-
-  if (changeOutputIndex < 0) {
-    changeOutputIndex = outputs.length - 1;
-  }
-
-  const changeOutput = outputs[changeOutputIndex];
-  const currentCoin = BigInt(changeOutput?.amount?.coin ?? "0");
-  if (!changeOutput?.amount?.coin) {
-    return unsignedTxHex;
-  }
-
-  const adjustedCoin = currentCoin + coinDelta;
-  if (adjustedCoin <= 0n) {
-    return unsignedTxHex;
-  }
-  changeOutput.amount.coin = adjustedCoin.toString();
-
-  const adjustedTxBody = csl.TransactionBody.from_json(JSON.stringify(bodyJson));
-  const adjustedTx = csl.Transaction.new(
-    adjustedTxBody,
-    csl.TransactionWitnessSet.from_bytes(tx.witness_set().to_bytes()),
-    tx.auxiliary_data(),
-  );
-  if (!tx.is_valid()) {
-    adjustedTx.set_is_valid(false);
-  }
-  return adjustedTx.to_hex();
-}
 
 export default function useTransaction() {
   const ctx = api.useUtils();
@@ -158,6 +38,10 @@ export default function useTransaction() {
           { walletId: newTransaction.walletId },
           (old) => {
             if (!old) return old;
+            // A replace atomically deletes the edited pending tx server-side.
+            const withoutReplaced = newTransaction.replaces
+              ? old.filter((tx) => tx.id !== newTransaction.replaces!.transactionId)
+              : old;
             const optimisticTx = {
               id: `temp-${Date.now()}`,
               walletId: newTransaction.walletId,
@@ -171,7 +55,7 @@ export default function useTransaction() {
               createdAt: new Date(),
               updatedAt: new Date(),
             };
-            return [optimisticTx, ...old];
+            return [optimisticTx, ...withoutReplaced];
           }
         );
 
@@ -209,6 +93,11 @@ export default function useTransaction() {
         label: string;
         value: string;
       };
+      /** Atomically replaces this pending transaction (edit-in-builder flow). */
+      replaces?: {
+        transactionId: string;
+        knownSignedCount: number;
+      };
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
@@ -224,29 +113,30 @@ export default function useTransaction() {
         });
       }
 
-      let unsignedTx = await data.txBuilder.complete();
-
-      // Workaround for certificate txs where builder-produced change may not
-      // fully account for deposit charge/refund in downstream validation.
-      const certificateCoinDelta = getCertificateCoinDelta(data.txBuilder);
-      if (certificateCoinDelta !== 0n) {
-        unsignedTx = adjustTxForStakeKeyDeposit(
-          unsignedTx,
-          certificateCoinDelta,
-          appWallet.address,
-        );
-      }
+      const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
 
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
-      let signedTx = mergeSignerWitnesses(
-        unsignedTx,
-        signerWitnessPayload,
-      );
-      
+      const mergeResult = mergeSignerWitnesses(unsignedTx, signerWitnessPayload);
+      if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
+        setLoading(false);
+        console.error(
+          "Wallet returned witness that does not verify against tx body hash",
+          { invalidVkeyPubKeysHex: mergeResult.invalidVkeyPubKeysHex },
+        );
+        toast({
+          title: "Signature mismatch",
+          description:
+            "Your wallet's signature doesn't match this transaction's body. The Cardano SDK and your wallet disagree on CBOR encoding. Try a different wallet, or report this with the failing pubkey (see browser console).",
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+      let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);
@@ -277,6 +167,7 @@ export default function useTransaction() {
         state: submitTx ? 1 : 0,
         description: data.description,
         txHash: txHash,
+        replaces: data.replaces,
       });
 
       setLoading(false);

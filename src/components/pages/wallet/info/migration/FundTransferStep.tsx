@@ -217,7 +217,7 @@ export default function FundTransferStep({
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       // Add all UTxOs as inputs
       for (const utxo of utxos) {

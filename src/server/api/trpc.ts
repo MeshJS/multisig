@@ -75,6 +75,30 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => ({
 });
 
 /**
+ * Inferred shape of the context every tRPC procedure receives. Used as the
+ * type of `ctx` in helper functions that previously had to use `any`.
+ */
+export type TRPCContext = ReturnType<typeof createInnerTRPCContext>;
+
+/**
+ * Structural ctx shape accepted by router helpers. `protectedProcedure`'s
+ * middleware narrows `session.expires` to optional, which is not assignable
+ * to the base TRPCContext. Helpers consuming ctx use this looser shape so
+ * they accept both base and narrowed contexts.
+ */
+export type AuthCtx = {
+  db: TRPCContext["db"];
+  ip: string;
+  sessionAddress: string | null;
+  sessionWallets: string[];
+  primaryWallet: string | null;
+  session:
+    | (Omit<Session, "expires"> & { expires?: string })
+    | Session
+    | null;
+};
+
+/**
  * This is the actual context you will use in your router. It will be used to process every request
  * that goes through your tRPC endpoint.
  *
@@ -235,7 +259,7 @@ export const protectedProcedure = t.procedure
   .use(({ ctx, next }) => {
     const hasNextAuth = !!ctx.session?.user;
     const hasWalletSession =
-      Array.isArray((ctx as any).sessionWallets) && (ctx as any).sessionWallets.length > 0;
+      Array.isArray(ctx.sessionWallets) && ctx.sessionWallets.length > 0;
 
     if (!hasNextAuth && !hasWalletSession) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -248,8 +272,7 @@ export const protectedProcedure = t.procedure
     if (hasNextAuth) {
       sessionAddress = ctx.session?.user?.id ?? sessionAddress;
     } else if (!sessionAddress && hasWalletSession) {
-      const wallets = (ctx as any).sessionWallets as string[];
-      sessionAddress = wallets[0] ?? null;
+      sessionAddress = ctx.sessionWallets[0] ?? null;
     }
 
     return next({

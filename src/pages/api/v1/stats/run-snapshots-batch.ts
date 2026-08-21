@@ -2,13 +2,11 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { buildWallet } from "@/utils/common";
-import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
 import { getProvider } from "@/utils/get-provider";
-import { resolvePaymentKeyHash, resolveStakeKeyHash, type UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import type { Wallet as DbWallet } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Prisma, type Wallet as DbWallet } from "@prisma/client";
 import { DbWalletWithLegacy } from "@/types/wallet";
 
 interface WalletBalance {
@@ -272,6 +270,11 @@ export default async function handler(
           }
         }
 
+        // This used to branch on `signersStakeKeys` and hand-assemble a
+        // MultisigWallet with ordered keys for the stake-key case, falling back
+        // to buildWallet() otherwise. buildWallet() now does that branch itself
+        // (getWalletType -> sdk/legacy/summon) and reports the resolved address
+        // on `capabilities`, so the conditional here is fully subsumed.
         let walletAddress: string;
         try {
           const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
@@ -409,7 +412,7 @@ export default async function handler(
               walletId: walletBalance.walletId,
               walletName: walletBalance.walletName,
               address: walletBalance.address,
-              adaBalance: new Decimal(walletBalance.adaBalance),
+              adaBalance: new Prisma.Decimal(walletBalance.adaBalance),
               assetBalances: walletBalance.balance,
               isArchived: walletBalance.isArchived,
             },

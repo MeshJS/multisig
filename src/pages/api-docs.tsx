@@ -1,16 +1,22 @@
 // src/pages/api-docs.tsx
 import dynamic from "next/dynamic";
 import React, { useEffect, useState, useRef } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
 import Globe from "./globe";
 
 // Avoid SSR for Swagger UI
+// Note: swagger-ui CSS is imported globally from src/pages/_app.tsx because
+// Next.js Pages Router only allows global CSS imports from the custom App.
 const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
-import "swagger-ui-react/swagger-ui.css";
+
+export const getServerSideProps = () => ({ props: {} });
 
 export default function ApiDocs() {
-  const { wallet, connected } = useWallet();
+  // Mesh 1.9 bridge — signData(payload, address). react-2.0's useWallet()
+  // wallet has the args swapped, which broke bearer-token generation on
+  // wallets like VESPR (CIP-30 InternalError -2).
+  const { wallet, connected } = useMeshWallet();
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -319,6 +325,44 @@ export default function ApiDocs() {
           WebkitBackdropFilter: "blur(16px)",
         }}
       >
+        <div className="mb-8 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            API &amp; Bot Documentation
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Build on Mesh Multisig with a typed REST API. List wallets, read
+            pending transactions, and add or sign transactions from your own
+            services and bots — the same endpoints the app itself uses.
+          </p>
+          <ul className="mt-4 space-y-1.5 text-sm text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">Authenticate:</span>{" "}
+              connect a wallet and use{" "}
+              <span className="font-medium text-foreground">Generate Token</span>{" "}
+              (bottom-right), or call{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                POST /api/v1/botAuth
+              </code>{" "}
+              for bots.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Authorize:</span> send{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                Authorization: Bearer &lt;token&gt;
+              </code>{" "}
+              on each request.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Machine spec:</span>{" "}
+              fetch the OpenAPI JSON at{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                GET /api/swagger
+              </code>
+              .
+            </li>
+          </ul>
+        </div>
+
         <SwaggerUI
           url="/api/swagger"
           docExpansion="none"

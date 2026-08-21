@@ -10,14 +10,13 @@ A comprehensive Next.js pages directory containing all application routes, API e
 - **Purpose**: Root application component with global providers and configuration
 - **Features**:
   - Global dark mode detection and theme management
-  - Provider setup (Mesh SDK, NextAuth, Nostr Chat)
+  - Provider setup (Mesh SDK, NextAuth)
   - Global styles and font configuration
   - Toast notifications and meta tags
   - tRPC integration for type-safe API calls
 - **Providers**:
   - `MeshProvider`: Cardano wallet integration
   - `SessionProvider`: NextAuth authentication
-  - `NostrChatProvider`: Decentralized chat functionality
 - **Styling**: Geist Sans font, global CSS, Mesh SDK styles, Swagger UI styles
 
 #### `_document.tsx`
@@ -92,10 +91,6 @@ A comprehensive Next.js pages directory containing all application routes, API e
 #### `wallets/[wallet]/assets/index.tsx`
 - **Purpose**: Wallet asset management
 - **Features**: View and manage wallet assets
-
-#### `wallets/[wallet]/chat/index.tsx`
-- **Purpose**: Wallet-specific chat interface
-- **Features**: Decentralized chat for wallet participants
 
 #### `wallets/[wallet]/dapps/index.tsx`
 - **Purpose**: DApp integration page
@@ -368,7 +363,6 @@ export default function Page() {
 ### Blockchain Integration
 - **Mesh SDK**: Cardano wallet operations
 - **Blockfrost**: Blockchain data access
-- **Nostr**: Decentralized chat functionality
 
 ### Development Tools
 - **Swagger UI**: API documentation and testing

@@ -11,6 +11,7 @@ A comprehensive transaction management interface for multisig wallets with trans
 - **Signer Badges**: Visual representation of transaction signers with descriptive labels
 - **CardanoScan Integration**: Direct links to view transactions on CardanoScan explorer
 - **Return to Sender**: Quick action to return funds from failed transactions
+- **Token Flow Timeline**: Collapsed-by-default section merging the on-chain list into one chronological flow graph (newest right); starts focused on the two newest transactions with ◀ ▶ step navigation and free panning back in time
 
 ### Pending Transactions
 - **Transaction Cards**: Individual cards for each pending transaction requiring signatures
@@ -45,6 +46,7 @@ transactions/
 ├── index.tsx                      # Main transactions page component
 ├── all-transactions.tsx           # Transaction history table component
 ├── transaction-card.tsx           # Pending transaction card component
+├── token-flow-timeline-section.tsx # Collapsed multi-tx token-flow timeline
 ├── card-balance.tsx              # Wallet balance display component
 ├── card-pending-tx.tsx           # Pending transactions count component
 ├── responsive-transactions-table.tsx # Responsive table implementation

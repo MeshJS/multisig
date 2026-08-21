@@ -1,12 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+
+const { sign } = jwt;
 import {
   checkSignature,
   DataSignature,
 } from "@meshsdk/core";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { audit } from "@/lib/observability/audit";
+import { getClientIP } from "@/lib/security/rateLimit";
 
 export default async function handler(
   req: NextApiRequest,
@@ -53,6 +57,15 @@ export default async function handler(
     const isValid = await checkSignature(nonce, sig, address);
 
     if (!isValid) {
+      void audit(db, {
+        actorAddress: address,
+        actorType: "user",
+        action: "auth.sign_in.invalid_signature",
+        ip: getClientIP(req),
+        userAgent: req.headers["user-agent"] ?? null,
+        outcome: "denied",
+        reason: "Invalid signature",
+      });
       return res.status(401).json({ error: "Invalid signature" });
     }
 
@@ -71,10 +84,28 @@ export default async function handler(
         jwtSecret,
         { expiresIn: "1h" },
       );
+      void audit(db, {
+        actorAddress: address,
+        actorType: "bot",
+        action: "auth.sign_in",
+        resourceType: "bot",
+        resourceId: botUser.id,
+        ip: getClientIP(req),
+        userAgent: req.headers["user-agent"] ?? null,
+        outcome: "success",
+      });
       return res.status(200).json({ token });
     }
 
     const token = sign({ address }, jwtSecret, { expiresIn: "1h" });
+    void audit(db, {
+      actorAddress: address,
+      actorType: "user",
+      action: "auth.sign_in",
+      ip: getClientIP(req),
+      userAgent: req.headers["user-agent"] ?? null,
+      outcome: "success",
+    });
     return res.status(200).json({ token });
   }
 

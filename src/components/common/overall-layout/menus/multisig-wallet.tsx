@@ -1,9 +1,8 @@
-import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2 } from "lucide-react";
+import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, Workflow } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Badge } from "@/components/ui/badge";
-import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import usePendingSignables from "@/hooks/usePendingSignables";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 
@@ -59,6 +58,15 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
           )}
         </MenuLink>
         <MenuLink
+          href={`${baseUrl}build`}
+          className={
+            router.pathname == "/wallets/[wallet]/build" ? "text-white" : ""
+          }
+        >
+          <Workflow className="h-5 w-5" />
+          Build
+        </MenuLink>
+        <MenuLink
           href={`${baseUrl}governance`}
           className={
             router.pathname == "/wallets/[wallet]/governance" ? "text-white" : ""
@@ -100,15 +108,6 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
         >
           <Banknote className="h-5 w-5" />
           Assets
-        </MenuLink>
-        <MenuLink
-          href={`${baseUrl}chat`}
-          className={
-            router.pathname == "/wallets/[wallet]/chat" ? "text-white" : ""
-          }
-        >
-          <ChatBubbleIcon className="h-5 w-5" />
-          Chat
         </MenuLink>
         <MenuLink
           href={`${baseUrl}dapps`}

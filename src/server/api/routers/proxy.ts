@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const requireSessionAddress = (ctx: any) => {
+const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
   if (!address) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -11,7 +12,7 @@ const requireSessionAddress = (ctx: any) => {
 };
 
 const assertWalletAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   walletId: string,
   requester: string | string[],
 ) => {
@@ -20,7 +21,7 @@ const assertWalletAccess = async (
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
   const requesters = Array.isArray(requester) ? requester : [requester];
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+  const sessionWallets: string[] = ctx.sessionWallets ?? [];
   const allRequesters = [...requesters, ...sessionWallets];
   const isSigner =
     Array.isArray(wallet.signersAddresses) &&
@@ -32,7 +33,7 @@ const assertWalletAccess = async (
   return wallet;
 };
 
-const getUserIdForAddress = async (ctx: any, address: string) => {
+const getUserIdForAddress = async (ctx: AuthCtx, address: string) => {
   const user = await ctx.db.user.findUnique({ where: { address } });
   if (!user) {
     throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
@@ -41,7 +42,7 @@ const getUserIdForAddress = async (ctx: any, address: string) => {
 };
 
 const assertProxyAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   proxy: { walletId: string | null; userId: string | null },
   requesterAddresses: string[],
 ) => {
@@ -75,13 +76,113 @@ const assertProxyAccess = async (
   throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this proxy" });
 };
 
-const getRequesterAddresses = (ctx: any): string[] => {
-  const sessionWallets: string[] = (ctx as any).sessionWallets ?? [];
+const getRequesterAddresses = (ctx: AuthCtx): string[] => {
+  const sessionWallets: string[] = ctx.sessionWallets ?? [];
   return sessionWallets.length ? sessionWallets : [requireSessionAddress(ctx)];
 };
 
+/**
+ * Every address the caller can act as: connected wallets plus the session
+ * address. Membership is keyed by address, so a member who signs in with a
+ * different connected wallet than the one they were invited with still matches.
+ */
+const getAllRequesterAddresses = (ctx: AuthCtx): string[] => {
+  const addresses = new Set<string>(ctx.sessionWallets ?? []);
+  const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress;
+  if (sessionAddress) {
+    addresses.add(sessionAddress);
+  }
+  if (addresses.size === 0) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return [...addresses];
+};
+
+export const PROXY_MEMBER_ROLES = ["manager", "viewer"] as const;
+type ProxyMemberRole = (typeof PROXY_MEMBER_ROLES)[number];
+
+/**
+ * Loose bech32 shape check. The full check needs the Mesh serialization stack,
+ * which we keep out of the server bundle; the client validates properly before
+ * submitting and a malformed address here only ever creates a dead grant.
+ */
+const CARDANO_ADDRESS_PATTERN = /^addr(_test)?1[02-9ac-hj-np-z]{20,150}$/;
+
+const proxyAddressSchema = z
+  .string()
+  .trim()
+  .refine((value) => CARDANO_ADDRESS_PATTERN.test(value), {
+    message: "Not a valid Cardano payment address",
+  });
+
+const hasOwnerProxyAccess = async (
+  ctx: AuthCtx,
+  proxy: { walletId: string | null; userId: string | null },
+  addresses: string[],
+) => {
+  try {
+    await assertProxyAccess(ctx, proxy, addresses);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+type ProxyPermissions = {
+  canRead: boolean;
+  canManage: boolean;
+  role: "owner" | ProxyMemberRole | null;
+};
+
+/**
+ * Resolves what the caller may do with a proxy.
+ *
+ * Owners (signers of the controlling multisig, or the proxy's own user) always
+ * get full access. Everyone else gets whatever their ProxyMember row grants:
+ * `manager` can also change the member list, `viewer` is read-only.
+ */
+const resolveProxyPermissions = async (
+  ctx: AuthCtx,
+  proxy: { walletId: string | null; userId: string | null },
+  proxyId: string,
+  addresses: string[],
+): Promise<ProxyPermissions> => {
+  if (await hasOwnerProxyAccess(ctx, proxy, addresses)) {
+    return { canRead: true, canManage: true, role: "owner" };
+  }
+
+  const memberships = await ctx.db.proxyMember.findMany({
+    where: { proxyId, address: { in: addresses } },
+  });
+  if (memberships.length === 0) {
+    return { canRead: false, canManage: false, role: null };
+  }
+
+  const canManage = memberships.some((member) => member.role === "manager");
+  return { canRead: true, canManage, role: canManage ? "manager" : "viewer" };
+};
+
+const requireManageableProxy = async (
+  ctx: AuthCtx,
+  proxyId: string,
+  addresses: string[],
+) => {
+  const proxy = await ctx.db.proxy.findUnique({ where: { id: proxyId } });
+  if (!proxy) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
+  }
+  const permissions = await resolveProxyPermissions(ctx, proxy, proxyId, addresses);
+  if (!permissions.canManage) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Not authorized to manage access for this proxy",
+    });
+  }
+  return { proxy, permissions };
+};
+
 const assertWalletAccessForAnyAddress = async (
-  ctx: any,
+  ctx: AuthCtx,
   walletId: string,
   addresses: string[],
 ) => {
@@ -96,7 +197,7 @@ const assertWalletAccessForAnyAddress = async (
   throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
 };
 
-const listActiveProxiesByUserAddress = async (ctx: any, userAddress: string) => {
+const listActiveProxiesByUserAddress = async (ctx: AuthCtx, userAddress: string) => {
   return ctx.db.$queryRaw<Array<{
     id: string;
     walletId: string | null;
@@ -119,7 +220,7 @@ const listActiveProxiesByUserAddress = async (ctx: any, userAddress: string) => 
 };
 
 const assertProxyManageAccess = async (
-  ctx: any,
+  ctx: AuthCtx,
   proxy: { walletId: string | null; userId: string | null },
   sessionAddress: string,
 ) => {
@@ -258,8 +359,19 @@ export const proxyRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
       }
 
-      const addresses = getRequesterAddresses(ctx);
-      await assertProxyAccess(ctx, proxy, addresses);
+      const addresses = getAllRequesterAddresses(ctx);
+      const permissions = await resolveProxyPermissions(
+        ctx,
+        proxy,
+        proxy.id,
+        addresses,
+      );
+      if (!permissions.canRead) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not authorized for this proxy",
+        });
+      }
 
       return proxy;
     }),
@@ -367,9 +479,186 @@ export const proxyRouter = createTRPCRouter({
 
       await Promise.all(updatePromises);
 
-      return { 
-        transferred: proxies.length, 
-        message: `Successfully transferred ${proxies.length} proxy${proxies.length !== 1 ? 'ies' : ''}` 
+      return {
+        transferred: proxies.length,
+        message: `Successfully transferred ${proxies.length} proxy${proxies.length !== 1 ? 'ies' : ''}`
       };
     }),
+
+  /**
+   * Batched member lookup for a set of proxies. Proxies the caller cannot read
+   * are omitted rather than throwing, so a single call can back a whole list of
+   * proxy cards.
+   */
+  listProxyMembers: protectedProcedure
+    .input(z.object({ proxyIds: z.array(z.string()).min(1).max(50) }))
+    .query(async ({ ctx, input }) => {
+      const addresses = getAllRequesterAddresses(ctx);
+      const proxyIds = [...new Set(input.proxyIds)];
+      const proxies = await ctx.db.proxy.findMany({
+        where: { id: { in: proxyIds } },
+      });
+
+      const permissionsByProxy = new Map<string, ProxyPermissions>();
+      for (const proxy of proxies) {
+        permissionsByProxy.set(
+          proxy.id,
+          await resolveProxyPermissions(ctx, proxy, proxy.id, addresses),
+        );
+      }
+
+      const readableIds = proxies
+        .filter((proxy) => permissionsByProxy.get(proxy.id)?.canRead)
+        .map((proxy) => proxy.id);
+
+      const members = readableIds.length
+        ? await ctx.db.proxyMember.findMany({
+            where: { proxyId: { in: readableIds } },
+            orderBy: { createdAt: "asc" },
+          })
+        : [];
+
+      return readableIds.map((proxyId) => ({
+        proxyId,
+        canManage: permissionsByProxy.get(proxyId)?.canManage ?? false,
+        role: permissionsByProxy.get(proxyId)?.role ?? null,
+        members: members
+          .filter((member) => member.proxyId === proxyId)
+          .map((member) => ({
+            id: member.id,
+            address: member.address,
+            role: member.role,
+            label: member.label,
+            invitedBy: member.invitedBy,
+            createdAt: member.createdAt,
+            isSelf: addresses.includes(member.address),
+          })),
+      }));
+    }),
+
+  addProxyMembers: protectedProcedure
+    .input(
+      z.object({
+        proxyId: z.string(),
+        members: z
+          .array(
+            z.object({
+              address: proxyAddressSchema,
+              role: z.enum(PROXY_MEMBER_ROLES).default("viewer"),
+              label: z.string().trim().max(120).optional(),
+            }),
+          )
+          .min(1)
+          .max(20),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const addresses = getAllRequesterAddresses(ctx);
+      await requireManageableProxy(ctx, input.proxyId, addresses);
+
+      const invitedBy = addresses[0]!;
+      const seen = new Set<string>();
+      const rows = input.members
+        .filter((member) => {
+          if (seen.has(member.address)) return false;
+          seen.add(member.address);
+          return true;
+        })
+        .map((member) => ({
+          proxyId: input.proxyId,
+          address: member.address,
+          role: member.role,
+          label: member.label && member.label.length > 0 ? member.label : null,
+          invitedBy,
+        }));
+
+      const result = await ctx.db.proxyMember.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+
+      return { added: result.count, requested: rows.length };
+    }),
+
+  updateProxyMember: protectedProcedure
+    .input(
+      z.object({
+        proxyId: z.string(),
+        address: proxyAddressSchema,
+        role: z.enum(PROXY_MEMBER_ROLES).optional(),
+        label: z.string().trim().max(120).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const addresses = getAllRequesterAddresses(ctx);
+      await requireManageableProxy(ctx, input.proxyId, addresses);
+
+      if (input.role === undefined && input.label === undefined) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nothing to update",
+        });
+      }
+
+      return ctx.db.proxyMember.update({
+        where: {
+          proxyId_address: { proxyId: input.proxyId, address: input.address },
+        },
+        data: {
+          ...(input.role !== undefined ? { role: input.role } : {}),
+          ...(input.label !== undefined
+            ? { label: input.label && input.label.length > 0 ? input.label : null }
+            : {}),
+        },
+      });
+    }),
+
+  removeProxyMember: protectedProcedure
+    .input(z.object({ proxyId: z.string(), address: proxyAddressSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const addresses = getAllRequesterAddresses(ctx);
+
+      // Members can always remove themselves ("leave"), even as viewers.
+      if (!addresses.includes(input.address)) {
+        await requireManageableProxy(ctx, input.proxyId, addresses);
+      }
+
+      await ctx.db.proxyMember.deleteMany({
+        where: { proxyId: input.proxyId, address: input.address },
+      });
+
+      return { removed: true };
+    }),
+
+  /** Active proxies shared with the caller through a ProxyMember grant. */
+  getSharedProxies: protectedProcedure.query(async ({ ctx }) => {
+    const addresses = getAllRequesterAddresses(ctx);
+    const memberships = await ctx.db.proxyMember.findMany({
+      where: { address: { in: addresses } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (memberships.length === 0) return [];
+
+    const proxies = await ctx.db.proxy.findMany({
+      where: {
+        id: { in: memberships.map((member) => member.proxyId) },
+        isActive: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const membershipByProxy = new Map(
+      memberships.map((member) => [member.proxyId, member]),
+    );
+
+    return proxies.map((proxy) => ({
+      ...proxy,
+      // The address the grant was issued to, so the member can revoke it.
+      memberAddress: membershipByProxy.get(proxy.id)?.address ?? addresses[0]!,
+      role: membershipByProxy.get(proxy.id)?.role ?? "viewer",
+      label: membershipByProxy.get(proxy.id)?.label ?? null,
+      invitedBy: membershipByProxy.get(proxy.id)?.invitedBy ?? null,
+      sharedAt: membershipByProxy.get(proxy.id)?.createdAt ?? proxy.createdAt,
+    }));
+  }),
 });

@@ -2,8 +2,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
+import type { AuthCtx } from "@/server/api/trpc";
 
-const requireSessionAddress = (ctx: any) => {
+const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
   if (!address) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -22,18 +23,37 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  // Keep createUser public for onboarding flows, but bind address when session exists
-  createUser: publicProcedure
+  // Onboarding upsert. Authenticated only — the session address must match
+  // the address being created/updated to prevent any unauthenticated caller
+  // from creating User rows or overwriting another user's stake/drep keys.
+  createUser: protectedProcedure
     .input(
       z.object({
         address: z.string().min(1, "address required"),
         stakeAddress: z.string().min(1, "stakeAddress required"),
         // DRep key hash is optional (not all wallets / networks expose it)
         drepKeyHash: z.string().optional().default(""),
-        nostrKey: z.string().min(1, "nostrKey required"),
+        // nostrKey is legacy — the chat system that used it was removed
+        // in #253; the column is nullable in the schema, callers no
+        // longer pass it. Kept in the input shape for backwards
+        // compatibility with any in-flight client bundles.
+        nostrKey: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const sessionAddress = requireSessionAddress(ctx);
+      // The wallet session accumulates every nonce-verified address in
+      // this browser; any of them is "yourself". Requiring an exact match
+      // on the primary (most recently authorized) address 403s users who
+      // switched back to a previously authorized wallet.
+      const sessionWallets: string[] = ctx.sessionWallets ?? [];
+      const callerAddresses = new Set([sessionAddress, ...sessionWallets]);
+      if (!callerAddresses.has(input.address)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Cannot create or modify a user other than yourself",
+        });
+      }
       return ctx.db.user.upsert({
         where: {
           address: input.address,
@@ -41,13 +61,13 @@ export const userRouter = createTRPCRouter({
         update: {
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
-          nostrKey: input.nostrKey,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
         create: {
           address: input.address,
           stakeAddress: input.stakeAddress,
           drepKeyHash: input.drepKeyHash,
-          nostrKey: input.nostrKey,
+          ...(input.nostrKey ? { nostrKey: input.nostrKey } : {}),
         },
       });
     }),
@@ -101,22 +121,6 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  getNostrKeysByAddresses: publicProcedure
-    .input(z.object({ addresses: z.array(z.string().min(1)).min(1) }))
-    .query(async ({ ctx, input }) => {
-      return await ctx.db.user.findMany({
-        where: {
-          address: {
-            in: input.addresses,
-          },
-        },
-        select: {
-          address: true,
-          nostrKey: true,
-        },
-      });
-    }),
-
   unlinkDiscord: protectedProcedure
     .input(z.object({ address: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -134,10 +138,10 @@ export const userRouter = createTRPCRouter({
       });
     }),
 
-  getDiscordIds: publicProcedure
+  getDiscordIds: protectedProcedure
     .input(
       z.object({
-        addresses: z.array(z.string().min(1)).min(1),
+        addresses: z.array(z.string().min(1)).min(1).max(50),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -165,7 +169,7 @@ export const userRouter = createTRPCRouter({
       );
     }),
 
-  getUserDiscordId: publicProcedure
+  getUserDiscordId: protectedProcedure
     .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
       const user = await ctx.db.user.findUnique({

@@ -2,6 +2,14 @@
 
 Project-specific context for AI coding agents. See also [.cursor/skills/multisig/SKILL.md](../.cursor/skills/multisig/SKILL.md) for the multisig Cursor skill.
 
+## Specs & PRDs
+
+Specs live in the vault, not this repo. The maintainer keeps a document-driven dev base (an Obsidian vault) where features are specified as **PRDs** before they are built; concept and entity notes there are the upstream source for data models and flows.
+
+- Before building a vault-specced feature, read its **PRD** (and the concept/entity notes it links) for scope, data model, and acceptance criteria. An entity note is the spec for its Prisma model.
+- Implementing PRs should **cite the PRD id** in the description (e.g. "Implements PRD-001"), so code stays traceable to the document that produced it.
+- The vault is the maintainer's local knowledge base; if you don't have access, ask for the relevant PRD's contents rather than guessing scope.
+
 ## Stack and layout
 
 - **Stack**: Next.js (Pages Router), TypeScript, tRPC, Prisma, PostgreSQL, Cardano (Mesh SDK). Auth: NextAuth (user) + JWT (API: wallet sign-in or bot keys).
@@ -29,7 +37,22 @@ Project-specific context for AI coding agents. See also [.cursor/skills/multisig
 - **OpenAPI**: `GET /api/swagger` (JSON).
 - **Bot auth**: `POST /api/v1/botAuth` with body `{ "botKeyId", "secret", "paymentAddress" }` → `{ "token", "botId" }`. Use token as Bearer for `walletIds`, `pendingTransactions`, `freeUtxos`, `addTransaction`, `signTransaction`, etc. Reference client: `scripts/bot-ref/` (see README there).
 
+## MCP (AI agents)
+
+- **Endpoint**: `POST /api/mcp` — a stateless Model Context Protocol server built on
+  `@modelcontextprotocol/server` v2. Docs: `src/pages/api/mcp/README.md`.
+- **Surface**: read-only plus governance ballot drafts. It cannot sign, spend or
+  broadcast, and that boundary is enforced by a test (`src/__tests__/mcpTools.test.ts`) —
+  adding a write tool must be a deliberate decision, not a registry addition.
+- **Tools wrap the existing v1 handlers in-process** via `src/lib/mcp/invokeV1.ts`, so
+  authorization and validation stay defined once. Handler imports in
+  `src/lib/mcp/tools.ts` must stay **lazy** or the Mesh/whisky WASM lands in the route's
+  cold path.
+- **Auth**: an OAuth 2.1 access token, or an existing v1 bearer token. The authorization
+  server lives under `src/pages/api/oauth/` — see `src/pages/api/oauth/README.md`.
+
 ## Docs to keep in sync
 
 - Landing “Developers & Bots” section: `src/components/pages/homepage/index.tsx` (id `#developers-and-bots`).
 - API/bot docs: `src/utils/swagger.ts`, `scripts/bot-ref/README.md`.
+- MCP/OAuth: `src/pages/api/mcp/README.md`, `src/pages/api/oauth/README.md`.

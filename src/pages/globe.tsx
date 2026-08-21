@@ -1,6 +1,8 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
+export const getServerSideProps = () => ({ props: {} });
+
 const World = dynamic(() => import("@/components/ui/globe").then((m) => m.World), {
   ssr: false,
 });

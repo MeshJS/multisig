@@ -41,11 +41,14 @@ export default function EmptyWalletsState() {
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center">
             <Button asChild size="lg">
               <Link href="/wallets/new-wallet-flow/save">
                 Create Your First Wallet
               </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href="/wallets/import-wallet">Import existing wallet</Link>
             </Button>
           </div>
         </div>
