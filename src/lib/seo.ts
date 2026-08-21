@@ -46,6 +46,7 @@ export const OG_CARD = {
   apiDocs: "/og/api-docs.png",
   dapps: "/og/dapps.png",
   importWallet: "/og/import-wallet.png",
+  vault: "/og/vault.png",
 } as const;
 
 /**
@@ -160,6 +161,13 @@ export const routeSeo: Record<string, RouteSeo> = {
     description:
       "Guides and updates on Cardano multisig treasuries, governance and AI-agent automation from the team behind Mesh Multisig.",
   },
+  "/vault": {
+    title: "Shielded Sign-Off",
+    image: OG_CARD.vault,
+    imageAlt: "Mesh Multisig — prove one document, reveal nothing else.",
+    description:
+      "An Obsidian-style document vault where every trust edge commits to a hash. Disclose a single document and its path to the root without revealing the documents beside it.",
+  },
   "/wallets/import-wallet": {
     title: "Import a Multisig Wallet",
     image: OG_CARD.importWallet,
@@ -229,6 +237,7 @@ export const INDEXABLE_ROUTES: SitemapRoute[] = [
   { path: "/features", changefreq: "monthly", priority: 0.8 },
   { path: "/roadmap", changefreq: "monthly", priority: 0.6 },
   { path: "/roadmap/graph", changefreq: "monthly", priority: 0.5 },
+  { path: "/vault", changefreq: "monthly", priority: 0.5 },
   { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/governance", changefreq: "daily", priority: 0.8 },
   { path: "/governance/drep", changefreq: "daily", priority: 0.7 },
