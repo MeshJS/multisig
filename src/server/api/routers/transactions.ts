@@ -3,7 +3,7 @@ import { z } from "zod";
 import { csl } from "@meshsdk/core-csl";
 import { resolveTxHash } from "@meshsdk/core-cst";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
@@ -366,15 +366,15 @@ export const transactionRouter = createTRPCRouter({
         ? addressToNetwork(wallet.signersAddresses[0]!)
         : 0; // Default to preprod/testnet
       
-      const mWallet = buildMultisigWallet(wallet as any, network);
-      if (!mWallet) {
+      const walletInfo = buildWallet(wallet as any, network);
+      if (!walletInfo || (!walletInfo.capabilities?.address && !walletInfo.address)) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to build wallet script",
         });
       }
       
-      const walletScriptAddress = mWallet.getScript().address;
+      const walletScriptAddress = walletInfo.capabilities?.address ?? walletInfo.address;
       const blockchainProvider = getProvider(network);
 
       // Convert transaction body to txJson format

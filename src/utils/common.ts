@@ -7,6 +7,7 @@ import {
   resolveScriptHashDRepId,
   resolveStakeKeyHash,
   serializeNativeScript,
+  serializeRewardAddress,
   UTxO,
 } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
@@ -135,13 +136,13 @@ function hasNonEmptyEntries(values?: string[] | null): boolean {
 
 export function getWalletType(wallet: DbWalletWithLegacy): WalletType {
   if (wallet.rawImportBodies?.multisig) return 'summon';
-  
+
   // Legacy: only payment keys (no stake keys, no DRep keys)
   // External stake credential hash doesn't make it SDK - it's still legacy if only payment keys
   const hasStakeKeys = hasNonEmptyEntries(wallet.signersStakeKeys);
   const hasDRepKeys = hasNonEmptyEntries(wallet.signersDRepKeys);
   if (!hasStakeKeys && !hasDRepKeys) return 'legacy';
-  
+
   return 'sdk';
 }
 
@@ -154,7 +155,7 @@ export function buildMultisigWallet(
   network?: number,
 ): MultisigWallet | undefined {
   const walletType = getWalletType(wallet);
-  
+
   // Only build MultisigWallet for SDK wallets
   if (walletType !== 'sdk') {
     return undefined;
@@ -162,7 +163,7 @@ export function buildMultisigWallet(
 
   const keys: MultisigKey[] = [];
   const resolvedNetwork = resolveWalletNetwork(wallet, network);
-  
+
   // Add payment keys (role 0)
   if (wallet.signersAddresses.length > 0) {
     wallet.signersAddresses.forEach((addr, i) => {
@@ -182,7 +183,7 @@ export function buildMultisigWallet(
       }
     });
   }
-  
+
   // Add staking keys (role 2)
   if (wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0) {
     wallet.signersStakeKeys.forEach((stakeKey, i) => {
@@ -200,7 +201,7 @@ export function buildMultisigWallet(
       }
     });
   }
-  
+
   // Add DRep keys (role 3)
   if (wallet.signersDRepKeys && wallet.signersDRepKeys.length > 0) {
     wallet.signersDRepKeys.forEach((dRepKey, i) => {
@@ -263,7 +264,7 @@ export function buildWallet(
     if (!multisig) {
       throw new Error("rawImportBodies.multisig is required for Summon wallets");
     }
-    
+
     // Always use stored address from rawImportBodies
     const address = multisig.address;
     if (!address) {
@@ -276,7 +277,10 @@ export function buildWallet(
       stakeScript: multisig.stake_script,
     });
 
-    // Always use the script that matches the address payment credential hash
+    // Always use the scriptCbor from metadata if available. This is CRITICAL
+    // for backward compatibility with wallets created with "unordered CBOR lists".
+    // Re-deriving the address from a canonicalized script would change the hash
+    // and break existing wallets.
     const scriptCbor = paymentScriptCbor;
     if (!scriptCbor) {
       throw new Error("A valid payment script is required in rawImportBodies.multisig");
@@ -293,19 +297,31 @@ export function buildWallet(
       // Fallback to placeholder if decoding fails
       nativeScript = scriptType === "atLeast"
         ? {
-            type: "atLeast",
-            required: wallet.numRequiredSigners ?? 1,
-            scripts: [],
-          }
+          type: "atLeast",
+          required: wallet.numRequiredSigners ?? 1,
+          scripts: [],
+        }
         : {
-            type: scriptType,
-            scripts: [],
-          };
+          type: scriptType,
+          scripts: [],
+        };
     }
 
     // For rawImportBodies wallets, dRepId cannot be easily derived from stored CBOR
     // Set to empty string - it can be derived later if needed from the actual script
     const dRepId = "";
+
+    // Capability logic for Summon
+    // Staking is enabled if a stake script is present
+    const canStake = !!stakeScriptCbor;
+    const stakeScriptHash = stakeScriptCbor ? scriptHashFromCbor(stakeScriptCbor) : undefined;
+    const stakeAddress = stakeScriptHash
+      ? serializeRewardAddress(
+        stakeScriptHash,
+        true,
+        network as 0 | 1
+      )
+      : undefined;
 
     return {
       ...wallet,
@@ -314,6 +330,18 @@ export function buildWallet(
       address,
       dRepId,
       stakeScriptCbor,
+      capabilities: {
+        canStake,
+        // TODO: flip once Summon exports a DRep script. Summon's
+        // rawImportBodies.multisig carries only payment_script and
+        // stake_script, so there is nothing to derive a DRep credential from —
+        // `dRepId` above is empty for the same reason. See the review thread on
+        // https://github.com/MeshJS/multisig/pull/212 before changing this.
+        canVote: false,
+        address,
+        stakeAddress,
+        dRepId: dRepId || undefined,
+      },
     } as Wallet;
   }
 
@@ -343,6 +371,12 @@ export function buildWallet(
       nativeScript,
       address,
       dRepId: dRepIdCip129,
+      capabilities: {
+        canStake: false,
+        canVote: false,
+        address,
+        dRepId: dRepIdCip129,
+      },
     } as Wallet;
   }
 
@@ -395,5 +429,12 @@ export function buildWallet(
     nativeScript,
     address,
     dRepId: dRepIdCip129,
+    capabilities: {
+      canStake: mWallet.stakingEnabled(),
+      canVote: mWallet.drepEnabled(),
+      address,
+      stakeAddress: mWallet.getStakeAddress(),
+      dRepId: mWallet.getDRepId(),
+    },
   } as Wallet;
 }
