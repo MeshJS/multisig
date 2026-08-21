@@ -8,6 +8,7 @@ export const publicRoutes = [
   "/roadmap/graph",
   "/api-docs",
   "/dapps",
+  "/bot-setup",
   "/blog",
   "/blog/[slug]",
   // The import wizard renders before a wallet is connected so the user
