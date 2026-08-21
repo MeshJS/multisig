@@ -10,6 +10,7 @@ import { authRouter } from "./routers/auth";
 import { contactRouter } from "./routers/contacts";
 import { botRouter } from "./routers/bot";
 import { governanceRouter } from "./routers/governance";
+import { documentRouter } from "./routers/documents";
 import { notificationRouter } from "./routers/notifications";
 import { mcpRouter } from "./routers/mcp";
 
@@ -32,6 +33,7 @@ export const appRouter = createTRPCRouter({
   bot: botRouter,
   governance: governanceRouter,
   notification: notificationRouter,
+  document: documentRouter,
 });
 
 // export type definition of API

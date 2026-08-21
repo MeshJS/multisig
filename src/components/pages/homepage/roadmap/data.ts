@@ -398,7 +398,7 @@ export const STATS = [
   {
     k: "Shipped",
     v: "6",
-    n: "workstreams delivered in May–July",
+    n: "workstreams delivered in April–July",
     tone: "good" as const,
   },
   {
