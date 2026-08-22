@@ -945,6 +945,208 @@ export const documentRouter = createTRPCRouter({
       ),
     ),
 
+  /**
+   * The draft body, if there is one. Returns null rather than throwing when a
+   * document has never been edited, so the editor can open on an empty page.
+   */
+  getDraft: protectedProcedure
+    .input(z.object({ documentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { document } = await assertDocumentAccess(ctx, input.documentId);
+      return ctx.db.documentDraft.findUnique({
+        where: { documentId: document.id },
+      });
+    }),
+
+  /**
+   * Save the draft body.
+   *
+   * Never touches DocumentVersion. That is the whole reason the draft exists:
+   * `uploadVersion` supersedes the previous version and resets approvals to
+   * zero, so autosaving through it would destroy in-flight approvals every few
+   * keystrokes and append an attestation link each time.
+   *
+   * Concurrency is optimistic on `revision`. A save presents the revision it
+   * read; if someone else saved in the meantime this is a conflict rather than
+   * a silent overwrite. That is what makes more than one person editing safe
+   * here — a CRDT would need a broker and a socket server, and this deployment
+   * has neither.
+   */
+  saveDraft: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        body: z.string().max(MAX_INLINE_BYTES),
+        /** The revision the editor last read. Omit only when creating. */
+        expectedRevision: z.number().int().nonnegative().optional(),
+        /** Opt in to storing the body server-side. */
+        storeBody: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        input.documentId,
+      );
+      const actor = actingAddress(addresses);
+
+      const existing = await ctx.db.documentDraft.findUnique({
+        where: { documentId: document.id },
+      });
+
+      if (!existing) {
+        return ctx.db.documentDraft.create({
+          data: {
+            documentId: document.id,
+            body: input.storeBody ? input.body : null,
+            storeBody: input.storeBody ?? false,
+            revision: 1,
+            updatedBy: actor,
+          },
+        });
+      }
+
+      if (
+        input.expectedRevision !== undefined &&
+        input.expectedRevision !== existing.revision
+      ) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            `This draft moved on while you were editing (you had revision ` +
+            `${input.expectedRevision}, it is now ${existing.revision}). ` +
+            `Reload before saving so nobody's work is overwritten.`,
+        });
+      }
+
+      const storeBody = input.storeBody ?? existing.storeBody;
+      return ctx.db.documentDraft.update({
+        where: { documentId: document.id },
+        data: {
+          body: storeBody ? input.body : null,
+          storeBody,
+          revision: { increment: 1 },
+          updatedBy: actor,
+        },
+      });
+    }),
+
+  /**
+   * Promote the draft to a signable version — the one-way door.
+   *
+   * The server serialises and hashes; the client never supplies the hash. That
+   * mirrors the rule the rest of this router already follows, and it is what
+   * makes "what you sign is what was published" true rather than asserted.
+   *
+   * Only from here does content enter the immutable world: a DocumentVersion,
+   * an attestation link, and eventually signatures.
+   */
+  publishDraft: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        fileName: z.string().max(300).optional(),
+        reviewInstructions: z.string().max(5000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        input.documentId,
+      );
+      if (document.status === "Archived") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Document is archived",
+        });
+      }
+      const actor = actingAddress(addresses);
+
+      const draft = await ctx.db.documentDraft.findUnique({
+        where: { documentId: document.id },
+      });
+      if (!draft?.storeBody || draft.body === null) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "This draft is not stored on the server, so there is nothing here " +
+            "to publish. Upload the file instead, or turn on server storage.",
+        });
+      }
+
+      const bytes = Buffer.from(draft.body, "utf8");
+      if (bytes.length > MAX_INLINE_BYTES) {
+        throw new TRPCError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: `Draft exceeds ${MAX_INLINE_BYTES} bytes`,
+        });
+      }
+
+      return ctx.db.$transaction(async (tx) => {
+        const latest = await tx.documentVersion.findFirst({
+          where: { documentId: document.id },
+          orderBy: { versionNumber: "desc" },
+        });
+
+        if (
+          latest &&
+          latest.status !== "Superseded" &&
+          latest.status !== "Archived"
+        ) {
+          await tx.documentVersion.update({
+            where: { id: latest.id },
+            data: { status: "Superseded", supersededAt: new Date() },
+          });
+          await tx.documentEvent.create({
+            data: {
+              documentId: document.id,
+              versionId: latest.id,
+              type: "version.superseded",
+              actorAddress: actor,
+              metadata: { versionNumber: latest.versionNumber },
+            },
+          });
+        }
+
+        const created = await createVersionRow(tx, {
+          documentId: document.id,
+          versionNumber: (latest?.versionNumber ?? 0) + 1,
+          createdBy: actor,
+          contentHash: sha256Hex(bytes),
+          fileName: input.fileName ?? `${document.title}.md`,
+          mimeType: "text/markdown",
+          fileSize: bytes.length,
+          storageMode: "inline",
+          contentInline: bytes.toString("base64"),
+          reviewInstructions: input.reviewInstructions,
+        });
+
+        await tx.documentEvent.create({
+          data: {
+            documentId: document.id,
+            versionId: created.id,
+            type: "version.published",
+            actorAddress: actor,
+            metadata: {
+              versionNumber: created.versionNumber,
+              contentHash: created.contentHash,
+              fromDraftRevision: draft.revision,
+              approvalsReset: true,
+            },
+          },
+        });
+
+        await attestVersion(tx, created, document.walletId);
+
+        await tx.document.update({
+          where: { id: document.id },
+          data: { status: "Draft" },
+        });
+
+        return created;
+      });
+    }),
+
   /** Archive a document — history is retained, it just leaves active use. */
   archiveDocument: protectedProcedure
     .input(z.object({ documentId: z.string().min(1) }))
