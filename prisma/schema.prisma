@@ -455,6 +455,7 @@ model Document {
   archivedAt   DateTime?
   versions     DocumentVersion[]
   events       DocumentEvent[]
+  draft        DocumentDraft?
 
   @@index([walletId])
   @@index([walletId, status])
@@ -670,4 +671,40 @@ model DocumentAttestation {
   @@unique([documentId, sequence])
   @@index([documentId])
   @@index([contentHash])
+}
+
+/// A mutable working copy that sits BEFORE the version model.
+///
+/// Document Sign-Off is built on immutability: a signature commits to an exact
+/// contentHash, and uploading a new version supersedes the last one and resets
+/// approvals to zero. An editor cannot live inside that — autosaving through
+/// `uploadVersion` would destroy in-flight approvals on every keystroke batch
+/// and append a link to the attestation chain each time.
+///
+/// So a draft is deliberately UNSIGNABLE: no contentHash, no attestation, and
+/// nothing in the review flow can reach it. Editing touches only this row.
+/// Publishing is the one-way door that serialises it into a DocumentVersion,
+/// hashes it server-side and attests it.
+model DocumentDraft {
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Markdown body. Null while `storeBody` is false — the draft then only
+  /// records that editing is in progress and no content reaches the server.
+  body String?
+
+  /// Server-side storage is opt-in PER DOCUMENT. The feature's default posture
+  /// is hashOnly, where bytes never leave the author's machine; keeping an
+  /// editable body on the server is a deliberate reversal and must be chosen,
+  /// never inherited.
+  storeBody Boolean @default(false)
+
+  /// Optimistic concurrency. A save presents the revision it read; a mismatch
+  /// is a conflict rather than a silent overwrite, which is what makes several
+  /// people editing safe without a CRDT or a broker.
+  revision  Int      @default(0)
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
