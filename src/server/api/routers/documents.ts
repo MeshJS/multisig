@@ -1162,6 +1162,81 @@ export const documentRouter = createTRPCRouter({
       return buildWalletVaultView(ctx.db, input.walletId);
     }),
 
+  /**
+   * Permanently delete a document.
+   *
+   * Everything cascades: versions, signatures, signer snapshots, attestations
+   * and the document's own event log. There is no tombstone and no undo, which
+   * is why this is not the default — `archiveDocument` keeps all of it and
+   * merely removes the document from active use.
+   *
+   * Two guards, because this is an accountability product:
+   *
+   *  - A document anyone has SIGNED requires the caller to retype its title.
+   *    Deleting it destroys the evidence that those people approved something,
+   *    and that must not be one stray click.
+   *  - An AuditLog row is written BEFORE the delete, recording who removed what
+   *    and how much went with it. AuditLog holds no foreign key to Document, so
+   *    unlike DocumentEvent it survives the cascade: the document goes, the
+   *    fact that someone deleted it does not.
+   */
+  deleteDocument: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        /** Must equal the document's title once any signature exists. */
+        confirmTitle: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        input.documentId,
+      );
+      const actor = actingAddress(addresses);
+
+      const [signatureCount, versionCount, attestationCount] =
+        await Promise.all([
+          ctx.db.documentReview.count({
+            where: { version: { documentId: document.id } },
+          }),
+          ctx.db.documentVersion.count({ where: { documentId: document.id } }),
+          ctx.db.documentAttestation.count({
+            where: { documentId: document.id },
+          }),
+        ]);
+
+      if (signatureCount > 0 && input.confirmTitle !== document.title) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            `This document carries ${signatureCount} signature` +
+            `${signatureCount === 1 ? "" : "s"}. Retype the title to confirm.`,
+        });
+      }
+
+      // Awaited, and before the delete: once the row is gone the cascade has
+      // taken every DocumentEvent with it, so this is the only surviving trace.
+      await audit(ctx.db, {
+        actorAddress: actor,
+        actorType: "user",
+        action: "document.delete",
+        resourceType: "document",
+        resourceId: document.id,
+        outcome: "success",
+        metadata: {
+          walletId: document.walletId,
+          title: document.title,
+          versionCount,
+          signatureCount,
+          attestationCount,
+        },
+      });
+
+      await ctx.db.document.delete({ where: { id: document.id } });
+      return { deleted: true, signatureCount, versionCount };
+    }),
+
   /** Archive a document — history is retained, it just leaves active use. */
   archiveDocument: protectedProcedure
     .input(z.object({ documentId: z.string().min(1) }))

@@ -1,7 +1,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Download, PlayCircle, Upload } from "lucide-react";
+import {
+  Archive,
+  Download,
+  MoreVertical,
+  PlayCircle,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import { api } from "@/utils/api";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -10,6 +17,21 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import FileDrop from "./file-drop";
 import PageHeader from "@/components/ui/page-header";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 import DocumentStatusBadge from "./status-badge";
@@ -28,6 +50,8 @@ export default function PageDocumentDetail() {
   const documentId = router.query.documentId as string;
   const { appWallet } = useAppWallet();
   const [uploading, setUploading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [typedTitle, setTypedTitle] = useState("");
 
   const utils = api.useUtils();
   const { data: document, isLoading } = api.document.getById.useQuery(
@@ -57,6 +81,32 @@ export default function PageDocumentDetail() {
       });
     },
     onError: (error) => toastError(error, "Could not upload the version"),
+  });
+
+  const archiveDocument = api.document.archiveDocument.useMutation({
+    onSuccess: async () => {
+      await refresh();
+      toast({
+        title: "Document archived",
+        description: "History is kept — it just leaves active use.",
+      });
+    },
+    onError: (error) => toastError(error, "Could not archive the document"),
+  });
+
+  const deleteDocument = api.document.deleteDocument.useMutation({
+    onSuccess: async (result) => {
+      await utils.document.listByWallet.invalidate({ walletId });
+      toast({
+        title: "Document deleted",
+        description:
+          result.signatureCount > 0
+            ? `${result.signatureCount} signature${result.signatureCount === 1 ? "" : "s"} were destroyed with it.`
+            : "It carried no signatures.",
+      });
+      await router.push(`/wallets/${walletId}/documents`);
+    },
+    onError: (error) => toastError(error, "Could not delete the document"),
   });
 
   const exportProof = api.document.exportProof.useMutation({
@@ -102,6 +152,14 @@ export default function PageDocumentDetail() {
     );
   }
 
+  // Signatures across every version. Zero means this is a draft nobody has
+  // acted on, and deleting it destroys nothing anyone relied on; above zero the
+  // dialog demands the title be retyped.
+  const signatureCount = document.versions.reduce(
+    (total, version) => total + version.reviews.length,
+    0,
+  );
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader
@@ -109,6 +167,34 @@ export default function PageDocumentDetail() {
         backUrl={`/wallets/${walletId}/documents`}
       >
         <DocumentStatusBadge status={document.status} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" aria-label="Document actions">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              disabled={
+                document.status === "Archived" || archiveDocument.isPending
+              }
+              onClick={() => archiveDocument.mutate({ documentId })}
+            >
+              <Archive className="mr-2 h-4 w-4" />
+              Archive
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-red-500 focus:text-red-500"
+              onClick={() => {
+                setTypedTitle("");
+                setConfirmingDelete(true);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete permanently
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PageHeader>
 
       {document.description && (
@@ -123,14 +209,13 @@ export default function PageDocumentDetail() {
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
-            Uploading a new version supersedes the current one and starts a fresh
-            round at zero approvals — approval is bound to the content hash, not
-            the title.
+            Uploading a new version supersedes the current one and starts a
+            fresh round at zero approvals — approval is bound to the content
+            hash, not the title.
           </p>
-          <Input
-            type="file"
-            disabled={uploading || uploadVersion.isPending}
-            onChange={(e) => void onUploadFile(e.target.files?.[0] ?? null)}
+          <FileDrop
+            busy={uploading || uploadVersion.isPending}
+            onFile={(file) => void onUploadFile(file)}
           />
         </CardContent>
       </Card>
@@ -138,8 +223,12 @@ export default function PageDocumentDetail() {
       <div className="flex flex-col gap-3">
         {document.versions.map((version) => {
           const snapshot = version.signerSnapshot;
-          const approvals = version.reviews.filter((r) => r.action === "approve");
-          const rejections = version.reviews.filter((r) => r.action === "reject");
+          const approvals = version.reviews.filter(
+            (r) => r.action === "approve",
+          );
+          const rejections = version.reviews.filter(
+            (r) => r.action === "reject",
+          );
           const acted = new Set(version.reviews.map((r) => r.signerAddress));
           const missing =
             snapshot?.signersAddresses.filter((a) => !acted.has(a)) ?? [];
@@ -157,7 +246,9 @@ export default function PageDocumentDetail() {
                       size="sm"
                       variant="outline"
                       disabled={startReview.isPending}
-                      onClick={() => startReview.mutate({ versionId: version.id })}
+                      onClick={() =>
+                        startReview.mutate({ versionId: version.id })
+                      }
                     >
                       <PlayCircle className="mr-2 h-4 w-4" />
                       Start review
@@ -177,7 +268,9 @@ export default function PageDocumentDetail() {
                       size="sm"
                       variant="outline"
                       disabled={exportProof.isPending}
-                      onClick={() => exportProof.mutate({ versionId: version.id })}
+                      onClick={() =>
+                        exportProof.mutate({ versionId: version.id })
+                      }
                     >
                       <Download className="mr-2 h-4 w-4" />
                       Proof
@@ -204,7 +297,8 @@ export default function PageDocumentDetail() {
                   <div className="flex flex-col gap-2">
                     <span className="font-medium">
                       {approvals.length} of {snapshot.requiredSigners} approvals
-                      {rejections.length > 0 && ` · ${rejections.length} rejected`}
+                      {rejections.length > 0 &&
+                        ` · ${rejections.length} rejected`}
                     </span>
                     {version.reviews.map((review) => (
                       <div key={review.id} className="flex flex-col">
@@ -260,9 +354,85 @@ export default function PageDocumentDetail() {
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Upload className="h-3 w-3" />
-        An exported proof is an approval attestation by this wallet&apos;s signers.
-        It is not a qualified electronic signature.
+        An exported proof is an approval attestation by this wallet&apos;s
+        signers. It is not a qualified electronic signature.
       </p>
+
+      <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this document?</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  This removes every version, every signature, the signer
+                  snapshots, the attestation chain and the document&apos;s audit
+                  trail. It cannot be undone.
+                </p>
+                {signatureCount > 0 ? (
+                  <p className="text-red-500">
+                    {signatureCount} signature
+                    {signatureCount === 1 ? " has" : "s have"} been given on
+                    this document. Deleting it destroys the evidence that
+                    {signatureCount === 1
+                      ? " that person"
+                      : " those people"}{" "}
+                    approved anything. Archive keeps all of it.
+                  </p>
+                ) : (
+                  <p>
+                    No one has signed this document, so nothing is being erased
+                    beyond the draft itself.
+                  </p>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          {signatureCount > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Type{" "}
+                <span className="font-medium text-foreground">
+                  {document.title}
+                </span>{" "}
+                to confirm.
+              </p>
+              <Input
+                value={typedTitle}
+                onChange={(e) => setTypedTitle(e.target.value)}
+                placeholder={document.title}
+                aria-label="Type the document title to confirm deletion"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmingDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                deleteDocument.isPending ||
+                (signatureCount > 0 && typedTitle !== document.title)
+              }
+              onClick={() =>
+                deleteDocument.mutate({
+                  documentId,
+                  ...(signatureCount > 0 ? { confirmTitle: typedTitle } : {}),
+                })
+              }
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
