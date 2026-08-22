@@ -31,6 +31,7 @@ import {
 } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
+import { buildWalletVaultView } from "@/lib/documents/vault-db";
 import {
   ATTESTATION_DOMAIN,
   ATTESTATION_STATEMENT,
@@ -1145,6 +1146,20 @@ export const documentRouter = createTRPCRouter({
 
         return created;
       });
+    }),
+
+  /**
+   * This wallet's documents as a vault: the same trust graph the /vault demo
+   * shows, built from real rows instead of this repo's `vault/` directory.
+   *
+   * Grouped by documentType, which becomes the proxy hub, so the spine is
+   * blinded root -> type -> document and is acyclic by construction.
+   */
+  vaultView: protectedProcedure
+    .input(z.object({ walletId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      await assertWalletAccess(ctx, input.walletId);
+      return buildWalletVaultView(ctx.db, input.walletId);
     }),
 
   /** Archive a document — history is retained, it just leaves active use. */

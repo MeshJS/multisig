@@ -31,9 +31,9 @@ export default function PageDocuments() {
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader pageTitle="Documents" backUrl={`/wallets/${walletId}`}>
         <Button asChild size="sm" variant="outline">
-          <Link href={`/wallets/${walletId}/documents/preview`}>
+          <Link href={`/wallets/${walletId}/documents/vault`}>
             <Shield className="mr-2 h-4 w-4" />
-            Shielded sign-off
+            Vault
           </Link>
         </Button>
         <Button asChild size="sm">
