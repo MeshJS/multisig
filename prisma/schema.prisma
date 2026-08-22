@@ -42,6 +42,19 @@ model Wallet {
   profileImageIpfsUrl     String?
   ownerAddress            String?
 
+  /// Secret used to derive per-document salts for this wallet's vault view.
+  ///
+  /// The demo vault at /vault derives salts from the note title, and says in
+  /// its own comment that this is fine there and nowhere real: a salt that is a
+  /// public function of the title cannot stop anyone brute-forcing a short
+  /// document from a guessed title, which is the one thing salts are for here.
+  ///
+  /// A real vault needs unguessable salts. One 32-byte secret per wallet gives
+  /// that with a single column: each node's salt is HMAC(vaultSalt, nodeId), so
+  /// salts are unguessable without the secret and no per-document storage is
+  /// needed. Nullable and generated lazily so existing wallets need no backfill.
+  vaultSalt String?
+
   @@index([ownerAddress])
   @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
