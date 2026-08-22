@@ -181,7 +181,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_list_wallets",
     title: "List wallets",
     description:
-      "List every multisig wallet this identity can see, with its id and name. The returned walletId is what every other wallet tool takes.",
+      "List the multisig wallets this identity owns or has verified, with id and name. The returned walletId is what every other wallet tool takes. Wallets you have merely been named in but never accepted are NOT listed — they are reported only as a pendingInvitations count, because their names are chosen by whoever created them.",
     scope: "wallets:read",
     inputSchema: EMPTY_INPUT,
     annotations: READ_ONLY,
@@ -189,12 +189,15 @@ export const MCP_TOOLS: McpToolDef[] = [
     run: async (_args, ctx) => {
       const result = await callV1(load.walletIds, ctx, {
         method: "GET",
-        query: { address: ctx.caller.subject },
+        // Opt into the object shape: the bare array is the documented contract
+        // for bots and dApps, so the pending count is additive rather than a
+        // breaking change.
+        query: { address: ctx.caller.subject, includePending: "true" },
       });
       // The endpoint answers 404 when the list is empty. "You have no wallets"
       // is a valid answer, not a failure, so it must not surface as isError.
       if (result.status === 404) {
-        return { status: 200, body: { wallets: [] } };
+        return { status: 200, body: { wallets: [], pendingInvitations: 0 } };
       }
       return wrapArray(result, "wallets");
     },

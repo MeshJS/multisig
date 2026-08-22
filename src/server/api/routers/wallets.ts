@@ -1,7 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
 import type { RawImportBodies } from "@/types/wallet";
 import { Prisma } from "@prisma/client";
@@ -28,7 +32,11 @@ const requireSessionAddress = (ctx: AuthCtx) => {
   return address;
 };
 
-const assertWalletAccess = async (ctx: AuthCtx, walletId: string, requester: string | string[]) => {
+const assertWalletAccess = async (
+  ctx: AuthCtx,
+  walletId: string,
+  requester: string | string[],
+) => {
   const wallet = await ctx.db.wallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -38,72 +46,99 @@ const assertWalletAccess = async (ctx: AuthCtx, walletId: string, requester: str
   const sessionWallets: string[] = ctx.sessionWallets ?? [];
   const allRequesters = [...requesters, ...sessionWallets];
 
-  const isSigner = allRequesters.some((addr) =>
-    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(addr)
+  const isSigner = allRequesters.some(
+    (addr) =>
+      Array.isArray(wallet.signersAddresses) &&
+      wallet.signersAddresses.includes(addr),
   );
   const isOwner = allRequesters.some((addr) => wallet.ownerAddress === addr);
 
   if (!isSigner && !isOwner) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Not a signer of this wallet" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Not a signer of this wallet",
+    });
   }
 
   return wallet;
 };
 
 // Check if user is the owner of the wallet
-const assertNewWalletOwnerAccess = async (ctx: AuthCtx, walletId: string, requester: string) => {
+const assertNewWalletOwnerAccess = async (
+  ctx: AuthCtx,
+  walletId: string,
+  requester: string,
+) => {
   const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
-  
+
   // Check if requester is the owner (exact match)
   const isOwner = wallet.ownerAddress === requester;
-  
+
   // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
   const sessionWallets: string[] = ctx.sessionWallets ?? [];
   const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
-  
+
   if (!isOwner && !isOwnerViaSession) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can perform this action" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only the owner can perform this action",
+    });
   }
   return wallet;
 };
 
 // Check if user is a signer or owner (for read access)
-const assertNewWalletSignerAccess = async (ctx: AuthCtx, walletId: string, requester: string) => {
+const assertNewWalletSignerAccess = async (
+  ctx: AuthCtx,
+  walletId: string,
+  requester: string,
+) => {
   const wallet = await ctx.db.newWallet.findUnique({ where: { id: walletId } });
   if (!wallet) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
   }
-  
+
   // Check if user is the owner (owners always have full access)
   const isOwner = wallet.ownerAddress === requester;
-  
+
   // Also check if ownerAddress is in sessionWallets (user might have multiple authorized wallets)
   const sessionWallets: string[] = ctx.sessionWallets ?? [];
   const isOwnerViaSession = sessionWallets.includes(wallet.ownerAddress);
-  
+
   if (isOwner || isOwnerViaSession) {
     return wallet;
   }
-  
+
   // Check if user is a signer
   const isSigner =
-    Array.isArray(wallet.signersAddresses) && wallet.signersAddresses.includes(requester);
-  
+    Array.isArray(wallet.signersAddresses) &&
+    wallet.signersAddresses.includes(requester);
+
   // Also check if any signer address is in sessionWallets
-  const isSignerViaSession = Array.isArray(wallet.signersAddresses) && 
-    wallet.signersAddresses.some((addr: string) => sessionWallets.includes(addr));
-  
+  const isSignerViaSession =
+    Array.isArray(wallet.signersAddresses) &&
+    wallet.signersAddresses.some((addr: string) =>
+      sessionWallets.includes(addr),
+    );
+
   if (!isSigner && !isSignerViaSession) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Not authorized for this wallet",
+    });
   }
   return wallet;
 };
 
 // Check if user can read the wallet (signer or owner)
-const assertNewWalletAccess = async (ctx: AuthCtx, walletId: string, requester: string) => {
+const assertNewWalletAccess = async (
+  ctx: AuthCtx,
+  walletId: string,
+  requester: string,
+) => {
   return assertNewWalletSignerAccess(ctx, walletId, requester);
 };
 
@@ -180,7 +215,9 @@ function walletDataFromPayload(
     scriptCbor: payload.scriptCbor,
     stakeCredentialHash: payload.stakeCredentialHash ?? undefined,
     type: payload.type,
-    rawImportBodies: JSON.parse(JSON.stringify(merged)) as Prisma.InputJsonValue,
+    rawImportBodies: JSON.parse(
+      JSON.stringify(merged),
+    ) as Prisma.InputJsonValue,
     ownerAddress,
   };
 }
@@ -239,14 +276,20 @@ export const walletRouter = createTRPCRouter({
       });
 
       if (!wallet) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Not a signer of this wallet" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not a signer of this wallet",
+        });
       }
 
       if (
         !Array.isArray(wallet.signersAddresses) ||
         !wallet.signersAddresses.includes(input.address)
       ) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Not a signer of this wallet" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not a signer of this wallet",
+        });
       }
 
       return wallet;
@@ -272,18 +315,23 @@ export const walletRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       try {
-        const numRequired = (input.type === "all" || input.type === "any") ? null : input.numRequiredSigners;
+        const numRequired =
+          input.type === "all" || input.type === "any"
+            ? null
+            : input.numRequiredSigners;
 
-        const signersStakeKeys = (input.signersStakeKeys || []).map(key =>
-          key === null || key === undefined ? "" : key
+        const signersStakeKeys = (input.signersStakeKeys || []).map((key) =>
+          key === null || key === undefined ? "" : key,
         );
-        const signersDRepKeys = (input.signersDRepKeys || []).map(key =>
-          key === null || key === undefined ? "" : key
+        const signersDRepKeys = (input.signersDRepKeys || []).map((key) =>
+          key === null || key === undefined ? "" : key,
         );
 
         let rawImportBodiesValue: Prisma.InputJsonValue | undefined = undefined;
         if (input.rawImportBodies) {
-          rawImportBodiesValue = JSON.parse(JSON.stringify(input.rawImportBodies)) as Prisma.InputJsonValue;
+          rawImportBodiesValue = JSON.parse(
+            JSON.stringify(input.rawImportBodies),
+          ) as Prisma.InputJsonValue;
         }
 
         const data: Prisma.WalletCreateInput = {
@@ -298,7 +346,9 @@ export const walletRouter = createTRPCRouter({
           stakeCredentialHash: input.stakeCredentialHash,
           type: input.type,
           rawImportBodies: rawImportBodiesValue,
-          ...(input.ownerAddress != null && { ownerAddress: input.ownerAddress }),
+          ...(input.ownerAddress != null && {
+            ownerAddress: input.ownerAddress,
+          }),
         };
 
         const wallet = await ctx.db.wallet.create({ data });
@@ -334,13 +384,32 @@ export const walletRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       await assertWalletAccess(ctx, input.walletId, sessionAddress);
+
+      const wallet = await ctx.db.wallet.findUnique({
+        where: { id: input.walletId },
+        select: { verified: true },
+      });
+      if (!wallet) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+      }
+
+      // Verification proves control of YOUR OWN address, so a caller may only
+      // add or remove themselves. Everyone else's entries are read back from
+      // the database and whatever the client submitted for them is ignored.
+      //
+      // Taking the array verbatim let any member of a wallet write any address
+      // into `verified` — including one that had never signed anything. That
+      // matters more than it looks: acceptance is what decides whether a
+      // wallet's attacker-choosable name is trusted enough to show, so a
+      // forgeable `verified` would forge trust along with it.
+      const others = wallet.verified.filter((a) => a !== sessionAddress);
+      const verified = input.verified.includes(sessionAddress)
+        ? [...others, sessionAddress]
+        : others;
+
       return ctx.db.wallet.update({
-        where: {
-          id: input.walletId,
-        },
-        data: {
-          verified: input.verified,
-        },
+        where: { id: input.walletId },
+        data: { verified },
       });
     }),
 
@@ -367,12 +436,12 @@ export const walletRouter = createTRPCRouter({
         description: input.description,
         isArchived: input.isArchived,
       };
-      
+
       // Only update profileImageIpfsUrl if it's explicitly provided
       if (input.profileImageIpfsUrl !== undefined) {
         updateData.profileImageIpfsUrl = input.profileImageIpfsUrl ?? null;
       }
-      
+
       return ctx.db.wallet.update({
         where: {
           id: input.walletId,
@@ -487,9 +556,15 @@ export const walletRouter = createTRPCRouter({
         sessionWallets.includes(input.ownerAddress);
 
       if (!isAuthorized) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Owner address mismatch" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Owner address mismatch",
+        });
       }
-      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
+      const numRequired =
+        input.scriptType === "all" || input.scriptType === "any"
+          ? null
+          : input.numRequiredSigners;
       const wallet = await ctx.db.newWallet.create({
         data: {
           name: input.name,
@@ -548,7 +623,10 @@ export const walletRouter = createTRPCRouter({
       const sessionAddress = requireSessionAddress(ctx);
       // Only owners can update the entire wallet
       await assertNewWalletOwnerAccess(ctx, input.walletId, sessionAddress);
-      const numRequired = (input.scriptType === "all" || input.scriptType === "any") ? null : input.numRequiredSigners;
+      const numRequired =
+        input.scriptType === "all" || input.scriptType === "any"
+          ? null
+          : input.numRequiredSigners;
       return ctx.db.newWallet.update({
         where: {
           id: input.walletId,
@@ -603,33 +681,51 @@ export const walletRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      const wallet = await assertNewWalletSignerAccess(ctx, input.walletId, sessionAddress);
-      
+      const wallet = await assertNewWalletSignerAccess(
+        ctx,
+        input.walletId,
+        sessionAddress,
+      );
+
       // Check if user is the owner - owners can update all descriptions
       const isOwner = wallet.ownerAddress === sessionAddress;
-      
+
       if (!isOwner) {
         // Non-owners can only update their own description
         // Find the signer's index in the signersAddresses array
         const signerIndex = wallet.signersAddresses.indexOf(sessionAddress);
         if (signerIndex < 0) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "You are not a signer of this wallet" });
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You are not a signer of this wallet",
+          });
         }
-        
+
         // Verify that only the signer's own description is being changed
         // All other descriptions must remain the same
         for (let i = 0; i < wallet.signersDescriptions.length; i++) {
-          if (i !== signerIndex && wallet.signersDescriptions[i] !== input.signersDescriptions[i]) {
-            throw new TRPCError({ code: "FORBIDDEN", message: "You can only update your own description" });
+          if (
+            i !== signerIndex &&
+            wallet.signersDescriptions[i] !== input.signersDescriptions[i]
+          ) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "You can only update your own description",
+            });
           }
         }
-        
+
         // Verify the array lengths match
-        if (input.signersDescriptions.length !== wallet.signersDescriptions.length) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Descriptions array length mismatch" });
+        if (
+          input.signersDescriptions.length !== wallet.signersDescriptions.length
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Descriptions array length mismatch",
+          });
         }
       }
-      
+
       // Owners can update all, signers can only update their own (validated above)
       return ctx.db.newWallet.update({
         where: {
@@ -652,7 +748,9 @@ export const walletRouter = createTRPCRouter({
       const sessionAddress = requireSessionAddress(ctx);
       const requester = sessionAddress;
       // Look up user's stake address for stake-key membership check
-      const user = await ctx.db.user.findUnique({ where: { address: input.ownerAddress } });
+      const user = await ctx.db.user.findUnique({
+        where: { address: input.ownerAddress },
+      });
       const stakeAddr = user?.stakeAddress || "";
 
       // Atomic conditional claim: only if owner is currently "all" AND caller qualifies
@@ -662,7 +760,9 @@ export const walletRouter = createTRPCRouter({
           ownerAddress: "all",
           OR: [
             { signersAddresses: { has: input.ownerAddress } },
-            stakeAddr ? { signersStakeKeys: { has: stakeAddr } } : { id: "__never__" },
+            stakeAddr
+              ? { signersStakeKeys: { has: stakeAddr } }
+              : { id: "__never__" },
             { signersAddresses: { has: requester } },
           ],
         },
@@ -741,7 +841,10 @@ export const walletRouter = createTRPCRouter({
         where: { id: input.walletId },
       });
       if (!wallet) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Wallet invite not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Wallet invite not found",
+        });
       }
 
       const raw = wallet.rawImportBodies as {
@@ -915,7 +1018,8 @@ export const walletRouter = createTRPCRouter({
       const existingDRep = signersDRepKeys[slotIndex] ?? "";
       signersStakeKeys[slotIndex] =
         existingStake || healedStake || stakeContribution;
-      signersDRepKeys[slotIndex] = existingDRep || healedDRep || drepContribution;
+      signersDRepKeys[slotIndex] =
+        existingDRep || healedDRep || drepContribution;
       if (input.description !== undefined) {
         signersDescriptions[slotIndex] = input.description;
       }
@@ -1030,10 +1134,12 @@ export const walletRouter = createTRPCRouter({
     }),
 
   setMigrationTarget: protectedProcedure
-    .input(z.object({ 
-      walletId: z.string(),
-      migrationTargetWalletId: z.string()
-    }))
+    .input(
+      z.object({
+        walletId: z.string(),
+        migrationTargetWalletId: z.string(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       await assertWalletAccess(ctx, input.walletId, sessionAddress);
@@ -1052,7 +1158,8 @@ export const walletRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const sessionAddress = requireSessionAddress(ctx);
-      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      const requesters =
+        sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
       await assertWalletAccess(ctx, input.walletId, requesters);
       return ctx.db.wallet.update({
         where: {
@@ -1065,10 +1172,12 @@ export const walletRouter = createTRPCRouter({
     }),
 
   abortMigration: protectedProcedure
-    .input(z.object({ 
-      walletId: z.string(),
-      newWalletId: z.string().optional()
-    }))
+    .input(
+      z.object({
+        walletId: z.string(),
+        newWalletId: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       await assertWalletAccess(ctx, input.walletId, sessionAddress);
@@ -1077,27 +1186,31 @@ export const walletRouter = createTRPCRouter({
         try {
           // First check if it exists in NewWallet table
           const newWallet = await ctx.db.newWallet.findUnique({
-            where: { id: input.newWalletId }
+            where: { id: input.newWalletId },
           });
-          
+
           if (newWallet) {
             await ctx.db.newWallet.delete({
-              where: { id: input.newWalletId }
+              where: { id: input.newWalletId },
             });
             console.log("Deleted NewWallet:", input.newWalletId);
           } else {
             // Check if it exists in Wallet table
             const wallet = await ctx.db.wallet.findUnique({
-              where: { id: input.newWalletId }
+              where: { id: input.newWalletId },
             });
-            
+
             if (wallet) {
               await ctx.db.wallet.delete({
-                where: { id: input.newWalletId }
+                where: { id: input.newWalletId },
               });
               console.log("Deleted Wallet:", input.newWalletId);
             } else {
-              console.log("No wallet found with ID:", input.newWalletId, "- migration might be in a different state");
+              console.log(
+                "No wallet found with ID:",
+                input.newWalletId,
+                "- migration might be in a different state",
+              );
             }
           }
         } catch (error) {
@@ -1122,7 +1235,8 @@ export const walletRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const sessionWallets: string[] = ctx.sessionWallets ?? [];
       const sessionAddress = requireSessionAddress(ctx);
-      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      const requesters =
+        sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
       await assertWalletAccess(ctx, input.walletId, requesters);
       const updated = await ctx.db.wallet.update({
         where: {
@@ -1153,7 +1267,8 @@ export const walletRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       const sessionWallets: string[] = ctx.sessionWallets ?? [];
-      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      const requesters =
+        sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
       const wallet = await assertWalletAccess(ctx, input.walletId, requesters);
 
       const payload = {
@@ -1171,7 +1286,8 @@ export const walletRouter = createTRPCRouter({
         type: wallet.type,
         rawImportBodies: wallet.rawImportBodies ?? null,
       };
-      const { hashPayload } = await import("@/pages/api/v1/exportWallet/redeem");
+      const { hashPayload } =
+        await import("@/pages/api/v1/exportWallet/redeem");
       return { payload, payloadHash: hashPayload(payload) };
     }),
 
@@ -1233,9 +1349,15 @@ export const walletRouter = createTRPCRouter({
           importedAt: now,
         };
         lockedSigners = true;
-        data = walletDataFromPayload(input.payload, provenance, lockedSigners, sessionAddress);
+        data = walletDataFromPayload(
+          input.payload,
+          provenance,
+          lockedSigners,
+          sessionAddress,
+        );
       } else if (input.source === "json") {
-        const { hashPayload } = await import("@/pages/api/v1/exportWallet/redeem");
+        const { hashPayload } =
+          await import("@/pages/api/v1/exportWallet/redeem");
         const expected = hashPayload(input.payload);
         if (expected !== input.payloadHash) {
           throw new TRPCError({
@@ -1243,11 +1365,10 @@ export const walletRouter = createTRPCRouter({
             message: "Payload hash mismatch — file may be corrupt or tampered",
           });
         }
-        const claimedAddresses = [
-          ...callerAddresses,
-        ].filter((addr) =>
-          input.payload.signersStakeKeys.includes(addr) ||
-          input.payload.signersAddresses.includes(addr),
+        const claimedAddresses = [...callerAddresses].filter(
+          (addr) =>
+            input.payload.signersStakeKeys.includes(addr) ||
+            input.payload.signersAddresses.includes(addr),
         );
         if (claimedAddresses.length === 0) {
           throw new TRPCError({
@@ -1263,7 +1384,12 @@ export const walletRouter = createTRPCRouter({
           importedAt: now,
         };
         lockedSigners = true;
-        data = walletDataFromPayload(input.payload, provenance, lockedSigners, sessionAddress);
+        data = walletDataFromPayload(
+          input.payload,
+          provenance,
+          lockedSigners,
+          sessionAddress,
+        );
       } else {
         // source === "cbor"
         assertCallerIsClaimedSigner(input.verifiedSigner, callerAddresses);
@@ -1321,9 +1447,12 @@ export const walletRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
       const sessionWallets: string[] = ctx.sessionWallets ?? [];
-      const requesters = sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
+      const requesters =
+        sessionWallets.length > 0 ? sessionWallets : [sessionAddress];
 
-      const wallet = await ctx.db.wallet.findUnique({ where: { id: input.walletId } });
+      const wallet = await ctx.db.wallet.findUnique({
+        where: { id: input.walletId },
+      });
       if (!wallet) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
       }
