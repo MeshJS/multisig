@@ -5,6 +5,7 @@ import {
   Archive,
   Download,
   MoreVertical,
+  Pencil,
   PlayCircle,
   Trash2,
   Upload,
@@ -167,6 +168,12 @@ export default function PageDocumentDetail() {
         backUrl={`/wallets/${walletId}/documents`}
       >
         <DocumentStatusBadge status={document.status} />
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/wallets/${walletId}/documents/${documentId}/edit`}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </Link>
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="outline" aria-label="Document actions">
