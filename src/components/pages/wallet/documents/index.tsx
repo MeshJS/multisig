@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { FileSignature, Plus } from "lucide-react";
+import { FileSignature, Plus, Shield } from "lucide-react";
 
 import { api } from "@/utils/api";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -30,6 +30,12 @@ export default function PageDocuments() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader pageTitle="Documents" backUrl={`/wallets/${walletId}`}>
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/wallets/${walletId}/documents/preview`}>
+            <Shield className="mr-2 h-4 w-4" />
+            Shielded sign-off
+          </Link>
+        </Button>
         <Button asChild size="sm">
           <Link href={`/wallets/${walletId}/documents/new`}>
             <Plus className="mr-2 h-4 w-4" />
@@ -39,9 +45,9 @@ export default function PageDocuments() {
       </PageHeader>
 
       <p className="max-w-3xl text-sm text-muted-foreground">
-        Approvals are bound to an exact version hash and inherit this wallet&apos;s
-        signers and threshold. Uploading a new version starts a fresh round at zero
-        approvals.
+        Approvals are bound to an exact version hash and inherit this
+        wallet&apos;s signers and threshold. Uploading a new version starts a
+        fresh round at zero approvals.
       </p>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -53,7 +59,9 @@ export default function PageDocuments() {
           description="Create a document to collect threshold sign-off from this wallet's signers."
           action={
             <Button asChild size="sm">
-              <Link href={`/wallets/${walletId}/documents/new`}>New document</Link>
+              <Link href={`/wallets/${walletId}/documents/new`}>
+                New document
+              </Link>
             </Button>
           }
         />
@@ -90,7 +98,10 @@ export default function PageDocuments() {
                       <>
                         v{latest.versionNumber}
                         {required !== undefined && (
-                          <> · {approvals}/{required} approvals</>
+                          <>
+                            {" "}
+                            · {approvals}/{required} approvals
+                          </>
                         )}
                       </>
                     ) : (
