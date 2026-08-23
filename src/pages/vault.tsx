@@ -29,6 +29,17 @@ export default function Page({
           never their titles. Selecting a note shows the path a proof of it
           would reveal, and the siblings it would keep sealed.
         </p>
+        <p className="my-4 max-w-3xl text-sm text-neutral-500 dark:text-neutral-300 lg:text-base">
+          New to this?{" "}
+          <a
+            href="/blog/how-to-use-shielded-sign-off"
+            className="underline underline-offset-2"
+          >
+            How to use shielded sign-off
+          </a>{" "}
+          explains the two kinds of link, why one hub is not enough, and exactly
+          what a disclosure gives away.
+        </p>
         <p className="max-w-3xl font-mono text-xs text-neutral-500 dark:text-neutral-400">
           root {view.rootHash.slice(0, 32)}… · {view.hubs.length} hubs ·{" "}
           {view.notes.length} notes
