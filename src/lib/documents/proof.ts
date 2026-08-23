@@ -27,6 +27,13 @@ export const PROOF_FORMAT = "mesh-multisig.document-signoff.proof.v1";
 export interface ProofReview {
   signerAddress: string;
   signerDescription?: string | null;
+  /**
+   * The contract party this signature was made as, and the capacity it was made
+   * in. Absent for wallet-threshold sign-off, which is why both are optional —
+   * a proof exported before contracts existed stays a valid ProofReview.
+   */
+  partyId?: string | null;
+  partyRole?: string | null;
   action: SignOffAction;
   comment?: string | null;
   /** The canonical JSON string that was signed, verbatim. */
@@ -87,7 +94,7 @@ export const VERIFICATION_INSTRUCTIONS = [
   "1. Re-hash the document bytes with the algorithm in `version.hashAlgorithm` and confirm the digest equals `version.contentHash`.",
   "2. For each entry in `reviews`, parse `payload` as JSON and confirm `contentHash`, `versionId`, `documentId`, `walletId` and `walletPolicyHash` match this package.",
   "3. Verify each `signature` (COSE_Sign1) over the exact `payload` string against the signer's address, per CIP-8.",
-  "4. Count the entries with `action: \"approve\"` that passed step 3 and confirm the count is at least `policy.requiredSigners`.",
+  '4. Count the entries with `action: "approve"` that passed step 3 and confirm the count is at least `policy.requiredSigners`.',
   "This package is an approval attestation by the wallet's signers. It is not a qualified electronic signature.",
 ];
 
@@ -162,7 +169,12 @@ export async function verifyProofPackage(
   const reviews: ReviewVerdict[] = [];
 
   for (const review of pkg.reviews) {
-    const verdict = await verifyReview(review, pkg, snapshot, options.checkSignature);
+    const verdict = await verifyReview(
+      review,
+      pkg,
+      snapshot,
+      options.checkSignature,
+    );
     if (seen.has(review.signerAddress)) {
       verdict.valid = false;
       verdict.errors.push("Duplicate review for this signer");
@@ -171,8 +183,12 @@ export async function verifyProofPackage(
     reviews.push(verdict);
   }
 
-  const approvals = reviews.filter((r) => r.valid && r.action === "approve").length;
-  const rejections = reviews.filter((r) => r.valid && r.action === "reject").length;
+  const approvals = reviews.filter(
+    (r) => r.valid && r.action === "approve",
+  ).length;
+  const rejections = reviews.filter(
+    (r) => r.valid && r.action === "reject",
+  ).length;
   const outcome = evaluateThreshold({
     approvals,
     rejections,
@@ -251,6 +267,11 @@ async function verifyReview(
     ["walletId", payload.walletId, pkg.document.walletId],
     ["walletPolicyHash", payload.walletPolicyHash, pkg.policy.walletPolicyHash],
     ["signerAddress", payload.signerAddress, review.signerAddress],
+    // Bound, not merely carried. Without this the capacity in the signed bytes
+    // is never checked against the package, and role attribution — the whole
+    // claim of a contract — would rest on an unverified field. `?? null` keeps
+    // threshold reviews (no party either side) passing unchanged.
+    ["partyId", payload.partyId ?? null, review.partyId ?? null],
     ["action", payload.action, review.action],
     ["comment", payload.comment, review.comment ?? ""],
     ["signedAt", payload.signedAt, review.signedAt],

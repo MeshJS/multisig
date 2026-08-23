@@ -35,6 +35,19 @@ export const SIGNOFF_STATEMENTS: Record<SignOffAction, string> = {
  */
 export interface SignOffPayload {
   action: SignOffAction;
+  /**
+   * The contract party this signature is made AS. Present only in parties mode.
+   *
+   * Optional on purpose. `canonicalize` drops undefined keys, so a threshold
+   * signature produces byte-identical bytes to before this field existed and
+   * every proof already issued keeps verifying — no SIGNOFF_DOMAIN bump.
+   *
+   * It has to be in the SIGNED bytes rather than beside them: a contract's
+   * claim is "the Buyer signed as Buyer", and one human may hold two roles, so
+   * without this two signatures from one address are indistinguishable and role
+   * attribution would rest on a database column nobody signed.
+   */
+  partyId?: string;
   /** "" when no comment — the field is always present so it is always signed. */
   comment: string;
   contentHash: string;
@@ -52,6 +65,8 @@ export interface SignOffPayload {
 
 export interface BuildSignOffPayloadInput {
   action: SignOffAction;
+  /** Set in parties mode only; omitted for wallet-threshold sign-off. */
+  partyId?: string | null;
   comment?: string | null;
   contentHash: string;
   documentId: string;
@@ -68,6 +83,9 @@ export function buildSignOffPayload(
 ): SignOffPayload {
   return {
     action: input.action,
+    // undefined, never null: canonicalize filters undefined out, so a threshold
+    // payload keeps exactly the byte layout it had before parties existed.
+    ...(input.partyId ? { partyId: input.partyId } : {}),
     comment: input.comment ?? "",
     contentHash: input.contentHash,
     documentId: input.documentId,
@@ -163,6 +181,52 @@ export interface ThresholdInput {
  *  - enough signers have rejected that the threshold is unreachable → Rejected.
  * Anything else is still open.
  */
+export interface ContractPartyOutcomeInput {
+  /** Every party on the contract, required and optional alike. */
+  parties: readonly { id: string; required: boolean }[];
+  /** Reviews recorded against this version, party-attributed. */
+  reviews: readonly { partyId: string | null; action: SignOffAction }[];
+}
+
+/**
+ * The outcome rule for parties mode.
+ *
+ * `evaluateThreshold` cannot decide a contract, and the reason is worth stating
+ * once: it counts approvals ANONYMOUSLY. Put an optional Witness into the
+ * snapshot and a contract can reach the count while a REQUIRED party has
+ * explicitly rejected it — Approved over a refusal. Take the Witness out and
+ * they are denied at submission instead. Neither is a contract.
+ *
+ * So this rule is about WHICH parties acted, not how many:
+ *
+ *   Approved  every required party approved
+ *   Rejected  any required party rejected — one refusal ends it, because
+ *             every required signature is load-bearing in an N-of-N agreement
+ *   InReview  otherwise
+ *
+ * Optional parties are recorded and never counted: they may sign or decline
+ * and neither moves the outcome.
+ */
+export function evaluateContractOutcome(
+  input: ContractPartyOutcomeInput,
+): ThresholdOutcome {
+  const required = input.parties.filter((p) => p.required);
+
+  // A party set with nothing required would make "every required party
+  // approved" vacuously true and approve a contract nobody signed. startReview
+  // must refuse such a set; this refuses to call it decided in the meantime.
+  if (required.length === 0) return "InReview";
+
+  const byParty = new Map<string, SignOffAction>();
+  for (const review of input.reviews) {
+    if (review.partyId) byParty.set(review.partyId, review.action);
+  }
+
+  if (required.some((p) => byParty.get(p.id) === "reject")) return "Rejected";
+  if (required.every((p) => byParty.get(p.id) === "approve")) return "Approved";
+  return "InReview";
+}
+
 export function evaluateThreshold(input: ThresholdInput): ThresholdOutcome {
   const { approvals, rejections, signerCount, requiredSigners } = input;
   if (approvals >= requiredSigners) return "Approved";
