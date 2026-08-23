@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { FileSignature, Shield } from "lucide-react";
+import { BookOpen, FileSignature, Shield } from "lucide-react";
 
 import VaultBrowser from "@/components/pages/vault/browser";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
@@ -33,6 +33,12 @@ export default function PageWalletVault() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader pageTitle="Vault" backUrl={`/wallets/${walletId}/documents`}>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/blog/how-to-use-shielded-sign-off">
+            <BookOpen className="mr-2 h-4 w-4" />
+            How it works
+          </Link>
+        </Button>
         <Button asChild size="sm" variant="outline">
           <Link href={`/wallets/${walletId}/documents`}>
             <FileSignature className="mr-2 h-4 w-4" />
