@@ -30,6 +30,8 @@ import {
   publicProcedure,
 } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
+import { randomBytes } from "crypto";
+
 import { audit } from "@/lib/observability/audit";
 import { buildWalletVaultView } from "@/lib/documents/vault-db";
 import {
@@ -131,6 +133,91 @@ const assertDocumentAccess = async (ctx: AuthCtx, documentId: string) => {
   return { document, wallet, addresses };
 };
 
+/**
+ * Document access for a caller who may be a wallet member, a named contract
+ * party, or both.
+ *
+ * `assertDocumentAccess` authorizes only wallet members, which is correct for
+ * sign-off and fatal for contracts: a counterparty is in neither
+ * signersAddresses nor ownerAddress, so every document procedure rejects them
+ * with FORBIDDEN before any party logic runs. This is the gate that lets them
+ * in — and only to the document they were named on, never to the wallet.
+ *
+ * Returns EVERY party the caller holds, not one. One human may hold two roles,
+ * so picking a single party here would silently choose a capacity on their
+ * behalf; anything that acts as a party must be told which one.
+ */
+const resolveDocumentAccess = async (ctx: AuthCtx, documentId: string) => {
+  const document = await ctx.db.document.findUnique({
+    where: { id: documentId },
+  });
+  if (!document) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+  }
+
+  const addresses = getSessionAddresses(ctx);
+  if (addresses.length === 0) throw new TRPCError({ code: "UNAUTHORIZED" });
+
+  const wallet = await ctx.db.wallet.findUnique({
+    where: { id: document.walletId },
+  });
+  if (!wallet) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+  }
+
+  const isMember = addresses.some(
+    (addr) =>
+      (Array.isArray(wallet.signersAddresses) &&
+        wallet.signersAddresses.includes(addr)) ||
+      wallet.ownerAddress === addr,
+  );
+
+  // Only a REDEEMED party counts. An unredeemed row carries an address nobody
+  // has proved control of — it is an intention to invite, not an identity.
+  const parties = await ctx.db.contractParty.findMany({
+    where: {
+      documentId: document.id,
+      address: { in: addresses },
+      inviteConsumedAt: { not: null },
+    },
+    orderBy: [{ signingOrder: "asc" }, { id: "asc" }],
+  });
+
+  if (!isMember && parties.length === 0) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Not authorized for this document",
+    });
+  }
+
+  return { document, wallet, addresses, parties, isMember };
+};
+
+/**
+ * The party roster is frozen once a round starts.
+ *
+ * `startReview` copies the parties into DocumentSignerSnapshot, and the whole
+ * feature rests on that snapshot being immutable — adding or removing a party
+ * afterwards would leave the frozen list describing a set that no longer
+ * exists, exactly the drift the snapshot was introduced to prevent. Mirrors the
+ * existing "A review round has already started" guard.
+ */
+const assertPartyRosterOpen = async (ctx: AuthCtx, documentId: string) => {
+  const latest = await ctx.db.documentVersion.findFirst({
+    where: { documentId },
+    orderBy: { versionNumber: "desc" },
+    include: { signerSnapshot: true },
+  });
+  if (latest?.signerSnapshot) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message:
+        "A review round has already started for this document. The party " +
+        "list is frozen until a new version is published.",
+    });
+  }
+};
+
 /** The acting address for a write — one of the session addresses. */
 const actingAddress = (addresses: string[], claimed?: string): string => {
   if (claimed) {
@@ -186,7 +273,10 @@ export const documentRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(z.object({ documentId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { document } = await assertDocumentAccess(ctx, input.documentId);
+      // Party-aware: a counterparty must be able to read the contract they were
+      // named on. Scoped to that one document — being a party grants nothing
+      // anywhere else in the wallet.
+      const { document } = await resolveDocumentAccess(ctx, input.documentId);
       return ctx.db.document.findUnique({
         where: { id: document.id },
         include: {
@@ -1235,6 +1325,228 @@ export const documentRouter = createTRPCRouter({
 
       await ctx.db.document.delete({ where: { id: document.id } });
       return { deleted: true, signatureCount, versionCount };
+    }),
+
+  /**
+   * The contract parties on a document. Visible to wallet members and to the
+   * parties themselves — a counterparty needs to see who else is signing.
+   */
+  listContractParties: protectedProcedure
+    .input(z.object({ documentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      await resolveDocumentAccess(ctx, input.documentId);
+      const parties = await ctx.db.contractParty.findMany({
+        where: { documentId: input.documentId },
+        orderBy: [{ signingOrder: "asc" }, { createdAt: "asc" }],
+        include: { fields: true },
+      });
+      // The invite hash never leaves the server: it is the credential.
+      return parties.map(({ inviteTokenHash: _hash, ...party }) => ({
+        ...party,
+        invited: !!party.invitedAt,
+        redeemed: !!party.inviteConsumedAt,
+      }));
+    }),
+
+  /**
+   * Add or edit a party. Wallet members only — a counterparty may sign a
+   * contract, never rewrite who else is on it.
+   */
+  upsertContractParty: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        partyId: z.string().min(1).optional(),
+        role: z.string().trim().min(1).max(100),
+        displayName: z.string().trim().min(1).max(200),
+        email: z.string().email().max(320).optional(),
+        signingOrder: z.number().int().min(0).max(999).default(0),
+        required: z.boolean().default(true),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { document } = await assertDocumentAccess(ctx, input.documentId);
+      await assertPartyRosterOpen(ctx, document.id);
+
+      const data = {
+        role: input.role,
+        displayName: input.displayName,
+        email: input.email ?? null,
+        signingOrder: input.signingOrder,
+        required: input.required,
+      };
+
+      if (input.partyId) {
+        const existing = await ctx.db.contractParty.findUnique({
+          where: { id: input.partyId },
+        });
+        if (!existing || existing.documentId !== document.id) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Party not found",
+          });
+        }
+        return ctx.db.contractParty.update({
+          where: { id: input.partyId },
+          data,
+        });
+      }
+
+      return ctx.db.contractParty.create({
+        data: { ...data, documentId: document.id },
+      });
+    }),
+
+  /** Remove a party. Refused once they have signed — see the NoAction FK. */
+  deleteContractParty: protectedProcedure
+    .input(z.object({ partyId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const party = await ctx.db.contractParty.findUnique({
+        where: { id: input.partyId },
+      });
+      if (!party) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Party not found" });
+      }
+      await assertDocumentAccess(ctx, party.documentId);
+      await assertPartyRosterOpen(ctx, party.documentId);
+
+      const signed = await ctx.db.documentReview.count({
+        where: { partyId: party.id },
+      });
+      if (signed > 0) {
+        // The database would refuse this anyway (NoAction), but a foreign key
+        // error is not an explanation.
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This party has already signed. Their signature is evidence and " +
+            "cannot be removed by deleting them.",
+        });
+      }
+
+      await ctx.db.contractParty.delete({ where: { id: party.id } });
+      return { deleted: true };
+    }),
+
+  /**
+   * Mint a single-use invite for a party and return the raw token ONCE.
+   *
+   * Only the sha256 is stored, so this response is the only time the token
+   * exists anywhere retrievable — the same shape as every other credential in
+   * this schema. Re-issuing replaces the previous token, which is what makes a
+   * mistyped email recoverable.
+   */
+  issuePartyInvite: protectedProcedure
+    .input(
+      z.object({
+        partyId: z.string().min(1),
+        expiresInHours: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 30)
+          .default(24 * 14),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const party = await ctx.db.contractParty.findUnique({
+        where: { id: input.partyId },
+      });
+      if (!party) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Party not found" });
+      }
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        party.documentId,
+      );
+
+      if (party.inviteConsumedAt) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This party has already redeemed an invite and is bound to an " +
+            "address. Remove and re-add them to invite someone else.",
+        });
+      }
+
+      const token = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(
+        Date.now() + input.expiresInHours * 60 * 60 * 1000,
+      );
+
+      await ctx.db.contractParty.update({
+        where: { id: party.id },
+        data: {
+          inviteTokenHash: sha256Hex(token),
+          invitedAt: new Date(),
+          inviteExpiresAt: expiresAt,
+        },
+      });
+
+      await audit(ctx.db, {
+        actorAddress: actingAddress(addresses),
+        actorType: "user",
+        action: "contract.party.invited",
+        resourceType: "document",
+        resourceId: document.id,
+        outcome: "success",
+        metadata: { partyId: party.id, role: party.role, expiresAt },
+      });
+
+      // The only time this value is returnable.
+      return { token, expiresAt };
+    }),
+
+  /**
+   * Redeem an invite: bind the caller's wallet address to the party.
+   *
+   * The caller authenticates with their OWN wallet through the ordinary session
+   * flow — they are a real, signed-in user who simply is not a member of this
+   * wallet. That is the whole point: it is what lets an outside counterparty
+   * reach a contract without being given access to a treasury.
+   */
+  redeemPartyInvite: protectedProcedure
+    .input(z.object({ token: z.string().min(16).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      const addresses = getSessionAddresses(ctx);
+      if (addresses.length === 0) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const address = actingAddress(addresses);
+
+      const party = await ctx.db.contractParty.findUnique({
+        where: { inviteTokenHash: sha256Hex(input.token) },
+      });
+
+      // One message for every failure. Distinguishing "no such invite" from
+      // "already used" turns this into an oracle for guessing tokens.
+      const reject = () => {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This invite is not valid. Ask for a fresh link.",
+        });
+      };
+      if (!party || party.inviteConsumedAt) reject();
+      if (party!.inviteExpiresAt && party!.inviteExpiresAt < new Date())
+        reject();
+
+      // Conditional update, not read-then-write: two clicks on the same link
+      // must not both bind, and the second must lose rather than overwrite.
+      const claimed = await ctx.db.contractParty.updateMany({
+        where: { id: party!.id, inviteConsumedAt: null },
+        data: { address, inviteConsumedAt: new Date() },
+      });
+      if (claimed.count !== 1) reject();
+
+      await audit(ctx.db, {
+        actorAddress: address,
+        actorType: "user",
+        action: "contract.party.redeemed",
+        resourceType: "document",
+        resourceId: party!.documentId,
+        outcome: "success",
+        metadata: { partyId: party!.id, role: party!.role },
+      });
+
+      return { documentId: party!.documentId, role: party!.role };
     }),
 
   /** Archive a document — history is retained, it just leaves active use. */
