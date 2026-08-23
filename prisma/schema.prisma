@@ -470,6 +470,13 @@ model Document {
   events       DocumentEvent[]
   draft        DocumentDraft?
 
+  /// Which rule decides this document's rounds. Defaulting to `threshold` is
+  /// what makes this migration a no-op for every document that already exists.
+  signingMode DocumentSigningMode @default(threshold)
+
+  parties        ContractParty[]
+  contractFields ContractField[]
+
   @@index([walletId])
   @@index([walletId, status])
   @@index([createdBy])
@@ -524,9 +531,35 @@ model DocumentReview {
   signedAt      DateTime // client-asserted, server-validated against a window
   createdAt     DateTime             @default(now())
 
+  /// The party this signature was made as; null in threshold mode, where the
+  /// signer is a wallet signer and signs in no particular capacity.
+  ///
+  /// NoAction, not Prisma's default. The default for an optional relation is
+  /// SetNull, which would silently strip the capacity off an already-signed,
+  /// already-exported review on an append-only table. Cascade is worse: it
+  /// deletes the signature itself, with none of deleteDocument's retype-the-
+  /// title guard or its pre-delete AuditLog row, and would revert a fully
+  /// executed contract to InReview on the next recount. NoAction is checked at
+  /// the end of the statement, so deleting a whole document still cascades
+  /// cleanly while a party who has signed cannot be deleted on their own.
+  partyId String?
+  party   ContractParty? @relation(fields: [partyId], references: [id], onDelete: NoAction)
+
+  /// How this signature was produced. Only `cip8Wallet` is written today.
+  ///
+  /// This column is not yet part of the signed bytes, and until it is it is an
+  /// index rather than evidence — see the party-signing work. Nothing but the
+  /// default is written while parties mode is unimplemented, so there is
+  /// nothing to misrepresent yet.
+  method SignatureMethod @default(cip8Wallet)
+
   @@unique([versionId, signerAddress])
+  /// One review per party per version. NULLs are distinct in Postgres, so every
+  /// existing threshold-mode row (partyId null) is unaffected.
+  @@unique([versionId, partyId])
   @@index([versionId])
   @@index([signerAddress])
+  @@index([partyId])
 }
 
 // The signer set and threshold that applied when the round started. Frozen so
@@ -720,4 +753,161 @@ model DocumentDraft {
   updatedBy String
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Contracts — named parties on top of Document Sign-Off.
+//
+// Sign-off is M-of-N over a wallet's own signers. A contract is N-of-N over
+// named parties who are usually NOT members of the wallet. The roster lives on
+// the Document so it survives a re-issue; everything per-round stays where it
+// already is — frozen in DocumentSignerSnapshot, proved by DocumentReview — so
+// the two can never drift.
+// ---------------------------------------------------------------------------
+
+/// Which rule decides a version's outcome.
+enum DocumentSigningMode {
+  /// M-of-N over the wallet's signers, read from the Wallet row at startReview.
+  threshold
+  /// Every named party signs. startReview builds the snapshot from the parties
+  /// with requiredSigners = the party count, so `evaluateThreshold` yields
+  /// N-of-N with no second evaluator and no change to the verifier.
+  parties
+}
+
+/// What a party is expected to put at an anchor in the body.
+enum ContractFieldKind {
+  signature
+  initials
+  date
+  text
+  checkbox
+}
+
+/// How a signature was produced. Only `cip8Wallet` is implemented; the others
+/// exist now because adding an enum value later is its own migration, and
+/// migrations reach production through an action that does not self-retry.
+///
+/// Note these describe two different things that will need separating: how the
+/// bytes were signed, and how the human was identified. AusweisApp and EUDI are
+/// identification protocols — a signature made after an eID check may still be
+/// a CIP-8 one.
+enum SignatureMethod {
+  /// CIP-8 COSE_Sign1 from a Cardano wallet, including utxos.dev passkey wallets.
+  cip8Wallet
+  /// German eID. Not implemented.
+  ausweisApp
+  /// EUDI wallet. Not implemented.
+  eudiWallet
+}
+
+/// A named party to a contract: who they are, in what capacity they sign, and
+/// the invite that lets a non-member of the wallet reach the review at all.
+///
+/// Deliberately holds NO per-round state — no status, no viewedAt, no
+/// decidedAt. `uploadVersion` and `publishDraft` supersede the version and
+/// reset approvals to zero without touching this row, so a per-round column
+/// here would survive a reset it has no business surviving: an ordering gate
+/// reading a stale "signed" would wave through a countersignature on a version
+/// the first party has never seen. Whether a party signed is not an opinion
+/// this table stores — it is the existence of a DocumentReview carrying their
+/// signature over the canonical payload.
+model ContractParty {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Free text, because every contract names its parties differently ("Buyer",
+  /// "Lessee", "Witness"). Copied with displayName into the frozen snapshot's
+  /// signersDescriptions at startReview — that is how the capacity a signature
+  /// was made in reaches the exported proof without a proof-format bump.
+  role        String
+  displayName String
+  /// Where the invite is sent. The only identifiable third-party data in the
+  /// document stack, which is why this table gets its RLS block in the same
+  /// migration rather than a follow-up.
+  email       String?
+
+  /// Null until the party redeems their invite and connects a wallet. A round
+  /// cannot start while any party is null here: the snapshot freezes addresses
+  /// and the signed payload binds signerAddress, so a party with no address at
+  /// startReview could never act on that version.
+  address String?
+
+  /// Parties with equal values sign in parallel; a party may act only once
+  /// every party with a strictly lower value has a review on the version being
+  /// signed. Enforced in submitSignerAction — it is a rule about rows in
+  /// another table, so no constraint here can express it.
+  signingOrder Int @default(0)
+
+  /// sha256 of a single-use invite token; the token itself is never stored.
+  /// This is what makes the feature reachable at all — a party is not in
+  /// wallet.signersAddresses, so assertWalletAccess rejects them.
+  inviteTokenHash String? @unique
+
+  invitedAt        DateTime?
+  /// Expiry and consumption, mirroring EmailVerificationToken and
+  /// BotClaimToken. Without them the invite is a bearer credential valid
+  /// forever: whoever holds the link last claims the party slot, so a mistyped
+  /// or later-compromised mailbox could bind a stranger's wallet to "Buyer".
+  inviteExpiresAt  DateTime?
+  inviteConsumedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields  ContractField[]
+  reviews DocumentReview[]
+
+  /// One wallet address holds at most one role on a document. Two parties
+  /// sharing an address is not a collision, it is an unrecoverable round:
+  /// approvals cap at N-1 so Approved is unreachable, while rejections never
+  /// make the threshold unreachable either. Relaxing DocumentReview's address
+  /// unique does not help — the proof verifier dedupes on signerAddress and
+  /// would report the finished contract as invalid. NULL addresses stay
+  /// distinct in Postgres, so any number of un-redeemed parties coexist.
+  @@unique([documentId, address])
+  @@index([documentId])
+  @@index([address])
+  @@index([inviteExpiresAt])
+}
+
+/// A per-party placeholder in the body: which anchor belongs to whom, and what
+/// kind of thing goes there.
+///
+/// `value` is PRE-PUBLISH input only. A field is a term of the contract, and
+/// the whole model rests on a signature binding an exact contentHash — so
+/// values must be rendered into the body by publishDraft and hashed with it. A
+/// value left live after the freeze would be an unsigned, mutable contract
+/// term: change 50000 to 5000 after signing and every signature still verifies.
+model ContractField {
+  id String @id @default(cuid())
+
+  /// Denormalised from the party so anchor uniqueness can be enforced across
+  /// the whole body, which spans parties. Two fields on one anchor are
+  /// unresolvable for the renderer, and ContractField has no other path to the
+  /// document. Same pattern DocumentAttestation uses for documentId.
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  partyId String
+  party   ContractParty @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  kind     ContractFieldKind
+  label    String?
+  /// Stable marker in the body that the renderer resolves.
+  anchor   String
+  required Boolean           @default(true)
+
+  /// Pre-publish input. publishDraft renders these into the markdown body
+  /// before hashing, so contentHash covers them; nothing may write here once
+  /// the document's latest version has a snapshot.
+  value    String?
+  filledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([documentId, anchor])
+  @@index([partyId])
 }
