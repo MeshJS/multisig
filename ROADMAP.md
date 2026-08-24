@@ -278,6 +278,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 |------|--------|
 | MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review | |
 | Transaction review PNG & in-chat review — generate a clear PNG summary containing the key transaction details and display it in the user's chat for human review; MCP must not sign or broadcast on the user's behalf | |
+| Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval | |
 
 ---
 
@@ -492,6 +493,7 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M5] Notification digests & deadline reminders
 - [M6] MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review
 - [M6] Transaction review PNG & in-chat review — generate and display a visual transaction summary in chat without signing or broadcasting
+- [M6] Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval
 - [M7] Output datum controls — attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction
 - [M7] Plutus script-spend and redeemer controls — configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221
 - [M8] Backlog cleanup, dependency/security updates
