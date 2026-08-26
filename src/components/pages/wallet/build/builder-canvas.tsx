@@ -32,7 +32,11 @@ import {
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { AddressLabeler } from "@/types/token-flow";
 import type { BuilderSelection, TxDraft } from "@/types/tx-draft";
-import { draftToTokenFlow, flowIdToDraftEntity } from "@/utils/token-flow";
+import {
+  draftToTokenFlow,
+  flowIdToDraftEntity,
+  type DraftBuildOverlay,
+} from "@/utils/token-flow";
 import { cn } from "@/lib/utils";
 import BuilderPalette, { type PaletteEntry } from "./palette";
 
@@ -54,6 +58,12 @@ export type BuilderCanvasProps = {
   onAddVote: () => void;
   /** When set, the vote button is disabled with this tooltip. */
   addVoteDisabledReason?: string;
+  /**
+   * Completed body from a successful test build of the CURRENT draft: the
+   * canvas overlays its fee, selected inputs and change amount. The page
+   * clears it on any draft edit.
+   */
+  built?: DraftBuildOverlay | null;
   className?: string;
 };
 
@@ -106,6 +116,7 @@ export default function BuilderCanvas({
   addStakeDisabledReason,
   onAddVote,
   addVoteDisabledReason,
+  built,
   className,
 }: BuilderCanvasProps) {
   const draft = useTxBuilderStore((state) => state.draft);
@@ -124,8 +135,16 @@ export default function BuilderCanvas({
         walletAddress,
         resolveProposalTitle,
         resolvePoolName,
+        built,
       }),
-    [draft, labelAddress, walletAddress, resolveProposalTitle, resolvePoolName],
+    [
+      draft,
+      labelAddress,
+      walletAddress,
+      resolveProposalTitle,
+      resolvePoolName,
+      built,
+    ],
   );
   // connectablePorts: empty card sides keep a dot as the drag-to-connect
   // source/drop target (viewer canvases render none there).

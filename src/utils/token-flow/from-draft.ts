@@ -1,5 +1,8 @@
+import type { MeshTxBuilder } from "@meshsdk/core";
+
 import type {
   AddressLabeler,
+  AssetQuantity,
   TokenFlow,
   TransactionFlowNode,
 } from "@/types/token-flow";
@@ -11,7 +14,23 @@ import {
   type PoolNameResolver,
   type ProposalTitleResolver,
 } from "./certificates";
-import { FlowGraphBuilder } from "./graph-builder";
+import { splitTrailingChange } from "./change";
+import {
+  assetMapToList,
+  FlowGraphBuilder,
+  lovelace,
+  sumAssets,
+} from "./graph-builder";
+
+/**
+ * The parts of a completed builder body (post-`complete()`) that a test
+ * build overlays onto the draft flow: the fee, the concretely selected
+ * inputs, and the change output(s) Mesh appends at the change address.
+ */
+export type DraftBuildOverlay = Pick<
+  MeshTxBuilder["meshTxBuilderBody"],
+  "inputs" | "outputs" | "changeAddress" | "fee"
+>;
 
 /**
  * Projects a builder draft onto the shared TokenFlow model so the canvas
@@ -23,6 +42,11 @@ import { FlowGraphBuilder } from "./graph-builder";
  *   - unset recipient:    "draftout:<outputId>"  (placeholder card)
  * Output edges always carry the output id as discriminator, so edge → output
  * mapping is a suffix match and two outputs to one address stay separate.
+ *
+ * With `opts.built` (a successful test build) the same graph gains the facts
+ * only `complete()` can supply — the fee pill, one edge per selected input
+ * instead of "auto selection", and the change amount — while every draft id
+ * stays identical, so selection, positions and drag-connect are unaffected.
  */
 export function draftToTokenFlow(
   draft: TxDraft,
@@ -33,16 +57,25 @@ export function draftToTokenFlow(
     resolveProposalTitle?: ProposalTitleResolver;
     /** Optional pool id → pool name lookup for delegation badges. */
     resolvePoolName?: PoolNameResolver;
+    /** Completed body of the current draft; overlays fee, inputs and change. */
+    built?: DraftBuildOverlay | null;
   },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
   const txNodeId = `txd:${draft.id}`;
+  const built = opts.built ?? undefined;
+
+  const builtFee =
+    built && typeof built.fee === "string" && safeBigInt(built.fee) > 0n
+      ? built.fee
+      : undefined;
 
   const txNode: TransactionFlowNode = {
     id: txNodeId,
     kind: "transaction",
     status: "pending",
     label: draft.description || "New transaction",
+    fee: builtFee,
     // Certificates before votes, matching the pending-view badge order.
     badges: [
       ...draft.certificates.map((cert) =>
@@ -55,8 +88,22 @@ export function draftToTokenFlow(
   };
   graph.addNode(txNode);
 
-  // Inputs
-  if (draft.utxoSelection.mode === "manual") {
+  // Inputs — a built body knows the exact UTxOs (auto selection resolved);
+  // manual picks are used verbatim by the builder, so the sets coincide.
+  if (built) {
+    for (const input of built.inputs) {
+      const txIn = input.txIn;
+      const node = graph.addressNode(txIn.address ?? opts.walletAddress);
+      graph.addEdge(
+        node.id,
+        txNodeId,
+        "input",
+        txIn.amount ?? [],
+        `${getFirstAndLast(txIn.txHash, 8, 4)}#${txIn.txIndex}`,
+        `${txIn.txHash}#${txIn.txIndex}`,
+      );
+    }
+  } else if (draft.utxoSelection.mode === "manual") {
     for (const utxo of draft.utxoSelection.utxos) {
       const node = graph.addressNode(utxo.output.address);
       graph.addEdge(
@@ -99,11 +146,56 @@ export function draftToTokenFlow(
     );
   }
 
-  // Change — amount-less edge, same convention as pending flows.
+  // Change — amount-less edge, same convention as pending flows; a built
+  // body fills in the amount from the change output(s) complete() appended.
+  // The edge id stays the same either way (no discriminator), so position
+  // and selection mapping are unaffected by building.
   const changeNode = graph.addressNode(opts.walletAddress);
-  graph.addEdge(txNodeId, changeNode.id, "output", [], "change");
+  if (built) {
+    const { change } = splitTrailingChange(
+      built.outputs,
+      built.changeAddress || opts.walletAddress,
+    );
+    const changeAssets = builtChangeAssets(change);
+    graph.addEdge(
+      txNodeId,
+      changeNode.id,
+      "output",
+      changeAssets,
+      changeAssets.length > 0 ? "change" : "no change",
+    );
+  } else {
+    graph.addEdge(txNodeId, changeNode.id, "output", [], "change");
+  }
+
+  // Fee — only a built body knows it; rendered as the "Network fee" pill.
+  if (builtFee) {
+    graph.addEdge(
+      txNodeId,
+      graph.protocolNode("fee").id,
+      "fee",
+      lovelace(builtFee),
+    );
+  }
 
   return graph.build();
+}
+
+function safeBigInt(value: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
+}
+
+/** Sums the change outputs' assets into one list (lovelace first). */
+function builtChangeAssets(
+  change: DraftBuildOverlay["outputs"],
+): AssetQuantity[] {
+  const totals = new Map<string, bigint>();
+  for (const output of change) sumAssets(totals, output.amount ?? []);
+  return assetMapToList(totals);
 }
 
 /**

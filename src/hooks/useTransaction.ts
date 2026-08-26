@@ -12,6 +12,7 @@ import {
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
+import { applyMetadataMessage } from "@/lib/tx-draft/metadata";
 import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
@@ -103,14 +104,11 @@ export default function useTransaction() {
       if (!userAddress) throw new Error("No user address");
 
       if (data.metadataValue) {
-        let value: string | string[] = data.metadataValue.value;
-
-        if (value.length > 63) {
-          value = value.match(/.{1,63}/g)!;
-        }
-        data.txBuilder.metadataValue(data.metadataValue.label, {
-          msg: value,
-        });
+        applyMetadataMessage(
+          data.txBuilder,
+          data.metadataValue.label,
+          data.metadataValue.value,
+        );
       }
 
       const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);

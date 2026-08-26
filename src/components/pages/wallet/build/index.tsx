@@ -3,7 +3,8 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 import type { UTxO } from "@meshsdk/core";
 import type { Transaction } from "@prisma/client";
-import { FilePenLine, Hammer, Loader2, X } from "lucide-react";
+import type { Wallet } from "@/types/wallet";
+import { FilePenLine, FlaskConical, Hammer, Loader2, X } from "lucide-react";
 
 import type { BuilderCanvasProps } from "./builder-canvas";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
@@ -26,6 +27,7 @@ import usePoolNames from "@/hooks/usePoolNames";
 import useProposalTitles from "@/hooks/useProposalTitles";
 import useTransaction from "@/hooks/useTransaction";
 import { useToast } from "@/hooks/use-toast";
+import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { deriveDrepVoteContext } from "@/lib/governance/drep-context";
 import { deriveStakeCertContext } from "@/lib/staking/stake-context";
 import {
@@ -34,19 +36,25 @@ import {
 } from "@/lib/governance/rationale";
 import { withVoteAnchor } from "@/lib/tx-draft/mutations";
 import { utxoFunds } from "@/lib/tx-draft/assets";
+import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
-import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
+import {
+  applyDraftToTxBuilder,
+  type ApplyDraftContext,
+} from "@/lib/tx-draft/to-tx-builder";
 import { validateDraft } from "@/lib/tx-draft/validate";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
+import { getFriendlyError } from "@/utils/errors";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import AddStakeDialog from "./add-stake-dialog";
 import AddVoteDialog from "./add-vote-dialog";
+import BuildResultPanel, { type BuildResultState } from "./build-result-panel";
 import Inspector from "./inspector";
 import LoadPendingDialog from "./load-pending-dialog";
 import ProblemsPanel from "./problems-panel";
@@ -103,6 +111,12 @@ export default function PageBuild() {
   const touched = useTxBuilderStore((state) => state.touched);
 
   const [building, setBuilding] = useState(false);
+  /** A test build (no signing/proposing) is in flight. */
+  const [testing, setTesting] = useState(false);
+  /** Outcome of the last test build; cleared whenever the draft changes. */
+  const [buildResult, setBuildResult] = useState<BuildResultState | null>(
+    null,
+  );
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
@@ -117,6 +131,12 @@ export default function PageBuild() {
   useEffect(() => {
     if (appWallet && storeWalletId !== appWallet.id) resetDraft(appWallet.id);
   }, [appWallet, storeWalletId, resetDraft]);
+
+  // The store replaces the draft object on every mutation, so any edit makes
+  // a previous test build stale — drop it rather than show outdated numbers.
+  useEffect(() => {
+    setBuildResult(null);
+  }, [draft]);
 
   const utxos = useMemo(
     () => (appWallet ? (walletsUtxos[appWallet.id] ?? []) : []),
@@ -408,6 +428,67 @@ export default function PageBuild() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady, appWallet, pendingTransactions, urlTxId, editingTxId]);
 
+  /**
+   * Builder context shared by the test build and the proposal so both build
+   * the very same transaction. Prefers the script whose hash matches the
+   * wallet address — for imported/legacy wallets the stored scriptCbor can be
+   * a differently encoded variant, which the node rejects
+   * (MissingScriptWitnessesUTXOW) until submitTxWithScriptRecovery swaps it
+   * at submit time.
+   */
+  function draftBuildContext(wallet: Wallet): ApplyDraftContext {
+    return {
+      scriptCbor:
+        resolveExpectedPaymentScriptCbor(wallet, network) ?? wallet.scriptCbor,
+      walletAddress: wallet.address,
+      availableUtxos,
+      // DRep identity for re-emitting loaded votes; validation has already
+      // errored (vote-drep-missing) if the draft has votes without it.
+      drepId: voteCtx?.dRepId,
+      drepScriptCbor: voteCtx?.drepScriptCbor,
+      // Staking identity for re-emitting loaded certificates; validation
+      // has already errored (cert-stake-missing) when absent but needed.
+      stakeRewardAddress: stakeCtx?.rewardAddress,
+      stakeScriptCbor: stakeCtx?.stakeScriptCbor,
+    };
+  }
+
+  /**
+   * Builds the draft exactly as the proposal would (fee, balancing, change,
+   * metadata) but stops before signing: nothing is uploaded, signed or
+   * saved. Edited vote rationales are NOT uploaded here — the vote builds
+   * with its current anchor, which only differs from the eventual proposal
+   * by the anchor bytes.
+   */
+  async function testBuild() {
+    if (!appWallet?.scriptCbor || errors.length > 0) return;
+    setTesting(true);
+    try {
+      // Always a fresh builder: MeshTxBuilder is stateful and a completed
+      // builder can't be built again.
+      const txBuilder = await getTxBuilder(network);
+      const result = await buildDraftTx(
+        txBuilder,
+        draft,
+        draftBuildContext(appWallet),
+        {
+          metadataMessage: draft.metadata || undefined,
+          complete: (builder) => completeTxWithFreshCostModels(builder, network),
+        },
+      );
+      setBuildResult({
+        status: "ok",
+        result,
+        description: draft.description,
+      });
+    } catch (error) {
+      console.error("testBuild", error);
+      setBuildResult({ status: "error", message: getFriendlyError(error) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   async function buildAndPropose(replaces?: {
     transactionId: string;
     knownSignedCount: number;
@@ -435,25 +516,11 @@ export default function PageBuild() {
       }
 
       const txBuilder = await getTxBuilder(network);
-      // Prefer the script whose hash matches the wallet address — for
-      // imported/legacy wallets the stored scriptCbor can be a differently
-      // encoded variant, which the node rejects (MissingScriptWitnessesUTXOW)
-      // until submitTxWithScriptRecovery swaps it at submit time.
-      applyDraftToTxBuilder(txBuilder, buildDraft, {
-        scriptCbor:
-          resolveExpectedPaymentScriptCbor(appWallet, network) ??
-          appWallet.scriptCbor,
-        walletAddress: appWallet.address,
-        availableUtxos,
-        // DRep identity for re-emitting loaded votes; validation has already
-        // errored (vote-drep-missing) if the draft has votes without it.
-        drepId: voteCtx?.dRepId,
-        drepScriptCbor: voteCtx?.drepScriptCbor,
-        // Staking identity for re-emitting loaded certificates; validation
-        // has already errored (cert-stake-missing) when absent but needed.
-        stakeRewardAddress: stakeCtx?.rewardAddress,
-        stakeScriptCbor: stakeCtx?.stakeScriptCbor,
-      });
+      applyDraftToTxBuilder(
+        txBuilder,
+        buildDraft,
+        draftBuildContext(appWallet),
+      );
       await newTransaction({
         txBuilder,
         description: draft.description || undefined,
@@ -561,6 +628,11 @@ export default function PageBuild() {
 
   if (appWallet === undefined) return <WalletDetailSkeleton />;
 
+  const busy = building || testing;
+  const hasPendingRationaleEdits = draft.votes.some(
+    (vote) => vote.rationaleEdit !== undefined,
+  );
+
   return (
     <main className="flex h-[calc(100vh-4rem)] flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex items-center justify-between gap-4">
@@ -586,16 +658,33 @@ export default function PageBuild() {
               variant="outline"
               data-testid="tx-builder-load-pending"
               onClick={() => setLoadDialogOpen(true)}
-              disabled={building}
+              disabled={busy}
             >
               <FilePenLine className="mr-2 h-4 w-4" />
               Edit pending
             </Button>
           )}
           <Button
+            variant="outline"
+            data-testid="tx-builder-test-build"
+            onClick={() => void testBuild()}
+            disabled={busy || errors.length > 0}
+            title={
+              errors[0]?.message ??
+              "Build the transaction without proposing it, to check that it builds"
+            }
+          >
+            {testing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="mr-2 h-4 w-4" />
+            )}
+            Build
+          </Button>
+          <Button
             data-testid="tx-builder-build"
             onClick={onBuildClick}
-            disabled={building || errors.length > 0}
+            disabled={busy || errors.length > 0}
             title={errors[0]?.message}
           >
             {building ? (
@@ -607,6 +696,13 @@ export default function PageBuild() {
           </Button>
         </div>
       </div>
+      {buildResult && (
+        <BuildResultPanel
+          result={buildResult}
+          hasPendingRationaleEdits={hasPendingRationaleEdits}
+          onDismiss={() => setBuildResult(null)}
+        />
+      )}
       {editingTxId && (
         <div
           data-testid="tx-builder-editing-banner"
@@ -666,6 +762,9 @@ export default function PageBuild() {
             addStakeDisabledReason={addStakeDisabledReason}
             onAddVote={() => setVoteDialogOpen(true)}
             addVoteDisabledReason={addVoteDisabledReason}
+            built={
+              buildResult?.status === "ok" ? buildResult.result.body : null
+            }
           />
           <ProblemsPanel issues={visibleIssues} />
         </div>
