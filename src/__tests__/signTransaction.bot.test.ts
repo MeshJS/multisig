@@ -19,6 +19,12 @@ const submitTxWithScriptRecoveryMock: jest.Mock = jest.fn();
 const findWalletMock: jest.Mock = jest.fn();
 const findTransactionMock: jest.Mock = jest.fn();
 const updateManyTransactionMock: jest.Mock = jest.fn();
+const enqueueThresholdReachedMock: jest.Mock = jest.fn();
+
+jest.mock("@/lib/notifications/center", () => ({
+  __esModule: true,
+  enqueueThresholdReachedNotifications: enqueueThresholdReachedMock,
+}));
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -166,9 +172,56 @@ beforeEach(() => {
     txHex: "deadbeef-merged",
   });
   (updateManyTransactionMock as any).mockResolvedValue({ count: 1 });
+  (enqueueThresholdReachedMock as any).mockResolvedValue([]);
 });
 
 describe("signTransaction bot API", () => {
+  it("hands the before/after signer sets to the threshold notifier", async () => {
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        transactionId: "tx-1",
+        address: BOT_TEST_ADDRESS,
+        signature: "aa".repeat(64),
+        key: "bb".repeat(64),
+        broadcast: false,
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(enqueueThresholdReachedMock).toHaveBeenCalledTimes(1);
+    expect(enqueueThresholdReachedMock.mock.calls[0]![1]).toMatchObject({
+      resourceType: "transaction",
+      resourceId: "tx-1",
+      previousSignedAddresses: [],
+      signedAddresses: [BOT_TEST_ADDRESS],
+      actorAddress: BOT_TEST_ADDRESS,
+      txHash: null,
+    });
+  });
+
+  it("still records the witness when the threshold notifier throws", async () => {
+    (enqueueThresholdReachedMock as any).mockRejectedValueOnce(new Error("boom"));
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        transactionId: "tx-1",
+        address: BOT_TEST_ADDRESS,
+        signature: "aa".repeat(64),
+        key: "bb".repeat(64),
+        broadcast: false,
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it("returns 403 when bot is not cosigner", async () => {
     (getBotWalletAccessMock as any).mockResolvedValue({ allowed: true, role: "observer" });
     const req = {

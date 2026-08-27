@@ -99,6 +99,13 @@ export default function useTransaction() {
         transactionId: string;
         knownSignedCount: number;
       };
+      /**
+       * Extra keys merged into the stored txJson next to the builder body —
+       * e.g. a `proxyBot` block describing proxy votes whose proposal ids
+       * live only in a Plutus redeemer, so server-side scans (deadline
+       * reminders, email context) can still see what the tx votes on.
+       */
+      txJsonExtras?: Record<string, unknown>;
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
@@ -159,7 +166,11 @@ export default function useTransaction() {
 
       await createTransaction({
         walletId: appWallet.id,
-        txJson: JSON.stringify(data.txBuilder.meshTxBuilderBody),
+        txJson: JSON.stringify(
+          data.txJsonExtras
+            ? { ...data.txBuilder.meshTxBuilderBody, ...data.txJsonExtras }
+            : data.txBuilder.meshTxBuilderBody,
+        ),
         txCbor: signedTx,
         signedAddresses: signedAddresses,
         state: submitTx ? 1 : 0,

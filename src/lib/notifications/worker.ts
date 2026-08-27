@@ -4,16 +4,15 @@ import type {
 } from "@prisma/client";
 
 import {
-  NOTIFICATION_EVENT_SIGNATURE_REMINDER,
-  NOTIFICATION_EVENT_SIGNATURE_REQUIRED,
+  getNotificationPreferenceField,
   NOTIFICATION_STATUS_FAILED,
   NOTIFICATION_STATUS_PENDING,
   NOTIFICATION_STATUS_RETRYING,
   NOTIFICATION_STATUS_SENDING,
   NOTIFICATION_STATUS_SENT,
-  type SignatureResourceType,
+  type NotificationPreferenceField,
 } from "./events";
-import { getSignatureSkipReason } from "./recipients";
+import { getSkipReason } from "./recipients";
 import { sendEmailViaResend } from "./channels/email/resend";
 
 const RETRY_DELAYS_MS = [
@@ -42,29 +41,19 @@ function getPayloadString(
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-const SIGNATURE_EVENT_TYPES: readonly string[] = [
-  NOTIFICATION_EVENT_SIGNATURE_REQUIRED,
-  NOTIFICATION_EVENT_SIGNATURE_REMINDER,
-];
-
-function isSignatureResourceType(
-  value: string,
-): value is SignatureResourceType {
-  return value === "transaction" || value === "signable";
-}
-
-// Signature deliveries re-check the signer's current preferences at send
-// time; email.verify deliveries are exempt (verification must be able to
-// reach an address that is not yet opted in or verified).
-function isSignatureDelivery<
-  T extends { eventType: string; walletId: string | null; resourceType: string },
->(
-  delivery: T,
-): delivery is T & { walletId: string; resourceType: SignatureResourceType } {
-  return (
-    SIGNATURE_EVENT_TYPES.includes(delivery.eventType) &&
-    delivery.walletId !== null &&
-    isSignatureResourceType(delivery.resourceType)
+// Preference-gated deliveries re-check the signer's current settings at send
+// time so a toggle flipped after enqueue is still honored. Returns null for
+// exempt events (email.verify must be able to reach an address that is not
+// yet opted in or verified) and for rows without a wallet scope.
+function preferenceFieldFor(delivery: {
+  eventType: string;
+  walletId: string | null;
+  resourceType: string;
+}): NotificationPreferenceField | null {
+  if (!delivery.walletId) return null;
+  return getNotificationPreferenceField(
+    delivery.eventType,
+    delivery.resourceType,
   );
 }
 
@@ -84,13 +73,15 @@ export async function drainNotificationOutbox(
     take: limit,
   });
 
-  const signatureDeliveries = deliveries.filter(isSignatureDelivery);
+  const gatedDeliveries = deliveries.filter(
+    (delivery) => preferenceFieldFor(delivery) !== null,
+  );
   const settingsByKey = new Map<string, WalletSignerNotificationSetting>();
-  if (signatureDeliveries.length > 0) {
+  if (gatedDeliveries.length > 0) {
     const settings = await db.walletSignerNotificationSetting.findMany({
       where: {
-        OR: signatureDeliveries.map((delivery) => ({
-          walletId: delivery.walletId,
+        OR: gatedDeliveries.map((delivery) => ({
+          walletId: delivery.walletId!,
           signerAddress: delivery.recipientAddress,
         })),
       },
@@ -103,11 +94,12 @@ export async function drainNotificationOutbox(
   const results = [];
 
   for (const delivery of deliveries) {
-    if (isSignatureDelivery(delivery)) {
+    const preferenceField = preferenceFieldFor(delivery);
+    if (preferenceField) {
       const setting = settingsByKey.get(
         `${delivery.walletId}:${delivery.recipientAddress}`,
       );
-      const skipReason = getSignatureSkipReason(setting, delivery.resourceType);
+      const skipReason = getSkipReason(setting, preferenceField);
       if (skipReason) {
         const marked = await db.notificationDelivery.updateMany({
           where: {

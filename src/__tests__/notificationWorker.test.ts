@@ -8,8 +8,10 @@ jest.mock("@/lib/notifications/channels/email/resend", () => ({
 }));
 
 import {
+  NOTIFICATION_EVENT_BALLOT_DEADLINE,
   NOTIFICATION_EVENT_EMAIL_VERIFY,
   NOTIFICATION_EVENT_SIGNATURE_REQUIRED,
+  NOTIFICATION_EVENT_THRESHOLD_REACHED,
   NOTIFICATION_STATUS_PENDING,
   NOTIFICATION_STATUS_SKIPPED_OPTED_OUT,
 } from "@/lib/notifications/events";
@@ -49,6 +51,8 @@ function makeSetting(overrides: Record<string, unknown>) {
     emailOptIn: true,
     notifyTransactionSignatures: true,
     notifySignableSignatures: true,
+    notifyThresholdReached: true,
+    notifyBallotDeadlines: true,
     ...overrides,
   };
 }
@@ -148,6 +152,89 @@ describe("drainNotificationOutbox preference re-check", () => {
     expect(sendMock).not.toHaveBeenCalled();
     expect(results[0]).toMatchObject({
       id: "delivery_signable",
+      status: "skipped_disabled",
+    });
+  });
+
+  it("skips a threshold-reached delivery when that toggle is off", async () => {
+    const delivery = makeDelivery({
+      id: "delivery_threshold",
+      eventType: NOTIFICATION_EVENT_THRESHOLD_REACHED,
+    });
+    const db = makeDb(
+      [delivery],
+      [makeSetting({ notifyThresholdReached: false })],
+    );
+
+    const results = await drainNotificationOutbox(db as any);
+
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      id: "delivery_threshold",
+      status: "skipped_disabled",
+    });
+  });
+
+  it("still sends a threshold-reached delivery when only signature toggles are off", async () => {
+    const delivery = makeDelivery({
+      id: "delivery_threshold_ok",
+      eventType: NOTIFICATION_EVENT_THRESHOLD_REACHED,
+    });
+    const db = makeDb(
+      [delivery],
+      [
+        makeSetting({
+          notifyTransactionSignatures: false,
+          notifySignableSignatures: false,
+        }),
+      ],
+    );
+
+    const results = await drainNotificationOutbox(db as any);
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(results[0]).toMatchObject({
+      id: "delivery_threshold_ok",
+      status: "sent",
+    });
+  });
+
+  it("skips a ballot-deadline delivery when that toggle is off", async () => {
+    const delivery = makeDelivery({
+      id: "delivery_ballot",
+      eventType: NOTIFICATION_EVENT_BALLOT_DEADLINE,
+      resourceType: "ballot",
+    });
+    const db = makeDb(
+      [delivery],
+      [makeSetting({ notifyBallotDeadlines: false })],
+    );
+
+    const results = await drainNotificationOutbox(db as any);
+
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      id: "delivery_ballot",
+      status: "skipped_disabled",
+    });
+  });
+
+  it("gates transaction-keyed ballot-deadline deliveries by the same toggle", async () => {
+    const delivery = makeDelivery({
+      id: "delivery_ballot_tx",
+      eventType: NOTIFICATION_EVENT_BALLOT_DEADLINE,
+      resourceType: "transaction",
+    });
+    const db = makeDb(
+      [delivery],
+      [makeSetting({ notifyBallotDeadlines: false })],
+    );
+
+    const results = await drainNotificationOutbox(db as any);
+
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({
+      id: "delivery_ballot_tx",
       status: "skipped_disabled",
     });
   });

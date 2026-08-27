@@ -185,6 +185,11 @@ export default function VoteButton({
         txBuilder: txBuilderResult,
         description: `Proxy Vote: ${voteKind} - ${description}`,
         metadataValue: metadata ? { label: "674", value: metadata } : undefined,
+        // The proxy vote lives in a Plutus redeemer, invisible in the builder
+        // body; annotate the stored txJson so deadline reminders can find it.
+        txJsonExtras: {
+          proxyBot: { kind: "proxyVote", votes: [voteData] },
+        },
       });
 
       toast({
