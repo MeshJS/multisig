@@ -92,7 +92,11 @@ describe("buildDraftTx", () => {
     const result = await buildDraftTx(
       txBuilder,
       sendDraft("2000000"),
-      { scriptCbor: SCRIPT_CBOR, walletAddress: WALLET_ADDRESS, availableUtxos: [] },
+      {
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+        walletAddress: WALLET_ADDRESS,
+        availableUtxos: [],
+      },
       { metadataMessage: "Test build", complete },
     );
 
@@ -119,7 +123,11 @@ describe("buildDraftTx", () => {
     const result = await buildDraftTx(
       txBuilder,
       sendDraft("2000000"),
-      { scriptCbor: SCRIPT_CBOR, walletAddress: WALLET_ADDRESS, availableUtxos: [] },
+      {
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+        walletAddress: WALLET_ADDRESS,
+        availableUtxos: [],
+      },
       { complete },
     );
 
@@ -133,7 +141,11 @@ describe("buildDraftTx", () => {
       buildDraftTx(
         new MeshTxBuilder({}),
         createDraft("d1"),
-        { scriptCbor: SCRIPT_CBOR, walletAddress: WALLET_ADDRESS, availableUtxos: [] },
+        {
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+        walletAddress: WALLET_ADDRESS,
+        availableUtxos: [],
+      },
         { complete },
       ),
     ).rejects.toThrow("no outputs");
@@ -145,7 +157,11 @@ describe("buildDraftTx", () => {
       buildDraftTx(
         new MeshTxBuilder({}),
         sendDraft("2000000"),
-        { scriptCbor: SCRIPT_CBOR, walletAddress: WALLET_ADDRESS, availableUtxos: [] },
+        {
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+        walletAddress: WALLET_ADDRESS,
+        availableUtxos: [],
+      },
         {
           complete: async () => {
             throw new Error("UTxO Balance Insufficient");

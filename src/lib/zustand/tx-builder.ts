@@ -3,6 +3,7 @@ import { create } from "zustand";
 import type {
   BuilderSelection,
   DraftOutput,
+  DraftSource,
   DraftUtxoSelection,
   DraftVote,
   DraftVoteKind,
@@ -21,6 +22,7 @@ import {
   setDescription,
   setMetadata,
   setOutputAsset,
+  setSource,
   setUtxoSelection,
   setVoteRationale,
   updateCertificatePool,
@@ -65,6 +67,11 @@ interface TxBuilderState {
   removeOutput: (outputId: string) => void;
   setOutputAsset: (outputId: string, unit: string, quantity: string) => void;
   setUtxoSelection: (selection: DraftUtxoSelection) => void;
+  /**
+   * Changes the funding source (see `setSource` in mutations). Ignored while
+   * editing a pending multisig transaction — its source is the multisig.
+   */
+  setSource: (source: DraftSource) => void;
   setDescription: (description: string) => void;
   setMetadata: (metadata: string) => void;
   updateVoteKind: (voteId: string, voteKind: DraftVoteKind) => void;
@@ -159,6 +166,11 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   },
   setUtxoSelection: (selection) =>
     set({ draft: setUtxoSelection(get().draft, selection) }),
+  setSource: (source) => {
+    const state = get();
+    if (state.editingTxId) return;
+    set({ draft: setSource(state.draft, source) });
+  },
   setDescription: (description) =>
     set({ draft: setDescription(get().draft, description) }),
   setMetadata: (metadata) =>

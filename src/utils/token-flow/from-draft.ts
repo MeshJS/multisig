@@ -48,10 +48,14 @@ export type DraftBuildOverlay = Pick<
  * instead of "auto selection", and the change amount — while every draft id
  * stays identical, so selection, positions and drag-connect are unaffected.
  */
+/** Placeholder card shown while the source address isn't known yet. */
+export const DRAFT_SOURCE_NODE_ID = "draftsource";
+
 export function draftToTokenFlow(
   draft: TxDraft,
   opts: {
     labelAddress: AddressLabeler;
+    /** The source (funding + change) address; "" while not yet known. */
     walletAddress: string;
     /** Optional "txHash#certIndex" → proposal title lookup for vote badges. */
     resolveProposalTitle?: ProposalTitleResolver;
@@ -64,6 +68,21 @@ export function draftToTokenFlow(
   const graph = new FlowGraphBuilder(opts.labelAddress);
   const txNodeId = `txd:${draft.id}`;
   const built = opts.built ?? undefined;
+
+  // The source card: the wallet address when known, else a placeholder
+  // (a source set to "other address" before one is entered, or the
+  // connected-wallet source without a connected wallet).
+  const sourceNodeId = (): string => {
+    if (opts.walletAddress) return graph.addressNode(opts.walletAddress).id;
+    graph.addNode({
+      id: DRAFT_SOURCE_NODE_ID,
+      kind: "address",
+      address: "",
+      label: "Set source address",
+      partyType: "self",
+    });
+    return DRAFT_SOURCE_NODE_ID;
+  };
 
   const builtFee =
     built && typeof built.fee === "string" && safeBigInt(built.fee) > 0n
@@ -93,9 +112,11 @@ export function draftToTokenFlow(
   if (built) {
     for (const input of built.inputs) {
       const txIn = input.txIn;
-      const node = graph.addressNode(txIn.address ?? opts.walletAddress);
+      const nodeId = txIn.address
+        ? graph.addressNode(txIn.address).id
+        : sourceNodeId();
       graph.addEdge(
-        node.id,
+        nodeId,
         txNodeId,
         "input",
         txIn.amount ?? [],
@@ -117,8 +138,7 @@ export function draftToTokenFlow(
     }
   } else {
     // Concrete inputs are only known at build time (keepRelevant).
-    const node = graph.addressNode(opts.walletAddress);
-    graph.addEdge(node.id, txNodeId, "input", [], "auto selection");
+    graph.addEdge(sourceNodeId(), txNodeId, "input", [], "auto selection");
   }
 
   // Outputs — one edge per draft output, discriminated by output id.
@@ -150,7 +170,7 @@ export function draftToTokenFlow(
   // body fills in the amount from the change output(s) complete() appended.
   // The edge id stays the same either way (no discriminator), so position
   // and selection mapping are unaffected by building.
-  const changeNode = graph.addressNode(opts.walletAddress);
+  const changeNodeId = sourceNodeId();
   if (built) {
     const { change } = splitTrailingChange(
       built.outputs,
@@ -159,13 +179,13 @@ export function draftToTokenFlow(
     const changeAssets = builtChangeAssets(change);
     graph.addEdge(
       txNodeId,
-      changeNode.id,
+      changeNodeId,
       "output",
       changeAssets,
       changeAssets.length > 0 ? "change" : "no change",
     );
   } else {
-    graph.addEdge(txNodeId, changeNode.id, "output", [], "change");
+    graph.addEdge(txNodeId, changeNodeId, "output", [], "change");
   }
 
   // Fee — only a built body knows it; rendered as the "Network fee" pill.
@@ -221,6 +241,8 @@ export function flowIdToDraftEntity(
   }
 
   if (baseId === `txd:${draft.id}`) return { kind: "tx" };
+  // The source placeholder is edited through the tx inspector's source picker.
+  if (baseId === DRAFT_SOURCE_NODE_ID) return { kind: "tx" };
 
   if (baseId.startsWith("draftout:")) {
     const outputId = baseId.slice("draftout:".length);

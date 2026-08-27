@@ -15,7 +15,7 @@ import type { IWallet } from "@meshsdk/core";
 export default function useActiveWallet() {
   // Get wallet instances from both wallet types. useMeshWallet bridges react
   // 2.0's connection to a 1.9 IWallet so signing/tx code keeps the 1.9 API.
-  const { wallet, connected } = useMeshWallet(); // Regular Mesh wallet (browser extension)
+  const { wallet, connected, name: walletName } = useMeshWallet(); // Regular Mesh wallet (browser extension)
   const { wallet: utxosWallet, isEnabled: isUtxosEnabled } = useUTXOS(); // UTXOS wallet (Wallet-as-a-Service)
   const userAddress = useUserStore((state) => state.userAddress);
 
@@ -118,6 +118,8 @@ export default function useActiveWallet() {
     
     // Connection states
     connected,
+    /** Display name of the connected browser wallet (e.g. "eternl"). */
+    walletName,
     isUtxosEnabled,
     isAnyWalletConnected,
     isWalletReady,

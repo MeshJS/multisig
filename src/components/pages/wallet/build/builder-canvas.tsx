@@ -64,6 +64,8 @@ export type BuilderCanvasProps = {
    * clears it on any draft edit.
    */
   built?: DraftBuildOverlay | null;
+  /** The multisig's address when it is NOT the source (palette "Multisig" button). */
+  multisigAddress?: string;
   className?: string;
 };
 
@@ -117,6 +119,7 @@ export default function BuilderCanvas({
   onAddVote,
   addVoteDisabledReason,
   built,
+  multisigAddress,
   className,
 }: BuilderCanvasProps) {
   const draft = useTxBuilderStore((state) => state.draft);
@@ -311,6 +314,7 @@ export default function BuilderCanvas({
           contacts={contacts}
           signers={signers}
           selfAddress={walletAddress}
+          multisigAddress={multisigAddress}
           onAddStakeAction={onAddStakeAction}
           addStakeDisabledReason={addStakeDisabledReason}
           onAddVote={onAddVote}

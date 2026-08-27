@@ -60,7 +60,7 @@ describe("applyDraftToTxBuilder", () => {
 
     const built = body(
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [],
       }),
@@ -89,7 +89,7 @@ describe("applyDraftToTxBuilder", () => {
 
     const built = body(
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: available,
       }),
@@ -104,7 +104,7 @@ describe("applyDraftToTxBuilder", () => {
     const draft = sendDraft([{ unit: "policy1token", quantity: "5" }]);
     const built = body(
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [
           utxo(0, [
@@ -124,7 +124,7 @@ describe("applyDraftToTxBuilder", () => {
     const draft = sendDraft([{ unit: "lovelace", quantity: "2000000" }]);
     const built = body(
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "10000000" }])],
       }),
@@ -135,7 +135,7 @@ describe("applyDraftToTxBuilder", () => {
   test("throws on empty drafts and unfundable auto selections", () => {
     expect(() =>
       applyDraftToTxBuilder(bareTxBuilder(), createDraft("d1"), {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [],
       }),
@@ -144,7 +144,7 @@ describe("applyDraftToTxBuilder", () => {
     const draft = sendDraft([{ unit: "lovelace", quantity: "2000000" }]);
     expect(() =>
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [],
       }),
@@ -175,7 +175,7 @@ describe("applyDraftToTxBuilder votes", () => {
   }
 
   const voteCtx = {
-    scriptCbor: SCRIPT_CBOR,
+    inputs: { kind: "script" as const, scriptCbor: SCRIPT_CBOR },
     walletAddress: WALLET_ADDRESS,
     availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "10000000" }])],
     drepId: DREP_ID,
@@ -197,7 +197,7 @@ describe("applyDraftToTxBuilder votes", () => {
   test("throws without DRep context when votes exist", () => {
     expect(() =>
       applyDraftToTxBuilder(bareTxBuilder(), voteDraft([{}]), {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: voteCtx.availableUtxos,
       }),
@@ -302,7 +302,7 @@ describe("applyDraftToTxBuilder certificates", () => {
   }
 
   const certCtx = {
-    scriptCbor: SCRIPT_CBOR,
+    inputs: { kind: "script" as const, scriptCbor: SCRIPT_CBOR },
     walletAddress: WALLET_ADDRESS,
     availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "10000000" }])],
     stakeRewardAddress: REWARD_ADDRESS,
@@ -374,7 +374,7 @@ describe("applyDraftToTxBuilder certificates", () => {
         bareTxBuilder(),
         certDraft([{ kind: "DelegateStake", poolId: POOL_ID }]),
         {
-          scriptCbor: SCRIPT_CBOR,
+          inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
           walletAddress: WALLET_ADDRESS,
           availableUtxos: certCtx.availableUtxos,
         },
@@ -475,7 +475,7 @@ describe("applyDraftToTxBuilder rationale edits", () => {
 
     const built = body(
       applyDraftToTxBuilder(bareTxBuilder(), draft, {
-        scriptCbor: SCRIPT_CBOR,
+        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
         walletAddress: WALLET_ADDRESS,
         availableUtxos: [utxo(0, [{ unit: "lovelace", quantity: "10000000" }])],
         drepId: "drep1abc",

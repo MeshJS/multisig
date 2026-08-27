@@ -5,6 +5,7 @@ export {
   type ResolvedInputMap,
 } from "./from-pending";
 export {
+  DRAFT_SOURCE_NODE_ID,
   draftToTokenFlow,
   flowIdToDraftEntity,
   type DraftBuildOverlay,
