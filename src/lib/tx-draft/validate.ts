@@ -7,6 +7,7 @@ import {
   requiredAssetTotals,
   safeBigInt,
 } from "./assets";
+import { hasMultisigOnlyActions } from "./mutations";
 
 export type DraftIssueCode =
   | "no-outputs"
@@ -21,7 +22,18 @@ export type DraftIssueCode =
   | "cert-stake-missing"
   | "cert-pool-missing"
   | "duplicate-vote"
-  | "cert-duplicate";
+  | "cert-duplicate"
+  | "source-address-missing"
+  | "source-address-invalid"
+  | "source-address-wrong-network"
+  | "source-address-script"
+  | "source-address-is-connected"
+  | "source-actions-unsupported";
+
+/** Issue codes about the funding source (rendered next to the source picker). */
+export function isSourceIssue(code: DraftIssueCode): boolean {
+  return code.startsWith("source-");
+}
 
 export type DraftIssue = {
   level: "error" | "warning";
@@ -51,9 +63,18 @@ export type ValidateDraftContext = {
    * no certificates) to skip the check.
    */
   hasStakeContext?: boolean;
+  /** The multisig's own address; lets the source check name it. */
+  multisigAddress?: string;
+  /** The connected wallet's address; absent when no wallet is connected. */
+  connectedAddress?: string;
 };
 
-function isValidPaymentAddress(address: string): boolean {
+export type ValidateSourceContext = Pick<
+  ValidateDraftContext,
+  "network" | "multisigAddress" | "connectedAddress"
+>;
+
+export function isValidPaymentAddress(address: string): boolean {
   if (!address.startsWith("addr")) return false; // excludes stake/DRep ids
   try {
     deserializeAddress(address);
@@ -61,6 +82,95 @@ function isValidPaymentAddress(address: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Payment credential is a script (multisig / contract), not a key. */
+function isScriptAddress(address: string): boolean {
+  try {
+    return deserializeAddress(address).scriptHash !== "";
+  } catch {
+    return false;
+  }
+}
+
+function isMainnetAddress(address: string): boolean {
+  return !address.startsWith("addr_test");
+}
+
+function wrongNetworkMessage(address: string, network: number): string {
+  return `Address belongs to ${isMainnetAddress(address) ? "mainnet" : "a testnet"}, but the wallet is on ${network === 1 ? "mainnet" : "a testnet"}.`;
+}
+
+/**
+ * Validates the funding source alone. Split out from `validateDraft` so the
+ * page can decide whether to fetch the source's UTxOs before the full
+ * validation (which needs those UTxOs for the sufficiency check) runs.
+ */
+export function validateSource(
+  draft: TxDraft,
+  ctx: ValidateSourceContext,
+): DraftIssue[] {
+  const issues: DraftIssue[] = [];
+  const { source } = draft;
+
+  if (source.kind === "connected" && !ctx.connectedAddress) {
+    issues.push({
+      level: "error",
+      code: "source-address-missing",
+      message: "Connect a wallet to build a transaction from it.",
+    });
+  }
+
+  if (source.kind === "address") {
+    const address = source.address.trim();
+    if (!address) {
+      issues.push({
+        level: "error",
+        code: "source-address-missing",
+        message: "Enter the address of the wallet to build from.",
+      });
+    } else if (!isValidPaymentAddress(address)) {
+      issues.push({
+        level: "error",
+        code: "source-address-invalid",
+        message: "Source is not a valid Cardano payment address.",
+      });
+    } else if (isScriptAddress(address)) {
+      issues.push({
+        level: "error",
+        code: "source-address-script",
+        message:
+          address === ctx.multisigAddress
+            ? "This is the multisig's own address — choose the Multisig source instead."
+            : "This is a script address — only regular key-based wallet addresses can be a source.",
+      });
+    } else if (isMainnetAddress(address) !== (ctx.network === 1)) {
+      issues.push({
+        level: "error",
+        code: "source-address-wrong-network",
+        message: `Source: ${wrongNetworkMessage(address, ctx.network)}`,
+      });
+    } else if (address === ctx.connectedAddress) {
+      issues.push({
+        level: "warning",
+        code: "source-address-is-connected",
+        message:
+          "This is your connected wallet — choose the Connected wallet source to sign and submit here.",
+      });
+    }
+  }
+
+  // Backstop: setSource clears these when leaving the multisig.
+  if (source.kind !== "multisig" && hasMultisigOnlyActions(draft)) {
+    issues.push({
+      level: "error",
+      code: "source-actions-unsupported",
+      message:
+        "Staking actions and votes can only be built from the multisig wallet.",
+    });
+  }
+
+  return issues;
 }
 
 /**
@@ -71,7 +181,7 @@ export function validateDraft(
   draft: TxDraft,
   ctx: ValidateDraftContext,
 ): DraftIssue[] {
-  const issues: DraftIssue[] = [];
+  const issues: DraftIssue[] = [...validateSource(draft, ctx)];
 
   if (
     draft.outputs.length === 0 &&
@@ -171,12 +281,11 @@ export function validateDraft(
         outputId: output.id,
       });
     } else {
-      const isMainnetAddress = !output.address.startsWith("addr_test");
-      if (isMainnetAddress !== (ctx.network === 1)) {
+      if (isMainnetAddress(output.address) !== (ctx.network === 1)) {
         issues.push({
           level: "error",
           code: "wrong-network-address",
-          message: `Address belongs to ${isMainnetAddress ? "mainnet" : "a testnet"}, but the wallet is on ${ctx.network === 1 ? "mainnet" : "a testnet"}.`,
+          message: wrongNetworkMessage(output.address, ctx.network),
           outputId: output.id,
         });
       }

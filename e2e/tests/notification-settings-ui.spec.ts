@@ -81,7 +81,27 @@ test.describe("notification settings UI", () => {
       timeout: 30_000,
     });
 
-    // Everything survives a full reload: email, badge, and the toggle.
+    // The threshold-reached and ballot-deadline toggles persist the same way.
+    const thresholdToggle = page.getByRole("switch", {
+      name: "Toggle threshold reached notifications",
+    });
+    await expect(thresholdToggle).toBeEnabled({ timeout: 30_000 });
+    await expect(thresholdToggle).toHaveAttribute("aria-checked", "true");
+    await thresholdToggle.click();
+    await expect(page.getByText("Notification settings saved").first()).toBeVisible({
+      timeout: 30_000,
+    });
+    const ballotToggle = page.getByRole("switch", {
+      name: "Toggle ballot deadline notifications",
+    });
+    await expect(ballotToggle).toBeEnabled({ timeout: 30_000 });
+    await expect(ballotToggle).toHaveAttribute("aria-checked", "true");
+    await ballotToggle.click();
+    await expect(page.getByText("Notification settings saved").first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Everything survives a full reload: email, badge, and the toggles.
     await page.reload();
     await expect(
       page.getByRole("heading", { name: "Email Notifications" }),
@@ -96,6 +116,12 @@ test.describe("notification settings UI", () => {
       page.getByRole("switch", {
         name: "Toggle transaction signature notifications",
       }),
+    ).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
+    await expect(
+      page.getByRole("switch", { name: "Toggle threshold reached notifications" }),
+    ).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
+    await expect(
+      page.getByRole("switch", { name: "Toggle ballot deadline notifications" }),
     ).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
   });
 });

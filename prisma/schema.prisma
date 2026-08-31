@@ -252,6 +252,8 @@ model WalletSignerNotificationSetting {
   emailOptIn                  Boolean   @default(true)
   notifyTransactionSignatures Boolean   @default(true)
   notifySignableSignatures    Boolean   @default(true)
+  notifyThresholdReached      Boolean   @default(true)
+  notifyBallotDeadlines       Boolean   @default(true)
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 

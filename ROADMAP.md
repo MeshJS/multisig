@@ -83,7 +83,7 @@ Coverage starts at **April**, the programme's first month — April's output is 
 
 ### Notifications
 
-Resend-backed email channel with a real outbox: `NotificationDelivery` carries an idempotency key, attempt counter, `nextAttemptAt` backoff and nine statuses (including four distinct skip reasons), drained by `drainNotificationOutbox` via a token-authenticated `POST /api/notifications/drain`. Event types are `email.verify`, `signature.required`, `signature.reminder`. Per-wallet × per-signer settings UI on the wallet Info page, plus hashed-token email verification ([#322](https://github.com/MeshJS/multisig/pull/322), [#326](https://github.com/MeshJS/multisig/pull/326)). **Gap:** no scheduled workflow drains the outbox — `daily-balance-snapshots.yml` is the only cron in the repo.
+Resend-backed email channel with a real outbox: `NotificationDelivery` carries an idempotency key, attempt counter, `nextAttemptAt` backoff and nine statuses (including four distinct skip reasons), drained by `drainNotificationOutbox` via a token-authenticated `POST /api/notifications/drain`. Event types are `email.verify`, `signature.required`, `signature.reminder`, `threshold.reached` (a transaction/payload collected enough signatures) and `ballot.deadline` (48h/24h reminders for ballots and pending vote transactions, derived from on-chain proposal expiration epochs, scanned hourly by `ballot-deadline-reminders.yml` via `POST /api/notifications/ballot-deadlines`). Per-wallet × per-signer settings UI on the wallet Info page, plus hashed-token email verification ([#322](https://github.com/MeshJS/multisig/pull/322), [#326](https://github.com/MeshJS/multisig/pull/326)). **Gap:** no scheduled workflow drains the outbox — `daily-balance-snapshots.yml` is the only cron in the repo.
 
 ### Testing & CI
 
@@ -104,7 +104,7 @@ Resend-backed email channel with a real outbox: `NotificationDelivery` carries a
 | Capability | Planned | Actually delivered | Effect on the plan |
 |------------|---------|--------------------|--------------------|
 | Governance metadata fix (#122) | M7 (Nov) | June | Closed |
-| Wallet V2 — registration & discovery (#33) | M3 (Jul) | July ([#340](https://github.com/MeshJS/multisig/pull/340)) | On time; feeds the Discover page (#52), which moves up from M10 |
+| Wallet V2 — registration & discovery (#33) | M3 (Jul) | July ([#340](https://github.com/MeshJS/multisig/pull/340)) | On time; feeds the M5 Discover lookup by signer/policy, which moves up from M10 (#52 was closed as unspecified; scope now tracked under #33) |
 | Bot platform (SDK/reference client, scoped auth, ballot API) | M7 (Nov) | July | M7 reduces to **webhooks only** — no webhook code exists yet |
 | API documentation & developer portal | M8 (Dec) | June–July | Done; M8 slot freed |
 | Pending transactions on user's homepage (#125) | M7 (Nov) | Shipped — surfaced on the wallets dashboard | Issue still open; verify and close |
@@ -255,7 +255,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 | Task | Issues |
 |------|--------|
 | Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display/build all tx types multisig is capable of doing | |
-| Discover page — fold into the delivered Wallet V2 registration/discovery rather than building it standalone; add lookup by signer/policy *(moved up from M10)* | #52, #33 |
+| Discover — lookup by signer/policy on the import wizard's Discover tab (search by signer address/key hash or wallet address/script hash; view-only for non-participants), `resolveScript` route, MCP `multisig_lookup_wallet` by script hash/address. No standalone page — rides the delivered Wallet V2 discovery *(moved up from M10)* | #33 |
 | Notification digests & deadline reminders — ballot-deadline and threshold-reached emails on the existing outbox (product work, infrastructure already exists) | |
 | Monthly report | |
 
@@ -489,7 +489,7 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M4] Unblock dependabot CI — skip-when-unconfigured guard in `pr-multisig-v1-smoke.yml`, then clear the 7 open dependency PRs
 - [M4] Notification center follow-ups — gov-proposal improvements, Playwright coverage, scheduled outbox drain (#327)
 - [M4–5] Document Sign-Off MVP — Documents UI, six-state lifecycle, signer review, diffs
-- [M5] Discover page + lookup by signer/policy (#52, #33) — moved up from M10
+- [M5] Discover — lookup by signer/policy on the Discover tab, `resolveScript` route, MCP policy lookup (#33) — moved up from M10
 - [M5] Notification digests & deadline reminders
 - [M6] MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review
 - [M6] Transaction review PNG & in-chat review — generate and display a visual transaction summary in chat without signing or broadcasting

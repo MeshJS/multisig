@@ -342,6 +342,14 @@ export default function BallotCard({
         txBuilder: txBuilder,
         description: `Proxy Ballot Vote: ${selectedBallot.description || ""}`,
         toastMessage: "Proxy ballot vote transaction has been created",
+        // Proxy votes sit in a Plutus redeemer, not the builder body; annotate
+        // the stored txJson so deadline reminders can see the proposals.
+        txJsonExtras: {
+          proxyBot: {
+            kind: "proxyVote",
+            votes: votes.map(({ proposalId, voteKind }) => ({ proposalId, voteKind })),
+          },
+        },
       });
 
       toast({

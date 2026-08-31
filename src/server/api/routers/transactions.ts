@@ -10,7 +10,10 @@ import { addressToNetwork } from "@/utils/multisigSDK";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { assertWalletAccess } from "@/server/api/auth";
-import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import {
+  enqueueSignatureRequiredNotifications,
+  enqueueThresholdReachedNotifications,
+} from "@/lib/notifications/center";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -154,7 +157,7 @@ export const transactionRouter = createTRPCRouter({
       if (!tx) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
-      await assertWalletAccess(ctx, tx.walletId);
+      const wallet = await assertWalletAccess(ctx, tx.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
       const updated = await ctx.db.transaction.update({
         where: {
@@ -168,6 +171,21 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      try {
+        await enqueueThresholdReachedNotifications(ctx.db, {
+          wallet,
+          resourceType: "transaction",
+          resourceId: tx.id,
+          previousSignedAddresses: tx.signedAddresses,
+          signedAddresses: updated.signedAddresses,
+          actorAddress: sessionAddress,
+          description: tx.description,
+          txJson: tx.txJson,
+          txHash: updated.txHash ?? tx.txHash,
+        });
+      } catch (error) {
+        console.error("Failed to enqueue threshold notifications", error);
+      }
       const justSigned =
         sessionAddress !== null &&
         input.signedAddresses.includes(sessionAddress) &&

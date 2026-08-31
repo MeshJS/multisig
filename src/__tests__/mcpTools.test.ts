@@ -104,6 +104,18 @@ describe("MCP tool registry", () => {
     }
   });
 
+  it("lets the wallet lookup select by signer, policy or address", () => {
+    // Exactly-one-selector is enforced in the run body (JSON Schema can't
+    // express it without oneOf, which the MCP client UIs render poorly), so
+    // the schema must not `require` any single selector.
+    const tool = MCP_TOOLS.find((t) => t.name === "multisig_lookup_wallet");
+    const props = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining(["pubKeyHashes", "scriptHash", "address"]),
+    );
+    expect(tool?.inputSchema.required).toBeUndefined();
+  });
+
   it("caps the governance page size", () => {
     const tool = MCP_TOOLS.find(
       (t) => t.name === "governance_list_active_proposals",

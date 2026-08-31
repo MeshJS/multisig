@@ -1180,6 +1180,125 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/resolveRegistrationScript": {
+        get: {
+          tags: ["V1"],
+          summary:
+            "Resolve the native script(s) of a CIP-0146 registration transaction",
+          description:
+            "Reads the transaction's UTxO addresses and returns every script-credential address seen, with its script hash, stake credential and timelock JSON. Public, unauthenticated.",
+          parameters: [
+            {
+              name: "txHash",
+              in: "query",
+              required: true,
+              description: "Registration transaction hash (64 hex chars)",
+              schema: { type: "string" },
+            },
+            {
+              name: "network",
+              in: "query",
+              required: false,
+              description: "0 = preprod, 1 = mainnet (default)",
+              schema: { type: "number" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Script candidates (empty when the tx is unknown)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      txHash: { type: "string" },
+                      candidates: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            address: { type: "string" },
+                            scriptHash: { type: "string" },
+                            stakeCredentialHash: {
+                              type: "string",
+                              nullable: true,
+                            },
+                            scriptJson: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing or invalid txHash / network" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal Server Error" },
+          },
+        },
+      },
+      "/api/v1/resolveScript": {
+        get: {
+          tags: ["V1"],
+          summary:
+            "Resolve a native script by hash (policy) or multisig address to its signer key hashes",
+          description:
+            "Backs lookup-by-policy: pass exactly one of scriptHash or address. Returns the script's timelock JSON and sig key hashes, which can then be matched against CIP-1854 registrations via /api/v1/lookupMultisigWallet. Public, unauthenticated.",
+          parameters: [
+            {
+              name: "scriptHash",
+              in: "query",
+              required: false,
+              description: "Native-script hash / policy id (56 hex chars)",
+              schema: { type: "string" },
+            },
+            {
+              name: "address",
+              in: "query",
+              required: false,
+              description:
+                "Bech32 multisig wallet address (script payment credential)",
+              schema: { type: "string" },
+            },
+            {
+              name: "network",
+              in: "query",
+              required: false,
+              description: "0 = preprod, 1 = mainnet (default)",
+              schema: { type: "number" },
+            },
+          ],
+          responses: {
+            200: {
+              description:
+                "Resolved script (scriptJson null and sigHashes empty when unknown or not a native script)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      scriptHash: { type: "string" },
+                      stakeCredentialHash: { type: "string", nullable: true },
+                      scriptJson: { type: "object", nullable: true },
+                      sigHashes: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: {
+              description:
+                "Neither/both selectors given, invalid scriptHash, or address without a script credential",
+            },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal Server Error" },
+          },
+        },
+      },
       "/api/v1/getNonce": {
         get: {
           tags: ["Auth"],

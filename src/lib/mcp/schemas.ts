@@ -98,6 +98,8 @@ export const PROXY_DREP_INFO_INPUT: JsonSchema = {
 
 export const LOOKUP_WALLET_INPUT: JsonSchema = {
   type: "object",
+  description:
+    "Provide exactly one selector: pubKeyHashes (by signer), scriptHash (by policy) or address (by multisig wallet address).",
   properties: {
     pubKeyHashes: {
       type: "array",
@@ -105,11 +107,22 @@ export const LOOKUP_WALLET_INPUT: JsonSchema = {
       minItems: 1,
       maxItems: 50,
       description:
-        "Payment public key hashes (56 lowercase hex chars each) to match against on-chain CIP-1854 registration metadata.",
+        "Participant public key hashes (56 lowercase hex chars each) to match against on-chain CIP-1854 registration metadata. Returns every registration listing ANY of them.",
+    },
+    scriptHash: {
+      type: "string",
+      pattern: "^[0-9a-f]{56}$",
+      description:
+        "Native-script hash (policy id) of the multisig wallet. The script is resolved on-chain to its signer key hashes and only registrations listing ALL of them are returned.",
+    },
+    address: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Bech32 multisig wallet address (script payment credential). Resolved the same way as scriptHash.",
     },
     network,
   },
-  required: ["pubKeyHashes"],
   additionalProperties: false,
 };
 
