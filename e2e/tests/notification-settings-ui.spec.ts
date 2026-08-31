@@ -15,10 +15,24 @@
 // The email delivery pipeline itself (outbox rows, worker, verify link) is
 // server-side and covered outside the browser suite.
 
+import type { Page } from "@playwright/test";
 import { test, expect } from "../fixtures/authFixture";
 import { loadContext } from "../helpers/contextLoader";
 import { createThrowawayWallet } from "../helpers/apiHelpers";
 import { mockWalletUtxos } from "../helpers/phase3Mocks";
+
+// The "Notification settings saved" toast lingers for 4s, so it cannot be
+// used to sequence back-to-back saves: a stale toast from the previous save
+// satisfies the assertion before the next mutation's request has landed.
+// Sync on the tRPC response instead.
+function waitForSettingsSave(page: Page) {
+  return page.waitForResponse(
+    (response) =>
+      response.url().includes("notification.upsertWalletSignerSetting") &&
+      response.request().method() === "POST",
+    { timeout: 60_000 },
+  );
+}
 
 test.describe("notification settings UI", () => {
   test("signer saves an email, sees verification state, and toggles persist", async ({
@@ -51,7 +65,13 @@ test.describe("notification settings UI", () => {
     const emailInput = page.getByLabel("Email address");
     await expect(emailInput).toBeEnabled({ timeout: 30_000 });
     await emailInput.fill(email);
+    const emailSavePromise = waitForSettingsSave(page);
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    const emailSaveResponse = await emailSavePromise;
+    expect(
+      emailSaveResponse.ok(),
+      `email save failed ${emailSaveResponse.status()}`,
+    ).toBe(true);
     await expect(page.getByText("Notification settings saved").first()).toBeVisible({
       timeout: 30_000,
     });
@@ -76,10 +96,13 @@ test.describe("notification settings UI", () => {
     });
     await expect(transactionsToggle).toBeEnabled({ timeout: 30_000 });
     await expect(transactionsToggle).toHaveAttribute("aria-checked", "true");
+    const transactionsSavePromise = waitForSettingsSave(page);
     await transactionsToggle.click();
-    await expect(page.getByText("Notification settings saved").first()).toBeVisible({
-      timeout: 30_000,
-    });
+    const transactionsSaveResponse = await transactionsSavePromise;
+    expect(
+      transactionsSaveResponse.ok(),
+      `transactions toggle save failed ${transactionsSaveResponse.status()}`,
+    ).toBe(true);
 
     // The threshold-reached and ballot-deadline toggles persist the same way.
     const thresholdToggle = page.getByRole("switch", {
@@ -87,19 +110,25 @@ test.describe("notification settings UI", () => {
     });
     await expect(thresholdToggle).toBeEnabled({ timeout: 30_000 });
     await expect(thresholdToggle).toHaveAttribute("aria-checked", "true");
+    const thresholdSavePromise = waitForSettingsSave(page);
     await thresholdToggle.click();
-    await expect(page.getByText("Notification settings saved").first()).toBeVisible({
-      timeout: 30_000,
-    });
+    const thresholdSaveResponse = await thresholdSavePromise;
+    expect(
+      thresholdSaveResponse.ok(),
+      `threshold toggle save failed ${thresholdSaveResponse.status()}`,
+    ).toBe(true);
     const ballotToggle = page.getByRole("switch", {
       name: "Toggle ballot deadline notifications",
     });
     await expect(ballotToggle).toBeEnabled({ timeout: 30_000 });
     await expect(ballotToggle).toHaveAttribute("aria-checked", "true");
+    const ballotSavePromise = waitForSettingsSave(page);
     await ballotToggle.click();
-    await expect(page.getByText("Notification settings saved").first()).toBeVisible({
-      timeout: 30_000,
-    });
+    const ballotSaveResponse = await ballotSavePromise;
+    expect(
+      ballotSaveResponse.ok(),
+      `ballot toggle save failed ${ballotSaveResponse.status()}`,
+    ).toBe(true);
 
     // Everything survives a full reload: email, badge, and the toggles.
     await page.reload();

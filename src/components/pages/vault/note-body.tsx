@@ -46,7 +46,7 @@ function toMarkdown(body: string, noteId: string): string {
     const to = target.trim();
     // Angle brackets around the destination: targets are document titles and
     // almost all of them contain spaces.
-    return `[${(alias ?? to).replace(/[[\]]/g, "\\$&")}](<${HREF_PREFIX}${encodeURIComponent(to)}>)`;
+    return `[${(alias ?? to).replace(/[\\[\]]/g, "\\$&")}](<${HREF_PREFIX}${encodeURIComponent(to)}>)`;
   });
 }
 
