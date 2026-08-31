@@ -3723,27 +3723,6 @@ html.dark .swagger-ui .errors-wrapper {
   color: #f87171 !important;
 }
 
-/* Globe background container styling */
-.globe-background-container {
-  opacity: 0.9;
-  transition: opacity 0.3s ease;
-}
-
-.globe-background-container canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  .globe-background-container {
-    opacity: 1;
-  }
-}
-
-html.dark .globe-background-container {
-  opacity: 1;
-}
-
 /* Floating token generator - Light mode */
 .floating-token-generator {
   position: fixed !important;

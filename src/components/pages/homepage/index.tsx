@@ -1,9 +1,6 @@
 import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Background } from "@/components/ui/background";
-import { useAppearanceStore } from "@/lib/zustand/appearance";
-import { MarbleField } from "@/components/ui/marble-field";
 import { FeatureIcon } from "@/components/pages/homepage/feature-icons";
 import { MultisigSigningExplainer } from "@/components/pages/homepage/multisig-explainer";
 import Link from "next/link";
@@ -13,7 +10,7 @@ import { api } from "@/utils/api";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Database, Bot, Code, Download, Check, Sparkles, Plug } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { Typewriter } from "@/components/ui/typewriter";
@@ -151,74 +148,6 @@ export function PageHomepage() {
   const pathIsNewWallet = router.pathname === "/wallets/invite/[id]";
   const newWalletId = pathIsNewWallet ? (router.query.id as string) : undefined;
 
-  // Scroll-driven fade of the hero background layers. We write opacity straight
-  // to the layer DOM nodes via refs inside a requestAnimationFrame callback, so
-  // scrolling never triggers a React re-render of this (large) page — the old
-  // setState-on-every-scroll approach re-rendered the whole tree each frame,
-  // which is what made scrolling choppy.
-  const auroraRef = useRef<HTMLDivElement>(null);
-  const meshRef = useRef<HTMLDivElement>(null);
-
-  // The homepage hero background follows the same appearance setting as the rest
-  // of the app. Default-show until mounted so the SSR markup and first client
-  // paint agree (avoids a hydration mismatch on the persisted preference).
-  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
-  const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
-  const [appearanceMounted, setAppearanceMounted] = useState(false);
-  useEffect(() => setAppearanceMounted(true), []);
-  const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
-  const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
-
-  useEffect(() => {
-    if (!heroBackgroundOn) return;
-    const mainElement = document.querySelector("main");
-    if (!mainElement) return;
-
-    const root = document.documentElement;
-    let raf = 0;
-    let hideTimer = 0;
-    const apply = () => {
-      raf = 0;
-      const y = mainElement.scrollTop;
-      // Aurora fades 500→1500px; the marble mesh starts a touch more present.
-      const aurora = y < 500 ? 0.35 : y > 1500 ? 0 : 0.35 * (1 - (y - 500) / 1000);
-      const mesh = y < 500 ? 0.9 : y > 1500 ? 0 : 0.9 * (1 - (y - 500) / 1000);
-      if (auroraRef.current) auroraRef.current.style.opacity = String(aurora);
-      if (meshRef.current) meshRef.current.style.opacity = String(mesh);
-
-      // Once the background is fully faded out (invisible), stop animating it a
-      // beat later to save GPU — it keeps running the whole time it's visible
-      // or fading, and resumes instantly the moment it fades back in.
-      if (aurora === 0 && mesh === 0) {
-        if (!hideTimer && !root.hasAttribute("data-bg-hidden")) {
-          hideTimer = window.setTimeout(() => {
-            hideTimer = 0;
-            root.setAttribute("data-bg-hidden", "");
-          }, 800);
-        }
-      } else {
-        if (hideTimer) {
-          clearTimeout(hideTimer);
-          hideTimer = 0;
-        }
-        root.removeAttribute("data-bg-hidden");
-      }
-    };
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(apply);
-    };
-
-    apply();
-    mainElement.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      mainElement.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-      if (hideTimer) clearTimeout(hideTimer);
-      root.removeAttribute("data-bg-hidden");
-    };
-  }, [heroBackgroundOn]);
-
   const { data: newWallet } = api.wallet.getNewWallet.useQuery(
     { walletId: newWalletId! },
     {
@@ -228,25 +157,6 @@ export function PageHomepage() {
 
   return (
     <div className="relative w-full min-h-screen">
-      {heroBackgroundOn && (
-        <>
-          {/* Aurora Background — opacity is driven per-frame via the rAF scroll
-              effect above (ref), not React state, so scrolling stays smooth. */}
-          <div ref={auroraRef} className="fixed inset-0 -z-10" style={{ opacity: 0.35 }}>
-            <Background variant="aurora" preset={heroPreset} />
-          </div>
-
-          {/* Marble swirls under a soft wash, above the aurora. The wash is a
-              plain translucent fill (no backdrop-filter): blurring the live
-              canvas every frame was a major scroll cost, and the marble is now
-              rendered low-res, so it already reads soft. */}
-          <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
-            <MarbleField />
-            <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
-          </div>
-        </>
-      )}
-
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-16 md:py-24">
         <Reveal className="mx-auto max-w-4xl text-center">
