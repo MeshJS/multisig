@@ -19,6 +19,12 @@ import {
   WALLET_ONLY_INPUT,
   type JsonSchema,
 } from "@/lib/mcp/schemas";
+// Pure metadata helper (its only Mesh reference is a type import), so it is
+// safe to load statically without dragging the WASM into the MCP cold path.
+import {
+  participantsInclude,
+  type Label1854LookupItem,
+} from "@/utils/cip146Registration";
 
 /**
  * The MCP tool registry — the single source of truth for the exposed surface.
@@ -86,6 +92,7 @@ const load = {
   proxies: () => import("@/pages/api/v1/proxies"),
   proxyDRepInfo: () => import("@/pages/api/v1/proxyDRepInfo"),
   lookupMultisigWallet: () => import("@/pages/api/v1/lookupMultisigWallet"),
+  resolveScript: () => import("@/pages/api/v1/resolveScript"),
   governanceActiveProposals: () =>
     import("@/pages/api/v1/governanceActiveProposals"),
   botBallotsUpsert: () => import("@/pages/api/v1/botBallotsUpsert"),
@@ -289,7 +296,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_lookup_wallet",
     title: "Look up a multisig wallet on-chain",
     description:
-      "Find on-chain CIP-1854 multisig registration metadata by participant public key hash. Public chain data — works for wallets this identity is not a signer of.",
+      "Find on-chain CIP-1854 multisig registration metadata by participant public key hash, native-script hash (policy) or multisig wallet address. Public chain data — works for wallets this identity is not a signer of.",
     scope: "wallets:read",
     inputSchema: LOOKUP_WALLET_INPUT,
     annotations: READ_ONLY_CHAIN,
@@ -298,16 +305,72 @@ export const MCP_TOOLS: McpToolDef[] = [
       const hashes = Array.isArray(args.pubKeyHashes)
         ? args.pubKeyHashes.filter((h): h is string => typeof h === "string")
         : [];
-      return wrapArray(
-        await callV1(load.lookupMultisigWallet, ctx, {
-          method: "GET",
-          query: {
-            pubKeyHashes: hashes.join(","),
-            network: str(args.network) ?? "1",
+      const scriptHash = str(args.scriptHash);
+      const address = str(args.address);
+      const network = str(args.network) ?? "1";
+
+      const selectors = [hashes.length > 0, !!scriptHash, !!address].filter(
+        Boolean,
+      ).length;
+      if (selectors !== 1) {
+        return {
+          status: 400,
+          body: {
+            error: "Provide exactly one of pubKeyHashes, scriptHash or address",
           },
-        }),
-        "matches",
+        };
+      }
+
+      if (hashes.length > 0) {
+        return wrapArray(
+          await callV1(load.lookupMultisigWallet, ctx, {
+            method: "GET",
+            query: { pubKeyHashes: hashes.join(","), network },
+          }),
+          "matches",
+        );
+      }
+
+      // Policy lookup: the 1854 metadata carries participants, not the
+      // script hash, so resolve the script to its signer hashes first and
+      // keep only registrations that list all of them.
+      const resolved = await callV1(load.resolveScript, ctx, {
+        method: "GET",
+        query: { scriptHash, address, network },
+      });
+      if (resolved.status >= 400) return resolved;
+      const script = resolved.body as {
+        scriptHash: string;
+        sigHashes: string[];
+      };
+      if (script.sigHashes.length === 0) {
+        return {
+          status: 200,
+          body: {
+            matches: [],
+            count: 0,
+            scriptHash: script.scriptHash,
+            sigHashes: [],
+          },
+        };
+      }
+      const lookup = await callV1(load.lookupMultisigWallet, ctx, {
+        method: "GET",
+        query: { pubKeyHashes: script.sigHashes.join(","), network },
+      });
+      if (lookup.status >= 400 || !Array.isArray(lookup.body)) return lookup;
+      const matches = (lookup.body as Label1854LookupItem[]).filter((item) =>
+        participantsInclude(item, script.sigHashes),
       );
+      return {
+        status: 200,
+        body: {
+          matches,
+          count: matches.length,
+          scriptHash: script.scriptHash,
+          sigHashes: script.sigHashes,
+        },
+      };
     },
   },
   {

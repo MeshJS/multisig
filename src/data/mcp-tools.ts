@@ -55,7 +55,7 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
     name: "multisig_lookup_wallet",
     scope: "wallets:read",
     blurb:
-      "Find on-chain multisig registration metadata by participant key hash.",
+      "Find on-chain multisig registration metadata by participant key hash, script hash or wallet address.",
   },
   {
     name: "governance_list_active_proposals",
