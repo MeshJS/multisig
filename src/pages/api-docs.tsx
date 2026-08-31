@@ -3,7 +3,6 @@ import dynamic from "next/dynamic";
 import React, { useEffect, useState, useRef } from "react";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
-import Globe from "./globe";
 
 // Avoid SSR for Swagger UI
 // Note: swagger-ui CSS is imported globally from src/pages/_app.tsx because
@@ -301,17 +300,6 @@ export default function ApiDocs() {
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
       <div
-        className="globe-background-container"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -10,
-          overflow: "hidden",
-        }}
-      >
-        <Globe />
-      </div>
-      <div
         className="api-docs-wrapper"
         style={{
           position: "relative",
@@ -321,8 +309,6 @@ export default function ApiDocs() {
           maxWidth: "100%",
           width: "calc(100% - 4rem)",
           margin: "2rem auto",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
         }}
       >
         <div className="mb-8 max-w-3xl">

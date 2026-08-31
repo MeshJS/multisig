@@ -36,14 +36,8 @@ A comprehensive Next.js pages directory containing all application routes, API e
 - **Purpose**: Interactive API documentation using Swagger UI
 - **Features**:
   - Dynamic Swagger UI loading (no SSR)
-  - Glassmorphism design with backdrop blur
-  - Globe background component
   - Full API specification display
   - Interactive endpoint testing
-
-#### `globe.tsx`
-- **Purpose**: 3D globe component for visual backgrounds
-- **Features**: Interactive 3D globe rendering for page backgrounds
 
 ## Wallet Management Pages
 

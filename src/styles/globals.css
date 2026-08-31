@@ -48,15 +48,6 @@
   animation: spin 1s linear infinite;
 }
 
-@keyframes aurora {
-  from {
-    background-position: 50% 50%;
-  }
-  to {
-    background-position: 350% 50%;
-  }
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -66,112 +57,6 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-@keyframes aurora-reverse {
-  from {
-    background-position: 350% 50%;
-  }
-  to {
-    background-position: 50% 50%;
-  }
-}
-
-/* Slow vertical drift for a soft, breathing glow layer. */
-@keyframes aurora-drift {
-  0%,
-  100% {
-    transform: translate3d(0, -2%, 0) scale(1.05);
-    opacity: 0.55;
-  }
-  50% {
-    transform: translate3d(0, 2%, 0) scale(1.1);
-    opacity: 0.8;
-  }
-}
-
-/* Drifting "orb" paths — independent, looping translations so a few blurred
-   blobs roam the background lava-lamp style. Transform-only, so they're cheap
-   to composite on the GPU. */
-@keyframes aurora-float-1 {
-  0%,
-  100% {
-    transform: translate3d(-6%, -8%, 0) scale(1);
-  }
-  33% {
-    transform: translate3d(18%, 6%, 0) scale(1.18);
-  }
-  66% {
-    transform: translate3d(6%, 20%, 0) scale(0.92);
-  }
-}
-
-@keyframes aurora-float-2 {
-  0%,
-  100% {
-    transform: translate3d(10%, 4%, 0) scale(1.1);
-  }
-  50% {
-    transform: translate3d(-16%, -10%, 0) scale(0.88);
-  }
-}
-
-@keyframes aurora-float-3 {
-  0%,
-  100% {
-    transform: translate3d(0, 12%, 0) scale(1);
-  }
-  40% {
-    transform: translate3d(-18%, -14%, 0) scale(1.22);
-  }
-  75% {
-    transform: translate3d(14%, -4%, 0) scale(0.96);
-  }
-}
-
-/* Slowly rotating conic sheen — a "scanning light" pass for extra life. */
-@keyframes aurora-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-aurora {
-  /* Faster, more visible drift than before for a livelier feel. */
-  animation: aurora 40s linear infinite;
-}
-
-.animate-aurora-reverse {
-  /* Counter-moving second layer for a richer, layered shimmer. */
-  animation: aurora-reverse 55s linear infinite;
-}
-
-.animate-aurora-drift {
-  animation: aurora-drift 14s ease-in-out infinite;
-}
-
-.animate-aurora-float-1 {
-  animation: aurora-float-1 22s ease-in-out infinite;
-}
-
-.animate-aurora-float-2 {
-  animation: aurora-float-2 30s ease-in-out infinite;
-}
-
-.animate-aurora-float-3 {
-  animation: aurora-float-3 26s ease-in-out infinite;
-}
-
-.animate-aurora-spin {
-  animation: aurora-spin 48s linear infinite;
-}
-
-/* Once the landing background has fully faded out (PageHomepage sets
-   data-bg-hidden on <html> a beat after the scroll fade completes), pause the
-   aurora's animations — it's invisible, so this is imperceptible and frees the
-   GPU. Resumes instantly when it fades back in. */
-html[data-bg-hidden] [class*="animate-aurora"] {
-  animation-play-state: paused !important;
 }
 
 /* Feature-card icon animations */
@@ -244,23 +129,6 @@ html[data-bg-hidden] [class*="animate-aurora"] {
   .feat-pulse,
   .feat-float,
   .feat-spin {
-    animation: none;
-  }
-}
-
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .animate-aurora {
-    animation-duration: 90s; /* Slower for accessibility */
-  }
-  .animate-aurora-reverse {
-    animation-duration: 120s;
-  }
-  .animate-aurora-drift,
-  .animate-aurora-float-1,
-  .animate-aurora-float-2,
-  .animate-aurora-float-3,
-  .animate-aurora-spin {
     animation: none;
   }
 }
@@ -702,13 +570,6 @@ div > header[data-header="main"] {
 /**
  * Application-Specific Styles
  */
-
-/* Globe Background */
-.globe-background {
-  @apply fixed inset-0 -z-10;
-  @apply flex items-center justify-center;
-  @apply pointer-events-none;
-}
 
 /* Apply to Add Wallet page specifically */
 body.add-wallet-glass-page {
