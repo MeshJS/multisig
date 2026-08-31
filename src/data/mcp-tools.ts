@@ -10,7 +10,11 @@
 
 export type McpToolSummary = {
   name: string;
-  scope: "wallets:read" | "governance:read" | "ballots:write";
+  scope:
+    | "wallets:read"
+    | "governance:read"
+    | "ballots:write"
+    | "documents:read";
   /** One line, phrased for someone deciding whether to connect. */
   blurb: string;
 };
@@ -34,7 +38,8 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "multisig_list_free_utxos",
     scope: "wallets:read",
-    blurb: "UTxOs not already locked by a pending transaction — what you can actually spend.",
+    blurb:
+      "UTxOs not already locked by a pending transaction — what you can actually spend.",
   },
   {
     name: "multisig_list_proxies",
@@ -49,7 +54,8 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "multisig_lookup_wallet",
     scope: "wallets:read",
-    blurb: "Find on-chain multisig registration metadata by participant key hash.",
+    blurb:
+      "Find on-chain multisig registration metadata by participant key hash, script hash or wallet address.",
   },
   {
     name: "governance_list_active_proposals",
@@ -69,16 +75,31 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "governance_open_proposals",
     scope: "governance:read",
-    blurb: "Active proposals you have not voted on yet — the outstanding decisions.",
+    blurb:
+      "Active proposals you have not voted on yet — the outstanding decisions.",
   },
   {
     name: "ballot_upsert",
     scope: "ballots:write",
-    blurb: "Create or update a ballot draft: a choice per proposal, plus rationale text.",
+    blurb:
+      "Create or update a ballot draft: a choice per proposal, plus rationale text.",
   },
   {
     name: "ballot_publish_rationale",
     scope: "ballots:write",
-    blurb: "Publish a rationale to IPFS and record its anchor, ready for you to vote.",
+    blurb:
+      "Publish a rationale to IPFS and record its anchor, ready for you to vote.",
+  },
+  {
+    name: "document_list",
+    scope: "documents:read",
+    blurb:
+      "Sign-off documents for a wallet, and who still needs to sign each one.",
+  },
+  {
+    name: "document_get",
+    scope: "documents:read",
+    blurb:
+      "One document in full: every version, its hash, and who approved it.",
   },
 ];

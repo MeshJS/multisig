@@ -6,6 +6,8 @@ import type { McpScope } from "@/lib/mcp/scopes";
 import {
   ACTIVE_PROPOSALS_INPUT,
   BALLOT_UPSERT_INPUT,
+  DOCUMENT_GET_INPUT,
+  DOCUMENT_LIST_INPUT,
   OPEN_PROPOSALS_INPUT,
   PUBLISH_RATIONALE_INPUT,
   VOTE_HISTORY_INPUT,
@@ -17,6 +19,12 @@ import {
   WALLET_ONLY_INPUT,
   type JsonSchema,
 } from "@/lib/mcp/schemas";
+// Pure metadata helper (its only Mesh reference is a type import), so it is
+// safe to load statically without dragging the WASM into the MCP cold path.
+import {
+  participantsInclude,
+  type Label1854LookupItem,
+} from "@/utils/cip146Registration";
 
 /**
  * The MCP tool registry — the single source of truth for the exposed surface.
@@ -57,8 +65,16 @@ export type McpToolDef = {
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<V1Result>;
 };
 
-const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
-const READ_ONLY_CHAIN = { readOnlyHint: true, idempotentHint: true, openWorldHint: true } as const;
+const READ_ONLY = {
+  readOnlyHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+const READ_ONLY_CHAIN = {
+  readOnlyHint: true,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
 
 /**
  * Lazy handler imports.
@@ -76,6 +92,7 @@ const load = {
   proxies: () => import("@/pages/api/v1/proxies"),
   proxyDRepInfo: () => import("@/pages/api/v1/proxyDRepInfo"),
   lookupMultisigWallet: () => import("@/pages/api/v1/lookupMultisigWallet"),
+  resolveScript: () => import("@/pages/api/v1/resolveScript"),
   governanceActiveProposals: () =>
     import("@/pages/api/v1/governanceActiveProposals"),
   botBallotsUpsert: () => import("@/pages/api/v1/botBallotsUpsert"),
@@ -83,6 +100,8 @@ const load = {
   drepInfo: () => import("@/pages/api/v1/drepInfo"),
   drepVotes: () => import("@/pages/api/governance/drepVotes"),
   ballotRationaleAnchor: () => import("@/pages/api/v1/ballotRationaleAnchor"),
+  documents: () => import("@/pages/api/v1/documents"),
+  documentDetail: () => import("@/pages/api/v1/documentDetail"),
 };
 
 /** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
@@ -169,7 +188,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_list_wallets",
     title: "List wallets",
     description:
-      "List every multisig wallet this identity can see, with its id and name. The returned walletId is what every other wallet tool takes.",
+      "List the multisig wallets this identity owns or has verified, with id and name. The returned walletId is what every other wallet tool takes. Wallets you have merely been named in but never accepted are NOT listed — they are reported only as a pendingInvitations count, because their names are chosen by whoever created them.",
     scope: "wallets:read",
     inputSchema: EMPTY_INPUT,
     annotations: READ_ONLY,
@@ -177,12 +196,15 @@ export const MCP_TOOLS: McpToolDef[] = [
     run: async (_args, ctx) => {
       const result = await callV1(load.walletIds, ctx, {
         method: "GET",
-        query: { address: ctx.caller.subject },
+        // Opt into the object shape: the bare array is the documented contract
+        // for bots and dApps, so the pending count is additive rather than a
+        // breaking change.
+        query: { address: ctx.caller.subject, includePending: "true" },
       });
       // The endpoint answers 404 when the list is empty. "You have no wallets"
       // is a valid answer, not a failure, so it must not surface as isError.
       if (result.status === 404) {
-        return { status: 200, body: { wallets: [] } };
+        return { status: 200, body: { wallets: [], pendingInvitations: 0 } };
       }
       return wrapArray(result, "wallets");
     },
@@ -274,7 +296,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_lookup_wallet",
     title: "Look up a multisig wallet on-chain",
     description:
-      "Find on-chain CIP-1854 multisig registration metadata by participant public key hash. Public chain data — works for wallets this identity is not a signer of.",
+      "Find on-chain CIP-1854 multisig registration metadata by participant public key hash, native-script hash (policy) or multisig wallet address. Public chain data — works for wallets this identity is not a signer of.",
     scope: "wallets:read",
     inputSchema: LOOKUP_WALLET_INPUT,
     annotations: READ_ONLY_CHAIN,
@@ -283,16 +305,72 @@ export const MCP_TOOLS: McpToolDef[] = [
       const hashes = Array.isArray(args.pubKeyHashes)
         ? args.pubKeyHashes.filter((h): h is string => typeof h === "string")
         : [];
-      return wrapArray(
-        await callV1(load.lookupMultisigWallet, ctx, {
-          method: "GET",
-          query: {
-            pubKeyHashes: hashes.join(","),
-            network: str(args.network) ?? "1",
+      const scriptHash = str(args.scriptHash);
+      const address = str(args.address);
+      const network = str(args.network) ?? "1";
+
+      const selectors = [hashes.length > 0, !!scriptHash, !!address].filter(
+        Boolean,
+      ).length;
+      if (selectors !== 1) {
+        return {
+          status: 400,
+          body: {
+            error: "Provide exactly one of pubKeyHashes, scriptHash or address",
           },
-        }),
-        "matches",
+        };
+      }
+
+      if (hashes.length > 0) {
+        return wrapArray(
+          await callV1(load.lookupMultisigWallet, ctx, {
+            method: "GET",
+            query: { pubKeyHashes: hashes.join(","), network },
+          }),
+          "matches",
+        );
+      }
+
+      // Policy lookup: the 1854 metadata carries participants, not the
+      // script hash, so resolve the script to its signer hashes first and
+      // keep only registrations that list all of them.
+      const resolved = await callV1(load.resolveScript, ctx, {
+        method: "GET",
+        query: { scriptHash, address, network },
+      });
+      if (resolved.status >= 400) return resolved;
+      const script = resolved.body as {
+        scriptHash: string;
+        sigHashes: string[];
+      };
+      if (script.sigHashes.length === 0) {
+        return {
+          status: 200,
+          body: {
+            matches: [],
+            count: 0,
+            scriptHash: script.scriptHash,
+            sigHashes: [],
+          },
+        };
+      }
+      const lookup = await callV1(load.lookupMultisigWallet, ctx, {
+        method: "GET",
+        query: { pubKeyHashes: script.sigHashes.join(","), network },
+      });
+      if (lookup.status >= 400 || !Array.isArray(lookup.body)) return lookup;
+      const matches = (lookup.body as Label1854LookupItem[]).filter((item) =>
+        participantsInclude(item, script.sigHashes),
       );
+      return {
+        status: 200,
+        body: {
+          matches,
+          count: matches.length,
+          scriptHash: script.scriptHash,
+          sigHashes: script.sigHashes,
+        },
+      };
     },
   },
   {
@@ -367,12 +445,19 @@ export const MCP_TOOLS: McpToolDef[] = [
 
       const active = await callV1(load.governanceActiveProposals, ctx, {
         method: "GET",
-        query: { network, count: String(count), page: "1", order: "desc", details: "false" },
+        query: {
+          network,
+          count: String(count),
+          page: "1",
+          order: "desc",
+          details: "false",
+        },
       });
       if (active.status >= 400) return active;
 
       const proposals =
-        (active.body as { proposals?: { proposalId: string }[] }).proposals ?? [];
+        (active.body as { proposals?: { proposalId: string }[] }).proposals ??
+        [];
 
       // A missing DRep or a Koios hiccup must not sink the whole answer — fall
       // back to "we don't know what was voted" rather than failing the call.
@@ -388,10 +473,16 @@ export const MCP_TOOLS: McpToolDef[] = [
 
       const annotated = proposals.map((p) => {
         const ours = voted.get(p.proposalId);
-        return { ...p, alreadyVoted: Boolean(ours), ourVote: ours?.vote ?? null };
+        return {
+          ...p,
+          alreadyVoted: Boolean(ours),
+          ourVote: ours?.vote ?? null,
+        };
       });
       const includeVoted = args.includeVoted === true;
-      const rows = includeVoted ? annotated : annotated.filter((p) => !p.alreadyVoted);
+      const rows = includeVoted
+        ? annotated
+        : annotated.filter((p) => !p.alreadyVoted);
 
       return {
         status: 200,
@@ -467,8 +558,52 @@ export const MCP_TOOLS: McpToolDef[] = [
           ...(args.counterargumentDiscussion !== undefined
             ? { counterargumentDiscussion: args.counterargumentDiscussion }
             : {}),
-          ...(args.conclusion !== undefined ? { conclusion: args.conclusion } : {}),
-          ...(args.references !== undefined ? { references: args.references } : {}),
+          ...(args.conclusion !== undefined
+            ? { conclusion: args.conclusion }
+            : {}),
+          ...(args.references !== undefined
+            ? { references: args.references }
+            : {}),
+        },
+      }),
+  },
+  {
+    name: "document_list",
+    title: "List sign-off documents",
+    description:
+      "List a wallet's sign-off documents with their version history: content hashes, approval counts, the threshold each round needs, and which signers have not signed yet. Read-only — approving a document requires a signature from a wallet signer and cannot be done through this tool.",
+    scope: "documents:read",
+    inputSchema: DOCUMENT_LIST_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "documents.ts",
+    run: async (args, ctx) =>
+      wrapArray(
+        await callV1(load.documents, ctx, {
+          method: "GET",
+          query: {
+            walletId: String(args.walletId),
+            address: ctx.caller.subject,
+            ...(args.includeArchived ? { includeArchived: "true" } : {}),
+          },
+        }),
+        "documents",
+      ),
+  },
+  {
+    name: "document_get",
+    title: "Get a sign-off document",
+    description:
+      "Get one sign-off document by id: every version with its content hash and status, who approved or rejected each one, and the document's audit history. Read-only.",
+    scope: "documents:read",
+    inputSchema: DOCUMENT_GET_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "documentDetail.ts",
+    run: async (args, ctx) =>
+      callV1(load.documentDetail, ctx, {
+        method: "GET",
+        query: {
+          documentId: String(args.documentId),
+          address: ctx.caller.subject,
         },
       }),
   },

@@ -27,6 +27,7 @@ const FALLBACK_LINKS = [
   { path: "/features", label: "Features" },
   { path: "/roadmap", label: "Roadmap" },
   { path: "/roadmap/graph", label: "Feature Graph" },
+  { path: "/vault", label: "Shielded Sign-Off" },
   { path: "/governance", label: "Cardano Governance" },
   { path: "/governance/drep", label: "DRep Explorer" },
   { path: "/api-docs", label: "API & Bot Documentation" },
@@ -72,16 +73,20 @@ export default function SeoFallback() {
         <h1>Manage Cardano Treasuries with Multisig Security</h1>
         <p>{DEFAULT_DESCRIPTION}</p>
         <p>
-          {SITE_NAME} is a free, open-source, Cardano-native wallet built by Mesh.
-          Secure treasuries, participate in governance, and collaborate with M-of-N
-          multi-signature approvals — every transaction requires a quorum of
-          signers, so no single key can move funds alone.
+          {SITE_NAME} is a free, open-source, Cardano-native wallet built by
+          Mesh. Secure treasuries, participate in governance, and collaborate
+          with M-of-N multi-signature approvals — every transaction requires a
+          quorum of signers, so no single key can move funds alone.
         </p>
 
         <h2>What you can do</h2>
         <ul>
-          <li>Create an M-of-N multi-signature wallet and invite co-signers.</li>
-          <li>Review and co-sign transactions with a required approval threshold.</li>
+          <li>
+            Create an M-of-N multi-signature wallet and invite co-signers.
+          </li>
+          <li>
+            Review and co-sign transactions with a required approval threshold.
+          </li>
           <li>Vote on Cardano governance proposals and register as a DRep.</li>
           <li>Delegate stake and earn rewards from the treasury.</li>
           <li>Automate signing with the REST API and bot integrations.</li>

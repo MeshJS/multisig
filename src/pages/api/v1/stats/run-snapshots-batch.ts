@@ -2,9 +2,8 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { buildWallet } from "@/utils/common";
-import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
 import { getProvider } from "@/utils/get-provider";
-import { resolvePaymentKeyHash, resolveStakeKeyHash, type UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 import { getBalance } from "@/utils/getBalance";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import { Prisma, type Wallet as DbWallet } from "@prisma/client";
@@ -271,43 +270,15 @@ export default async function handler(
           }
         }
 
-        // Build wallet conditionally: use MultisigSDK ordering if signersStakeKeys exist
+        // This used to branch on `signersStakeKeys` and hand-assemble a
+        // MultisigWallet with ordered keys for the stake-key case, falling back
+        // to buildWallet() otherwise. buildWallet() now does that branch itself
+        // (getWalletType -> sdk/legacy/summon) and reports the resolved address
+        // on `capabilities`, so the conditional here is fully subsumed.
         let walletAddress: string;
         try {
-          const hasStakeKeys = !!(wallet.signersStakeKeys && wallet.signersStakeKeys.length > 0);
-          if (hasStakeKeys) {
-            // Build MultisigSDK wallet with ordered keys
-            const keys: MultisigKey[] = [];
-            wallet.signersAddresses.forEach((addr: string, i: number) => {
-              if (!addr) return;
-              try {
-                keys.push({ keyHash: resolvePaymentKeyHash(addr), role: 0, name: wallet.signersDescriptions[i] || "" });
-              } catch {}
-            });
-            wallet.signersStakeKeys?.forEach((stakeKey: string, i: number) => {
-              if (!stakeKey) return;
-              try {
-                keys.push({ keyHash: resolveStakeKeyHash(stakeKey), role: 2, name: wallet.signersDescriptions[i] || "" });
-              } catch {}
-            });
-            if (keys.length === 0 && !wallet.stakeCredentialHash) {
-              throw new Error("No valid keys or stakeCredentialHash provided");
-            }
-            const mWallet = new MultisigWallet(
-              wallet.name,
-              keys,
-              wallet.description ?? "",
-              wallet.numRequiredSigners ?? 1,
-              network,
-              wallet.stakeCredentialHash as undefined | string,
-              (wallet.type as any) || "atLeast"
-            );
-            walletAddress = mWallet.getScript().address;
-          } else {
-            // Fallback: build the wallet without enforcing key ordering (legacy payment-script build)
-            const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
-            walletAddress = builtWallet.address;
-          }
+          const builtWallet = buildWallet(wallet as DbWalletWithLegacy, network);
+          walletAddress = builtWallet.capabilities?.address ?? builtWallet.address;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown wallet build error';
           console.error(`Failed to build wallet for ${wallet.id.slice(0, 8)}...:`, errorMessage);

@@ -319,7 +319,7 @@ describe("txJsonToDraft", () => {
     }).draft;
 
     const txBuilder = applyDraftToTxBuilder(new MeshTxBuilder({}), original, {
-      scriptCbor: "8201828200581c00",
+      inputs: { kind: "script", scriptCbor: "8201828200581c00" },
       walletAddress: WALLET_ADDRESS,
       availableUtxos: [
         {
@@ -553,7 +553,7 @@ describe("staking certificate transactions", () => {
     }).draft;
 
     const txBuilder = applyDraftToTxBuilder(new MeshTxBuilder({}), original, {
-      scriptCbor: "8201828200581c00",
+      inputs: { kind: "script", scriptCbor: "8201828200581c00" },
       walletAddress: WALLET_ADDRESS,
       availableUtxos: [
         {

@@ -115,6 +115,7 @@ The manifest currently covers:
 - route discovery (`walletIds`, `proxies`)
 - **pending-transactions zero-check** at bootstrap for each wallet type — catches stale state from a previous incomplete run before the ring transfer begins
 - **public wallet lookup** (`lookupMultisigWallet`) — smoke-tests the unauthenticated on-chain metadata lookup endpoint
+- **public script resolution** (`resolveScript`) — per wallet type, resolves the bootstrap multisig address to its signer key hashes and asserts signer 0 is among them (backs lookup-by-policy on the Discover tab)
 - route health checks (`freeUtxos`, `nativeScript`) — `nativeScript` now asserts a `payment` script entry is present and, when the root type is `atLeast`, that `required` matches `CI_NUM_REQUIRED_SIGNERS`
 - **wallet creation via API** (`createWallet`) — creates a wallet through the bot-authenticated API path and confirms it appears in `walletIds`; runs early to avoid prior default-bot smoke checks consuming the shared bot rate-limit budget
 - bot identity (`botAuth` explicit response shape, `botMe`)

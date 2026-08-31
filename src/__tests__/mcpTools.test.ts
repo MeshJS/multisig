@@ -34,6 +34,8 @@ describe("MCP tool registry", () => {
       "governance_open_proposals",
       "ballot_upsert",
       "ballot_publish_rationale",
+      "document_list",
+      "document_get",
     ]);
   });
 
@@ -100,6 +102,18 @@ describe("MCP tool registry", () => {
       expect(tool.inputSchema.additionalProperties).toBe(false);
       expect(tool.description.length).toBeGreaterThan(20);
     }
+  });
+
+  it("lets the wallet lookup select by signer, policy or address", () => {
+    // Exactly-one-selector is enforced in the run body (JSON Schema can't
+    // express it without oneOf, which the MCP client UIs render poorly), so
+    // the schema must not `require` any single selector.
+    const tool = MCP_TOOLS.find((t) => t.name === "multisig_lookup_wallet");
+    const props = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining(["pubKeyHashes", "scriptHash", "address"]),
+    );
+    expect(tool?.inputSchema.required).toBeUndefined();
   });
 
   it("caps the governance page size", () => {

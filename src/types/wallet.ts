@@ -44,6 +44,14 @@ export interface RawImportBodies {
   [key: string]: unknown;
 }
 
+export interface WalletCapabilities {
+  canStake: boolean;
+  canVote: boolean;
+  address: string;
+  stakeAddress?: string;
+  dRepId?: string;
+}
+
 export type WalletImportProvenance =
   | {
       origin: "summon";
@@ -93,5 +101,6 @@ export type Wallet = DbWalletWithLegacy & {
   address: string;
   dRepId: string;
   stakeScriptCbor?: string;
+  capabilities?: WalletCapabilities;
 };
 

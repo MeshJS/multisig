@@ -136,6 +136,53 @@ function createLookupMultisigWalletStep(ctx: CIBootstrapContext): RouteStep {
   };
 }
 
+function createResolveScriptStep(walletType: string): RouteStep {
+  return {
+    id: `v1.resolveScript.walletAddress.${walletType}`,
+    description: `Smoke-test public /api/v1/resolveScript with the ${walletType} wallet address`,
+    severity: "non-critical",
+    execute: async (runCtx) => {
+      const wallet = getWalletByType(runCtx, walletType);
+      if (!wallet?.walletAddress) {
+        throw new Error(`resolveScript: no ${walletType} wallet address in bootstrap context`);
+      }
+      const signerAddress = runCtx.signerAddresses[0];
+      if (!signerAddress) {
+        throw new Error("resolveScript: no signer addresses in bootstrap context");
+      }
+      const { resolvePaymentKeyHash } = await import("@meshsdk/core");
+      const signerKeyHash = resolvePaymentKeyHash(signerAddress).toLowerCase();
+
+      const response = await requestJson<
+        { scriptHash?: string; sigHashes?: string[] } | { error?: string }
+      >({
+        url: `${runCtx.apiBaseUrl}/api/v1/resolveScript?address=${encodeURIComponent(wallet.walletAddress)}&network=${runCtx.networkId}`,
+        method: "GET",
+      });
+      if (response.status !== 200 || !response.data || typeof response.data !== "object") {
+        throw new Error(
+          `resolveScript failed for ${walletType} (${response.status}): ${stringifyRedacted(response.data)}`,
+        );
+      }
+      const data = response.data as { scriptHash?: string; sigHashes?: string[] };
+      if (!Array.isArray(data.sigHashes)) {
+        throw new Error(`resolveScript returned no sigHashes array for ${walletType}`);
+      }
+      // The multisig address's script must name the bootstrap signer 0 —
+      // otherwise the route resolved the wrong script (or none).
+      if (!data.sigHashes.includes(signerKeyHash)) {
+        throw new Error(
+          `resolveScript: signer 0 key hash not among ${data.sigHashes.length} resolved sig hashes for ${walletType}`,
+        );
+      }
+      return {
+        message: `resolveScript resolved ${data.sigHashes.length} signer hashes for the ${walletType} wallet address`,
+        artifacts: { walletType, scriptHash: data.scriptHash, sigHashCount: data.sigHashes.length },
+      };
+    },
+  };
+}
+
 function createFreeUtxosStep(walletType: string): RouteStep {
   return {
     id: `v1.freeUtxos.${walletType}`,
@@ -234,6 +281,7 @@ export function createScenarioPendingAndDiscovery(ctx: CIBootstrapContext): Scen
       ...ctx.walletTypes.map((walletType) => createPendingTransactionsZeroStep(walletType)),
       ...ctx.walletTypes.map((walletType) => createProxiesListStep(walletType)),
       createLookupMultisigWalletStep(ctx),
+      ...ctx.walletTypes.map((walletType) => createResolveScriptStep(walletType)),
     ],
   };
 }

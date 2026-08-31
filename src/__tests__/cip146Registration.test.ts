@@ -5,6 +5,7 @@ import {
   chunkMetadataString,
   isRegistrationUpToDate,
   joinMetadataString,
+  participantsInclude,
   participantsMatchExactly,
   truncateMetadataString,
 } from "../utils/cip146Registration";
@@ -140,6 +141,32 @@ describe("participantsMatchExactly", () => {
     expect(
       participantsMatchExactly({ tx_hash: "2".repeat(64) }, [hashA]),
     ).toBe(false);
+  });
+});
+
+describe("participantsInclude", () => {
+  const item = {
+    tx_hash: "1".repeat(64),
+    json_metadata: {
+      types: [0],
+      participants: {
+        [hashA.toUpperCase()]: { name: "Alice" },
+        [hashB]: { name: "Bob" },
+      },
+    },
+  };
+
+  it("accepts subsets and the full set, case-insensitively", () => {
+    expect(participantsInclude(item, [hashA])).toBe(true);
+    expect(participantsInclude(item, [hashA.toUpperCase(), hashB])).toBe(true);
+  });
+
+  it("rejects supersets, empty queries and items without participants", () => {
+    expect(participantsInclude(item, [hashA, hashB, hashC])).toBe(false);
+    expect(participantsInclude(item, [])).toBe(false);
+    expect(participantsInclude({ tx_hash: "2".repeat(64) }, [hashA])).toBe(
+      false,
+    );
   });
 });
 

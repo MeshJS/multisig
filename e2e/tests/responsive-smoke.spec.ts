@@ -132,6 +132,40 @@ for (const viewport of VIEWPORTS) {
       await expectNoHorizontalOverflow(page, "new transaction form");
     });
 
+    test("transaction builder keeps its actions on screen", async ({
+      page,
+      authenticateAs,
+    }) => {
+      const ctx = loadContext();
+      const wallet = getWallet(ctx, "legacy");
+      await authenticateAs(page, 0);
+      await mockUtxos(page);
+      await page.goto(`/wallets/${wallet.walletId}/build`);
+      await expect(page.getByTestId("tx-builder-canvas")).toBeVisible({
+        timeout: 60_000,
+      });
+
+      // The primary action must sit inside the viewport, not merely exist:
+      // the shell clips horizontal overflow, so a button pushed past the
+      // right edge would still count as "visible" to Playwright.
+      const buildButton = page.getByTestId("tx-builder-build");
+      await buildButton.scrollIntoViewIfNeeded();
+      await expect(buildButton).toBeVisible();
+      const box = await buildButton.boundingBox();
+      expect(box, "build button has no bounding box").not.toBeNull();
+      expect(
+        box!.x + box!.width,
+        `build button overflows the ${viewport.width}px viewport`,
+      ).toBeLessThanOrEqual(viewport.width);
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+
+      // Phones get the palette folded into a single "Add" menu.
+      await expect(page.getByTestId("tx-builder-add-menu")).toBeVisible();
+      await expect(page.getByTestId("tx-builder-add-recipient")).toBeHidden();
+
+      await expectNoHorizontalOverflow(page, "transaction builder");
+    });
+
     test("wallet connect entry point works without overflow", async ({
       page,
       injectWallet,

@@ -1,6 +1,7 @@
 import type {
   DraftCertificate,
   DraftOutput,
+  DraftSource,
   DraftUtxoSelection,
   DraftVote,
   DraftVoteKind,
@@ -25,12 +26,44 @@ function generateId(): string {
 export function createDraft(id?: string): TxDraft {
   return {
     id: id ?? generateId(),
+    source: { kind: "multisig" },
     outputs: [],
     utxoSelection: { mode: "auto" },
     description: "",
     metadata: "",
     certificates: [],
     votes: [],
+  };
+}
+
+/** True when the draft holds actions only the multisig source can build. */
+export function hasMultisigOnlyActions(draft: TxDraft): boolean {
+  return draft.certificates.length > 0 || draft.votes.length > 0;
+}
+
+export function sameSource(a: DraftSource, b: DraftSource): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind === "address" && b.kind === "address"
+    ? a.address === b.address
+    : true;
+}
+
+/**
+ * Sets the funding source. Manual UTxO picks belong to the previous address,
+ * so the selection always reverts to automatic. Leaving the multisig drops
+ * staking certificates and votes — they need the multisig's script
+ * credentials, which no other source can witness.
+ */
+export function setSource(draft: TxDraft, source: DraftSource): TxDraft {
+  const keepActions = source.kind === "multisig";
+  return {
+    ...draft,
+    source,
+    utxoSelection: sameSource(draft.source, source)
+      ? draft.utxoSelection
+      : { mode: "auto" },
+    certificates: keepActions ? draft.certificates : [],
+    votes: keepActions ? draft.votes : [],
   };
 }
 
