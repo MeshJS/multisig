@@ -41,13 +41,19 @@ Specs live in the vault, not this repo. The maintainer keeps a document-driven d
 
 - **Endpoint**: `POST /api/mcp` — a stateless Model Context Protocol server built on
   `@modelcontextprotocol/server` v2. Docs: `src/pages/api/mcp/README.md`.
-- **Surface**: read-only plus governance ballot drafts. It cannot sign, spend or
-  broadcast, and that boundary is enforced by a test (`src/__tests__/mcpTools.test.ts`) —
-  adding a write tool must be a deliberate decision, not a registry addition.
+- **Surface**: read-only, governance ballot drafts, and — under the opt-in
+  `transactions:write` scope — unsigned transaction drafts in two steps
+  (`transaction_preview` returns a review-card PNG plus a signed draft token;
+  `transaction_propose` takes only that token and creates the pending transaction with
+  zero signatures). It cannot sign, spend or broadcast, and that boundary is enforced by
+  a test (`src/__tests__/mcpTools.test.ts`) — adding a write tool must be a deliberate
+  decision, not a registry addition.
 - **Tools wrap the existing v1 handlers in-process** via `src/lib/mcp/invokeV1.ts`, so
-  authorization and validation stay defined once. Handler imports in
-  `src/lib/mcp/tools.ts` must stay **lazy** or the Mesh/whisky WASM lands in the route's
-  cold path.
+  authorization and validation stay defined once. The transaction review tools are the
+  exception: they live in `src/lib/tx-review/` and reuse the canvas builder's
+  `src/lib/tx-draft/` pipeline server-side. Handler imports in `src/lib/mcp/tools.ts`
+  must stay **lazy** or the Mesh/whisky WASM (and the `next/og` renderer) lands in the
+  route's cold path.
 - **Auth**: an OAuth 2.1 access token, or an existing v1 bearer token. The authorization
   server lives under `src/pages/api/oauth/` — see `src/pages/api/oauth/README.md`.
 

@@ -36,6 +36,9 @@ describe("MCP tool registry", () => {
       "ballot_publish_rationale",
       "document_list",
       "document_get",
+      "transaction_preview",
+      "transaction_propose",
+      "multisig_review_pending_transaction",
     ]);
   });
 
@@ -54,17 +57,19 @@ describe("MCP tool registry", () => {
   });
 
   it("exposes no tool that can sign, spend or broadcast", () => {
-    // The agreed boundary: agents may read, draft ballots, and publish a
-    // rationale to IPFS. Submitting a vote and signing stay with humans. Any
+    // The agreed boundary: agents may read, draft ballots, publish a
+    // rationale to IPFS, and draft unsigned transactions for humans to sign.
+    // Signing, submitting a vote and broadcasting stay with humans. Any
     // further write tool must be a deliberate decision that updates this list,
     // not a quiet registry addition.
     const writable = MCP_TOOLS.filter((t) => !t.annotations.readOnlyHint);
     expect(writable.map((t) => t.name)).toEqual([
       "ballot_upsert",
       "ballot_publish_rationale",
+      "transaction_propose",
     ]);
-    // Neither write tool may be destructive: they add or replace drafts and
-    // anchors, they never remove a ballot or move value.
+    // No write tool may be destructive: they add or replace drafts, anchors
+    // and pending rows; they never remove a ballot or move value.
     for (const tool of writable) {
       expect(tool.annotations.destructiveHint).toBe(false);
     }
@@ -92,6 +97,37 @@ describe("MCP tool registry", () => {
     const ballot = MCP_TOOLS.find((t) => t.name === "ballot_upsert");
     expect(ballot?.annotations.destructiveHint).toBe(false);
     expect(ballot?.annotations.idempotentHint).toBe(true);
+  });
+
+  it("keeps the transaction preview read-only and off the v1 surface", () => {
+    // The preview builds in memory and stores nothing, so it must advertise
+    // as read-only; and it wraps no v1 handler, because no REST route builds
+    // an arbitrary transaction for a caller.
+    const preview = MCP_TOOLS.find((t) => t.name === "transaction_preview");
+    expect(preview?.annotations.readOnlyHint).toBe(true);
+    expect(preview?.v1Path).toBeNull();
+    expect(preview?.scope).toBe("transactions:write");
+  });
+
+  it("lets propose accept nothing but the draft token", () => {
+    // The whole safety argument of preview→confirm rests on this: if propose
+    // took recipients or amounts, the model could alter them after the
+    // human approved the card.
+    const propose = MCP_TOOLS.find((t) => t.name === "transaction_propose");
+    expect(Object.keys(propose?.inputSchema.properties as object)).toEqual([
+      "draftToken",
+    ]);
+    expect(propose?.inputSchema.required).toEqual(["draftToken"]);
+    expect(propose?.annotations.idempotentHint).toBe(true);
+    expect(propose?.scope).toBe("transactions:write");
+  });
+
+  it("hides the transaction tools from a read-only grant", () => {
+    const names = toolsForScopes(["wallets:read"]).map((t) => t.name);
+    expect(names).not.toContain("transaction_preview");
+    expect(names).not.toContain("transaction_propose");
+    // Reviewing an existing pending transaction is a read.
+    expect(names).toContain("multisig_review_pending_transaction");
   });
 
   it("gives every tool a closed input schema", () => {
@@ -183,17 +219,19 @@ describe("bot scope projection", () => {
     expect(mcpScopesForBot(["multisig:sign"] as BotScope[])).toEqual([]);
   });
 
-  it("maps the full bot scope set onto the full MCP set", () => {
+  it("maps the full bot scope set onto the MCP set, minus transaction drafting", () => {
     const all = [
+      "multisig:create",
       "multisig:read",
+      "multisig:sign",
       "governance:read",
       "ballot:write",
     ] as BotScope[];
-    expect(mcpScopesForBot(all)).toEqual([
-      "wallets:read",
-      "governance:read",
-      "ballots:write",
-    ]);
+    const granted = mcpScopesForBot(all);
+    expect(granted).toEqual(["wallets:read", "governance:read", "ballots:write"]);
+    // Transaction drafting is a human, consent-screen scope: a bot with
+    // multisig:sign already has the REST route and needs no chat review.
+    expect(granted).not.toContain("transactions:write");
   });
 });
 

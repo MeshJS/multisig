@@ -3,8 +3,11 @@ import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { db } from "@/server/db";
 import { audit } from "@/lib/observability/audit";
 import type { McpCaller } from "@/lib/mcp/auth";
-import type { V1Result } from "@/lib/mcp/invokeV1";
-import { toolsForScopes, type McpToolDef } from "@/lib/mcp/tools";
+import {
+  toolsForScopes,
+  type McpToolDef,
+  type McpToolResult,
+} from "@/lib/mcp/tools";
 
 export const MCP_SERVER_NAME = "mesh-multisig";
 export const MCP_SERVER_VERSION = "0.1.0";
@@ -60,6 +63,7 @@ export function createMcpServer(caller: McpCaller, clientIp: string): McpServer 
           clientIp,
           status: result.status,
           durationMs: Date.now() - startedAt,
+          extra: result.audit,
         });
         return toToolResult(result);
       },
@@ -82,7 +86,9 @@ export const MCP_TOOL_ACTION = "mcp.tool.called";
  *
  * Only the walletId is taken from the arguments. Tool inputs can carry
  * user-authored prose — ballot rationales, descriptions — which has no place in
- * an audit row.
+ * an audit row. A tool whose input names no wallet (`transaction_propose`
+ * takes only a token) supplies it through `extra` instead, along with the
+ * identifiers of what it created.
  */
 function recordToolCall(args: {
   tool: McpToolDef;
@@ -92,9 +98,15 @@ function recordToolCall(args: {
   status: number;
   durationMs: number;
   reason?: string;
+  extra?: McpToolResult["audit"];
 }) {
+  const extra = args.extra ?? {};
   const walletId =
-    typeof args.input.walletId === "string" ? args.input.walletId : null;
+    typeof args.input.walletId === "string"
+      ? args.input.walletId
+      : typeof extra.walletId === "string"
+        ? extra.walletId
+        : null;
 
   return audit(db, {
     actorAddress: args.caller.subject,
@@ -114,23 +126,30 @@ function recordToolCall(args: {
       readOnly: args.tool.annotations.readOnlyHint,
       status: args.status,
       durationMs: args.durationMs,
+      ...extra,
     },
   });
 }
 
 /**
- * Map a v1 handler result onto an MCP tool result.
+ * Map a tool result onto the MCP wire shape.
  *
  * A non-2xx becomes `isError: true` with the handler's own error body rather
  * than a thrown exception, so the model can read what went wrong and correct
  * itself (wrong walletId, missing scope) instead of just seeing a failure.
+ *
+ * The text block is the JSON body unless the tool supplied a readable `text`;
+ * any `images` follow it as `image` blocks. Image bytes never enter
+ * `structuredContent` — a base64 PNG there would be re-serialized into the
+ * model's context as a string of tens of kilobytes for no benefit.
  */
-export function toToolResult(result: V1Result) {
+export function toToolResult(result: McpToolResult) {
   const isError = result.status >= 400;
   const body = result.body;
 
   const text =
-    typeof body === "string" ? body : JSON.stringify(body ?? null, null, 2);
+    result.text ??
+    (typeof body === "string" ? body : JSON.stringify(body ?? null, null, 2));
 
   // `structuredContent` must be a JSON object. Arrays are already wrapped by the
   // registry; anything else (a bare string body) travels as text only.
@@ -139,8 +158,14 @@ export function toToolResult(result: V1Result) {
       ? (body as Record<string, unknown>)
       : undefined;
 
+  const images = (result.images ?? []).map((image) => ({
+    type: "image" as const,
+    data: image.data,
+    mimeType: image.mimeType,
+  }));
+
   return {
-    content: [{ type: "text" as const, text }],
+    content: [{ type: "text" as const, text }, ...images],
     ...(structured ? { structuredContent: structured } : {}),
     isError,
   };

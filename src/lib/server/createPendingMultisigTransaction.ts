@@ -29,6 +29,13 @@ export async function createPendingMultisigTransaction(
     description: string;
     network: number;
     initialSignedAddresses?: string[];
+    /**
+     * Who the signature-required notification treats as the creator (and
+     * therefore skips). Defaults to the proposer, who has normally signed
+     * already. Pass `null` when the proposer has NOT signed — an MCP draft —
+     * so they are notified like every other outstanding signer.
+     */
+    notificationCreatorAddress?: string | null;
   },
 ) {
   const {
@@ -40,6 +47,7 @@ export async function createPendingMultisigTransaction(
     description,
     network,
     initialSignedAddresses = [proposerAddress],
+    notificationCreatorAddress = proposerAddress,
   } = args;
   const reqSigners = wallet.numRequiredSigners;
   const wtype = wallet.type;
@@ -86,7 +94,7 @@ export async function createPendingMultisigTransaction(
         resourceId: transaction.id,
         signedAddresses: transaction.signedAddresses,
         rejectedAddresses: transaction.rejectedAddresses,
-        creatorAddress: proposerAddress,
+        creatorAddress: notificationCreatorAddress,
         description,
         txJson,
       });

@@ -14,7 +14,8 @@ export type McpToolSummary = {
     | "wallets:read"
     | "governance:read"
     | "ballots:write"
-    | "documents:read";
+    | "documents:read"
+    | "transactions:write";
   /** One line, phrased for someone deciding whether to connect. */
   blurb: string;
 };
@@ -101,5 +102,23 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
     scope: "documents:read",
     blurb:
       "One document in full: every version, its hash, and who approved it.",
+  },
+  {
+    name: "transaction_preview",
+    scope: "transactions:write",
+    blurb:
+      "Build an unsigned transaction and show it as a review card in chat. Nothing is saved, signed or sent.",
+  },
+  {
+    name: "transaction_propose",
+    scope: "transactions:write",
+    blurb:
+      "Create the previewed transaction for your signers to review and sign in the app. Still unsigned.",
+  },
+  {
+    name: "multisig_review_pending_transaction",
+    scope: "wallets:read",
+    blurb:
+      "Render any pending transaction as a review card: recipients, amounts, fee, and who has signed.",
   },
 ];

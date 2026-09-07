@@ -33,6 +33,152 @@ export const EMPTY_INPUT: JsonSchema = {
   additionalProperties: false,
 };
 
+/**
+ * Transaction drafting. Amounts are DISPLAY units — "12.5" ADA, "100" of a
+ * token with its registered decimals — because that is how a person states
+ * a payment; the server converts using the token registry and refuses to
+ * guess when a token has no registered decimals.
+ */
+export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    outputs: {
+      type: "array",
+      maxItems: 20,
+      description:
+        "Recipients. Each needs an address and at least an ADA amount or one asset.",
+      items: {
+        type: "object",
+        properties: {
+          address: {
+            type: "string",
+            pattern: "^addr(_test)?1[0-9a-z]+$",
+            description: "Recipient payment address (bech32, addr1... or addr_test1...).",
+          },
+          ada: {
+            type: "string",
+            pattern: "^\\d+(\\.\\d{1,6})?$",
+            description: 'ADA to send, in ADA (not lovelace), e.g. "12.5".',
+          },
+          assets: {
+            type: "array",
+            maxItems: 10,
+            description: "Native assets to send with this output.",
+            items: {
+              type: "object",
+              properties: {
+                unit: {
+                  type: "string",
+                  pattern: "^[0-9a-fA-F]{56,120}$",
+                  description:
+                    "Asset unit: policy id followed by the hex-encoded asset name.",
+                },
+                quantity: {
+                  type: "string",
+                  pattern: "^\\d+(\\.\\d+)?$",
+                  description:
+                    "Quantity in the token's display units (its registered decimals). For a token with no registered decimals, a whole number of raw units.",
+                },
+              },
+              required: ["unit", "quantity"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["address"],
+        additionalProperties: false,
+      },
+    },
+    certificates: {
+      type: "array",
+      maxItems: 3,
+      description:
+        "Staking certificates for the wallet's own stake credential. DelegateStake needs poolId.",
+      items: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["RegisterStake", "DelegateStake", "DeregisterStake"],
+          },
+          poolId: {
+            type: "string",
+            description: "Stake pool id, bech32 (pool1...) or 56-char hex. DelegateStake only.",
+          },
+        },
+        required: ["kind"],
+        additionalProperties: false,
+      },
+    },
+    votes: {
+      type: "array",
+      maxItems: 10,
+      description: "Governance votes cast as the wallet's DRep.",
+      items: {
+        type: "object",
+        properties: {
+          proposalId: {
+            type: "string",
+            pattern: "^[0-9a-fA-F]{64}#\\d+$",
+            description: 'Governance action id as "<txHash>#<index>".',
+          },
+          vote: { type: "string", enum: ["Yes", "No", "Abstain"] },
+          rationale: {
+            type: "string",
+            maxLength: 10000,
+            description:
+              "Optional rationale text. It is NOT published at preview time; on transaction_propose it becomes a public CIP-100 document on IPFS and is anchored to the vote.",
+          },
+        },
+        required: ["proposalId", "vote"],
+        additionalProperties: false,
+      },
+    },
+    description: {
+      type: "string",
+      maxLength: 128,
+      description: "Off-chain note shown to signers in the app.",
+    },
+    metadataMessage: {
+      type: "string",
+      maxLength: 64,
+      description: "Optional on-chain CIP-20 message (metadata label 674). Public and permanent.",
+    },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const TRANSACTION_PROPOSE_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    draftToken: {
+      type: "string",
+      minLength: 1,
+      description:
+        "The draftToken returned by transaction_preview for the card the user approved. Nothing else is accepted: the created transaction is exactly the one that was reviewed.",
+    },
+  },
+  required: ["draftToken"],
+  additionalProperties: false,
+};
+
+export const REVIEW_PENDING_TRANSACTION_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    transactionId: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Pending transaction id, as listed by multisig_list_pending_transactions.",
+    },
+  },
+  required: ["walletId", "transactionId"],
+  additionalProperties: false,
+};
+
 export const WALLET_ONLY_INPUT: JsonSchema = {
   type: "object",
   properties: { walletId },

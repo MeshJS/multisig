@@ -10,6 +10,9 @@ import {
   DOCUMENT_LIST_INPUT,
   OPEN_PROPOSALS_INPUT,
   PUBLISH_RATIONALE_INPUT,
+  REVIEW_PENDING_TRANSACTION_INPUT,
+  TRANSACTION_PREVIEW_INPUT,
+  TRANSACTION_PROPOSE_INPUT,
   VOTE_HISTORY_INPUT,
   WALLET_BALLOTS_INPUT,
   EMPTY_INPUT,
@@ -29,18 +32,39 @@ import {
 /**
  * The MCP tool registry — the single source of truth for the exposed surface.
  *
- * This release is read-only plus ballot drafts. Nothing here can sign a
- * transaction, move funds, or broadcast to chain. That is a deliberate boundary,
- * not an oversight: tool results carry user-authored strings (wallet names,
- * transaction descriptions, ballot rationales), so anything an attacker can
- * write into a wallet the caller can read is text that reaches the model. Adding
- * a write tool alongside that turns prompt injection into a funds-movement path,
- * so a signing surface needs its own design pass rather than a new registry row.
+ * Nothing here can sign a transaction, move funds, or broadcast to chain. That
+ * is a deliberate boundary, not an oversight: tool results carry user-authored
+ * strings (wallet names, transaction descriptions, ballot rationales), so
+ * anything an attacker can write into a wallet the caller can read is text that
+ * reaches the model. A signing tool alongside that would turn prompt injection
+ * into a funds-movement path.
+ *
+ * What the surface CAN do beyond reading: draft ballots, pin rationales, and —
+ * under the opt-in `transactions:write` scope — draft unsigned transactions in
+ * two steps. `transaction_preview` builds the transaction and returns a review
+ * card (PNG) plus a signed draft token; nothing is stored. `transaction_propose`
+ * accepts only that token, so the pending transaction it creates is exactly
+ * what the human saw in chat, and it starts with zero signatures: every witness
+ * is still added by a signer in the app. See `src/lib/tx-review/`.
  */
 
 export type ToolContext = {
   caller: McpCaller;
   clientIp: string;
+};
+
+/**
+ * What a tool body returns. `status`/`body` mirror the v1 handler contract
+ * (`body` becomes `structuredContent`). The optional fields exist for the
+ * review tools: a readable `text` block in place of the JSON dump, `images`
+ * that become `image` content blocks (base64 PNG, never placed in
+ * `structuredContent`), and an `audit` bag of identifiers merged into the
+ * audit row — ids only, never prose.
+ */
+export type McpToolResult = V1Result & {
+  text?: string;
+  images?: { data: string; mimeType: "image/png" }[];
+  audit?: Record<string, string | number | boolean | null>;
 };
 
 export type McpToolDef = {
@@ -62,7 +86,10 @@ export type McpToolDef = {
    * `src/__tests__/mcpTools.test.ts`, so a handler rename breaks CI.
    */
   v1Path: string | null;
-  run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<V1Result>;
+  run: (
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => Promise<McpToolResult>;
 };
 
 const READ_ONLY = {
@@ -102,6 +129,12 @@ const load = {
   ballotRationaleAnchor: () => import("@/pages/api/v1/ballotRationaleAnchor"),
   documents: () => import("@/pages/api/v1/documents"),
   documentDetail: () => import("@/pages/api/v1/documentDetail"),
+  // The review pipeline pulls Mesh (builder, address parsing) and, on first
+  // render, the next/og WASM — same lazy rule as the handlers above.
+  txPreview: () => import("@/lib/tx-review/preview"),
+  txPropose: () => import("@/lib/tx-review/propose"),
+  txReview: () => import("@/lib/tx-review/review"),
+  db: () => import("@/server/db"),
 };
 
 /** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
@@ -136,7 +169,7 @@ type VoteRow = {
   blockTime: number;
 };
 
-async function callV1(
+export async function callV1(
   loader: () => Promise<{ default: NextApiHandler }>,
   ctx: ToolContext,
   init: {
@@ -606,6 +639,103 @@ export const MCP_TOOLS: McpToolDef[] = [
           address: ctx.caller.subject,
         },
       }),
+  },
+  {
+    name: "transaction_preview",
+    title: "Preview an unsigned transaction",
+    description:
+      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — and return a review card image plus a summary for the user to check in chat. NOTHING is saved, signed or broadcast. Show the card to the user and ask them to confirm; only then call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself.",
+    scope: "transactions:write",
+    inputSchema: TRANSACTION_PREVIEW_INPUT,
+    annotations: {
+      // Builds in memory against live chain state and stores nothing.
+      readOnlyHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    v1Path: null,
+    run: async (args, ctx) => {
+      const [{ runTransactionPreview }, { db }] = await Promise.all([
+        load.txPreview(),
+        load.db(),
+      ]);
+      return runTransactionPreview(args as never, ctx, {
+        db,
+        fetchFreeUtxos: (walletId) =>
+          callV1(load.freeUtxos, ctx, {
+            method: "GET",
+            query: { walletId, address: ctx.caller.subject, fresh: "true" },
+          }),
+      });
+    },
+  },
+  {
+    name: "transaction_propose",
+    title: "Create the previewed transaction for signers",
+    description:
+      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
+    scope: "transactions:write",
+    inputSchema: TRANSACTION_PROPOSE_INPUT,
+    annotations: {
+      readOnlyHint: false,
+      // Adds a pending row; deletes nothing, moves no value, signs nothing.
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    v1Path: null,
+    run: async (args, ctx) => {
+      const [{ runTransactionPropose }, { db }] = await Promise.all([
+        load.txPropose(),
+        load.db(),
+      ]);
+      return runTransactionPropose(
+        { draftToken: String(args.draftToken ?? "") },
+        ctx,
+        {
+          db,
+          clientIp: ctx.clientIp,
+          fetchFreeUtxos: (walletId) =>
+            callV1(load.freeUtxos, ctx, {
+              method: "GET",
+              query: { walletId, address: ctx.caller.subject, fresh: "true" },
+            }),
+        },
+      );
+    },
+  },
+  {
+    name: "multisig_review_pending_transaction",
+    title: "Review a pending transaction",
+    description:
+      "Render one pending transaction as a review card image plus a summary: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. Read-only; works for transactions created in the app or through MCP.",
+    scope: "wallets:read",
+    inputSchema: REVIEW_PENDING_TRANSACTION_INPUT,
+    annotations: READ_ONLY_CHAIN,
+    v1Path: "pendingTransactions.ts",
+    run: async (args, ctx) => {
+      const [{ runPendingTransactionReview }, { db }] = await Promise.all([
+        load.txReview(),
+        load.db(),
+      ]);
+      return runPendingTransactionReview(
+        {
+          walletId: String(args.walletId),
+          transactionId: String(args.transactionId),
+        },
+        ctx,
+        {
+          db,
+          fetchFreeUtxos: () =>
+            Promise.resolve({ status: 200, body: [] }),
+          fetchPendingTransactions: (walletId) =>
+            callV1(load.pendingTransactions, ctx, {
+              method: "GET",
+              query: { walletId, address: ctx.caller.subject },
+            }),
+        },
+      );
+    },
   },
 ];
 

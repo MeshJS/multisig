@@ -280,6 +280,16 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 | Transaction review PNG & in-chat review — generate a clear PNG summary containing the key transaction details and display it in the user's chat for human review; MCP must not sign or broadcast on the user's behalf | |
 | Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval | |
 
+### Proof of completion
+
+Status of M6 tasks (Andre). Last updated 2026-09-07.
+
+| Task | Status | Evidence |
+|------|--------|----------|
+| MCP unsigned transaction creation | In review | Branch `feat/mcp-unsigned-tx-creation`: new `transactions:write` scope; `transaction_preview` builds payments, staking certificates and DRep votes through the canvas builder's `src/lib/tx-draft/` pipeline server-side and returns a signed draft token; `transaction_propose` accepts only that token and creates the pending transaction with zero signatures (never broadcasts). Design and boundary in `src/pages/api/mcp/README.md`; guarded by `src/__tests__/mcpTools.test.ts` and `txReview*.test.ts` |
+| Transaction review PNG & in-chat review | In review | Same branch: `src/lib/tx-review/summary.ts` (one summary model behind text, JSON and image), `card.ts` + `render-png.ts` (rasterized with the `ImageResponse` bundled in Next, no new dependency); the card is returned as an MCP `image` content block by preview, propose and `multisig_review_pending_transaction` (any pending transaction). Render proven by `src/__tests__/txReviewRenderPng.test.ts` |
+| Project task board with multisig payouts | Not started | |
+
 ---
 
 ## Month 7 — October 2026

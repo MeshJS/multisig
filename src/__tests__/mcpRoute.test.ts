@@ -51,6 +51,14 @@ jest.mock("@/server/db", () => ({
   },
 }));
 
+// The review pipeline builds real transactions and renders WASM; the route
+// test only needs to prove its result shape reaches the wire.
+const runTransactionPreviewMock: jest.Mock = jest.fn();
+jest.mock("@/lib/tx-review/preview", () => ({
+  __esModule: true,
+  runTransactionPreview: runTransactionPreviewMock,
+}));
+
 const HUMAN_ADDRESS = "addr_test1qphuman000000000000000000000000000000";
 
 type CapturedResponse = NextApiResponse & {
@@ -410,6 +418,61 @@ describe("POST /api/mcp — tools/call", () => {
     expect(res._status).toBe(200);
     const payload = res.body() as { result?: { isError?: boolean } };
     expect(typeof payload.result?.isError).toBe("boolean");
+  });
+
+  it("delivers the review card as an image block after the text", async () => {
+    // A human v1 bearer holds every scope, transactions:write included.
+    (runTransactionPreviewMock as any).mockResolvedValue({
+      status: 200,
+      body: { draftToken: "tok", txHash: "beef", persisted: false },
+      text: "Treasury (preprod) — UNSIGNED PREVIEW",
+      images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      audit: { walletId: "wallet-1", previewTxHash: "beef" },
+    });
+    const { headers, body } = modern("tools/call", {
+      name: "transaction_preview",
+      arguments: { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", ada: "1" }] },
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    expect(res._status).toBe(200);
+    const payload = res.body() as {
+      result?: {
+        isError?: boolean;
+        content?: { type: string; text?: string; data?: string; mimeType?: string }[];
+        structuredContent?: Record<string, unknown>;
+      };
+    };
+    expect(payload.result?.isError).toBe(false);
+    expect(payload.result?.content?.[0]).toMatchObject({ type: "text", text: "Treasury (preprod) — UNSIGNED PREVIEW" });
+    expect(payload.result?.content?.[1]).toEqual({ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" });
+    // The token is in structuredContent for the follow-up call; the image is not.
+    expect(payload.result?.structuredContent).toMatchObject({ draftToken: "tok" });
+    expect(JSON.stringify(payload.result?.structuredContent)).not.toContain("iVBORw0KGgo=");
+    // Audit picks up the wallet id from the result, and the tool's own ids.
+    expect(auditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          resourceType: "wallet",
+          resourceId: "wallet-1",
+          metadata: expect.objectContaining({ tool: "transaction_preview", previewTxHash: "beef" }),
+        }),
+      }),
+    );
+  });
+
+  it("rejects a preview whose arguments break the schema before any build", async () => {
+    const { headers, body } = modern("tools/call", {
+      name: "transaction_preview",
+      arguments: { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", lovelace: "1" }] },
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    const payload = res.body() as { result?: { isError?: boolean } };
+    expect(payload.result?.isError).toBe(true);
+    expect(runTransactionPreviewMock).not.toHaveBeenCalled();
   });
 });
 
