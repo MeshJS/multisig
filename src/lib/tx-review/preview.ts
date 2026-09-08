@@ -15,7 +15,7 @@ import {
   type ReviewDeps,
 } from "./pipeline";
 import { hasSpecErrors, normalizeTxSpec, specToDraft, type TxSpecInput } from "./spec";
-import { summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, summaryToText } from "./summary";
 
 /**
  * `transaction_preview`: build the unsigned transaction and show it.
@@ -91,6 +91,7 @@ export async function runTransactionPreview(
         fee: built.fee,
         summary,
         warnings,
+        reviewCard: REVIEW_CARD_HINT,
         persisted: false,
         signed: false,
         broadcast: false,

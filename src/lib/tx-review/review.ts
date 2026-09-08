@@ -6,7 +6,7 @@ import type { DbWalletWithLegacy } from "@/types/wallet";
 
 import { networkFromAddress, TxReviewError } from "./context";
 import { renderCard, summarizeForWallet, type ReviewDeps } from "./pipeline";
-import { summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, summaryToText } from "./summary";
 
 /**
  * `multisig_review_pending_transaction`: the review card for a transaction
@@ -86,6 +86,7 @@ export async function runPendingTransactionReview(
         transactionId: row.id,
         txHash,
         summary,
+        reviewCard: REVIEW_CARD_HINT,
         createdAt: row.createdAt ?? null,
       },
       text: summaryToText(summary),

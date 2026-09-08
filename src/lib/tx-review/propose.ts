@@ -21,7 +21,7 @@ import {
   type ReviewDeps,
 } from "./pipeline";
 import { specToDraft, type TxSpec } from "./spec";
-import { summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, summaryToText } from "./summary";
 
 /**
  * `transaction_propose`: turn a reviewed draft into a pending transaction.
@@ -106,6 +106,7 @@ export async function runTransactionPropose(
           signaturesRequired: wallet.threshold.required,
           link,
           summary,
+          reviewCard: REVIEW_CARD_HINT,
           persisted: true,
           signed: false,
           broadcast: false,
@@ -220,6 +221,7 @@ export async function runTransactionPropose(
         rationalesPublished: anchored.pinned,
         link,
         summary,
+        reviewCard: REVIEW_CARD_HINT,
         persisted: true,
         signed: false,
         broadcast: false,

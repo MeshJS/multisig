@@ -98,6 +98,61 @@ Properties worth not regressing:
 `multisig_review_pending_transaction` renders the same card for any pending transaction,
 however it was created — the in-chat review for transactions proposed from the app.
 
+### Getting the card in front of the user
+
+Whether a tool's image block is rendered inline is the client's decision, not the
+server's: claude.ai and Claude Desktop show tool images only inside the collapsed
+tool-call panel ([claude-ai-mcp #238](https://github.com/anthropics/claude-ai-mcp/issues/238),
+[claude-code #53256](https://github.com/anthropics/claude-code/issues/53256)), and the
+model decides whether to surface it in its reply. The server therefore tells the model,
+three ways, that the image is the deliverable:
+
+- **Server `instructions`** (`MCP_SERVER_INSTRUCTIONS` in `src/lib/mcp/server.ts`),
+  returned at initialize and placed in the model's context by the client: the review
+  tools' results include the card as an image; present it in the same turn, unprompted;
+  ask for confirmation before proposing. Kept short — it rides on every conversation.
+- **Tool descriptions** repeat the contract per tool ("the result contains the card as
+  an IMAGE: show it to the user in your reply").
+- **The result itself**: the text block opens with "Review card attached as an image in
+  this result — show it to the user now.", and `structuredContent.reviewCard` says an
+  image is attached.
+
+Content blocks deliberately carry **no** spec `annotations` (`audience`, `priority`): the
+Claude app rejected a result whose image block had them ("Unexpected response type"),
+and `src/__tests__/mcpRoute.test.ts` pins the minimal wire shape.
+
+### The inline card view (MCP App)
+
+Even when the model surfaces the image, the Claude app shows a tool's image block only
+inside the collapsed tool-call panel. The protocol's answer is an
+[MCP App](https://modelcontextprotocol.io/extensions/apps/build): the three review tools
+carry `_meta.ui.resourceUri = "ui://mesh-multisig/review-card"`, and the server exposes
+that resource as `text/html;profile=mcp-app`. A supporting host (claude.ai, Claude
+Desktop) reads it, renders it inline in a sandboxed iframe where the tool call appears,
+and hands it the tool result.
+
+The view (`src/lib/mcp/apps/review-card.ts`) is one self-contained HTML document that
+hand-rolls the ext-apps bridge (JSON-RPC over `postMessage`): `ui/initialize` →
+`ui/notifications/initialized`, then on `ui/notifications/tool-result` it shows the card
+PNG from the image block. For a preview it offers a **Confirm** button: the click sends
+`tools/call transaction_propose { draftToken }` through the host — so the human confirms
+on the card itself, under the same token binding as a typed confirmation — then shows
+the final card, an "Open in the app to sign" link (`ui/open-link`), and tells the model
+what happened via `ui/update-model-context`. It declares no network or external-asset
+origins and runs under the extension's default CSP; the PNG travels as a `data:` URL.
+
+Things learned from Anthropic's client (tracked in
+[claude-ai-mcp #61](https://github.com/anthropics/claude-ai-mcp/issues/61)): the frame
+stays hidden until the handshake completes; claude.ai does not advertise the UI extension
+at initialize, so the resource is never gated on it; and the host may read the resource
+from a different session than the tool call, which this stateless server handles
+trivially. Text-only clients (Claude Code included) see the text and image blocks as
+before. `src/__tests__/mcpReviewCardApp.test.ts` pins the bridge method names and the
+sandbox constraints; `mcpRoute.test.ts` pins `_meta` and `resources/read`.
+
+Expanding the tool call in the client always shows the card, whatever the model did.
+Reconnect after changing the instructions — clients read them once, at initialize.
+
 The card is rasterized with the `ImageResponse` that ships inside Next (`next/og`) in
 the Node runtime: no new dependency, no system fonts. `next.config.js` adds its WASM and
 font files to the `/api/mcp` output file trace, because they are loaded through
@@ -200,6 +255,7 @@ claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mc
 | `src/lib/tx-review/card.ts`, `render-png.ts` | Card layout tree and `next/og` rasterization |
 | `src/lib/tx-review/draft-token.ts` | The preview → confirm binding |
 | `src/lib/tx-review/preview.ts`, `propose.ts`, `review.ts` | The three tool bodies |
+| `src/lib/mcp/apps/review-card.ts` | The inline review-card view (MCP App resource + bridge) |
 
 Tool inputs are hand-written JSON Schema rather than generated from
 `src/utils/swagger.ts`: that file is a hand-maintained literal with `apis: []` that has

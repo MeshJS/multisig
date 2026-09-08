@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import { createServerAddressLabeler } from "@/lib/tx-review/labels";
 import {
+  CARD_ATTACHED_LINE,
   formatReviewAmount,
   summarizeMeshBody,
   summaryToText,
@@ -198,6 +199,11 @@ describe("summarizeMeshBody", () => {
 });
 
 describe("summaryToText", () => {
+  it("opens by telling the model the card is attached, for both kinds", () => {
+    expect(summaryToText(summarize()).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
+    expect(summaryToText(summarize("pending")).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
+  });
+
   it("states the boundary and every fact a signer needs", () => {
     const text = summaryToText(summarize());
     expect(text).toContain("UNSIGNED PREVIEW — nothing has been saved, signed or broadcast.");

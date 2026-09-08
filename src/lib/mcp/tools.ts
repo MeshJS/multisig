@@ -28,6 +28,7 @@ import {
   participantsInclude,
   type Label1854LookupItem,
 } from "@/utils/cip146Registration";
+import { REVIEW_CARD_RESOURCE_URI } from "@/lib/mcp/apps/review-card";
 
 /**
  * The MCP tool registry — the single source of truth for the exposed surface.
@@ -86,6 +87,11 @@ export type McpToolDef = {
    * `src/__tests__/mcpTools.test.ts`, so a handler rename breaks CI.
    */
   v1Path: string | null;
+  /**
+   * MCP Apps: the `ui://` resource the host renders inline when this tool
+   * is called (`_meta.ui.resourceUri`). Only the review tools set it.
+   */
+  uiResourceUri?: string;
   run: (
     args: Record<string, unknown>,
     ctx: ToolContext,
@@ -644,7 +650,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "transaction_preview",
     title: "Preview an unsigned transaction",
     description:
-      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — and return a review card image plus a summary for the user to check in chat. NOTHING is saved, signed or broadcast. Show the card to the user and ask them to confirm; only then call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself.",
+      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — for the user to check in chat. The result contains the review card as an IMAGE: always show that image to the user in your reply, in the same turn, then ask them to confirm; do not describe it in words instead. Clients that render the inline card view also show a Confirm button on it; the user may confirm by clicking it (you will be told) or by replying. NOTHING is saved, signed or broadcast. Only after the user confirms, call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself.",
     scope: "transactions:write",
     inputSchema: TRANSACTION_PREVIEW_INPUT,
     annotations: {
@@ -654,6 +660,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       openWorldHint: true,
     },
     v1Path: null,
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
     run: async (args, ctx) => {
       const [{ runTransactionPreview }, { db }] = await Promise.all([
         load.txPreview(),
@@ -673,7 +680,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "transaction_propose",
     title: "Create the previewed transaction for signers",
     description:
-      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
+      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. The result contains the final review card as an IMAGE: show it to the user in your reply. Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
     scope: "transactions:write",
     inputSchema: TRANSACTION_PROPOSE_INPUT,
     annotations: {
@@ -684,6 +691,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       openWorldHint: true,
     },
     v1Path: null,
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
     run: async (args, ctx) => {
       const [{ runTransactionPropose }, { db }] = await Promise.all([
         load.txPropose(),
@@ -708,11 +716,12 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_review_pending_transaction",
     title: "Review a pending transaction",
     description:
-      "Render one pending transaction as a review card image plus a summary: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. Read-only; works for transactions created in the app or through MCP.",
+      "Render one pending transaction as a review card: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. The result contains the card as an IMAGE: show it to the user in your reply rather than paraphrasing it. Read-only; works for transactions created in the app or through MCP.",
     scope: "wallets:read",
     inputSchema: REVIEW_PENDING_TRANSACTION_INPUT,
     annotations: READ_ONLY_CHAIN,
     v1Path: "pendingTransactions.ts",
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
     run: async (args, ctx) => {
       const [{ runPendingTransactionReview }, { db }] = await Promise.all([
         load.txReview(),

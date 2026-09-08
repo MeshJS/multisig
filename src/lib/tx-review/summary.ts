@@ -320,9 +320,19 @@ function excerpt(text: string, max = 140): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/**
+ * Structured-content hint that a card image accompanies the result, for a
+ * model that reads `structuredContent` rather than the content list.
+ */
+export const REVIEW_CARD_HINT = { attached: true, mimeType: "image/png" } as const;
+
+/** Opening line of every review text: the model reads this before anything else. */
+export const CARD_ATTACHED_LINE =
+  "Review card attached as an image in this result — show it to the user now.";
+
 /** The readable text block that accompanies the card. */
 export function summaryToText(summary: TxReviewSummary): string {
-  const lines: string[] = [];
+  const lines: string[] = [CARD_ATTACHED_LINE];
   const state =
     summary.kind === "preview"
       ? "UNSIGNED PREVIEW — nothing has been saved, signed or broadcast."

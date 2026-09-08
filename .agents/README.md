@@ -56,6 +56,13 @@ Specs live in the vault, not this repo. The maintainer keeps a document-driven d
   route's cold path.
 - **Auth**: an OAuth 2.1 access token, or an existing v1 bearer token. The authorization
   server lives under `src/pages/api/oauth/` — see `src/pages/api/oauth/README.md`.
+- **Inline card (MCP App)**: the review tools point at `ui://mesh-multisig/review-card`
+  (`src/lib/mcp/apps/review-card.ts`), a self-contained HTML view the Claude app renders
+  inline with a Confirm button. Keep it dependency-free (default CSP: no fetch, no external
+  assets) and keep the `ui/initialize` handshake — the host hides the frame until it completes.
+- **Server instructions** (`MCP_SERVER_INSTRUCTIONS`, `src/lib/mcp/server.ts`) are sent
+  at initialize and land in the model's context for every conversation: keep them short
+  and behavioural (what to do with tool results), never a feature list.
 
 ## Docs to keep in sync
 

@@ -2,6 +2,12 @@ import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 
 import { db } from "@/server/db";
 import { audit } from "@/lib/observability/audit";
+import {
+  REVIEW_CARD_MIME_TYPE,
+  REVIEW_CARD_RESOURCE_META,
+  REVIEW_CARD_RESOURCE_URI,
+  reviewCardResourceContents,
+} from "@/lib/mcp/apps/review-card";
 import type { McpCaller } from "@/lib/mcp/auth";
 import {
   toolsForScopes,
@@ -13,6 +19,23 @@ export const MCP_SERVER_NAME = "mesh-multisig";
 export const MCP_SERVER_VERSION = "0.1.0";
 
 /**
+ * Server instructions, returned in the initialize result. MCP clients feed
+ * this into the model's context for the whole conversation, so it is kept
+ * short and behavioural: what the model must DO with what the tools return.
+ *
+ * The review tools return the transaction card as an image block. Without
+ * this, a model treats the image as optional and describes it in prose; the
+ * whole point of the card is that the human reads the picture.
+ */
+export const MCP_SERVER_INSTRUCTIONS = [
+  "Mesh Multisig: read Cardano multisig wallets, draft ballots, and draft unsigned transactions for humans to sign in the app.",
+  "The results of transaction_preview, transaction_propose and multisig_review_pending_transaction include the transaction review card as an image block. That image is what the user must see: present it in your reply in the same turn, without being asked, and never replace it with a prose description.",
+  "After transaction_preview, show the card and ask the user to confirm before calling transaction_propose with the returned draftToken. If the client renders the inline card view, the user may instead confirm by clicking its Confirm button, and you will be told when that happens.",
+  "Nothing on this server signs or broadcasts; every transaction is signed by the wallet's signers in the app.",
+].join(" ");
+
+
+/**
  * Build the MCP server for a single request.
  *
  * This is called once per HTTP request by `createMcpHandler` — that is what
@@ -21,10 +44,33 @@ export const MCP_SERVER_VERSION = "0.1.0";
  * than the first, which is exactly the kind of bug a one-shot smoke test misses.
  */
 export function createMcpServer(caller: McpCaller, clientIp: string): McpServer {
-  const server = new McpServer({
-    name: MCP_SERVER_NAME,
-    version: MCP_SERVER_VERSION,
-  });
+  const server = new McpServer(
+    {
+      name: MCP_SERVER_NAME,
+      version: MCP_SERVER_VERSION,
+    },
+    { instructions: MCP_SERVER_INSTRUCTIONS },
+  );
+
+  // The review-card MCP App view. Static HTML, no data of its own — it is
+  // filled by the tool result the host hands it — so it is registered for
+  // every caller and never gated on the client advertising the UI extension
+  // (claude.ai renders apps without advertising it). Each request is a fresh
+  // server, so `resources/read` works from any session, which the Claude app
+  // relies on: it may read the resource from a different session than the
+  // one that called the tool.
+  server.registerResource(
+    "review-card",
+    REVIEW_CARD_RESOURCE_URI,
+    {
+      title: "Transaction review card",
+      description:
+        "Inline view of a transaction review card with a Confirm button (MCP Apps).",
+      mimeType: REVIEW_CARD_MIME_TYPE,
+      _meta: REVIEW_CARD_RESOURCE_META,
+    },
+    async () => reviewCardResourceContents(),
+  );
 
   // Register only what this caller's scopes actually permit, so `tools/list`
   // never advertises a tool that would come back 403. The model does not see
@@ -37,6 +83,15 @@ export function createMcpServer(caller: McpCaller, clientIp: string): McpServer 
         description: tool.description,
         inputSchema: fromJsonSchema(tool.inputSchema),
         annotations: tool.annotations,
+        // Both the current and the deprecated key: older hosts read the flat one.
+        ...(tool.uiResourceUri
+          ? {
+              _meta: {
+                ui: { resourceUri: tool.uiResourceUri },
+                "ui/resourceUri": tool.uiResourceUri,
+              },
+            }
+          : {}),
       },
       async (args: unknown) => {
         const input = (args ?? {}) as Record<string, unknown>;
@@ -142,6 +197,12 @@ function recordToolCall(args: {
  * any `images` follow it as `image` blocks. Image bytes never enter
  * `structuredContent` — a base64 PNG there would be re-serialized into the
  * model's context as a string of tens of kilobytes for no benefit.
+ *
+ * Content blocks carry NO `annotations`, although the spec allows them
+ * (`audience`, `priority`): the Claude app rejected a tool result whose image
+ * block carried them ("Unexpected response type"), and the model is steered
+ * by the server instructions, the tool descriptions and the text block
+ * instead. Keep the wire shape to `type`/`text` and `type`/`data`/`mimeType`.
  */
 export function toToolResult(result: McpToolResult) {
   const isError = result.status >= 400;

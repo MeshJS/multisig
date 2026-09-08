@@ -122,6 +122,20 @@ describe("MCP tool registry", () => {
     expect(propose?.scope).toBe("transactions:write");
   });
 
+  it("tells the model the review tools return the card as an image", () => {
+    // The image is the deliverable; a model that is not told so describes it
+    // in prose and the human never sees the card.
+    for (const name of [
+      "transaction_preview",
+      "transaction_propose",
+      "multisig_review_pending_transaction",
+    ]) {
+      const tool = MCP_TOOLS.find((t) => t.name === name);
+      expect(tool?.description).toMatch(/IMAGE/);
+      expect(tool?.description).toMatch(/show/i);
+    }
+  });
+
   it("hides the transaction tools from a read-only grant", () => {
     const names = toolsForScopes(["wallets:read"]).map((t) => t.name);
     expect(names).not.toContain("transaction_preview");
