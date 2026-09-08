@@ -6,6 +6,7 @@ import {
   buildUnsigned,
   ensureStakeRegistration,
   issueMessages,
+  loadDrepRegistered,
   loadSpecAssetMetadata,
   loadSpendableUtxos,
   loadStakeAccountActive,
@@ -54,13 +55,24 @@ export async function runTransactionPreview(
     }
 
     const availableUtxos = await loadSpendableUtxos(deps, wallet.walletRow.id);
-    const stakeAccountActive = await loadStakeAccountActive(wallet, requested);
+    // Both on-chain registration probes at once; each is skipped when the
+    // spec has nothing for it to check.
+    const [stakeAccountActive, drepRegistered] = await Promise.all([
+      loadStakeAccountActive(wallet, requested),
+      loadDrepRegistered(wallet, requested),
+    ]);
     // The token is minted from this spec, registration included, so the
     // human confirms the deposit they saw on the card.
     const registration = ensureStakeRegistration(requested, stakeAccountActive);
     const spec = registration.spec;
     const draft = specToDraft(spec, "mcp-preview");
-    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos, stakeAccountActive);
+    const draftWarnings = validateOrThrow(
+      draft,
+      wallet,
+      availableUtxos,
+      stakeAccountActive,
+      drepRegistered,
+    );
 
     const built = await buildUnsigned(draft, wallet, availableUtxos);
 

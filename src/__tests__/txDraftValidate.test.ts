@@ -229,6 +229,38 @@ describe("validateDraft votes", () => {
     expect(send.map((i) => i.code)).not.toContain("vote-drep-missing");
   });
 
+  test("vote-drep-unregistered fires only on an explicit false registration state", () => {
+    const draft = voteOnlyDraft();
+    const unregistered = validateDraft(draft, {
+      network: 0,
+      hasDrepContext: true,
+      drepRegistered: false,
+    });
+    expect(unregistered).toEqual([
+      expect.objectContaining({
+        level: "error",
+        code: "vote-drep-unregistered",
+        message: expect.stringContaining("not registered as a DRep"),
+      }),
+    ]);
+    expect(unregistered[0]!.outputId).toBeUndefined(); // tx-level issue
+
+    expect(
+      codes(validateDraft(draft, { network: 0, hasDrepContext: true, drepRegistered: true })),
+    ).toEqual([]);
+    // Unknown state (not fetched — the builder canvas) never blocks.
+    expect(codes(validateDraft(draft, { network: 0, hasDrepContext: true }))).toEqual([]);
+
+    // Without votes the state is irrelevant.
+    const send = validateDraft(createDraft("d1"), { network: 0, drepRegistered: false });
+    expect(codes(send)).not.toContain("vote-drep-unregistered");
+
+    // No DRep identity at all is reported once, as vote-drep-missing.
+    expect(
+      codes(validateDraft(draft, { network: 0, hasDrepContext: false, drepRegistered: false })),
+    ).toEqual(["vote-drep-missing"]);
+  });
+
   test("duplicate-vote fires when two votes target the same action", () => {
     const duplicated = addVote(voteOnlyDraft(), {
       ...voteBase,

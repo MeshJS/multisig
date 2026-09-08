@@ -3,6 +3,7 @@ import type { UTxO } from "@meshsdk/core";
 
 import type { V1Result } from "@/lib/mcp/invokeV1";
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
+import { fetchDrepStatus } from "@/lib/governance/drep-status";
 import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
 import { utxoFunds } from "@/lib/tx-draft/assets";
 import { buildDraftTx, type DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
@@ -77,6 +78,7 @@ export function validateOrThrow(
   ctx: ReviewWalletContext,
   availableUtxos: UTxO[],
   stakeAccountActive?: boolean,
+  drepRegistered?: boolean,
 ): DraftIssue[] {
   const issues = validateDraft(draft, {
     network: ctx.network,
@@ -84,6 +86,7 @@ export function validateOrThrow(
     hasDrepContext: !!ctx.drep,
     hasStakeContext: !!ctx.stake,
     stakeAccountActive,
+    drepRegistered,
     multisigAddress: ctx.walletAddress,
   });
   const errors = issues.filter((issue) => issue.level === "error");
@@ -122,6 +125,33 @@ export async function loadStakeAccountActive(
       502,
       "STAKE_LOOKUP_FAILED",
       `Could not check whether the wallet's stake credential is registered: ${message.slice(0, 200)}`,
+    );
+  }
+}
+
+/**
+ * Registration state of the wallet's DRep credential, fetched only when the
+ * spec carries votes. A vote from an unregistered DRep builds fine and is
+ * rejected by the node at submit — after the signatures are in — so the
+ * state must be known before validation, which then refuses the draft
+ * (`vote-drep-unregistered`) and tells the user to register first. Returns
+ * undefined when there is nothing to check; a wallet with no DRep identity
+ * at all is `vote-drep-missing`'s job.
+ */
+export async function loadDrepRegistered(
+  ctx: ReviewWalletContext,
+  spec: { votes: readonly unknown[] },
+): Promise<boolean | undefined> {
+  if (spec.votes.length === 0 || !ctx.drep) return undefined;
+  try {
+    const status = await fetchDrepStatus(getProvider(ctx.network), ctx.drep.dRepId);
+    return status.active;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TxReviewError(
+      502,
+      "DREP_LOOKUP_FAILED",
+      `Could not check whether the wallet is registered as a DRep: ${message.slice(0, 200)}`,
     );
   }
 }

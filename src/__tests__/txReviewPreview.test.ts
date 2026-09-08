@@ -15,6 +15,7 @@ const loadSpendableUtxosMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpecAssetMetadataMock = jest.fn<(...args: any[]) => Promise<any>>();
 const validateOrThrowMock = jest.fn<(...args: any[]) => any>();
 const loadStakeAccountActiveMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
+const loadDrepRegisteredMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
 const buildUnsignedMock = jest.fn<(...args: any[]) => Promise<any>>();
 const summarizeForWalletMock = jest.fn<(...args: any[]) => Promise<any>>();
 const renderCardMock = jest.fn<(...args: any[]) => Promise<any>>();
@@ -33,6 +34,7 @@ jest.mock("@/lib/tx-review/pipeline", () => {
     loadSpecAssetMetadata: loadSpecAssetMetadataMock,
     validateOrThrow: validateOrThrowMock,
     loadStakeAccountActive: loadStakeAccountActiveMock,
+    loadDrepRegistered: loadDrepRegisteredMock,
     buildUnsigned: buildUnsignedMock,
     summarizeForWallet: summarizeForWalletMock,
     renderCard: renderCardMock,
@@ -99,6 +101,7 @@ beforeEach(async () => {
     { level: "warning", code: "min-ada-topup", message: "Token-only output — min ADA will be added." },
   ]);
   loadStakeAccountActiveMock.mockResolvedValue(undefined);
+  loadDrepRegisteredMock.mockResolvedValue(undefined);
   buildUnsignedMock.mockResolvedValue({
     unsignedTx: "84a4",
     body: { outputs: [], inputs: [], fee: "170000" },
@@ -256,6 +259,45 @@ describe("transaction_preview", () => {
     expect(result.status).toBe(502);
     expect((result.body as { code: string }).code).toBe("STAKE_LOOKUP_FAILED");
     expect(buildUnsignedMock).not.toHaveBeenCalled();
+  });
+
+  it("checks the DRep registration for a vote and hands the state to validation", async () => {
+    const drepCtx = { ...walletCtx, drep: { dRepId: "drep1x", drepScriptCbor: "8201" } };
+    loadReviewWalletContextMock.mockResolvedValue(drepCtx);
+    loadDrepRegisteredMock.mockResolvedValue(false);
+    validateOrThrowMock.mockReturnValue([]);
+
+    await runTransactionPreview(
+      { walletId: "wallet-1", votes: [{ proposalId: `${"c".repeat(64)}#0`, vote: "Yes" }] },
+      ctx,
+      deps(),
+    );
+
+    expect(loadDrepRegisteredMock).toHaveBeenCalledWith(
+      drepCtx,
+      expect.objectContaining({ votes: [expect.objectContaining({ govActionIndex: 0, voteKind: "Yes" })] }),
+    );
+    const [, , , active, registered] = validateOrThrowMock.mock.calls[0]!;
+    expect(active).toBeUndefined();
+    expect(registered).toBe(false);
+  });
+
+  it("surfaces a failed DRep lookup instead of building blind", async () => {
+    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    loadReviewWalletContextMock.mockResolvedValue({ ...walletCtx, drep: { dRepId: "drep1x", drepScriptCbor: "8201" } });
+    loadDrepRegisteredMock.mockRejectedValue(
+      new TxReviewError(502, "DREP_LOOKUP_FAILED", "Could not check whether the wallet is registered as a DRep: down"),
+    );
+    const result = await runTransactionPreview(
+      { walletId: "wallet-1", votes: [{ proposalId: `${"c".repeat(64)}#0`, vote: "Yes" }] },
+      ctx,
+      deps(),
+    );
+    expect(result.status).toBe(502);
+    expect((result.body as { code: string }).code).toBe("DREP_LOOKUP_FAILED");
+    expect(validateOrThrowMock).not.toHaveBeenCalled();
+    expect(buildUnsignedMock).not.toHaveBeenCalled();
+    expect(result.images).toBeUndefined();
   });
 
   it("passes wallet-context failures through as tool errors", async () => {

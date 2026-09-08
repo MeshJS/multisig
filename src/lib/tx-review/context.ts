@@ -29,6 +29,7 @@ export type TxReviewErrorCode =
   | "INVALID_DRAFT"
   | "UTXO_LOOKUP_FAILED"
   | "STAKE_LOOKUP_FAILED"
+  | "DREP_LOOKUP_FAILED"
   | "BUILD_FAILED"
   | "PIN_FAILED"
   | "TOKEN_INVALID"

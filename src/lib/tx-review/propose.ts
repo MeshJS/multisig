@@ -13,6 +13,7 @@ import {
   buildUnsigned,
   ensureStakeRegistration,
   issueMessages,
+  loadDrepRegistered,
   loadSpecAssetMetadata,
   loadSpendableUtxos,
   loadStakeAccountActive,
@@ -125,12 +126,22 @@ export async function runTransactionPropose(
     // Re-checked, not carried in the token: the account may have been
     // registered (validation then refuses the token's registration) or
     // deregistered (a registration is added, and the hash change reported)
-    // since the preview.
-    const stakeAccountActive = await loadStakeAccountActive(wallet, spec);
+    // since the preview. The DRep registration is re-checked for the same
+    // reason: a DRep retired after the preview can no longer vote.
+    const [stakeAccountActive, drepRegistered] = await Promise.all([
+      loadStakeAccountActive(wallet, spec),
+      loadDrepRegistered(wallet, spec),
+    ]);
     const registration = ensureStakeRegistration(spec, stakeAccountActive);
     spec = registration.spec;
     let draft = specToDraft(spec, "mcp-propose");
-    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos, stakeAccountActive);
+    const draftWarnings = validateOrThrow(
+      draft,
+      wallet,
+      availableUtxos,
+      stakeAccountActive,
+      drepRegistered,
+    );
 
     // Rationales are pinned only now — public and permanent, so only after
     // the human said yes and only for a draft that still validates.

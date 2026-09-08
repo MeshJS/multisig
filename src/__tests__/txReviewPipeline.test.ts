@@ -9,11 +9,16 @@ import type { TxSpec } from "@/lib/tx-review/spec";
  */
 
 const fetchStakeAccountStatusMock = jest.fn<(...args: any[]) => Promise<{ active: boolean; poolId: string | null }>>();
+const fetchDrepStatusMock = jest.fn<(...args: any[]) => Promise<{ active: boolean }>>();
 const getProviderMock = jest.fn<(network: number) => unknown>();
 
 jest.mock("@/lib/staking/stake-account-status", () => ({
   __esModule: true,
   fetchStakeAccountStatus: fetchStakeAccountStatusMock,
+}));
+jest.mock("@/lib/governance/drep-status", () => ({
+  __esModule: true,
+  fetchDrepStatus: fetchDrepStatusMock,
 }));
 jest.mock("@/utils/get-provider", () => ({ __esModule: true, getProvider: getProviderMock }));
 
@@ -35,6 +40,15 @@ const stakeCtx = {
   network: 0 as const,
   stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" },
 } as unknown as import("@/lib/tx-review/context").ReviewWalletContext;
+
+const drepCtx = {
+  network: 1 as const,
+  drep: { dRepId: "drep1x", drepScriptCbor: "8201" },
+} as unknown as import("@/lib/tx-review/context").ReviewWalletContext;
+
+const oneVote: TxSpec["votes"] = [
+  { govActionTxHash: "c".repeat(64), govActionIndex: 0, voteKind: "Yes" },
+];
 
 let pipeline: typeof import("@/lib/tx-review/pipeline");
 
@@ -67,6 +81,58 @@ describe("loadStakeAccountActive", () => {
     await expect(
       pipeline.loadStakeAccountActive(stakeCtx, spec([{ kind: "DelegateStake", poolId: POOL }])),
     ).rejects.toMatchObject({ status: 502, code: "STAKE_LOOKUP_FAILED", message: expect.stringContaining("Blockfrost 500") });
+  });
+});
+
+describe("loadDrepRegistered", () => {
+  it("skips the lookup when there is nothing to check", async () => {
+    await expect(pipeline.loadDrepRegistered(drepCtx, spec([]))).resolves.toBeUndefined();
+    // No DRep identity at all is vote-drep-missing's job, not a lookup.
+    await expect(
+      pipeline.loadDrepRegistered({ ...drepCtx, drep: undefined }, { ...spec([]), votes: oneVote }),
+    ).resolves.toBeUndefined();
+    expect(fetchDrepStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("asks the wallet network's provider about the DRep id", async () => {
+    fetchDrepStatusMock.mockResolvedValue({ active: false });
+    await expect(
+      pipeline.loadDrepRegistered(drepCtx, { ...spec([]), votes: oneVote }),
+    ).resolves.toBe(false);
+    expect(getProviderMock).toHaveBeenCalledWith(1);
+    expect(fetchDrepStatusMock).toHaveBeenCalledWith({ tag: "provider" }, "drep1x");
+
+    fetchDrepStatusMock.mockResolvedValue({ active: true });
+    await expect(
+      pipeline.loadDrepRegistered(drepCtx, { ...spec([]), votes: oneVote }),
+    ).resolves.toBe(true);
+  });
+
+  it("turns a lookup failure into a DREP_LOOKUP_FAILED tool error", async () => {
+    fetchDrepStatusMock.mockRejectedValue(new Error("Blockfrost 500"));
+    await expect(
+      pipeline.loadDrepRegistered(drepCtx, { ...spec([]), votes: oneVote }),
+    ).rejects.toMatchObject({ status: 502, code: "DREP_LOOKUP_FAILED", message: expect.stringContaining("Blockfrost 500") });
+  });
+});
+
+describe("validateOrThrow", () => {
+  it("refuses a vote from an unregistered DRep with a message that says so", () => {
+    const { specToDraft } = jest.requireActual("@/lib/tx-review/spec") as typeof import("@/lib/tx-review/spec");
+    const draft = specToDraft({ ...spec([]), votes: oneVote }, "d1");
+    const ctx = { ...drepCtx, walletAddress: "addr1qpwallet" };
+
+    expect(() => pipeline.validateOrThrow(draft, ctx, [], undefined, false)).toThrow(
+      expect.objectContaining({
+        status: 400,
+        code: "INVALID_DRAFT",
+        message: expect.stringContaining("not registered as a DRep"),
+        details: { issues: [expect.objectContaining({ code: "vote-drep-unregistered" })] },
+      }),
+    );
+    // Registered, or unknown, passes the vote through.
+    expect(pipeline.validateOrThrow(draft, ctx, [], undefined, true)).toEqual([]);
+    expect(pipeline.validateOrThrow(draft, ctx, [], undefined, undefined)).toEqual([]);
   });
 });
 

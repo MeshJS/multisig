@@ -19,6 +19,7 @@ const loadSpendableUtxosMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpecAssetMetadataMock = jest.fn<(...args: any[]) => Promise<any>>();
 const validateOrThrowMock = jest.fn<(...args: any[]) => any>();
 const loadStakeAccountActiveMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
+const loadDrepRegisteredMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
 const buildUnsignedMock = jest.fn<(...args: any[]) => Promise<any>>();
 const summarizeForWalletMock = jest.fn<(...args: any[]) => Promise<any>>();
 const renderCardMock = jest.fn<(...args: any[]) => Promise<any>>();
@@ -38,6 +39,7 @@ jest.mock("@/lib/tx-review/pipeline", () => {
     loadSpecAssetMetadata: loadSpecAssetMetadataMock,
     validateOrThrow: validateOrThrowMock,
     loadStakeAccountActive: loadStakeAccountActiveMock,
+    loadDrepRegistered: loadDrepRegisteredMock,
     buildUnsigned: buildUnsignedMock,
     summarizeForWallet: summarizeForWalletMock,
     renderCard: renderCardMock,
@@ -177,6 +179,7 @@ beforeEach(async () => {
   loadSpecAssetMetadataMock.mockResolvedValue({ metadata: {}, decimalsFor: () => undefined });
   validateOrThrowMock.mockReturnValue([]);
   loadStakeAccountActiveMock.mockResolvedValue(undefined);
+  loadDrepRegisteredMock.mockResolvedValue(undefined);
   buildUnsignedMock.mockResolvedValue({
     unsignedTx: "84a4",
     body: builtBody,
@@ -408,7 +411,7 @@ describe("transaction_propose", () => {
     );
 
     expect(loadStakeAccountActiveMock).toHaveBeenCalledTimes(1);
-    expect(validateOrThrowMock).toHaveBeenCalledWith(expect.anything(), stakeCtx, [], true);
+    expect(validateOrThrowMock).toHaveBeenCalledWith(expect.anything(), stakeCtx, [], true, undefined);
     const validateOrder = validateOrThrowMock.mock.invocationCallOrder[0]!;
     const lookupOrder = loadStakeAccountActiveMock.mock.invocationCallOrder[0]!;
     expect(lookupOrder).toBeLessThan(validateOrder);
@@ -416,6 +419,45 @@ describe("transaction_propose", () => {
     const [validatedDraft] = validateOrThrowMock.mock.calls[0]!;
     expect(validatedDraft.certificates.map((c: { kind: string }) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
     expect(result.body).toMatchObject({ txHashChanged: false, txHashChangeReasons: [] });
+  });
+
+  it("re-checks the DRep registration at propose time and refuses a retired DRep's vote before pinning", async () => {
+    // Retired since the preview: the fresh state reaches validation, which
+    // refuses (vote-drep-unregistered — a validate.ts unit test); here the
+    // stub does the refusing so the order and the side effects are checked.
+    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    loadDrepRegisteredMock.mockResolvedValue(false);
+    validateOrThrowMock.mockImplementation((_draft, _ctx, _utxos, _stake, registered) => {
+      if (registered === false) {
+        throw new TxReviewError(400, "INVALID_DRAFT", "The transaction cannot be built: not registered as a DRep", {
+          issues: [{ level: "error", code: "vote-drep-unregistered", message: "not registered as a DRep" }],
+        });
+      }
+      return [];
+    });
+    const d = deps();
+
+    const result = await runTransactionPropose(
+      {
+        draftToken: token({
+          outputs: [],
+          votes: [{ govActionTxHash: PROPOSAL_HASH, govActionIndex: 0, voteKind: "Yes", rationale: "r" }],
+        }),
+      },
+      ctx,
+      d,
+    );
+
+    expect(loadDrepRegisteredMock).toHaveBeenCalledWith(
+      walletCtx,
+      expect.objectContaining({ votes: [expect.objectContaining({ govActionIndex: 0 })] }),
+    );
+    expect(result.status).toBe(400);
+    expect(result.body).toMatchObject({ code: "INVALID_DRAFT", issues: [{ code: "vote-drep-unregistered" }] });
+    // Refused before the rationale went public and before anything was stored.
+    expect(d.pin).not.toHaveBeenCalled();
+    expect(d.createPending).not.toHaveBeenCalled();
+    expect(result.images).toBeUndefined();
   });
 
   it("adds a registration if the account was deregistered since the preview, and says so", async () => {

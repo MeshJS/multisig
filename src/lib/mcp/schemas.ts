@@ -114,7 +114,8 @@ export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
     votes: {
       type: "array",
       maxItems: 10,
-      description: "Governance votes cast as the wallet's DRep.",
+      description:
+        "Governance votes cast as the wallet's DRep. The wallet must be registered as a DRep on chain: if it is not, the tool refuses the draft — tell the user the wallet cannot vote until it is registered as a DRep in the app.",
       items: {
         type: "object",
         properties: {

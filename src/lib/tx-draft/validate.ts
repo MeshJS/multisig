@@ -26,6 +26,7 @@ export type DraftIssueCode =
   | "cert-delegate-unregistered"
   | "cert-already-registered"
   | "cert-deregister-unregistered"
+  | "vote-drep-unregistered"
   | "source-address-missing"
   | "source-address-invalid"
   | "source-address-wrong-network"
@@ -73,6 +74,13 @@ export type ValidateDraftContext = {
    * same state instead, so only headless callers (MCP) pass it.
    */
   stakeAccountActive?: boolean;
+  /**
+   * Whether the wallet's DRep credential is registered on chain. Omit when
+   * unknown (not fetched, or the draft has no votes) to skip the check — the
+   * app's vote UI gates on the same state itself, so only headless callers
+   * (MCP) pass it.
+   */
+  drepRegistered?: boolean;
   /** The multisig's own address; lets the source check name it. */
   multisigAddress?: string;
   /** The connected wallet's address; absent when no wallet is connected. */
@@ -211,6 +219,15 @@ export function validateDraft(
       code: "vote-drep-missing",
       message:
         "This wallet has no DRep identity — governance votes can't be rebuilt.",
+    });
+  } else if (draft.votes.length > 0 && ctx.drepRegistered === false) {
+    // A vote from an unregistered DRep builds fine and is rejected by the
+    // node only at submit — after every signature has been collected.
+    issues.push({
+      level: "error",
+      code: "vote-drep-unregistered",
+      message:
+        "This wallet cannot vote: it is not registered as a DRep on chain. Register the wallet as a DRep in the app (Governance → DRep) before drafting votes.",
     });
   }
 

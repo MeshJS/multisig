@@ -68,7 +68,10 @@ sign in the app. The design is built around the human seeing exactly what gets c
    the card), and the token is minted from that completed spec. A `RegisterStake` for an
    already-registered credential is a 400 — including at propose time, if the account was
    registered after the preview — rather than a transaction the node would reject only
-   after the signatures are in.
+   after the signatures are in. Votes are checked the same way against the DRep's
+   on-chain registration (`/governance/dreps/{id}`): a wallet that is not registered as a
+   DRep cannot vote, so the draft is a 400 whose message says so and tells the user to
+   register in the app first. Both probes are repeated at propose time.
 2. The agent shows the card and asks the user to confirm.
 3. **`transaction_propose`** accepts *only* the draft token. It rebuilds from the spec
    inside the token, creates the pending transaction with `signedAddresses: []`, notifies
