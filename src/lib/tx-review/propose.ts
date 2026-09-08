@@ -11,10 +11,13 @@ import { loadReviewWalletContext, TxReviewError } from "./context";
 import { describeDraftTokenFailure, verifyDraftToken } from "./draft-token";
 import {
   buildUnsigned,
+  ensureStakeRegistration,
   issueMessages,
   loadSpecAssetMetadata,
   loadSpendableUtxos,
+  loadStakeAccountActive,
   renderCard,
+  STAKE_REGISTRATION_ADDED_WARNING,
   summarizeForWallet,
   validateOrThrow,
   walletSummaryShape,
@@ -76,7 +79,7 @@ export async function runTransactionPropose(
       );
     }
     const { claims } = verified;
-    const spec = claims.spec;
+    let spec = claims.spec;
 
     const wallet = await loadReviewWalletContext(deps.db, claims.walletId, ctx.caller);
     const walletShape = walletSummaryShape(wallet);
@@ -119,8 +122,15 @@ export async function runTransactionPropose(
 
     const assets = await loadSpecAssetMetadata(spec, wallet.network);
     const availableUtxos = await loadSpendableUtxos(deps, wallet.walletRow.id);
+    // Re-checked, not carried in the token: the account may have been
+    // registered (validation then refuses the token's registration) or
+    // deregistered (a registration is added, and the hash change reported)
+    // since the preview.
+    const stakeAccountActive = await loadStakeAccountActive(wallet, spec);
+    const registration = ensureStakeRegistration(spec, stakeAccountActive);
+    spec = registration.spec;
     let draft = specToDraft(spec, "mcp-propose");
-    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos);
+    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos, stakeAccountActive);
 
     // Rationales are pinned only now — public and permanent, so only after
     // the human said yes and only for a draft that still validates.
@@ -179,15 +189,17 @@ export async function runTransactionPropose(
     });
 
     const txHashChanged = built.txHash !== claims.previewTxHash;
-    const txHashChangeReasons = txHashChanged
-      ? anchored.pinned > 0
-        ? ["rationale-anchors"]
-        : ["utxo-set"]
-      : [];
+    const txHashChangeReasons: string[] = [];
+    if (txHashChanged) {
+      if (anchored.pinned > 0) txHashChangeReasons.push("rationale-anchors");
+      if (registration.added) txHashChangeReasons.push("stake-registration");
+      if (txHashChangeReasons.length === 0) txHashChangeReasons.push("utxo-set");
+    }
 
     const warnings = [
+      ...(registration.added ? [STAKE_REGISTRATION_ADDED_WARNING] : []),
       ...issueMessages(draftWarnings),
-      ...(txHashChanged && anchored.pinned === 0
+      ...(txHashChangeReasons.includes("utxo-set")
         ? [
             "The wallet's spendable UTxOs changed since the preview, so different inputs were selected. Recipients and amounts are unchanged.",
           ]
@@ -200,6 +212,7 @@ export async function runTransactionPropose(
       rejectedAddresses: [],
       description: spec.description,
       metadataMessage: spec.metadataMessage,
+      paymentCount: spec.outputs.length,
       txHash: built.txHash,
       transactionId: created.id,
       sizeBytes: built.sizeBytes,

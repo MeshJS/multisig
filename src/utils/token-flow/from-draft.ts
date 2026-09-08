@@ -175,6 +175,7 @@ export function draftToTokenFlow(
     const { change } = splitTrailingChange(
       built.outputs,
       built.changeAddress || opts.walletAddress,
+      draft.outputs.length,
     );
     const changeAssets = builtChangeAssets(change);
     graph.addEdge(

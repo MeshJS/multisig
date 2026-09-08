@@ -4,11 +4,14 @@ import { loadReviewWalletContext, TxReviewError } from "./context";
 import { DRAFT_TOKEN_TTL_SECONDS, mintDraftToken } from "./draft-token";
 import {
   buildUnsigned,
+  ensureStakeRegistration,
   issueMessages,
   loadSpecAssetMetadata,
   loadSpendableUtxos,
+  loadStakeAccountActive,
   pendingRationalesOf,
   renderCard,
+  STAKE_REGISTRATION_ADDED_WARNING,
   summarizeForWallet,
   validateOrThrow,
   walletSummaryShape,
@@ -35,7 +38,7 @@ export async function runTransactionPreview(
     // Units first: the display→base conversion needs each token's decimals.
     const probe = normalizeTxSpec(input, { decimalsFor: () => 0 });
     const assets = await loadSpecAssetMetadata(probe.spec, wallet.network);
-    const { spec, issues: specIssues } = normalizeTxSpec(input, {
+    const { spec: requested, issues: specIssues } = normalizeTxSpec(input, {
       decimalsFor: assets.decimalsFor,
     });
     if (hasSpecErrors(specIssues)) {
@@ -51,13 +54,19 @@ export async function runTransactionPreview(
     }
 
     const availableUtxos = await loadSpendableUtxos(deps, wallet.walletRow.id);
+    const stakeAccountActive = await loadStakeAccountActive(wallet, requested);
+    // The token is minted from this spec, registration included, so the
+    // human confirms the deposit they saw on the card.
+    const registration = ensureStakeRegistration(requested, stakeAccountActive);
+    const spec = registration.spec;
     const draft = specToDraft(spec, "mcp-preview");
-    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos);
+    const draftWarnings = validateOrThrow(draft, wallet, availableUtxos, stakeAccountActive);
 
     const built = await buildUnsigned(draft, wallet, availableUtxos);
 
     const warnings = [
       ...specIssues.filter((i) => i.level === "warning").map((i) => i.message),
+      ...(registration.added ? [STAKE_REGISTRATION_ADDED_WARNING] : []),
       ...issueMessages(draftWarnings),
     ];
     const summary = await summarizeForWallet(deps, built.body, walletSummaryShape(wallet), assets, {
@@ -67,6 +76,7 @@ export async function runTransactionPreview(
       description: spec.description,
       metadataMessage: spec.metadataMessage,
       pendingRationales: pendingRationalesOf(spec),
+      paymentCount: spec.outputs.length,
       txHash: built.txHash,
       sizeBytes: built.sizeBytes,
       warnings,

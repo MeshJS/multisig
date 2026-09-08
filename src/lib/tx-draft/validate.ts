@@ -23,6 +23,9 @@ export type DraftIssueCode =
   | "cert-pool-missing"
   | "duplicate-vote"
   | "cert-duplicate"
+  | "cert-delegate-unregistered"
+  | "cert-already-registered"
+  | "cert-deregister-unregistered"
   | "source-address-missing"
   | "source-address-invalid"
   | "source-address-wrong-network"
@@ -63,6 +66,13 @@ export type ValidateDraftContext = {
    * no certificates) to skip the check.
    */
   hasStakeContext?: boolean;
+  /**
+   * Whether the wallet's stake credential is registered on chain. Omit when
+   * unknown (not fetched, or the draft has no certificates) to skip the
+   * registration-state checks — the builder canvas gates its dialog on the
+   * same state instead, so only headless callers (MCP) pass it.
+   */
+  stakeAccountActive?: boolean;
   /** The multisig's own address; lets the source check name it. */
   multisigAddress?: string;
   /** The connected wallet's address; absent when no wallet is connected. */
@@ -262,6 +272,40 @@ export function validateDraft(
       break; // one summary issue is enough
     }
     seenKinds.add(cert.kind);
+  }
+
+  // A certificate the ledger is guaranteed to reject given the account's
+  // current registration state. The node only reports this at submit —
+  // after every signature has been collected — so it must be caught here.
+  if (ctx.stakeAccountActive !== undefined && draft.certificates.length > 0) {
+    const registersHere = seenKinds.has("RegisterStake");
+    if (ctx.stakeAccountActive) {
+      if (registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-already-registered",
+          message:
+            "The wallet's stake credential is already registered on chain — drop the RegisterStake certificate.",
+        });
+      }
+    } else {
+      if (seenKinds.has("DelegateStake") && !registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-delegate-unregistered",
+          message:
+            "The wallet's stake credential is not registered on chain — include a RegisterStake certificate (2 ADA deposit) before DelegateStake.",
+        });
+      }
+      if (seenKinds.has("DeregisterStake") && !registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-deregister-unregistered",
+          message:
+            "The wallet's stake credential is not registered on chain — there is nothing to deregister.",
+        });
+      }
+    }
   }
 
   const seenAddresses = new Set<string>();

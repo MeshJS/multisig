@@ -98,6 +98,13 @@ export type SummarizeOptions = {
   resolveProposalTitle?: ProposalTitleResolver;
   /** Rationale text per "txHash#index", for votes not yet anchored. */
   pendingRationales?: Map<string, string>;
+  /**
+   * Number of outputs the caller intended as payments (the spec's output
+   * count), when known. Every trailing self-addressed output beyond it is
+   * change — so a certificate-only transaction's single output is change,
+   * not a "recipient".
+   */
+  paymentCount?: number;
   txHash: string;
   transactionId?: string;
   sizeBytes?: number;
@@ -176,13 +183,20 @@ export function summarizeMeshBody(
     return label || getFirstAndLast(address, 12, 6);
   };
 
-  // Outputs: trailing run at the change address is change.
+  // Outputs: trailing run at the change address is change. When the caller
+  // does not say how many payments it intended, a body carrying certificates,
+  // votes or withdrawals is assumed to pay nobody unless an output goes
+  // elsewhere: its self-addressed outputs are change, not a recipient.
   const outputs = (Array.isArray(body?.outputs) ? body.outputs : []).filter(
     (output: any) => typeof output?.address === "string",
   );
   const changeAddress =
     typeof body?.changeAddress === "string" ? body.changeAddress : opts.wallet.address;
-  const { payments, change } = splitTrailingChange(outputs, changeAddress);
+  const hasActions = ["certificates", "votes", "withdrawals"].some(
+    (key) => Array.isArray(body?.[key]) && body[key].length > 0,
+  );
+  const paymentCount = opts.paymentCount ?? (hasActions ? 0 : undefined);
+  const { payments, change } = splitTrailingChange(outputs, changeAddress, paymentCount);
 
   const recipients: ReviewRecipient[] = payments.map((output: any) => {
     const { label, type } = opts.labelAddress(output.address);

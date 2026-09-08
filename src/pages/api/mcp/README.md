@@ -61,7 +61,14 @@ sign in the app. The design is built around the human seeing exactly what gets c
    wallet's spendable UTxOs, and returns three things: a readable summary, a **review
    card PNG** as an `image` content block (recipients with resolved labels, amounts, fee,
    change, actions, and the statement that nothing is signed), and a **draft token**.
-   Nothing is stored. The tool is annotated read-only.
+   Nothing is stored. The tool is annotated read-only. Staking certificates are checked
+   against the account's on-chain registration state (the same Blockfrost probe the
+   builder canvas uses): a `DelegateStake` for an unregistered credential gets a
+   `RegisterStake` added ahead of it (2 ADA deposit, reported as a warning and shown on
+   the card), and the token is minted from that completed spec. A `RegisterStake` for an
+   already-registered credential is a 400 — including at propose time, if the account was
+   registered after the preview — rather than a transaction the node would reject only
+   after the signatures are in.
 2. The agent shows the card and asks the user to confirm.
 3. **`transaction_propose`** accepts *only* the draft token. It rebuilds from the spec
    inside the token, creates the pending transaction with `signedAddresses: []`, notifies

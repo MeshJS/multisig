@@ -32,6 +32,12 @@ export const CERTIFICATE_KINDS: readonly DraftCertificateKind[] = [
   "DelegateStake",
   "DeregisterStake",
 ];
+/** Ledger-valid emission order: register → delegate → deregister. */
+const CERTIFICATE_ORDER: Record<DraftCertificateKind, number> = {
+  RegisterStake: 0,
+  DelegateStake: 1,
+  DeregisterStake: 2,
+};
 export const VOTE_KINDS: readonly DraftVoteKind[] = ["Yes", "No", "Abstain"];
 
 export const MAX_DESCRIPTION_LENGTH = 128;
@@ -330,7 +336,12 @@ export function specToDraft(spec: TxSpec, id: string): TxDraft {
       assets: output.assets.map((asset) => ({ ...asset })),
     }).draft;
   });
-  spec.certificates.forEach((cert, index) => {
+  // Ledger order: a registration must precede the delegation it enables,
+  // and a deregistration must come last. The model may list them any way.
+  const orderedCertificates = [...spec.certificates].sort(
+    (a, b) => CERTIFICATE_ORDER[a.kind] - CERTIFICATE_ORDER[b.kind],
+  );
+  orderedCertificates.forEach((cert, index) => {
     draft = addCertificate(draft, {
       id: `cert-${index}`,
       kind: cert.kind,

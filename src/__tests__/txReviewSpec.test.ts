@@ -153,4 +153,20 @@ describe("specToDraft", () => {
     expect(a.description).toBe("d");
     expect(a.metadata).toBe("m");
   });
+
+  it("emits certificates in ledger order regardless of how the model listed them", () => {
+    const { spec } = normalizeTxSpec(
+      {
+        walletId: "w",
+        certificates: [
+          { kind: "DelegateStake", poolId: "f".repeat(56) },
+          { kind: "RegisterStake" },
+        ],
+      },
+      { decimalsFor },
+    );
+    const draft = specToDraft(spec, "id");
+    expect(draft.certificates.map((c) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
+    expect(draft.certificates.map((c) => c.id)).toEqual(["cert-0", "cert-1"]);
+  });
 });

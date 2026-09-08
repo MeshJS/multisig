@@ -3,6 +3,7 @@ import type { UTxO } from "@meshsdk/core";
 
 import type { V1Result } from "@/lib/mcp/invokeV1";
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
+import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
 import { utxoFunds } from "@/lib/tx-draft/assets";
 import { buildDraftTx, type DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import { validateDraft, type DraftIssue } from "@/lib/tx-draft/validate";
@@ -75,12 +76,14 @@ export function validateOrThrow(
   draft: TxDraft,
   ctx: ReviewWalletContext,
   availableUtxos: UTxO[],
+  stakeAccountActive?: boolean,
 ): DraftIssue[] {
   const issues = validateDraft(draft, {
     network: ctx.network,
     selectedFunds: utxoFunds(availableUtxos),
     hasDrepContext: !!ctx.drep,
     hasStakeContext: !!ctx.stake,
+    stakeAccountActive,
     multisigAddress: ctx.walletAddress,
   });
   const errors = issues.filter((issue) => issue.level === "error");
@@ -93,6 +96,64 @@ export function validateOrThrow(
     );
   }
   return issues.filter((issue) => issue.level === "warning");
+}
+
+/**
+ * Registration state of the wallet's stake credential, fetched only when the
+ * spec carries certificates. A delegation for an unregistered credential
+ * (or a registration for a registered one) builds fine and is rejected by
+ * the node at submit — after the signatures are in — so the state must be
+ * known before validation. Returns undefined when there is nothing to check.
+ */
+export async function loadStakeAccountActive(
+  ctx: ReviewWalletContext,
+  spec: { certificates: readonly unknown[] },
+): Promise<boolean | undefined> {
+  if (spec.certificates.length === 0 || !ctx.stake) return undefined;
+  try {
+    const status = await fetchStakeAccountStatus(
+      getProvider(ctx.network),
+      ctx.stake.rewardAddress,
+    );
+    return status.active;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TxReviewError(
+      502,
+      "STAKE_LOOKUP_FAILED",
+      `Could not check whether the wallet's stake credential is registered: ${message.slice(0, 200)}`,
+    );
+  }
+}
+
+export const STAKE_REGISTRATION_ADDED_WARNING =
+  "The wallet's stake credential is not registered on chain, so a stake registration (2 ADA deposit, refundable on deregistration) was added ahead of the delegation.";
+
+/**
+ * A delegation for an unregistered credential gets its registration added,
+ * the way the builder canvas offers only register+delegate for an inactive
+ * account. Done on the spec, not the draft, so the token minted from it
+ * records the registration and its deposit exactly as the card showed them:
+ * propose rebuilds from that spec, and if the account was registered in the
+ * meantime, validation refuses (`cert-already-registered`) rather than
+ * quietly dropping a deposit the human confirmed.
+ */
+export function ensureStakeRegistration(
+  spec: TxSpec,
+  stakeAccountActive: boolean | undefined,
+): { spec: TxSpec; added: boolean } {
+  if (stakeAccountActive !== false) return { spec, added: false };
+  const kinds = new Set(spec.certificates.map((cert) => cert.kind));
+  if (!kinds.has("DelegateStake") || kinds.has("RegisterStake")) {
+    return { spec, added: false };
+  }
+  return {
+    spec: {
+      ...spec,
+      certificates: [{ kind: "RegisterStake" }, ...spec.certificates],
+    },
+    added: true,
+  };
 }
 
 export async function buildUnsigned(
@@ -126,6 +187,7 @@ export type SummaryInputs = Pick<
   | "description"
   | "metadataMessage"
   | "pendingRationales"
+  | "paymentCount"
   | "txHash"
   | "transactionId"
   | "sizeBytes"

@@ -107,6 +107,27 @@ describe("review card tree", () => {
     expect(text.some((t) => t.startsWith("Warning:"))).toBe(true);
   });
 
+  it("omits the recipient section and shows the change for a certificate-only transaction", () => {
+    const text = collectCardText(
+      reviewCardTree(
+        summary({
+          recipients: [],
+          change: [{ unit: "lovelace", quantity: "5254185978", display: "5,254.185978 ADA" }],
+          deposit: { unit: "lovelace", quantity: "2000000", display: "2 ADA" },
+          actions: [{ kind: "certificate", label: "Stake Delegation", title: "[ANGEL] ANGEL stake pool" }],
+        }),
+      ).element,
+    );
+    expect(text.some((t) => /recipient/i.test(t))).toBe(false);
+    expect(text).toContain("5,254.185978 ADA");
+    expect(text).not.toContain("none");
+  });
+
+  it("says none when nothing returns to the wallet", () => {
+    const text = collectCardText(reviewCardTree(summary({ change: [] })).element);
+    expect(text).toContain("none");
+  });
+
   it("shows signature progress on a pending card", () => {
     const text = collectCardText(
       reviewCardTree(

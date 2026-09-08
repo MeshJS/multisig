@@ -18,6 +18,7 @@ const loadReviewWalletContextMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpendableUtxosMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpecAssetMetadataMock = jest.fn<(...args: any[]) => Promise<any>>();
 const validateOrThrowMock = jest.fn<(...args: any[]) => any>();
+const loadStakeAccountActiveMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
 const buildUnsignedMock = jest.fn<(...args: any[]) => Promise<any>>();
 const summarizeForWalletMock = jest.fn<(...args: any[]) => Promise<any>>();
 const renderCardMock = jest.fn<(...args: any[]) => Promise<any>>();
@@ -36,6 +37,7 @@ jest.mock("@/lib/tx-review/pipeline", () => {
     loadSpendableUtxos: loadSpendableUtxosMock,
     loadSpecAssetMetadata: loadSpecAssetMetadataMock,
     validateOrThrow: validateOrThrowMock,
+    loadStakeAccountActive: loadStakeAccountActiveMock,
     buildUnsigned: buildUnsignedMock,
     summarizeForWallet: summarizeForWalletMock,
     renderCard: renderCardMock,
@@ -174,6 +176,7 @@ beforeEach(async () => {
   loadSpendableUtxosMock.mockResolvedValue([]);
   loadSpecAssetMetadataMock.mockResolvedValue({ metadata: {}, decimalsFor: () => undefined });
   validateOrThrowMock.mockReturnValue([]);
+  loadStakeAccountActiveMock.mockResolvedValue(undefined);
   buildUnsignedMock.mockResolvedValue({
     unsignedTx: "84a4",
     body: builtBody,
@@ -240,7 +243,7 @@ describe("transaction_propose", () => {
       builtBody,
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ kind: "pending", signedAddresses: [], transactionId: "tx-new" }),
+      expect.objectContaining({ kind: "pending", signedAddresses: [], transactionId: "tx-new", paymentCount: 1 }),
     );
   });
 
@@ -382,6 +385,75 @@ describe("transaction_propose", () => {
     expect(result.body).toMatchObject({ code: "INVALID_DRAFT", issues: [{ code: "insufficient-funds" }] });
     expect(d.createPending).not.toHaveBeenCalled();
     expect(d.pin).not.toHaveBeenCalled();
+  });
+
+  it("re-checks the stake account's registration state at propose time", async () => {
+    // Registered since the preview: the token's register+delegate would now
+    // fail on chain, so the fresh state must reach validation (which refuses
+    // it as cert-already-registered — a validate.ts unit test).
+    const stakeCtx = { ...walletCtx, stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" } };
+    loadReviewWalletContextMock.mockResolvedValue(stakeCtx);
+    loadStakeAccountActiveMock.mockResolvedValue(true);
+    const d = deps();
+
+    const result = await runTransactionPropose(
+      {
+        draftToken: token({
+          outputs: [],
+          certificates: [{ kind: "RegisterStake" }, { kind: "DelegateStake", poolId: "f".repeat(56) }],
+        }),
+      },
+      ctx,
+      d,
+    );
+
+    expect(loadStakeAccountActiveMock).toHaveBeenCalledTimes(1);
+    expect(validateOrThrowMock).toHaveBeenCalledWith(expect.anything(), stakeCtx, [], true);
+    const validateOrder = validateOrThrowMock.mock.invocationCallOrder[0]!;
+    const lookupOrder = loadStakeAccountActiveMock.mock.invocationCallOrder[0]!;
+    expect(lookupOrder).toBeLessThan(validateOrder);
+    // Nothing was added: the token already carried the registration.
+    const [validatedDraft] = validateOrThrowMock.mock.calls[0]!;
+    expect(validatedDraft.certificates.map((c: { kind: string }) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
+    expect(result.body).toMatchObject({ txHashChanged: false, txHashChangeReasons: [] });
+  });
+
+  it("adds a registration if the account was deregistered since the preview, and says so", async () => {
+    const { STAKE_REGISTRATION_ADDED_WARNING } = jest.requireActual("@/lib/tx-review/pipeline") as typeof import("@/lib/tx-review/pipeline");
+    loadReviewWalletContextMock.mockResolvedValue({
+      ...walletCtx,
+      stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" },
+    });
+    loadStakeAccountActiveMock.mockResolvedValue(false);
+    buildUnsignedMock.mockResolvedValue({
+      unsignedTx: "84a4",
+      body: builtBody,
+      txHash: "d00d",
+      fee: "1",
+      sizeBytes: 2,
+      inputCount: 1,
+      outputCount: 1,
+    });
+    const d = deps();
+
+    const result = await runTransactionPropose(
+      { draftToken: token({ outputs: [], certificates: [{ kind: "DelegateStake", poolId: "f".repeat(56) }] }) },
+      ctx,
+      d,
+    );
+
+    expect(result.status).toBe(201);
+    const [validatedDraft] = validateOrThrowMock.mock.calls[0]!;
+    expect(validatedDraft.certificates.map((c: { kind: string }) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
+    expect(result.body).toMatchObject({ txHashChanged: true, txHashChangeReasons: ["stake-registration"] });
+    expect(summarizeForWalletMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      // Zero intended payments: the built body's only output is change.
+      expect.objectContaining({ warnings: [STAKE_REGISTRATION_ADDED_WARNING], paymentCount: 0 }),
+    );
   });
 
   it("refuses a broadcast result from the persistence helper", async () => {

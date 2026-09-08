@@ -90,11 +90,85 @@ describe("formatReviewAmount", () => {
   });
 });
 
+function summarizeBody(customBody: any, paymentCount?: number) {
+  return summarizeMeshBody(customBody, {
+    kind: "preview",
+    wallet: { id: "w1", name: "Treasury", address: WALLET, network: 0 },
+    threshold: { required: 2, total: 2, type: "atLeast" },
+    signedAddresses: [],
+    rejectedAddresses: [],
+    description: "",
+    labelAddress,
+    assetMetadata,
+    paymentCount,
+    txHash: "00",
+  });
+}
+
+const selfOutput = { address: WALLET, amount: [{ unit: "lovelace", quantity: "5254185978" }] };
+const delegationCerts = [
+  { certType: { type: "RegisterStake", stakeKeyAddress: "stake_test1uqxyz" } },
+  { certType: { type: "DelegateStake", stakeKeyAddress: "stake_test1uqxyz", poolId: "pool1abc" } },
+];
+
 describe("summarizeMeshBody", () => {
   it("separates payments from the trailing change output", () => {
     const summary = summarize();
     expect(summary.recipients.map((r) => r.address)).toEqual([STRANGER, ALICE]);
     expect(summary.change.map((a) => a.display)).toEqual(["39.16 ADA"]);
+  });
+
+  it("honours the intended payment count when the caller knows it", () => {
+    const summary = summarizeBody(body, 2);
+    expect(summary.recipients.map((r) => r.address)).toEqual([STRANGER, ALICE]);
+    expect(summary.change.map((a) => a.display)).toEqual(["39.16 ADA"]);
+  });
+
+  it("treats a certificate-only transaction's single self output as change, not a recipient", () => {
+    const delegation = {
+      inputs: [{ txIn: { txHash: "1".repeat(64), txIndex: 0, amount: [{ unit: "lovelace", quantity: "5256388879" }] } }],
+      outputs: [selfOutput],
+      changeAddress: WALLET,
+      fee: "202901",
+      certificates: delegationCerts,
+    };
+    // No payment count: the body's certificates imply nobody is paid.
+    const summary = summarizeBody(delegation);
+    expect(summary.recipients).toEqual([]);
+    expect(summary.change.map((a) => a.display)).toEqual(["5,254.185978 ADA"]);
+    expect(summary.deposit?.display).toBe("2 ADA");
+
+    const text = summaryToText(summary);
+    expect(text).toContain("change back to the wallet 5,254.185978 ADA");
+    expect(text).not.toContain("Recipients:");
+
+    // With the spec's count it is exact rather than inferred.
+    expect(summarizeBody(delegation, 0).recipients).toEqual([]);
+  });
+
+  it("uses the payment count of zero for a plain self output without actions", () => {
+    const consolidation = { outputs: [selfOutput], changeAddress: WALLET, fee: "170000" };
+    // Unknown intent and no actions: the first self output stays a payment.
+    expect(summarizeBody(consolidation).recipients.map((r) => r.label)).toEqual(["This wallet"]);
+    expect(summarizeBody(consolidation).change).toEqual([]);
+    // Known intent of zero payments: it is change.
+    expect(summarizeBody(consolidation, 0).recipients).toEqual([]);
+    expect(summarizeBody(consolidation, 0).change.map((a) => a.display)).toEqual(["5,254.185978 ADA"]);
+  });
+
+  it("does not let the actions heuristic swallow a payment to someone else", () => {
+    const payAndDelegate = {
+      outputs: [
+        { address: ALICE, amount: [{ unit: "lovelace", quantity: "1000000" }] },
+        selfOutput,
+      ],
+      changeAddress: WALLET,
+      fee: "170000",
+      certificates: delegationCerts,
+    };
+    const summary = summarizeBody(payAndDelegate);
+    expect(summary.recipients.map((r) => r.address)).toEqual([ALICE]);
+    expect(summary.change.map((a) => a.display)).toEqual(["5,254.185978 ADA"]);
   });
 
   it("labels recipients from the wallet's own data", () => {

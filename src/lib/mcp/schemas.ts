@@ -94,7 +94,7 @@ export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
       type: "array",
       maxItems: 3,
       description:
-        "Staking certificates for the wallet's own stake credential. DelegateStake needs poolId.",
+        "Staking certificates for the wallet's own stake credential. DelegateStake needs poolId. If the credential is not yet registered on chain, a RegisterStake (2 ADA refundable deposit) is added automatically ahead of a DelegateStake and reported in warnings — say so when showing the card. A RegisterStake for an already-registered credential is rejected.",
       items: {
         type: "object",
         properties: {
