@@ -75,12 +75,15 @@ describe("review-card MCP App resource", () => {
 });
 
 describe("tools that render the app", () => {
-  it("are exactly the three review tools", () => {
+  it("are exactly the review tools", () => {
+    // task_prepare_payout returns the same card and draftToken shape as
+    // transaction_preview, so the view's Confirm button works for it unchanged.
     const withUi = MCP_TOOLS.filter((t) => t.uiResourceUri).map((t) => t.name);
     expect(withUi).toEqual([
       "transaction_preview",
       "transaction_propose",
       "multisig_review_pending_transaction",
+      "task_prepare_payout",
     ]);
     for (const tool of MCP_TOOLS) {
       if (tool.uiResourceUri) expect(tool.uiResourceUri).toBe(REVIEW_CARD_RESOURCE_URI);

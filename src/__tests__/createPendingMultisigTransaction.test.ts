@@ -126,6 +126,61 @@ describe("createPendingMultisigTransaction", () => {
     );
   });
 
+  it("runs an after-create hook inside the insert's database transaction", async () => {
+    // Task payouts link tasks to the row here; both must exist or neither.
+    const db = makeDb();
+    const txClient = {
+      transaction: {
+        create: jest
+          .fn<() => Promise<{ id: string; signedAddresses: string[]; rejectedAddresses: string[] }>>()
+          .mockResolvedValue({ id: "tx-1", signedAddresses: [], rejectedAddresses: [] }),
+      },
+    };
+    (db as unknown as { $transaction: unknown }).$transaction = jest
+      .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+      .mockImplementation((fn) => fn(txClient));
+    const afterCreate = jest.fn<(...args: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
+
+    const result = await createPendingMultisigTransaction(db, {
+      ...baseArgs,
+      initialSignedAddresses: [],
+      afterCreate,
+    });
+
+    expect((db as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalledTimes(1);
+    expect(txClient.transaction.create).toHaveBeenCalledTimes(1);
+    expect(db.transaction.create).not.toHaveBeenCalled();
+    expect(afterCreate).toHaveBeenCalledWith(txClient, expect.objectContaining({ id: "tx-1" }));
+    expect(result).toMatchObject({ id: "tx-1" });
+    // Notifications still go out afterwards, on the real client.
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a hook failure and sends no notification", async () => {
+    const db = makeDb();
+    (db as unknown as { $transaction: unknown }).$transaction = jest
+      .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+      .mockImplementation((fn) =>
+        fn({
+          transaction: {
+            create: jest.fn<() => Promise<unknown>>().mockResolvedValue({ id: "tx-1", signedAddresses: [], rejectedAddresses: [] }),
+          },
+        }),
+      );
+    const boom = new Error("tasks changed");
+
+    await expect(
+      createPendingMultisigTransaction(db, {
+        ...baseArgs,
+        initialSignedAddresses: [],
+        afterCreate: async () => {
+          throw boom;
+        },
+      }),
+    ).rejects.toBe(boom);
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
   it("submits single-signer transactions without creating a pending row", async () => {
     const db = makeDb();
 

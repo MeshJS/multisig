@@ -28,6 +28,19 @@ const { sign, verify } = jwt;
 export const DRAFT_TOKEN_TYPE = "mcp_draft";
 export const DRAFT_TOKEN_TTL_SECONDS = 15 * 60;
 
+/**
+ * Where a draft came from, when it was not composed by hand. A task-board
+ * payout binds the task ids and a hash of their recipient rows into the token,
+ * so confirming links exactly the tasks whose amounts the human reviewed —
+ * neither the model nor a later edit of the task can re-point it.
+ */
+export type DraftOrigin = {
+  kind: "tasks";
+  taskIds: string[];
+  /** sha256 over the canonical (taskId, address, unit, quantity) rows. */
+  recipientsHash: string;
+};
+
 export type DraftTokenClaims = {
   typ: typeof DRAFT_TOKEN_TYPE;
   /** Acting address — must equal the caller's subject on propose. */
@@ -40,6 +53,8 @@ export type DraftTokenClaims = {
   spec: TxSpec;
   /** Hash of the previewed unsigned transaction. */
   ph: string;
+  /** Present only for drafts derived from another record (task payouts). */
+  origin?: DraftOrigin;
   jti: string;
   iat: number;
   exp: number;
@@ -52,6 +67,7 @@ export type VerifiedDraftToken = {
   clientId: string | null;
   spec: TxSpec;
   previewTxHash: string;
+  origin: DraftOrigin | null;
   expiresAt: number;
 };
 
@@ -74,6 +90,7 @@ export function mintDraftToken(args: {
   clientId: string | null;
   spec: TxSpec;
   previewTxHash: string;
+  origin?: DraftOrigin;
 }): { token: string; jti: string; expiresAt: number } {
   const jti = randomUUID();
   const token = sign(
@@ -84,6 +101,7 @@ export function mintDraftToken(args: {
       cid: args.clientId,
       spec: args.spec,
       ph: args.previewTxHash,
+      ...(args.origin ? { origin: args.origin } : {}),
       jti,
     },
     secret(),
@@ -126,6 +144,9 @@ export function verifyDraftToken(
   ) {
     return { ok: false, reason: "malformed" };
   }
+  if (claims.origin !== undefined && !isDraftOrigin(claims.origin)) {
+    return { ok: false, reason: "malformed" };
+  }
   if (claims.sub !== caller.subject) {
     return { ok: false, reason: "subject_mismatch" };
   }
@@ -142,9 +163,23 @@ export function verifyDraftToken(
       clientId: claims.cid ?? null,
       spec: claims.spec,
       previewTxHash: claims.ph,
+      origin: claims.origin ?? null,
       expiresAt: claims.exp,
     },
   };
+}
+
+function isDraftOrigin(value: unknown): value is DraftOrigin {
+  if (!value || typeof value !== "object") return false;
+  const origin = value as Record<string, unknown>;
+  return (
+    origin.kind === "tasks" &&
+    Array.isArray(origin.taskIds) &&
+    origin.taskIds.length > 0 &&
+    origin.taskIds.every((id) => typeof id === "string" && id.length > 0) &&
+    typeof origin.recipientsHash === "string" &&
+    origin.recipientsHash.length > 0
+  );
 }
 
 /** Human-readable failure for the tool error body. */

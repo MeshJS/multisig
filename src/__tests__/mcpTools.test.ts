@@ -39,6 +39,9 @@ describe("MCP tool registry", () => {
       "transaction_preview",
       "transaction_propose",
       "multisig_review_pending_transaction",
+      "task_list",
+      "task_upsert",
+      "task_prepare_payout",
     ]);
   });
 
@@ -67,6 +70,9 @@ describe("MCP tool registry", () => {
       "ballot_upsert",
       "ballot_publish_rationale",
       "transaction_propose",
+      // Board rows only: a task is a record, not a transaction. Paying it
+      // goes through task_prepare_payout → transaction_propose.
+      "task_upsert",
     ]);
     // No write tool may be destructive: they add or replace drafts, anchors
     // and pending rows; they never remove a ballot or move value.
@@ -129,6 +135,7 @@ describe("MCP tool registry", () => {
       "transaction_preview",
       "transaction_propose",
       "multisig_review_pending_transaction",
+      "task_prepare_payout",
     ]) {
       const tool = MCP_TOOLS.find((t) => t.name === name);
       expect(tool?.description).toMatch(/IMAGE/);
@@ -140,8 +147,30 @@ describe("MCP tool registry", () => {
     const names = toolsForScopes(["wallets:read"]).map((t) => t.name);
     expect(names).not.toContain("transaction_preview");
     expect(names).not.toContain("transaction_propose");
-    // Reviewing an existing pending transaction is a read.
+    expect(names).not.toContain("task_prepare_payout");
+    expect(names).not.toContain("task_upsert");
+    // Reviewing an existing pending transaction is a read; so is the board.
     expect(names).toContain("multisig_review_pending_transaction");
+    expect(names).toContain("task_list");
+  });
+
+  it("routes a task payout through the same preview → propose contract", () => {
+    // The payout preview mints a draft token that only transaction_propose
+    // consumes, so it needs the drafting scope, is read-only (stores
+    // nothing), and renders in the same inline card view whose Confirm
+    // button calls transaction_propose.
+    const payout = MCP_TOOLS.find((t) => t.name === "task_prepare_payout");
+    const preview = MCP_TOOLS.find((t) => t.name === "transaction_preview");
+    expect(payout?.scope).toBe("transactions:write");
+    expect(payout?.annotations.readOnlyHint).toBe(true);
+    expect(payout?.v1Path).toBeNull();
+    expect(payout?.uiResourceUri).toBe(preview?.uiResourceUri);
+    expect(payout?.description).toMatch(/transaction_propose/);
+    expect(payout?.inputSchema.required).toEqual(["walletId", "taskIds"]);
+    // Board writes never reach the transaction table.
+    const upsert = MCP_TOOLS.find((t) => t.name === "task_upsert");
+    expect(upsert?.scope).toBe("tasks:write");
+    expect(upsert?.uiResourceUri).toBeUndefined();
   });
 
   it("gives every tool a closed input schema", () => {

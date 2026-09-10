@@ -924,3 +924,90 @@ model ContractField {
   @@unique([documentId, anchor])
   @@index([partyId])
 }
+
+/// Project task board: a kanban column per TaskStatus. Payout state is not a
+/// column — it is derived from the task's recipients and TaskPayout rows (see
+/// src/lib/task-payout/state.ts) and shown as a badge.
+enum TaskStatus {
+  Backlog
+  InProgress
+  InReview
+  Done
+}
+
+enum TaskPriority {
+  Low
+  Medium
+  High
+}
+
+/// Lifecycle of one task ↔ transaction link. Pending while the transaction
+/// awaits signatures, Paid once it reaches state 1, Cancelled when the pending
+/// transaction is deleted or replaced (the task becomes payable again).
+enum TaskPayoutStatus {
+  Pending
+  Paid
+  Cancelled
+}
+
+model Task {
+  id              String        @id @default(cuid())
+  /// Plain column, no relation — same convention as Transaction/Contact/Document.
+  walletId        String
+  title           String
+  description     String?
+  status          TaskStatus    @default(Backlog)
+  priority        TaskPriority?
+  assigneeAddress String?
+  dueDate         DateTime?
+  /// Order within its column; dense 0..n, renumbered by `task.move`.
+  position        Int           @default(0)
+  createdBy       String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  recipients TaskRecipient[]
+  payouts    TaskPayout[]
+
+  @@index([walletId])
+  @@index([walletId, status, position])
+}
+
+/// One payment line on a task. `quantity` is in BASE units as a BigInt-safe
+/// string (lovelace, or the token's raw quantity) — the same convention as
+/// TxSpec / AssetQuantity, so a payout spec is built without a display round-trip.
+model TaskRecipient {
+  id       String  @id @default(cuid())
+  taskId   String
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  address  String
+  /// "lovelace" or policyId + hex asset name.
+  unit     String
+  quantity String
+  label    String?
+  position Int     @default(0)
+
+  @@index([taskId])
+}
+
+/// One row per (task, transaction). Transaction has no relations in this
+/// schema, so transactionId is a plain indexed column; the transaction side
+/// carries the link too, under the top-level `tasks` key of its txJson.
+model TaskPayout {
+  id            String           @id @default(cuid())
+  walletId      String
+  taskId        String
+  task          Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  transactionId String
+  status        TaskPayoutStatus @default(Pending)
+  txHash        String?
+  createdBy     String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  paidAt        DateTime?
+
+  @@unique([taskId, transactionId])
+  @@index([walletId])
+  @@index([taskId])
+  @@index([transactionId])
+}

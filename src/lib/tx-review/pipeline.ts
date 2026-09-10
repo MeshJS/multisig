@@ -42,6 +42,12 @@ export type ReviewDeps = {
   fetchFreeUtxos: (walletId: string) => Promise<V1Result>;
   /** Injectable for tests; defaults to the real renderer. */
   renderPng?: (summary: TxReviewSummary) => Promise<Buffer>;
+  /**
+   * Skip the PNG card entirely (no `images` in the result). The web app's
+   * task-payout dialog renders the summary as React and runs under the tRPC
+   * route, which has none of the `next/og` asset tracing `/api/mcp` has.
+   */
+  omitCard?: boolean;
 };
 
 /** UTxOs not locked by another pending transaction, fresh from chain. */

@@ -120,6 +120,38 @@ describe("draft token", () => {
     });
   });
 
+  it("carries a task origin through, and reports none for a hand-composed draft", () => {
+    const origin = { kind: "tasks" as const, taskIds: ["t1", "t2"], recipientsHash: "ab".repeat(32) };
+    const withOrigin = verifyDraftToken(mint({ origin }).token, { subject: SUBJECT, clientId: CLIENT });
+    expect(withOrigin.ok && withOrigin.claims.origin).toEqual(origin);
+
+    const without = verifyDraftToken(mint().token, { subject: SUBJECT, clientId: CLIENT });
+    expect(without.ok && without.claims.origin).toBeNull();
+  });
+
+  it("rejects a malformed origin as malformed", () => {
+    // A signed token from this server always has a well-formed origin, so a
+    // bad one can only come from another signer — refuse it outright.
+    const token = jwt.sign(
+      {
+        typ: DRAFT_TOKEN_TYPE,
+        sub: SUBJECT,
+        wid: "wallet-1",
+        cid: CLIENT,
+        spec,
+        ph: "00",
+        jti: "j",
+        origin: { kind: "tasks", taskIds: [], recipientsHash: "" },
+      },
+      process.env.JWT_SECRET as string,
+      { expiresIn: 60 },
+    );
+    expect(verifyDraftToken(token, { subject: SUBJECT, clientId: CLIENT })).toEqual({
+      ok: false,
+      reason: "malformed",
+    });
+  });
+
   it("is not an OAuth access token, and an access token is not a draft", () => {
     const { token: draft } = mint();
     expect(

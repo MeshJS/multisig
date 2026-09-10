@@ -49,6 +49,10 @@ export async function cleanupFixtures(
 ): Promise<void> {
   try {
     if (ids.walletId) {
+      // Task board rows: payout links first (they point at transactions),
+      // then tasks (recipients cascade).
+      await db.taskPayout.deleteMany({ where: { walletId: ids.walletId } });
+      await db.task.deleteMany({ where: { walletId: ids.walletId } });
       await db.transaction.deleteMany({ where: { walletId: ids.walletId } });
       await db.proxy.deleteMany({ where: { walletId: ids.walletId } });
       await db.walletBotAccess.deleteMany({ where: { walletId: ids.walletId } });

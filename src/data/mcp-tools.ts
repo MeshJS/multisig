@@ -15,7 +15,8 @@ export type McpToolSummary = {
     | "governance:read"
     | "ballots:write"
     | "documents:read"
-    | "transactions:write";
+    | "transactions:write"
+    | "tasks:write";
   /** One line, phrased for someone deciding whether to connect. */
   blurb: string;
 };
@@ -120,5 +121,23 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
     scope: "wallets:read",
     blurb:
       "Render any pending transaction as a review card: recipients, amounts, fee, and who has signed.",
+  },
+  {
+    name: "task_list",
+    scope: "wallets:read",
+    blurb:
+      "The project task board: tasks by column, assignees, due dates, recipients and payout state.",
+  },
+  {
+    name: "task_upsert",
+    scope: "tasks:write",
+    blurb:
+      "Create, edit or move a task and set its payment recipients. Records a task only; drafts no transaction.",
+  },
+  {
+    name: "task_prepare_payout",
+    scope: "transactions:write",
+    blurb:
+      "Preview one payout transaction for selected tasks as a review card; confirm it with transaction_propose.",
   },
 ];

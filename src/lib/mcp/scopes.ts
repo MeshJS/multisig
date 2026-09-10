@@ -16,6 +16,7 @@ export const MCP_SCOPES = [
   "ballots:write",
   "documents:read",
   "transactions:write",
+  "tasks:write",
 ] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
@@ -40,6 +41,10 @@ export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   // ballots:write — a pinned rationale is public and permanent.
   "transactions:write":
     "Draft unsigned transactions (payments, staking certificates, DRep votes) for this wallet's signers to review and sign in the app. Cannot sign or broadcast. Vote rationales you supply are published publicly to IPFS when a draft is confirmed.",
+  // Board writes only. Reading the board rides wallets:read; turning a task
+  // into a payout draft is transactions:write, like any other draft.
+  "tasks:write":
+    "Create, edit and move project tasks on this wallet's task board, including their payment recipients. Cannot create, sign or broadcast a transaction; preparing a payout needs transactions:write.",
 };
 
 export function isMcpScope(value: string): value is McpScope {

@@ -40,6 +40,9 @@ throws on the *second* request while the first still looks healthy — which is 
 | `transaction_preview` | `transactions:write` | `src/lib/tx-review/preview.ts` (uses `freeUtxos.ts` for inputs) |
 | `transaction_propose` | `transactions:write` | `src/lib/tx-review/propose.ts` (uses `freeUtxos.ts` for inputs) |
 | `multisig_review_pending_transaction` | `wallets:read` | `pendingTransactions.ts` → `src/lib/tx-review/review.ts` |
+| `task_list` | `wallets:read` | `task` tRPC router in-process (`src/lib/task-payout/mcp.ts`) |
+| `task_upsert` | `tasks:write` | `task` tRPC router in-process (`src/lib/task-payout/mcp.ts`) |
+| `task_prepare_payout` | `transactions:write` | `src/lib/task-payout/preview.ts` → `src/lib/tx-review/preview.ts` (`runSpecPreview`) |
 
 **Nothing here can sign, spend or broadcast.** That is a deliberate boundary. Tool results
 carry user-authored strings — wallet names, transaction descriptions, ballot rationales —
@@ -107,6 +110,28 @@ Properties worth not regressing:
 
 `multisig_review_pending_transaction` renders the same card for any pending transaction,
 however it was created — the in-chat review for transactions proposed from the app.
+
+### Task payouts
+
+The project task board (`/wallets/[wallet]/tasks`) stores payment recipients per task, in
+base units. `task_prepare_payout` turns one or more tasks into a draft through the same
+pipeline: the recipient rows become a canonical spec (`src/lib/task-payout/spec.ts`,
+outputs merged per address), `runSpecPreview` builds and summarizes it, and the draft
+token is minted with an extra `origin` claim — the task ids and a sha256 over their
+`(taskId, address, unit, quantity)` rows. There is no separate confirm tool:
+`transaction_propose` accepts the token, and `withTaskPayoutHooks`
+(`src/lib/task-payout/hooks.ts`) does the task-specific work inside the database
+transaction that inserts the pending row — re-reads the tasks, refuses with a 409 if any
+row changed since the preview (`TASK_CHANGED`) or a payout appeared for one of them
+(`TASK_NOT_PAYABLE`), then writes one `TaskPayout` link per task. Row and links exist
+together or not at all. The txJson carries a top-level `tasks` namespace next to `mcp`.
+
+The web app's payout dialog is the same two calls (`task.preparePayout`,
+`task.confirmPayout` in `src/server/api/routers/tasks.ts`) with the caller derived from
+the session and `clientName: "app"`, so a token previewed in the app is not redeemable
+through an MCP connection or vice versa. Links flip to `Paid` when the transaction
+reaches state 1 and to `Cancelled` when a pending one is deleted or replaced
+(`src/lib/task-payout/sync.ts`); the board derives the badge from those rows.
 
 ### Getting the card in front of the user
 
@@ -191,7 +216,8 @@ Defined in `src/lib/mcp/scopes.ts` — the MCP spec deliberately defines no voca
 - `governance:read` — governance proposals, ballots, DRep vote history
 - `ballots:write` — ballot drafts and rationale publication to IPFS (no on-chain vote)
 - `documents:read` — sign-off documents (no approval or signature)
-- `transactions:write` — unsigned transaction drafts via preview → confirm (no signing, no broadcast)
+- `transactions:write` — unsigned transaction drafts via preview → confirm (no signing, no broadcast); includes task payout drafts
+- `tasks:write` — create, edit and move project tasks and their payment recipients (records only; reading the board is `wallets:read`)
 
 **What a client gets by default.** The `WWW-Authenticate` challenge advertises **every**
 scope. Clients request exactly the challenge's `scope` — Claude Code uses it rather than
@@ -223,7 +249,7 @@ as a third, equally non-interchangeable family.
 An unauthenticated request answers `401` with the RFC 9728 challenge:
 
 ```
-WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource/api/mcp", scope="wallets:read governance:read ballots:write documents:read transactions:write"
+WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource/api/mcp", scope="wallets:read governance:read ballots:write documents:read transactions:write tasks:write"
 ```
 
 That header is what lets an MCP client discover the authorization server and begin an
@@ -266,6 +292,10 @@ claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mc
 | `src/lib/tx-review/draft-token.ts` | The preview → confirm binding |
 | `src/lib/tx-review/preview.ts`, `propose.ts`, `review.ts` | The three tool bodies |
 | `src/lib/mcp/apps/review-card.ts` | The inline review-card view (MCP App resource + bridge) |
+| `src/lib/task-payout/spec.ts`, `load.ts` | Task rows → canonical payout spec; recipients hash |
+| `src/lib/task-payout/preview.ts`, `hooks.ts` | `task_prepare_payout` body; the task link hooks `transaction_propose` and the app share |
+| `src/lib/task-payout/mcp.ts` | `task_list` / `task_upsert` bodies (the `task` tRPC router in-process) |
+| `src/lib/task-payout/deps.ts`, `sync.ts` | Pipeline deps from a tRPC session; Paid/Cancelled link sync |
 
 Tool inputs are hand-written JSON Schema rather than generated from
 `src/utils/swagger.ts`: that file is a hand-maintained literal with `apis: []` that has

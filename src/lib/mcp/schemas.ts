@@ -39,6 +39,49 @@ export const EMPTY_INPUT: JsonSchema = {
  * a payment; the server converts using the token registry and refuses to
  * guess when a token has no registered decimals.
  */
+/** One payment recipient in display units; shared by transaction and task drafting. */
+const paymentOutputItem = {
+  type: "object",
+  properties: {
+    address: {
+      type: "string",
+      pattern: "^addr(_test)?1[0-9a-z]+$",
+      description: "Recipient payment address (bech32, addr1... or addr_test1...).",
+    },
+    ada: {
+      type: "string",
+      pattern: "^\\d+(\\.\\d{1,6})?$",
+      description: 'ADA to send, in ADA (not lovelace), e.g. "12.5".',
+    },
+    assets: {
+      type: "array",
+      maxItems: 10,
+      description: "Native assets to send with this output.",
+      items: {
+        type: "object",
+        properties: {
+          unit: {
+            type: "string",
+            pattern: "^[0-9a-fA-F]{56,120}$",
+            description:
+              "Asset unit: policy id followed by the hex-encoded asset name.",
+          },
+          quantity: {
+            type: "string",
+            pattern: "^\\d+(\\.\\d+)?$",
+            description:
+              "Quantity in the token's display units (its registered decimals). For a token with no registered decimals, a whole number of raw units.",
+          },
+        },
+        required: ["unit", "quantity"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["address"],
+  additionalProperties: false,
+} as const;
+
 export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
   type: "object",
   properties: {
@@ -48,47 +91,7 @@ export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
       maxItems: 20,
       description:
         "Recipients. Each needs an address and at least an ADA amount or one asset.",
-      items: {
-        type: "object",
-        properties: {
-          address: {
-            type: "string",
-            pattern: "^addr(_test)?1[0-9a-z]+$",
-            description: "Recipient payment address (bech32, addr1... or addr_test1...).",
-          },
-          ada: {
-            type: "string",
-            pattern: "^\\d+(\\.\\d{1,6})?$",
-            description: 'ADA to send, in ADA (not lovelace), e.g. "12.5".',
-          },
-          assets: {
-            type: "array",
-            maxItems: 10,
-            description: "Native assets to send with this output.",
-            items: {
-              type: "object",
-              properties: {
-                unit: {
-                  type: "string",
-                  pattern: "^[0-9a-fA-F]{56,120}$",
-                  description:
-                    "Asset unit: policy id followed by the hex-encoded asset name.",
-                },
-                quantity: {
-                  type: "string",
-                  pattern: "^\\d+(\\.\\d+)?$",
-                  description:
-                    "Quantity in the token's display units (its registered decimals). For a token with no registered decimals, a whole number of raw units.",
-                },
-              },
-              required: ["unit", "quantity"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["address"],
-        additionalProperties: false,
-      },
+      items: paymentOutputItem,
     },
     certificates: {
       type: "array",
@@ -435,5 +438,84 @@ export const PUBLISH_RATIONALE_INPUT: JsonSchema = {
     },
   },
   required: ["walletId", "ballotId", "proposalId"],
+  additionalProperties: false,
+};
+
+/**
+ * Project task board. Tasks live in four fixed columns; a task may carry
+ * payment recipients, and `task_prepare_payout` turns selected tasks into a
+ * transaction draft through the same preview → confirm flow as
+ * `transaction_preview`.
+ */
+const taskStatus = {
+  type: "string",
+  enum: ["Backlog", "InProgress", "InReview", "Done"],
+  description: "Board column.",
+} as const;
+
+export const TASK_LIST_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    status: { ...taskStatus, description: "Only tasks in this column." },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const TASK_UPSERT_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    taskId: {
+      type: "string",
+      minLength: 1,
+      description: "Existing task to update. Omit to create a new task (title required).",
+    },
+    title: { type: "string", minLength: 1, maxLength: 200 },
+    description: { type: ["string", "null"], maxLength: 4000 },
+    status: taskStatus,
+    priority: { type: ["string", "null"], enum: ["Low", "Medium", "High", null] },
+    assigneeAddress: {
+      type: ["string", "null"],
+      description: "Payment address of the signer responsible, or null to clear.",
+    },
+    dueDate: {
+      type: ["string", "null"],
+      format: "date-time",
+      description: "ISO 8601 date-time, or null to clear.",
+    },
+    position: {
+      type: "integer",
+      minimum: 0,
+      description: "Index within the column after the move (0 = top).",
+    },
+    recipients: {
+      type: "array",
+      maxItems: 20,
+      description:
+        "Replaces the task's payment recipients (display units, like transaction_preview outputs). An empty array clears them. Locked while a payout for the task is awaiting signatures.",
+      items: paymentOutputItem,
+    },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const TASK_PREPARE_PAYOUT_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    taskIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      uniqueItems: true,
+      items: { type: "string", minLength: 1 },
+      description:
+        "Tasks to pay in one transaction. Each must have recipients and no pending or paid payout.",
+    },
+  },
+  required: ["walletId", "taskIds"],
   additionalProperties: false,
 };

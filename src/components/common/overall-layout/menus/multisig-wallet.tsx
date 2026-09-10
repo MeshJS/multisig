@@ -1,4 +1,4 @@
-import { Banknote, FileSignature, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, Workflow } from "lucide-react";
+import { Banknote, FileSignature, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, SquareKanban, Workflow } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -88,6 +88,17 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
         >
           <FileSignature className="h-5 w-5" />
           Documents
+        </MenuLink>
+        <MenuLink
+          href={`${baseUrl}tasks`}
+          className={
+            router.pathname.startsWith("/wallets/[wallet]/tasks")
+              ? "text-white"
+              : ""
+          }
+        >
+          <SquareKanban className="h-5 w-5" />
+          Tasks
         </MenuLink>
         <MenuLink
           href={`${baseUrl}signing`}

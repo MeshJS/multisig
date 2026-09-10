@@ -33,7 +33,11 @@ export type TxReviewErrorCode =
   | "BUILD_FAILED"
   | "PIN_FAILED"
   | "TOKEN_INVALID"
-  | "TOKEN_EXPIRED";
+  | "TOKEN_EXPIRED"
+  // Task-board payouts (src/lib/task-payout).
+  | "TASK_NOT_FOUND"
+  | "TASK_NOT_PAYABLE"
+  | "TASK_CHANGED";
 
 /**
  * A failure the model can read and act on. `status` maps to the tool

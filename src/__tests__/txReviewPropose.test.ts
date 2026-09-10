@@ -498,6 +498,71 @@ describe("transaction_propose", () => {
     );
   });
 
+  it("stamps extra txJson namespaces, forwards the after-create hook with the claims, and labels the surface", async () => {
+    // The web app's task payout runs this same function: it adds a `tasks`
+    // namespace, links tasks inside the insert transaction, and audits as
+    // "app". None of that changes what the token binds.
+    const afterCreate = jest.fn<(...args: any[]) => Promise<void>>().mockResolvedValue(undefined);
+    const d = deps({
+      via: "app",
+      omitCard: true,
+      txJsonExtras: (claims: { jti: string }) => ({ tasks: { taskIds: ["t1"], draft: claims.jti } }),
+      afterCreate,
+    });
+    const result = await runTransactionPropose({ draftToken: token() }, ctx, d);
+
+    expect(result.status).toBe(201);
+    const args = d.createPending.mock.calls[0]![1];
+    expect(args.txJson.tasks).toEqual({ taskIds: ["t1"], draft: args.txJson.mcp.draftId });
+    expect(args.txJson.multisig).toBeUndefined();
+    // The persistence helper receives a hook bound to this token's claims.
+    expect(typeof args.afterCreate).toBe("function");
+    await args.afterCreate({ tx: true }, { id: "tx-new", walletId: "wallet-1" });
+    expect(afterCreate).toHaveBeenCalledWith(
+      { tx: true },
+      { id: "tx-new" },
+      expect.objectContaining({ jti: args.txJson.mcp.draftId, walletId: "wallet-1" }),
+    );
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ metadata: expect.objectContaining({ via: "app" }) }),
+    );
+    // omitCard: no PNG rendered, no image block, no card hint.
+    expect(renderCardMock).not.toHaveBeenCalled();
+    expect(result.images).toBeUndefined();
+    expect((result.body as Record<string, unknown>).reviewCard).toBeUndefined();
+    expect((result.body as Record<string, unknown>).summary).toBeDefined();
+  });
+
+  it("passes no hook through and audits as mcp by default", async () => {
+    const d = deps();
+    await runTransactionPropose({ draftToken: token() }, ctx, d);
+    expect(d.createPending.mock.calls[0]![1].afterCreate).toBeUndefined();
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ metadata: expect.objectContaining({ via: "mcp" }) }),
+    );
+  });
+
+  it("turns a review error thrown by the persistence step into a readable result", async () => {
+    // The task hooks throw TxReviewError from inside the insert transaction
+    // (tasks changed since the preview); the row is rolled back by the
+    // helper, and here the error must become a 409 result, not a crash.
+    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    const d = deps({
+      createPending: jest.fn<() => Promise<never>>().mockRejectedValue(
+        new TxReviewError(409, "TASK_CHANGED", "A task changed. Preview again."),
+      ),
+    });
+    const result = await runTransactionPropose({ draftToken: token() }, ctx, d);
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({ code: "TASK_CHANGED" });
+    expect(auditMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "transaction.create" }),
+    );
+  });
+
   it("refuses a broadcast result from the persistence helper", async () => {
     // Cannot happen with an empty signer set, but the guard must hold.
     const d = deps({ createPending: jest.fn<() => Promise<string>>().mockResolvedValue("submitted-hash") });

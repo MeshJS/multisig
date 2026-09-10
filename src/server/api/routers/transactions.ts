@@ -14,6 +14,7 @@ import {
   enqueueSignatureRequiredNotifications,
   enqueueThresholdReachedNotifications,
 } from "@/lib/notifications/center";
+import { cancelPayoutsForTransaction, markPayoutsPaid } from "@/lib/task-payout/sync";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -90,6 +91,8 @@ export const transactionRouter = createTRPCRouter({
                   "New signatures were collected while you were editing",
               });
             }
+            // The replacement carries no task link; the tasks become payable again.
+            await cancelPayoutsForTransaction(db, old.id);
             await db.transaction.delete({ where: { id: old.id } });
             return db.transaction.create({ data });
           })
@@ -171,6 +174,13 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      if (input.state === 1 && tx.state !== 1) {
+        try {
+          await markPayoutsPaid(ctx.db, { transactionId: tx.id, txHash: updated.txHash });
+        } catch (error) {
+          console.error("Failed to mark task payouts paid", error);
+        }
+      }
       try {
         await enqueueThresholdReachedNotifications(ctx.db, {
           wallet,
@@ -229,10 +239,15 @@ export const transactionRouter = createTRPCRouter({
       }
       await assertWalletAccess(ctx, tx.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
-      const deleted = await ctx.db.transaction.delete({
-        where: {
-          id: input.transactionId,
-        },
+      const deleted = await ctx.db.$transaction(async (db) => {
+        // Task payouts pointing at this transaction are cancelled with it, so
+        // the tasks become payable again.
+        await cancelPayoutsForTransaction(db, input.transactionId);
+        return db.transaction.delete({
+          where: {
+            id: input.transactionId,
+          },
+        });
       });
       void audit(ctx.db, {
         actorAddress: sessionAddress,

@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import type { McpToolResult, ToolContext } from "@/lib/mcp/tools";
 import { audit } from "@/lib/observability/audit";
 import { issuerOrigin } from "@/lib/oauth/config";
@@ -8,7 +10,7 @@ import { withVoteAnchor } from "@/lib/tx-draft/mutations";
 import type { TxDraft } from "@/types/tx-draft";
 
 import { loadReviewWalletContext, TxReviewError } from "./context";
-import { describeDraftTokenFailure, verifyDraftToken } from "./draft-token";
+import { describeDraftTokenFailure, verifyDraftToken, type VerifiedDraftToken } from "./draft-token";
 import {
   buildUnsigned,
   ensureStakeRegistration,
@@ -49,6 +51,25 @@ export type ProposeDeps = ReviewDeps & {
   hashAnchor?: (doc: Record<string, unknown>) => string;
   createPending?: typeof createPendingMultisigTransaction;
   clientIp?: string;
+  /**
+   * Which surface confirmed the draft, for the audit row. The web app's
+   * task-payout dialog runs this same function and passes "app".
+   */
+  via?: "mcp" | "app";
+  /**
+   * Extra top-level txJson namespaces, stamped next to `mcp`. Never under
+   * `multisig` (rewritten on every signature). Task payouts add `tasks`.
+   */
+  txJsonExtras?: (claims: VerifiedDraftToken) => Record<string, unknown>;
+  /**
+   * Runs inside the database transaction that inserts the pending row; a
+   * throw aborts the insert. A thrown `TxReviewError` becomes the tool result.
+   */
+  afterCreate?: (
+    tx: Prisma.TransactionClient,
+    created: { id: string },
+    claims: VerifiedDraftToken,
+  ) => Promise<void>;
 };
 
 /** Top-level txJson namespace for MCP provenance. Never under `multisig`, which signTransaction.ts rewrites. */
@@ -99,7 +120,7 @@ export async function runTransactionPropose(
         transactionId: existing.id,
         warnings: [],
       });
-      const image = await renderCard(deps, summary);
+      const image = deps.omitCard ? undefined : await renderCard(deps, summary);
       return {
         status: 200,
         body: {
@@ -110,13 +131,13 @@ export async function runTransactionPropose(
           signaturesRequired: wallet.threshold.required,
           link,
           summary,
-          reviewCard: REVIEW_CARD_HINT,
+          ...(image ? { reviewCard: REVIEW_CARD_HINT } : {}),
           persisted: true,
           signed: false,
           broadcast: false,
         },
         text: `This draft was already proposed as transaction ${existing.id}; nothing new was created.\n${summaryToText(summary)}\nSign it at ${link}`,
-        images: [image],
+        ...(image ? { images: [image] } : {}),
         audit: { walletId: wallet.walletRow.id, transactionId: existing.id, draftId: claims.jti, replay: true },
       };
     }
@@ -157,9 +178,14 @@ export async function runTransactionPropose(
       previewTxHash: claims.previewTxHash,
       proposedAt: new Date().toISOString(),
     };
-    const txJson = { ...(built.body as object), [MCP_TXJSON_KEY]: provenance };
+    const txJson = {
+      ...(built.body as object),
+      [MCP_TXJSON_KEY]: provenance,
+      ...(deps.txJsonExtras?.(claims) ?? {}),
+    };
 
     const createPending = deps.createPending ?? createPendingMultisigTransaction;
+    const afterCreate = deps.afterCreate;
     const created = await createPending(deps.db, {
       walletId: wallet.walletRow.id,
       wallet: {
@@ -173,6 +199,9 @@ export async function runTransactionPropose(
       network: wallet.network,
       initialSignedAddresses: [],
       notificationCreatorAddress: null,
+      ...(afterCreate
+        ? { afterCreate: (tx, row) => afterCreate(tx, { id: row.id }, claims) }
+        : {}),
     });
     if (typeof created === "string" || !created || typeof created !== "object" || !("id" in created)) {
       // A string would be a submitted tx hash — a broadcast. It cannot
@@ -190,7 +219,7 @@ export async function runTransactionPropose(
       outcome: "success",
       metadata: {
         walletId: wallet.walletRow.id,
-        via: "mcp",
+        via: deps.via ?? "mcp",
         client: ctx.caller.clientName,
         txHash: built.txHash,
         mcpDraftId: claims.jti,
@@ -229,7 +258,7 @@ export async function runTransactionPropose(
       sizeBytes: built.sizeBytes,
       warnings,
     });
-    const image = await renderCard(deps, summary);
+    const image = deps.omitCard ? undefined : await renderCard(deps, summary);
 
     return {
       status: 201,
@@ -245,13 +274,13 @@ export async function runTransactionPropose(
         rationalesPublished: anchored.pinned,
         link,
         summary,
-        reviewCard: REVIEW_CARD_HINT,
+        ...(image ? { reviewCard: REVIEW_CARD_HINT } : {}),
         persisted: true,
         signed: false,
         broadcast: false,
       },
       text: `Created pending transaction ${created.id}. It has no signatures yet; the wallet's signers have been notified and can sign it at ${link}\n${summaryToText(summary)}`,
-      images: [image],
+      ...(image ? { images: [image] } : {}),
       audit: {
         walletId: wallet.walletRow.id,
         transactionId: created.id,
