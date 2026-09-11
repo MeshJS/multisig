@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
 import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { useGraphicsTier } from "@/hooks/useGraphicsTier";
 import { MarbleField } from "@/components/ui/marble-field";
 import { FeatureIcon } from "@/components/pages/homepage/feature-icons";
 import { MultisigSigningExplainer } from "@/components/pages/homepage/multisig-explainer";
@@ -169,15 +170,15 @@ export function PageHomepage() {
   const auroraRef = useRef<HTMLDivElement>(null);
   const meshRef = useRef<HTMLDivElement>(null);
 
-  // The homepage hero background follows the same appearance setting as the rest
-  // of the app. Default-show until mounted so the SSR markup and first client
-  // paint agree (avoids a hydration mismatch on the persisted preference).
-  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  // The homepage hero background follows the same capability tier as the rest of
+  // the app: the aurora degrades to a static gradient on weak hardware, and the
+  // WebGL marble field only mounts where a real GPU was detected and the device
+  // is holding frame budget. Gated on `resolved` so the SSR markup and the first
+  // client paint agree (no hydration mismatch, no canvas mounted then dropped).
   const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
-  const [appearanceMounted, setAppearanceMounted] = useState(false);
-  useEffect(() => setAppearanceMounted(true), []);
-  const heroBackgroundOn = !appearanceMounted || backgroundEnabled;
-  const heroPreset = appearanceMounted ? backgroundPreset : "aurora";
+  const { features: gfx, resolved: gfxResolved } = useGraphicsTier();
+  const heroBackgroundOn = gfxResolved && gfx.background;
+  const heroPreset = backgroundPreset;
 
   useEffect(() => {
     if (!heroBackgroundOn) return;
@@ -243,17 +244,25 @@ export function PageHomepage() {
           {/* Aurora Background — opacity is driven per-frame via the rAF scroll
               effect above (ref), not React state, so scrolling stays smooth. */}
           <div ref={auroraRef} className="fixed inset-0 -z-10" style={{ opacity: 0.35 }}>
-            <Background variant="aurora" preset={heroPreset} />
+            <Background
+              variant="aurora"
+              preset={heroPreset}
+              animated={gfx.auroraAnimated}
+              parallax={gfx.auroraParallax}
+            />
           </div>
 
           {/* Marble swirls under a soft wash, above the aurora. The wash is a
               plain translucent fill (no backdrop-filter): blurring the live
               canvas every frame was a major scroll cost, and the marble is now
-              rendered low-res, so it already reads soft. */}
-          <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
-            <MarbleField />
-            <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
-          </div>
+              rendered low-res, so it already reads soft. Full-viewport fragment
+              shader — high tier only. */}
+          {gfx.webglBackdrop && (
+            <div ref={meshRef} className="fixed inset-0 -z-10" style={{ opacity: 0.9 }}>
+              <MarbleField />
+              <div className="absolute inset-0 bg-white/30 dark:bg-zinc-900/30" />
+            </div>
+          )}
         </>
       )}
 
