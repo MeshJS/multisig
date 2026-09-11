@@ -1,17 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   closestCorners,
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   TouchSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+
+/**
+ * The column under the pointer wins. Corner distance alone misfires on a
+ * board: a card is nearly as wide as its column, so its corners can sit
+ * closer to the neighbouring column's corners than to the one the pointer
+ * is in. Corner distance is only the fallback (keyboard drags have no
+ * pointer).
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  return within.length > 0 ? within : closestCorners(args);
+};
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { groupByColumn, type ColumnOrder } from "./board-model";
@@ -24,6 +39,9 @@ import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
  * column order lives in local state while a drag is in progress (so cards
  * follow the pointer across containers); on drop, the parent gets one
  * `onMove(id, status, position)` and the local order re-syncs from props.
+ *
+ * Below `md` the columns stack into one — the same one-column collapse
+ * every other wallet page makes.
  */
 export default function TaskBoard({
   tasks,
@@ -107,7 +125,7 @@ export default function TaskBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -117,7 +135,9 @@ export default function TaskBoard({
       }}
     >
       <div
-        className="-mx-3 flex snap-x gap-3 overflow-x-auto px-3 pb-2 sm:-mx-4 sm:px-4 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0"
+        role="region"
+        aria-label="Task board"
+        className="grid gap-3 md:grid-cols-4 md:gap-4"
         data-testid="task-board"
       >
         {COLUMNS.map((column) => (
@@ -131,16 +151,27 @@ export default function TaskBoard({
           />
         ))}
       </div>
-      <DragOverlay>
-        {activeTask ? (
-          <TaskCardBody
-            {...cardProps}
-            task={activeTask}
-            selected={selectedIds.has(activeTask.id)}
-            overlay
-          />
-        ) : null}
-      </DragOverlay>
+      {/*
+        Portalled to <body> on purpose. The overlay is position: fixed, and the
+        board lives inside a Card whose backdrop-blur makes that card the
+        containing block for fixed descendants (and whose overflow-hidden
+        clips them) — without the portal the overlay is pinned to the card's
+        corner instead of following the pointer.
+      */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <DragOverlay>
+            {activeTask ? (
+              <TaskCardBody
+                {...cardProps}
+                task={activeTask}
+                selected={selectedIds.has(activeTask.id)}
+                overlay
+              />
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
     </DndContext>
   );
 }

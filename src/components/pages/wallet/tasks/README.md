@@ -36,16 +36,27 @@ recipients and be paid, several at a time, through one multisig transaction.
   cannot be deleted; delete the pending transaction first (the link is cancelled and the
   task becomes payable again). Once the transaction is submitted the link is `Paid`.
 - The card menu's "Move to…" is the keyboard/touch fallback for drag-and-drop; both call
-  `task.move`, which renumbers the affected columns densely.
-- `PageHeader` hides its children below `md`, so the page repeats the action buttons in a
-  row for phones. On phones the columns scroll horizontally with snap points.
+  `task.move`, which renumbers the affected columns densely. The card title is a button, so
+  a task can be opened from the keyboard; Space/Enter on the card wrapper starts a drag.
+- The page uses `common/page-header` (actions wrap under the title on phones), the board
+  sits in a `CardUI`, and below `md` the four columns stack into one — the same
+  one-column collapse as every other wallet page.
+- Deleting a task opens a confirm dialog (the contacts pattern); it is disabled while a
+  payout is awaiting signatures.
+- Styling follows the wallet section: inner surfaces `rounded-lg border border-border/50
+  bg-muted/30`, sub-labels `text-xs font-semibold uppercase tracking-wide
+  text-muted-foreground`, the `warning` token for caution boxes, the destructive box
+  pattern for validation, `RowLabelInfo` for label/value rows, and the document status
+  badge palette for payout chips.
 
 ## Test ids
 
 `new-task-button`, `prepare-payout-button`, `task-board`, `task-column-<Status>`,
-`task-column-count-<Status>`, `task-card-<id>`, `task-select-<id>`, `task-menu-<id>`,
+`task-column-count-<Status>`, `task-card-<id>` (the drag overlay clone is
+`task-drag-overlay`), `task-select-<id>`, `task-menu-<id>`,
 `task-move-<id>-<Status>`, `task-totals-<id>`, `task-tx-link-<id>`, `payout-badge-<state>`,
-`task-dialog`, `task-title-input`, `task-add-recipient`, `recipient-address-input-<i>`,
+`task-dialog`, `task-title-input`, `task-add-recipient` (desktop table) /
+`task-add-recipient-mobile`, `recipient-address-input-<i>`,
 `amount-input-<i>`, `task-save`, `task-delete`, `task-delete-confirm`, `payout-dialog`,
 `payout-task-list`, `payout-preview-button`, `payout-summary`, `payout-fee`,
 `payout-confirm-button`, `payout-created`, `payout-error`, `payout-tasks-badge`.

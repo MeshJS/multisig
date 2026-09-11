@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, X } from "lucide-react";
 
 import RecipientRow from "@/components/pages/wallet/new-transaction/RecipientRow";
 import RecipientRowMobile from "@/components/pages/wallet/new-transaction/RecipientRowMobile";
@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { baseToDisplay, displayToBase } from "@/lib/tx-draft/decimal";
@@ -23,6 +23,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { AddressLabeler } from "@/types/token-flow";
 import type { Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
+import { toastError } from "@/utils/toast-error";
 
 import { unitDecimals } from "./board-model";
 import { COLUMNS, PRIORITIES, type BoardTask, type TaskPriority, type TaskStatus } from "./types";
@@ -66,7 +67,7 @@ export default function TaskDialog({
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([]);
   const [amounts, setAmounts] = useState<string[]>([]);
   const [assets, setAssets] = useState<string[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const recipientsLocked = task?.payout.state === "pending";
 
@@ -85,7 +86,7 @@ export default function TaskDialog({
 
   useEffect(() => {
     if (!open) return;
-    setConfirmDelete(false);
+    setDeleteDialogOpen(false);
     if (task) {
       setTitle(task.title);
       setDescription(task.description ?? "");
@@ -119,7 +120,7 @@ export default function TaskDialog({
       toast({ title: "Task created" });
       onOpenChange(false);
     },
-    onError: (error) => toast({ title: "Could not create task", description: error.message, variant: "destructive" }),
+    onError: (error) => toastError(error, "Could not create the task"),
   });
   const update = api.task.update.useMutation({
     onSuccess: () => {
@@ -127,15 +128,16 @@ export default function TaskDialog({
       toast({ title: "Task updated" });
       onOpenChange(false);
     },
-    onError: (error) => toast({ title: "Could not update task", description: error.message, variant: "destructive" }),
+    onError: (error) => toastError(error, "Could not update the task"),
   });
   const remove = api.task.delete.useMutation({
     onSuccess: () => {
       void invalidate();
       toast({ title: "Task deleted" });
+      setDeleteDialogOpen(false);
       onOpenChange(false);
     },
-    onError: (error) => toast({ title: "Could not delete task", description: error.message, variant: "destructive" }),
+    onError: (error) => toastError(error, "Could not delete the task"),
   });
 
   const validation = useMemo(() => {
@@ -166,8 +168,8 @@ export default function TaskDialog({
       }));
   }
 
-  function addRecipient(address = "") {
-    setRecipientAddresses([...recipientAddresses, address]);
+  function addRecipient() {
+    setRecipientAddresses([...recipientAddresses, ""]);
     setAmounts([...amounts, ""]);
     setAssets([...assets, "lovelace"]);
   }
@@ -192,259 +194,279 @@ export default function TaskDialog({
     }
   }
 
-  const busy = create.isPending || update.isPending || remove.isPending;
+  const saving = create.isPending || update.isPending;
+  const busy = saving || remove.isPending;
+
+  const rowProps = {
+    recipientAddresses,
+    setRecipientAddresses,
+    amounts,
+    setAmounts,
+    assets,
+    setAssets,
+    disableAdaAmountInput: false,
+    getAddressLabel: rowLabel,
+  };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl" data-testid="task-dialog">
-        <DialogHeader>
-          <DialogTitle>{task ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription>
-            {task
-              ? "Change the task or its payment recipients."
-              : "A task on the board, optionally with the people it pays."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+        <DialogContent className="sm:max-w-[640px]" data-testid="task-dialog">
+          <DialogHeader>
+            <DialogTitle>{task ? "Edit task" : "New task"}</DialogTitle>
+            <DialogDescription>
+              {task
+                ? "Change the task or its payment recipients."
+                : "A task on the board, optionally with the people it pays."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              data-testid="task-title-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="What needs doing?"
-              maxLength={200}
-              autoFocus
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="task-description">Description</Label>
-            <Textarea
-              id="task-description"
-              data-testid="task-description-input"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              maxLength={4000}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {!task && (
-              <div className="grid gap-1.5">
-                <Label>Column</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
-                  <SelectTrigger data-testid="task-status-select">
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="task-title">Title</Label>
+              <Input
+                id="task-title"
+                data-testid="task-title-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What needs doing?"
+                maxLength={200}
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="task-description">Description</Label>
+              <Textarea
+                id="task-description"
+                data-testid="task-description-input"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                maxLength={4000}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {!task && (
+                <div className="grid gap-2">
+                  <Label htmlFor="task-status">Column</Label>
+                  <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
+                    <SelectTrigger id="task-status" data-testid="task-status-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COLUMNS.map((c) => (
+                        <SelectItem key={c.status} value={c.status}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="grid gap-2">
+                <Label htmlFor="task-priority">Priority</Label>
+                <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority | typeof NONE)}>
+                  <SelectTrigger id="task-priority" data-testid="task-priority-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {COLUMNS.map((c) => (
-                      <SelectItem key={c.status} value={c.status}>
-                        {c.label}
+                    <SelectItem value={NONE}>None</SelectItem>
+                    {PRIORITIES.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <div className="grid gap-1.5">
-              <Label>Priority</Label>
-              <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority | typeof NONE)}>
-                <SelectTrigger data-testid="task-priority-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>None</SelectItem>
-                  {PRIORITIES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid gap-2">
+                <Label htmlFor="task-due">Due date</Label>
+                <Input
+                  id="task-due"
+                  data-testid="task-due-input"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="task-due">Due date</Label>
-              <Input
-                id="task-due"
-                data-testid="task-due-input"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
+            <div className="grid gap-2">
+              <Label htmlFor="task-assignee">Assignee</Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="task-assignee"
+                  data-testid="task-assignee-input"
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  placeholder="addr1… (optional)"
+                  className="flex-1"
+                />
+                <Select
+                  value={assignee && appWallet.signersAddresses.includes(assignee) ? assignee : ""}
+                  onValueChange={setAssignee}
+                >
+                  <SelectTrigger className="sm:w-48" aria-label="Pick a signer" data-testid="task-assignee-signer-select">
+                    <SelectValue placeholder="Pick a signer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appWallet.signersAddresses.map((address, i) => (
+                      <SelectItem key={address} value={address}>
+                        {appWallet.signersDescriptions?.[i] || `Signer ${i + 1}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="task-assignee">Assignee</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="task-assignee"
-                data-testid="task-assignee-input"
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                placeholder="addr1… (optional)"
-                className="flex-1"
-              />
-              <Select value={assignee && appWallet.signersAddresses.includes(assignee) ? assignee : ""} onValueChange={setAssignee}>
-                <SelectTrigger className="sm:w-48" data-testid="task-assignee-signer-select">
-                  <SelectValue placeholder="Pick a signer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {appWallet.signersAddresses.map((address, i) => (
-                    <SelectItem key={address} value={address}>
-                      {appWallet.signersDescriptions?.[i] || `Signer ${i + 1}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Payment recipients</Label>
-              {!recipientsLocked && (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => addRecipient()}
-                    data-testid="task-add-recipient"
-                  >
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    Add recipient
-                  </Button>
-                </div>
-              )}
-            </div>
-            {recipientsLocked && (
+            <div className="grid gap-2" id="task-recipients">
+              <Label htmlFor="task-recipients">Payment recipients</Label>
               <p className="text-xs text-muted-foreground">
-                Locked while the payout is awaiting signatures. Delete the pending transaction to change them.
+                Optional. Who gets paid when this task is done; several tasks can be paid in one transaction.
               </p>
-            )}
-            {recipientAddresses.length === 0 && !recipientsLocked && (
-              <p className="text-xs text-muted-foreground">
-                Optional. Add who gets paid when this task is done; several tasks can be paid in one transaction.
-              </p>
-            )}
-            {recipientAddresses.length > 0 &&
-              (recipientsLocked ? (
-                <ul className="divide-y rounded-md border text-sm">
-                  {task?.recipients.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                      <span className="truncate font-mono text-xs">{labelAddress(r.address).label || r.address}</span>
-                      <span className="shrink-0">
-                        {baseToDisplay(r.quantity, unitDecimals(r.unit, walletAssetMetadata))}{" "}
-                        {r.unit === "lovelace" ? "ADA" : walletAssetMetadata[r.unit]?.assetName || r.unit.slice(0, 8)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
+
+              {recipientsLocked ? (
                 <>
-                  <Table className="hidden sm:table">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Address</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Asset</TableHead>
-                        <TableHead />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recipientAddresses.map((_, index) => (
-                        <RecipientRow
-                          key={index}
-                          index={index}
-                          recipientAddresses={recipientAddresses}
-                          setRecipientAddresses={setRecipientAddresses}
-                          amounts={amounts}
-                          setAmounts={setAmounts}
-                          assets={assets}
-                          setAssets={setAssets}
-                          disableAdaAmountInput={false}
-                          getAddressLabel={rowLabel}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <div className="sm:hidden">
-                    {recipientAddresses.map((_, index) => (
-                      <RecipientRowMobile
-                        key={index}
-                        index={index}
-                        recipientAddresses={recipientAddresses}
-                        setRecipientAddresses={setRecipientAddresses}
-                        amounts={amounts}
-                        setAmounts={setAmounts}
-                        assets={assets}
-                        setAssets={setAssets}
-                        disableAdaAmountInput={false}
-                        getAddressLabel={rowLabel}
-                      />
+                  <p className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
+                    Locked while the payout is awaiting signatures. Delete the pending transaction to change them.
+                  </p>
+                  <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
+                    {task?.recipients.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate font-mono text-xs">{labelAddress(r.address).label || r.address}</span>
+                        <span className="shrink-0 font-medium">
+                          {baseToDisplay(r.quantity, unitDecimals(r.unit, walletAssetMetadata))}{" "}
+                          {r.unit === "lovelace" ? "ADA" : walletAssetMetadata[r.unit]?.assetName || r.unit.slice(0, 8)}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </>
-              ))}
+              ) : (
+                <>
+                  <div className="hidden overflow-hidden rounded-lg border sm:block">
+                    <div className="overflow-x-auto">
+                      <Table className="min-w-[560px]">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="min-w-[200px] font-semibold">Address</TableHead>
+                            <TableHead className="w-[120px] font-semibold sm:w-[140px]">Amount</TableHead>
+                            <TableHead className="w-[140px] font-semibold sm:w-[180px]">Asset</TableHead>
+                            <TableHead className="w-[60px] sm:w-[80px]"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {recipientAddresses.map((_, index) => (
+                            <RecipientRow key={index} index={index} {...rowProps} />
+                          ))}
+                          <TableRow className="border-t-2">
+                            <TableCell colSpan={4} className="py-3 sm:py-4">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 gap-2 sm:h-9"
+                                onClick={addRecipient}
+                                data-testid="task-add-recipient"
+                              >
+                                <PlusCircle className="h-4 w-4" />
+                                Add Recipient
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                  <div className="block sm:hidden">
+                    {recipientAddresses.map((_, index) => (
+                      <RecipientRowMobile key={index} index={index} {...rowProps} />
+                    ))}
+                    <div className="mt-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 w-full gap-2"
+                        onClick={addRecipient}
+                        data-testid="task-add-recipient-mobile"
+                      >
+                        <PlusCircle className="h-4 w-4" />
+                        Add Recipient
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {validation.length > 0 && (
+              <div
+                className="w-full rounded-lg border border-destructive/20 bg-destructive/5 p-3 sm:p-4"
+                data-testid="task-validation"
+              >
+                <div className="flex items-center gap-2 text-destructive">
+                  <X className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm font-medium">Task needs attention</span>
+                </div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive/80">
+                  {validation.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {validation.length > 0 && (
-            <ul className="list-disc pl-5 text-xs text-destructive" data-testid="task-validation">
-              {validation.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          {task ? (
-            confirmDelete ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Delete this task?</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => remove.mutate({ id: task.id })}
-                  data-testid="task-delete-confirm"
-                >
-                  Delete
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                  Keep
-                </Button>
-              </div>
-            ) : (
+          <DialogFooter>
+            {task && (
               <Button
                 type="button"
-                size="sm"
                 variant="ghost"
-                className="text-destructive"
+                className="text-red-500 hover:text-red-500 sm:mr-auto"
                 disabled={busy || recipientsLocked}
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => setDeleteDialogOpen(true)}
                 data-testid="task-delete"
               >
-                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                <Trash2 className="mr-2 h-4 w-4" />
                 Delete
               </Button>
-            )
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
+            )}
             <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="button" disabled={busy || validation.length > 0} onClick={save} data-testid="task-save">
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {task ? "Save" : "Create task"}
             </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {task && (
+        <Dialog open={deleteDialogOpen} onOpenChange={(next) => !remove.isPending && setDeleteDialogOpen(next)}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Delete task</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete &quot;{task.title}&quot;? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={remove.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => remove.mutate({ id: task.id })}
+                disabled={remove.isPending}
+                data-testid="task-delete-confirm"
+              >
+                {remove.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

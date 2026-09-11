@@ -3,9 +3,11 @@ import { useRouter } from "next/router";
 import { Banknote, Plus, SquareKanban } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
+import PageHeader from "@/components/common/page-header";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import PageHeader from "@/components/ui/page-header";
+import CardUI from "@/components/ui/card-content";
 import { useToast } from "@/hooks/use-toast";
 import useAddressLabels from "@/hooks/useAddressLabels";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -60,7 +62,6 @@ export default function PageTasks() {
     () => (tasks ?? []).filter((t) => selectedIds.has(t.id) && isPayoutReady(t)),
     [tasks, selectedIds],
   );
-  const readyCount = useMemo(() => (tasks ?? []).filter(isPayoutReady).length, [tasks]);
 
   if (appWallet === undefined) return <WalletDetailSkeleton />;
 
@@ -82,45 +83,34 @@ export default function PageTasks() {
     onMove: (id: string, status: TaskStatus, position: number) => move.mutate({ id, status, position }),
   };
 
-  const actions = (
-    <>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={selectedTasks.length === 0}
-        onClick={() => setPayoutOpen(true)}
-        data-testid="prepare-payout-button"
-      >
-        <Banknote className="mr-2 h-4 w-4" />
-        Prepare payout{selectedTasks.length > 0 ? ` (${selectedTasks.length})` : ""}
-      </Button>
-      <Button
-        size="sm"
-        onClick={() => {
-          setEditing(undefined);
-          setTaskDialogOpen(true);
-        }}
-        data-testid="new-task-button"
-      >
-        <Plus className="mr-2 h-4 w-4" />
-        New task
-      </Button>
-    </>
-  );
+  const openNewTask = () => {
+    setEditing(undefined);
+    setTaskDialogOpen(true);
+  };
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:p-8">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader pageTitle="Tasks" backUrl={`/wallets/${walletId}`}>
-        {actions}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={selectedTasks.length === 0}
+          onClick={() => setPayoutOpen(true)}
+          data-testid="prepare-payout-button"
+        >
+          <Banknote className="mr-2 h-4 w-4" />
+          Prepare payout{selectedTasks.length > 0 ? ` (${selectedTasks.length})` : ""}
+        </Button>
+        <Button size="sm" onClick={openNewTask} data-testid="new-task-button">
+          <Plus className="mr-2 h-4 w-4" />
+          New task
+        </Button>
       </PageHeader>
-      {/* PageHeader hides its children below md; repeat them for phones. */}
-      <div className="flex items-center gap-2 md:hidden">{actions}</div>
 
       <p className="max-w-3xl text-sm text-muted-foreground">
         Drag tasks between columns. A task with payment recipients is marked{" "}
-        <span className="font-medium text-foreground">Payout ready</span>; select one or more and prepare a
+        <span className="font-medium text-foreground">Payout ready</span>; tick one or more and prepare a
         payout to create a transaction for this wallet&apos;s signers.
-        {readyCount > 0 && selectedTasks.length === 0 && " Tick the box on a ready task to select it."}
       </p>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -131,13 +121,8 @@ export default function PageTasks() {
           title="No tasks yet"
           description="Create a task, add the people it pays, and prepare a payout when it is done."
           action={
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditing(undefined);
-                setTaskDialogOpen(true);
-              }}
-            >
+            <Button size="sm" onClick={openNewTask}>
+              <Plus className="mr-2 h-4 w-4" />
               New task
             </Button>
           }
@@ -145,7 +130,17 @@ export default function PageTasks() {
       )}
 
       {tasks && tasks.length > 0 && (
-        <TaskBoard tasks={tasks} selectedIds={selectedIds} cardProps={cardProps} onMove={cardProps.onMove} />
+        <CardUI
+          title="Board"
+          description="Drag a card to move it, or use its menu."
+          headerDom={
+            <Badge variant="secondary">
+              {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+            </Badge>
+          }
+        >
+          <TaskBoard tasks={tasks} selectedIds={selectedIds} cardProps={cardProps} onMove={cardProps.onMove} />
+        </CardUI>
       )}
 
       <TaskDialog

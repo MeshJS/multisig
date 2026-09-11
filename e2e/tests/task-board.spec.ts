@@ -129,12 +129,12 @@ test.describe("task board", () => {
     await page.keyboard.press("Escape");
     await expect(payoutDialog).toBeHidden();
 
-    // Delete through the dialog's two-step control.
+    // Delete through the confirm dialog (it portals outside the task dialog).
     await renamedCard.click();
     await expect(dialog).toBeVisible();
     await dialog.getByTestId("task-delete").click();
     const deletePromise = waitForTrpc(page, "task.delete");
-    await dialog.getByTestId("task-delete-confirm").click();
+    await page.getByTestId("task-delete-confirm").click();
     expect((await deletePromise).ok()).toBe(true);
     await expect(page.getByText("No tasks yet")).toBeVisible({ timeout: 30_000 });
 
