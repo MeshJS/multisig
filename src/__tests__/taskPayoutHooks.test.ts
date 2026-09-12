@@ -41,6 +41,7 @@ function claims(overrides: Partial<VerifiedDraftToken> = {}): VerifiedDraftToken
     clientId: "app",
     spec: { v: 1, walletId: "wallet-1", outputs: [], certificates: [], votes: [], description: "", metadataMessage: "" },
     previewTxHash: "beef",
+    card: "html",
     origin: { kind: "tasks", taskIds: ["t1", "t2"], recipientsHash: hash },
     expiresAt: 0,
     ...overrides,

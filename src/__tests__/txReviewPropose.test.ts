@@ -160,13 +160,16 @@ function deps(extra: Record<string, unknown> = {}) {
   };
 }
 
-function token(overrides: Partial<TxSpec> = {}, previewTxHash = "beef") {
+// Minted as an image-mode preview unless told otherwise: propose follows the
+// mode recorded in the token, and most of these tests look at the PNG path.
+function token(overrides: Partial<TxSpec> = {}, previewTxHash = "beef", card: "html" | "image" = "image") {
   return mintDraftToken({
     subject: SUBJECT,
     walletId: "wallet-1",
     clientId: CLIENT,
     spec: spec(overrides),
     previewTxHash,
+    card,
   }).token;
 }
 
@@ -527,11 +530,37 @@ describe("transaction_propose", () => {
       expect.anything(),
       expect.objectContaining({ metadata: expect.objectContaining({ via: "app" }) }),
     );
-    // omitCard: no PNG rendered, no image block, no card hint.
+    // omitCard: no PNG rendered, no image block, the hint says so.
     expect(renderCardMock).not.toHaveBeenCalled();
     expect(result.images).toBeUndefined();
-    expect((result.body as Record<string, unknown>).reviewCard).toBeUndefined();
+    expect((result.body as Record<string, unknown>).reviewCard).toEqual({ attached: false, inline: true });
     expect((result.body as Record<string, unknown>).summary).toBeDefined();
+  });
+
+  it("follows the card mode the preview was delivered in", async () => {
+    // The human confirmed an html-mode card (drawn by the inline view), so
+    // the propose result stays html: no PNG, inline hint, inline text opener.
+    // Propose takes nothing but the token, so the mode must ride inside it.
+    const d = deps();
+    const t = token({}, "beef", "html");
+    const result = await runTransactionPropose({ draftToken: t }, ctx, d);
+
+    expect(result.status).toBe(201);
+    expect(renderCardMock).not.toHaveBeenCalled();
+    expect(result.images).toBeUndefined();
+    expect((result.body as Record<string, unknown>).reviewCard).toEqual({ attached: false, inline: true });
+    expect(result.text).toContain('call the tool again with card: "image"');
+    expect(result.text).not.toContain("attached as an image");
+
+    // The replay of an html token is html too.
+    const draftId = (d.createPending.mock.calls[0]![1] as { txJson: { mcp: { draftId: string } } }).txJson.mcp.draftId;
+    const replayDeps = deps({
+      db: makeDb([{ id: "tx-first", txJson: JSON.stringify({ ...builtBody, mcp: { draftId } }) }]),
+    });
+    const replay = await runTransactionPropose({ draftToken: t }, ctx, replayDeps);
+    expect(replay.status).toBe(200);
+    expect(replay.images).toBeUndefined();
+    expect(renderCardMock).not.toHaveBeenCalled();
   });
 
   it("passes no hook through and audits as mcp by default", async () => {

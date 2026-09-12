@@ -6,7 +6,7 @@ import type { DbWalletWithLegacy } from "@/types/wallet";
 
 import { networkFromAddress, TxReviewError } from "./context";
 import { renderCard, summarizeForWallet, type ReviewDeps } from "./pipeline";
-import { REVIEW_CARD_HINT, summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
 
 /**
  * `multisig_review_pending_transaction`: the review card for a transaction
@@ -78,7 +78,7 @@ export async function runPendingTransactionReview(
         warnings: [],
       },
     );
-    const image = await renderCard(deps, summary);
+    const image = deps.omitCard ? undefined : await renderCard(deps, summary);
 
     return {
       status: 200,
@@ -86,11 +86,11 @@ export async function runPendingTransactionReview(
         transactionId: row.id,
         txHash,
         summary,
-        reviewCard: REVIEW_CARD_HINT,
+        reviewCard: image ? REVIEW_CARD_HINT : REVIEW_CARD_INLINE_HINT,
         createdAt: row.createdAt ?? null,
       },
-      text: summaryToText(summary),
-      images: [image],
+      text: summaryToText(summary, { card: image ? "image" : "html" }),
+      ...(image ? { images: [image] } : {}),
       audit: { walletId: input.walletId, transactionId: row.id },
     };
   } catch (error) {

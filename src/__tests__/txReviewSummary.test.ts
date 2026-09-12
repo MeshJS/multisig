@@ -3,6 +3,7 @@ import { describe, expect, it } from "@jest/globals";
 import { createServerAddressLabeler } from "@/lib/tx-review/labels";
 import {
   CARD_ATTACHED_LINE,
+  CARD_INLINE_LINE,
   formatReviewAmount,
   summarizeMeshBody,
   summaryToText,
@@ -273,9 +274,16 @@ describe("summarizeMeshBody", () => {
 });
 
 describe("summaryToText", () => {
-  it("opens by telling the model the card is attached, for both kinds", () => {
-    expect(summaryToText(summarize()).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
-    expect(summaryToText(summarize("pending")).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
+  it("opens by telling the model how the card was delivered, for both kinds", () => {
+    // Image mode: the PNG is attached and the model must show it.
+    expect(summaryToText(summarize(), { card: "image" }).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
+    expect(summaryToText(summarize("pending"), { card: "image" }).split("\n")[0]).toBe(CARD_ATTACHED_LINE);
+    // Default (html): the inline card view draws it; the model relays the
+    // summary only when the user cannot see a card, and knows how to get a picture.
+    expect(summaryToText(summarize()).split("\n")[0]).toBe(CARD_INLINE_LINE);
+    expect(summaryToText(summarize("pending"), { card: "html" }).split("\n")[0]).toBe(CARD_INLINE_LINE);
+    expect(CARD_INLINE_LINE).toContain('card: "image"');
+    expect(CARD_INLINE_LINE).not.toContain("attached");
   });
 
   it("states the boundary and every fact a signer needs", () => {

@@ -61,10 +61,13 @@ sign in the app. The design is built around the human seeing exactly what gets c
 
 1. **`transaction_preview`** takes recipients (ADA and native assets in display units),
    staking certificates and DRep votes, builds the unsigned transaction against the
-   wallet's spendable UTxOs, and returns three things: a readable summary, a **review
-   card PNG** as an `image` content block (recipients with resolved labels, amounts, fee,
-   change, actions, and the statement that nothing is signed), and a **draft token**.
-   Nothing is stored. The tool is annotated read-only. Staking certificates are checked
+   wallet's spendable UTxOs, and returns three things: a readable summary, the **review
+   card** (recipients with resolved labels, amounts, fee, change, actions, and the
+   statement that nothing is signed), and a **draft token**. The card is delivered
+   according to the tool's `card` option: `"html"` (default) leaves it to the client's
+   inline card view, which draws it from `structuredContent.summary`; `"image"` also
+   attaches it as a PNG `image` content block, for a user who wants a picture or a
+   client that shows images but not inline views. Nothing is stored. The tool is annotated read-only. Staking certificates are checked
    against the account's on-chain registration state (the same Blockfrost probe the
    builder canvas uses): a `DelegateStake` for an unregistered credential gets a
    `RegisterStake` added ahead of it (2 ADA deposit, reported as a warning and shown on
@@ -79,13 +82,15 @@ sign in the app. The design is built around the human seeing exactly what gets c
 3. **`transaction_propose`** accepts *only* the draft token. It rebuilds from the spec
    inside the token, creates the pending transaction with `signedAddresses: []`, notifies
    every signer (the proposer included — they have not signed), and returns the final
-   card. Because propose takes no recipients or amounts, a model cannot change the
+   card, delivered the way the preview was: the token records whether the preview
+   attached the PNG (`card: "image"` claim), so propose needs no option of its own.
+   Because propose takes no recipients or amounts, a model cannot change the
    transaction between the review and the creation; it would have to preview again,
    which shows a new card.
 
 The draft token is a JWT (`typ: "mcp_draft"`, 15 minutes) signed with `JWT_SECRET`,
 bound to the acting address, the OAuth client, the wallet, the normalized spec in base
-units and the previewed tx hash (`src/lib/tx-review/draft-token.ts`). It verifies as
+units, the previewed tx hash and the card mode (`src/lib/tx-review/draft-token.ts`). It verifies as
 neither an access token nor a v1 bearer. Replaying a token returns the transaction the
 first call created (the draft id is stored under a top-level `mcp` key in `txJson`), so a
 retried confirmation never spends the same UTxOs twice.
@@ -135,22 +140,24 @@ reaches state 1 and to `Cancelled` when a pending one is deleted or replaced
 
 ### Getting the card in front of the user
 
-Whether a tool's image block is rendered inline is the client's decision, not the
-server's: claude.ai and Claude Desktop show tool images only inside the collapsed
-tool-call panel ([claude-ai-mcp #238](https://github.com/anthropics/claude-ai-mcp/issues/238),
+By default the card is drawn by the inline card view (next section) and the model has
+nothing to show. But whether a client renders that view — or a tool's image block — is
+the client's decision, not the server's: claude.ai and Claude Desktop show tool images
+only inside the collapsed tool-call panel ([claude-ai-mcp #238](https://github.com/anthropics/claude-ai-mcp/issues/238),
 [claude-code #53256](https://github.com/anthropics/claude-code/issues/53256)), and the
-model decides whether to surface it in its reply. The server therefore tells the model,
-three ways, that the image is the deliverable:
+model decides whether to surface anything in its reply. The server therefore tells the
+model, three ways, what the deliverable is and how to get the picture:
 
 - **Server `instructions`** (`MCP_SERVER_INSTRUCTIONS` in `src/lib/mcp/server.ts`),
-  returned at initialize and placed in the model's context by the client: the review
-  tools' results include the card as an image; present it in the same turn, unprompted;
-  ask for confirmation before proposing. Kept short — it rides on every conversation.
-- **Tool descriptions** repeat the contract per tool ("the result contains the card as
-  an IMAGE: show it to the user in your reply").
-- **The result itself**: the text block opens with "Review card attached as an image in
-  this result — show it to the user now.", and `structuredContent.reviewCard` says an
-  image is attached.
+  returned at initialize and placed in the model's context by the client: the inline
+  view draws the card; if the user cannot see one, relay the summary in the same turn;
+  pass `card: "image"` when the user wants a picture, then present the image; ask for
+  confirmation before proposing. Kept short — it rides on every conversation.
+- **Tool descriptions** repeat the contract per tool, including the `card` option.
+- **The result itself**: the text block opens with a line that names the delivery
+  (`CARD_INLINE_LINE`, or `CARD_ATTACHED_LINE` — "Review card attached as an image in
+  this result — show it to the user now." — with the PNG), and
+  `structuredContent.reviewCard` says whether an image is attached.
 
 Content blocks deliberately carry **no** spec `annotations` (`audience`, `priority`): the
 Claude app rejected a result whose image block had them ("Unexpected response type"),
@@ -168,28 +175,58 @@ and hands it the tool result.
 
 The view (`src/lib/mcp/apps/review-card.ts`) is one self-contained HTML document that
 hand-rolls the ext-apps bridge (JSON-RPC over `postMessage`): `ui/initialize` →
-`ui/notifications/initialized`, then on `ui/notifications/tool-result` it shows the card
-PNG from the image block. For a preview it offers a **Confirm** button: the click sends
-`tools/call transaction_propose { draftToken }` through the host — so the human confirms
-on the card itself, under the same token binding as a typed confirmation — then shows
-the final card, an "Open in the app to sign" link (`ui/open-link`), and tells the model
-what happened via `ui/update-model-context`. It declares no network or external-asset
-origins and runs under the extension's default CSP; the PNG travels as a `data:` URL.
+`ui/notifications/initialized`, then on `ui/notifications/tool-result` it shows the
+card. In the default `card: "html"` mode there is no image block and the view **draws
+the card itself** from `structuredContent.summary` (`cardMarkup()`: the same sections
+and strings as the PNG's `card.ts`), so it reflows to whatever width the host gives it
+and takes the host's theme — no raster to fit, hence none of the sizing trouble below.
+With `card: "image"` it shows the PNG from the image block instead. For a preview it
+offers a **Confirm** button: the click sends `tools/call transaction_propose
+{ draftToken }` through the host — so the human confirms on the card itself, under the
+same token binding as a typed confirmation — then shows the final card, an "Open in the
+app to sign" link (`ui/open-link`), and tells the model what happened via
+`ui/update-model-context`. It declares no network or external-asset origins and runs
+under the extension's default CSP; a PNG travels as a `data:` URL.
+
+**Sizing and theming** follow the spec's host-context contract and
+[Anthropic's design guidelines for inline apps](https://claude.com/docs/connectors/building/mcp-apps/design-guidelines)
+(auto-fit height, no nested or horizontal scrolling, generous padding, safe-area insets,
+host style tokens). claude.ai does not act on `ui/notifications/size-changed`: it reads
+the iframe document's height itself and can snapshot it early
+([claude-ai-mcp #69](https://github.com/anthropics/claude-ai-mcp/issues/69)). So the view
+measures the way the ext-apps SDK does (`max-content` bounding height, `innerWidth`,
+never `scrollWidth`), pins `documentElement.style.height` synchronously after every DOM
+mutation (so a DOM-reading host never sees the previous state's height, and never a
+`0px` from a hidden frame) and again on the next frame. Fixed `containerDimensions`
+(`height`/`width`) are honoured as `100vh`/`100vw`. An advertised `maxHeight` is never
+applied to the document (inline cards are meant to auto-fit, and clamping is what made
+the frame short and scrolling in claude.ai). In image mode the view additionally
+reserves the PNG's box from its IHDR dimensions before the image decodes, and scales the
+PNG down via a `--img-max-w` cap derived from its aspect ratio so the auto-fit card stays
+within the host's cap without a scrollbar (ChatGPT sizes the inline iframe to its
+`maxHeight`). It is
+borderless (`prefersBorder: false`, Claude web's default) and transparent, pads itself
+16px plus `safeAreaInsets` on every side, and styles with Claude's `--color-*`,
+`--border-radius-*` and `--font-text-*` tokens over a built-in light/dark fallback. Host
+fonts are intentionally not loaded — Anthropic Sans needs `assets.claude.ai` in the CSP,
+which stays at zero origins — so the system font stack remains; the amber Confirm button
+is brand colour.
 
 Things learned from Anthropic's client (tracked in
-[claude-ai-mcp #61](https://github.com/anthropics/claude-ai-mcp/issues/61)): the frame
+[claude-ai-mcp #61](https://github.com/anthropics/claude-ai-mcp/issues/61) and
+[#69](https://github.com/anthropics/claude-ai-mcp/issues/69)): the frame
 stays hidden until the handshake completes; claude.ai does not advertise the UI extension
 at initialize, so the resource is never gated on it; and the host may read the resource
 from a different session than the tool call, which this stateless server handles
-trivially. Text-only clients (Claude Code included) see the text and image blocks as
-before. `src/__tests__/mcpReviewCardApp.test.ts` pins the bridge method names and the
+trivially. Text-only clients (Claude Code included) see the text block, and the image
+block when `card: "image"` was asked for. `src/__tests__/mcpReviewCardApp.test.ts` pins the bridge method names and the
 sandbox constraints; `mcpRoute.test.ts` pins `_meta` and `resources/read`.
 
 Expanding the tool call in the client always shows the card, whatever the model did.
 Reconnect after changing the instructions — clients read them once, at initialize.
 
-The card is rasterized with the `ImageResponse` that ships inside Next (`next/og`) in
-the Node runtime: no new dependency, no system fonts. `next.config.js` adds its WASM and
+The PNG (`card: "image"` only) is rasterized with the `ImageResponse` that ships inside
+Next (`next/og`) in the Node runtime: no new dependency, no system fonts. `next.config.js` adds its WASM and
 font files to the `/api/mcp` output file trace, because they are loaded through
 `import.meta.url` and tracing cannot see them.
 

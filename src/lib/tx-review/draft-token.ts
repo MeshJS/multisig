@@ -41,6 +41,14 @@ export type DraftOrigin = {
   recipientsHash: string;
 };
 
+/**
+ * How the review card reached the human: `html` (the default) is drawn by the
+ * client's inline card view from the structured summary; `image` also attaches
+ * the server-rendered PNG. Propose takes only the token, so the mode the
+ * preview was delivered in is recorded here and the propose result follows it.
+ */
+export type ReviewCardMode = "html" | "image";
+
 export type DraftTokenClaims = {
   typ: typeof DRAFT_TOKEN_TYPE;
   /** Acting address — must equal the caller's subject on propose. */
@@ -55,6 +63,8 @@ export type DraftTokenClaims = {
   ph: string;
   /** Present only for drafts derived from another record (task payouts). */
   origin?: DraftOrigin;
+  /** Present only when the preview attached the PNG card. */
+  card?: "image";
   jti: string;
   iat: number;
   exp: number;
@@ -68,6 +78,7 @@ export type VerifiedDraftToken = {
   spec: TxSpec;
   previewTxHash: string;
   origin: DraftOrigin | null;
+  card: ReviewCardMode;
   expiresAt: number;
 };
 
@@ -91,6 +102,8 @@ export function mintDraftToken(args: {
   spec: TxSpec;
   previewTxHash: string;
   origin?: DraftOrigin;
+  /** Omit (or pass "html") unless the preview attached the PNG card. */
+  card?: ReviewCardMode;
 }): { token: string; jti: string; expiresAt: number } {
   const jti = randomUUID();
   const token = sign(
@@ -102,6 +115,7 @@ export function mintDraftToken(args: {
       spec: args.spec,
       ph: args.previewTxHash,
       ...(args.origin ? { origin: args.origin } : {}),
+      ...(args.card === "image" ? { card: "image" } : {}),
       jti,
     },
     secret(),
@@ -147,6 +161,9 @@ export function verifyDraftToken(
   if (claims.origin !== undefined && !isDraftOrigin(claims.origin)) {
     return { ok: false, reason: "malformed" };
   }
+  if (claims.card !== undefined && claims.card !== "image") {
+    return { ok: false, reason: "malformed" };
+  }
   if (claims.sub !== caller.subject) {
     return { ok: false, reason: "subject_mismatch" };
   }
@@ -164,6 +181,7 @@ export function verifyDraftToken(
       spec: claims.spec,
       previewTxHash: claims.ph,
       origin: claims.origin ?? null,
+      card: claims.card === "image" ? "image" : "html",
       expiresAt: claims.exp,
     },
   };

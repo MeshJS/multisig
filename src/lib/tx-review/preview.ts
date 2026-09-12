@@ -20,7 +20,7 @@ import {
   type ReviewDeps,
 } from "./pipeline";
 import { hasSpecErrors, normalizeTxSpec, specToDraft, type TxSpec, type TxSpecInput } from "./spec";
-import { REVIEW_CARD_HINT, summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
 
 /**
  * `transaction_preview`: build the unsigned transaction and show it.
@@ -139,6 +139,8 @@ export async function runSpecPreview(
     warnings,
   });
 
+  // The token records how the card reached the human, so propose (which takes
+  // only the token) answers in the same mode.
   const image = deps.omitCard ? undefined : await renderCard(deps, summary);
   const token = mintDraftToken({
     subject: ctx.caller.subject,
@@ -147,6 +149,7 @@ export async function runSpecPreview(
     spec,
     previewTxHash: built.txHash,
     origin: opts.origin,
+    card: image ? "image" : "html",
   });
 
   return {
@@ -159,13 +162,13 @@ export async function runSpecPreview(
       fee: built.fee,
       summary,
       warnings,
-      ...(image ? { reviewCard: REVIEW_CARD_HINT } : {}),
+      reviewCard: image ? REVIEW_CARD_HINT : REVIEW_CARD_INLINE_HINT,
       persisted: false,
       signed: false,
       broadcast: false,
       ...(opts.extraBody ?? {}),
     },
-    text: summaryToText(summary),
+    text: summaryToText(summary, { card: image ? "image" : "html" }),
     ...(image ? { images: [image] } : {}),
     audit: { walletId: wallet.walletRow.id, previewTxHash: built.txHash },
   };

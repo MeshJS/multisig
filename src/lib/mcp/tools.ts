@@ -206,6 +206,14 @@ export async function callV1(
 const str = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
+/**
+ * The review tools' `card` option: the PNG is rendered only on request. The
+ * default leaves the card to the client's inline view (drawn from
+ * `structuredContent.summary`), which reflows instead of fitting a raster.
+ */
+const wantsCardImage = (args: Record<string, unknown>): boolean =>
+  args.card === "image";
+
 /** JSON Schema validation has already run by the time a `run` body executes. */
 export const MCP_TOOLS: McpToolDef[] = [
   {
@@ -658,7 +666,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "transaction_preview",
     title: "Preview an unsigned transaction",
     description:
-      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — for the user to check in chat. The result contains the review card as an IMAGE: always show that image to the user in your reply, in the same turn, then ask them to confirm; do not describe it in words instead. Clients that render the inline card view also show a Confirm button on it; the user may confirm by clicking it (you will be told) or by replying. NOTHING is saved, signed or broadcast. Only after the user confirms, call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself. Votes need the wallet to be registered as a DRep on chain; if it is not, the draft is refused and you must tell the user the wallet cannot vote until it registers as a DRep in the app.",
+      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — for the user to check in chat. The result is the review card: by default the client's inline card view draws it next to this call, with a Confirm button the user may click (you will be told) instead of replying; if the user cannot see a card, relay the summary in the same turn, then ask them to confirm. Pass card: \"image\" when the user wants a picture of the card (or this client shows images but not inline views) and show the returned image in your reply. NOTHING is saved, signed or broadcast. Only after the user confirms, call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself. Votes need the wallet to be registered as a DRep on chain; if it is not, the draft is refused and you must tell the user the wallet cannot vote until it registers as a DRep in the app.",
     scope: "transactions:write",
     inputSchema: TRANSACTION_PREVIEW_INPUT,
     annotations: {
@@ -676,6 +684,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       ]);
       return runTransactionPreview(args as never, ctx, {
         db,
+        omitCard: !wantsCardImage(args),
         fetchFreeUtxos: (walletId) =>
           callV1(load.freeUtxos, ctx, {
             method: "GET",
@@ -688,7 +697,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "transaction_propose",
     title: "Create the previewed transaction for signers",
     description:
-      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. The result contains the final review card as an IMAGE: show it to the user in your reply. Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
+      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. The result is the final review card, delivered the same way the preview was (inline card view by default; as an image when the preview used card: \"image\" — then show that image in your reply). Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
     scope: "transactions:write",
     inputSchema: TRANSACTION_PROPOSE_INPUT,
     annotations: {
@@ -724,7 +733,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "multisig_review_pending_transaction",
     title: "Review a pending transaction",
     description:
-      "Render one pending transaction as a review card: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. The result contains the card as an IMAGE: show it to the user in your reply rather than paraphrasing it. Read-only; works for transactions created in the app or through MCP.",
+      "Render one pending transaction as a review card: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. By default the client's inline card view draws the card next to this call; if the user cannot see it, relay the summary. Pass card: \"image\" for a picture of the card and show the returned image in your reply rather than paraphrasing it. Read-only; works for transactions created in the app or through MCP.",
     scope: "wallets:read",
     inputSchema: REVIEW_PENDING_TRANSACTION_INPUT,
     annotations: READ_ONLY_CHAIN,
@@ -743,6 +752,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         ctx,
         {
           db,
+          omitCard: !wantsCardImage(args),
           fetchFreeUtxos: () =>
             Promise.resolve({ status: 200, body: [] }),
           fetchPendingTransactions: (walletId) =>
@@ -795,7 +805,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "task_prepare_payout",
     title: "Preview a payout for tasks",
     description:
-      "Build the unsigned transaction that pays one or more tasks' recipients (merged per address) against the wallet's spendable UTxOs, and show it. Nothing is stored, signed or sent. The result contains the review card as an IMAGE: show it to the user in your reply, then ask them to confirm; on confirmation call transaction_propose with the returned draftToken — the tasks are linked to the pending transaction automatically and show as awaiting signatures on the board. The token expires in 15 minutes and is bound to exactly these tasks and amounts.",
+      "Build the unsigned transaction that pays one or more tasks' recipients (merged per address) against the wallet's spendable UTxOs, and show it. Nothing is stored, signed or sent. The result is the review card: the client's inline card view draws it next to this call (with a Confirm button); if the user cannot see it, relay the summary, or pass card: \"image\" for a picture and show the returned image. Ask the user to confirm; on confirmation call transaction_propose with the returned draftToken — the tasks are linked to the pending transaction automatically and show as awaiting signatures on the board. The token expires in 15 minutes and is bound to exactly these tasks and amounts.",
     scope: "transactions:write",
     inputSchema: TASK_PREPARE_PAYOUT_INPUT,
     annotations: {
@@ -819,6 +829,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         ctx,
         {
           db,
+          omitCard: !wantsCardImage(args),
           fetchFreeUtxos: (walletId) =>
             callV1(load.freeUtxos, ctx, {
               method: "GET",

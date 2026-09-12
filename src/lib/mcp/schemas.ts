@@ -82,6 +82,17 @@ const paymentOutputItem = {
   additionalProperties: false,
 } as const;
 
+/**
+ * How the review card is delivered. Shared by every tool that returns one
+ * except transaction_propose, which inherits the mode from the draft token.
+ */
+const cardMode = {
+  type: "string",
+  enum: ["html", "image"],
+  description:
+    'How to deliver the review card. "html" (default): the client\'s inline card view draws it from the structured summary; no image is attached. "image": also attach the card as a PNG image block — use it when the user asks for a picture of the card, or when this client shows images but not inline card views.',
+} as const;
+
 export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
   type: "object",
   properties: {
@@ -149,6 +160,7 @@ export const TRANSACTION_PREVIEW_INPUT: JsonSchema = {
       maxLength: 64,
       description: "Optional on-chain CIP-20 message (metadata label 674). Public and permanent.",
     },
+    card: cardMode,
   },
   required: ["walletId"],
   additionalProperties: false,
@@ -178,6 +190,7 @@ export const REVIEW_PENDING_TRANSACTION_INPUT: JsonSchema = {
       description:
         "Pending transaction id, as listed by multisig_list_pending_transactions.",
     },
+    card: cardMode,
   },
   required: ["walletId", "transactionId"],
   additionalProperties: false,
@@ -515,6 +528,7 @@ export const TASK_PREPARE_PAYOUT_INPUT: JsonSchema = {
       description:
         "Tasks to pay in one transaction. Each must have recipients and no pending or paid payout.",
     },
+    card: cardMode,
   },
   required: ["walletId", "taskIds"],
   additionalProperties: false,

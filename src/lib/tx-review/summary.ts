@@ -340,13 +340,29 @@ function excerpt(text: string, max = 140): string {
  */
 export const REVIEW_CARD_HINT = { attached: true, mimeType: "image/png" } as const;
 
-/** Opening line of every review text: the model reads this before anything else. */
+/**
+ * The html-mode counterpart: no image block; a client with the inline card
+ * view draws the card from `structuredContent.summary`.
+ */
+export const REVIEW_CARD_INLINE_HINT = { attached: false, inline: true } as const;
+
+/** How the card was delivered; decides the text opener and the hint. */
+export type CardDelivery = "html" | "image";
+
+/** Opening line of a review text when the PNG is attached. */
 export const CARD_ATTACHED_LINE =
   "Review card attached as an image in this result — show it to the user now.";
 
+/** Opening line when the card is left to the client's inline card view. */
+export const CARD_INLINE_LINE =
+  'Review card: clients with the inline card view draw it from this result, next to this tool call. If the user cannot see a card, relay the summary below; if they want a picture of it, call the tool again with card: "image".';
+
 /** The readable text block that accompanies the card. */
-export function summaryToText(summary: TxReviewSummary): string {
-  const lines: string[] = [CARD_ATTACHED_LINE];
+export function summaryToText(
+  summary: TxReviewSummary,
+  opts: { card?: CardDelivery } = {},
+): string {
+  const lines: string[] = [opts.card === "image" ? CARD_ATTACHED_LINE : CARD_INLINE_LINE];
   const state =
     summary.kind === "preview"
       ? "UNSIGNED PREVIEW — nothing has been saved, signed or broadcast."

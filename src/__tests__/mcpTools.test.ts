@@ -128,9 +128,10 @@ describe("MCP tool registry", () => {
     expect(propose?.scope).toBe("transactions:write");
   });
 
-  it("tells the model the review tools return the card as an image", () => {
-    // The image is the deliverable; a model that is not told so describes it
-    // in prose and the human never sees the card.
+  it("tells the model how the review card is delivered and how to get a picture", () => {
+    // The card is the deliverable. By default the client's inline view draws
+    // it; a model that is not told so paraphrases it, or never learns that
+    // card: "image" exists for clients (or users) that want the PNG.
     for (const name of [
       "transaction_preview",
       "transaction_propose",
@@ -138,9 +139,27 @@ describe("MCP tool registry", () => {
       "task_prepare_payout",
     ]) {
       const tool = MCP_TOOLS.find((t) => t.name === name);
-      expect(tool?.description).toMatch(/IMAGE/);
+      expect(tool?.description).toMatch(/inline card view/);
+      expect(tool?.description).toMatch(/card: "image"/);
       expect(tool?.description).toMatch(/show/i);
     }
+  });
+
+  it("offers the card option on every card tool except propose", () => {
+    // Propose inherits the mode from the draft token, so the human confirms
+    // the card exactly as they saw it and propose still takes nothing else.
+    for (const name of [
+      "transaction_preview",
+      "multisig_review_pending_transaction",
+      "task_prepare_payout",
+    ]) {
+      const tool = MCP_TOOLS.find((t) => t.name === name);
+      const card = (tool?.inputSchema.properties as Record<string, { enum?: string[] }>).card;
+      expect(card?.enum).toEqual(["html", "image"]);
+      expect(tool?.inputSchema.required).not.toContain("card");
+    }
+    const propose = MCP_TOOLS.find((t) => t.name === "transaction_propose");
+    expect((propose?.inputSchema.properties as object)).not.toHaveProperty("card");
   });
 
   it("hides the transaction tools from a read-only grant", () => {

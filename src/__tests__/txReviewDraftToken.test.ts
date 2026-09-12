@@ -129,6 +129,32 @@ describe("draft token", () => {
     expect(without.ok && without.claims.origin).toBeNull();
   });
 
+  it("records an image-mode preview, and reports html for everything else", () => {
+    // Propose takes only the token, so the way the card reached the human
+    // (drawn inline, or the PNG) has to travel inside it.
+    const image = verifyDraftToken(mint({ card: "image" }).token, { subject: SUBJECT, clientId: CLIENT });
+    expect(image.ok && image.claims.card).toBe("image");
+    const html = verifyDraftToken(mint({ card: "html" }).token, { subject: SUBJECT, clientId: CLIENT });
+    expect(html.ok && html.claims.card).toBe("html");
+    const unset = verifyDraftToken(mint().token, { subject: SUBJECT, clientId: CLIENT });
+    expect(unset.ok && unset.claims.card).toBe("html");
+    // Only the non-default is written, so html tokens stay as small as before.
+    expect(jwt.decode(mint({ card: "html" }).token)).not.toHaveProperty("card");
+    expect(jwt.decode(mint({ card: "image" }).token)).toHaveProperty("card", "image");
+  });
+
+  it("rejects an unknown card mode as malformed", () => {
+    const token = jwt.sign(
+      { typ: DRAFT_TOKEN_TYPE, sub: SUBJECT, wid: "wallet-1", cid: CLIENT, spec, ph: "00", jti: "j", card: "pdf" },
+      process.env.JWT_SECRET as string,
+      { expiresIn: 60 },
+    );
+    expect(verifyDraftToken(token, { subject: SUBJECT, clientId: CLIENT })).toEqual({
+      ok: false,
+      reason: "malformed",
+    });
+  });
+
   it("rejects a malformed origin as malformed", () => {
     // A signed token from this server always has a well-formed origin, so a
     // bad one can only come from another signer — refuse it outright.

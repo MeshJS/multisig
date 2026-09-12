@@ -27,7 +27,7 @@ import {
   type ReviewDeps,
 } from "./pipeline";
 import { specToDraft, type TxSpec } from "./spec";
-import { REVIEW_CARD_HINT, summaryToText } from "./summary";
+import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
 
 /**
  * `transaction_propose`: turn a reviewed draft into a pending transaction.
@@ -83,6 +83,14 @@ export type McpTxJsonProvenance = {
   proposedAt: string;
 };
 
+/**
+ * The PNG is rendered only when the preview the human confirmed attached one
+ * (recorded in the token); the app path (`omitCard`) never renders it.
+ */
+function wantsPng(deps: ProposeDeps, claims: VerifiedDraftToken): boolean {
+  return !deps.omitCard && claims.card === "image";
+}
+
 export async function runTransactionPropose(
   input: { draftToken: string },
   ctx: ToolContext,
@@ -120,7 +128,7 @@ export async function runTransactionPropose(
         transactionId: existing.id,
         warnings: [],
       });
-      const image = deps.omitCard ? undefined : await renderCard(deps, summary);
+      const image = wantsPng(deps, claims) ? await renderCard(deps, summary) : undefined;
       return {
         status: 200,
         body: {
@@ -131,12 +139,12 @@ export async function runTransactionPropose(
           signaturesRequired: wallet.threshold.required,
           link,
           summary,
-          ...(image ? { reviewCard: REVIEW_CARD_HINT } : {}),
+          reviewCard: image ? REVIEW_CARD_HINT : REVIEW_CARD_INLINE_HINT,
           persisted: true,
           signed: false,
           broadcast: false,
         },
-        text: `This draft was already proposed as transaction ${existing.id}; nothing new was created.\n${summaryToText(summary)}\nSign it at ${link}`,
+        text: `This draft was already proposed as transaction ${existing.id}; nothing new was created.\n${summaryToText(summary, { card: image ? "image" : "html" })}\nSign it at ${link}`,
         ...(image ? { images: [image] } : {}),
         audit: { walletId: wallet.walletRow.id, transactionId: existing.id, draftId: claims.jti, replay: true },
       };
@@ -258,7 +266,7 @@ export async function runTransactionPropose(
       sizeBytes: built.sizeBytes,
       warnings,
     });
-    const image = deps.omitCard ? undefined : await renderCard(deps, summary);
+    const image = wantsPng(deps, claims) ? await renderCard(deps, summary) : undefined;
 
     return {
       status: 201,
@@ -274,12 +282,12 @@ export async function runTransactionPropose(
         rationalesPublished: anchored.pinned,
         link,
         summary,
-        ...(image ? { reviewCard: REVIEW_CARD_HINT } : {}),
+        reviewCard: image ? REVIEW_CARD_HINT : REVIEW_CARD_INLINE_HINT,
         persisted: true,
         signed: false,
         broadcast: false,
       },
-      text: `Created pending transaction ${created.id}. It has no signatures yet; the wallet's signers have been notified and can sign it at ${link}\n${summaryToText(summary)}`,
+      text: `Created pending transaction ${created.id}. It has no signatures yet; the wallet's signers have been notified and can sign it at ${link}\n${summaryToText(summary, { card: image ? "image" : "html" })}`,
       ...(image ? { images: [image] } : {}),
       audit: {
         walletId: wallet.walletRow.id,

@@ -80,10 +80,11 @@ const db = {
   transaction: { create: jest.fn(), findMany: jest.fn() },
 } as unknown as PrismaClient;
 
-function deps() {
+function deps(extra: Record<string, unknown> = {}) {
   return {
     db,
     fetchFreeUtxos: jest.fn<() => Promise<any>>().mockResolvedValue({ status: 200, body: [] }),
+    ...extra,
   };
 }
 
@@ -154,9 +155,14 @@ describe("transaction_preview", () => {
     expect(body).toMatchObject({ txHash: "beef", fee: "170000", persisted: false, signed: false, broadcast: false });
     expect(body.warnings).toEqual(["Token-only output — min ADA will be added."]);
 
+    // The PNG was attached, so the result says so and the token remembers it
+    // for propose.
+    expect(body.reviewCard).toEqual({ attached: true, mimeType: "image/png" });
+    expect(String(result.text).split("\n")[0]).toContain("attached as an image");
     const verified = verifyDraftToken(String(body.draftToken), { subject: SUBJECT, clientId: CLIENT });
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
+    expect(verified.claims.card).toBe("image");
     expect(verified.claims.walletId).toBe("wallet-1");
     expect(verified.claims.previewTxHash).toBe("beef");
     // The token carries base units, not what the model typed.
@@ -175,6 +181,27 @@ describe("transaction_preview", () => {
       expect.anything(),
       expect.objectContaining({ kind: "preview", paymentCount: 1 }),
     );
+  });
+
+  it("leaves the card to the inline view when the PNG is not wanted, and the token says so", async () => {
+    // The MCP tools pass omitCard unless the caller asked for card: "image";
+    // the app's task-payout dialog always does. Either way: no render, no
+    // image block, an inline hint, the inline text opener, an html token.
+    const result = await runTransactionPreview(
+      { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", ada: "2.5" }] },
+      ctx,
+      deps({ omitCard: true }),
+    );
+
+    expect(result.status).toBe(200);
+    expect(renderCardMock).not.toHaveBeenCalled();
+    expect(result.images).toBeUndefined();
+    const body = result.body as Record<string, unknown>;
+    expect(body.reviewCard).toEqual({ attached: false, inline: true });
+    expect(body.summary).toBeDefined();
+    expect(String(result.text).split("\n")[0]).toContain('card: "image"');
+    const verified = verifyDraftToken(String(body.draftToken), { subject: SUBJECT, clientId: CLIENT });
+    expect(verified.ok && verified.claims.card).toBe("html");
   });
 
   it("returns spec problems as a 400 the model can relay, before touching the chain", async () => {
