@@ -9,7 +9,13 @@ import {
 import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import blueprint from "@/components/multisig/proxy/aiken-workspace/plutus.json";
 import { parseProposalId } from "@/lib/governance";
-import { accumulateFundingUtxos, getLovelace, sameUtxoRef, selectSetupUtxo } from "./utxoUtils";
+import {
+  accumulateFundingUtxos,
+  assertNoStrayAuthTokenUtxos,
+  getLovelace,
+  sameUtxoRef,
+  selectSetupUtxo,
+} from "./utxoUtils";
 
 export const DEFAULT_PROXY_SETUP_LOVELACE = "1000000";
 const PROXY_ACTION_MIN_LOVELACE = 2_000_000n;
@@ -174,6 +180,12 @@ export function buildProxySpendTx(args: {
     network: args.network,
     stakeCredential: args.stakeCredential,
   });
+
+  assertNoStrayAuthTokenUtxos(
+    args.walletUtxos ?? [],
+    scripts.authTokenId,
+    args.authTokenUtxo,
+  );
 
   for (const proxyUtxo of args.proxyUtxos) {
     args.txBuilder
@@ -435,6 +447,12 @@ export function buildProxyCleanupSweepTx(args: {
     network: args.network,
     stakeCredential: args.stakeCredential,
   });
+
+  assertNoStrayAuthTokenUtxos(
+    args.walletUtxos,
+    scripts.authTokenId,
+    args.authTokenUtxo,
+  );
 
   for (const proxyUtxo of args.proxyUtxos) {
     if (proxyUtxo.output.address !== args.proxyAddress) {
