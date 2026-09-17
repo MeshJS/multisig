@@ -47,7 +47,16 @@ export default function PageDocuments() {
       <p className="max-w-3xl text-sm text-muted-foreground">
         Approvals are bound to an exact version hash and inherit this
         wallet&apos;s signers and threshold. Uploading a new version starts a
-        fresh round at zero approvals.
+        fresh round at zero approvals. An exported proof can be checked by
+        anyone, without an account, at{" "}
+        <Link
+          href="/verify"
+          target="_blank"
+          className="underline underline-offset-2"
+        >
+          /verify
+        </Link>
+        .
       </p>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
