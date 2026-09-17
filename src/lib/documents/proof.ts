@@ -98,6 +98,57 @@ export const VERIFICATION_INSTRUCTIONS = [
   "This package is an approval attestation by the wallet's signers. It is not a qualified electronic signature.",
 ];
 
+/**
+ * Why `value` cannot be read as a proof package at all, or null if it can.
+ *
+ * Structure only. It deliberately does not judge `format`: a package from a
+ * later version of this format should still be *verified* and reported on,
+ * because "every signature checks out but the format is newer than me" is a
+ * far more useful answer to a counterparty than a flat rejection — and
+ * {@link verifyProofPackage} already records an unknown format as a
+ * verification error.
+ */
+export function proofPackageProblem(value: unknown): string | null {
+  if (!value || typeof value !== "object") {
+    return "That is not a Document Sign-Off proof package.";
+  }
+  const pkg = value as Partial<ProofPackage>;
+  if (!pkg.version || !pkg.policy) {
+    return "That JSON is not a Document Sign-Off proof package — it carries no version or policy.";
+  }
+  return null;
+}
+
+/**
+ * JSON text to a proof package, for a paste box or a dropped file.
+ *
+ * Stricter than {@link proofPackageProblem} by one check: a reader who has just
+ * pasted something wants to be told the format is unfamiliar before they press
+ * a button, not after. Verification itself stays permissive.
+ */
+export function parseProofPackage(
+  text: string,
+): { ok: true; proof: ProofPackage } | { ok: false; error: string } {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "That is not valid JSON." };
+  }
+
+  const problem = proofPackageProblem(value);
+  if (problem !== null) return { ok: false, error: problem };
+
+  const proof = value as ProofPackage;
+  if (proof.format !== PROOF_FORMAT) {
+    return {
+      ok: false,
+      error: `Unknown proof format "${String(proof.format)}". This verifier understands ${PROOF_FORMAT}.`,
+    };
+  }
+  return { ok: true, proof };
+}
+
 /** Signature of the CIP-8 check the caller injects (Mesh's `checkSignature`). */
 export type CheckSignatureFn = (
   data: string,

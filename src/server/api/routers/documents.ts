@@ -61,6 +61,7 @@ import {
 import {
   PROOF_FORMAT,
   VERIFICATION_INSTRUCTIONS,
+  proofPackageProblem,
   verifyProofPackage,
   type ProofPackage,
 } from "@/lib/documents/proof";
@@ -964,13 +965,11 @@ export const documentRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input }) => {
-      const pkg = input.proof as ProofPackage;
-      if (!pkg || typeof pkg !== "object" || !pkg.version || !pkg.policy) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Not a Document Sign-Off proof package",
-        });
+      const problem = proofPackageProblem(input.proof);
+      if (problem !== null) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: problem });
       }
+      const pkg = input.proof as ProofPackage;
       return verifyProofPackage(pkg, {
         expectedContentHash: input.expectedContentHash,
         checkSignature,
