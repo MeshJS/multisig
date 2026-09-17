@@ -5,7 +5,7 @@ import { api } from "@/utils/api";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useUserStore } from "@/lib/zustand/user";
 import { buildMultisigWallet } from "@/utils/common";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
 
 export default function useMultisigWallet() {
   const router = useRouter();

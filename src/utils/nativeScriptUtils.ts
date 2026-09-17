@@ -121,15 +121,15 @@ export function decodeNativeScriptFromCsl(
     return { type: "any", scripts };
   }
 
-  const sn = ns.as_script_n_of_k();
-  if (sn) {
-    const list = sn.native_scripts();
+  const saNOfK = ns.as_script_n_of_k();
+  if (saNOfK) {
+    const n = saNOfK.n();
+    const list = saNOfK.native_scripts();
     const scripts: DecodedNativeScript[] = [];
     for (let i = 0; i < list.len(); i++) {
       const child = list.get(i);
       scripts.push(decodeNativeScriptFromCsl(child));
     }
-    const n = sn.n();
     const required =
       typeof n === "number"
         ? n

@@ -29,6 +29,16 @@ import {
   StakingPreview,
 } from "@/components/pages/homepage/previews";
 import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+import { SITE_URL } from "@/lib/seo";
+
+/**
+ * The endpoint a user pastes into their client.
+ *
+ * Derived rather than hardcoded: this was printing the production host on
+ * every environment, so preprod handed out setup instructions pointing at a
+ * different deployment than the one you were reading them on.
+ */
+const MCP_ENDPOINT = `${SITE_URL}/api/mcp`;
 
 // Prompts cycled by the hero typewriter. Deliberately phrased as things you
 // ask an assistant, not as commands for one product — the endpoint is plain MCP
@@ -363,7 +373,7 @@ export function PageHomepage() {
                     MCP endpoint
                   </div>
                   <code className="block break-all text-emerald-300">
-                    https://multisig.meshjs.dev/api/mcp
+                    {MCP_ENDPOINT}
                   </code>
                   <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] uppercase tracking-wide text-zinc-500">
                     Any MCP client
@@ -373,7 +383,7 @@ export function PageHomepage() {
   "mcpServers": {
     "mesh-multisig": {
       "type": "http",
-      "url": "https://multisig.meshjs.dev/api/mcp"
+      "url": "${MCP_ENDPOINT}"
     }
   }
 }`}
@@ -709,50 +719,113 @@ export function PageHomepage() {
             >
               <div className="mt-4 space-y-5 text-sm">
                 <ol className="space-y-4">
+                  {/* The GUI path comes first and in full. Leading with a JSON
+                      config file sent desktop and web users hunting for a file
+                      their client does not have. */}
                   <li className="space-y-2">
                     <div className="flex items-baseline gap-2">
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
-                      <span className="font-medium">Add the server</span>
+                      <span className="font-medium">Add the connector</span>
                     </div>
                     <p className="pl-7 text-muted-foreground">
-                      Most clients read a JSON config. Add one entry:
+                      This is the only thing you need — there is no API key,
+                      because the server advertises OAuth and your client
+                      discovers the rest:
                     </p>
-                    <pre className="ml-7 overflow-x-auto rounded bg-muted p-3 text-xs">
+                    <div className="ml-7 flex flex-col gap-1">
+                      <code className="block break-all rounded bg-muted p-3 text-xs">
+                        {MCP_ENDPOINT}
+                      </code>
+                    </div>
+
+                    <div className="ml-7 mt-3 flex flex-col gap-3 text-xs">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In an app with a connector screen
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          Claude (desktop or web) and most other assistant apps:
+                          open <span className="text-foreground">Settings →
+                          Connectors</span>, choose{" "}
+                          <span className="text-foreground">Add custom
+                          connector</span>, paste the URL above, and connect. A
+                          browser window opens for step 2. Nothing to install and
+                          no file to edit.
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          In a client that reads a config file
+                        </p>
+                        <pre className="mt-1 overflow-x-auto rounded bg-muted p-3">
 {`{
   "mcpServers": {
     "mesh-multisig": {
       "type": "http",
-      "url": "https://multisig.meshjs.dev/api/mcp"
+      "url": "${MCP_ENDPOINT}"
     }
   }
 }`}
-                    </pre>
-                    <p className="pl-7 text-xs text-muted-foreground">
-                      Some clients have a CLI for the same thing — for example{" "}
-                      <code className="rounded bg-muted px-1">claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mcp</code>.
-                      Anything that speaks streamable HTTP MCP works; there is no
-                      API key to paste, because the server advertises OAuth and the
-                      client discovers the rest.
-                    </p>
+                        </pre>
+                        <p className="mt-1 text-muted-foreground">
+                          Or from a terminal:{" "}
+                          <code className="rounded bg-muted px-1">
+                            claude mcp add --transport http mesh-multisig {MCP_ENDPOINT}
+                          </code>
+                        </p>
+                      </div>
+                    </div>
                   </li>
 
                   <li className="space-y-2">
                     <div className="flex items-baseline gap-2">
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
-                      <span className="font-medium">Authorize with your wallet</span>
+                      <span className="font-medium">
+                        Approve it, and pick what it may do
+                      </span>
                     </div>
                     <p className="pl-7 text-muted-foreground">
-                      Your client will send you here to a consent screen the first
-                      time it connects: connect your wallet, sign, and approve.
-                      You&apos;ll see exactly which client is asking and what it
-                      will be able to read, and you can revoke it any time from
-                      your profile.
+                      Your client sends you here to a consent screen: connect your
+                      wallet, sign, and approve. You see which client is asking and
+                      the exact address set it will cover.
+                    </p>
+                    <p className="pl-7 text-muted-foreground">
+                      The three permissions below are listed there as separate
+                      checkboxes, ticked by default. Untick any you would rather
+                      not grant — the tools it covers then simply do not exist for
+                      that client.
+                    </p>
+                  </li>
+
+                  {/* Added because there was no way to tell a successful connect
+                      from a half-scoped one: both look like a working server, and
+                      the only visible difference is how many tools appear. */}
+                  <li className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="font-medium">Check what you got</span>
+                    </div>
+                    <p className="pl-7 text-muted-foreground">
+                      Your client&apos;s tool list should show{" "}
+                      <strong className="text-foreground">
+                        {MCP_TOOL_SUMMARIES.length} tools
+                      </strong>{" "}
+                      if you granted everything. Fewer means fewer permissions,
+                      not a broken connection — the counts are{" "}
+                      {(["wallets:read", "governance:read", "ballots:write"] as const)
+                        .map(
+                          (scope) =>
+                            `${MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).length} for ${scope}`,
+                        )
+                        .join(", ")}
+                      .
                     </p>
                   </li>
 
                   <li className="space-y-2">
                     <div className="flex items-baseline gap-2">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">4</span>
                       <span className="font-medium">Ask it something</span>
                     </div>
                     <p className="pl-7 text-muted-foreground">
@@ -788,6 +861,31 @@ export function PageHomepage() {
                   </div>
                 </div>
 
+                {/* The asymmetry here is not obvious and is easy to read as a
+                    bug: an access token carries the scopes it was minted with,
+                    and the server intersects them with the grant, so taking a
+                    permission away bites at once while adding one cannot reach
+                    a token already issued. */}
+                <div className="rounded-lg border border-dashed p-3">
+                  <h4 className="text-sm font-medium">
+                    Changing permissions later
+                  </h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Under{" "}
+                    <Link href="/user" className="underline underline-offset-2">
+                      your profile
+                    </Link>{" "}
+                    each connection lists its permissions.{" "}
+                    <strong className="text-foreground">Removing one takes
+                    effect on the client&apos;s very next request.</strong>{" "}
+                    Adding one does not: the client is holding a token issued
+                    with the old set, and refreshing its tool list just re-asks
+                    with that same token. Reconnect the connector to pick up a
+                    wider permission — or wait for its token to expire, within
+                    the hour.
+                  </p>
+                </div>
+
                 <div className="rounded-lg border border-dashed p-3">
                   <p className="text-xs text-muted-foreground">
                     <strong className="text-foreground">Read-only, by design.</strong>{" "}
@@ -795,12 +893,7 @@ export function PageHomepage() {
                     ballots, and publish a rationale to IPFS. It{" "}
                     <strong>cannot</strong> sign transactions, move funds, or
                     submit a vote on-chain — those stay with you and your
-                    co-signers. Manage permissions or revoke a connection any time
-                    under{" "}
-                    <Link href="/user" className="underline underline-offset-2">
-                      your profile
-                    </Link>
-                    .
+                    co-signers, whichever permissions you grant.
                   </p>
                 </div>
               </div>

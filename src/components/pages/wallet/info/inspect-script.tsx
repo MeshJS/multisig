@@ -100,7 +100,7 @@ export function NativeScriptSection({ appWallet }: { appWallet: Wallet }) {
           </div>
         )}
 
-        {isImportedWallet && appWallet.stakeScriptCbor && (
+        {appWallet.capabilities?.canStake && appWallet.stakeScriptCbor && (
           <div className="flex flex-col gap-2 sm:gap-3">
             <div className="text-xs sm:text-sm font-medium text-muted-foreground">Stake Script CBOR</div>
             <div className="overflow-x-auto -mx-4 sm:-mx-6 px-4 sm:px-6">

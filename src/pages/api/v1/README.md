@@ -294,6 +294,34 @@ Endpoints:
 - **Response**: Array of matching metadata items
 - **Error Handling**: 400 (validation), 500 (server)
 
+#### `resolveRegistrationScript.ts` - GET `/api/v1/resolveRegistrationScript`
+
+- **Purpose**: Resolve the native script(s) behind a CIP-0146 registration transaction
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Reads the transaction's UTxO addresses and resolves each script-credential address
+  - Returns timelock JSON per script hash (Plutus/unknown scripts are skipped)
+- **Query Parameters**:
+  - `txHash`: Registration transaction hash (64 hex)
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ txHash, candidates: [{ address, scriptHash, stakeCredentialHash, scriptJson }] }`
+- **Error Handling**: 400 (validation), 500 (server)
+
+#### `resolveScript.ts` - GET `/api/v1/resolveScript`
+
+- **Purpose**: Resolve a native script by hash (policy) or multisig wallet address to its signer key hashes — backs "lookup by policy" on the Discover tab and the MCP `multisig_lookup_wallet` tool
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Accepts exactly one of `scriptHash` or `address` (script payment credential)
+  - Returns the timelock JSON and sig key hashes in script order
+  - Unknown / Plutus scripts return 200 with `scriptJson: null` and `sigHashes: []`
+- **Query Parameters**:
+  - `scriptHash`: Native-script hash / policy id (56 hex)
+  - `address`: Bech32 multisig wallet address
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ scriptHash, stakeCredentialHash, scriptJson, sigHashes }`
+- **Error Handling**: 400 (validation), 500 (server)
+
 ### UTxO Management
 
 #### `freeUtxos.ts` - GET `/api/v1/freeUtxos`

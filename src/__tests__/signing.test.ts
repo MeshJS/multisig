@@ -32,30 +32,43 @@ describe("signing.ts source contract", () => {
 // failure path. We mock the @meshsdk/core helpers because they pull in
 // CSL/serialization which is heavyweight for a unit test.
 // ---------------------------------------------------------------------------
-const checkSignatureMock = jest.fn<
-  (nonce: string, signature: { signature: string; key: string }, address?: string) => Promise<boolean>
->();
-const generateNonceMock = jest.fn<(payload: string) => string>();
+const checkSignatureMock =
+  jest.fn<
+    (
+      nonce: string,
+      signature: { signature: string; key: string },
+      address?: string,
+    ) => Promise<boolean>
+  >();
 
 jest.unstable_mockModule("@meshsdk/core", () => ({
   __esModule: true,
   checkSignature: checkSignatureMock,
-  generateNonce: generateNonceMock,
 }));
 
 const { sign } = await import("../utils/signing");
 
 type MockWallet = {
-  signData: jest.Mock<(payload: string, address?: string) => Promise<{ signature: string; key: string }>>;
+  signData: jest.Mock<
+    (
+      payload: string,
+      address?: string,
+    ) => Promise<{ signature: string; key: string }>
+  >;
   getRewardAddresses: jest.Mock<() => Promise<string[]>>;
 };
 
 function createWallet(overrides?: Partial<MockWallet>): MockWallet {
   return {
-    signData: jest.fn<(payload: string, address?: string) => Promise<{ signature: string; key: string }>>(
-      async () => ({ signature: "deadbeef", key: "cafe" }),
-    ),
-    getRewardAddresses: jest.fn<() => Promise<string[]>>(async () => ["stake_addr"]),
+    signData: jest.fn<
+      (
+        payload: string,
+        address?: string,
+      ) => Promise<{ signature: string; key: string }>
+    >(async () => ({ signature: "deadbeef", key: "cafe" })),
+    getRewardAddresses: jest.fn<() => Promise<string[]>>(async () => [
+      "stake_addr",
+    ]),
     ...overrides,
   } as MockWallet;
 }
@@ -63,8 +76,6 @@ function createWallet(overrides?: Partial<MockWallet>): MockWallet {
 describe("sign", () => {
   beforeEach(() => {
     checkSignatureMock.mockReset();
-    generateNonceMock.mockReset();
-    generateNonceMock.mockReturnValue("nonce-payload");
   });
 
   it("role=0 signs with the user payment address and returns the signature", async () => {
@@ -92,16 +103,16 @@ describe("sign", () => {
 
   it("throws when the chosen role has no resolved address", async () => {
     const wallet = createWallet();
-    await expect(sign("payload", wallet as never, 0, undefined)).rejects.toThrow(
-      /missing address/i,
-    );
+    await expect(
+      sign("payload", wallet as never, 0, undefined),
+    ).rejects.toThrow(/missing address/i);
   });
 
   it("throws when checkSignature returns false (no silent ternary fallback)", async () => {
     checkSignatureMock.mockResolvedValueOnce(false);
     const wallet = createWallet();
-    await expect(sign("payload", wallet as never, 0, "addr_test_user")).rejects.toThrow(
-      /Signature failed verification/i,
-    );
+    await expect(
+      sign("payload", wallet as never, 0, "addr_test_user"),
+    ).rejects.toThrow(/Signature failed verification/i);
   });
 });

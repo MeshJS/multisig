@@ -347,7 +347,8 @@ The application provides comprehensive API documentation through Swagger UI:
 - `GET /api/v1/walletIds` - Get user's wallet IDs
 - `POST /api/v1/addTransaction` - Create new transaction
 - `POST /api/v1/authSigner` - Authenticate signer
-- `GET /api/v1/lookupMultisigWallet` - Lookup multisig wallet
+- `GET /api/v1/lookupMultisigWallet` - Lookup multisig wallet registrations by signer key hash
+- `GET /api/v1/resolveScript` - Resolve a native script (policy id or wallet address) to its signer key hashes
 - `POST /api/discord/send-message` - Send Discord notifications
 
 > 💡 **Tip**: The Swagger UI provides interactive API testing. Start the dev server and visit `/api-docs` to explore all available endpoints.

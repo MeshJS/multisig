@@ -71,6 +71,7 @@ export function ResetLayoutButton({
       type="button"
       data-testid={dataTestId}
       title="Reset layout"
+      aria-label="Reset layout"
       onClick={() => {
         onReset();
         // Refit once the restored positions have been applied.
@@ -79,7 +80,8 @@ export function ResetLayoutButton({
       className={CANVAS_BUTTON_CLASS}
     >
       <RotateCcw className="h-3 w-3" />
-      Reset layout
+      {/* Icon-only on phones so the top-left palette keeps its room. */}
+      <span className="hidden sm:inline">Reset layout</span>
     </button>
   );
 }

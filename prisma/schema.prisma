@@ -42,6 +42,19 @@ model Wallet {
   profileImageIpfsUrl     String?
   ownerAddress            String?
 
+  /// Secret used to derive per-document salts for this wallet's vault view.
+  ///
+  /// The demo vault at /vault derives salts from the note title, and says in
+  /// its own comment that this is fine there and nowhere real: a salt that is a
+  /// public function of the title cannot stop anyone brute-forcing a short
+  /// document from a guessed title, which is the one thing salts are for here.
+  ///
+  /// A real vault needs unguessable salts. One 32-byte secret per wallet gives
+  /// that with a single column: each node's salt is HMAC(vaultSalt, nodeId), so
+  /// salts are unguessable without the secret and no per-document storage is
+  /// needed. Nullable and generated lazily so existing wallets need no backfill.
+  vaultSalt String?
+
   @@index([ownerAddress])
   @@index([signersAddresses(ops: ArrayOps)], type: Gin)
 }
@@ -163,6 +176,24 @@ model Proxy {
   @@index([userId, isActive])
 }
 
+/// In-app access grants for a Proxy. Membership controls who can see and manage
+/// a proxy inside the app; it never grants on-chain authority, which stays with
+/// the multisig signers holding the auth token.
+model ProxyMember {
+  id        String   @id @default(cuid())
+  proxyId   String
+  address   String
+  role      String   @default("viewer")
+  label     String?
+  invitedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([proxyId, address])
+  @@index([proxyId])
+  @@index([address])
+}
+
 model BalanceSnapshot {
   id            String   @id @default(cuid())
   walletId      String
@@ -221,6 +252,8 @@ model WalletSignerNotificationSetting {
   emailOptIn                  Boolean   @default(true)
   notifyTransactionSignatures Boolean   @default(true)
   notifySignableSignatures    Boolean   @default(true)
+  notifyThresholdReached      Boolean   @default(true)
+  notifyBallotDeadlines       Boolean   @default(true)
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
@@ -245,26 +278,26 @@ model EmailVerificationToken {
 }
 
 model NotificationDelivery {
-  id                 String    @id @default(cuid())
-  eventType          String
-  channel            String
-  recipientAddress   String
-  recipientEmail     String?
-  resourceType       String
-  resourceId         String
-  walletId           String?
-  idempotencyKey     String    @unique
-  subject            String
-  payload            Json
-  status             String    @default("pending")
-  provider           String?
-  providerMessageId  String?
-  attempts           Int       @default(0)
-  lastError          String?
-  nextAttemptAt      DateTime  @default(now())
-  sentAt             DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  eventType         String
+  channel           String
+  recipientAddress  String
+  recipientEmail    String?
+  resourceType      String
+  resourceId        String
+  walletId          String?
+  idempotencyKey    String    @unique
+  subject           String
+  payload           Json
+  status            String    @default("pending")
+  provider          String?
+  providerMessageId String?
+  attempts          Int       @default(0)
+  lastError         String?
+  nextAttemptAt     DateTime  @default(now())
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status, nextAttemptAt])
   @@index([recipientAddress])
@@ -391,6 +424,185 @@ model ProposalTally {
 }
 
 // ---------------------------------------------------------------------------
+// Document Sign-Off (PRD-001) — five-entity model.
+//
+// A wallet-native, off-chain approval layer. Approval binds to an exact
+// content hash, never to the mutable document container, and inherits the
+// wallet's signer set + threshold frozen at the moment a review round starts.
+// No on-chain dependency in the MVP.
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  Draft
+  InReview
+  Approved
+  Rejected
+  Superseded
+  Archived
+}
+
+enum DocumentReviewAction {
+  approve
+  reject
+}
+
+// How the version's bytes are retained. The MVP never requires the bytes —
+// the content hash is the binding — so `hashOnly` is the privacy-preserving
+// default (see the vault's "Storage Privacy Risk").
+enum DocumentStorageMode {
+  hashOnly
+  inline
+  external
+}
+
+// The stable container. Title/description may change; approval never attaches
+// here, only to a DocumentVersion.
+model Document {
+  id           String            @id @default(cuid())
+  walletId     String
+  title        String
+  description  String?
+  documentType String?
+  createdBy    String // signer address that created it
+  status       DocumentStatus    @default(Draft)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+  versions     DocumentVersion[]
+  events       DocumentEvent[]
+  draft        DocumentDraft?
+
+  /// Which rule decides this document's rounds. Defaulting to `threshold` is
+  /// what makes this migration a no-op for every document that already exists.
+  signingMode DocumentSigningMode @default(threshold)
+
+  parties        ContractParty[]
+  contractFields ContractField[]
+
+  @@index([walletId])
+  @@index([walletId, status])
+  @@index([createdBy])
+}
+
+// Each version is its own approval object — this is what makes version-bound
+// approval and approval-reset-on-new-version possible.
+model DocumentVersion {
+  id                 String                  @id @default(cuid())
+  documentId         String
+  document           Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber      Int
+  contentHash        String // lowercase hex digest of the exact bytes
+  hashAlgorithm      String                  @default("sha256")
+  fileName           String?
+  mimeType           String?
+  fileSize           Int?
+  storageMode        DocumentStorageMode     @default(hashOnly)
+  contentRef         String? // external URI when storageMode = external
+  contentInline      String? // base64 bytes when storageMode = inline
+  reviewInstructions String?
+  status             DocumentStatus          @default(Draft)
+  createdBy          String
+  createdAt          DateTime                @default(now())
+  reviewStartedAt    DateTime?
+  decidedAt          DateTime? // approved or rejected
+  supersededAt       DateTime?
+  reviews            DocumentReview[]
+  signerSnapshot     DocumentSignerSnapshot?
+  events             DocumentEvent[]
+  attestation        DocumentAttestation?
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@index([contentHash])
+  @@index([status])
+}
+
+// One signer's action on one version, with the exact payload that was signed.
+// Append-only: a signer gets one action per version, and a new version starts
+// a fresh round at zero approvals.
+model DocumentReview {
+  id            String               @id @default(cuid())
+  versionId     String
+  version       DocumentVersion      @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  signerAddress String
+  action        DocumentReviewAction
+  comment       String?
+  payload       String // canonical JSON string that was signed (CIP-8 payload)
+  signature     String // COSE_Sign1 hex
+  signatureKey  String // COSE key hex
+  signedAt      DateTime // client-asserted, server-validated against a window
+  createdAt     DateTime             @default(now())
+
+  /// The party this signature was made as; null in threshold mode, where the
+  /// signer is a wallet signer and signs in no particular capacity.
+  ///
+  /// NoAction, not Prisma's default. The default for an optional relation is
+  /// SetNull, which would silently strip the capacity off an already-signed,
+  /// already-exported review on an append-only table. Cascade is worse: it
+  /// deletes the signature itself, with none of deleteDocument's retype-the-
+  /// title guard or its pre-delete AuditLog row, and would revert a fully
+  /// executed contract to InReview on the next recount. NoAction is checked at
+  /// the end of the statement, so deleting a whole document still cascades
+  /// cleanly while a party who has signed cannot be deleted on their own.
+  partyId String?
+  party   ContractParty? @relation(fields: [partyId], references: [id], onDelete: NoAction)
+
+  /// How this signature was produced. Only `cip8Wallet` is written today.
+  ///
+  /// This column is not yet part of the signed bytes, and until it is it is an
+  /// index rather than evidence — see the party-signing work. Nothing but the
+  /// default is written while parties mode is unimplemented, so there is
+  /// nothing to misrepresent yet.
+  method SignatureMethod @default(cip8Wallet)
+
+  /// NOT unique on (versionId, signerAddress) any more: one human holding two
+  /// roles signs twice on the same version, once per capacity. Threshold mode
+  /// keeps its one-action-per-signer guarantee through the already-acted check
+  /// inside submitSignerAction's transaction, which is covered by an
+  /// integration test rather than by an index that parties mode cannot keep.
+  ///
+  /// One review per party per version. NULLs are distinct in Postgres, so every
+  /// threshold-mode row (partyId null) is unaffected by this.
+  @@unique([versionId, partyId])
+  @@index([versionId])
+  @@index([signerAddress])
+  @@index([partyId])
+}
+
+// The signer set and threshold that applied when the round started. Frozen so
+// later membership changes never rewrite history.
+model DocumentSignerSnapshot {
+  id                  String          @id @default(cuid())
+  versionId           String          @unique
+  version             DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  walletId            String
+  signersAddresses    String[]
+  signersDescriptions String[]
+  requiredSigners     Int
+  walletPolicyHash    String // sha256 of the wallet's scriptCbor — binds the round to the policy
+  capturedAt          DateTime        @default(now())
+
+  @@index([walletId])
+}
+
+// Append-only audit log. Feeds the detail page history and the proof export.
+model DocumentEvent {
+  id           String           @id @default(cuid())
+  documentId   String
+  document     Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionId    String?
+  version      DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  type         String // "document.created" | "version.uploaded" | "review.started" | ...
+  actorAddress String?
+  metadata     Json?
+  createdAt    DateTime         @default(now())
+
+  @@index([documentId, createdAt])
+  @@index([versionId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
 // OAuth 2.1 authorization server
 //
 // Backs the MCP endpoint (`/api/mcp`) acting as an OAuth 2.0 Resource Server.
@@ -480,4 +692,235 @@ model OAuthGrant {
 
   @@unique([subjectAddress, clientId])
   @@index([subjectAddress])
+}
+
+/// Platform attestation over a document version: a timestamp and ordering
+/// record, signed by the platform's Ed25519 notary key.
+///
+/// Explicitly NOT an approval. Approval is DocumentReview, signed by the
+/// wallet's own signers. This row only witnesses that a version existed at a
+/// time and in a position, and each row commits to the hash of the previous
+/// one, so the history is tamper-evident independently of this table.
+model DocumentAttestation {
+  id                  String          @id @default(cuid())
+  versionId           String          @unique
+  version             DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  documentId          String
+  /// 1-based position in this document's chain.
+  sequence            Int
+  contentHash         String
+  /// Link to the previous attestation, or 64 zeroes for the first.
+  prevAttestationHash String
+  /// sha256 of the canonical payload — what the NEXT attestation commits to.
+  attestationHash     String          @unique
+  /// The exact canonical JSON that was signed.
+  payload             String
+  /// Ed25519 signature, lowercase hex.
+  signature           String
+  /// Which key signed it, so keys can be rotated without reissuing history.
+  publicKeyId         String
+  attestedAt          DateTime
+
+  @@unique([documentId, sequence])
+  @@index([documentId])
+  @@index([contentHash])
+}
+
+/// A mutable working copy that sits BEFORE the version model.
+///
+/// Document Sign-Off is built on immutability: a signature commits to an exact
+/// contentHash, and uploading a new version supersedes the last one and resets
+/// approvals to zero. An editor cannot live inside that — autosaving through
+/// `uploadVersion` would destroy in-flight approvals on every keystroke batch
+/// and append a link to the attestation chain each time.
+///
+/// So a draft is deliberately UNSIGNABLE: no contentHash, no attestation, and
+/// nothing in the review flow can reach it. Editing touches only this row.
+/// Publishing is the one-way door that serialises it into a DocumentVersion,
+/// hashes it server-side and attests it.
+model DocumentDraft {
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Markdown body. Null while `storeBody` is false — the draft then only
+  /// records that editing is in progress and no content reaches the server.
+  body String?
+
+  /// Server-side storage is opt-in PER DOCUMENT. The feature's default posture
+  /// is hashOnly, where bytes never leave the author's machine; keeping an
+  /// editable body on the server is a deliberate reversal and must be chosen,
+  /// never inherited.
+  storeBody Boolean @default(false)
+
+  /// Optimistic concurrency. A save presents the revision it read; a mismatch
+  /// is a conflict rather than a silent overwrite, which is what makes several
+  /// people editing safe without a CRDT or a broker.
+  revision  Int      @default(0)
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Contracts — named parties on top of Document Sign-Off.
+//
+// Sign-off is M-of-N over a wallet's own signers. A contract is N-of-N over
+// named parties who are usually NOT members of the wallet. The roster lives on
+// the Document so it survives a re-issue; everything per-round stays where it
+// already is — frozen in DocumentSignerSnapshot, proved by DocumentReview — so
+// the two can never drift.
+// ---------------------------------------------------------------------------
+
+/// Which rule decides a version's outcome.
+enum DocumentSigningMode {
+  /// M-of-N over the wallet's signers, read from the Wallet row at startReview.
+  threshold
+  /// Every named party signs. startReview builds the snapshot from the parties
+  /// with requiredSigners = the party count, so `evaluateThreshold` yields
+  /// N-of-N with no second evaluator and no change to the verifier.
+  parties
+}
+
+/// What a party is expected to put at an anchor in the body.
+enum ContractFieldKind {
+  signature
+  initials
+  date
+  text
+  checkbox
+}
+
+/// How a signature was produced. Only `cip8Wallet` is implemented; the others
+/// exist now because adding an enum value later is its own migration, and
+/// migrations reach production through an action that does not self-retry.
+///
+/// Note these describe two different things that will need separating: how the
+/// bytes were signed, and how the human was identified. AusweisApp and EUDI are
+/// identification protocols — a signature made after an eID check may still be
+/// a CIP-8 one.
+enum SignatureMethod {
+  /// CIP-8 COSE_Sign1 from a Cardano wallet, including utxos.dev passkey wallets.
+  cip8Wallet
+  /// German eID. Not implemented.
+  ausweisApp
+  /// EUDI wallet. Not implemented.
+  eudiWallet
+}
+
+/// A named party to a contract: who they are, in what capacity they sign, and
+/// the invite that lets a non-member of the wallet reach the review at all.
+///
+/// Deliberately holds NO per-round state — no status, no viewedAt, no
+/// decidedAt. `uploadVersion` and `publishDraft` supersede the version and
+/// reset approvals to zero without touching this row, so a per-round column
+/// here would survive a reset it has no business surviving: an ordering gate
+/// reading a stale "signed" would wave through a countersignature on a version
+/// the first party has never seen. Whether a party signed is not an opinion
+/// this table stores — it is the existence of a DocumentReview carrying their
+/// signature over the canonical payload.
+model ContractParty {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Free text, because every contract names its parties differently ("Buyer",
+  /// "Lessee", "Witness"). Copied with displayName into the frozen snapshot's
+  /// signersDescriptions at startReview — that is how the capacity a signature
+  /// was made in reaches the exported proof without a proof-format bump.
+  role        String
+  displayName String
+  /// Where the invite is sent. The only identifiable third-party data in the
+  /// document stack, which is why this table gets its RLS block in the same
+  /// migration rather than a follow-up.
+  email       String?
+
+  /// Null until the party redeems their invite and connects a wallet. A round
+  /// cannot start while any party is null here: the snapshot freezes addresses
+  /// and the signed payload binds signerAddress, so a party with no address at
+  /// startReview could never act on that version.
+  address String?
+
+  /// Whether this party's signature is needed for the contract to complete.
+  ///
+  /// An optional party (a Witness, an observer) may sign or decline without
+  /// blocking. This is exactly why `evaluateThreshold` cannot decide a
+  /// contract: it counts approvals anonymously, so an optional party sitting in
+  /// the snapshot would let one be Approved over a REQUIRED party's explicit
+  /// rejection. Parties mode uses the party-aware evaluator in payload.ts.
+  required Boolean @default(true)
+
+  /// Parties with equal values sign in parallel; a party may act only once
+  /// every party with a strictly lower value has a review on the version being
+  /// signed. Enforced in submitSignerAction — it is a rule about rows in
+  /// another table, so no constraint here can express it.
+  signingOrder Int @default(0)
+
+  /// sha256 of a single-use invite token; the token itself is never stored.
+  /// This is what makes the feature reachable at all — a party is not in
+  /// wallet.signersAddresses, so assertWalletAccess rejects them.
+  inviteTokenHash String? @unique
+
+  invitedAt        DateTime?
+  /// Expiry and consumption, mirroring EmailVerificationToken and
+  /// BotClaimToken. Without them the invite is a bearer credential valid
+  /// forever: whoever holds the link last claims the party slot, so a mistyped
+  /// or later-compromised mailbox could bind a stranger's wallet to "Buyer".
+  inviteExpiresAt  DateTime?
+  inviteConsumedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields  ContractField[]
+  reviews DocumentReview[]
+
+  /// Deliberately NOT unique on (documentId, address): one human may hold two
+  /// roles — a tenant who is also their own guarantor — so the same wallet can
+  /// back two parties. That is only safe because the signed payload carries
+  /// partyId, so two signatures from one address are distinguishable by the
+  /// capacity they were made in rather than collapsing into one.
+  @@index([documentId])
+  @@index([address])
+  @@index([inviteExpiresAt])
+}
+
+/// A per-party placeholder in the body: which anchor belongs to whom, and what
+/// kind of thing goes there.
+///
+/// `value` is PRE-PUBLISH input only. A field is a term of the contract, and
+/// the whole model rests on a signature binding an exact contentHash — so
+/// values must be rendered into the body by publishDraft and hashed with it. A
+/// value left live after the freeze would be an unsigned, mutable contract
+/// term: change 50000 to 5000 after signing and every signature still verifies.
+model ContractField {
+  id String @id @default(cuid())
+
+  /// Denormalised from the party so anchor uniqueness can be enforced across
+  /// the whole body, which spans parties. Two fields on one anchor are
+  /// unresolvable for the renderer, and ContractField has no other path to the
+  /// document. Same pattern DocumentAttestation uses for documentId.
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  partyId String
+  party   ContractParty @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  kind     ContractFieldKind
+  label    String?
+  /// Stable marker in the body that the renderer resolves.
+  anchor   String
+  required Boolean           @default(true)
+
+  /// Pre-publish input. publishDraft renders these into the markdown body
+  /// before hashing, so contentHash covers them; nothing may write here once
+  /// the document's latest version has a snapshot.
+  value    String?
+  filledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([documentId, anchor])
+  @@index([partyId])
 }

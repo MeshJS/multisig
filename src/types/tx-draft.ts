@@ -83,9 +83,26 @@ export type DraftCertificate = {
   pairId?: string;
 };
 
+/**
+ * Who funds the transaction and receives its change. Only the multisig
+ * source can be proposed (and carry staking certificates / votes, which need
+ * the multisig's script credentials); the connected wallet signs and submits
+ * directly; an arbitrary address is build-and-export only.
+ */
+export type DraftSource =
+  | { kind: "multisig" }
+  /** The connected CIP-30 signer wallet; its address is resolved at runtime. */
+  | { kind: "connected" }
+  /** Any pasted payment address the user controls elsewhere. */
+  | { kind: "address"; address: string };
+
+export type DraftSourceKind = DraftSource["kind"];
+
 export type TxDraft = {
   /** Draft id; the flow tx node id becomes `txd:<id>`. */
   id: string;
+  /** Funding wallet and change target; defaults to the multisig. */
+  source: DraftSource;
   outputs: DraftOutput[];
   utxoSelection: DraftUtxoSelection;
   /** Off-chain description shown to signers (≤128 chars convention). */

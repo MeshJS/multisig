@@ -59,17 +59,22 @@ interface ProxyCardProps {
   onUpdateProxy: (proxyId: string, description: string) => Promise<void>;
   onRefreshBalance?: () => void;
   onCopyToClipboard: (text: string, label?: string) => void;
+  /** Signers (implicit access) + people the proxy has been shared with. */
+  peopleCount: number;
+  onManageUsers: () => void;
 }
 
 // Component to fetch and display proxy balance
-const ProxyCardWithBalance = memo(function ProxyCardWithBalance({ 
-  proxy, 
-  isSelected, 
-  onSelect, 
-  onCopy, 
-  onSpend, 
+const ProxyCardWithBalance = memo(function ProxyCardWithBalance({
+  proxy,
+  isSelected,
+  onSelect,
+  onCopy,
+  onSpend,
   onUpdateProxy,
-  onCopyToClipboard
+  onCopyToClipboard,
+  peopleCount,
+  onManageUsers
 }: ProxyCardProps) {
   // Use balance and DRep data directly from proxy object
   const balance = proxy.balance || [];
@@ -90,18 +95,22 @@ const ProxyCardWithBalance = memo(function ProxyCardWithBalance({
       onSpend={onSpend}
       onUpdateProxy={onUpdateProxy}
       onCopyToClipboard={onCopyToClipboard}
+      peopleCount={peopleCount}
+      onManageUsers={onManageUsers}
     />
   );
 });
 
-const ProxyCard = memo(function ProxyCard({ 
-  proxy, 
-  isSelected, 
-  onSelect, 
-  onCopy, 
-  onSpend, 
-  onUpdateProxy, 
-  onCopyToClipboard
+const ProxyCard = memo(function ProxyCard({
+  proxy,
+  isSelected,
+  onSelect,
+  onCopy,
+  onSpend,
+  onUpdateProxy,
+  onCopyToClipboard,
+  peopleCount,
+  onManageUsers
 }: ProxyCardProps) {
   // Use balance and DRep data directly from proxy object
   const displayBalance = proxy.balance || [];
@@ -292,6 +301,25 @@ const ProxyCard = memo(function ProxyCard({
             <div className="text-xs text-muted-foreground">No balance</div>
           )}
         </div>
+
+        {/* People with access */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onManageUsers();
+          }}
+          className="group flex w-full items-center gap-2 rounded-md border border-border/40 px-2 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+          aria-label="Manage who has access to this proxy"
+        >
+          <Users className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-xs text-muted-foreground">
+            {peopleCount} {peopleCount === 1 ? "person has" : "people have"} access
+          </span>
+          <span className="text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+            Manage
+          </span>
+        </button>
 
         {/* Expanded Details */}
         {isExpanded && (
@@ -566,6 +594,11 @@ interface ProxyOverviewProps {
   onStartSetup: () => void;
   onStartSpending: () => void;
   onUpdateProxy: (proxyId: string, description: string) => Promise<void>;
+  /** Number of signers with implicit access to every proxy of this wallet. */
+  signerCount: number;
+  /** Extra people each proxy has been shared with, keyed by proxy id. */
+  sharedCounts: Record<string, number>;
+  onManageUsers: (proxyId: string) => void;
 }
 
 const ProxyOverview = memo(function ProxyOverview({
@@ -577,6 +610,9 @@ const ProxyOverview = memo(function ProxyOverview({
   onStartSetup,
   onStartSpending,
   onUpdateProxy,
+  signerCount,
+  sharedCounts,
+  onManageUsers,
 }: ProxyOverviewProps) {
   return (
     <div className="space-y-6">
@@ -635,6 +671,8 @@ const ProxyOverview = memo(function ProxyOverview({
                     onSpend={() => onStartSpending()}
                     onUpdateProxy={onUpdateProxy}
                     onCopyToClipboard={onCopyToClipboard}
+                    peopleCount={signerCount + (sharedCounts[proxy.id] ?? 0)}
+                    onManageUsers={() => onManageUsers(proxy.id)}
                   />
                 ))}
               </div>

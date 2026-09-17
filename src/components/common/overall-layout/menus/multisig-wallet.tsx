@@ -1,4 +1,4 @@
-import { Banknote, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, Workflow } from "lucide-react";
+import { Banknote, FileSignature, Info, List, Landmark, UserRoundPen, ChartNoAxesColumnIncreasing, FileCode2, Workflow } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
@@ -74,6 +74,20 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
         >
           <Landmark className="h-5 w-5" />
           Governance
+        </MenuLink>
+        <MenuLink
+          href={`${baseUrl}documents`}
+          className={
+            // Prefix match, not equality: the section has four routes
+            // (list, new, detail, review) and the entry must stay highlighted
+            // on all of them.
+            router.pathname.startsWith("/wallets/[wallet]/documents")
+              ? "text-white"
+              : ""
+          }
+        >
+          <FileSignature className="h-5 w-5" />
+          Documents
         </MenuLink>
         <MenuLink
           href={`${baseUrl}signing`}

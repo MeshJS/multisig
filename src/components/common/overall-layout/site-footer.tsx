@@ -8,12 +8,17 @@ const productLinks = [
   { label: "Import a wallet", href: "/wallets/import-wallet" },
   { label: "Roadmap", href: "/roadmap" },
   { label: "Feature graph", href: "/roadmap/graph" },
+  { label: "Shielded sign-off", href: "/vault" },
   { label: "Blog", href: "/blog" },
 ];
 
 const developerLinks = [
   { label: "API docs", href: "/api-docs", external: false },
-  { label: "Developers & Bots", href: "/#developers-and-bots", external: false },
+  {
+    label: "Developers & Bots",
+    href: "/#developers-and-bots",
+    external: false,
+  },
   { label: "Download skill", href: "/api/skill", external: true },
   {
     label: "Source on GitHub",
@@ -88,7 +93,9 @@ export default function SiteFooter() {
 
           {/* Developers */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Developers</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Developers
+            </h3>
             <ul className="mt-4 space-y-2.5">
               {developerLinks.map((link) =>
                 link.external ? (

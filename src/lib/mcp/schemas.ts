@@ -17,13 +17,14 @@ export type JsonSchema = Record<string, unknown>;
 const walletId = {
   type: "string",
   minLength: 1,
-  description: "Wallet UUID from the multisig database (not a Cardano address).",
+  description:
+    "Wallet UUID from the multisig database (not a Cardano address).",
 } as const;
 
 const network = {
   type: "string",
   enum: ["0", "1"],
-  description: "Cardano network: \"0\" = preprod, \"1\" = mainnet.",
+  description: 'Cardano network: "0" = preprod, "1" = mainnet.',
 } as const;
 
 export const EMPTY_INPUT: JsonSchema = {
@@ -36,6 +37,33 @@ export const WALLET_ONLY_INPUT: JsonSchema = {
   type: "object",
   properties: { walletId },
   required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const DOCUMENT_LIST_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    walletId,
+    includeArchived: {
+      type: "boolean",
+      default: false,
+      description: "Include archived documents. Off by default.",
+    },
+  },
+  required: ["walletId"],
+  additionalProperties: false,
+};
+
+export const DOCUMENT_GET_INPUT: JsonSchema = {
+  type: "object",
+  properties: {
+    documentId: {
+      type: "string",
+      description:
+        "Document id, as returned by document_list in the documentId field.",
+    },
+  },
+  required: ["documentId"],
   additionalProperties: false,
 };
 
@@ -70,6 +98,8 @@ export const PROXY_DREP_INFO_INPUT: JsonSchema = {
 
 export const LOOKUP_WALLET_INPUT: JsonSchema = {
   type: "object",
+  description:
+    "Provide exactly one selector: pubKeyHashes (by signer), scriptHash (by policy) or address (by multisig wallet address).",
   properties: {
     pubKeyHashes: {
       type: "array",
@@ -77,11 +107,22 @@ export const LOOKUP_WALLET_INPUT: JsonSchema = {
       minItems: 1,
       maxItems: 50,
       description:
-        "Payment public key hashes (56 lowercase hex chars each) to match against on-chain CIP-1854 registration metadata.",
+        "Participant public key hashes (56 lowercase hex chars each) to match against on-chain CIP-1854 registration metadata. Returns every registration listing ANY of them.",
+    },
+    scriptHash: {
+      type: "string",
+      pattern: "^[0-9a-f]{56}$",
+      description:
+        "Native-script hash (policy id) of the multisig wallet. The script is resolved on-chain to its signer key hashes and only registrations listing ALL of them are returned.",
+    },
+    address: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Bech32 multisig wallet address (script payment credential). Resolved the same way as scriptHash.",
     },
     network,
   },
-  required: ["pubKeyHashes"],
   additionalProperties: false,
 };
 
@@ -132,11 +173,13 @@ export const BALLOT_UPSERT_INPUT: JsonSchema = {
           proposalId: {
             type: "string",
             minLength: 1,
-            description: "Governance proposal id, in <txHash>#<certIndex> form.",
+            description:
+              "Governance proposal id, in <txHash>#<certIndex> form.",
           },
           proposalTitle: {
             type: "string",
-            description: "Human-readable proposal title. Required by the handler.",
+            description:
+              "Human-readable proposal title. Required by the handler.",
           },
           choice: {
             type: "string",
@@ -213,7 +256,8 @@ export const PUBLISH_RATIONALE_INPUT: JsonSchema = {
     proposalId: {
       type: "string",
       minLength: 1,
-      description: "Governance proposal id (<txHash>#<certIndex>) on that ballot.",
+      description:
+        "Governance proposal id (<txHash>#<certIndex>) on that ballot.",
     },
     summary: {
       type: "string",

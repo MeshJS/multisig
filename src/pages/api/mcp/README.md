@@ -27,7 +27,7 @@ throws on the *second* request while the first still looks healthy — which is 
 | `multisig_list_free_utxos` | `wallets:read` | `freeUtxos.ts` |
 | `multisig_list_proxies` | `wallets:read` | `proxies.ts` |
 | `multisig_proxy_drep_info` | `wallets:read` | `proxyDRepInfo.ts` |
-| `multisig_lookup_wallet` | `wallets:read` | `lookupMultisigWallet.ts` |
+| `multisig_lookup_wallet` | `wallets:read` | `lookupMultisigWallet.ts` (plus `resolveScript.ts` when called with `scriptHash` / `address`) |
 | `governance_list_active_proposals` | `governance:read` | `governanceActiveProposals.ts` |
 | `ballot_upsert` | `ballots:write` | `botBallotsUpsert.ts` |
 

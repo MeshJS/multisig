@@ -14,6 +14,7 @@ export const MCP_SCOPES = [
   "wallets:read",
   "governance:read",
   "ballots:write",
+  "documents:read",
 ] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
@@ -28,6 +29,10 @@ export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   // public and effectively permanent — "ballot drafts" alone undersells that.
   "ballots:write":
     "Create and update governance ballot drafts, and publish rationale documents publicly to IPFS. Cannot vote on-chain.",
+  // Read-only and says so. Sign-off approvals are CIP-8 signatures from a named
+  // human signer; nothing reachable through MCP can produce one.
+  "documents:read":
+    "Read your wallets' sign-off documents: titles, version history, content hashes and who still needs to sign. Cannot create, edit, approve or sign anything.",
 };
 
 export function isMcpScope(value: string): value is McpScope {

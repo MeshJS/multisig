@@ -1,8 +1,48 @@
 # 12-Month Roadmap: Mesh Multi-Sig Wallet
 
-**Timeline:** May 2026 - April 2027  
-**Team:** Quirin + Andre, part-time (~25 hrs/week combined), feature-based ownership  
+**Timeline:** April 2026 – March 2027  
 **Approach:** Month-by-month cadence combining baseline maintenance with feature delivery. No hard requirements for feature delivery or releases — tasks scale up/down based on project activity.
+
+---
+
+## MRP task mapping
+
+The authoritative mapping between MRP reward tasks and the months below. **Month N of this roadmap = MRP Month N = the calendar month in the same row.** Use this table whenever an MRP task and a roadmap section appear to disagree.
+
+| MRP task | Calendar month | Roadmap section | On-chain task hash |
+|---|---|---|---|
+| MRP Month 1 | April 2026 | [Month 1](#month-1--april-2026) | — |
+| MRP Month 2 | May 2026 | [Month 2](#month-2--may-2026) | `02e1e7c8…65256f` |
+| MRP Month 3 | June 2026 | [Month 3](#month-3--june-2026) | `a833f41c…91cef8` |
+| MRP Month 4 | July 2026 | [Month 4](#month-4--july-2026) | `27034bf3…dd219a` |
+| MRP Month 5 | August 2026 | [Month 5](#month-5--august-2026) | — |
+| MRP Month 6 | September 2026 | [Month 6](#month-6--september-2026) | — |
+| MRP Month 7 | October 2026 | [Month 7](#month-7--october-2026) | — |
+| MRP Month 8 | November 2026 | [Month 8](#month-8--november-2026) | — |
+| MRP Month 9 | December 2026 | [Month 9](#month-9--december-2026) | — |
+| MRP Month 10 | January 2027 | [Month 10](#month-10--january-2027) | — |
+| MRP Month 11 | February 2027 | [Month 11](#month-11--february-2027) | — |
+| MRP Month 12 | March 2027 | [Month 12](#month-12--march-2027) | — |
+
+> **Why this table exists.** The month headings were renumbered on 2026-08-03 (`984aa46`) to match actual delivery: the original numbering started at "Month 1 — May 2026" while Month 1's own proof-of-completion table documented April work. MRP task cards created before that date therefore carry bullet text describing the **following** month — e.g. the card headed *MRP Month 2* lists the June workstreams. The table above is what governs; a card's bullet text does not.
+
+### Underlying PRs per MRP month
+
+Each MRP month resolves to a concrete, reproducible set of merged pull requests. The "all merged PRs" link runs the exact GitHub search; the counts are Quirin's authored merges in that window.
+
+| MRP month | Merged PRs (Quirin) | The actual PRs |
+|---|---|---|
+| **M1 — April 2026** | [10](https://github.com/MeshJS/multisig/pulls?q=is%3Apr+is%3Amerged+author%3AQSchlegel+merged%3A2026-04-01..2026-04-30) | [#215](https://github.com/MeshJS/multisig/pull/215) drep prerender fix · [#216](https://github.com/MeshJS/multisig/pull/216) missing User table on startup · [#217](https://github.com/MeshJS/multisig/pull/217) VKey witness filter + CI smoke system · [#218](https://github.com/MeshJS/multisig/pull/218) preprod environment · [#219](https://github.com/MeshJS/multisig/pull/219)/[#222](https://github.com/MeshJS/multisig/pull/222)/[#224](https://github.com/MeshJS/multisig/pull/224)/[#226](https://github.com/MeshJS/multisig/pull/226) 12-month roadmap + contributing guide · [#227](https://github.com/MeshJS/multisig/pull/227) invalid-CBOR guard in `addTransaction` · [#228](https://github.com/MeshJS/multisig/pull/228) M1 proof of completion |
+| **M2 — May 2026** | [3](https://github.com/MeshJS/multisig/pulls?q=is%3Apr+is%3Amerged+author%3AQSchlegel+merged%3A2026-05-01..2026-05-31) | [#257](https://github.com/MeshJS/multisig/pull/257) pin Mesh SDK + reject witnesses that don't verify against the tx body · [#259](https://github.com/MeshJS/multisig/pull/259) Import Wallet wizard · [#260](https://github.com/MeshJS/multisig/pull/260) `main`→`preprod` merge clearing #229 + CodeQL fixes |
+| **M3 — June 2026** | [51](https://github.com/MeshJS/multisig/pulls?q=is%3Apr+is%3Amerged+author%3AQSchlegel+merged%3A2026-06-01..2026-06-30) | Governance [#271](https://github.com/MeshJS/multisig/pull/271)–[#272](https://github.com/MeshJS/multisig/pull/272), [#279](https://github.com/MeshJS/multisig/pull/279), [#286](https://github.com/MeshJS/multisig/pull/286), [#296](https://github.com/MeshJS/multisig/pull/296)–[#297](https://github.com/MeshJS/multisig/pull/297), [#300](https://github.com/MeshJS/multisig/pull/300), [#302](https://github.com/MeshJS/multisig/pull/302), [#315](https://github.com/MeshJS/multisig/pull/315) · Signing & auth [#273](https://github.com/MeshJS/multisig/pull/273)–[#277](https://github.com/MeshJS/multisig/pull/277), [#281](https://github.com/MeshJS/multisig/pull/281)–[#282](https://github.com/MeshJS/multisig/pull/282), [#324](https://github.com/MeshJS/multisig/pull/324) · Mesh 2.0 groundwork [#229](https://github.com/MeshJS/multisig/pull/229), [#269](https://github.com/MeshJS/multisig/pull/269), [#278](https://github.com/MeshJS/multisig/pull/278) · Mobile & UX [#287](https://github.com/MeshJS/multisig/pull/287)–[#295](https://github.com/MeshJS/multisig/pull/295) · Landing/theme/SEO [#298](https://github.com/MeshJS/multisig/pull/298)–[#299](https://github.com/MeshJS/multisig/pull/299), [#308](https://github.com/MeshJS/multisig/pull/308)–[#318](https://github.com/MeshJS/multisig/pull/318), [#328](https://github.com/MeshJS/multisig/pull/328) · Infra & security [#284](https://github.com/MeshJS/multisig/pull/284), [#301](https://github.com/MeshJS/multisig/pull/301), [#319](https://github.com/MeshJS/multisig/pull/319) · Docs & releases [#280](https://github.com/MeshJS/multisig/pull/280), [#283](https://github.com/MeshJS/multisig/pull/283), [#285](https://github.com/MeshJS/multisig/pull/285), [#303](https://github.com/MeshJS/multisig/pull/303), [#309](https://github.com/MeshJS/multisig/pull/309), [#320](https://github.com/MeshJS/multisig/pull/320)–[#321](https://github.com/MeshJS/multisig/pull/321) |
+| **M4 — July 2026** | [16](https://github.com/MeshJS/multisig/pulls?q=is%3Apr+is%3Amerged+author%3AQSchlegel+merged%3A2026-07-01..2026-07-31) | Bot platform & API [#341](https://github.com/MeshJS/multisig/pull/341)–[#345](https://github.com/MeshJS/multisig/pull/345) · Agent/crawler surface [#346](https://github.com/MeshJS/multisig/pull/346) · DRep vote-history explorer [#337](https://github.com/MeshJS/multisig/pull/337)–[#339](https://github.com/MeshJS/multisig/pull/339) · Roadmap & delivery audit [#347](https://github.com/MeshJS/multisig/pull/347), [#350](https://github.com/MeshJS/multisig/pull/350)–[#352](https://github.com/MeshJS/multisig/pull/352) · Production hardening [#332](https://github.com/MeshJS/multisig/pull/332)–[#334](https://github.com/MeshJS/multisig/pull/334) |
+
+Reproduce any row:
+
+```bash
+gh pr list --repo MeshJS/multisig --state merged --limit 100 \
+  --search "merged:2026-06-01..2026-06-30 author:QSchlegel" --json number,title,mergedAt
+```
 
 ---
 
@@ -14,9 +54,11 @@
 
 ---
 
-## Delivered to date (May – July 2026)
+## Delivered to date (April – July 2026)
 
 What the product can actually do today, as verified in the codebase on 2026-07-26. The per-month **Progress** tables below track plan-vs-actual; this section is the cumulative capability inventory, and it is the input that reshaped M4–M6.
+
+Coverage starts at **April**, the programme's first month — April's output is infrastructure rather than user-facing features (the preprod environment, the real-chain smoke system, transaction-integrity guards), so it shows up inside the sections below rather than as a headline capability of its own.
 
 > **Caveat — delivered ≠ live.** Everything below is merged on `preprod`. `main` is 75 commits behind and the production database is four migrations behind, so a good share of this is not yet reachable on the production deployment. Closing that gap is the first item in August.
 
@@ -41,23 +83,28 @@ What the product can actually do today, as verified in the codebase on 2026-07-2
 
 ### Notifications
 
-Resend-backed email channel with a real outbox: `NotificationDelivery` carries an idempotency key, attempt counter, `nextAttemptAt` backoff and nine statuses (including four distinct skip reasons), drained by `drainNotificationOutbox` via a token-authenticated `POST /api/notifications/drain`. Event types are `email.verify`, `signature.required`, `signature.reminder`. Per-wallet × per-signer settings UI on the wallet Info page, plus hashed-token email verification ([#322](https://github.com/MeshJS/multisig/pull/322), [#326](https://github.com/MeshJS/multisig/pull/326)). **Gap:** no scheduled workflow drains the outbox — `daily-balance-snapshots.yml` is the only cron in the repo.
+Resend-backed email channel with a real outbox: `NotificationDelivery` carries an idempotency key, attempt counter, `nextAttemptAt` backoff and nine statuses (including four distinct skip reasons), drained by `drainNotificationOutbox` via a token-authenticated `POST /api/notifications/drain`. Event types are `email.verify`, `signature.required`, `signature.reminder`, `threshold.reached` (a transaction/payload collected enough signatures) and `ballot.deadline` (48h/24h reminders for ballots and pending vote transactions, derived from on-chain proposal expiration epochs, scanned hourly by `ballot-deadline-reminders.yml` via `POST /api/notifications/ballot-deadlines`). Per-wallet × per-signer settings UI on the wallet Info page, plus hashed-token email verification ([#322](https://github.com/MeshJS/multisig/pull/322), [#326](https://github.com/MeshJS/multisig/pull/326)). **Gap:** no scheduled workflow drains the outbox — `daily-balance-snapshots.yml` is the only cron in the repo.
 
 ### Testing & CI
 
 - **Playwright E2E**: 11 spec files, ~54 tests, in `e2e/tests/` — wallet creation (legacy + SDK), ring transfers on real preprod, staking, proxy, DRep/ballot UI, bot management, notification settings, wallet access control, signing rejection, responsive smoke. Runs in Docker via `pr-playwright-browser.yml`, serialized against the v1 smoke job through a shared `ci-preprod-wallets` concurrency group ([#323](https://github.com/MeshJS/multisig/pull/323), [#335](https://github.com/MeshJS/multisig/pull/335), [#336](https://github.com/MeshJS/multisig/pull/336)).
-- Real-chain smoke system closed ([#213](https://github.com/MeshJS/multisig/issues/213)); deploy-migrations on Node 22 + manual dispatch ([#319](https://github.com/MeshJS/multisig/pull/319)); RLS follow-up migration authored ([#332](https://github.com/MeshJS/multisig/pull/332)); worktree gitlink fix ([#333](https://github.com/MeshJS/multisig/pull/333)).
+- **Preprod environment + real-chain smoke CI** — built in April: the `preprod` branch and environment ([#218](https://github.com/MeshJS/multisig/pull/218)) and the CI smoke-test system that exercises the route chain against real preprod ([#217](https://github.com/MeshJS/multisig/pull/217)), which skips gracefully when `SMOKE_*` secrets are absent. [#213](https://github.com/MeshJS/multisig/issues/213) closed once the first real run was linked. Everything since — the Playwright suite above included — runs on this foundation.
+- deploy-migrations on Node 22 + manual dispatch ([#319](https://github.com/MeshJS/multisig/pull/319)); RLS follow-up migration authored ([#332](https://github.com/MeshJS/multisig/pull/332)); worktree gitlink fix ([#333](https://github.com/MeshJS/multisig/pull/333)).
 
 ### Platform
 
-Mesh 2.0 groundwork (Prisma 7.8 + Next 16, tx-builder hardfork upgrade, wallet ops consolidated behind one bridge with an ESLint guardrail); signing & auth reliability (bech32 normalization, `signData` arg order, core-cst witness/body-hash merge, stuck-"Loading…" recovery, cross-instance import, non-opaque wallet-session status codes); mobile foundations, skeleton/empty states, error toasts, pagination; landing + SEO + glass theme overhaul; on-chain wallet registration and discovery ([#340](https://github.com/MeshJS/multisig/pull/340)).
+**Transaction & signing integrity** — the through-line from April onward: extraneous VKey witnesses filtered out of submitted transactions ([#217](https://github.com/MeshJS/multisig/pull/217)); an invalid-CBOR guard on `POST /api/v1/addTransaction` plus a degraded "unreadable transaction" card with Reject & Delete, so an API-poisoned row can no longer lock a wallet's UTxOs ([#227](https://github.com/MeshJS/multisig/pull/227), [#211](https://github.com/MeshJS/multisig/issues/211)); Mesh SDK pinned to exact versions after a lockfile patch drift changed Conway CBOR encoding and made multisig DRep votes fail on chain, with a client-side guard that now rejects witnesses which don't verify against the body they're attached to ([#257](https://github.com/MeshJS/multisig/pull/257)).
+
+**Wallet lifecycle** — Import Wallet wizard covering four sources (another multisig instance, Summon, native-script CBOR, JSON backup) with `importWallet`/`exportWallet` procedures, cross-instance endpoints reusing the CIP-8 `checkSignature` path, a downloadable JSON backup and a `lockedSigners` gate so imported wallets can't silently diverge from their origin ([#259](https://github.com/MeshJS/multisig/pull/259)); on-chain wallet registration and discovery ([#340](https://github.com/MeshJS/multisig/pull/340)).
+
+**Everything else** — Mesh 2.0 groundwork (Prisma 7.8 + Next 16, tx-builder hardfork upgrade, wallet ops consolidated behind one bridge with an ESLint guardrail); signing & auth reliability (bech32 normalization, `signData` arg order, core-cst witness/body-hash merge, stuck-"Loading…" recovery, cross-instance import, non-opaque wallet-session status codes); mobile foundations, skeleton/empty states, error toasts, pagination; landing + SEO + glass theme overhaul.
 
 ### Landed ahead of schedule
 
 | Capability | Planned | Actually delivered | Effect on the plan |
 |------------|---------|--------------------|--------------------|
 | Governance metadata fix (#122) | M7 (Nov) | June | Closed |
-| Wallet V2 — registration & discovery (#33) | M3 (Jul) | July ([#340](https://github.com/MeshJS/multisig/pull/340)) | On time; feeds the Discover page (#52), which moves up from M10 |
+| Wallet V2 — registration & discovery (#33) | M3 (Jul) | July ([#340](https://github.com/MeshJS/multisig/pull/340)) | On time; feeds the M5 Discover lookup by signer/policy, which moves up from M10 (#52 was closed as unspecified; scope now tracked under #33) |
 | Bot platform (SDK/reference client, scoped auth, ballot API) | M7 (Nov) | July | M7 reduces to **webhooks only** — no webhook code exists yet |
 | API documentation & developer portal | M8 (Dec) | June–July | Done; M8 slot freed |
 | Pending transactions on user's homepage (#125) | M7 (Nov) | Shipped — surfaced on the wallets dashboard | Issue still open; verify and close |
@@ -163,7 +210,7 @@ End-of-month snapshot. Last updated 2026-07-26.
 | FROST research kickoff (#220) | Not started | Carried to August. Needs to start there to leave runway before the October go/no-go |
 | CI/maintenance baseline | Watch item — unchanged | `pr-multisig-v1-smoke.yml` still `exit 1`s in its "Validate required CI secrets" step when secrets are absent, and dependabot-triggered runs never receive repo Actions secrets. Every dependabot PR is therefore red for systemic reasons, not because of the version bump — 7 are open, the oldest since 2026-06-15. The sibling `ci-smoke-preprod.yml` already has the skip-when-unconfigured guard to copy |
 | Wallet V2 (#33) | Delivered | On-chain wallet registration + discovery shipped in [#340](https://github.com/MeshJS/multisig/pull/340) |
-| Unplanned July delivery | Delivered | Bot platform, DRep vote-history explorer, Playwright E2E, and agent/API documentation all landed this month — see [Delivered to date](#delivered-to-date-may--july-2026) |
+| Unplanned July delivery | Delivered | Bot platform, DRep vote-history explorer, Playwright E2E, and agent/API documentation all landed this month — see [Delivered to date](#delivered-to-date-april--july-2026) |
 
 ---
 
@@ -171,7 +218,7 @@ End-of-month snapshot. Last updated 2026-07-26.
 
 **Focus:** Close the production release gap, then start Document Sign-Off (see [Flagship feature](#flagship-feature--document-sign-off)).
 
-Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date-may--july-2026)) freed the M7/M8 documentation and bot slots, and surfaced a release gap that outranks all feature work.
+Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date-april--july-2026)) freed the M7/M8 documentation and bot slots, and surfaced a release gap that outranks all feature work.
 
 **Quirin**
 
@@ -208,7 +255,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 | Task | Issues |
 |------|--------|
 | Transaction visualization MVP (ship) — extend the tx visualizer to work with bot and display/build all tx types multisig is capable of doing | |
-| Discover page — fold into the delivered Wallet V2 registration/discovery rather than building it standalone; add lookup by signer/policy *(moved up from M10)* | #52, #33 |
+| Discover — lookup by signer/policy on the import wizard's Discover tab (search by signer address/key hash or wallet address/script hash; view-only for non-participants), `resolveScript` route, MCP `multisig_lookup_wallet` by script hash/address. No standalone page — rides the delivered Wallet V2 discovery *(moved up from M10)* | #33 |
 | Notification digests & deadline reminders — ballot-deadline and threshold-reached emails on the existing outbox (product work, infrastructure already exists) | |
 | Monthly report | |
 
@@ -216,7 +263,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 ## Month 6 — September 2026
 
-**Focus:** Document Sign-Off provenance, FROST findings, hardware wallets.
+**Focus:** Document Sign-Off provenance, FROST findings, and MCP transaction review.
 
 **Quirin**
 
@@ -229,14 +276,15 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| Hardware wallet support — Ledger/Trezor. **Scope the CIP-8 `signData` constraint during the M4–M5 Sign-Off build, not after** — Ledger/Trezor support for `signData` is limited, and Document Sign-Off approvals depend on it | #44 |
-| UX papercut batch — full-address verification (#196), transaction pagination (#30), better 404 page (#22) | #196, #30, #22 |
+| MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review | |
+| Transaction review PNG & in-chat review — generate a clear PNG summary containing the key transaction details and display it in the user's chat for human review; MCP must not sign or broadcast on the user's behalf | |
+| Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval | |
 
 ---
 
 ## Month 7 — October 2026
 
-**Focus:** Governance polish, dApp connector, bot platform.
+**Focus:** Governance polish, dApp connector, and advanced transaction building.
 
 Revised 2026-07-26: the governance metadata fix closed in June, and the bot platform and developer portal shipped in July, so this month absorbs the work those slots were holding.
 
@@ -251,9 +299,8 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
-| Bot platform — webhooks. The rest of "v2" (scoped auth, reference client, example bots, OpenAPI) shipped in July; webhooks are the only unbuilt piece — no webhook code exists in `src/` today | |
-| Multisig MCP server — expose the existing bot API as an MCP server so an agent can act as a wallet observer or ballot drafter. Small step from `/llms.txt` + `/api/skill` + the scoped bot JWT, and a genuine differentiator | |
-| Verify and close pending-transactions-on-homepage (#125), already surfaced on the wallets dashboard | #125 |
+| Output datum controls — let users attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction | |
+| Plutus script-spend and redeemer controls — let users configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221 | |
 
 ---
 
@@ -442,13 +489,13 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M4] Unblock dependabot CI — skip-when-unconfigured guard in `pr-multisig-v1-smoke.yml`, then clear the 7 open dependency PRs
 - [M4] Notification center follow-ups — gov-proposal improvements, Playwright coverage, scheduled outbox drain (#327)
 - [M4–5] Document Sign-Off MVP — Documents UI, six-state lifecycle, signer review, diffs
-- [M5] Discover page + lookup by signer/policy (#52, #33) — moved up from M10
+- [M5] Discover — lookup by signer/policy on the Discover tab, `resolveScript` route, MCP policy lookup (#33) — moved up from M10
 - [M5] Notification digests & deadline reminders
-- [M6] Hardware wallet support — Ledger/Trezor (#44); CIP-8 `signData` constraint scoped during M4–M5
-- [M6] UX papercut batch — full-address verification (#196), tx pagination (#30), 404 page (#22)
-- [M7] Bot platform — webhooks (the rest of "v2" shipped in July)
-- [M7] Multisig MCP server — agent access over the existing bot API
-- [M7] Verify and close pending transactions on homepage (#125)
+- [M6] MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review
+- [M6] Transaction review PNG & in-chat review — generate and display a visual transaction summary in chat without signing or broadcasting
+- [M6] Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval
+- [M7] Output datum controls — attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction
+- [M7] Plutus script-spend and redeemer controls — configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221
 - [M8] Backlog cleanup, dependency/security updates
 - [M9] User profiles and contacts
 - [M11] Document Sign-Off v3 — Collaboration & standards (research)
