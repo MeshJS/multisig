@@ -31,6 +31,18 @@ export interface BackgroundProps
    * @default "aurora"
    */
   preset?: BackgroundPreset
+  /**
+   * Run the CSS keyframes (orbs, sheen, bloom). Defaults to the variant, but
+   * callers driven by `useGraphicsTier` pass the detected capability instead so
+   * a weak device gets the same layers painted once and left alone.
+   */
+  animated?: boolean
+  /**
+   * Pointer-reactive parallax on the orb layer. Defaults to `animated`; the
+   * hardware tier turns it off one step before the keyframes, since it is the
+   * cheapest thing to lose and the least noticeable.
+   */
+  parallax?: boolean
 }
 
 // Two grayscale aurora gradients at different angles. Animating them in opposite
@@ -140,18 +152,40 @@ const PRESET_COLORS: Record<
  * mouse-reactive parallax. Honors `prefers-reduced-motion` (the `.animate-*`
  * utilities disable motion, and pointer parallax is skipped).
  *
+ * Motion is a prop, not a constant: pass `animated` / `parallax` from
+ * `useGraphicsTier` so the layer degrades to a static gradient on hardware that
+ * cannot afford it.
+ *
  * @example
  * ```tsx
+ * const { features } = useGraphicsTier()
  * <div className="fixed inset-0 -z-10">
- *   <Background variant="aurora" className="opacity-40" />
+ *   <Background
+ *     animated={features.auroraAnimated}
+ *     parallax={features.auroraParallax}
+ *     className="opacity-40"
+ *   />
  * </div>
  * ```
  */
 const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
-  ({ className, variant, preset = "aurora", showRadialGradient = true, children, ...props }, ref) => {
-    const isAnimated = variant !== "aurora-static"
+  (
+    {
+      className,
+      variant,
+      preset = "aurora",
+      showRadialGradient = true,
+      animated,
+      parallax,
+      children,
+      ...props
+    },
+    ref,
+  ) => {
+    const isAnimated = animated ?? variant !== "aurora-static"
     const colors = PRESET_COLORS[preset] ?? PRESET_COLORS.aurora
     const reduced = useReducedMotion()
+    const parallaxOn = (parallax ?? isAnimated) && !reduced
     const rootRef = React.useRef<HTMLDivElement | null>(null)
 
     React.useImperativeHandle(ref, () => rootRef.current as HTMLDivElement)
@@ -160,7 +194,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
     // CSS variables the orb/sheen layers read. rAF-throttled and pointer-passive,
     // so it's cheap; disabled for reduced-motion users.
     React.useEffect(() => {
-      if (!isAnimated || reduced) return
+      if (!parallaxOn) return
       const el = rootRef.current
       if (!el) return
       let raf = 0
@@ -178,7 +212,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
         window.removeEventListener("pointermove", onMove)
         cancelAnimationFrame(raf)
       }
-    }, [isAnimated, reduced])
+    }, [parallaxOn])
 
     return (
       <div

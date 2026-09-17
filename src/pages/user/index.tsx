@@ -7,9 +7,10 @@ import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
 import { Copy, User as UserIcon, Wallet, Shield, Key, MessageCircle, CheckCircle2, XCircle, Loader2, Clock, Palette } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { Background, BACKGROUND_PRESETS } from "@/components/ui/background";
-import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { useAppearanceStore, BACKGROUND_MODES } from "@/lib/zustand/appearance";
+import { useGraphicsTier } from "@/hooks/useGraphicsTier";
+import type { GraphicsTier } from "@/lib/graphics-tier";
 import { cn } from "@/lib/utils";
 import { api } from "@/utils/api";
 import Loading from "@/components/common/overall-layout/loading";
@@ -22,6 +23,13 @@ import McpConnectionsCard from "@/components/pages/user/McpConnectionsCard";
 import SharedProxiesCard from "@/components/pages/user/SharedProxiesCard";
 
 export const getServerSideProps = () => ({ props: {} });
+
+/** How each detected tier is described in the Appearance card. */
+const TIER_LABELS: Record<GraphicsTier, string> = {
+  high: "full effects",
+  medium: "aurora only",
+  low: "static background",
+};
 
 export default function UserInfoPage() {
   const router = useRouter();
@@ -36,11 +44,13 @@ export default function UserInfoPage() {
     address: userAddress ?? "",
   });
 
-  // Appearance preferences (persisted per-device).
-  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
-  const setBackgroundEnabled = useAppearanceStore((s) => s.setBackgroundEnabled);
+  // Appearance preferences (persisted per-device) plus the live hardware read
+  // that "Auto" resolves to, so the setting can show its own reasoning.
+  const backgroundMode = useAppearanceStore((s) => s.backgroundMode);
+  const setBackgroundMode = useAppearanceStore((s) => s.setBackgroundMode);
   const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
   const setBackgroundPreset = useAppearanceStore((s) => s.setBackgroundPreset);
+  const gfx = useGraphicsTier();
 
   const handleCopy = async (text: string, label: string) => {
     try {
@@ -277,19 +287,61 @@ export default function UserInfoPage() {
           icon={Palette}
         >
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium">Animated background</p>
-                <p className="text-xs text-muted-foreground">
-                  Show a subtle animated aurora behind the app. Honors your
-                  reduced-motion setting.
-                </p>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Background effects</p>
+              <p className="text-xs text-muted-foreground">
+                Auto matches the effects to what your device can render — it
+                checks CPU, memory and GPU, then measures actual frame rate and
+                steps down if the page is not keeping up.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {BACKGROUND_MODES.map((mode) => {
+                  const selected = backgroundMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setBackgroundMode(mode.id)}
+                      aria-pressed={selected}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        selected
+                          ? "border-primary ring-2 ring-primary/40"
+                          : "border-border hover:border-primary/50",
+                      )}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-xs font-medium">
+                        {mode.label}
+                        {selected && (
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-tight text-muted-foreground">
+                        {mode.description}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <Switch
-                checked={backgroundEnabled}
-                onCheckedChange={setBackgroundEnabled}
-                aria-label="Toggle animated background"
-              />
+              {gfx.resolved && (
+                <p className="text-xs text-muted-foreground">
+                  {gfx.reducedMotion ? (
+                    <>
+                      Your system asks for reduced motion, so animation stays off
+                      whichever option you pick.
+                    </>
+                  ) : (
+                    <>
+                      This device: <span className="font-medium">{TIER_LABELS[gfx.detected]}</span>
+                      {gfx.reasons.length > 0 && ` (${gfx.reasons.join(", ")})`}
+                      {gfx.tier !== gfx.detected && backgroundMode === "auto" && (
+                        <> — stepped down to {TIER_LABELS[gfx.tier]} after measuring performance</>
+                      )}
+                      .
+                    </>
+                  )}
+                </p>
+              )}
             </div>
 
             <div>
@@ -301,7 +353,7 @@ export default function UserInfoPage() {
                     <button
                       key={preset.id}
                       type="button"
-                      disabled={!backgroundEnabled}
+                      disabled={backgroundMode === "off"}
                       onClick={() => setBackgroundPreset(preset.id)}
                       aria-pressed={selected}
                       className={cn(
@@ -329,9 +381,9 @@ export default function UserInfoPage() {
                   );
                 })}
               </div>
-              {!backgroundEnabled && (
+              {backgroundMode === "off" && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Enable the animated background to choose a style.
+                  Turn the background on to choose a style.
                 </p>
               )}
             </div>
