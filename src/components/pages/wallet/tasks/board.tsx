@@ -29,7 +29,7 @@ const collisionDetection: CollisionDetection = (args) => {
 };
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
-import { groupByColumn, type ColumnOrder } from "./board-model";
+import { groupByColumn, isTaskSettled, reorderColumn, type ColumnOrder } from "./board-model";
 import Column from "./column";
 import { TaskCardBody, type TaskCardProps } from "./task-card";
 import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
@@ -108,15 +108,46 @@ export default function TaskBoard({
     }
     const to = containerOf(String(over.id)) ?? containerOf(id);
     if (!to) return;
-    const column = order[to].filter((x) => x !== id);
-    const overIndex = column.indexOf(String(over.id));
-    const position = String(over.id) === to ? column.length : overIndex >= 0 ? overIndex : column.length;
-    const next = [...column];
-    next.splice(position, 0, id);
-    setOrder((current) => ({ ...current, [to]: next }));
     const task = byId.get(id);
+    if (!task) return;
+    if (isTaskSettled(task)) {
+      setOrder(groupByColumn(tasks));
+      return;
+    }
+    const overId = String(over.id);
+    let next: string[];
+    let position: number;
+
+    if (task.status === to) {
+      // dnd-kit reports indices from the original list. Removing the active
+      // card before looking up `over` makes downward moves land one slot early.
+      next = reorderColumn(order[to], id, overId === to ? null : overId);
+      position = next.indexOf(id);
+    } else {
+      // `handleDragOver` already placed cross-column cards. Keep that exact
+      // position, especially when collision detection now reports the active
+      // card itself after it has rendered in the destination.
+      position = order[to].indexOf(id);
+      if (position >= 0) {
+        next = order[to];
+      } else {
+        const column = order[to].filter((x) => x !== id);
+        const overIndex = column.indexOf(overId);
+        position =
+          overId === to
+            ? column.length
+            : overIndex >= 0
+              ? overIndex
+              : column.length;
+        next = [...column];
+        next.splice(position, 0, id);
+      }
+    }
+    if (position < 0) return;
+    setOrder((current) => ({ ...current, [to]: next }));
     const unchanged =
-      task && task.status === to && groupByColumn(tasks)[to].join(",") === next.join(",");
+      task.status === to &&
+      groupByColumn(tasks)[to].join(",") === next.join(",");
     if (!unchanged) onMove(id, to, position);
   }
 

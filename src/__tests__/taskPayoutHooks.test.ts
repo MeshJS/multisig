@@ -20,12 +20,14 @@ const rows = [
   {
     id: "t1",
     title: "Docs",
+    status: "Done",
     recipients: [{ address: ALICE, unit: "lovelace", quantity: "5000000" }],
     payouts: [] as { status: string }[],
   },
   {
     id: "t2",
     title: "Tests",
+    status: "Done",
     recipients: [{ address: ALICE, unit: "lovelace", quantity: "1000000" }],
     payouts: [] as { status: string }[],
   },
@@ -123,6 +125,17 @@ describe("withTaskPayoutHooks", () => {
     const error = await deps.afterCreate!(tx, { id: "tx-new" }, claims()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TxReviewError);
     expect(error).toMatchObject({ status: 409, code: "TASK_NOT_PAYABLE" });
+    expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses when a task moved out of Done after the preview", async () => {
+    const deps = withTaskPayoutHooks(baseDeps);
+    const reopened = rows.map((r) => (r.id === "t2" ? { ...r, status: "InReview" } : r));
+    const tx = makeTx(reopened);
+    await expect(deps.afterCreate!(tx, { id: "tx-new" }, claims())).rejects.toMatchObject({
+      status: 409,
+      code: "TASK_NOT_DONE",
+    });
     expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
   });
 

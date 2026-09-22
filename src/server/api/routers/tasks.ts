@@ -70,8 +70,19 @@ async function loadTaskForWrite(ctx: AuthCtx, id: string) {
   return task;
 }
 
-function hasPendingPayout(task: { payouts: { status: string }[] }) {
-  return task.payouts.some((p) => p.status === "Pending");
+function assertTaskMutable(task: { payouts: { status: string }[] }) {
+  if (task.payouts.some((p) => p.status === "Paid")) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "This task is read-only because its payout has been paid.",
+    });
+  }
+  if (task.payouts.some((p) => p.status === "Pending")) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "This task is locked while its payout is awaiting signatures. Delete the pending transaction first.",
+    });
+  }
 }
 
 /**
@@ -185,13 +196,7 @@ export const taskRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const existing = await loadTaskForWrite(ctx, input.id);
       const actor = requireSessionAddress(ctx);
-      if (input.recipients !== undefined && hasPendingPayout(existing)) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message:
-            "Recipients are locked while a payout is awaiting signatures. Delete the pending transaction first.",
-        });
-      }
+      assertTaskMutable(existing);
       const data: Prisma.TaskUpdateInput = {};
       if (input.title !== undefined) data.title = input.title;
       if (input.description !== undefined) data.description = input.description;
@@ -242,6 +247,7 @@ export const taskRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const existing = await loadTaskForWrite(ctx, input.id);
       const actor = requireSessionAddress(ctx);
+      assertTaskMutable(existing);
       const task = await ctx.db.$transaction(async (db) => {
         const destination = await db.task.findMany({
           where: { walletId: existing.walletId, status: input.status, id: { not: input.id } },
@@ -279,12 +285,7 @@ export const taskRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const existing = await loadTaskForWrite(ctx, input.id);
       const actor = requireSessionAddress(ctx);
-      if (hasPendingPayout(existing)) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "This task has a payout awaiting signatures. Delete the pending transaction first.",
-        });
-      }
+      assertTaskMutable(existing);
       await ctx.db.task.delete({ where: { id: input.id } });
       void audit(ctx.db, {
         actorAddress: actor,

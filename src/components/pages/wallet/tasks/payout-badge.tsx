@@ -12,19 +12,26 @@ const STATE_STYLES: Record<TaskPayoutState, string> = {
 
 export default function PayoutBadge({
   state,
+  payoutReady,
   className,
 }: {
   state: TaskPayoutState;
+  payoutReady: boolean;
   className?: string;
 }) {
   if (state === "none") return null;
+  const configured = state === "ready" && !payoutReady;
   return (
     <Badge
       variant="secondary"
-      className={cn(STATE_STYLES[state] ?? "", "border-0", className)}
-      data-testid={`payout-badge-${state}`}
+      className={cn(
+        configured ? "bg-muted text-muted-foreground" : (STATE_STYLES[state] ?? ""),
+        "border-0",
+        className,
+      )}
+      data-testid={configured ? "payout-badge-configured" : `payout-badge-${state}`}
     >
-      {PAYOUT_STATE_LABELS[state]}
+      {configured ? "Payment configured" : PAYOUT_STATE_LABELS[state]}
     </Badge>
   );
 }

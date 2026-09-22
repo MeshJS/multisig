@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, PlusCircle, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Loader2, PlusCircle, Trash2, X } from "lucide-react";
 
 import RecipientRow from "@/components/pages/wallet/new-transaction/RecipientRow";
 import RecipientRowMobile from "@/components/pages/wallet/new-transaction/RecipientRowMobile";
@@ -15,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { baseToDisplay, displayToBase } from "@/lib/tx-draft/decimal";
@@ -25,7 +26,7 @@ import type { Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { toastError } from "@/utils/toast-error";
 
-import { unitDecimals } from "./board-model";
+import { isTaskSettled, unitDecimals } from "./board-model";
 import { COLUMNS, PRIORITIES, type BoardTask, type TaskPriority, type TaskStatus } from "./types";
 
 const ADDRESS_PATTERN = /^addr(_test)?1[0-9a-z]+$/;
@@ -34,9 +35,8 @@ const NONE = "__none__";
 /**
  * Create / edit a task. Recipients reuse the new-transaction row inputs
  * (address with $handle resolution, asset select, display-unit amount) and
- * are converted to base units on save. While a payout is awaiting
- * signatures the recipients are shown read-only: what the signers are
- * looking at must not change under them.
+ * are converted to base units on save. Once a payout is pending or paid the
+ * task is a read-only financial record.
  */
 export default function TaskDialog({
   open,
@@ -63,13 +63,22 @@ export default function TaskDialog({
   const [status, setStatus] = useState<TaskStatus>("Backlog");
   const [priority, setPriority] = useState<TaskPriority | typeof NONE>(NONE);
   const [assignee, setAssignee] = useState("");
+  const [recipientSigner, setRecipientSigner] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [recipientAddresses, setRecipientAddresses] = useState<string[]>([]);
   const [amounts, setAmounts] = useState<string[]>([]);
   const [assets, setAssets] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const recipientsLocked = task?.payout.state === "pending";
+  const taskLocked = task ? isTaskSettled(task) : false;
+  const lockMessage =
+    task?.payout.state === "paid"
+      ? "This task is read-only because its payout has been paid."
+      : "This task is locked while its payout is awaiting signatures. Delete the pending transaction to edit it.";
+  const assigneeIsRecipient =
+    assignee !== "" && recipientAddresses.some((address) => address.trim() === assignee);
+  const recipientSignerIsRecipient =
+    recipientSigner !== "" && recipientAddresses.some((address) => address.trim() === recipientSigner);
 
   // The recipient rows know three party kinds; script/reward labels read as unknown.
   const rowLabel = useMemo(
@@ -87,6 +96,7 @@ export default function TaskDialog({
   useEffect(() => {
     if (!open) return;
     setDeleteDialogOpen(false);
+    setRecipientSigner("");
     if (task) {
       setTitle(task.title);
       setDescription(task.description ?? "");
@@ -168,14 +178,20 @@ export default function TaskDialog({
       }));
   }
 
-  function addRecipient() {
-    setRecipientAddresses([...recipientAddresses, ""]);
+  function addRecipient(address = "") {
+    setRecipientAddresses([...recipientAddresses, address]);
     setAmounts([...amounts, ""]);
     setAssets([...assets, "lovelace"]);
   }
 
+  function addSignerRecipient() {
+    if (!recipientSigner || recipientSignerIsRecipient) return;
+    addRecipient(recipientSigner);
+    setRecipientSigner("");
+  }
+
   function save() {
-    if (validation.length > 0) return;
+    if (taskLocked || validation.length > 0) return;
     const scalars = {
       title: title.trim(),
       description: description.trim() || null,
@@ -187,7 +203,7 @@ export default function TaskDialog({
       update.mutate({
         id: task.id,
         ...scalars,
-        ...(recipientsLocked ? {} : { recipients: collectRecipients() }),
+        recipients: collectRecipients(),
       });
     } else {
       create.mutate({ walletId: appWallet.id, status, ...scalars, recipients: collectRecipients() });
@@ -213,9 +229,11 @@ export default function TaskDialog({
       <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
         <DialogContent className="sm:max-w-[640px]" data-testid="task-dialog">
           <DialogHeader>
-            <DialogTitle>{task ? "Edit task" : "New task"}</DialogTitle>
+            <DialogTitle>{taskLocked ? "Task details" : task ? "Edit task" : "New task"}</DialogTitle>
             <DialogDescription>
-              {task
+              {taskLocked
+                ? lockMessage
+                : task
                 ? "Change the task or its payment recipients."
                 : "A task on the board, optionally with the people it pays."}
             </DialogDescription>
@@ -232,6 +250,7 @@ export default function TaskDialog({
                 placeholder="What needs doing?"
                 maxLength={200}
                 autoFocus
+                disabled={taskLocked}
               />
             </div>
             <div className="grid gap-2">
@@ -243,6 +262,7 @@ export default function TaskDialog({
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 maxLength={4000}
+                disabled={taskLocked}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -265,7 +285,11 @@ export default function TaskDialog({
               )}
               <div className="grid gap-2">
                 <Label htmlFor="task-priority">Priority</Label>
-                <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority | typeof NONE)}>
+                <Select
+                  value={priority}
+                  onValueChange={(v) => setPriority(v as TaskPriority | typeof NONE)}
+                  disabled={taskLocked}
+                >
                   <SelectTrigger id="task-priority" data-testid="task-priority-select">
                     <SelectValue />
                   </SelectTrigger>
@@ -287,28 +311,31 @@ export default function TaskDialog({
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
+                  disabled={taskLocked}
                 />
               </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="task-assignee">Assignee</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  id="task-assignee"
-                  data-testid="task-assignee-input"
-                  value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                  placeholder="addr1… (optional)"
-                  className="flex-1"
-                />
                 <Select
-                  value={assignee && appWallet.signersAddresses.includes(assignee) ? assignee : ""}
-                  onValueChange={setAssignee}
+                  value={assignee || NONE}
+                  onValueChange={(value) => setAssignee(value === NONE ? "" : value)}
+                  disabled={taskLocked}
                 >
-                  <SelectTrigger className="sm:w-48" aria-label="Pick a signer" data-testid="task-assignee-signer-select">
-                    <SelectValue placeholder="Pick a signer" />
+                  <SelectTrigger
+                    id="task-assignee"
+                    className="flex-1"
+                    aria-label="Choose assignee"
+                    data-testid="task-assignee-signer-select"
+                  >
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={NONE}>Unassigned</SelectItem>
+                    {assignee && !appWallet.signersAddresses.includes(assignee) && (
+                      <SelectItem value={assignee}>Unavailable signer</SelectItem>
+                    )}
                     {appWallet.signersAddresses.map((address, i) => (
                       <SelectItem key={address} value={address}>
                         {appWallet.signersDescriptions?.[i] || `Signer ${i + 1}`}
@@ -316,6 +343,17 @@ export default function TaskDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={!assignee || taskLocked || assigneeIsRecipient}
+                  onClick={() => addRecipient(assignee)}
+                  data-testid="task-add-assignee-recipient"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  {assigneeIsRecipient ? "Assignee already added" : "Add assignee as recipient"}
+                </Button>
               </div>
             </div>
 
@@ -325,10 +363,10 @@ export default function TaskDialog({
                 Optional. Who gets paid when this task is done; several tasks can be paid in one transaction.
               </p>
 
-              {recipientsLocked ? (
+              {taskLocked ? (
                 <>
                   <p className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
-                    Locked while the payout is awaiting signatures. Delete the pending transaction to change them.
+                    {lockMessage}
                   </p>
                   <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
                     {task?.recipients.map((r) => (
@@ -344,61 +382,85 @@ export default function TaskDialog({
                 </>
               ) : (
                 <>
-                  <div className="hidden overflow-hidden rounded-lg border sm:block">
-                    <div className="overflow-x-auto">
-                      <Table className="min-w-[560px]">
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead className="min-w-[200px] font-semibold">Address</TableHead>
-                            <TableHead className="w-[120px] font-semibold sm:w-[140px]">Amount</TableHead>
-                            <TableHead className="w-[140px] font-semibold sm:w-[180px]">Asset</TableHead>
-                            <TableHead className="w-[60px] sm:w-[80px]"></TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {recipientAddresses.map((_, index) => (
-                            <RecipientRow key={index} index={index} {...rowProps} />
-                          ))}
-                          <TableRow className="border-t-2">
-                            <TableCell colSpan={4} className="py-3 sm:py-4">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 gap-2 sm:h-9"
-                                onClick={addRecipient}
-                                data-testid="task-add-recipient"
-                              >
-                                <PlusCircle className="h-4 w-4" />
-                                Add Recipient
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                  <div className="block sm:hidden">
-                    {recipientAddresses.map((_, index) => (
-                      <RecipientRowMobile key={index} index={index} {...rowProps} />
-                    ))}
-                    <div className="mt-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 w-full gap-2"
-                        onClick={addRecipient}
-                        data-testid="task-add-recipient-mobile"
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Select value={recipientSigner} onValueChange={setRecipientSigner}>
+                      <SelectTrigger
+                        className="w-full sm:w-52"
+                        aria-label="Choose signer recipient"
+                        data-testid="task-recipient-signer-select"
                       >
-                        <PlusCircle className="h-4 w-4" />
-                        Add Recipient
-                      </Button>
-                    </div>
+                        <SelectValue placeholder="Choose signer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {appWallet.signersAddresses.map((address, i) => {
+                          const alreadyAdded = recipientAddresses.some(
+                            (recipientAddress) => recipientAddress.trim() === address,
+                          );
+                          return (
+                            <SelectItem key={address} value={address} disabled={alreadyAdded}>
+                              {appWallet.signersDescriptions?.[i] || `Signer ${i + 1}`}
+                              {alreadyAdded ? " (added)" : ""}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      disabled={!recipientSigner || recipientSignerIsRecipient}
+                      onClick={addSignerRecipient}
+                      data-testid="task-add-signer-recipient"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Add signer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => addRecipient()}
+                      data-testid="task-add-recipient"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Add other address
+                    </Button>
                   </div>
+
+                  {recipientAddresses.length > 0 && (
+                    <>
+                      <div className="hidden overflow-hidden rounded-lg border sm:block">
+                        <div className="overflow-x-auto">
+                          <Table className="min-w-[560px]">
+                            <TableHeader>
+                              <TableRow className="bg-muted/50">
+                                <TableHead className="min-w-[200px] font-semibold">Address</TableHead>
+                                <TableHead className="w-[120px] font-semibold sm:w-[140px]">Amount</TableHead>
+                                <TableHead className="w-[140px] font-semibold sm:w-[180px]">Asset</TableHead>
+                                <TableHead className="w-[60px] sm:w-[80px]"></TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {recipientAddresses.map((_, index) => (
+                                <RecipientRow key={index} index={index} {...rowProps} />
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                      <div className="block sm:hidden">
+                        {recipientAddresses.map((_, index) => (
+                          <RecipientRowMobile key={index} index={index} {...rowProps} />
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
 
-            {validation.length > 0 && (
+            {!taskLocked && validation.length > 0 && (
               <div
                 className="w-full rounded-lg border border-destructive/20 bg-destructive/5 p-3 sm:p-4"
                 data-testid="task-validation"
@@ -417,31 +479,54 @@ export default function TaskDialog({
           </div>
 
           <DialogFooter>
-            {task && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-red-500 hover:text-red-500 sm:mr-auto"
-                disabled={busy || recipientsLocked}
-                onClick={() => setDeleteDialogOpen(true)}
-                data-testid="task-delete"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </Button>
+            {taskLocked ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  data-testid="task-locked-close"
+                >
+                  Close
+                </Button>
+                {task?.payout.transactionId && (
+                  <Button asChild data-testid="task-locked-transaction">
+                    <Link href={`/wallets/${appWallet.id}/transactions#tx-${task.payout.transactionId}`}>
+                      View transaction
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                {task && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-red-500 hover:text-red-500 sm:mr-auto"
+                    disabled={busy}
+                    onClick={() => setDeleteDialogOpen(true)}
+                    data-testid="task-delete"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                )}
+                <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" disabled={busy || validation.length > 0} onClick={save} data-testid="task-save">
+                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {task ? "Save" : "Create task"}
+                </Button>
+              </>
             )}
-            <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={busy || validation.length > 0} onClick={save} data-testid="task-save">
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {task ? "Save" : "Create task"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {task && (
+      {task && !taskLocked && (
         <Dialog open={deleteDialogOpen} onOpenChange={(next) => !remove.isPending && setDeleteDialogOpen(next)}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>

@@ -2,11 +2,12 @@
 //
 // Browser coverage for the board itself on an isolated throwaway wallet:
 //   - create a task with a payment recipient → it lands in Backlog with a
-//     "Payout ready" badge and the recipient total
+//     "Payment configured" badge and the recipient total
 //   - move it between columns through the card menu (the accessible
 //     fallback for drag-and-drop) and by dragging
 //   - edit the title; the change persists across a reload
-//   - select the task and open the payout dialog; the preview is requested
+//   - move accepted work to Done, select it and open the payout dialog; the preview is requested
+//   - verify a task is read-only while a payout awaits signatures, then unlock it by cancellation
 //     from the server, which builds against the wallet's spendable UTxOs.
 //     A throwaway wallet has none and the preview runs server-side (browser
 //     Blockfrost mocks do not reach it), so the spec asserts the graceful
@@ -21,6 +22,7 @@ import { test, expect } from "../fixtures/authFixture";
 import { loadContext } from "../helpers/contextLoader";
 import { createThrowawayWallet, trpcMutate } from "../helpers/apiHelpers";
 import { mockWalletUtxos } from "../helpers/phase3Mocks";
+import { db } from "../../src/server/db";
 
 function waitForTrpc(page: import("@playwright/test").Page, procedure: string) {
   return page.waitForResponse(
@@ -38,6 +40,7 @@ test.describe("task board", () => {
     test.setTimeout(240_000);
     const ctx = loadContext();
     const recipient = ctx.signerAddresses[1]!;
+    const additionalRecipient = ctx.signerAddresses[2]!;
 
     await authenticateAs(page, 0);
     const wallet = await createThrowawayWallet(
@@ -51,15 +54,25 @@ test.describe("task board", () => {
     await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("No tasks yet")).toBeVisible({ timeout: 30_000 });
 
-    // Create a task with one ADA recipient.
+    // Create a task and add one of the wallet's signers as its ADA recipient.
     await page.getByTestId("new-task-button").first().click();
     const dialog = page.getByTestId("task-dialog");
     await expect(dialog).toBeVisible();
     const title = `Write the release notes ${Date.now()}`;
     await dialog.getByTestId("task-title-input").fill(title);
-    await dialog.getByTestId("task-add-recipient").click();
-    await dialog.getByTestId("recipient-address-input-0").fill(recipient);
+    await dialog.getByTestId("task-assignee-signer-select").click();
+    await page.getByRole("option", { name: "Signer 2" }).click();
+    const addAssignee = dialog.getByTestId("task-add-assignee-recipient");
+    await addAssignee.click();
+    await expect(addAssignee).toBeDisabled();
+    await expect(addAssignee).toContainText("Assignee already added");
+    await expect(dialog.getByTestId("recipient-address-input-0")).toHaveValue(recipient);
     await dialog.getByTestId("amount-input-0").fill("2.5");
+    await dialog.getByTestId("task-recipient-signer-select").click();
+    await page.getByRole("option", { name: "Signer 3" }).click();
+    await dialog.getByTestId("task-add-signer-recipient").click();
+    await expect(dialog.getByTestId("recipient-address-input-1")).toHaveValue(additionalRecipient);
+    await dialog.getByTestId("amount-input-1").fill("1");
     const createPromise = waitForTrpc(page, "task.create");
     await dialog.getByTestId("task-save").click();
     expect((await createPromise).ok()).toBe(true);
@@ -69,8 +82,9 @@ test.describe("task board", () => {
     await expect(card).toBeVisible({ timeout: 30_000 });
     const taskId = (await card.getAttribute("data-testid"))!.replace("task-card-", "");
     await expect(page.getByTestId("task-column-Backlog")).toContainText(title);
-    await expect(card.getByTestId("payout-badge-ready")).toBeVisible();
-    await expect(card.getByTestId(`task-totals-${taskId}`)).toHaveText("2.5 ADA");
+    await expect(card.getByTestId("payout-badge-configured")).toHaveText("Payment configured");
+    await expect(card.getByTestId(`task-select-${taskId}`)).toBeHidden();
+    await expect(card.getByTestId(`task-totals-${taskId}`)).toHaveText("3.5 ADA");
 
     // Move through the card menu (keyboard/touch-safe path).
     await card.getByTestId(`task-menu-${taskId}`).click();
@@ -106,10 +120,59 @@ test.describe("task board", () => {
     await page.reload();
     await expect(page.getByTestId("task-column-InReview")).toContainText(renamed, { timeout: 60_000 });
 
+    // Reviewed work only becomes payable once it reaches Done.
+    const renamedCard = page.getByTestId(`task-card-${taskId}`);
+    await expect(renamedCard.getByTestId("payout-badge-configured")).toBeVisible();
+    await renamedCard.getByTestId(`task-menu-${taskId}`).click();
+    const donePromise = waitForTrpc(page, "task.move");
+    await page.getByTestId(`task-move-${taskId}-Done`).click();
+    expect((await donePromise).ok()).toBe(true);
+    await expect(page.getByTestId("task-column-Done")).toContainText(renamed, { timeout: 30_000 });
+    await expect(renamedCard.getByTestId("payout-badge-ready")).toBeVisible();
+
+    // A task with an in-flight payout is a read-only financial record.
+    const pendingTx = await db.transaction.create({
+      data: {
+        walletId: wallet.walletId,
+        txJson: JSON.stringify({ tasks: { taskIds: [taskId] } }),
+        txCbor: "84a4",
+        signedAddresses: [],
+        rejectedAddresses: [],
+        state: 0,
+      },
+    });
+    await db.taskPayout.create({
+      data: {
+        walletId: wallet.walletId,
+        taskId,
+        transactionId: pendingTx.id,
+        createdBy: ctx.signerAddresses[0]!,
+      },
+    });
+    await page.reload();
+    const lockedCard = page.getByTestId(`task-card-${taskId}`);
+    await expect(lockedCard.getByTestId("payout-badge-pending")).toBeVisible({ timeout: 30_000 });
+    await lockedCard.click();
+    await expect(dialog.getByTestId("task-title-input")).toBeDisabled();
+    await expect(dialog.getByTestId("task-save")).toBeHidden();
+    await expect(dialog.getByTestId("task-delete")).toBeHidden();
+    await expect(dialog.getByTestId("task-locked-transaction")).toBeVisible();
+    await dialog.getByTestId("task-locked-close").click();
+    await lockedCard.getByTestId(`task-menu-${taskId}`).click();
+    await expect(page.getByRole("menuitem", { name: "View details" })).toBeVisible();
+    await expect(page.getByTestId(`task-move-${taskId}-InReview`)).toBeHidden();
+    await page.keyboard.press("Escape");
+
+    // Cancelling the pending transaction unlocks the task.
+    await trpcMutate(page, "transaction.deleteTransaction", { transactionId: pendingTx.id });
+    await page.reload();
+    await expect(page.getByTestId(`task-card-${taskId}`).getByTestId("payout-badge-ready")).toBeVisible({
+      timeout: 30_000,
+    });
+
     // Select it and ask for a payout preview. The server builds against real
     // spendable UTxOs, which this unfunded wallet lacks, so the dialog must
     // show the pipeline's error rather than a created transaction.
-    const renamedCard = page.getByTestId(`task-card-${taskId}`);
     await renamedCard.getByTestId(`task-select-${taskId}`).click();
     const prepareButton = page.getByTestId("prepare-payout-button").first();
     await expect(prepareButton).toBeEnabled();

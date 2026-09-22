@@ -9,8 +9,9 @@ type Db = PrismaClient | Prisma.TransactionClient;
 /**
  * The tasks a payout may cover, in the order requested. Refuses unknown ids,
  * ids belonging to another wallet (same 404 — the caller learns nothing about
- * other wallets' tasks), and tasks that already have a pending or paid link.
- * A task with no recipients is refused by `buildPayoutSpec`.
+ * other wallets' tasks), tasks whose work has not reached Done, and tasks that
+ * already have a pending or paid link. A task with no recipients is refused by
+ * `buildPayoutSpec`.
  */
 export async function loadPayableTasks(
   db: Db,
@@ -34,6 +35,18 @@ export async function loadPayableTasks(
       "TASK_NOT_FOUND",
       `${missing.length === 1 ? "Task" : "Tasks"} not found in this wallet: ${missing.join(", ")}`,
       { taskIds: missing },
+    );
+  }
+
+  const incomplete = rows.filter((row) => row.status !== "Done");
+  if (incomplete.length > 0) {
+    throw new TxReviewError(
+      409,
+      "TASK_NOT_DONE",
+      `${incomplete.length === 1 ? "A task is" : `${incomplete.length} tasks are`} not Done: ${incomplete
+        .map((t) => `"${t.title}"`)
+        .join(", ")}. Complete and review the work before preparing its payout.`,
+      { taskIds: incomplete.map((t) => t.id) },
     );
   }
 

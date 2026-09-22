@@ -35,7 +35,7 @@ export function withTaskPayoutHooks(deps: ProposeDeps): ProposeDeps {
       if (claims.origin?.kind !== "tasks") return;
       const { taskIds } = claims.origin;
 
-      // Throws TASK_NOT_FOUND / TASK_NOT_PAYABLE (a payout appeared since the preview).
+      // Also refuses a task moved out of Done or one whose payout appeared since preview.
       const tasks = await loadPayableTasks(tx, claims.walletId, taskIds);
       if (recipientsHash(tasks) !== claims.origin.recipientsHash) {
         throw new TxReviewError(

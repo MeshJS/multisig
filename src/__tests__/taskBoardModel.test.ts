@@ -2,8 +2,12 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   applyMove,
+  filterPaidTasks,
   formatTotals,
   groupByColumn,
+  isPayoutReady,
+  isTaskSettled,
+  reorderColumn,
 } from "@/components/pages/wallet/tasks/board-model";
 import type { BoardTask } from "@/components/pages/wallet/tasks/types";
 
@@ -47,6 +51,25 @@ describe("groupByColumn", () => {
       InReview: [],
       Done: [],
     });
+  });
+});
+
+describe("reorderColumn", () => {
+  it("moves a card downward using indices from the original list", () => {
+    expect(reorderColumn(["a", "b", "c"], "a", "b")).toEqual(["b", "a", "c"]);
+  });
+
+  it("moves a card upward", () => {
+    expect(reorderColumn(["a", "b", "c"], "c", "b")).toEqual(["a", "c", "b"]);
+  });
+
+  it("moves a card to the end when the column itself is the drop target", () => {
+    expect(reorderColumn(["a", "b", "c"], "a", null)).toEqual(["b", "c", "a"]);
+  });
+
+  it("returns the same list when the drop does not change its position", () => {
+    const ids = ["a", "b", "c"];
+    expect(reorderColumn(ids, "b", "b")).toBe(ids);
   });
 });
 
@@ -95,5 +118,37 @@ describe("formatTotals", () => {
     expect(formatTotals([{ unit, quantity: "7" }, { unit, quantity: "x" }], {})).toEqual([
       `7 ${unit.slice(0, 6)}…${unit.slice(-4)}`,
     ]);
+  });
+});
+
+describe("payout board state", () => {
+  it("only makes completed work selectable for payout", () => {
+    const configured = { ...task("pay", "InReview", 0), payout: { state: "ready" as const, transactionId: null, txHash: null } };
+    expect(isPayoutReady(configured)).toBe(false);
+    expect(isPayoutReady({ ...configured, status: "Done" })).toBe(true);
+  });
+
+  it("hides paid history by default without removing it", () => {
+    const active = task("active", "Done", 0);
+    const paid = {
+      ...task("paid", "Done", 1),
+      payout: { state: "paid" as const, transactionId: "tx-1", txHash: "ab" },
+    };
+    expect(filterPaidTasks([active, paid], false)).toEqual([active]);
+    expect(filterPaidTasks([active, paid], true)).toEqual([active, paid]);
+  });
+
+  it("locks pending and paid tasks, but not configured or cancelled ones", () => {
+    const base = task("task", "Done", 0);
+    expect(isTaskSettled(base)).toBe(false);
+    expect(
+      isTaskSettled({ ...base, payout: { state: "ready", transactionId: null, txHash: null } }),
+    ).toBe(false);
+    expect(
+      isTaskSettled({ ...base, payout: { state: "pending", transactionId: "tx-1", txHash: null } }),
+    ).toBe(true);
+    expect(
+      isTaskSettled({ ...base, payout: { state: "paid", transactionId: "tx-1", txHash: "ab" } }),
+    ).toBe(true);
   });
 });

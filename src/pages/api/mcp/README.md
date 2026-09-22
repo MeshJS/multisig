@@ -119,7 +119,9 @@ however it was created — the in-chat review for transactions proposed from the
 ### Task payouts
 
 The project task board (`/wallets/[wallet]/tasks`) stores payment recipients per task, in
-base units. `task_prepare_payout` turns one or more tasks into a draft through the same
+base units. Recipients can be configured while work progresses, but a task must reach
+`Done` before payout; that rule is checked both when previewing and when confirming.
+`task_prepare_payout` turns one or more Done tasks into a draft through the same
 pipeline: the recipient rows become a canonical spec (`src/lib/task-payout/spec.ts`,
 outputs merged per address), `runSpecPreview` builds and summarizes it, and the draft
 token is minted with an extra `origin` claim — the task ids and a sha256 over their
@@ -130,6 +132,8 @@ transaction that inserts the pending row — re-reads the tasks, refuses with a 
 row changed since the preview (`TASK_CHANGED`) or a payout appeared for one of them
 (`TASK_NOT_PAYABLE`), then writes one `TaskPayout` link per task. Row and links exist
 together or not at all. The txJson carries a top-level `tasks` namespace next to `mcp`.
+Once linked, the task is read-only while the payout is pending and remains read-only
+after payment; cancelling the pending transaction unlocks an unpaid task.
 
 The web app's payout dialog is the same two calls (`task.preparePayout`,
 `task.confirmPayout` in `src/server/api/routers/tasks.ts`) with the caller derived from

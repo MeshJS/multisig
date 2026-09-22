@@ -507,7 +507,7 @@ export const TASK_UPSERT_INPUT: JsonSchema = {
       type: "array",
       maxItems: 20,
       description:
-        "Replaces the task's payment recipients (display units, like transaction_preview outputs). An empty array clears them. Locked while a payout for the task is awaiting signatures.",
+        "Replaces the task's payment recipients (display units, like transaction_preview outputs). An empty array clears them. The whole task is read-only while a payout awaits signatures and after it is paid.",
       items: paymentOutputItem,
     },
   },
@@ -526,7 +526,7 @@ export const TASK_PREPARE_PAYOUT_INPUT: JsonSchema = {
       uniqueItems: true,
       items: { type: "string", minLength: 1 },
       description:
-        "Tasks to pay in one transaction. Each must have recipients and no pending or paid payout.",
+        "Tasks to pay in one transaction. Each must be in Done, have recipients and have no pending or paid payout.",
     },
     card: cardMode,
   },

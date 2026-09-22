@@ -6,8 +6,8 @@ import { makeWalletCtx } from "./helpers";
 
 /**
  * The task router against a real Postgres: CRUD and authorization, the
- * dense renumbering behind drag-and-drop, the locks a pending payout puts
- * on a task, and the payout procedures' wiring into the shared pipeline
+ * dense renumbering behind drag-and-drop, the locks pending and paid payouts
+ * put on a task, and the payout procedures' wiring into the shared pipeline
  * (the pipeline itself is stubbed — it reads chain state).
  */
 
@@ -163,9 +163,14 @@ describeWithDb("task router", () => {
     expect([again.get(c.id)!.position, again.get(a.id)!.position]).toEqual([0, 1]);
   });
 
-  it("locks recipients and deletion while a payout is awaiting signatures, and frees them when it is cancelled", async () => {
+  it("locks a task while its payout awaits signatures, and frees it when the payout is cancelled", async () => {
     const { signer } = await seed();
-    const task = await signer.task.create({ walletId: walletId!, title: "Paid", recipients: [recipient()] });
+    const task = await signer.task.create({
+      walletId: walletId!,
+      title: "Paid",
+      status: "Done",
+      recipients: [recipient()],
+    });
     const tx = await db.transaction.create({
       data: {
         walletId: walletId!,
@@ -183,23 +188,33 @@ describeWithDb("task router", () => {
     const listed = await signer.task.list({ walletId: walletId! });
     expect(listed[0]!.payout).toEqual({ state: "pending", transactionId: tx.id, txHash: null });
 
-    // Title edits are fine; recipients and deletion are not.
-    await signer.task.update({ id: task.id, title: "Paid (renamed)" });
+    await expect(signer.task.update({ id: task.id, title: "Paid (renamed)" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
     await expect(signer.task.update({ id: task.id, recipients: [] })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(signer.task.move({ id: task.id, status: "InReview", position: 0 })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
     await expect(signer.task.delete({ id: task.id })).rejects.toMatchObject({ code: "CONFLICT" });
 
     // Deleting the pending transaction cancels the link.
     await signer.transaction.deleteTransaction({ transactionId: tx.id });
     const freed = await signer.task.list({ walletId: walletId! });
     expect(freed[0]!.payout.state).toBe("ready");
-    await signer.task.update({ id: task.id, recipients: [] });
+    await signer.task.update({ id: task.id, title: "Paid (renamed)", recipients: [] });
+    await signer.task.move({ id: task.id, status: "InReview", position: 0 });
     await signer.task.delete({ id: task.id });
     expect(await signer.task.list({ walletId: walletId! })).toHaveLength(0);
   });
 
   it("marks the link paid when the transaction is submitted", async () => {
     const { signer } = await seed();
-    const task = await signer.task.create({ walletId: walletId!, title: "Paid", recipients: [recipient()] });
+    const task = await signer.task.create({
+      walletId: walletId!,
+      title: "Paid",
+      status: "Done",
+      recipients: [recipient()],
+    });
     const tx = await db.transaction.create({
       data: { walletId: walletId!, txJson: "{}", txCbor: "84a4", signedAddresses: [], rejectedAddresses: [], state: 0 },
     });
@@ -219,7 +234,12 @@ describeWithDb("task router", () => {
     const listed = await signer.task.list({ walletId: walletId! });
     expect(listed[0]!.payout).toEqual({ state: "paid", transactionId: tx.id, txHash: "ab".repeat(32) });
     // Paid tasks stay where they are on the board.
-    expect(listed[0]!.status).toBe("Backlog");
+    expect(listed[0]!.status).toBe("Done");
+    await expect(signer.task.update({ id: task.id, title: "Changed" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(signer.task.move({ id: task.id, status: "InReview", position: 0 })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await expect(signer.task.delete({ id: task.id })).rejects.toMatchObject({ code: "CONFLICT" });
     // Deletion of the submitted transaction no longer touches a Paid link.
     await signer.transaction.deleteTransaction({ transactionId: tx.id });
     expect((await signer.task.list({ walletId: walletId! }))[0]!.payout.state).toBe("paid");
@@ -227,7 +247,12 @@ describeWithDb("task router", () => {
 
   it("prepares a payout through the shared pipeline as the app client and maps its errors", async () => {
     const { signer } = await seed();
-    const task = await signer.task.create({ walletId: walletId!, title: "Pay me", recipients: [recipient()] });
+    const task = await signer.task.create({
+      walletId: walletId!,
+      title: "Pay me",
+      status: "Done",
+      recipients: [recipient()],
+    });
     const summary = { kind: "preview", recipients: [], warnings: [] };
     prepareTaskPayoutPreviewMock.mockResolvedValue({
       status: 200,

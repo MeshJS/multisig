@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRight, CalendarDays, ExternalLink, MoreVertical, Pencil } from "lucide-react";
+import { ArrowRight, CalendarDays, ExternalLink, Eye, MoreVertical, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { AddressLabeler } from "@/types/token-flow";
 
-import { formatTotals, isPayoutReady, type AssetMetadataLookup } from "./board-model";
+import { formatTotals, isPayoutReady, isTaskSettled, type AssetMetadataLookup } from "./board-model";
 import PayoutBadge from "./payout-badge";
 import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
 
@@ -57,6 +57,7 @@ export function TaskCardBody({
 }: TaskCardProps & { dragging?: boolean }) {
   const totals = formatTotals(task.recipients, metadata);
   const ready = isPayoutReady(task);
+  const settled = isTaskSettled(task);
   const assignee = task.assigneeAddress
     ? labelAddress(task.assigneeAddress).label || `${task.assigneeAddress.slice(0, 12)}…`
     : null;
@@ -69,7 +70,8 @@ export function TaskCardBody({
       // never answer to the real card's test id.
       data-testid={overlay ? "task-drag-overlay" : `task-card-${task.id}`}
       className={cn(
-        "cursor-grab select-none transition-colors hover:border-foreground/20 active:cursor-grabbing",
+        "select-none transition-colors hover:border-foreground/20",
+        settled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         // While its overlay is being dragged, the source card is an empty
         // dashed slot (height kept) — one card moves, one slot waits.
         dragging && "border-dashed bg-muted/40 shadow-none",
@@ -133,20 +135,24 @@ export function TaskCardBody({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" onClick={stop}>
                 <DropdownMenuItem onSelect={() => onOpen(task)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit
+                  {settled ? <Eye className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
+                  {settled ? "View details" : "Edit"}
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {COLUMNS.filter((c) => c.status !== task.status).map((column) => (
-                  <DropdownMenuItem
-                    key={column.status}
-                    data-testid={`task-move-${task.id}-${column.status}`}
-                    onSelect={() => onMove(task.id, column.status, Number.MAX_SAFE_INTEGER)}
-                  >
-                    <ArrowRight className="mr-2 h-4 w-4" />
-                    Move to {column.label}
-                  </DropdownMenuItem>
-                ))}
+                {!settled && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {COLUMNS.filter((c) => c.status !== task.status).map((column) => (
+                      <DropdownMenuItem
+                        key={column.status}
+                        data-testid={`task-move-${task.id}-${column.status}`}
+                        onSelect={() => onMove(task.id, column.status, Number.MAX_SAFE_INTEGER)}
+                      >
+                        <ArrowRight className="mr-2 h-4 w-4" />
+                        Move to {column.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -177,7 +183,7 @@ export function TaskCardBody({
 
         {task.payout.state !== "none" && (
           <div className="mt-2 flex items-center justify-between gap-2">
-            <PayoutBadge state={task.payout.state} />
+            <PayoutBadge state={task.payout.state} payoutReady={ready} />
             {task.payout.transactionId && !overlay && (
               <Link
                 href={`/wallets/${walletId}/transactions#tx-${task.payout.transactionId}`}
@@ -198,9 +204,11 @@ export function TaskCardBody({
 }
 
 export default function SortableTaskCard(props: TaskCardProps) {
+  const settled = isTaskSettled(props.task);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.task.id,
     data: { type: "task", status: props.task.status },
+    disabled: settled,
   });
   return (
     <div

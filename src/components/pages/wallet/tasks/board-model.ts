@@ -18,6 +18,26 @@ export function groupByColumn(tasks: BoardTask[]): ColumnOrder {
   return order;
 }
 
+/**
+ * Apply dnd-kit's active/over indices to one column. The target index must
+ * come from the original list: removing the active id first shifts every
+ * later target up by one and turns a one-place downward move into a no-op.
+ * A null `overId` means the column itself was hit, so move to the end.
+ */
+export function reorderColumn(
+  ids: string[],
+  activeId: string,
+  overId: string | null,
+): string[] {
+  const activeIndex = ids.indexOf(activeId);
+  const overIndex = overId === null ? ids.length - 1 : ids.indexOf(overId);
+  if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return ids;
+  const next = [...ids];
+  next.splice(activeIndex, 1);
+  next.splice(overIndex, 0, activeId);
+  return next;
+}
+
 function byPosition(a: BoardTask, b: BoardTask) {
   return a.position - b.position || a.createdAt.getTime() - b.createdAt.getTime();
 }
@@ -93,5 +113,15 @@ export function unitDecimals(unit: string, metadata: AssetMetadataLookup): numbe
 }
 
 export function isPayoutReady(task: BoardTask): boolean {
-  return task.payout.state === "ready";
+  return task.status === "Done" && task.payout.state === "ready";
+}
+
+/** Pending and paid tasks are immutable records of an in-flight or completed payout. */
+export function isTaskSettled(task: Pick<BoardTask, "payout">): boolean {
+  return task.payout.state === "pending" || task.payout.state === "paid";
+}
+
+/** Paid tasks are history: keep them in the data set, but hide them from the active board by default. */
+export function filterPaidTasks(tasks: BoardTask[], showPaid: boolean): BoardTask[] {
+  return showPaid ? tasks : tasks.filter((task) => task.payout.state !== "paid");
 }

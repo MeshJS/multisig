@@ -36,6 +36,7 @@ export type TxReviewErrorCode =
   | "TOKEN_EXPIRED"
   // Task-board payouts (src/lib/task-payout).
   | "TASK_NOT_FOUND"
+  | "TASK_NOT_DONE"
   | "TASK_NOT_PAYABLE"
   | "TASK_CHANGED";
 

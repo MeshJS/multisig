@@ -12,8 +12,8 @@ export type TaskPayoutPreviewInput = {
 };
 
 /**
- * Preview a payout for one or more tasks: the wallet is authorized first (a
- * non-signer must not learn whether a task id exists), the tasks are loaded
+ * Preview a payout for one or more Done tasks: the wallet is authorized first
+ * (a non-signer must not learn whether a task id exists), the tasks are loaded
  * and turned into a canonical spec, and the shared preview pipeline builds,
  * summarizes and mints the draft token — with the task ids and a hash of
  * their recipient rows bound in, so `transaction_propose` / `confirmPayout`

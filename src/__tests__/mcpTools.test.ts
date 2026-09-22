@@ -185,9 +185,14 @@ describe("MCP tool registry", () => {
     expect(payout?.v1Path).toBeNull();
     expect(payout?.uiResourceUri).toBe(preview?.uiResourceUri);
     expect(payout?.description).toMatch(/transaction_propose/);
+    expect(payout?.description).toMatch(/\bDone\b/);
     expect(payout?.inputSchema.required).toEqual(["walletId", "taskIds"]);
-    // Board writes never reach the transaction table.
+    expect(
+      (payout?.inputSchema.properties as Record<string, { description?: string }>).taskIds?.description,
+    ).toMatch(/\bDone\b/);
     const upsert = MCP_TOOLS.find((t) => t.name === "task_upsert");
+    expect(upsert?.description).toMatch(/read-only after payment/i);
+    // Board writes never reach the transaction table.
     expect(upsert?.scope).toBe("tasks:write");
     expect(upsert?.uiResourceUri).toBeUndefined();
   });
