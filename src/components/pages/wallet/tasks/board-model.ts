@@ -112,8 +112,9 @@ export function unitDecimals(unit: string, metadata: AssetMetadataLookup): numbe
   return unit === "lovelace" ? 6 : (metadata[unit]?.decimals ?? 0);
 }
 
-export function isPayoutReady(task: BoardTask): boolean {
-  return task.status === "Done" && task.payout.state === "ready";
+/** Can this task go into a payout right now? Decided by the server, in one place. */
+export function isPayoutReady(task: Pick<BoardTask, "payout">): boolean {
+  return task.payout.payable;
 }
 
 /** Pending and paid tasks are immutable records of an in-flight or completed payout. */

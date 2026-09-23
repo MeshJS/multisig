@@ -6,14 +6,19 @@
 //   - move it between columns through the card menu (the accessible
 //     fallback for drag-and-drop) and by dragging
 //   - edit the title; the change persists across a reload
-//   - move accepted work to Done, select it and open the payout dialog; the preview is requested
-//   - verify a task is read-only while a payout awaits signatures, then unlock it by cancellation
-//     from the server, which builds against the wallet's spendable UTxOs.
-//     A throwaway wallet has none and the preview runs server-side (browser
-//     Blockfrost mocks do not reach it), so the spec asserts the graceful
-//     error path rather than a created transaction. The preview → confirm
-//     pipeline is covered by unit and tRPC tests.
+//   - move accepted work to Done: "Prepare payout" is enabled without any tick,
+//     ticking the card narrows the payout to it, and the dialog lists it checked;
+//     the preview is requested from the server, which builds against the
+//     wallet's spendable UTxOs. A throwaway wallet has none and the preview
+//     runs server-side (browser Blockfrost mocks do not reach it), so the spec
+//     asserts the graceful error path rather than a created transaction. The
+//     preview → confirm pipeline is covered by unit and tRPC tests.
 //   - delete the task
+//
+// The lock a pending or paid payout puts on a task (read-only dialog, no
+// moves, unlock on cancellation) is not covered here: seeding that state
+// needs direct database rows, and the runner has no database access. It is
+// covered against a real Postgres by src/__tests__/trpc/taskRouter.test.ts.
 //
 // Cleanup: the task is deleted through the UI; the wallet row is a
 // throwaway like the other Phase 3 specs use.
@@ -22,7 +27,6 @@ import { test, expect } from "../fixtures/authFixture";
 import { loadContext } from "../helpers/contextLoader";
 import { createThrowawayWallet, trpcMutate } from "../helpers/apiHelpers";
 import { mockWalletUtxos } from "../helpers/phase3Mocks";
-import { db } from "../../src/server/db";
 
 function waitForTrpc(page: import("@playwright/test").Page, procedure: string) {
   return page.waitForResponse(
@@ -130,57 +134,24 @@ test.describe("task board", () => {
     await expect(page.getByTestId("task-column-Done")).toContainText(renamed, { timeout: 30_000 });
     await expect(renamedCard.getByTestId("payout-badge-ready")).toBeVisible();
 
-    // A task with an in-flight payout is a read-only financial record.
-    const pendingTx = await db.transaction.create({
-      data: {
-        walletId: wallet.walletId,
-        txJson: JSON.stringify({ tasks: { taskIds: [taskId] } }),
-        txCbor: "84a4",
-        signedAddresses: [],
-        rejectedAddresses: [],
-        state: 0,
-      },
-    });
-    await db.taskPayout.create({
-      data: {
-        walletId: wallet.walletId,
-        taskId,
-        transactionId: pendingTx.id,
-        createdBy: ctx.signerAddresses[0]!,
-      },
-    });
-    await page.reload();
-    const lockedCard = page.getByTestId(`task-card-${taskId}`);
-    await expect(lockedCard.getByTestId("payout-badge-pending")).toBeVisible({ timeout: 30_000 });
-    await lockedCard.click();
-    await expect(dialog.getByTestId("task-title-input")).toBeDisabled();
-    await expect(dialog.getByTestId("task-save")).toBeHidden();
-    await expect(dialog.getByTestId("task-delete")).toBeHidden();
-    await expect(dialog.getByTestId("task-locked-transaction")).toBeVisible();
-    await dialog.getByTestId("task-locked-close").click();
-    await lockedCard.getByTestId(`task-menu-${taskId}`).click();
-    await expect(page.getByRole("menuitem", { name: "View details" })).toBeVisible();
-    await expect(page.getByTestId(`task-move-${taskId}-InReview`)).toBeHidden();
-    await page.keyboard.press("Escape");
-
-    // Cancelling the pending transaction unlocks the task.
-    await trpcMutate(page, "transaction.deleteTransaction", { transactionId: pendingTx.id });
-    await page.reload();
-    await expect(page.getByTestId(`task-card-${taskId}`).getByTestId("payout-badge-ready")).toBeVisible({
-      timeout: 30_000,
-    });
-
-    // Select it and ask for a payout preview. The server builds against real
-    // spendable UTxOs, which this unfunded wallet lacks, so the dialog must
-    // show the pipeline's error rather than a created transaction.
-    await renamedCard.getByTestId(`task-select-${taskId}`).click();
+    // A payable task is enough: nothing has to be ticked for "Prepare payout"
+    // to work (it defaults to every payable task).
     const prepareButton = page.getByTestId("prepare-payout-button").first();
     await expect(prepareButton).toBeEnabled();
+    await expect(prepareButton).not.toContainText("(");
+
+    // Ticking the card narrows the payout to it and shows the count on the button.
+    await renamedCard.getByTestId(`task-select-${taskId}`).click();
     await expect(prepareButton).toContainText("(1)");
     await prepareButton.click();
     const payoutDialog = page.getByTestId("payout-dialog");
     await expect(payoutDialog).toBeVisible();
     await expect(payoutDialog.getByTestId("payout-task-list")).toContainText(renamed);
+    await expect(payoutDialog.getByTestId(`payout-task-toggle-${taskId}`)).toHaveAttribute("data-state", "checked");
+
+    // Ask for the preview. The server builds against real spendable UTxOs,
+    // which this unfunded wallet lacks, so the dialog must show the
+    // pipeline's error rather than a created transaction.
     const previewPromise = waitForTrpc(page, "task.preparePayout");
     await payoutDialog.getByTestId("payout-preview-button").click();
     await previewPromise;

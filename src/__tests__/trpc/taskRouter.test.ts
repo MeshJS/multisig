@@ -103,6 +103,7 @@ describeWithDb("task router", () => {
 
     const empty = await signer.task.create({ walletId: walletId!, title: "No pay" });
     expect(empty.payout.state).toBe("none");
+    expect(empty.payout).toMatchObject({ payable: false, blocker: "no_recipients" });
     expect(empty.position).toBe(1);
   });
 
@@ -140,6 +141,8 @@ describeWithDb("task router", () => {
     const edited = await other.task.update({ id: task.id, title: "Shared, edited", recipients: [recipient()] });
     expect(edited.title).toBe("Shared, edited");
     expect(edited.payout.state).toBe("ready");
+    // Recipients alone do not make Backlog work payable.
+    expect(edited.payout).toMatchObject({ payable: false, blocker: "not_done" });
     await expect(signer.task.update({ id: "missing", title: "x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
@@ -186,7 +189,7 @@ describeWithDb("task router", () => {
     });
 
     const listed = await signer.task.list({ walletId: walletId! });
-    expect(listed[0]!.payout).toEqual({ state: "pending", transactionId: tx.id, txHash: null });
+    expect(listed[0]!.payout).toEqual({ state: "pending", transactionId: tx.id, txHash: null, payable: false, blocker: "pending" });
 
     await expect(signer.task.update({ id: task.id, title: "Paid (renamed)" })).rejects.toMatchObject({
       code: "CONFLICT",
@@ -201,6 +204,7 @@ describeWithDb("task router", () => {
     await signer.transaction.deleteTransaction({ transactionId: tx.id });
     const freed = await signer.task.list({ walletId: walletId! });
     expect(freed[0]!.payout.state).toBe("ready");
+    expect(freed[0]!.payout).toMatchObject({ payable: true, blocker: null });
     await signer.task.update({ id: task.id, title: "Paid (renamed)", recipients: [] });
     await signer.task.move({ id: task.id, status: "InReview", position: 0 });
     await signer.task.delete({ id: task.id });
@@ -232,7 +236,7 @@ describeWithDb("task router", () => {
     });
 
     const listed = await signer.task.list({ walletId: walletId! });
-    expect(listed[0]!.payout).toEqual({ state: "paid", transactionId: tx.id, txHash: "ab".repeat(32) });
+    expect(listed[0]!.payout).toEqual({ state: "paid", transactionId: tx.id, txHash: "ab".repeat(32), payable: false, blocker: "paid" });
     // Paid tasks stay where they are on the board.
     expect(listed[0]!.status).toBe("Done");
     await expect(signer.task.update({ id: task.id, title: "Changed" })).rejects.toMatchObject({ code: "CONFLICT" });

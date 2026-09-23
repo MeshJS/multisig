@@ -121,7 +121,15 @@ however it was created — the in-chat review for transactions proposed from the
 The project task board (`/wallets/[wallet]/tasks`) stores payment recipients per task, in
 base units. Recipients can be configured while work progresses, but a task must reach
 `Done` before payout; that rule is checked both when previewing and when confirming.
-`task_prepare_payout` turns one or more Done tasks into a draft through the same
+An agent never has to derive that itself: every task `task_list` returns carries
+`payout.payable` (true when it can be paid right now) and `payout.blocker`
+(`not_done`, `no_recipients`, `pending`, `paid`, or `null`), the tool takes
+`payable: true` to list only those, and the body's `payableCount` is the wallet-wide
+total. `task_prepare_payout` takes the ids to pay, or none at all to pay every payable
+task (`src/lib/task-payout/load.ts`, `loadAllPayableTasks`; more than 20 payable tasks
+is refused with `TOO_MANY_TASKS` and asks for explicit ids). Either way the result's
+`tasks` list names exactly what the draft covers, so the human confirms a known set.
+`task_prepare_payout` turns those Done tasks into a draft through the same
 pipeline: the recipient rows become a canonical spec (`src/lib/task-payout/spec.ts`,
 outputs merged per address), `runSpecPreview` builds and summarizes it, and the draft
 token is minted with an extra `origin` claim — the task ids and a sha256 over their

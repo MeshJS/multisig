@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import useAddressLabels from "@/hooks/useAddressLabels";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -25,8 +26,10 @@ const SHOW_PAID_STORAGE_PREFIX = "mesh-multisig:tasks:show-paid:";
 
 /**
  * Project task board for a wallet. Tasks move between four columns by
- * drag-and-drop (or the card menu); Done tasks with recipients can be
- * selected and paid in one transaction that goes to the wallet's signers.
+ * drag-and-drop (or the card menu); Done tasks with recipients are payable
+ * and "Prepare payout" pays them in one transaction that goes to the
+ * wallet's signers. Ticking cards on the board is a shortcut that narrows
+ * the payout; the dialog itself is where the final pick is made.
  */
 export default function PageTasks() {
   const router = useRouter();
@@ -70,10 +73,11 @@ export default function PageTasks() {
     onSettled: () => void utils.task.list.invalidate({ walletId }),
   });
 
+  const payableTasks = useMemo(() => (tasks ?? []).filter(isPayoutReady), [tasks]);
   // Selection only ever holds payable tasks; drop anything that stopped being one.
   const selectedTasks = useMemo(
-    () => (tasks ?? []).filter((t) => selectedIds.has(t.id) && isPayoutReady(t)),
-    [tasks, selectedIds],
+    () => payableTasks.filter((t) => selectedIds.has(t.id)),
+    [payableTasks, selectedIds],
   );
   const paidCount = useMemo(() => (tasks ?? []).filter((t) => t.payout.state === "paid").length, [tasks]);
   const visibleTasks = useMemo(() => filterPaidTasks(tasks ?? [], showPaid), [showPaid, tasks]);
@@ -96,6 +100,10 @@ export default function PageTasks() {
       setTaskDialogOpen(true);
     },
     onMove: (id: string, status: TaskStatus, position: number) => move.mutate({ id, status, position }),
+    onPreparePayout: (task: BoardTask) => {
+      setSelectedIds(new Set([task.id]));
+      setPayoutOpen(true);
+    },
   };
 
   const openNewTask = () => {
@@ -112,19 +120,40 @@ export default function PageTasks() {
     }
   };
 
+  const nothingPayable = payableTasks.length === 0;
+  const prepareButton = (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={nothingPayable}
+      onClick={() => setPayoutOpen(true)}
+      data-testid="prepare-payout-button"
+    >
+      <Banknote className="mr-2 h-4 w-4" />
+      Prepare payout{selectedTasks.length > 0 ? ` (${selectedTasks.length})` : ""}
+    </Button>
+  );
+
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader pageTitle="Tasks" backUrl={`/wallets/${walletId}`}>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={selectedTasks.length === 0}
-          onClick={() => setPayoutOpen(true)}
-          data-testid="prepare-payout-button"
-        >
-          <Banknote className="mr-2 h-4 w-4" />
-          Prepare payout{selectedTasks.length > 0 ? ` (${selectedTasks.length})` : ""}
-        </Button>
+        {nothingPayable ? (
+          // A disabled button swallows pointer events, so the tooltip hangs off a wrapper.
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-flex" data-testid="prepare-payout-disabled">
+                  {prepareButton}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Nothing to pay yet. Move finished work with recipients to Done.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          prepareButton
+        )}
         <Button size="sm" onClick={openNewTask} data-testid="new-task-button">
           <Plus className="mr-2 h-4 w-4" />
           New task
@@ -132,9 +161,11 @@ export default function PageTasks() {
       </PageHeader>
 
       <p className="max-w-3xl text-sm text-muted-foreground">
-        Add payment recipients at any stage, then move accepted work to{" "}
-        <span className="font-medium text-foreground">Done</span>. Done tasks are marked{" "}
-        <span className="font-medium text-foreground">Payout ready</span> and can be paid together.
+        Add payment recipients at any stage and move accepted work to{" "}
+        <span className="font-medium text-foreground">Done</span>.{" "}
+        <span className="font-medium text-foreground">Prepare payout</span> pays every Done task marked{" "}
+        <span className="font-medium text-foreground">Payout ready</span> in one transaction; tick cards to pay
+        only some.
       </p>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -159,6 +190,17 @@ export default function PageTasks() {
           description="Drag a card to move it, or use its menu."
           headerDom={
             <div className="flex flex-wrap items-center justify-end gap-3">
+              {selectedTasks.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => setSelectedIds(new Set())}
+                  data-testid="task-selection-clear"
+                >
+                  Clear selection ({selectedTasks.length})
+                </Button>
+              )}
               {paidCount > 0 && (
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                   <Switch
@@ -178,7 +220,12 @@ export default function PageTasks() {
             </div>
           }
         >
-          <TaskBoard tasks={visibleTasks} selectedIds={selectedIds} cardProps={cardProps} onMove={cardProps.onMove} />
+          <TaskBoard
+            tasks={visibleTasks}
+            selectedIds={selectedIds}
+            cardProps={cardProps}
+            onMove={cardProps.onMove}
+          />
         </CardUI>
       )}
 
@@ -193,7 +240,8 @@ export default function PageTasks() {
         open={payoutOpen}
         onOpenChange={setPayoutOpen}
         walletId={walletId}
-        tasks={selectedTasks}
+        tasks={payableTasks}
+        initialSelectedIds={selectedIds}
         onCreated={() => setSelectedIds(new Set())}
       />
     </main>

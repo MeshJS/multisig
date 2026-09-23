@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -21,10 +22,11 @@ import { formatTotals } from "./board-model";
 import type { BoardTask, PayoutConfirmation, PayoutPreview } from "./types";
 
 /**
- * Prepare a payout for the selected tasks: preview (server builds the
- * unsigned transaction, returns the summary and a draft token) → the human
- * reads recipients, fee and warnings → confirm (the token, nothing else) →
- * a pending transaction with zero signatures, tasks linked.
+ * Prepare a payout: pick which payable tasks go in (every one by default, or
+ * the ones ticked on the board) → preview (the server builds the unsigned
+ * transaction, returns the summary and a draft token) → the human reads
+ * recipients, fee and warnings → confirm (the token, nothing else) → a
+ * pending transaction with zero signatures, tasks linked.
  *
  * The summary is the same model the MCP review card is drawn from; here it
  * is rendered as HTML.
@@ -34,17 +36,22 @@ export default function PayoutDialog({
   onOpenChange,
   walletId,
   tasks,
+  initialSelectedIds,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   walletId: string;
+  /** Every task that can be paid right now. */
   tasks: BoardTask[];
+  /** Board ticks; empty means "all of them". */
+  initialSelectedIds: Set<string>;
   onCreated: () => void;
 }) {
   const { toast } = useToast();
   const utils = api.useUtils();
   const walletAssetMetadata = useWalletsStore((s) => s.walletAssetMetadata);
+  const [chosenIds, setChosenIds] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<PayoutPreview | null>(null);
   const [created, setCreated] = useState<PayoutConfirmation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +61,15 @@ export default function PayoutDialog({
     setPreview(null);
     setCreated(null);
     setError(null);
+    const ticked = tasks.filter((t) => initialSelectedIds.has(t.id)).map((t) => t.id);
+    setChosenIds(new Set(ticked.length > 0 ? ticked : tasks.map((t) => t.id)));
+    // Only the moment of opening seeds the pick; later board changes must not reset it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // The list can refetch while the dialog is open; never keep an id that stopped being payable.
+  const chosen = useMemo(() => tasks.filter((t) => chosenIds.has(t.id)), [tasks, chosenIds]);
+  const allChosen = tasks.length > 0 && chosen.length === tasks.length;
 
   const prepare = api.task.preparePayout.useMutation({
     onSuccess: (data) => {
@@ -84,10 +99,19 @@ export default function PayoutDialog({
   const busy = prepare.isPending || confirm.isPending;
   const expired = preview ? new Date(preview.expiresAt).getTime() < Date.now() : false;
 
+  function toggle(id: string, on: boolean) {
+    setChosenIds((current) => {
+      const next = new Set(current);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   function runPreview() {
     setError(null);
     setPreview(null);
-    prepare.mutate({ walletId, taskIds: tasks.map((t) => t.id) });
+    prepare.mutate({ walletId, taskIds: chosen.map((t) => t.id) });
   }
 
   return (
@@ -102,26 +126,62 @@ export default function PayoutDialog({
               ? "The pending transaction is waiting for signatures."
               : preview
                 ? "This is exactly what will be created. Nothing is signed or sent."
-                : `One transaction paying ${tasks.length === 1 ? "this task's" : `${tasks.length} tasks'`} recipients.`}
+                : "Choose which Done tasks to pay in this one transaction."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           {!preview && !created && (
             <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Tasks ({chosen.length} of {tasks.length})
+                </span>
+                {tasks.length > 1 && (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    onClick={() => setChosenIds(new Set(allChosen ? [] : tasks.map((t) => t.id)))}
+                    data-testid="payout-task-toggle-all"
+                  >
+                    {allChosen ? "Select none" : "Select all"}
+                  </button>
+                )}
+              </div>
               <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3" data-testid="payout-task-list">
-                {tasks.map((task) => (
-                  <div key={task.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate">{task.title}</span>
-                    <span className="shrink-0 font-medium">
-                      {formatTotals(task.recipients, walletAssetMetadata).join(" · ")}
-                    </span>
-                  </div>
-                ))}
+                {tasks.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No task is ready to pay.</p>
+                )}
+                {tasks.map((task) => {
+                  const on = chosenIds.has(task.id);
+                  return (
+                    <label
+                      key={task.id}
+                      className="flex cursor-pointer items-center justify-between gap-3 text-sm"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Checkbox
+                          checked={on}
+                          aria-label={on ? `Exclude ${task.title}` : `Include ${task.title}`}
+                          data-testid={`payout-task-toggle-${task.id}`}
+                          onCheckedChange={(value) => toggle(task.id, value === true)}
+                        />
+                        <span className={on ? "truncate" : "truncate text-muted-foreground line-through"}>
+                          {task.title}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-medium">
+                        {formatTotals(task.recipients, walletAssetMetadata).join(" · ")}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               <p className="text-sm">
                 <span className="font-medium">Total:</span>{" "}
-                {formatTotals(tasks.flatMap((t) => t.recipients), walletAssetMetadata).join(" · ")}
+                {chosen.length > 0
+                  ? formatTotals(chosen.flatMap((t) => t.recipients), walletAssetMetadata).join(" · ")
+                  : "—"}
               </p>
               <p className="text-xs text-muted-foreground">
                 The server builds the transaction against the wallet&apos;s spendable funds and shows it here
@@ -131,7 +191,13 @@ export default function PayoutDialog({
           )}
 
           {preview && !created && (
-            <SummaryView summary={preview.summary} warnings={preview.warnings} expired={expired} expiresAt={preview.expiresAt} />
+            <SummaryView
+              summary={preview.summary}
+              tasks={preview.tasks}
+              warnings={preview.warnings}
+              expired={expired}
+              expiresAt={preview.expiresAt}
+            />
           )}
 
           {created && (
@@ -195,9 +261,9 @@ export default function PayoutDialog({
               <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button disabled={busy || tasks.length === 0} onClick={runPreview} data-testid="payout-preview-button">
+              <Button disabled={busy || chosen.length === 0} onClick={runPreview} data-testid="payout-preview-button">
                 {prepare.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Preview payout
+                Preview payout{chosen.length > 0 ? ` (${chosen.length})` : ""}
               </Button>
             </>
           )}
@@ -213,11 +279,13 @@ function amountText(amounts: ReviewAmount[]): string {
 
 function SummaryView({
   summary,
+  tasks,
   warnings,
   expired,
   expiresAt,
 }: {
   summary: TxReviewSummary;
+  tasks: { id: string; title: string }[];
   warnings: string[];
   expired: boolean;
   expiresAt: string;
@@ -241,6 +309,11 @@ function SummaryView({
         </div>
       </div>
       <div className="space-y-2">
+        <RowLabelInfo
+          label={`Tasks (${tasks.length})`}
+          value={<span data-testid="payout-summary-tasks">{tasks.map((t) => t.title).join(", ")}</span>}
+          allowOverflow
+        />
         <RowLabelInfo label="Fee" value={<span data-testid="payout-fee">{summary.fee?.display ?? "—"}</span>} />
         <RowLabelInfo label="Change" value={summary.change.length > 0 ? amountText(summary.change) : "—"} />
         <RowLabelInfo label="Inputs" value={String(summary.inputs.count)} />

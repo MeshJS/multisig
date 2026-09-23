@@ -471,6 +471,11 @@ export const TASK_LIST_INPUT: JsonSchema = {
   properties: {
     walletId,
     status: { ...taskStatus, description: "Only tasks in this column." },
+    payable: {
+      type: "boolean",
+      description:
+        "Only tasks that can be paid right now: in Done, with recipients, and no pending or paid payout.",
+    },
   },
   required: ["walletId"],
   additionalProperties: false,
@@ -526,10 +531,10 @@ export const TASK_PREPARE_PAYOUT_INPUT: JsonSchema = {
       uniqueItems: true,
       items: { type: "string", minLength: 1 },
       description:
-        "Tasks to pay in one transaction. Each must be in Done, have recipients and have no pending or paid payout.",
+        "Tasks to pay in one transaction. Omit to pay every payable task in the wallet (task_list marks them payable: true). Each must be in Done, have recipients and have no pending or paid payout.",
     },
     card: cardMode,
   },
-  required: ["walletId", "taskIds"],
+  required: ["walletId"],
   additionalProperties: false,
 };

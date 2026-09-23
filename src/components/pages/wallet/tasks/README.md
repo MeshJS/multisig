@@ -30,8 +30,15 @@ recipients and be paid, several at a time, through one multisig transaction.
   and MCP callers cannot bypass the workflow.
 - Recipient quantities are stored in base units. The dialog converts with the wallet's
   asset metadata decimals; ADA is 6.
-- Only tasks in `Done` whose payout state is `ready` can be selected. "Prepare payout"
-  bundles the selection into one transaction, outputs merged per address.
+- "Payable" is decided once, on the server (`payout.payable` + `payout.blocker` from
+  `derivePayoutState`): a task in `Done` with recipients and no pending or paid link.
+  The board never re-derives it.
+- "Prepare payout" is enabled whenever any task is payable and defaults to paying all
+  of them. The dialog's first step lists every payable task with a checkbox, so the
+  final pick happens there. Ticking cards on the board and a ready card's "Prepare
+  payout" menu item only pre-select; neither is required (a column-level "Select all"
+  was dropped as redundant with that default). One transaction, outputs merged per
+  address.
 - The preview runs server-side against the wallet's spendable UTxOs and mints a draft
   token bound to the task ids and a hash of their recipient rows. Confirm sends only the
   token. If a task's recipients changed in between, confirm fails with a conflict and
@@ -59,15 +66,17 @@ recipients and be paid, several at a time, through one multisig transaction.
 
 ## Test ids
 
-`new-task-button`, `prepare-payout-button`, `task-board`, `task-column-<Status>`,
+`new-task-button`, `prepare-payout-button` (wrapped in `prepare-payout-disabled` while
+nothing is payable), `task-selection-clear`, `task-board`, `task-column-<Status>`,
 `task-column-count-<Status>`, `task-card-<id>` (the drag overlay clone is
-`task-drag-overlay`), `task-select-<id>`, `task-menu-<id>`,
+`task-drag-overlay`), `task-select-<id>`, `task-menu-<id>`, `task-pay-<id>`,
 `task-move-<id>-<Status>`, `task-totals-<id>`, `task-tx-link-<id>`,
 `payout-badge-configured` / `payout-badge-<state>`,
 `task-dialog`, `task-title-input`, `task-assignee-signer-select`,
 `task-add-assignee-recipient`, `task-recipient-signer-select`,
 `task-add-signer-recipient`, `task-add-recipient`, `recipient-address-input-<i>`,
 `amount-input-<i>`, `task-save`, `task-delete`, `task-delete-confirm`, `payout-dialog`,
-`payout-task-list`, `payout-preview-button`, `payout-summary`, `payout-fee`,
+`payout-task-list`, `payout-task-toggle-<id>`, `payout-task-toggle-all`,
+`payout-preview-button`, `payout-summary`, `payout-summary-tasks`, `payout-fee`,
 `payout-confirm-button`, `payout-created`, `payout-error`, `payout-tasks-badge`,
 `show-paid-tasks`, `task-locked-close`, `task-locked-transaction`.

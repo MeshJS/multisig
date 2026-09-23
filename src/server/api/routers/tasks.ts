@@ -3,7 +3,7 @@ import type { Prisma, TaskStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { audit } from "@/lib/observability/audit";
-import { derivePayoutState } from "@/lib/task-payout/state";
+import { derivePayoutState, MAX_PAYOUT_TASKS } from "@/lib/task-payout/state";
 import { assertWalletAccess, requireSessionAddress } from "@/server/api/auth";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
@@ -22,7 +22,7 @@ import type { AuthCtx } from "@/server/api/trpc";
 export const TASK_STATUSES = ["Backlog", "InProgress", "InReview", "Done"] as const;
 export const TASK_PRIORITIES = ["Low", "Medium", "High"] as const;
 export const MAX_TASK_RECIPIENTS = 20;
-export const MAX_PAYOUT_TASKS = 20;
+export { MAX_PAYOUT_TASKS };
 
 const statusEnum = z.enum(TASK_STATUSES);
 const priorityEnum = z.enum(TASK_PRIORITIES);

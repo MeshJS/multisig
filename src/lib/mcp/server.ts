@@ -31,7 +31,7 @@ export const MCP_SERVER_INSTRUCTIONS = [
   "Mesh Multisig: read Cardano multisig wallets, draft ballots, and draft unsigned transactions for humans to sign in the app.",
   "transaction_preview, transaction_propose and multisig_review_pending_transaction return the transaction review card. By default the client's inline card view draws it next to the tool call; if the user cannot see a card there, relay the result's summary in the same turn. When the user wants a picture of the card, or the client shows images but not inline views, pass card: \"image\" and present the returned image in your reply, never a prose description.",
   "After transaction_preview, make sure the user has seen the card and ask them to confirm before calling transaction_propose with the returned draftToken. If the client renders the inline card view, the user may instead confirm by clicking its Confirm button, and you will be told when that happens.",
-  "task_prepare_payout works the same way for the project task board: it returns the card and a draftToken, and transaction_propose creates the payout and links the tasks.",
+  "task_prepare_payout works the same way for the project task board: Done tasks with recipients are payable (task_list marks them payable: true); call it with their ids, or with no taskIds to pay all of them, and transaction_propose creates the payout and links the tasks.",
   "Nothing on this server signs or broadcasts; every transaction is signed by the wallet's signers in the app.",
 ].join(" ");
 

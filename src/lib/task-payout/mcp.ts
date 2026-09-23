@@ -15,7 +15,7 @@ import { getProvider } from "@/utils/get-provider";
  * Mesh, which must stay off the MCP route's cold path.
  */
 
-export type TaskListArgs = { walletId: string; status?: string };
+export type TaskListArgs = { walletId: string; status?: string; payable?: boolean };
 
 export type TaskUpsertArgs = {
   walletId: string;
@@ -78,14 +78,19 @@ export async function runTaskList(args: TaskListArgs, ctx: ToolContext): Promise
   try {
     const caller = await callerFor(ctx);
     const tasks = await caller.task.list({ walletId: args.walletId });
-    const filtered = args.status ? tasks.filter((t) => t.status === args.status) : tasks;
+    const payableCount = tasks.filter((t) => t.payout.payable).length;
+    const filtered = tasks
+      .filter((t) => !args.status || t.status === args.status)
+      .filter((t) => !args.payable || t.payout.payable);
     return {
       status: 200,
       body: {
         tasks: filtered.map(serializeTask),
         count: filtered.length,
+        /** Across the whole wallet, before any filter: what task_prepare_payout would pay without taskIds. */
+        payableCount,
       },
-      audit: { walletId: args.walletId, count: filtered.length },
+      audit: { walletId: args.walletId, count: filtered.length, payableCount },
     };
   } catch (error) {
     return trpcErrorToResult(error);

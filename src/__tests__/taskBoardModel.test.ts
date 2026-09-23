@@ -32,7 +32,7 @@ function task(id: string, status: BoardTask["status"], position: number): BoardT
     updatedAt: new Date(),
     recipients: [],
     payouts: [],
-    payout: { state: "none", transactionId: null, txHash: null },
+    payout: { state: "none", transactionId: null, txHash: null, payable: false, blocker: "no_recipients" },
   };
 }
 
@@ -123,16 +123,22 @@ describe("formatTotals", () => {
 
 describe("payout board state", () => {
   it("only makes completed work selectable for payout", () => {
-    const configured = { ...task("pay", "InReview", 0), payout: { state: "ready" as const, transactionId: null, txHash: null } };
+    // The server decides; the board reads its answer rather than re-deriving it.
+    const configured = {
+      ...task("pay", "InReview", 0),
+      payout: { state: "ready" as const, transactionId: null, txHash: null, payable: false, blocker: "not_done" as const },
+    };
     expect(isPayoutReady(configured)).toBe(false);
-    expect(isPayoutReady({ ...configured, status: "Done" })).toBe(true);
+    expect(
+      isPayoutReady({ payout: { ...configured.payout, payable: true, blocker: null } }),
+    ).toBe(true);
   });
 
   it("hides paid history by default without removing it", () => {
     const active = task("active", "Done", 0);
     const paid = {
       ...task("paid", "Done", 1),
-      payout: { state: "paid" as const, transactionId: "tx-1", txHash: "ab" },
+      payout: { state: "paid" as const, transactionId: "tx-1", txHash: "ab", payable: false, blocker: "paid" as const },
     };
     expect(filterPaidTasks([active, paid], false)).toEqual([active]);
     expect(filterPaidTasks([active, paid], true)).toEqual([active, paid]);
@@ -142,13 +148,13 @@ describe("payout board state", () => {
     const base = task("task", "Done", 0);
     expect(isTaskSettled(base)).toBe(false);
     expect(
-      isTaskSettled({ ...base, payout: { state: "ready", transactionId: null, txHash: null } }),
+      isTaskSettled({ ...base, payout: { state: "ready", transactionId: null, txHash: null, payable: true, blocker: null } }),
     ).toBe(false);
     expect(
-      isTaskSettled({ ...base, payout: { state: "pending", transactionId: "tx-1", txHash: null } }),
+      isTaskSettled({ ...base, payout: { state: "pending", transactionId: "tx-1", txHash: null, payable: false, blocker: "pending" } }),
     ).toBe(true);
     expect(
-      isTaskSettled({ ...base, payout: { state: "paid", transactionId: "tx-1", txHash: "ab" } }),
+      isTaskSettled({ ...base, payout: { state: "paid", transactionId: "tx-1", txHash: "ab", payable: false, blocker: "paid" } }),
     ).toBe(true);
   });
 });

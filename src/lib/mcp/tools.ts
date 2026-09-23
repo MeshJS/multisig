@@ -768,7 +768,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "task_list",
     title: "List project tasks",
     description:
-      "The wallet's project task board: every task with its column (Backlog, InProgress, InReview, Done), assignee, due date, payment recipients (amounts in base units: lovelace, or a token's raw quantity) and payout state — none, ready (has recipients and no payout yet; it becomes payable when the task reaches Done), pending (a payout transaction awaits signatures; includes its transactionId) or paid. Optionally filter by column.",
+      "The wallet's project task board: every task with its column (Backlog, InProgress, InReview, Done), assignee, due date, payment recipients (amounts in base units: lovelace, or a token's raw quantity) and payout — its state (none, ready, pending with the transactionId awaiting signatures, or paid), payable (true when the task can be paid right now: Done, with recipients, no pending or paid payout) and blocker (why not: not_done, no_recipients, pending, paid, or null). Pass payable tasks' ids to task_prepare_payout. Optionally filter by column or to payable tasks only; payableCount is the wallet-wide total.",
     scope: "wallets:read",
     inputSchema: TASK_LIST_INPUT,
     annotations: READ_ONLY,
@@ -776,7 +776,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     run: async (args, ctx) => {
       const { runTaskList } = await load.taskMcp();
       return runTaskList(
-        { walletId: String(args.walletId), status: str(args.status) },
+        { walletId: String(args.walletId), status: str(args.status), payable: args.payable === true },
         ctx,
       );
     },
@@ -785,7 +785,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "task_upsert",
     title: "Create, edit or move a task",
     description:
-      "Create a task on the wallet's board (title required) or update an existing one by taskId: title, description, priority, assignee, due date, column (status) and position, and its payment recipients in display units (ADA, or a token with its registered decimals — the same shape as transaction_preview outputs). A task becomes entirely read-only while its payout awaits signatures and remains read-only after payment; cancelling the pending transaction unlocks an unpaid task. This records a task only; it creates, signs and broadcasts nothing — use task_prepare_payout to draft the payout.",
+      "Create a task on the wallet's board (title required) or update an existing one by taskId: title, description, priority, assignee, due date, column (status) and position, and its payment recipients in display units (ADA, or a token with its registered decimals — the same shape as transaction_preview outputs). Moving a task that has recipients to Done makes it payable. A task becomes entirely read-only while its payout awaits signatures and remains read-only after payment; cancelling the pending transaction unlocks an unpaid task. This records a task only; it creates, signs and broadcasts nothing — use task_prepare_payout to draft the payout.",
     scope: "tasks:write",
     inputSchema: TASK_UPSERT_INPUT,
     annotations: {
@@ -805,7 +805,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "task_prepare_payout",
     title: "Preview a payout for tasks",
     description:
-      "Build the unsigned transaction that pays one or more Done tasks' recipients (merged per address) against the wallet's spendable UTxOs, and show it. Work must reach the Done column before it can be paid. Nothing is stored, signed or sent. The result is the review card: the client's inline card view draws it next to this call (with a Confirm button); if the user cannot see it, relay the summary, or pass card: \"image\" for a picture and show the returned image. Ask the user to confirm; on confirmation call transaction_propose with the returned draftToken — the tasks are linked to the pending transaction automatically and show as awaiting signatures on the board. The token expires in 15 minutes and is bound to exactly these tasks and amounts.",
+      "Build the unsigned transaction that pays one or more Done tasks' recipients (merged per address) against the wallet's spendable UTxOs, and show it. Work must reach the Done column before it can be paid; omit taskIds to pay every payable task, and read the result's tasks list to see exactly which were included. Nothing is stored, signed or sent. The result is the review card: the client's inline card view draws it next to this call (with a Confirm button); if the user cannot see it, relay the summary, or pass card: \"image\" for a picture and show the returned image. Ask the user to confirm; on confirmation call transaction_propose with the returned draftToken — the tasks are linked to the pending transaction automatically and show as awaiting signatures on the board. The token expires in 15 minutes and is bound to exactly these tasks and amounts.",
     scope: "transactions:write",
     inputSchema: TASK_PREPARE_PAYOUT_INPUT,
     annotations: {
@@ -821,9 +821,10 @@ export const MCP_TOOLS: McpToolDef[] = [
         load.taskPayoutPreview(),
         load.db(),
       ]);
+      // Absent means "every payable task"; the preview names the ones it picked.
       const taskIds = Array.isArray(args.taskIds)
         ? args.taskIds.map((id) => String(id))
-        : [];
+        : undefined;
       return prepareTaskPayoutPreview(
         { walletId: String(args.walletId), taskIds },
         ctx,

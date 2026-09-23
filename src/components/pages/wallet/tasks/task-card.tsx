@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRight, CalendarDays, ExternalLink, Eye, MoreVertical, Pencil } from "lucide-react";
+import { ArrowRight, Banknote, CalendarDays, ExternalLink, Eye, MoreVertical, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ export type TaskCardProps = {
   onToggleSelect: (id: string, selected: boolean) => void;
   onOpen: (task: BoardTask) => void;
   onMove: (id: string, status: TaskStatus, position: number) => void;
+  /** Open the payout dialog with just this task picked. */
+  onPreparePayout: (task: BoardTask) => void;
   /** Rendered inside the DragOverlay: no sortable hooks, no interactions. */
   overlay?: boolean;
 };
@@ -52,6 +54,7 @@ export function TaskCardBody({
   onToggleSelect,
   onOpen,
   onMove,
+  onPreparePayout,
   overlay,
   dragging,
 }: TaskCardProps & { dragging?: boolean }) {
@@ -76,7 +79,7 @@ export function TaskCardBody({
         // dashed slot (height kept) — one card moves, one slot waits.
         dragging && "border-dashed bg-muted/40 shadow-none",
         overlay && "shadow-lg",
-        selected && !dragging && "border-primary/20 bg-primary/5",
+        selected && !dragging && "border-primary/60 bg-primary/10 ring-1 ring-primary/30",
       )}
       onClick={() => {
         if (!overlay) onOpen(task);
@@ -88,6 +91,7 @@ export function TaskCardBody({
           {ready ? (
             <Checkbox
               checked={selected}
+              title={selected ? "Selected for payout" : "Select for payout"}
               aria-label={selected ? "Deselect task for payout" : "Select task for payout"}
               data-testid={`task-select-${task.id}`}
               className="mt-0.5 flex-shrink-0"
@@ -138,6 +142,12 @@ export function TaskCardBody({
                   {settled ? <Eye className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
                   {settled ? "View details" : "Edit"}
                 </DropdownMenuItem>
+                {ready && (
+                  <DropdownMenuItem data-testid={`task-pay-${task.id}`} onSelect={() => onPreparePayout(task)}>
+                    <Banknote className="mr-2 h-4 w-4" />
+                    Prepare payout
+                  </DropdownMenuItem>
+                )}
                 {!settled && (
                   <>
                     <DropdownMenuSeparator />
@@ -184,6 +194,11 @@ export function TaskCardBody({
         {task.payout.state !== "none" && (
           <div className="mt-2 flex items-center justify-between gap-2">
             <PayoutBadge state={task.payout.state} payoutReady={ready} />
+            {ready && !overlay && (
+              <span className="text-xs text-muted-foreground">
+                {selected ? "Selected" : "Tick to pay"}
+              </span>
+            )}
             {task.payout.transactionId && !overlay && (
               <Link
                 href={`/wallets/${walletId}/transactions#tx-${task.payout.transactionId}`}

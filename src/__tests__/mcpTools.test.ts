@@ -186,10 +186,16 @@ describe("MCP tool registry", () => {
     expect(payout?.uiResourceUri).toBe(preview?.uiResourceUri);
     expect(payout?.description).toMatch(/transaction_propose/);
     expect(payout?.description).toMatch(/\bDone\b/);
-    expect(payout?.inputSchema.required).toEqual(["walletId", "taskIds"]);
-    expect(
-      (payout?.inputSchema.properties as Record<string, { description?: string }>).taskIds?.description,
-    ).toMatch(/\bDone\b/);
+    // taskIds is optional: omitted means every payable task, and the preview
+    // names the ones it picked before the human confirms anything.
+    expect(payout?.inputSchema.required).toEqual(["walletId"]);
+    const taskIds = (payout?.inputSchema.properties as Record<string, { description?: string }>).taskIds;
+    expect(taskIds?.description).toMatch(/\bDone\b/);
+    expect(taskIds?.description).toMatch(/omit/i);
+    // An agent must not have to derive payability from column + state itself.
+    const list = MCP_TOOLS.find((t) => t.name === "task_list");
+    expect(list?.description).toMatch(/payable/);
+    expect(list?.inputSchema.properties).toHaveProperty("payable");
     const upsert = MCP_TOOLS.find((t) => t.name === "task_upsert");
     expect(upsert?.description).toMatch(/read-only after payment/i);
     // Board writes never reach the transaction table.

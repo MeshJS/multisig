@@ -38,7 +38,9 @@ export type TxReviewErrorCode =
   | "TASK_NOT_FOUND"
   | "TASK_NOT_DONE"
   | "TASK_NOT_PAYABLE"
-  | "TASK_CHANGED";
+  | "TASK_CHANGED"
+  | "NO_PAYABLE_TASKS"
+  | "TOO_MANY_TASKS";
 
 /**
  * A failure the model can read and act on. `status` maps to the tool
