@@ -49,11 +49,15 @@ Specs live in the vault, not this repo. The maintainer keeps a document-driven d
   a test (`src/__tests__/mcpTools.test.ts`) — adding a write tool must be a deliberate
   decision, not a registry addition.
 - **Tools wrap the existing v1 handlers in-process** via `src/lib/mcp/invokeV1.ts`, so
-  authorization and validation stay defined once. The transaction review tools are the
-  exception: they live in `src/lib/tx-review/` and reuse the canvas builder's
-  `src/lib/tx-draft/` pipeline server-side. Handler imports in `src/lib/mcp/tools.ts`
-  must stay **lazy** or the Mesh/whisky WASM (and the `next/og` renderer) lands in the
-  route's cold path.
+  authorization and validation stay defined once — including the dual identity (human
+  signer JWT vs. bot key with a WalletBotAccess grant), which a tool body calling a
+  tRPC router directly would not reproduce. A tool that needs an operation with no REST
+  route gets a new v1 handler first (`tasks.ts` / `taskUpsert.ts` are the model). The
+  transaction review tools are the exception: they live in `src/lib/tx-review/` and
+  reuse the canvas builder's `src/lib/tx-draft/` pipeline server-side, and even they
+  take their UTxOs from `freeUtxos.ts` through `freeUtxosFetcher` in `tools.ts`. Handler
+  imports in `src/lib/mcp/tools.ts` must stay **lazy** or the Mesh/whisky WASM (and the
+  `next/og` renderer) lands in the route's cold path.
 - **Auth**: an OAuth 2.1 access token, or an existing v1 bearer token. The authorization
   server lives under `src/pages/api/oauth/` — see `src/pages/api/oauth/README.md`.
 - **Inline card (MCP App)**: the review tools point at `ui://mesh-multisig/review-card`

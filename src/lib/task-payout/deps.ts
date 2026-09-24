@@ -1,9 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 
-import { mintV1Token, type McpCaller } from "@/lib/mcp/auth";
-import { invokeV1 } from "@/lib/mcp/invokeV1";
+import type { McpCaller } from "@/lib/mcp/auth";
 import { MCP_SCOPES } from "@/lib/mcp/scopes";
-import type { ToolContext } from "@/lib/mcp/tools";
+import { freeUtxosFetcher, type ToolContext } from "@/lib/mcp/tools";
 import type { ReviewDeps } from "@/lib/tx-review/pipeline";
 import type { AuthCtx } from "@/server/api/trpc";
 import { getSessionAddresses, requireSessionAddress } from "@/server/api/auth";
@@ -41,10 +40,9 @@ export function toolContextFromSession(ctx: AuthCtx): ToolContext {
 
 /**
  * The pipeline's dependencies outside MCP. Spendable UTxOs come from the v1
- * `freeUtxos` handler run in-process against a synthetic request — exactly
- * what `callV1` does for the tools — so pending-transaction input locking
- * stays defined once, in that handler. The handler module is imported lazily
- * because it pulls Mesh into the module graph.
+ * `freeUtxos` handler run in-process — the same `freeUtxosFetcher` the
+ * drafting tools use — so pending-transaction input locking stays defined
+ * once, in that handler. (The handler module is loaded lazily inside it.)
  */
 export function buildReviewDeps(
   db: PrismaClient,
@@ -53,16 +51,7 @@ export function buildReviewDeps(
 ): ReviewDeps {
   return {
     db,
-    fetchFreeUtxos: async (walletId) => {
-      const handler = (await import("@/pages/api/v1/freeUtxos")).default;
-      return invokeV1({
-        handler,
-        method: "GET",
-        token: mintV1Token(toolCtx.caller, toolCtx.caller.subject),
-        clientIp: toolCtx.clientIp,
-        query: { walletId, address: toolCtx.caller.subject, fresh: "true" },
-      });
-    },
+    fetchFreeUtxos: freeUtxosFetcher(toolCtx),
     ...extra,
   };
 }

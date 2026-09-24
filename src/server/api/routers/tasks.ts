@@ -63,6 +63,26 @@ function annotate(task: TaskWithRelations) {
   return { ...task, payout: derivePayoutState(task) };
 }
 
+export type AnnotatedTask = ReturnType<typeof annotate>;
+
+/**
+ * Every task on a wallet's board with its payout state, in board order. The
+ * `list` procedure and the v1 `tasks` handler share it: a bot key is
+ * authorized through its WalletBotAccess grant and has no tRPC session, so
+ * that handler reads the board here after its own access check.
+ */
+export async function listWalletTasks(
+  db: AuthCtx["db"],
+  walletId: string,
+): Promise<AnnotatedTask[]> {
+  const tasks = await db.task.findMany({
+    where: { walletId },
+    include: taskInclude,
+    orderBy: [{ status: "asc" }, { position: "asc" }, { createdAt: "asc" }],
+  });
+  return tasks.map(annotate);
+}
+
 async function loadTaskForWrite(ctx: AuthCtx, id: string) {
   const task = await ctx.db.task.findUnique({ where: { id }, include: taskInclude });
   if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
@@ -132,12 +152,7 @@ export const taskRouter = createTRPCRouter({
     .input(z.object({ walletId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertWalletAccess(ctx, input.walletId);
-      const tasks = await ctx.db.task.findMany({
-        where: { walletId: input.walletId },
-        include: taskInclude,
-        orderBy: [{ status: "asc" }, { position: "asc" }, { createdAt: "asc" }],
-      });
-      return tasks.map(annotate);
+      return listWalletTasks(ctx.db, input.walletId);
     }),
 
   create: protectedProcedure

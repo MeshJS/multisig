@@ -105,6 +105,15 @@ describe("MCP tool registry", () => {
     expect(ballot?.annotations.idempotentHint).toBe(true);
   });
 
+  it("wraps the task board tools around v1 handlers", () => {
+    // Bots reach task_list under wallets:read, and a v1 handler is where the
+    // bot-grant vs. signer authorization is defined once. A tool body that
+    // called the tRPC router directly would admit bots by signer membership
+    // (which they never have) and skip the handler's rate limits.
+    expect(MCP_TOOLS.find((t) => t.name === "task_list")?.v1Path).toBe("tasks.ts");
+    expect(MCP_TOOLS.find((t) => t.name === "task_upsert")?.v1Path).toBe("taskUpsert.ts");
+  });
+
   it("keeps the transaction preview read-only and off the v1 surface", () => {
     // The preview builds in memory and stores nothing, so it must advertise
     // as read-only; and it wraps no v1 handler, because no REST route builds

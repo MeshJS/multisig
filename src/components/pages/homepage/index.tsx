@@ -913,6 +913,7 @@ export function PageHomepage() {
                 <li><code className="rounded bg-muted px-1">GET /api/v1/walletIds?address=&lt;paymentAddress&gt;</code> — list wallets for the bot</li>
                 <li><code className="rounded bg-muted px-1">GET /api/v1/pendingTransactions?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — pending transactions</li>
                 <li><code className="rounded bg-muted px-1">GET /api/v1/freeUtxos?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — free UTxOs</li>
+                <li><code className="rounded bg-muted px-1">GET /api/v1/tasks?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — project task board with payout state (read-only for bots)</li>
                 <li><code className="rounded bg-muted px-1">POST /api/v1/addTransaction</code>, <code className="rounded bg-muted px-1">POST /api/v1/signTransaction</code> — add/sign transactions (with Bearer token)</li>
               </ul>
             </CardUI>

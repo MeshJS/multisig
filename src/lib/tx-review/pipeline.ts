@@ -232,7 +232,7 @@ export type SummaryInputs = Pick<
 
 /** Resolve labels, names and titles, then summarize one builder body. */
 export async function summarizeForWallet(
-  deps: ReviewDeps,
+  deps: Pick<ReviewDeps, "db">,
   body: any,
   wallet: {
     id: string;
@@ -306,7 +306,7 @@ export async function summarizeForWallet(
 }
 
 export async function renderCard(
-  deps: ReviewDeps,
+  deps: Pick<ReviewDeps, "renderPng">,
   summary: TxReviewSummary,
 ): Promise<{ data: string; mimeType: "image/png" }> {
   const png = await (deps.renderPng ?? renderReviewPng)(summary);

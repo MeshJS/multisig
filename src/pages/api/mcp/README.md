@@ -40,8 +40,8 @@ throws on the *second* request while the first still looks healthy — which is 
 | `transaction_preview` | `transactions:write` | `src/lib/tx-review/preview.ts` (uses `freeUtxos.ts` for inputs) |
 | `transaction_propose` | `transactions:write` | `src/lib/tx-review/propose.ts` (uses `freeUtxos.ts` for inputs) |
 | `multisig_review_pending_transaction` | `wallets:read` | `pendingTransactions.ts` → `src/lib/tx-review/review.ts` |
-| `task_list` | `wallets:read` | `task` tRPC router in-process (`src/lib/task-payout/mcp.ts`) |
-| `task_upsert` | `tasks:write` | `task` tRPC router in-process (`src/lib/task-payout/mcp.ts`) |
+| `task_list` | `wallets:read` | `tasks.ts` |
+| `task_upsert` | `tasks:write` | `taskUpsert.ts` |
 | `task_prepare_payout` | `transactions:write` | `src/lib/task-payout/preview.ts` → `src/lib/tx-review/preview.ts` (`runSpecPreview`) |
 
 **Nothing here can sign, spend or broadcast.** That is a deliberate boundary. Tool results
@@ -343,7 +343,7 @@ claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mc
 | `src/lib/mcp/apps/review-card.ts` | The inline review-card view (MCP App resource + bridge) |
 | `src/lib/task-payout/spec.ts`, `load.ts` | Task rows → canonical payout spec; recipients hash |
 | `src/lib/task-payout/preview.ts`, `hooks.ts` | `task_prepare_payout` body; the task link hooks `transaction_propose` and the app share |
-| `src/lib/task-payout/mcp.ts` | `task_list` / `task_upsert` bodies (the `task` tRPC router in-process) |
+| `src/lib/task-payout/recipients.ts`, `serialize.ts` | Display-unit recipients → base-unit rows; the task shape and tRPC→HTTP error map the `tasks.ts` / `taskUpsert.ts` v1 handlers share |
 | `src/lib/task-payout/deps.ts`, `sync.ts` | Pipeline deps from a tRPC session; Paid/Cancelled link sync |
 
 Tool inputs are hand-written JSON Schema rather than generated from

@@ -16,10 +16,19 @@ import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summ
  * only for a signer (human JWT) or a bot with access, and observers may look.
  * The wallet row is read afterwards purely for names and the threshold.
  */
+/**
+ * What the pending-transaction review needs: no UTxO source, since it builds
+ * nothing — the transaction already exists.
+ */
+export type PendingReviewDeps = Pick<ReviewDeps, "db" | "renderPng" | "omitCard"> & {
+  /** `multisig_list_pending_transactions`'s v1 handler, run in-process for the caller. */
+  fetchPendingTransactions: (walletId: string) => Promise<V1Result>;
+};
+
 export async function runPendingTransactionReview(
   input: { walletId: string; transactionId: string },
   ctx: ToolContext,
-  deps: ReviewDeps & { fetchPendingTransactions: (walletId: string) => Promise<V1Result> },
+  deps: PendingReviewDeps,
 ): Promise<McpToolResult> {
   try {
     const listed = await deps.fetchPendingTransactions(input.walletId);

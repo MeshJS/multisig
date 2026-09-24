@@ -143,9 +143,10 @@ const load = {
   txPreview: () => import("@/lib/tx-review/preview"),
   txPropose: () => import("@/lib/tx-review/propose"),
   txReview: () => import("@/lib/tx-review/review"),
-  // Task board: the tRPC router in-process, and the payout side of the
-  // same review pipeline.
-  taskMcp: () => import("@/lib/task-payout/mcp"),
+  // Task board: two v1 handlers, and the payout side of the same review
+  // pipeline.
+  tasks: () => import("@/pages/api/v1/tasks"),
+  taskUpsert: () => import("@/pages/api/v1/taskUpsert"),
   taskPayoutPreview: () => import("@/lib/task-payout/preview"),
   taskPayoutHooks: () => import("@/lib/task-payout/hooks"),
   db: () => import("@/server/db"),
@@ -201,6 +202,23 @@ export async function callV1(
     query: init.query,
     body: init.body,
   });
+}
+
+/**
+ * The review pipeline's UTxO source: `multisig_list_free_utxos`'s v1 handler,
+ * run in-process for the caller and always fresh from chain. One definition
+ * for every pipeline entry point (the three drafting tools here, and the web
+ * app's task-payout procedures via `src/lib/task-payout/deps.ts`), so
+ * pending-input locking and wallet authorization stay in that handler.
+ */
+export function freeUtxosFetcher(
+  ctx: ToolContext,
+): (walletId: string) => Promise<V1Result> {
+  return (walletId) =>
+    callV1(load.freeUtxos, ctx, {
+      method: "GET",
+      query: { walletId, address: ctx.caller.subject, fresh: "true" },
+    });
 }
 
 const str = (value: unknown): string | undefined =>
@@ -685,11 +703,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       return runTransactionPreview(args as never, ctx, {
         db,
         omitCard: !wantsCardImage(args),
-        fetchFreeUtxos: (walletId) =>
-          callV1(load.freeUtxos, ctx, {
-            method: "GET",
-            query: { walletId, address: ctx.caller.subject, fresh: "true" },
-          }),
+        fetchFreeUtxos: freeUtxosFetcher(ctx),
       });
     },
   },
@@ -720,11 +734,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         withTaskPayoutHooks({
           db,
           clientIp: ctx.clientIp,
-          fetchFreeUtxos: (walletId) =>
-            callV1(load.freeUtxos, ctx, {
-              method: "GET",
-              query: { walletId, address: ctx.caller.subject, fresh: "true" },
-            }),
+          fetchFreeUtxos: freeUtxosFetcher(ctx),
         }),
       );
     },
@@ -753,8 +763,6 @@ export const MCP_TOOLS: McpToolDef[] = [
         {
           db,
           omitCard: !wantsCardImage(args),
-          fetchFreeUtxos: () =>
-            Promise.resolve({ status: 200, body: [] }),
           fetchPendingTransactions: (walletId) =>
             callV1(load.pendingTransactions, ctx, {
               method: "GET",
@@ -772,14 +780,17 @@ export const MCP_TOOLS: McpToolDef[] = [
     scope: "wallets:read",
     inputSchema: TASK_LIST_INPUT,
     annotations: READ_ONLY,
-    v1Path: null,
-    run: async (args, ctx) => {
-      const { runTaskList } = await load.taskMcp();
-      return runTaskList(
-        { walletId: String(args.walletId), status: str(args.status), payable: args.payable === true },
-        ctx,
-      );
-    },
+    v1Path: "tasks.ts",
+    run: async (args, ctx) =>
+      callV1(load.tasks, ctx, {
+        method: "GET",
+        query: {
+          walletId: str(args.walletId),
+          address: ctx.caller.subject,
+          status: str(args.status),
+          ...(args.payable === true ? { payable: "true" } : {}),
+        },
+      }),
   },
   {
     name: "task_upsert",
@@ -795,10 +806,23 @@ export const MCP_TOOLS: McpToolDef[] = [
       idempotentHint: true,
       openWorldHint: false,
     },
-    v1Path: null,
+    v1Path: "taskUpsert.ts",
     run: async (args, ctx) => {
-      const { runTaskUpsert } = await load.taskMcp();
-      return runTaskUpsert(args as never, ctx);
+      // The tool's arguments are the handler's body verbatim (recipients in
+      // display units); the handler owns validation and authorization.
+      const result = await callV1(load.taskUpsert, ctx, {
+        method: "POST",
+        body: args,
+      });
+      const body = result.body as
+        | { task?: { id?: string }; created?: boolean }
+        | null;
+      return result.status < 400 && body?.task?.id
+        ? {
+            ...result,
+            audit: { taskId: body.task.id, created: body.created === true },
+          }
+        : result;
     },
   },
   {
@@ -831,11 +855,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         {
           db,
           omitCard: !wantsCardImage(args),
-          fetchFreeUtxos: (walletId) =>
-            callV1(load.freeUtxos, ctx, {
-              method: "GET",
-              query: { walletId, address: ctx.caller.subject, fresh: "true" },
-            }),
+          fetchFreeUtxos: freeUtxosFetcher(ctx),
         },
       );
     },
