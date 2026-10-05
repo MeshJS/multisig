@@ -1,6 +1,6 @@
 import { deserializeAddress } from "@meshsdk/core";
 
-import type { TxDraft } from "@/types/tx-draft";
+import type { DraftUtxoRef, TxDraft } from "@/types/tx-draft";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import {
   materializeOutputAssets,
@@ -8,8 +8,17 @@ import {
   safeBigInt,
 } from "./assets";
 import { hasMultisigOnlyActions } from "./mutations";
+import { validatePlutusDraft } from "./validate-plutus";
 
 export type DraftIssueCode =
+  | "output-datum-invalid"
+  | "script-input-ref-invalid"
+  | "script-input-duplicate"
+  | "script-input-script-invalid"
+  | "script-input-datum-invalid"
+  | "script-input-redeemer-invalid"
+  | "collateral-ref-invalid"
+  | "plutus-build-unsupported"
   | "no-outputs"
   | "missing-address"
   | "invalid-address"
@@ -45,6 +54,16 @@ export type DraftIssue = {
   message: string;
   /** Anchors the issue to an output so the UI can select the offending card. */
   outputId?: string;
+  /** Script-input errors are shown in the transaction inspector. */
+  inputId?: string;
+  inputRef?: DraftUtxoRef;
+  field?:
+    | "inlineDatum"
+    | "utxoRef"
+    | "script"
+    | "datumSource"
+    | "redeemer"
+    | "collateral";
 };
 
 export type ValidateDraftContext = {
@@ -199,7 +218,10 @@ export function validateDraft(
   draft: TxDraft,
   ctx: ValidateDraftContext,
 ): DraftIssue[] {
-  const issues: DraftIssue[] = [...validateSource(draft, ctx)];
+  const issues: DraftIssue[] = [
+    ...validateSource(draft, ctx),
+    ...validatePlutusDraft(draft),
+  ];
 
   if (
     draft.outputs.length === 0 &&

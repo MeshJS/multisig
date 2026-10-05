@@ -2,6 +2,8 @@ import { keepRelevant, type MeshTxBuilder, type UTxO } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
 import { materializeOutputAssets, requiredAssetTotals } from "./assets";
+import { hasPlutusDraftData } from "./mutations";
+import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
 
 /**
  * Lovelace floor for auto UTxO selection when the draft casts votes or
@@ -56,6 +58,9 @@ export function applyDraftToTxBuilder(
   draft: TxDraft,
   ctx: ApplyDraftContext,
 ): MeshTxBuilder {
+  if (hasPlutusDraftData(draft)) {
+    throw new Error(PLUTUS_BUILD_UNSUPPORTED);
+  }
   if (
     draft.outputs.length === 0 &&
     draft.votes.length === 0 &&

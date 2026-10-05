@@ -118,7 +118,8 @@ export default function PageBuild() {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const { labelAddress } = useAddressLabels(appWallet);
   const { newTransaction } = useTransaction();
-  const { activeWallet, userAddress, walletName } = useActiveWallet();
+  const { activeWallet, userAddress, walletName, walletType } =
+    useActiveWallet();
   const { signAndSubmit } = useSignAndSubmit();
   const { multisigWallet, isLoading: multisigWalletLoading } =
     useMultisigWallet();
@@ -134,6 +135,7 @@ export default function PageBuild() {
   const editingTxId = useTxBuilderStore((state) => state.editingTxId);
   const cancelEditing = useTxBuilderStore((state) => state.cancelEditing);
   const setSource = useTxBuilderStore((state) => state.setSource);
+  const syncEnvironment = useTxBuilderStore((state) => state.syncEnvironment);
   const touched = useTxBuilderStore((state) => state.touched);
 
   const [building, setBuilding] = useState(false);
@@ -147,6 +149,7 @@ export default function PageBuild() {
   const [buildResult, setBuildResult] = useState<BuildResultState | null>(
     null,
   );
+  const buildResultRevision = useRef(0);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
@@ -162,11 +165,29 @@ export default function PageBuild() {
     if (appWallet && storeWalletId !== appWallet.id) resetDraft(appWallet.id);
   }, [appWallet, storeWalletId, resetDraft]);
 
+  useEffect(() => {
+    syncEnvironment({
+      network,
+      account:
+        activeWallet && userAddress
+          ? `${walletType}:${walletName ?? ""}:${userAddress}`
+          : undefined,
+    });
+  }, [
+    network,
+    activeWallet,
+    userAddress,
+    walletType,
+    walletName,
+    syncEnvironment,
+  ]);
+
   // The store replaces the draft object on every mutation, so any edit makes
   // a previous test build stale — drop it rather than show outdated numbers.
   useEffect(() => {
+    buildResultRevision.current += 1;
     setBuildResult(null);
-  }, [draft]);
+  }, [draft, network, activeWallet, userAddress]);
 
   const utxos = useMemo(
     () => (appWallet ? (walletsUtxos[appWallet.id] ?? []) : []),
@@ -589,6 +610,10 @@ export default function PageBuild() {
    */
   async function testBuild() {
     if (!appWallet || !canBuildSource()) return;
+    const revision = buildResultRevision.current;
+    const isCurrent = () =>
+      revision === buildResultRevision.current &&
+      draft === useTxBuilderStore.getState().draft;
     setTesting(true);
     try {
       // Always a fresh builder: MeshTxBuilder is stateful and a completed
@@ -603,6 +628,7 @@ export default function PageBuild() {
           complete: (builder) => completeTxWithFreshCostModels(builder, network),
         },
       );
+      if (!isCurrent()) return;
       setBuildResult({
         status: "ok",
         result,
@@ -610,7 +636,9 @@ export default function PageBuild() {
       });
     } catch (error) {
       console.error("testBuild", error);
-      setBuildResult({ status: "error", message: getFriendlyError(error) });
+      if (isCurrent()) {
+        setBuildResult({ status: "error", message: getFriendlyError(error) });
+      }
     } finally {
       setTesting(false);
     }

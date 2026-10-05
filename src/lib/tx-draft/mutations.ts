@@ -1,11 +1,15 @@
 import type {
   DraftCertificate,
+  DraftCollateral,
   DraftOutput,
+  DraftPlutusData,
+  DraftScriptInput,
   DraftSource,
   DraftUtxoSelection,
   DraftVote,
   DraftVoteKind,
   TxDraft,
+  LoadableTxDraft,
 } from "@/types/tx-draft";
 import { safeBigInt } from "./assets";
 
@@ -33,7 +37,25 @@ export function createDraft(id?: string): TxDraft {
     metadata: "",
     certificates: [],
     votes: [],
+    scriptInputs: [],
   };
+}
+
+export function normalizeDraft(draft: LoadableTxDraft): TxDraft {
+  return { ...draft, scriptInputs: draft.scriptInputs ?? [] };
+}
+
+/** Chain-derived UTxOs cannot be carried across a funding/network/account change. */
+export function invalidateDraftContext(draft: TxDraft): TxDraft {
+  return { ...draft, utxoSelection: { mode: "auto" }, collateral: undefined };
+}
+
+export function hasPlutusDraftData(draft: TxDraft): boolean {
+  return (
+    draft.outputs.some((output) => output.inlineDatum !== undefined) ||
+    (draft.scriptInputs?.length ?? 0) > 0 ||
+    draft.collateral !== undefined
+  );
 }
 
 /** True when the draft holds actions only the multisig source can build. */
@@ -57,7 +79,9 @@ export function sameSource(a: DraftSource, b: DraftSource): boolean {
 export function setSource(draft: TxDraft, source: DraftSource): TxDraft {
   const keepActions = source.kind === "multisig";
   return {
-    ...draft,
+    ...(sameSource(draft.source, source)
+      ? draft
+      : invalidateDraftContext(draft)),
     source,
     utxoSelection: sameSource(draft.source, source)
       ? draft.utxoSelection
@@ -76,6 +100,9 @@ export function addOutput(
     id: outputId,
     address: partial?.address ?? "",
     assets: partial?.assets ?? [],
+    ...(partial?.inlineDatum !== undefined
+      ? { inlineDatum: partial.inlineDatum }
+      : {}),
   };
   return { draft: { ...draft, outputs: [...draft.outputs, output] }, outputId };
 }
@@ -97,6 +124,68 @@ export function removeOutput(draft: TxDraft, outputId: string): TxDraft {
   return {
     ...draft,
     outputs: draft.outputs.filter((output) => output.id !== outputId),
+  };
+}
+
+export function setOutputDatum(
+  draft: TxDraft,
+  outputId: string,
+  datum: DraftPlutusData | undefined,
+): TxDraft {
+  return updateOutput(draft, outputId, { inlineDatum: datum });
+}
+
+export type ScriptInputPatch = Partial<Omit<DraftScriptInput, "id">>;
+
+export function addScriptInput(
+  draft: TxDraft,
+  partial: ScriptInputPatch = {},
+): { draft: TxDraft; inputId: string } {
+  const inputId = generateId();
+  const input: DraftScriptInput = {
+    id: inputId,
+    utxoRef: partial.utxoRef ?? { txHash: "", outputIndex: 0 },
+    script: partial.script ?? { version: "V3", cbor: "" },
+    datumSource: partial.datumSource ?? { kind: "inline" },
+    redeemer: partial.redeemer ?? { format: "CBOR", text: "" },
+  };
+  return {
+    draft: { ...draft, scriptInputs: [...(draft.scriptInputs ?? []), input] },
+    inputId,
+  };
+}
+
+export function updateScriptInput(
+  draft: TxDraft,
+  inputId: string,
+  patch: ScriptInputPatch,
+): TxDraft {
+  return {
+    ...draft,
+    scriptInputs: (draft.scriptInputs ?? []).map((input) =>
+      input.id === inputId ? { ...input, ...patch, id: input.id } : input,
+    ),
+  };
+}
+
+export function removeScriptInput(draft: TxDraft, inputId: string): TxDraft {
+  const scriptInputs = (draft.scriptInputs ?? []).filter(
+    (input) => input.id !== inputId,
+  );
+  return {
+    ...draft,
+    scriptInputs,
+    collateral: scriptInputs.length ? draft.collateral : undefined,
+  };
+}
+
+export function setCollateral(
+  draft: TxDraft,
+  collateral: DraftCollateral | undefined,
+): TxDraft {
+  return {
+    ...draft,
+    collateral: draft.scriptInputs?.length ? collateral : undefined,
   };
 }
 

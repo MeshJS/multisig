@@ -23,7 +23,10 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
   // Message identity, not array identity — validateDraft returns a fresh
   // array every render, but the flash should only fire on real changes.
   const signature = issues
-    .map((issue) => `${issue.code}:${issue.outputId ?? ""}`)
+    .map(
+      (issue) =>
+        `${issue.code}:${issue.outputId ?? issue.inputId ?? ""}:${issue.field ?? ""}:${issue.message}`,
+    )
     .join("|");
 
   useEffect(() => {
@@ -96,7 +99,9 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
         </div>
         <ul className="max-h-40 divide-y divide-border/40 overflow-y-auto">
           {issues.map((issue, index) => (
-            <li key={`${issue.code}-${issue.outputId ?? index}`}>
+            <li
+              key={`${issue.code}-${issue.outputId ?? issue.inputId ?? index}-${issue.field ?? ""}`}
+            >
               <button
                 type="button"
                 className="flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted/50"

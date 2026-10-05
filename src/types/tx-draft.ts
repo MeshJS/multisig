@@ -19,7 +19,26 @@ export type DraftOutput = {
   /** Empty string while unset; bech32 payment address once chosen. */
   address: string;
   assets: AssetQuantity[];
+  /** Editable text, not a cached successful parse. Undefined means no datum. */
+  inlineDatum?: DraftPlutusData;
 };
+
+/** Preserve incomplete/invalid edits; derive validated CBOR at validation time. */
+export type DraftPlutusData = { format: "CBOR" | "JSON"; text: string };
+
+export type DraftUtxoRef = { txHash: string; outputIndex: number };
+
+export type DraftScriptInput = {
+  /** UI identity remains stable even when the UTxO reference is edited. */
+  id: string;
+  utxoRef: DraftUtxoRef;
+  script: { version: "V1" | "V2" | "V3"; cbor: string };
+  datumSource: { kind: "inline" } | { kind: "provided"; data: DraftPlutusData };
+  redeemer: DraftPlutusData;
+};
+
+/** Selection intent only. Ownership, value and availability must be resolved. */
+export type DraftCollateral = { utxoRef: DraftUtxoRef };
 
 export type DraftUtxoSelection =
   | { mode: "auto" } // keepRelevant over available UTxOs at build time
@@ -113,7 +132,14 @@ export type TxDraft = {
   certificates: DraftCertificate[];
   /** Governance votes, loaded from a pending transaction or added here. */
   votes: DraftVote[];
+  /** Explicit Plutus spends, separate from ordinary funding selection. */
+  scriptInputs: DraftScriptInput[];
+  collateral?: DraftCollateral;
 };
+
+/** Drafts created before Plutus controls have no scriptInputs field. */
+export type LoadableTxDraft = Omit<TxDraft, "scriptInputs"> &
+  Partial<Pick<TxDraft, "scriptInputs">>;
 
 /** What the builder UI currently has selected (canvas card or edge click). */
 export type BuilderSelection =
