@@ -222,11 +222,11 @@ export function PageRoadmap() {
             Roadmap
           </h1>
           <p className="mx-auto my-4 max-w-2xl text-center text-sm font-normal text-neutral-500 dark:text-neutral-300 lg:text-base">
-            Twelve months of Mesh Multisig, May 2026 to April 2027 — what has
+            Twelve months of Mesh Multisig, April 2026 to March 2027 — what has
             shipped, what is blocked, and what comes next.
           </p>
           <p className="mx-auto max-w-2xl text-center font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-            Quirin + Andre · ~25 h/wk · revised 2026-07-26
+            revised 2026-07-26
           </p>
         </div>
 

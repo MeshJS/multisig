@@ -144,6 +144,22 @@ export function participantsMatchExactly(
 }
 
 /**
+ * True when every given hash is a participant of the item
+ * (case-insensitive). Used for policy lookups: a native script's sig
+ * hashes must all appear in the registration's participants (which may
+ * additionally list stake/dRep hashes) for the registration to be that
+ * script's wallet.
+ */
+export function participantsInclude(
+  item: Label1854LookupItem,
+  keyHashes: string[],
+): boolean {
+  const onChain = participantKeySet(item);
+  if (!onChain || keyHashes.length === 0) return false;
+  return keyHashes.every((hash) => onChain.has(hash.toLowerCase()));
+}
+
+/**
  * True when an on-chain registration's metadata already reflects the
  * wallet's current metadata (name, description, participant names and
  * types) — used to decide between "up to date" and "update available".

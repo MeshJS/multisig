@@ -106,6 +106,8 @@ export function WalletNotificationSettings({
   const [emailOptIn, setEmailOptIn] = useState(true);
   const [notifyTransactions, setNotifyTransactions] = useState(true);
   const [notifySignables, setNotifySignables] = useState(true);
+  const [notifyThreshold, setNotifyThreshold] = useState(true);
+  const [notifyBallotDeadlines, setNotifyBallotDeadlines] = useState(true);
   const [appliedScope, setAppliedScope] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +116,8 @@ export function WalletNotificationSettings({
     setEmailOptIn(true);
     setNotifyTransactions(true);
     setNotifySignables(true);
+    setNotifyThreshold(true);
+    setNotifyBallotDeadlines(true);
     void utils.notification.getWalletSignerSetting.cancel();
     void utils.notification.getWalletSignerSetting.reset();
   }, [signerScope, utils.notification.getWalletSignerSetting]);
@@ -128,6 +132,8 @@ export function WalletNotificationSettings({
     setEmailOptIn(setting.emailOptIn);
     setNotifyTransactions(setting.notifyTransactionSignatures);
     setNotifySignables(setting.notifySignableSignatures);
+    setNotifyThreshold(setting.notifyThresholdReached);
+    setNotifyBallotDeadlines(setting.notifyBallotDeadlines);
   }, [isSettingResolved, setting, signerScope, appliedScope]);
 
   const hasLoadedSettings = appliedScope === signerScope;
@@ -213,7 +219,7 @@ export function WalletNotificationSettings({
     return (
       <CardUI
         title="Email Notifications"
-        description="Manage email alerts for signatures needed from your signer address on this wallet."
+        description="Manage email alerts for this wallet: signatures needed from you, completed signature sets, and ballot deadlines."
         icon={Mail}
         cardClassName="col-span-2"
       >
@@ -242,6 +248,8 @@ export function WalletNotificationSettings({
       emailOptIn: boolean;
       notifyTransactionSignatures: boolean;
       notifySignableSignatures: boolean;
+      notifyThresholdReached: boolean;
+      notifyBallotDeadlines: boolean;
     }>,
   ) => {
     if (!connectedAddress || !hasLoadedSettings) return;
@@ -255,7 +263,7 @@ export function WalletNotificationSettings({
   return (
     <CardUI
       title="Email Notifications"
-      description="Manage email alerts for signatures needed from your signer address on this wallet."
+      description="Manage email alerts for this wallet: signatures needed from you, completed signature sets, and ballot deadlines."
       icon={Mail}
       cardClassName="col-span-2"
     >
@@ -366,6 +374,42 @@ export function WalletNotificationSettings({
                 persist({ notifySignableSignatures: checked });
               }}
               aria-label="Toggle signable payload notifications"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className={emailOptIn ? undefined : "opacity-50"}>
+              <p className="text-sm font-medium">Signatures complete</p>
+              <p className="text-xs text-muted-foreground">
+                Email me when a transaction or payload collects enough signatures.
+              </p>
+            </div>
+            <Switch
+              checked={notifyThreshold}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
+              onCheckedChange={(checked) => {
+                setNotifyThreshold(checked);
+                persist({ notifyThresholdReached: checked });
+              }}
+              aria-label="Toggle threshold reached notifications"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className={emailOptIn ? undefined : "opacity-50"}>
+              <p className="text-sm font-medium">Ballot deadlines</p>
+              <p className="text-xs text-muted-foreground">
+                Email me 48h and 24h before proposals in a ballot or pending vote transaction stop accepting votes.
+              </p>
+            </div>
+            <Switch
+              checked={notifyBallotDeadlines}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
+              onCheckedChange={(checked) => {
+                setNotifyBallotDeadlines(checked);
+                persist({ notifyBallotDeadlines: checked });
+              }}
+              aria-label="Toggle ballot deadline notifications"
             />
           </div>
         </div>

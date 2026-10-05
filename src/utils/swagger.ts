@@ -1180,6 +1180,125 @@ This API uses **Bearer Token** authentication (JWT).
           },
         },
       },
+      "/api/v1/resolveRegistrationScript": {
+        get: {
+          tags: ["V1"],
+          summary:
+            "Resolve the native script(s) of a CIP-0146 registration transaction",
+          description:
+            "Reads the transaction's UTxO addresses and returns every script-credential address seen, with its script hash, stake credential and timelock JSON. Public, unauthenticated.",
+          parameters: [
+            {
+              name: "txHash",
+              in: "query",
+              required: true,
+              description: "Registration transaction hash (64 hex chars)",
+              schema: { type: "string" },
+            },
+            {
+              name: "network",
+              in: "query",
+              required: false,
+              description: "0 = preprod, 1 = mainnet (default)",
+              schema: { type: "number" },
+            },
+          ],
+          responses: {
+            200: {
+              description: "Script candidates (empty when the tx is unknown)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      txHash: { type: "string" },
+                      candidates: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            address: { type: "string" },
+                            scriptHash: { type: "string" },
+                            stakeCredentialHash: {
+                              type: "string",
+                              nullable: true,
+                            },
+                            scriptJson: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Missing or invalid txHash / network" },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal Server Error" },
+          },
+        },
+      },
+      "/api/v1/resolveScript": {
+        get: {
+          tags: ["V1"],
+          summary:
+            "Resolve a native script by hash (policy) or multisig address to its signer key hashes",
+          description:
+            "Backs lookup-by-policy: pass exactly one of scriptHash or address. Returns the script's timelock JSON and sig key hashes, which can then be matched against CIP-1854 registrations via /api/v1/lookupMultisigWallet. Public, unauthenticated.",
+          parameters: [
+            {
+              name: "scriptHash",
+              in: "query",
+              required: false,
+              description: "Native-script hash / policy id (56 hex chars)",
+              schema: { type: "string" },
+            },
+            {
+              name: "address",
+              in: "query",
+              required: false,
+              description:
+                "Bech32 multisig wallet address (script payment credential)",
+              schema: { type: "string" },
+            },
+            {
+              name: "network",
+              in: "query",
+              required: false,
+              description: "0 = preprod, 1 = mainnet (default)",
+              schema: { type: "number" },
+            },
+          ],
+          responses: {
+            200: {
+              description:
+                "Resolved script (scriptJson null and sigHashes empty when unknown or not a native script)",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      scriptHash: { type: "string" },
+                      stakeCredentialHash: { type: "string", nullable: true },
+                      scriptJson: { type: "object", nullable: true },
+                      sigHashes: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: {
+              description:
+                "Neither/both selectors given, invalid scriptHash, or address without a script credential",
+            },
+            405: { description: "Method not allowed" },
+            500: { description: "Internal Server Error" },
+          },
+        },
+      },
       "/api/v1/getNonce": {
         get: {
           tags: ["Auth"],
@@ -1872,6 +1991,167 @@ This API uses **Bearer Token** authentication (JWT).
             403: { description: "Insufficient scope or wallet mutation access denied" },
             404: { description: "Ballot not found when ballotId is provided" },
             409: { description: "Ambiguous ballotName or concurrent write conflict" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/tasks": {
+        get: {
+          tags: ["V1", "Bot"],
+          summary: "List a wallet's project task board",
+          description:
+            "Every task on the wallet's board with its column (Backlog, InProgress, InReview, Done), assignee, due date, payment recipients (base units: lovelace or a token's raw quantity) and derived payout state — state (none, ready, pending, paid), payable (true when it can be paid right now), blocker (not_done, no_recipients, pending, paid, or null) and the pending transactionId. Optional status and payable=true filters; payableCount is the wallet-wide total before filtering. Human wallet JWT (signer or owner) or bot JWT with any granted wallet access (observer is enough). Backs the task_list MCP tool.",
+          parameters: [
+            { name: "walletId", in: "query", required: true, schema: { type: "string" } },
+            {
+              name: "address",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "Must match the JWT address (bots: the bot's paymentAddress)",
+            },
+            {
+              name: "status",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["Backlog", "InProgress", "InReview", "Done"] },
+            },
+            {
+              name: "payable",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["true"] },
+              description: "Only tasks that can be paid right now",
+            },
+          ],
+          responses: {
+            200: {
+              description: "The board",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      tasks: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            walletId: { type: "string" },
+                            title: { type: "string" },
+                            description: { type: "string", nullable: true },
+                            status: { type: "string" },
+                            priority: { type: "string", nullable: true },
+                            assigneeAddress: { type: "string", nullable: true },
+                            dueDate: { type: "string", nullable: true },
+                            position: { type: "number" },
+                            createdBy: { type: "string" },
+                            createdAt: { type: "string" },
+                            updatedAt: { type: "string" },
+                            recipients: {
+                              type: "array",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  address: { type: "string" },
+                                  unit: { type: "string" },
+                                  quantity: { type: "string", description: "Base units" },
+                                  label: { type: "string", nullable: true },
+                                },
+                              },
+                            },
+                            payout: {
+                              type: "object",
+                              properties: {
+                                state: { type: "string", enum: ["none", "ready", "pending", "paid"] },
+                                transactionId: { type: "string", nullable: true },
+                                txHash: { type: "string", nullable: true },
+                                payable: { type: "boolean" },
+                                blocker: {
+                                  type: "string",
+                                  nullable: true,
+                                  enum: ["not_done", "no_recipients", "pending", "paid"],
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                      count: { type: "number" },
+                      payableCount: { type: "number", description: "Wallet-wide, before filters" },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: "Invalid walletId, address or status parameter" },
+            401: { description: "Unauthorized" },
+            403: { description: "Address mismatch, not a signer, or bot not granted on this wallet" },
+            404: { description: "Wallet not found" },
+            500: { description: "Internal server error" },
+          },
+        },
+      },
+      "/api/v1/taskUpsert": {
+        post: {
+          tags: ["V1"],
+          summary: "Create, edit or move a task on a wallet's board",
+          description:
+            "Without taskId, creates a task (title required); with taskId, updates it, and a status and/or position also moves it (positions in the destination column are renumbered). recipients are in DISPLAY units — ada, or a token with its registered decimals; a fractional amount for a token without registered decimals is refused — and replace the task's recipient list. Records a task only: it creates, signs and broadcasts no transaction (payouts go through the app or the task_prepare_payout MCP tool). A task is read-only while its payout awaits signatures and after it is paid (409). Human wallet JWT (signer or owner) only; bot keys get 403. Backs the task_upsert MCP tool.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    walletId: { type: "string" },
+                    taskId: { type: "string", description: "Omit to create" },
+                    title: { type: "string" },
+                    description: { type: "string", nullable: true },
+                    status: { type: "string", enum: ["Backlog", "InProgress", "InReview", "Done"] },
+                    priority: { type: "string", nullable: true, enum: ["Low", "Medium", "High"] },
+                    assigneeAddress: { type: "string", nullable: true },
+                    dueDate: { type: "string", nullable: true, description: "ISO 8601; null clears" },
+                    position: { type: "number", description: "Index within the column" },
+                    recipients: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          address: { type: "string" },
+                          ada: { type: "string", description: "Display units, e.g. \"12.5\"" },
+                          assets: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                unit: { type: "string", description: "policyId + assetName hex" },
+                                quantity: { type: "string", description: "Display units" },
+                              },
+                              required: ["unit", "quantity"],
+                            },
+                          },
+                        },
+                        required: ["address"],
+                      },
+                    },
+                  },
+                  required: ["walletId"],
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Task updated: { task, created: false }" },
+            201: { description: "Task created: { task, created: true }" },
+            400: { description: "Missing walletId or title, invalid field, or recipients that cannot be understood (code INVALID_SPEC with issues)" },
+            401: { description: "Unauthorized" },
+            403: { description: "Not a signer of this wallet, or a bot key" },
+            404: { description: "Wallet or task not found" },
+            409: { description: "Task locked by a pending or paid payout" },
+            413: { description: "Body too large" },
             500: { description: "Internal server error" },
           },
         },

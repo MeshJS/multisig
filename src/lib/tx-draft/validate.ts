@@ -7,6 +7,7 @@ import {
   requiredAssetTotals,
   safeBigInt,
 } from "./assets";
+import { hasMultisigOnlyActions } from "./mutations";
 
 export type DraftIssueCode =
   | "no-outputs"
@@ -21,7 +22,22 @@ export type DraftIssueCode =
   | "cert-stake-missing"
   | "cert-pool-missing"
   | "duplicate-vote"
-  | "cert-duplicate";
+  | "cert-duplicate"
+  | "cert-delegate-unregistered"
+  | "cert-already-registered"
+  | "cert-deregister-unregistered"
+  | "vote-drep-unregistered"
+  | "source-address-missing"
+  | "source-address-invalid"
+  | "source-address-wrong-network"
+  | "source-address-script"
+  | "source-address-is-connected"
+  | "source-actions-unsupported";
+
+/** Issue codes about the funding source (rendered next to the source picker). */
+export function isSourceIssue(code: DraftIssueCode): boolean {
+  return code.startsWith("source-");
+}
 
 export type DraftIssue = {
   level: "error" | "warning";
@@ -51,9 +67,32 @@ export type ValidateDraftContext = {
    * no certificates) to skip the check.
    */
   hasStakeContext?: boolean;
+  /**
+   * Whether the wallet's stake credential is registered on chain. Omit when
+   * unknown (not fetched, or the draft has no certificates) to skip the
+   * registration-state checks — the builder canvas gates its dialog on the
+   * same state instead, so only headless callers (MCP) pass it.
+   */
+  stakeAccountActive?: boolean;
+  /**
+   * Whether the wallet's DRep credential is registered on chain. Omit when
+   * unknown (not fetched, or the draft has no votes) to skip the check — the
+   * app's vote UI gates on the same state itself, so only headless callers
+   * (MCP) pass it.
+   */
+  drepRegistered?: boolean;
+  /** The multisig's own address; lets the source check name it. */
+  multisigAddress?: string;
+  /** The connected wallet's address; absent when no wallet is connected. */
+  connectedAddress?: string;
 };
 
-function isValidPaymentAddress(address: string): boolean {
+export type ValidateSourceContext = Pick<
+  ValidateDraftContext,
+  "network" | "multisigAddress" | "connectedAddress"
+>;
+
+export function isValidPaymentAddress(address: string): boolean {
   if (!address.startsWith("addr")) return false; // excludes stake/DRep ids
   try {
     deserializeAddress(address);
@@ -61,6 +100,95 @@ function isValidPaymentAddress(address: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Payment credential is a script (multisig / contract), not a key. */
+function isScriptAddress(address: string): boolean {
+  try {
+    return deserializeAddress(address).scriptHash !== "";
+  } catch {
+    return false;
+  }
+}
+
+function isMainnetAddress(address: string): boolean {
+  return !address.startsWith("addr_test");
+}
+
+function wrongNetworkMessage(address: string, network: number): string {
+  return `Address belongs to ${isMainnetAddress(address) ? "mainnet" : "a testnet"}, but the wallet is on ${network === 1 ? "mainnet" : "a testnet"}.`;
+}
+
+/**
+ * Validates the funding source alone. Split out from `validateDraft` so the
+ * page can decide whether to fetch the source's UTxOs before the full
+ * validation (which needs those UTxOs for the sufficiency check) runs.
+ */
+export function validateSource(
+  draft: TxDraft,
+  ctx: ValidateSourceContext,
+): DraftIssue[] {
+  const issues: DraftIssue[] = [];
+  const { source } = draft;
+
+  if (source.kind === "connected" && !ctx.connectedAddress) {
+    issues.push({
+      level: "error",
+      code: "source-address-missing",
+      message: "Connect a wallet to build a transaction from it.",
+    });
+  }
+
+  if (source.kind === "address") {
+    const address = source.address.trim();
+    if (!address) {
+      issues.push({
+        level: "error",
+        code: "source-address-missing",
+        message: "Enter the address of the wallet to build from.",
+      });
+    } else if (!isValidPaymentAddress(address)) {
+      issues.push({
+        level: "error",
+        code: "source-address-invalid",
+        message: "Source is not a valid Cardano payment address.",
+      });
+    } else if (isScriptAddress(address)) {
+      issues.push({
+        level: "error",
+        code: "source-address-script",
+        message:
+          address === ctx.multisigAddress
+            ? "This is the multisig's own address — choose the Multisig source instead."
+            : "This is a script address — only regular key-based wallet addresses can be a source.",
+      });
+    } else if (isMainnetAddress(address) !== (ctx.network === 1)) {
+      issues.push({
+        level: "error",
+        code: "source-address-wrong-network",
+        message: `Source: ${wrongNetworkMessage(address, ctx.network)}`,
+      });
+    } else if (address === ctx.connectedAddress) {
+      issues.push({
+        level: "warning",
+        code: "source-address-is-connected",
+        message:
+          "This is your connected wallet — choose the Connected wallet source to sign and submit here.",
+      });
+    }
+  }
+
+  // Backstop: setSource clears these when leaving the multisig.
+  if (source.kind !== "multisig" && hasMultisigOnlyActions(draft)) {
+    issues.push({
+      level: "error",
+      code: "source-actions-unsupported",
+      message:
+        "Staking actions and votes can only be built from the multisig wallet.",
+    });
+  }
+
+  return issues;
 }
 
 /**
@@ -71,7 +199,7 @@ export function validateDraft(
   draft: TxDraft,
   ctx: ValidateDraftContext,
 ): DraftIssue[] {
-  const issues: DraftIssue[] = [];
+  const issues: DraftIssue[] = [...validateSource(draft, ctx)];
 
   if (
     draft.outputs.length === 0 &&
@@ -91,6 +219,15 @@ export function validateDraft(
       code: "vote-drep-missing",
       message:
         "This wallet has no DRep identity — governance votes can't be rebuilt.",
+    });
+  } else if (draft.votes.length > 0 && ctx.drepRegistered === false) {
+    // A vote from an unregistered DRep builds fine and is rejected by the
+    // node only at submit — after every signature has been collected.
+    issues.push({
+      level: "error",
+      code: "vote-drep-unregistered",
+      message:
+        "This wallet cannot vote: it is not registered as a DRep on chain. Register the wallet as a DRep in the app (Governance → DRep) before drafting votes.",
     });
   }
 
@@ -154,6 +291,40 @@ export function validateDraft(
     seenKinds.add(cert.kind);
   }
 
+  // A certificate the ledger is guaranteed to reject given the account's
+  // current registration state. The node only reports this at submit —
+  // after every signature has been collected — so it must be caught here.
+  if (ctx.stakeAccountActive !== undefined && draft.certificates.length > 0) {
+    const registersHere = seenKinds.has("RegisterStake");
+    if (ctx.stakeAccountActive) {
+      if (registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-already-registered",
+          message:
+            "The wallet's stake credential is already registered on chain — drop the RegisterStake certificate.",
+        });
+      }
+    } else {
+      if (seenKinds.has("DelegateStake") && !registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-delegate-unregistered",
+          message:
+            "The wallet's stake credential is not registered on chain — include a RegisterStake certificate (2 ADA deposit) before DelegateStake.",
+        });
+      }
+      if (seenKinds.has("DeregisterStake") && !registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-deregister-unregistered",
+          message:
+            "The wallet's stake credential is not registered on chain — there is nothing to deregister.",
+        });
+      }
+    }
+  }
+
   const seenAddresses = new Set<string>();
   for (const output of draft.outputs) {
     if (!output.address) {
@@ -171,12 +342,11 @@ export function validateDraft(
         outputId: output.id,
       });
     } else {
-      const isMainnetAddress = !output.address.startsWith("addr_test");
-      if (isMainnetAddress !== (ctx.network === 1)) {
+      if (isMainnetAddress(output.address) !== (ctx.network === 1)) {
         issues.push({
           level: "error",
           code: "wrong-network-address",
-          message: `Address belongs to ${isMainnetAddress ? "mainnet" : "a testnet"}, but the wallet is on ${ctx.network === 1 ? "mainnet" : "a testnet"}.`,
+          message: wrongNetworkMessage(output.address, ctx.network),
           outputId: output.id,
         });
       }

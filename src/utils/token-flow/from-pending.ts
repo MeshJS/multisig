@@ -11,6 +11,7 @@ import {
   meshVoteToBadge,
   type ProposalTitleResolver,
 } from "./certificates";
+import { splitTrailingChange } from "./change";
 import { FlowGraphBuilder, lovelace } from "./graph-builder";
 
 export type ResolvedInputMap = Map<
@@ -124,14 +125,8 @@ export function pendingTxToTokenFlow(
   );
   const changeAddress =
     typeof txJson?.changeAddress === "string" ? txJson.changeAddress : "";
-  let firstChangeIndex = outputs.length;
-  while (
-    changeAddress &&
-    firstChangeIndex > 1 &&
-    outputs[firstChangeIndex - 1].address === changeAddress
-  ) {
-    firstChangeIndex--;
-  }
+  const firstChangeIndex = splitTrailingChange(outputs, changeAddress).payments
+    .length;
   outputs.forEach((output: any, index: number) => {
     const node = graph.addressNode(output.address);
     const isChange = index >= firstChangeIndex;

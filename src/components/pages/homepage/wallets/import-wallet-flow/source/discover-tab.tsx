@@ -5,15 +5,17 @@ import {
   resolveRewardAddress,
   resolveStakeKeyHash,
 } from "@meshsdk/core";
-import { ExternalLink, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import useUser from "@/hooks/useUser";
 import { useSiteStore } from "@/lib/zustand/site";
+import type { ResolveScriptResponse } from "@/pages/api/v1/resolveScript";
 import { tryResolveKeyHash } from "@/utils/addressCompatibility";
 import { api } from "@/utils/api";
 import {
@@ -21,9 +23,15 @@ import {
   buildSlotAddresses,
   type RegistrationScriptCandidate,
 } from "@/utils/cip146Discovery";
+import {
+  classifyDiscoverInput,
+  describeDiscoverQuery,
+  type DiscoverQuery,
+} from "@/utils/discoverQuery";
 import { inviteUrlFor } from "@/utils/inviteUrl";
 import {
   joinMetadataString,
+  participantsInclude,
   type Label1854LookupItem,
 } from "@/utils/cip146Registration";
 import { getFirstAndLast } from "@/utils/strings";
@@ -48,14 +56,42 @@ type RegistrationGroup = {
   key: string;
   /** items oldest-first; the last one carries the current metadata */
   items: Label1854LookupItem[];
+  /** lowercased participant hashes of the newest item */
+  participantHashes: string[];
+  /**
+   * Whether the connected wallet can import this group. A necessary
+   * pre-check from the metadata alone; buildImportFromRegistration
+   * re-verifies against the resolved script at import time.
+   */
+  canImport: boolean;
+};
+
+type DiscoverLookupResult = {
+  items: Label1854LookupItem[];
+  /** hashes the lookup matched on — highlighted in the results */
+  queriedHashes: string[];
+  /** set for policy queries once the script resolved to signer hashes */
+  policy?: { scriptHash: string; sigHashes: string[] };
+  /** a policy query whose hash/address resolved to no native script */
+  policyUnresolved?: boolean;
+};
+
+const INVALID_COPY: Record<"malformed" | "wrong-network", string> = {
+  malformed:
+    "Enter a signer address, a 56-character key hash, a multisig wallet address or a script hash.",
+  "wrong-network":
+    "That address belongs to a different network — switch networks or paste an address for the current one.",
 };
 
 /**
- * On-chain discovery of CIP-0146 registered multisig wallets that list
- * the connected wallet's key hash as a participant. Importing resolves
- * the registration transaction's native script for an exact
- * reconstruction (address-verified) and hands off to the shared
- * review/persist steps via flow.setCborResult.
+ * On-chain discovery of CIP-0146 registered multisig wallets. By default
+ * lists wallets that name the connected wallet's keys as a participant;
+ * a search by signer (address / key hash) or policy (wallet address /
+ * script hash) finds any registered wallet. Importing resolves the
+ * registration transaction's native script for an exact reconstruction
+ * (address-verified) and hands off to the shared review/persist steps
+ * via flow.setCborResult. Wallets the connected user is not a participant
+ * of are shown view-only.
  */
 export default function DiscoverTab({ flow }: Props) {
   const { toast } = useToast();
@@ -66,6 +102,8 @@ export default function DiscoverTab({ flow }: Props) {
   const [pendingImport, setPendingImport] =
     useState<PendingDiscoveryImport | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [submitted, setSubmitted] = useState<DiscoverQuery>({ kind: "empty" });
 
   const { mutateAsync: createNewWallet } =
     api.wallet.createNewWallet.useMutation();
@@ -191,38 +229,96 @@ export default function DiscoverTab({ flow }: Props) {
     return resolved?.type === "payment" ? resolved.keyHash.toLowerCase() : null;
   }, [userAddress]);
 
+  async function fetchLookup(hashes: string[]): Promise<Label1854LookupItem[]> {
+    const res = await fetch(
+      `/api/v1/lookupMultisigWallet?pubKeyHashes=${hashes.join(",")}&network=${network}`,
+    );
+    if (!res.ok) throw new Error(`Lookup failed (${res.status})`);
+    const data: unknown = await res.json();
+    return Array.isArray(data) ? (data as Label1854LookupItem[]) : [];
+  }
+
+  async function fetchResolveScript(
+    scriptHash: string,
+  ): Promise<ResolveScriptResponse> {
+    const res = await fetch(
+      `/api/v1/resolveScript?scriptHash=${scriptHash}&network=${network}`,
+    );
+    if (!res.ok) throw new Error(`Script lookup failed (${res.status})`);
+    return (await res.json()) as ResolveScriptResponse;
+  }
+
+  /** Registrations whose participants cover every signer of the script. */
+  async function lookupByPolicy(
+    scriptHash: string,
+    sigHashes: string[],
+  ): Promise<DiscoverLookupResult> {
+    const items = (await fetchLookup(sigHashes)).filter((item) =>
+      participantsInclude(item, sigHashes),
+    );
+    return { items, queriedHashes: sigHashes, policy: { scriptHash, sigHashes } };
+  }
+
   const lookup = useQuery({
-    queryKey: ["discoverRegistrations", network, userPaymentKeyHash],
-    enabled: !!userPaymentKeyHash,
+    queryKey: ["discoverRegistrations", network, userPaymentKeyHash, submitted],
+    enabled: !!userPaymentKeyHash && submitted.kind !== "invalid",
     staleTime: 60_000,
-    queryFn: async (): Promise<Label1854LookupItem[]> => {
-      const hashes = [userPaymentKeyHash!];
-      // Also match wallets that only list the user's stake key hash.
-      try {
-        if (connected && wallet) {
-          const rewardAddresses = await (
-            wallet as { getRewardAddresses: () => Promise<string[]> }
-          ).getRewardAddresses();
-          const stakeHash = rewardAddresses[0]
-            ? tryResolveKeyHash(rewardAddresses[0])?.keyHash.toLowerCase()
-            : undefined;
-          if (stakeHash) hashes.push(stakeHash);
+    queryFn: async (): Promise<DiscoverLookupResult> => {
+      switch (submitted.kind) {
+        case "signer":
+          return {
+            items: await fetchLookup(submitted.keyHashes),
+            queriedHashes: submitted.keyHashes,
+          };
+        case "policy": {
+          const resolved = await fetchResolveScript(submitted.scriptHash);
+          if (resolved.sigHashes.length === 0) {
+            return {
+              items: [],
+              queriedHashes: [],
+              policy: { scriptHash: submitted.scriptHash, sigHashes: [] },
+              policyUnresolved: true,
+            };
+          }
+          return lookupByPolicy(submitted.scriptHash, resolved.sigHashes);
         }
-      } catch {
-        // Stake hash is best-effort; payment hash alone still discovers.
+        case "hash": {
+          // A bare hash is either a script hash or a signer key hash; the
+          // provider has no script for a key hash, so try policy first.
+          const resolved = await fetchResolveScript(submitted.hash);
+          if (resolved.sigHashes.length > 0) {
+            return lookupByPolicy(submitted.hash, resolved.sigHashes);
+          }
+          return {
+            items: await fetchLookup([submitted.hash]),
+            queriedHashes: [submitted.hash],
+          };
+        }
+        default: {
+          const hashes = [userPaymentKeyHash!];
+          // Also match wallets that only list the user's stake key hash.
+          try {
+            if (connected && wallet) {
+              const rewardAddresses = await (
+                wallet as { getRewardAddresses: () => Promise<string[]> }
+              ).getRewardAddresses();
+              const stakeHash = rewardAddresses[0]
+                ? tryResolveKeyHash(rewardAddresses[0])?.keyHash.toLowerCase()
+                : undefined;
+              if (stakeHash) hashes.push(stakeHash);
+            }
+          } catch {
+            // Stake hash is best-effort; payment hash alone still discovers.
+          }
+          return { items: await fetchLookup(hashes), queriedHashes: hashes };
+        }
       }
-      const res = await fetch(
-        `/api/v1/lookupMultisigWallet?pubKeyHashes=${hashes.join(",")}&network=${network}`,
-      );
-      if (!res.ok) throw new Error(`Lookup failed (${res.status})`);
-      const data: unknown = await res.json();
-      return Array.isArray(data) ? (data as Label1854LookupItem[]) : [];
     },
   });
 
   const groups = useMemo<RegistrationGroup[]>(() => {
     const byKey = new Map<string, Label1854LookupItem[]>();
-    for (const item of lookup.data ?? []) {
+    for (const item of lookup.data?.items ?? []) {
       const participants = item.json_metadata?.participants;
       if (!participants) continue;
       const key = Object.keys(participants)
@@ -233,8 +329,32 @@ export default function DiscoverTab({ flow }: Props) {
       list.push(item);
       byKey.set(key, list);
     }
-    return Array.from(byKey.entries()).map(([key, items]) => ({ key, items }));
-  }, [lookup.data]);
+    return Array.from(byKey.entries()).map(([key, items]) => {
+      const participantHashes = key.split(",");
+      return {
+        key,
+        items,
+        participantHashes,
+        canImport:
+          !!userPaymentKeyHash && participantHashes.includes(userPaymentKeyHash),
+      };
+    });
+  }, [lookup.data, userPaymentKeyHash]);
+
+  const queriedHashes = useMemo(
+    () => new Set(lookup.data?.queriedHashes ?? []),
+    [lookup.data],
+  );
+  const isSearch = submitted.kind !== "empty" && submitted.kind !== "invalid";
+
+  function submitSearch() {
+    setSubmitted(classifyDiscoverInput(searchInput, network));
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSubmitted({ kind: "empty" });
+  }
 
   async function importGroup(group: RegistrationGroup) {
     if (!userAddress || !userPaymentKeyHash) return;
@@ -347,6 +467,16 @@ export default function DiscoverTab({ flow }: Props) {
     );
   }
 
+  const emptyStateCopy = (() => {
+    if (lookup.data?.policyUnresolved) {
+      return "No native script found for this hash — it may be a Plutus script, or not on this network.";
+    }
+    if (isSearch) {
+      return `No on-chain registrations reference ${describeDiscoverQuery(submitted)}.`;
+    }
+    return "No on-chain registrations reference your keys yet. Wallets can be registered from their Info page.";
+  })();
+
   return (
     <div className="space-y-3 sm:space-y-4">
       <div className="rounded-md border border-border/40 bg-muted/30 p-3 text-sm sm:p-4">
@@ -354,21 +484,75 @@ export default function DiscoverTab({ flow }: Props) {
         <p className="mt-1 text-muted-foreground">
           Searches on-chain CIP-0146 (label 1854) registrations for
           multisig wallets that list your keys as a participant, and
-          reconstructs them from the registration transaction.
+          reconstructs them from the registration transaction. Search by a
+          signer&apos;s address or key hash, or by a wallet address or
+          script hash, to look up any registered wallet.
         </p>
       </div>
 
+      <form
+        className="flex flex-col gap-2 sm:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitSearch();
+        }}
+      >
+        <Input
+          aria-label="Search by signer or wallet address"
+          placeholder="Signer address, key hash, wallet address or script hash"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+          className="font-mono text-xs sm:text-sm"
+        />
+        <div className="flex gap-2">
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            className="h-10 flex-1 sm:h-9 sm:flex-none"
+            disabled={lookup.isFetching}
+          >
+            <Search className="mr-1 h-3 w-3" />
+            Search
+          </Button>
+          {(isSearch || submitted.kind === "invalid" || searchInput) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-10 sm:h-9"
+              onClick={clearSearch}
+            >
+              <X className="mr-1 h-3 w-3" />
+              Clear
+            </Button>
+          )}
+        </div>
+      </form>
+
+      {submitted.kind === "invalid" && (
+        <p className="text-sm text-destructive" role="alert">
+          {INVALID_COPY[submitted.reason]}
+        </p>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {lookup.isLoading
-            ? "Searching the chain…"
-            : `${groups.length} registered wallet${groups.length === 1 ? "" : "s"} found`}
+          {submitted.kind === "invalid"
+            ? "Fix the search to look up registrations."
+            : lookup.isLoading
+              ? "Searching the chain…"
+              : `${groups.length} registered wallet${groups.length === 1 ? "" : "s"} found${
+                  isSearch ? ` for ${describeDiscoverQuery(submitted)}` : ""
+                }`}
         </p>
         <Button
           variant="outline"
           size="sm"
           onClick={() => void lookup.refetch()}
-          disabled={lookup.isFetching}
+          disabled={lookup.isFetching || submitted.kind === "invalid"}
         >
           <RefreshCw
             className={`mr-1 h-3 w-3 ${lookup.isFetching ? "animate-spin" : ""}`}
@@ -383,13 +567,25 @@ export default function DiscoverTab({ flow }: Props) {
         </p>
       )}
 
-      {!lookup.isLoading && groups.length === 0 && !lookup.isError && (
-        <div className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/20 p-4 text-sm text-muted-foreground">
-          <Search className="h-4 w-4" />
-          No on-chain registrations reference your keys yet. Wallets can
-          be registered from their Info page.
-        </div>
+      {lookup.data?.policy && lookup.data.policy.sigHashes.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Script{" "}
+          <code>{getFirstAndLast(lookup.data.policy.scriptHash, 10, 8)}</code>{" "}
+          has {lookup.data.policy.sigHashes.length} signer
+          {lookup.data.policy.sigHashes.length === 1 ? "" : "s"}; showing
+          registrations that list all of them.
+        </p>
       )}
+
+      {!lookup.isLoading &&
+        submitted.kind !== "invalid" &&
+        groups.length === 0 &&
+        !lookup.isError && (
+          <div className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/20 p-4 text-sm text-muted-foreground">
+            <Search className="h-4 w-4" />
+            {emptyStateCopy}
+          </div>
+        )}
 
       {groups.map((group) => {
         const newest = group.items[group.items.length - 1]!;
@@ -425,24 +621,34 @@ export default function DiscoverTab({ flow }: Props) {
             </div>
 
             <div className="space-y-1">
-              {participants.map(([hash, info]) => (
-                <div
-                  key={hash}
-                  className="flex flex-wrap items-center gap-2 text-xs"
-                >
-                  <code className="text-muted-foreground">
-                    {getFirstAndLast(hash, 10, 8)}
-                  </code>
-                  {joinMetadataString(info?.name) && (
-                    <span>{joinMetadataString(info?.name)}</span>
-                  )}
-                  {hash.toLowerCase() === userPaymentKeyHash && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      you
-                    </Badge>
-                  )}
-                </div>
-              ))}
+              {participants.map(([hash, info]) => {
+                const lower = hash.toLowerCase();
+                return (
+                  <div
+                    key={hash}
+                    className="flex flex-wrap items-center gap-2 text-xs"
+                  >
+                    <code className="text-muted-foreground">
+                      {getFirstAndLast(hash, 10, 8)}
+                    </code>
+                    {joinMetadataString(info?.name) && (
+                      <span>{joinMetadataString(info?.name)}</span>
+                    )}
+                    {lower === userPaymentKeyHash && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        you
+                      </Badge>
+                    )}
+                    {isSearch &&
+                      lower !== userPaymentKeyHash &&
+                      queriedHashes.has(lower) && (
+                        <Badge variant="outline" className="text-[10px]">
+                          match
+                        </Badge>
+                      )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -454,13 +660,25 @@ export default function DiscoverTab({ flow }: Props) {
                 Registration transaction
                 <ExternalLink className="h-3 w-3" />
               </Link>
-              <Button
-                size="sm"
-                onClick={() => void importGroup(group)}
-                disabled={importingKey !== null}
-              >
-                {importingKey === group.key ? "Resolving script…" : "Import"}
-              </Button>
+              {group.canImport ? (
+                <Button
+                  size="sm"
+                  onClick={() => void importGroup(group)}
+                  disabled={importingKey !== null}
+                >
+                  {importingKey === group.key ? "Resolving script…" : "Import"}
+                </Button>
+              ) : (
+                <div className="flex flex-col items-end gap-1">
+                  <Button size="sm" variant="outline" disabled>
+                    View only
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Your connected wallet isn&apos;t a participant of this
+                    wallet, so it can&apos;t be imported here.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );

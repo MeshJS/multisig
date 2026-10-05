@@ -16,6 +16,8 @@ export function buildLlmsTxt(): string {
   const spec = absoluteUrl("/api/swagger");
   const skill = absoluteUrl("/api/skill");
   const docs = absoluteUrl("/api-docs");
+  const botSetupGuide = absoluteUrl("/api/v1/botSetupGuide");
+  const botSetup = absoluteUrl("/bot-setup");
 
   return `# ${SITE_NAME}
 
@@ -34,6 +36,8 @@ but funds move only once the required quorum of signatures is collected.
 - [Agent skill (Markdown)](${skill}): a ready-to-load skill describing the full bot
   workflow end to end — download and give it to your agent.
 - [Interactive API docs](${docs}): human Swagger UI with a wallet-based bearer-token generator.
+- [Bot setup guide (Markdown)](${botSetupGuide}): the five-phase onboarding flow, agent-readable.
+- [Bot setup page](${botSetup}): the same guide rendered for a human operator.
 
 ## Authentication
 
@@ -73,6 +77,10 @@ Write (required scope in parentheses):
 - POST /api/v1/botBallotsUpsert — record governance vote decisions + draft rationale (\`ballot:write\`; an observer grant is enough).
 
 Plutus proxy endpoints (\`/api/v1/proxy*\`) follow the same request pattern; see the OpenAPI spec.
+
+Cross-instance wallet transfer:
+- GET  /api/v1/wallet/transfer/export?walletId=... — export a wallet definition (owner JWT).
+- POST /api/v1/wallet/transfer/import — receive a wallet definition exported from another instance.
 
 ## Notes
 

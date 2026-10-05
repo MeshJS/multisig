@@ -1,8 +1,11 @@
 import type { DraftIssue } from "@/lib/tx-draft/validate";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { Wallet } from "@/types/wallet";
+import type { SourcePickerProps } from "../source-picker";
 import OutputInspector from "./output-inspector";
-import TxInspector from "./tx-inspector";
+import TxInspector, { type TxInspectorSourceProps } from "./tx-inspector";
+
+export type { TxInspectorSourceProps };
 
 /**
  * Selection-driven side panel: an output card opens its recipient form, any
@@ -12,9 +15,12 @@ import TxInspector from "./tx-inspector";
 export default function Inspector({
   appWallet,
   issues,
+  source,
 }: {
   appWallet: Wallet;
   issues: DraftIssue[];
+  /** Source picker state + UTxO source facts, owned by the page. */
+  source: TxInspectorSourceProps & { picker: SourcePickerProps };
 }) {
   const selection = useTxBuilderStore((state) => state.selection);
   const draft = useTxBuilderStore((state) => state.draft);
@@ -40,6 +46,7 @@ export default function Inspector({
         <TxInspector
           appWallet={appWallet}
           issues={issues.filter((issue) => issue.outputId === undefined)}
+          source={source}
         />
       )}
     </div>

@@ -18,10 +18,18 @@ const ACTION_FEE_FLOOR_LOVELACE = 5_000_000n;
  */
 const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
 
+/**
+ * How the source's inputs are witnessed: the multisig spends script inputs
+ * (each `txIn` gets `txInScript`); a connected or arbitrary key-based wallet
+ * spends plain pubkey inputs.
+ */
+export type ApplyDraftInputs =
+  | { kind: "script"; scriptCbor: string }
+  | { kind: "pubkey" };
+
 export type ApplyDraftContext = {
-  /** The multisig payment script; every input is a script input. */
-  scriptCbor: string;
-  /** The multisig wallet address; default change target. */
+  inputs: ApplyDraftInputs;
+  /** The source address: owner of the inputs and the change target. */
   walletAddress: string;
   /** Spendable UTxOs (pending-blocked ones excluded); used in auto mode. */
   availableUtxos: UTxO[];
@@ -54,6 +62,14 @@ export function applyDraftToTxBuilder(
     draft.certificates.length === 0
   ) {
     throw new Error("Draft has no outputs, votes or certificates");
+  }
+  if (
+    ctx.inputs.kind === "pubkey" &&
+    (draft.votes.length > 0 || draft.certificates.length > 0)
+  ) {
+    throw new Error(
+      "Staking certificates and votes can only be built from the multisig wallet",
+    );
   }
   if (draft.votes.length > 0 && (!ctx.drepId || !ctx.drepScriptCbor)) {
     throw new Error("Draft has votes but no DRep context");
@@ -100,14 +116,15 @@ export function applyDraftToTxBuilder(
   }
 
   for (const utxo of selectedUtxos) {
-    txBuilder
-      .txIn(
-        utxo.input.txHash,
-        utxo.input.outputIndex,
-        utxo.output.amount,
-        utxo.output.address,
-      )
-      .txInScript(ctx.scriptCbor);
+    txBuilder.txIn(
+      utxo.input.txHash,
+      utxo.input.outputIndex,
+      utxo.output.amount,
+      utxo.output.address,
+    );
+    if (ctx.inputs.kind === "script") {
+      txBuilder.txInScript(ctx.inputs.scriptCbor);
+    }
   }
 
   for (const output of draft.outputs) {
@@ -160,7 +177,7 @@ export function applyDraftToTxBuilder(
       .voteScript(ctx.drepScriptCbor!);
   }
 
-  // Change always returns to the multisig wallet itself — a configurable
+  // Change always returns to the source wallet itself — a configurable
   // change address would let a draft quietly drain the wallet's remaining
   // funds to another address.
   txBuilder.changeAddress(ctx.walletAddress);

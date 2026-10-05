@@ -71,7 +71,8 @@ const MyApp: AppType<{ session: Session | null }> = ({
     description: pageSeo?.description ?? routeSeo.description,
     keywords: pageSeo?.keywords ?? routeSeo.keywords,
     noindex: pageSeo?.noindex ?? routeSeo.noindex,
-    image: pageSeo?.image,
+    image: pageSeo?.image ?? routeSeo.image,
+    imageAlt: pageSeo?.imageAlt ?? routeSeo.imageAlt,
     type: pageSeo?.type,
     jsonLd: pageSeo?.jsonLd,
   };
@@ -92,6 +93,7 @@ const MyApp: AppType<{ session: Session | null }> = ({
         path={canonicalPath}
         noindex={seo.noindex}
         image={seo.image}
+        imageAlt={seo.imageAlt}
         type={seo.type}
         extraJsonLd={seo.jsonLd}
       />

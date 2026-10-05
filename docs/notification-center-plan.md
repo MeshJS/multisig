@@ -432,6 +432,15 @@ Manual QA:
 7. Enable production for verified internal/test signers.
 8. Remove or migrate client-side Discord reminder calls after email path is stable.
 
+## Phase 12: Threshold-Reached and Ballot-Deadline Events (shipped 2026-08-27)
+
+Two more toggles on `WalletSignerNotificationSetting` (`notifyThresholdReached`, `notifyBallotDeadlines`) and two event types on the same outbox:
+
+- `threshold.reached` — enqueued by `enqueueThresholdReachedNotifications` (`src/lib/notifications/center.ts`) from `transaction.updateTransaction`, `signable.updateSignable` and `POST /api/v1/signTransaction` whenever a signature update moves a resource from below to at-or-above `getRequiredSignerCount`. Audience is every wallet signer except the actor (`resolveWalletSignerRecipients`), so unlike `signature.required` the creator and earlier signers are included. One row per resource × recipient.
+- `ballot.deadline` — `enqueueBallotDeadlineReminders` (`src/lib/notifications/ballotDeadlines.ts`) has two sources: saved ballots, and pending (`state: 0`) transactions that vote (proposal ids read from `txJson.votes[].vote.govActionId` and `txJson.proxyBot.votes[].proposalId` via `extractVoteProposalIds`), so a direct vote cast without a ballot is covered too. The deadline is the earliest active proposal's Blockfrost `expiration` epoch (end of that epoch = `end_time(latest) + Δepochs × 432000s`); exactly one window per run (`48h` = 24–48h out, `24h` = 0–24h out); rows are keyed on `<ballot|transaction>` × id × signer × window × expiration epoch. Transaction reminders stop by themselves once the tx is submitted. A ballot whose expiring proposals are all covered by a pending vote tx of the same wallet defers to that transaction's reminder (one email, not two); ballots with a submitted `Ballot Vote:`/`Proxy Ballot Vote:` transaction created after the ballot are skipped. Client-side proxy votes (the vote lives in a Plutus redeemer) are covered because `useTransaction.newTransaction` accepts `txJsonExtras`, and the proxy-vote call sites (`proposal/voteButtton.tsx`, `ballot/ballot.tsx`) annotate the stored txJson with the same `proxyBot: { kind: "proxyVote", votes }` block the bot API writes — a client-written annotation, only present on transactions created after 2026-08-27. Driven hourly by `.github/workflows/ballot-deadline-reminders.yml` → `POST /api/notifications/ballot-deadlines` (same `NOTIFICATION_DRAIN_SECRET`).
+
+The worker's send-time preference re-check is keyed by `getNotificationPreferenceField(eventType, resourceType)` (`events.ts`), so both new events honour toggles flipped after enqueue.
+
 ## Open Questions
 
 - Should wallet creators be allowed to enter another signer's email, or should emails only be entered and verified by the signer themselves?

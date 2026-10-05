@@ -4,17 +4,22 @@ import { env } from "@/env";
 import { SITE_URL } from "@/lib/seo";
 import {
   NOTIFICATION_EVENT_SIGNATURE_REQUIRED,
+  NOTIFICATION_EVENT_THRESHOLD_REACHED,
   NOTIFICATION_STATUS_PENDING,
   type NotificationEventType,
   type SignatureResourceType,
 } from "./events";
 import { createNotificationDelivery } from "./outbox";
-import { resolveSignatureRecipients } from "./recipients";
+import {
+  resolveSignatureRecipients,
+  resolveWalletSignerRecipients,
+} from "./recipients";
 import {
   summarizeTransactionSignatureContext,
   type SignatureContext,
 } from "./signatureContext";
 import { renderSignatureRequiredEmail } from "./templates/signatureRequired";
+import { renderThresholdReachedEmail } from "./templates/thresholdReached";
 import { drainNotificationOutbox } from "./worker";
 
 type WalletNotificationShape = {
@@ -57,13 +62,26 @@ export function getSiteUrl(): string {
   return SITE_URL;
 }
 
-function getRequiredSignerCount(wallet: WalletNotificationShape): number {
+export function getRequiredSignerCount(wallet: WalletNotificationShape): number {
   if (wallet.type === "any") return 1;
   if (wallet.type === "all") return wallet.signersAddresses.length;
   if (typeof wallet.numRequiredSigners === "number") {
     return wallet.numRequiredSigners;
   }
   return wallet.signersAddresses.length;
+}
+
+/**
+ * True when a signature update moved a resource from below the wallet's
+ * required signature count to at or above it.
+ */
+export function crossedSignatureThreshold(args: {
+  wallet: WalletNotificationShape;
+  previousSignedCount: number;
+  signedCount: number;
+}): boolean {
+  const required = getRequiredSignerCount(args.wallet);
+  return args.previousSignedCount < required && args.signedCount >= required;
 }
 
 function actionPathFor(resourceType: SignatureResourceType, walletId: string) {
@@ -87,6 +105,16 @@ function signatureIdempotencyKey(args: {
     args.walletId,
     args.recipientAddress,
   ].join(":");
+}
+
+async function drainAfterEnqueue(db: PrismaClient, eligibleCount: number) {
+  if (notificationsEmailEnabled() && eligibleCount > 0) {
+    try {
+      await drainNotificationOutbox(db, { limit: 10 });
+    } catch (error) {
+      console.error("Notification outbox drain failed", error);
+    }
+  }
 }
 
 export async function enqueueSignatureRequiredNotifications(
@@ -203,13 +231,151 @@ export async function enqueueSignatureRequiredNotifications(
     );
   }
 
-  if (notificationsEmailEnabled() && recipients.eligible.length > 0) {
-    try {
-      await drainNotificationOutbox(db, { limit: 10 });
-    } catch (error) {
-      console.error("Notification outbox drain failed", error);
-    }
+  await drainAfterEnqueue(db, recipients.eligible.length);
+
+  return deliveries;
+}
+
+export type EnqueueThresholdReachedInput = {
+  wallet: WalletNotificationShape;
+  resourceType: SignatureResourceType;
+  resourceId: string;
+  /** Signed addresses before the update that may have crossed the threshold. */
+  previousSignedAddresses: string[];
+  /** Signed addresses after the update. */
+  signedAddresses: string[];
+  /** The signer whose signature completed the set; not notified. */
+  actorAddress?: string | null;
+  description?: string | null;
+  txJson?: unknown;
+  signatureContext?: SignatureContext | null;
+  txHash?: string | null;
+};
+
+/**
+ * Emails every wallet signer (except the actor) once a transaction or
+ * signable payload crosses the wallet's required signature count. No-op
+ * when the update did not cross the threshold, so it is safe to call on
+ * every signature update.
+ */
+export async function enqueueThresholdReachedNotifications(
+  db: PrismaClient,
+  input: EnqueueThresholdReachedInput,
+) {
+  if (
+    !crossedSignatureThreshold({
+      wallet: input.wallet,
+      previousSignedCount: input.previousSignedAddresses.length,
+      signedCount: input.signedAddresses.length,
+    })
+  ) {
+    return [];
   }
+
+  const eventType = NOTIFICATION_EVENT_THRESHOLD_REACHED;
+  const requiredCount = getRequiredSignerCount(input.wallet);
+  const siteUrl = getSiteUrl();
+  const actionUrl = `${siteUrl}${actionPathFor(input.resourceType, input.wallet.id)}`;
+  const preferencesUrl = `${siteUrl}/wallets/${input.wallet.id}/info`;
+  const signatureContext =
+    input.signatureContext ??
+    (input.resourceType === "transaction"
+      ? summarizeTransactionSignatureContext(input.txJson, input.description)
+      : null);
+  const txHash = input.txHash?.trim() || null;
+  const template = renderThresholdReachedEmail({
+    walletName: input.wallet.name,
+    resourceType: input.resourceType,
+    description: input.description ?? null,
+    signatureContext,
+    signedCount: input.signedAddresses.length,
+    requiredCount,
+    totalSigners: input.wallet.signersAddresses.length,
+    txHash,
+    actionUrl,
+    preferencesUrl,
+  });
+
+  const recipients = await resolveWalletSignerRecipients(db, {
+    walletId: input.wallet.id,
+    signerAddresses: input.wallet.signersAddresses,
+    preferenceField: "notifyThresholdReached",
+    excludeAddresses: [input.actorAddress],
+  });
+
+  const payloadBase = {
+    walletId: input.wallet.id,
+    walletName: input.wallet.name,
+    resourceType: input.resourceType,
+    resourceId: input.resourceId,
+    actionUrl,
+    preferencesUrl,
+    signedCount: input.signedAddresses.length,
+    requiredCount,
+    totalSigners: input.wallet.signersAddresses.length,
+    description: input.description ?? null,
+    signatureContext,
+    txHash,
+  };
+
+  const deliveries = [];
+
+  for (const recipient of recipients.eligible) {
+    deliveries.push(
+      await createNotificationDelivery(db, {
+        eventType,
+        recipientAddress: recipient.address,
+        recipientEmail: recipient.email,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        walletId: input.wallet.id,
+        idempotencyKey: signatureIdempotencyKey({
+          eventType,
+          resourceType: input.resourceType,
+          resourceId: input.resourceId,
+          walletId: input.wallet.id,
+          recipientAddress: recipient.address,
+        }),
+        subject: template.subject,
+        payload: {
+          ...payloadBase,
+          recipientAddress: recipient.address,
+          html: template.html,
+          text: template.text,
+        },
+        status: NOTIFICATION_STATUS_PENDING,
+      }),
+    );
+  }
+
+  for (const skipped of recipients.skipped) {
+    deliveries.push(
+      await createNotificationDelivery(db, {
+        eventType,
+        recipientAddress: skipped.address,
+        recipientEmail: null,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        walletId: input.wallet.id,
+        idempotencyKey: signatureIdempotencyKey({
+          eventType,
+          resourceType: input.resourceType,
+          resourceId: input.resourceId,
+          walletId: input.wallet.id,
+          recipientAddress: skipped.address,
+        }),
+        subject: "Signatures complete notification skipped",
+        payload: {
+          ...payloadBase,
+          recipientAddress: skipped.address,
+          skipReason: skipped.reason,
+        },
+        status: skipped.reason,
+      }),
+    );
+  }
+
+  await drainAfterEnqueue(db, recipients.eligible.length);
 
   return deliveries;
 }

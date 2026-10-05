@@ -13,6 +13,7 @@ import {
 function draft(outputs: TxDraft["outputs"]): TxDraft {
   return {
     id: "draft-1",
+    source: { kind: "multisig" },
     outputs,
     utxoSelection: { mode: "auto" },
     description: "",

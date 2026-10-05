@@ -15,6 +15,22 @@ export const env = createEnv({
     PINATA_JWT: z.string(),
     GITHUB_TOKEN: z.string().optional(),
     JWT_SECRET: z.string().min(32),
+    /**
+     * Ed25519 private key (base64 PKCS#8) used to attest document versions.
+     *
+     * Optional on purpose: with it unset, versions are simply not attested and
+     * every other part of Document Sign-Off behaves identically. This key is a
+     * NOTARY, never an approver — it timestamps and orders versions and can
+     * neither approve a document nor authorise a transaction. Generate one with
+     * `node scripts/generate-attestation-key.mjs`.
+     */
+    DOCUMENT_ATTESTATION_KEY: z.string().optional(),
+    /**
+     * JSON map of `{ keyId: publicKeySpkiHex }` for keys that have been rotated
+     * out. Attestations they signed must keep verifying, so retiring a key means
+     * moving its public half here rather than deleting it.
+     */
+    DOCUMENT_ATTESTATION_PRIOR_PUBLIC_KEYS: z.string().optional(),
     BLOCKFROST_API_KEY_PREPROD: z.string().optional(),
     BLOCKFROST_API_KEY_MAINNET: z.string().optional(),
     /**
@@ -38,9 +54,7 @@ export const env = createEnv({
     EMAIL_REPLY_TO: z.string().email().optional(),
     NOTIFICATION_LINK_BASE_URL: z.string().url().optional(),
     NOTIFICATION_DRAIN_SECRET: z.string().optional(),
-    NOTIFICATIONS_EMAIL_ENABLED: z
-      .enum(["true", "false"])
-      .default("false"),
+    NOTIFICATIONS_EMAIL_ENABLED: z.enum(["true", "false"]).default("false"),
     /**
      * Canonical origin of the OAuth 2.1 authorization server that protects the
      * MCP endpoint (`/api/mcp`). Issued tokens carry this as `iss`, and the
@@ -129,6 +143,9 @@ export const env = createEnv({
     PINATA_JWT: process.env.PINATA_JWT,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     JWT_SECRET: process.env.JWT_SECRET,
+    DOCUMENT_ATTESTATION_KEY: process.env.DOCUMENT_ATTESTATION_KEY,
+    DOCUMENT_ATTESTATION_PRIOR_PUBLIC_KEYS:
+      process.env.DOCUMENT_ATTESTATION_PRIOR_PUBLIC_KEYS,
     BLOCKFROST_API_KEY_PREPROD: process.env.BLOCKFROST_API_KEY_PREPROD,
     BLOCKFROST_API_KEY_MAINNET: process.env.BLOCKFROST_API_KEY_MAINNET,
     EKKLESIA_API_BASE: process.env.EKKLESIA_API_BASE,

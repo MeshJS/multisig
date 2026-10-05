@@ -3,14 +3,18 @@ import { z } from "zod";
 import { csl } from "@meshsdk/core-csl";
 import { resolveTxHash } from "@meshsdk/core-cst";
 import { resolvePaymentKeyHash } from "@meshsdk/core";
-import { buildMultisigWallet } from "@/utils/common";
+import { buildWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { assertWalletAccess } from "@/server/api/auth";
-import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
+import {
+  enqueueSignatureRequiredNotifications,
+  enqueueThresholdReachedNotifications,
+} from "@/lib/notifications/center";
+import { cancelPayoutsForTransaction, markPayoutsPaid } from "@/lib/task-payout/sync";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -87,6 +91,8 @@ export const transactionRouter = createTRPCRouter({
                   "New signatures were collected while you were editing",
               });
             }
+            // The replacement carries no task link; the tasks become payable again.
+            await cancelPayoutsForTransaction(db, old.id);
             await db.transaction.delete({ where: { id: old.id } });
             return db.transaction.create({ data });
           })
@@ -154,7 +160,7 @@ export const transactionRouter = createTRPCRouter({
       if (!tx) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Transaction not found" });
       }
-      await assertWalletAccess(ctx, tx.walletId);
+      const wallet = await assertWalletAccess(ctx, tx.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
       const updated = await ctx.db.transaction.update({
         where: {
@@ -168,6 +174,28 @@ export const transactionRouter = createTRPCRouter({
           txHash: input.txHash,
         },
       });
+      if (input.state === 1 && tx.state !== 1) {
+        try {
+          await markPayoutsPaid(ctx.db, { transactionId: tx.id, txHash: updated.txHash });
+        } catch (error) {
+          console.error("Failed to mark task payouts paid", error);
+        }
+      }
+      try {
+        await enqueueThresholdReachedNotifications(ctx.db, {
+          wallet,
+          resourceType: "transaction",
+          resourceId: tx.id,
+          previousSignedAddresses: tx.signedAddresses,
+          signedAddresses: updated.signedAddresses,
+          actorAddress: sessionAddress,
+          description: tx.description,
+          txJson: tx.txJson,
+          txHash: updated.txHash ?? tx.txHash,
+        });
+      } catch (error) {
+        console.error("Failed to enqueue threshold notifications", error);
+      }
       const justSigned =
         sessionAddress !== null &&
         input.signedAddresses.includes(sessionAddress) &&
@@ -211,10 +239,15 @@ export const transactionRouter = createTRPCRouter({
       }
       await assertWalletAccess(ctx, tx.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
-      const deleted = await ctx.db.transaction.delete({
-        where: {
-          id: input.transactionId,
-        },
+      const deleted = await ctx.db.$transaction(async (db) => {
+        // Task payouts pointing at this transaction are cancelled with it, so
+        // the tasks become payable again.
+        await cancelPayoutsForTransaction(db, input.transactionId);
+        return db.transaction.delete({
+          where: {
+            id: input.transactionId,
+          },
+        });
       });
       void audit(ctx.db, {
         actorAddress: sessionAddress,
@@ -366,15 +399,15 @@ export const transactionRouter = createTRPCRouter({
         ? addressToNetwork(wallet.signersAddresses[0]!)
         : 0; // Default to preprod/testnet
       
-      const mWallet = buildMultisigWallet(wallet as any, network);
-      if (!mWallet) {
+      const walletInfo = buildWallet(wallet as any, network);
+      if (!walletInfo || (!walletInfo.capabilities?.address && !walletInfo.address)) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to build wallet script",
         });
       }
       
-      const walletScriptAddress = mWallet.getScript().address;
+      const walletScriptAddress = walletInfo.capabilities?.address ?? walletInfo.address;
       const blockchainProvider = getProvider(network);
 
       // Convert transaction body to txJson format

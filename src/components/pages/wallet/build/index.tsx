@@ -3,9 +3,18 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 import type { UTxO } from "@meshsdk/core";
 import type { Transaction } from "@prisma/client";
-import { FilePenLine, Hammer, Loader2, X } from "lucide-react";
+import type { Wallet } from "@/types/wallet";
+import {
+  FilePenLine,
+  FlaskConical,
+  Hammer,
+  Loader2,
+  Send,
+  X,
+} from "lucide-react";
 
 import type { BuilderCanvasProps } from "./builder-canvas";
+import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,39 +27,61 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import SectionTitle from "@/components/ui/section-title";
+import useActiveWallet from "@/hooks/useActiveWallet";
 import useAddressLabels from "@/hooks/useAddressLabels";
+import { useAddressUtxos } from "@/hooks/useAddressUtxos";
 import useAppWallet from "@/hooks/useAppWallet";
 import useAvailableUtxos from "@/hooks/useAvailableUtxos";
+import useSignAndSubmit from "@/hooks/useSignAndSubmit";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import usePoolNames from "@/hooks/usePoolNames";
 import useProposalTitles from "@/hooks/useProposalTitles";
 import useTransaction from "@/hooks/useTransaction";
 import { useToast } from "@/hooks/use-toast";
+import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { deriveDrepVoteContext } from "@/lib/governance/drep-context";
 import { deriveStakeCertContext } from "@/lib/staking/stake-context";
 import {
   findBallotRowForVote,
   uploadRationale,
 } from "@/lib/governance/rationale";
-import { withVoteAnchor } from "@/lib/tx-draft/mutations";
+import {
+  hasMultisigOnlyActions,
+  sameSource,
+  withVoteAnchor,
+} from "@/lib/tx-draft/mutations";
+import {
+  describeSource,
+  resolveSourceAddress,
+  sourcePrimaryAction,
+  withSourceLabel,
+} from "@/lib/tx-draft/source";
 import { utxoFunds } from "@/lib/tx-draft/assets";
+import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
-import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
-import { validateDraft } from "@/lib/tx-draft/validate";
+import {
+  applyDraftToTxBuilder,
+  type ApplyDraftContext,
+} from "@/lib/tx-draft/to-tx-builder";
+import { validateDraft, validateSource } from "@/lib/tx-draft/validate";
+import type { DraftSource } from "@/types/tx-draft";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
+import { getFriendlyError } from "@/utils/errors";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import AddStakeDialog from "./add-stake-dialog";
 import AddVoteDialog from "./add-vote-dialog";
+import BuildResultPanel, { type BuildResultState } from "./build-result-panel";
 import Inspector from "./inspector";
 import LoadPendingDialog from "./load-pending-dialog";
 import ProblemsPanel from "./problems-panel";
 import ReplaceConfirmDialog from "./replace-confirm-dialog";
+import SwitchSourceDialog from "./switch-source-dialog";
 
 const BuilderCanvas = dynamic<BuilderCanvasProps>(
   () => import("./builder-canvas"),
@@ -87,6 +118,8 @@ export default function PageBuild() {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const { labelAddress } = useAddressLabels(appWallet);
   const { newTransaction } = useTransaction();
+  const { activeWallet, userAddress, walletName } = useActiveWallet();
+  const { signAndSubmit } = useSignAndSubmit();
   const { multisigWallet, isLoading: multisigWalletLoading } =
     useMultisigWallet();
   const apiUtils = api.useUtils();
@@ -100,9 +133,20 @@ export default function PageBuild() {
   const loadDraft = useTxBuilderStore((state) => state.loadDraft);
   const editingTxId = useTxBuilderStore((state) => state.editingTxId);
   const cancelEditing = useTxBuilderStore((state) => state.cancelEditing);
+  const setSource = useTxBuilderStore((state) => state.setSource);
   const touched = useTxBuilderStore((state) => state.touched);
 
   const [building, setBuilding] = useState(false);
+  /** A test build (no signing/proposing) is in flight. */
+  const [testing, setTesting] = useState(false);
+  /** A connected-wallet sign & submit is in flight. */
+  const [signing, setSigning] = useState(false);
+  /** Source switch awaiting confirmation (it would drop certs/votes). */
+  const [pendingSource, setPendingSource] = useState<DraftSource | null>(null);
+  /** Outcome of the last test build; cleared whenever the draft changes. */
+  const [buildResult, setBuildResult] = useState<BuildResultState | null>(
+    null,
+  );
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
@@ -118,6 +162,12 @@ export default function PageBuild() {
     if (appWallet && storeWalletId !== appWallet.id) resetDraft(appWallet.id);
   }, [appWallet, storeWalletId, resetDraft]);
 
+  // The store replaces the draft object on every mutation, so any edit makes
+  // a previous test build stale — drop it rather than show outdated numbers.
+  useEffect(() => {
+    setBuildResult(null);
+  }, [draft]);
+
   const utxos = useMemo(
     () => (appWallet ? (walletsUtxos[appWallet.id] ?? []) : []),
     [appWallet, walletsUtxos],
@@ -126,11 +176,46 @@ export default function PageBuild() {
     ? walletsUtxos[appWallet.id] !== undefined
     : false;
   // While editing, the edited tx's own inputs are spendable for the rebuild.
-  const { availableUtxos } = useAvailableUtxos({
+  const { availableUtxos: multisigAvailableUtxos } = useAvailableUtxos({
     walletId: appWallet?.id,
     utxos,
     excludeTransactionId: editingTxId,
   });
+
+  // The funding source. Anything but the multisig is a plain key-based
+  // wallet: its UTxOs come straight from Blockfrost (no pending-tx locks),
+  // and only once the source address itself validates.
+  const isMultisigSource = draft.source.kind === "multisig";
+  const connectedAddress = userAddress || undefined;
+  const sourceAddress = useMemo(
+    () =>
+      resolveSourceAddress(draft.source, {
+        multisigAddress: appWallet?.address ?? "",
+        connectedAddress,
+      }),
+    [draft.source, appWallet?.address, connectedAddress],
+  );
+  const sourceIssues = useMemo(
+    () =>
+      validateSource(draft, {
+        network,
+        multisigAddress: appWallet?.address,
+        connectedAddress,
+      }),
+    [draft, network, appWallet?.address, connectedAddress],
+  );
+  const sourceReady =
+    !isMultisigSource &&
+    !!sourceAddress &&
+    !sourceIssues.some((issue) => issue.level === "error");
+  const sourceUtxos = useAddressUtxos(
+    isMultisigSource ? undefined : sourceAddress,
+    { enabled: sourceReady },
+  );
+  const availableUtxos = useMemo(
+    () => (isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? [])),
+    [isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
+  );
 
   const { data: pendingTransactions } =
     api.transaction.getPendingTransactions.useQuery(
@@ -180,8 +265,20 @@ export default function PageBuild() {
     if (draft.utxoSelection.mode === "manual") {
       return utxoFunds(draft.utxoSelection.utxos);
     }
-    return availableUtxos.length > 0 ? utxoFunds(availableUtxos) : undefined;
-  }, [draft.utxoSelection, availableUtxos]);
+    if (isMultisigSource) {
+      return multisigAvailableUtxos.length > 0
+        ? utxoFunds(multisigAvailableUtxos)
+        : undefined;
+    }
+    // A fetched empty list is a real "no funds"; undefined only while the
+    // lookup hasn't succeeded (not started, loading, or errored).
+    return sourceUtxos.data ? utxoFunds(sourceUtxos.data) : undefined;
+  }, [
+    draft.utxoSelection,
+    isMultisigSource,
+    multisigAvailableUtxos,
+    sourceUtxos.data,
+  ]);
 
   // DRep identity for re-emitting loaded votes; undefined while the wallet
   // query loads so validation doesn't flash a blocking error.
@@ -212,18 +309,40 @@ export default function PageBuild() {
 
   // Palette add-button gating: identity context only. Registration state is
   // checked inside the dialogs, where it can inform instead of block.
-  const addStakeDisabledReason = stakeCtx
-    ? draft.certificates.length > 0
-      ? "The draft already has a staking action"
-      : undefined
-    : multisigWalletLoading
-      ? "Loading wallet…"
-      : "This wallet has no staking identity";
-  const addVoteDisabledReason = voteCtx
+  // Certificates and votes are witnessed by the multisig's scripts, so they
+  // exist only for the multisig source.
+  const externalSourceReason = isMultisigSource
     ? undefined
-    : multisigWalletLoading
-      ? "Loading wallet…"
-      : "This wallet has no DRep identity";
+    : "Only available when the multisig wallet is the source";
+  const addStakeDisabledReason =
+    externalSourceReason ??
+    (stakeCtx
+      ? draft.certificates.length > 0
+        ? "The draft already has a staking action"
+        : undefined
+      : multisigWalletLoading
+        ? "Loading wallet…"
+        : "This wallet has no staking identity");
+  const addVoteDisabledReason =
+    externalSourceReason ??
+    (voteCtx
+      ? undefined
+      : multisigWalletLoading
+        ? "Loading wallet…"
+        : "This wallet has no DRep identity");
+
+  // The source card reads as the source ("Connected wallet (…)" / "Source
+  // address") while the multisig keeps its usual label as a recipient.
+  const canvasLabelAddress = useMemo(
+    () =>
+      withSourceLabel(
+        labelAddress,
+        draft.source,
+        sourceAddress,
+        walletName || undefined,
+      ),
+    [labelAddress, draft.source, sourceAddress, walletName],
+  );
 
   // Proposal titles for the vote badges on the canvas and in the inspector.
   const voteProposalIds = useMemo(
@@ -255,8 +374,18 @@ export default function PageBuild() {
         selectedFunds,
         hasDrepContext,
         hasStakeContext,
+        multisigAddress: appWallet?.address,
+        connectedAddress,
       }),
-    [draft, network, selectedFunds, hasDrepContext, hasStakeContext],
+    [
+      draft,
+      network,
+      selectedFunds,
+      hasDrepContext,
+      hasStakeContext,
+      appWallet?.address,
+      connectedAddress,
+    ],
   );
   const errors = issues.filter((issue) => issue.level === "error");
 
@@ -408,11 +537,161 @@ export default function PageBuild() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady, appWallet, pendingTransactions, urlTxId, editingTxId]);
 
+  /**
+   * Builder context shared by the test build, the proposal and the
+   * connected-wallet sign path so they all build the very same transaction.
+   * For the multisig it prefers the script whose hash matches the wallet
+   * address — for imported/legacy wallets the stored scriptCbor can be a
+   * differently encoded variant, which the node rejects
+   * (MissingScriptWitnessesUTXOW) until submitTxWithScriptRecovery swaps it
+   * at submit time. Any other source spends plain key-witnessed inputs.
+   */
+  function draftBuildContext(wallet: Wallet): ApplyDraftContext {
+    if (!isMultisigSource) {
+      return {
+        inputs: { kind: "pubkey" },
+        walletAddress: sourceAddress,
+        availableUtxos,
+      };
+    }
+    return {
+      inputs: {
+        kind: "script",
+        scriptCbor:
+          resolveExpectedPaymentScriptCbor(wallet, network) ??
+          wallet.scriptCbor,
+      },
+      walletAddress: wallet.address,
+      availableUtxos,
+      // DRep identity for re-emitting loaded votes; validation has already
+      // errored (vote-drep-missing) if the draft has votes without it.
+      drepId: voteCtx?.dRepId,
+      drepScriptCbor: voteCtx?.drepScriptCbor,
+      // Staking identity for re-emitting loaded certificates; validation
+      // has already errored (cert-stake-missing) when absent but needed.
+      stakeRewardAddress: stakeCtx?.rewardAddress,
+      stakeScriptCbor: stakeCtx?.stakeScriptCbor,
+    };
+  }
+
+  /** Whether the current source can be built at all (address + witnesses). */
+  function canBuildSource(): boolean {
+    if (!appWallet || !sourceAddress || errors.length > 0) return false;
+    return !isMultisigSource || !!appWallet.scriptCbor;
+  }
+
+  /**
+   * Builds the draft exactly as the proposal would (fee, balancing, change,
+   * metadata) but stops before signing: nothing is uploaded, signed or
+   * saved. Edited vote rationales are NOT uploaded here — the vote builds
+   * with its current anchor, which only differs from the eventual proposal
+   * by the anchor bytes.
+   */
+  async function testBuild() {
+    if (!appWallet || !canBuildSource()) return;
+    setTesting(true);
+    try {
+      // Always a fresh builder: MeshTxBuilder is stateful and a completed
+      // builder can't be built again.
+      const txBuilder = await getTxBuilder(network);
+      const result = await buildDraftTx(
+        txBuilder,
+        draft,
+        draftBuildContext(appWallet),
+        {
+          metadataMessage: draft.metadata || undefined,
+          complete: (builder) => completeTxWithFreshCostModels(builder, network),
+        },
+      );
+      setBuildResult({
+        status: "ok",
+        result,
+        description: draft.description,
+      });
+    } catch (error) {
+      console.error("testBuild", error);
+      setBuildResult({ status: "error", message: getFriendlyError(error) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  /**
+   * Connected-wallet source: build, then let the wallet sign (fully) and
+   * submit — the deposit-page pattern. Nothing is stored: this isn't a
+   * multisig transaction. The draft resets but keeps its source so a user
+   * can fire off several transactions from their own wallet.
+   */
+  async function buildAndSign() {
+    if (!appWallet || draft.source.kind !== "connected" || !canBuildSource())
+      return;
+    setSigning(true);
+    try {
+      const txBuilder = await getTxBuilder(network);
+      const result = await buildDraftTx(
+        txBuilder,
+        draft,
+        draftBuildContext(appWallet),
+        {
+          metadataMessage: draft.metadata || undefined,
+          complete: (builder) => completeTxWithFreshCostModels(builder, network),
+        },
+      );
+      const { txHash } = await signAndSubmit(result.unsignedTx);
+      toast({
+        title: "Transaction submitted",
+        description: (
+          <span>
+            Signed and submitted by your connected wallet.{" "}
+            <LinkCardanoscan
+              url={`transaction/${txHash}`}
+              className="font-medium underline"
+            >
+              View on Cardanoscan
+            </LinkCardanoscan>
+          </span>
+        ),
+        duration: 12000,
+      });
+      const source = draft.source;
+      resetDraft(appWallet.id);
+      setSource(source);
+    } catch (error) {
+      console.error("buildAndSign", error);
+      toast({
+        title: "Couldn't sign and submit",
+        description: getFriendlyError(error),
+        duration: 10000,
+        variant: "destructive",
+      });
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  /**
+   * Source switches go through here: ignored while editing a pending tx,
+   * and confirmed first when leaving the multisig would drop certs/votes.
+   */
+  function requestSetSource(next: DraftSource) {
+    if (editingTxId || sameSource(draft.source, next)) return;
+    if (
+      next.kind !== "multisig" &&
+      isMultisigSource &&
+      hasMultisigOnlyActions(draft)
+    ) {
+      setPendingSource(next);
+      return;
+    }
+    setSource(next);
+  }
+
   async function buildAndPropose(replaces?: {
     transactionId: string;
     knownSignedCount: number;
   }) {
-    if (!appWallet?.scriptCbor || errors.length > 0) return;
+    if (!appWallet?.scriptCbor || !isMultisigSource || errors.length > 0)
+      return;
     setBuilding(true);
     try {
       // Resolve rationale edits into a LOCAL draft: edited rationales are
@@ -435,25 +714,11 @@ export default function PageBuild() {
       }
 
       const txBuilder = await getTxBuilder(network);
-      // Prefer the script whose hash matches the wallet address — for
-      // imported/legacy wallets the stored scriptCbor can be a differently
-      // encoded variant, which the node rejects (MissingScriptWitnessesUTXOW)
-      // until submitTxWithScriptRecovery swaps it at submit time.
-      applyDraftToTxBuilder(txBuilder, buildDraft, {
-        scriptCbor:
-          resolveExpectedPaymentScriptCbor(appWallet, network) ??
-          appWallet.scriptCbor,
-        walletAddress: appWallet.address,
-        availableUtxos,
-        // DRep identity for re-emitting loaded votes; validation has already
-        // errored (vote-drep-missing) if the draft has votes without it.
-        drepId: voteCtx?.dRepId,
-        drepScriptCbor: voteCtx?.drepScriptCbor,
-        // Staking identity for re-emitting loaded certificates; validation
-        // has already errored (cert-stake-missing) when absent but needed.
-        stakeRewardAddress: stakeCtx?.rewardAddress,
-        stakeScriptCbor: stakeCtx?.stakeScriptCbor,
-      });
+      applyDraftToTxBuilder(
+        txBuilder,
+        buildDraft,
+        draftBuildContext(appWallet),
+      );
       await newTransaction({
         txBuilder,
         description: draft.description || undefined,
@@ -561,10 +826,19 @@ export default function PageBuild() {
 
   if (appWallet === undefined) return <WalletDetailSkeleton />;
 
+  const busy = building || testing || signing;
+  const hasPendingRationaleEdits = draft.votes.some(
+    (vote) => vote.rationaleEdit !== undefined,
+  );
+  const primaryAction = sourcePrimaryAction(draft.source);
+  const sourceLabel = describeSource(draft.source, {
+    walletName: walletName || undefined,
+  });
+
   return (
-    <main className="flex h-[calc(100vh-4rem)] flex-1 flex-col gap-4 p-4 md:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
+    <main className="flex flex-1 flex-col gap-4 p-4 md:p-6 lg:min-h-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
             <SectionTitle>Transaction Builder</SectionTitle>
             <Badge
@@ -580,37 +854,106 @@ export default function PageBuild() {
             support &mdash; more transaction types will be added over time.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
           {(pendingTransactions?.length ?? 0) > 0 && (
             <Button
               variant="outline"
               data-testid="tx-builder-load-pending"
               onClick={() => setLoadDialogOpen(true)}
-              disabled={building}
+              disabled={busy}
             >
               <FilePenLine className="mr-2 h-4 w-4" />
               Edit pending
             </Button>
           )}
           <Button
-            data-testid="tx-builder-build"
-            onClick={onBuildClick}
-            disabled={building || errors.length > 0}
-            title={errors[0]?.message}
+            variant="outline"
+            data-testid="tx-builder-test-build"
+            onClick={() => void testBuild()}
+            disabled={busy || errors.length > 0}
+            title={
+              errors[0]?.message ??
+              "Build the transaction without proposing it, to check that it builds"
+            }
           >
-            {building ? (
+            {testing ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <Hammer className="mr-2 h-4 w-4" />
+              <FlaskConical className="mr-2 h-4 w-4" />
             )}
-            Build &amp; propose
+            Build
           </Button>
+          {primaryAction === "propose" && (
+            <Button
+              data-testid="tx-builder-build"
+              onClick={onBuildClick}
+              disabled={busy || errors.length > 0}
+              title={errors[0]?.message}
+            >
+              {building ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Hammer className="mr-2 h-4 w-4" />
+              )}
+              Build &amp; propose
+            </Button>
+          )}
+          {primaryAction === "sign" && (
+            <Button
+              data-testid="tx-builder-sign"
+              onClick={() => void buildAndSign()}
+              disabled={busy || errors.length > 0 || !activeWallet}
+              title={
+                errors[0]?.message ??
+                (activeWallet
+                  ? "Build, then sign and submit with your connected wallet"
+                  : "Connect a wallet to sign")
+              }
+            >
+              {signing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Build &amp; sign
+            </Button>
+          )}
         </div>
       </div>
+      {!isMultisigSource && (
+        <div
+          data-testid="tx-builder-source-banner"
+          className="flex flex-col items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+        >
+          <span>
+            Building from <span className="font-medium">{sourceLabel}</span>{" "}
+            &mdash; this transaction can&apos;t be proposed to the multisig;{" "}
+            {draft.source.kind === "connected"
+              ? "it will be signed and submitted by your connected wallet."
+              : "build it here and copy the unsigned CBOR to sign in that wallet."}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={() => requestSetSource({ kind: "multisig" })}
+            data-testid="tx-builder-use-multisig"
+          >
+            Use multisig
+          </Button>
+        </div>
+      )}
+      {buildResult && (
+        <BuildResultPanel
+          result={buildResult}
+          hasPendingRationaleEdits={hasPendingRationaleEdits}
+          onDismiss={() => setBuildResult(null)}
+        />
+      )}
       {editingTxId && (
         <div
           data-testid="tx-builder-editing-banner"
-          className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${
+          className={`flex flex-col items-start gap-2 rounded-md border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
             editingTx
               ? "border-warning/50 bg-warning/10"
               : "border-destructive/50 bg-destructive/10"
@@ -652,11 +995,12 @@ export default function PageBuild() {
           </Button>
         </div>
       )}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        <div className="relative min-h-[320px] min-w-0 flex-1">
+      <div className="flex flex-1 flex-col gap-4 lg:min-h-0 lg:flex-row">
+        <div className="relative h-[60dvh] min-h-[320px] min-w-0 flex-1 lg:h-auto">
           <BuilderCanvas
-            walletAddress={appWallet.address}
-            labelAddress={labelAddress}
+            walletAddress={sourceAddress}
+            multisigAddress={isMultisigSource ? undefined : appWallet.address}
+            labelAddress={canvasLabelAddress}
             walletAssetMetadata={walletAssetMetadata}
             contacts={contactEntries}
             signers={signerEntries}
@@ -666,11 +1010,43 @@ export default function PageBuild() {
             addStakeDisabledReason={addStakeDisabledReason}
             onAddVote={() => setVoteDialogOpen(true)}
             addVoteDisabledReason={addVoteDisabledReason}
+            built={
+              buildResult?.status === "ok" ? buildResult.result.body : null
+            }
           />
           <ProblemsPanel issues={visibleIssues} />
         </div>
         <aside className="w-full shrink-0 overflow-y-auto lg:w-[380px]">
-          <Inspector appWallet={appWallet} issues={visibleIssues} />
+          <Inspector
+            appWallet={appWallet}
+            issues={visibleIssues}
+            source={{
+              sourceAddress,
+              sourceName: isMultisigSource
+                ? "Multisig"
+                : draft.source.kind === "connected"
+                  ? "Connected wallet"
+                  : "Source address",
+              sourceReady: isMultisigSource || sourceReady,
+              utxoError:
+                !isMultisigSource && sourceUtxos.isError
+                  ? "Couldn't load the UTxOs of this address."
+                  : undefined,
+              onRetryUtxos: () => void sourceUtxos.refetch(),
+              picker: {
+                source: draft.source,
+                sourceAddress,
+                connected: {
+                  available: !!connectedAddress,
+                  name: walletName || undefined,
+                },
+                disabledReason: editingTxId
+                  ? "Editing a pending transaction — the multisig is its source"
+                  : undefined,
+                onRequestSource: requestSetSource,
+              },
+            }}
+          />
         </aside>
       </div>
       {stakeCtx && (
@@ -693,6 +1069,24 @@ export default function PageBuild() {
         pendingTransactions={pendingTransactions ?? []}
         requiredCount={requiredCount}
         onSelect={requestLoadPendingTx}
+      />
+      <SwitchSourceDialog
+        open={pendingSource !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSource(null);
+        }}
+        removedCount={draft.certificates.length + draft.votes.length}
+        targetLabel={
+          pendingSource
+            ? describeSource(pendingSource, {
+                walletName: walletName || undefined,
+              })
+            : ""
+        }
+        onConfirm={() => {
+          if (pendingSource) setSource(pendingSource);
+          setPendingSource(null);
+        }}
       />
       <ReplaceConfirmDialog
         open={replaceConfirmOpen}

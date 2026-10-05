@@ -27,6 +27,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { DraftVoteKind } from "@/types/tx-draft";
 import type { Wallet } from "@/types/wallet";
 import { getFirstAndLast } from "@/utils/strings";
+import SourcePicker, { type SourcePickerProps } from "../source-picker";
 import CertificateEditor from "./certificate-editor";
 import IssueList from "./issue-list";
 import VoteRationaleEditor from "./vote-rationale-editor";
@@ -37,12 +38,27 @@ const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Abstain: "text-muted-foreground",
 };
 
+/** Source facts the inspector needs beyond the picker itself. */
+export type TxInspectorSourceProps = {
+  /** Resolved source address; "" while unknown. */
+  sourceAddress: string;
+  /** Short name for the UTxO toggle ("Connected wallet", "Source address"). */
+  sourceName: string;
+  /** Whether the source address passed validation (UTxOs can be listed). */
+  sourceReady: boolean;
+  /** Blocking issue with the source's UTxO lookup, if any. */
+  utxoError?: string;
+  onRetryUtxos?: () => void;
+};
+
 export default function TxInspector({
   appWallet,
   issues,
+  source,
 }: {
   appWallet: Wallet;
   issues: DraftIssue[];
+  source: TxInspectorSourceProps & { picker: SourcePickerProps };
 }) {
   const network = useSiteStore((state) => state.network);
   const walletAssetMetadata = useWalletsStore(
@@ -121,17 +137,9 @@ export default function TxInspector({
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Change address</Label>
-        {/* Fixed to the wallet itself: a configurable change address could
-            quietly drain the wallet's remaining funds to another address. */}
-        <div className="flex flex-col rounded-md border border-border/50 px-3 py-1.5 text-xs">
-          <span>Self (Multisig)</span>
-          <span className="font-mono text-[10px] text-muted-foreground">
-            {getFirstAndLast(appWallet.address, 10, 6)}
-          </span>
-        </div>
-      </div>
+      {/* Change is fixed to the source itself: a configurable change address
+          could quietly drain the wallet's remaining funds to another address. */}
+      <SourcePicker {...source.picker} />
 
       {draft.certificates.length > 0 && (
         <Collapsible defaultOpen>
@@ -245,13 +253,41 @@ export default function TxInspector({
           <ChevronDown className="h-3.5 w-3.5" />
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2">
-          <UTxOSelector
-            appWallet={appWallet}
-            network={network}
-            onSelectionChange={onUtxoSelectionChange}
-            recipientAmounts={recipientAmounts}
-            recipientAssets={recipientAssets}
-          />
+          {source.utxoError ? (
+            <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs">
+              <span>{source.utxoError}</span>
+              {source.onRetryUtxos && (
+                <button
+                  type="button"
+                  className="font-medium hover:underline"
+                  onClick={source.onRetryUtxos}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : !source.sourceReady ? (
+            <p className="px-1 text-xs text-muted-foreground">
+              Set a valid source address to list its UTxOs.
+            </p>
+          ) : (
+            <UTxOSelector
+              // Remount on a source switch so the picker's local state
+              // (manual toggle, pages) belongs to the new address.
+              key={source.sourceAddress}
+              appWallet={appWallet}
+              network={network}
+              onSelectionChange={onUtxoSelectionChange}
+              recipientAmounts={recipientAmounts}
+              recipientAssets={recipientAssets}
+              sourceAddress={
+                source.picker.source.kind === "multisig"
+                  ? undefined
+                  : source.sourceAddress
+              }
+              sourceName={source.sourceName}
+            />
+          )}
         </CollapsibleContent>
       </Collapsible>
 

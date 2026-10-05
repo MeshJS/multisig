@@ -5,6 +5,7 @@ import CardSigners from "./signers/card-signers";
 import { RegisterWallet } from "./register-wallet";
 import { ManageContacts } from "./manage-contacts";
 import { MigrateWallet } from "./migrate-wallet";
+import { TransferWallet } from "./transfer-wallet";
 import { ArchiveWallet } from "./archive-wallet";
 import { DownloadBackup } from "./download-backup";
 import { UpgradeStakingWallet } from "./upgrade-staking-wallet";
@@ -32,6 +33,7 @@ export default function WalletInfo() {
         <McpActivityCard appWallet={appWallet} />
         <ManageContacts appWallet={appWallet} />
         <MigrateWallet appWallet={appWallet} />
+        <TransferWallet appWallet={appWallet} />
         <ProxyControlCard />
         {multisigWallet && <UpgradeStakingWallet mWallet={multisigWallet} appWallet={appWallet} />}
         {multisigWallet && <UpgradeGovernanceWallet mWallet={multisigWallet} />}

@@ -51,6 +51,14 @@ jest.mock("@/server/db", () => ({
   },
 }));
 
+// The review pipeline builds real transactions and renders WASM; the route
+// test only needs to prove its result shape reaches the wire.
+const runTransactionPreviewMock: jest.Mock = jest.fn();
+jest.mock("@/lib/tx-review/preview", () => ({
+  __esModule: true,
+  runTransactionPreview: runTransactionPreviewMock,
+}));
+
 const HUMAN_ADDRESS = "addr_test1qphuman000000000000000000000000000000";
 
 type CapturedResponse = NextApiResponse & {
@@ -149,8 +157,14 @@ function createRequest(body: unknown, extraHeaders: Record<string, string> = {})
 
 /** A modern-era (2026-07-28) request: envelope in the body, method in a header. */
 function modern(method: string, params: Record<string, unknown> = {}, id = 1) {
-  const headers: Record<string, string> = { "mcp-method": method };
+  const headers: Record<string, string> = {
+    "mcp-method": method,
+    "mcp-protocol-version": "2026-07-28",
+  };
+  // The envelope cross-checks Mcp-Name against params.name (tools/call,
+  // prompts/get) or params.uri (resources/read).
   if (typeof params.name === "string") headers["mcp-name"] = params.name;
+  if (typeof params.uri === "string") headers["mcp-name"] = params.uri;
   return {
     headers,
     body: {
@@ -248,6 +262,44 @@ describe("POST /api/mcp — transport", () => {
     expect(whoami?.inputSchema).toMatchObject({ type: "object" });
   });
 
+  it("advertises the review-card app on the review tools only", async () => {
+    // MCP Apps: the host reads `_meta.ui.resourceUri` from tools/list and
+    // renders that resource inline when the tool is called.
+    const { headers, body } = modern("tools/list");
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    const payload = res.body() as {
+      result?: { tools?: { name: string; _meta?: Record<string, unknown> }[] };
+    };
+    const byName = new Map((payload.result?.tools ?? []).map((t) => [t.name, t]));
+    for (const name of ["transaction_preview", "transaction_propose", "multisig_review_pending_transaction"]) {
+      expect(byName.get(name)?._meta).toEqual({
+        ui: { resourceUri: "ui://mesh-multisig/review-card" },
+        "ui/resourceUri": "ui://mesh-multisig/review-card",
+      });
+    }
+    expect(byName.get("multisig_whoami")?._meta).toBeUndefined();
+  });
+
+  it("serves the review-card app HTML as an mcp-app resource", async () => {
+    const { headers, body } = modern("resources/read", {
+      uri: "ui://mesh-multisig/review-card",
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    expect(res._status).toBe(200);
+    const payload = res.body() as {
+      result?: { contents?: { uri: string; mimeType: string; text: string; _meta?: unknown }[] };
+    };
+    const content = payload.result?.contents?.[0];
+    expect(content?.uri).toBe("ui://mesh-multisig/review-card");
+    expect(content?.mimeType).toBe("text/html;profile=mcp-app");
+    expect(content?.text).toContain("ui/initialize");
+    expect(content?._meta).toMatchObject({ ui: { prefersBorder: false } });
+  });
+
   it("serves the legacy 2025 initialize handshake", async () => {
     const res = createResponse();
     await handler(
@@ -270,6 +322,14 @@ describe("POST /api/mcp — transport", () => {
     };
     expect(payload.result?.serverInfo?.name).toBe("mesh-multisig");
     expect(payload.result?.protocolVersion).toBe("2025-06-18");
+    // Server instructions ride on the initialize result — that is how the
+    // model learns to surface the review card without being asked.
+    const instructions = (payload.result as { instructions?: string })?.instructions ?? "";
+    expect(instructions).toContain("review card");
+    expect(instructions).toContain("same turn");
+    for (const name of ["transaction_preview", "transaction_propose", "multisig_review_pending_transaction"]) {
+      expect(instructions).toContain(name);
+    }
   });
 
   it("survives two sequential requests", async () => {
@@ -376,6 +436,9 @@ describe("POST /api/mcp — tools/call", () => {
       address: HUMAN_ADDRESS,
       identityType: "wallet",
     });
+    // Plain wire shape everywhere: no annotations on any block.
+    const content = (payload.result as { content?: { annotations?: unknown }[] })?.content;
+    expect(content?.[0]?.annotations).toBeUndefined();
   });
 
   it("rejects arguments that violate the tool's JSON Schema", async () => {
@@ -410,6 +473,116 @@ describe("POST /api/mcp — tools/call", () => {
     expect(res._status).toBe(200);
     const payload = res.body() as { result?: { isError?: boolean } };
     expect(typeof payload.result?.isError).toBe("boolean");
+  });
+
+  it("delivers the review card as an image block after the text when asked for one", async () => {
+    // A human v1 bearer holds every scope, transactions:write included.
+    (runTransactionPreviewMock as any).mockResolvedValue({
+      status: 200,
+      body: { draftToken: "tok", txHash: "beef", persisted: false },
+      text: "Treasury (preprod) — UNSIGNED PREVIEW",
+      images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      audit: { walletId: "wallet-1", previewTxHash: "beef" },
+    });
+    const { headers, body } = modern("tools/call", {
+      name: "transaction_preview",
+      arguments: { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", ada: "1" }], card: "image" },
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    expect(res._status).toBe(200);
+    // card: "image" reaches the pipeline as "render the PNG".
+    expect(runTransactionPreviewMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ omitCard: false }),
+    );
+    const payload = res.body() as {
+      result?: {
+        isError?: boolean;
+        content?: { type: string; text?: string; data?: string; mimeType?: string }[];
+        structuredContent?: Record<string, unknown>;
+      };
+    };
+    expect(payload.result?.isError).toBe(false);
+    // Exact shapes, no extra keys: the Claude app rejected an image block that
+    // carried spec `annotations` ("Unexpected response type"), so the wire
+    // shape is pinned here to the minimal one.
+    expect(payload.result?.content?.[0]).toEqual({
+      type: "text",
+      text: "Treasury (preprod) — UNSIGNED PREVIEW",
+    });
+    expect(payload.result?.content?.[1]).toEqual({
+      type: "image",
+      data: "iVBORw0KGgo=",
+      mimeType: "image/png",
+    });
+    // The token is in structuredContent for the follow-up call; the image is not.
+    expect(payload.result?.structuredContent).toMatchObject({ draftToken: "tok" });
+    expect(JSON.stringify(payload.result?.structuredContent)).not.toContain("iVBORw0KGgo=");
+    // Audit picks up the wallet id from the result, and the tool's own ids.
+    expect(auditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          resourceType: "wallet",
+          resourceId: "wallet-1",
+          metadata: expect.objectContaining({ tool: "transaction_preview", previewTxHash: "beef" }),
+        }),
+      }),
+    );
+  });
+
+  it("leaves the card to the inline view by default: no image block, summary in structuredContent", async () => {
+    (runTransactionPreviewMock as any).mockResolvedValue({
+      status: 200,
+      body: {
+        draftToken: "tok",
+        txHash: "beef",
+        persisted: false,
+        summary: { kind: "preview", wallet: { name: "Treasury" } },
+        reviewCard: { attached: false, inline: true },
+      },
+      text: "Review card: clients with the inline card view draw it from this result.",
+      audit: { walletId: "wallet-1", previewTxHash: "beef" },
+    });
+    const { headers, body } = modern("tools/call", {
+      name: "transaction_preview",
+      arguments: { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", ada: "1" }] },
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    expect(res._status).toBe(200);
+    expect(runTransactionPreviewMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ omitCard: true }),
+    );
+    const payload = res.body() as {
+      result?: { isError?: boolean; content?: { type: string }[]; structuredContent?: Record<string, unknown> };
+    };
+    expect(payload.result?.isError).toBe(false);
+    expect(payload.result?.content?.map((c) => c.type)).toEqual(["text"]);
+    // The app draws the card from this; the token rides alongside for Confirm.
+    expect(payload.result?.structuredContent).toMatchObject({
+      draftToken: "tok",
+      summary: { kind: "preview" },
+      reviewCard: { attached: false, inline: true },
+    });
+  });
+
+  it("rejects a preview whose arguments break the schema before any build", async () => {
+    const { headers, body } = modern("tools/call", {
+      name: "transaction_preview",
+      arguments: { walletId: "wallet-1", outputs: [{ address: "addr_test1qpx", lovelace: "1" }] },
+    });
+    const res = createResponse();
+    await handler(createRequest(body, headers), res);
+
+    const payload = res.body() as { result?: { isError?: boolean } };
+    expect(payload.result?.isError).toBe(true);
+    expect(runTransactionPreviewMock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Trash2, Loader2, Pencil, Link } from "lucide-react";
+import { Bot, Trash2, Loader2, Pencil, Link, Copy, Check } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
@@ -213,6 +213,39 @@ export default function BotManagementCard() {
 
   const missingReadScopeInEdit = editScopes.length > 0 && !editScopes.includes(READ_SCOPE);
 
+  const [agentPromptCopied, setAgentPromptCopied] = useState(false);
+  const copyAgentPrompt = async () => {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "https://multisig.meshjs.dev";
+    const prompt = `You are being onboarded as a bot on this Mesh Multisig instance: ${origin}
+
+Follow these steps and report back to me at each pause:
+
+1. Generate or load a Cardano payment address you control. Tell me which address you will use.
+2. Fetch ${origin}/api/v1/botSetupGuide for the full protocol — that is the source of truth.
+3. Call POST ${origin}/api/v1/botRegister with body { name, paymentAddress, requestedScopes }. Request the minimum scopes you need (start with ["multisig:read"]; add "multisig:sign", "multisig:create", "governance:read", or "ballot:write" only if you need them).
+4. Report the returned pendingBotId and claimCode to me. I will approve in the UI within 10 minutes.
+5. Once I confirm, call GET ${origin}/api/v1/botPickupSecret?pendingBotId=<id> to retrieve your botKeyId and one-time secret. Store them securely; never log the secret.
+6. Call POST ${origin}/api/v1/botAuth with { botKeyId, secret, paymentAddress } to obtain a 1-hour JWT.
+7. Confirm by calling GET ${origin}/api/v1/botMe with Authorization: Bearer <jwt>. Print the response.
+8. Wait for me to grant your bot access to specific wallets in the UI before attempting any wallet operations.
+
+Do not skip steps. Do not ask for the secret over an insecure channel. Re-authenticate when the JWT expires.`;
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setAgentPromptCopied(true);
+      setTimeout(() => setAgentPromptCopied(false), 2000);
+      toast({ title: "Prompt copied", description: "Paste it into your AI agent." });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Your browser blocked clipboard access.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <CardUI
       title="Bot accounts"
@@ -220,6 +253,31 @@ export default function BotManagementCard() {
       icon={Bot}
     >
       <div className="space-y-4">
+        <div className="rounded-md border bg-muted/40 p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-sm font-medium">Connect an AI agent</div>
+              <p className="text-xs text-muted-foreground">
+                Copy a self-contained prompt that walks any AI agent (Claude,
+                Cursor, etc.) through registering itself as a bot on this
+                instance.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1 self-start sm:self-auto"
+              onClick={copyAgentPrompt}
+            >
+              {agentPromptCopied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {agentPromptCopied ? "Copied" : "Copy agent prompt"}
+            </Button>
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">Bots</span>
           <Button

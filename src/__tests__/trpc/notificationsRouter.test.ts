@@ -59,6 +59,8 @@ const storedSetting = (overrides: Record<string, unknown> = {}) => ({
   emailOptIn: true,
   notifyTransactionSignatures: true,
   notifySignableSignatures: true,
+  notifyThresholdReached: true,
+  notifyBallotDeadlines: true,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -100,6 +102,8 @@ describe("notification router", () => {
         emailOptIn: true,
         notifyTransactionSignatures: true,
         notifySignableSignatures: true,
+        notifyThresholdReached: true,
+        notifyBallotDeadlines: true,
         createdAt: null,
         updatedAt: null,
       });
@@ -177,9 +181,40 @@ describe("notification router", () => {
             emailOptIn: true,
             notifyTransactionSignatures: true,
             notifySignableSignatures: true,
+            notifyThresholdReached: true,
+            notifyBallotDeadlines: true,
           }),
         }),
       );
+    });
+
+    it("persists the threshold and ballot-deadline toggles", async () => {
+      const mockDb = makeMockDb();
+      mockDb.wallet.findUnique.mockResolvedValueOnce(wallet() as never);
+      mockDb.walletSignerNotificationSetting.findUnique.mockResolvedValueOnce(
+        storedSetting() as never,
+      );
+      mockDb.walletSignerNotificationSetting.upsert.mockResolvedValueOnce(
+        storedSetting({
+          notifyThresholdReached: false,
+          notifyBallotDeadlines: false,
+        }) as never,
+      );
+
+      await callerFor(mockDb).notification.upsertWalletSignerSetting({
+        walletId: WALLET_ID,
+        signerAddress: SIGNER,
+        notifyThresholdReached: false,
+        notifyBallotDeadlines: false,
+      });
+
+      const upsertArgs = mockDb.walletSignerNotificationSetting.upsert.mock
+        .calls[0]![0] as { update: Record<string, unknown> };
+      expect(upsertArgs.update).toEqual({
+        notifyThresholdReached: false,
+        notifyBallotDeadlines: false,
+      });
+      expect(mockDb.emailVerificationToken.updateMany).not.toHaveBeenCalled();
     });
 
     it("invalidates outstanding verification tokens when the email changes", async () => {
