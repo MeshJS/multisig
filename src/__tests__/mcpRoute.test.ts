@@ -157,7 +157,10 @@ function createRequest(body: unknown, extraHeaders: Record<string, string> = {})
 
 /** A modern-era (2026-07-28) request: envelope in the body, method in a header. */
 function modern(method: string, params: Record<string, unknown> = {}, id = 1) {
-  const headers: Record<string, string> = { "mcp-method": method };
+  const headers: Record<string, string> = {
+    "mcp-method": method,
+    "mcp-protocol-version": "2026-07-28",
+  };
   // The envelope cross-checks Mcp-Name against params.name (tools/call,
   // prompts/get) or params.uri (resources/read).
   if (typeof params.name === "string") headers["mcp-name"] = params.name;
