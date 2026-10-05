@@ -274,4 +274,27 @@ describe("splitTrailingChange", () => {
     expect(splitTrailingChange(outputs, SELF)).toEqual({ payments: outputs, change: [] });
     expect(splitTrailingChange([], SELF)).toEqual({ payments: [], change: [] });
   });
+
+  test("a single self output is a payment only when the payment count is unknown", () => {
+    const outputs = [out(SELF)];
+    expect(splitTrailingChange(outputs, SELF)).toEqual({ payments: outputs, change: [] });
+    // Certificate-only transaction: zero intended payments, one change output.
+    expect(splitTrailingChange(outputs, SELF, 0)).toEqual({ payments: [], change: outputs });
+  });
+
+  test("the payment count is the floor for the trailing scan", () => {
+    const allSelf = [out(SELF), out(SELF)];
+    expect(splitTrailingChange(allSelf, SELF, 0)).toEqual({ payments: [], change: allSelf });
+    // An explicit self-payment ahead of change stays a payment.
+    expect(splitTrailingChange(allSelf, SELF, 1)).toEqual({
+      payments: [allSelf[0]],
+      change: [allSelf[1]],
+    });
+    const mixed = [out(OTHER), out(SELF)];
+    expect(splitTrailingChange(mixed, SELF, 2)).toEqual({ payments: mixed, change: [] });
+    expect(splitTrailingChange(mixed, SELF, 0)).toEqual({
+      payments: [mixed[0]],
+      change: [mixed[1]],
+    });
+  });
 });

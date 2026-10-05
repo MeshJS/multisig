@@ -3,21 +3,11 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { authorizeProxyReadForV1 } from "@/lib/server/proxyAccess";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
+import { fetchDrepStatus } from "@/lib/governance/drep-status";
 import { db } from "@/server/db";
 import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
-import { env } from "@/env";
+import { getProvider } from "@/utils/get-provider";
 import type { DbWalletWithLegacy } from "@/types/wallet";
-
-function getBlockfrostConfig(network: 0 | 1): { key: string; baseUrl: string } | null {
-  if (network === 0) {
-    const key = env.BLOCKFROST_API_KEY_PREPROD ?? env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD;
-    if (!key) return null;
-    return { key, baseUrl: "https://cardano-preprod.blockfrost.io/api/v0" };
-  }
-  const key = env.BLOCKFROST_API_KEY_MAINNET ?? env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET;
-  if (!key) return null;
-  return { key, baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0" };
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   addCorsCacheBustingHeaders(res);
@@ -85,27 +75,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "DRep is not configured for this wallet" });
   }
 
-  const config = getBlockfrostConfig(network);
-  if (!config) {
-    return res.status(500).json({ error: `Missing Blockfrost API key for network ${network}` });
-  }
-
   try {
-    const response = await fetch(`${config.baseUrl}/governance/dreps/${encodeURIComponent(dRepId)}`, {
-      headers: { project_id: config.key },
-    });
-
-    if (response.status === 404) {
-      return res.status(200).json({ active: false, dRepId });
-    }
-    if (!response.ok) {
-      const body = await response.text();
-      console.error(`drepInfo Blockfrost error ${response.status}:`, body);
-      return res.status(500).json({ error: `Blockfrost returned ${response.status}` });
-    }
-
-    const data = (await response.json()) as { active?: boolean };
-    return res.status(200).json({ active: data.active === true, dRepId });
+    // The same probe the transaction review pipeline runs before it lets a
+    // draft vote (`src/lib/governance/drep-status.ts`); a never-registered
+    // DRep (Blockfrost 404) comes back inactive rather than as a failure.
+    const status = await fetchDrepStatus(getProvider(network), dRepId);
+    return res.status(200).json({ active: status.active, dRepId });
   } catch (e) {
     console.error("drepInfo error:", e);
     return res.status(500).json({ error: "Failed to fetch DRep info" });

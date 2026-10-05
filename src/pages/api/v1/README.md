@@ -690,3 +690,30 @@ is unchanged in both cases:
 - **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
   same signer-or-owner check every ballot procedure in the tRPC router already applies, so
   the REST path is no more permissive than the app's own UI.
+
+### Task Board
+
+#### `tasks.ts` - GET `/api/v1/tasks`
+
+- **Purpose**: A wallet's project task board with each task's derived payout state (backs the `task_list` MCP tool)
+- **Authentication**: Required (JWT Bearer token). Human signer/owner, or a bot key with any granted wallet access (observer is enough)
+- **Query Parameters**:
+  - `walletId`: Wallet identifier
+  - `address`: Requester address (must match JWT payload)
+  - `status`: Optional column filter (`Backlog`, `InProgress`, `InReview`, `Done`)
+  - `payable`: Optional `true` to return only tasks that can be paid right now
+- **Response**: `{ tasks, count, payableCount }` — recipients in base units; `payout` carries `state`, `payable`, `blocker` and the pending `transactionId`; `payableCount` is wallet-wide before filters
+- **Error Handling**: 400 (validation), 401 (auth), 403 (address mismatch / not a signer / bot not granted), 404 (wallet), 500 (server)
+
+#### `taskUpsert.ts` - POST `/api/v1/taskUpsert`
+
+- **Purpose**: Create a task, or update and/or move an existing one (backs the `task_upsert` MCP tool). Records a task only; creates no transaction
+- **Authentication**: Required (JWT Bearer token). Human wallet JWTs only — bot keys receive 403
+- **Request Body**:
+  - `walletId`: Wallet identifier
+  - `taskId`: Omit to create (then `title` is required)
+  - `title`, `description`, `priority`, `assigneeAddress`, `dueDate` (ISO or `null`)
+  - `status`, `position`: Column and index; on an existing task these move it
+  - `recipients`: Display units (`{ address, ada?, assets?: [{ unit, quantity }] }`), converted to base units with the token's registered decimals; replaces the task's recipient list
+- **Response**: `201 { task, created: true }` or `200 { task, created: false }`
+- **Error Handling**: 400 (validation, `INVALID_SPEC` recipients), 401 (auth), 403 (not a signer / bot key), 404 (wallet or task), 409 (task locked by a pending or paid payout), 413 (body), 500 (server)

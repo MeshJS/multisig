@@ -4,6 +4,7 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
+import { markPayoutsPaid } from "@/lib/task-payout/sync";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import {
@@ -518,6 +519,19 @@ export default async function handler(
 
     if (!updatedTransaction) {
       return res.status(500).json({ error: "Failed to load updated transaction state" });
+    }
+
+    // A task-board payout that just reached the chain: flip its task links
+    // to Paid. Best-effort like the notifications below.
+    if (nextState === 1 && transaction.state !== 1) {
+      try {
+        await markPayoutsPaid(db, {
+          transactionId,
+          txHash: updatedTransaction.txHash ?? finalTxHash ?? null,
+        });
+      } catch (error: unknown) {
+        console.error("Failed to mark task payouts paid", toError(error));
+      }
     }
 
     // The witness is persisted on both the 200 and 502 paths below, so the

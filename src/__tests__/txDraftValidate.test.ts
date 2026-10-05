@@ -229,6 +229,38 @@ describe("validateDraft votes", () => {
     expect(send.map((i) => i.code)).not.toContain("vote-drep-missing");
   });
 
+  test("vote-drep-unregistered fires only on an explicit false registration state", () => {
+    const draft = voteOnlyDraft();
+    const unregistered = validateDraft(draft, {
+      network: 0,
+      hasDrepContext: true,
+      drepRegistered: false,
+    });
+    expect(unregistered).toEqual([
+      expect.objectContaining({
+        level: "error",
+        code: "vote-drep-unregistered",
+        message: expect.stringContaining("not registered as a DRep"),
+      }),
+    ]);
+    expect(unregistered[0]!.outputId).toBeUndefined(); // tx-level issue
+
+    expect(
+      codes(validateDraft(draft, { network: 0, hasDrepContext: true, drepRegistered: true })),
+    ).toEqual([]);
+    // Unknown state (not fetched — the builder canvas) never blocks.
+    expect(codes(validateDraft(draft, { network: 0, hasDrepContext: true }))).toEqual([]);
+
+    // Without votes the state is irrelevant.
+    const send = validateDraft(createDraft("d1"), { network: 0, drepRegistered: false });
+    expect(codes(send)).not.toContain("vote-drep-unregistered");
+
+    // No DRep identity at all is reported once, as vote-drep-missing.
+    expect(
+      codes(validateDraft(draft, { network: 0, hasDrepContext: false, drepRegistered: false })),
+    ).toEqual(["vote-drep-missing"]);
+  });
+
   test("duplicate-vote fires when two votes target the same action", () => {
     const duplicated = addVote(voteOnlyDraft(), {
       ...voteBase,
@@ -353,6 +385,71 @@ describe("validateDraft certificates", () => {
         }),
       ),
     ).toContain("insufficient-funds");
+  });
+
+  describe("on-chain registration state", () => {
+    const registerAndDelegate = addStakeAction(createDraft("d1"), {
+      type: "registerAndDelegate",
+      poolId: POOL_ID,
+    }).draft;
+    const registerOnly = addCertificate(createDraft("d1"), {
+      kind: "RegisterStake",
+    }).draft;
+    const deregisterOnly = addCertificate(createDraft("d1"), {
+      kind: "DeregisterStake",
+    }).draft;
+    const active = { network: 0, hasStakeContext: true, stakeAccountActive: true };
+    const inactive = { network: 0, hasStakeContext: true, stakeAccountActive: false };
+
+    test("delegate-only on an unregistered credential is an error", () => {
+      const issues = validateDraft(delegationDraft(POOL_ID), inactive);
+      expect(issues).toEqual([
+        expect.objectContaining({
+          level: "error",
+          code: "cert-delegate-unregistered",
+          message: expect.stringContaining("RegisterStake"),
+        }),
+      ]);
+    });
+
+    test("register + delegate on an unregistered credential passes", () => {
+      expect(validateDraft(registerAndDelegate, inactive)).toEqual([]);
+    });
+
+    test("delegate-only on a registered credential passes", () => {
+      expect(validateDraft(delegationDraft(POOL_ID), active)).toEqual([]);
+    });
+
+    test("registering an already-registered credential is an error", () => {
+      expect(codes(validateDraft(registerOnly, active))).toEqual([
+        "cert-already-registered",
+      ]);
+      expect(codes(validateDraft(registerAndDelegate, active))).toEqual([
+        "cert-already-registered",
+      ]);
+    });
+
+    test("deregistering an unregistered credential is an error", () => {
+      expect(codes(validateDraft(deregisterOnly, inactive))).toEqual([
+        "cert-deregister-unregistered",
+      ]);
+      expect(validateDraft(deregisterOnly, active)).toEqual([]);
+    });
+
+    test("unknown state skips every registration check", () => {
+      const unknown = { network: 0, hasStakeContext: true };
+      expect(validateDraft(delegationDraft(POOL_ID), unknown)).toEqual([]);
+      expect(validateDraft(registerOnly, unknown)).toEqual([]);
+      expect(validateDraft(deregisterOnly, unknown)).toEqual([]);
+    });
+
+    test("cert-less drafts never emit registration issues", () => {
+      const send = draftWithOutput(realTestAddresses.address1, [
+        { unit: "lovelace", quantity: "2000000" },
+      ]);
+      expect(validateDraft(send, inactive)).toEqual([]);
+      expect(validateDraft(send, active)).toEqual([]);
+    });
   });
 
   test("RegisterStake deposit counts toward the lovelace requirement", () => {

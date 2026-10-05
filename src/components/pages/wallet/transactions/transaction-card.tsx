@@ -58,6 +58,7 @@ import {
 import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
 import useProposalTitles from "@/hooks/useProposalTitles";
 import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
+import PayoutTasksBadge from "@/components/pages/wallet/tasks/payout-tasks-badge";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -761,7 +762,8 @@ export default function TransactionCard({
   
   return (
     <Card
-      className="self-start overflow-hidden w-full"
+      id={`tx-${transaction.id}`}
+      className="self-start overflow-hidden w-full scroll-mt-24"
       data-testid={`tx-card-${transaction.id}`}
     >
       {broadcastDone && (
@@ -770,8 +772,11 @@ export default function TransactionCard({
       <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
         <div className="flex flex-row items-start w-full">
           <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
-            <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
+            <CardTitle className="group flex flex-wrap items-center gap-2 text-base sm:text-lg break-words">
               {transaction.description}
+              {appWallet && (
+                <PayoutTasksBadge txJson={txJson} walletId={appWallet.id} />
+              )}
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
               {dateToFormatted(transaction.createdAt)}
