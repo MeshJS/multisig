@@ -177,7 +177,7 @@ describe("review-card MCP App layout and theming", () => {
       REVIEW_CARD_HTML.indexOf("function render()"),
     );
     for (const field of ["wallet.name", "r.label", "r.address", "a.label", "a.title", "a.detail", "s.description", "s.metadataMessage", "warnings[w]"]) {
-      expect(cardSource).toMatch(new RegExp(`esc\\([^;]*${field.replace(/[.[\]]/g, "\\$&")}`));
+      expect(cardSource).toMatch(new RegExp(`esc\\([^;]*${field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     }
     // Layout: no fixed sizes on the drawn card; rows wrap and long values break.
     expect(REVIEW_CARD_HTML).toContain(".card { display: flex; flex-direction: column; gap: 12px; min-width: 0;");

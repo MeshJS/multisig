@@ -33,6 +33,7 @@
 export const ESM_TESTS = [
   'apiSecurity',
   'botBallotsUpsert',
+  'botSetupGuide',
   'governanceActiveProposals',
   'mcpConnections',
   'og',
