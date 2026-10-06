@@ -8,14 +8,14 @@ import { validatePlutusData } from "./plutus-data";
 export const PLUTUS_BUILD_UNSUPPORTED =
   "Plutus script inputs and collateral cannot be built yet. Transaction encoding is not enabled.";
 
-const utxoRefSchema = z
+export const utxoRefSchema = z
   .object({
     txHash: z.string().regex(/^[0-9a-fA-F]{64}$/),
     outputIndex: z.number().int().min(0).max(65535),
   })
   .strict();
 
-const scriptSchema = z
+export const scriptSchema = z
   .object({
     version: z.enum(["V1", "V2", "V3"]),
     cbor: z.string().regex(/^(?:[0-9a-fA-F]{2})+$/),
@@ -42,6 +42,25 @@ export function validatePlutusDraft(draft: TxDraft): DraftIssue[] {
   const seen = new Set<string>();
   for (const input of draft.scriptInputs ?? []) {
     const anchor = { inputId: input.id, inputRef: input.utxoRef };
+    const refKey = (ref: typeof input.utxoRef) =>
+      `${ref.txHash.toLowerCase()}#${ref.outputIndex}`;
+    if (
+      (draft.collateral &&
+        refKey(draft.collateral.utxoRef) === refKey(input.utxoRef)) ||
+      (draft.utxoSelection.mode === "manual" &&
+        draft.utxoSelection.utxos.some(
+          (utxo) => refKey(utxo.input) === refKey(input.utxoRef),
+        ))
+    ) {
+      issues.push({
+        ...anchor,
+        level: "error",
+        code: "script-input-overlap",
+        field: "utxoRef",
+        message:
+          "A script input cannot also be funding or collateral. Remove the overlapping selection.",
+      });
+    }
     if (!utxoRefSchema.safeParse(input.utxoRef).success) {
       issues.push({
         ...anchor,
@@ -96,6 +115,23 @@ export function validatePlutusDraft(draft: TxDraft): DraftIssue[] {
         message: `Redeemer: ${redeemer.error}`,
       });
     }
+  }
+  if (
+    draft.collateral &&
+    draft.utxoSelection.mode === "manual" &&
+    draft.utxoSelection.utxos.some(
+      (utxo) =>
+        utxo.input.txHash.toLowerCase() ===
+          draft.collateral!.utxoRef.txHash.toLowerCase() &&
+        utxo.input.outputIndex === draft.collateral!.utxoRef.outputIndex,
+    )
+  ) {
+    issues.push({
+      level: "error",
+      code: "script-input-overlap",
+      field: "collateral",
+      message: "Collateral cannot also be a normal funding input.",
+    });
   }
   if (
     draft.collateral !== undefined &&

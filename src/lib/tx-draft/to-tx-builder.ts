@@ -1,25 +1,11 @@
-import { keepRelevant, type MeshTxBuilder, type UTxO } from "@meshsdk/core";
+import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
-import { materializeOutputAssets, requiredAssetTotals } from "./assets";
+import { materializeOutputAssets } from "./assets";
 import { hasScriptSpendDraftData } from "./mutations";
 import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
 import { validatePlutusData } from "./plutus-data";
-
-/**
- * Lovelace floor for auto UTxO selection when the draft casts votes or
- * carries staking certificates: such drafts can have no output totals, so
- * `keepRelevant` would select nothing and the fee would be unfundable.
- * Mirrors the governance vote button's fixed 5 ADA buffer.
- */
-const ACTION_FEE_FLOOR_LOVELACE = 5_000_000n;
-
-/**
- * Extra headroom per RegisterStake certificate: the 2 ADA stake key deposit
- * is paid from the inputs at `complete()` but appears in no output, so auto
- * selection has to be told about it explicitly.
- */
-const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
+import { selectDraftFunding } from "./funding";
 
 /**
  * How the source's inputs are witnessed: the multisig spends script inputs
@@ -132,35 +118,16 @@ export function applyDraftToTxBuilder(
     throw new Error("Delegation certificate has no pool id");
   }
 
-  let selectedUtxos: UTxO[];
-  if (draft.utxoSelection.mode === "manual") {
-    selectedUtxos = draft.utxoSelection.utxos;
-  } else {
-    const assetMap = new Map<string, string>();
-    for (const [unit, quantity] of requiredAssetTotals({
+  const selectedUtxos = selectDraftFunding(
+    {
       ...draft,
       outputs: draft.outputs.map((output, index) => ({
         ...output,
         assets: preparedOutputs[index]!.amount,
       })),
-    })) {
-      assetMap.set(unit, quantity.toString());
-    }
-    if (draft.votes.length > 0 || draft.certificates.length > 0) {
-      const registerCount = draft.certificates.filter(
-        (cert) => cert.kind === "RegisterStake",
-      ).length;
-      const required =
-        BigInt(assetMap.get("lovelace") ?? "0") +
-        STAKE_KEY_DEPOSIT_LOVELACE * BigInt(registerCount);
-      const floored =
-        required < ACTION_FEE_FLOOR_LOVELACE
-          ? ACTION_FEE_FLOOR_LOVELACE
-          : required;
-      assetMap.set("lovelace", floored.toString());
-    }
-    selectedUtxos = keepRelevant(assetMap, ctx.availableUtxos);
-  }
+    },
+    ctx.availableUtxos,
+  );
   if (selectedUtxos.length === 0) {
     throw new Error("Insufficient funds: no UTxOs selected");
   }

@@ -77,10 +77,12 @@ export default function OutputInspector({
   appWallet,
   output,
   issues,
+  scriptAssets = [],
 }: {
   appWallet: Wallet;
   output: DraftOutput;
   issues: DraftIssue[];
+  scriptAssets?: AssetQuantity[];
 }) {
   const { labelAddress } = useAddressLabels(appWallet);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
@@ -117,15 +119,16 @@ export default function OutputInspector({
     const held = new Set(output.assets.map((asset) => asset.unit));
     const options: { unit: string; name: string }[] = [];
     if (!held.has("lovelace")) options.push({ unit: "lovelace", name: "ADA" });
-    for (const asset of walletAssets) {
+    for (const asset of [...walletAssets, ...scriptAssets]) {
       if (asset.unit === "lovelace" || held.has(asset.unit)) continue;
+      held.add(asset.unit);
       options.push({
         unit: asset.unit,
         name: walletAssetMetadata[asset.unit]?.assetName || asset.unit,
       });
     }
     return options;
-  }, [output.assets, walletAssets, walletAssetMetadata]);
+  }, [output.assets, walletAssets, walletAssetMetadata, scriptAssets]);
 
   const setAssets = (assets: AssetQuantity[]) =>
     updateOutput(output.id, { assets });

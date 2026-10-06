@@ -117,7 +117,16 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
                             ? { field: "inlineDatum" as const }
                             : {}),
                         }
-                      : { kind: "tx" },
+                      : {
+                          kind: "tx",
+                          inputId: issue.inputId,
+                          ...(issue.field === "utxoRef" ||
+                          issue.field === "script" ||
+                          issue.field === "datumSource" ||
+                          issue.field === "redeemer"
+                            ? { field: issue.field }
+                            : {}),
+                        },
                   );
                 }}
               >

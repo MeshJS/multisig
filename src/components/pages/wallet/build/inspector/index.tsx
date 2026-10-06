@@ -40,7 +40,14 @@ export default function Inspector({
           key={selectedOutput.id}
           appWallet={appWallet}
           output={selectedOutput}
-          issues={issues.filter((issue) => issue.outputId === selectedOutput.id)}
+          scriptAssets={source.scriptInputs.resolutions.flatMap((result) =>
+            result.issues.length === 0
+              ? (result.utxo?.output.amount ?? [])
+              : [],
+          )}
+          issues={issues.filter(
+            (issue) => issue.outputId === selectedOutput.id,
+          )}
         />
       ) : (
         <TxInspector

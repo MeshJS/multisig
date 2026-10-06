@@ -56,7 +56,11 @@ import {
   sourcePrimaryAction,
   withSourceLabel,
 } from "@/lib/tx-draft/source";
-import { utxoFunds } from "@/lib/tx-draft/assets";
+import {
+  draftFundingTotals,
+  ordinaryFundingUtxos,
+} from "@/lib/tx-draft/funding";
+import { useDraftScriptInputs } from "@/hooks/useDraftScriptInputs";
 import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import {
   createOutputProvenance,
@@ -145,6 +149,17 @@ export default function PageBuild() {
   const setSource = useTxBuilderStore((state) => state.setSource);
   const syncEnvironment = useTxBuilderStore((state) => state.syncEnvironment);
   const touched = useTxBuilderStore((state) => state.touched);
+  const scriptInputs = useDraftScriptInputs(
+    draft,
+    network,
+    JSON.stringify([
+      appWallet?.id,
+      walletType,
+      walletName,
+      userAddress,
+      !!activeWallet,
+    ]),
+  );
 
   const [building, setBuilding] = useState(false);
   /** A test build (no signing/proposing) is in flight. */
@@ -260,8 +275,11 @@ export default function PageBuild() {
   );
   const availableUtxos = useMemo(
     () =>
-      isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? []),
-    [isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
+      ordinaryFundingUtxos(
+        draft,
+        isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? []),
+      ),
+    [draft, isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
   );
 
   const { data: pendingTransactions } =
@@ -308,19 +326,28 @@ export default function PageBuild() {
   // spendable in auto mode. Undefined while UTxOs are still loading so the
   // check doesn't produce a false "insufficient funds".
   const selectedFunds = useMemo(() => {
+    if (scriptInputs.loading) return undefined;
+    const resolved = scriptInputs.resolutions.flatMap((result) =>
+      result.utxo && result.issues.length === 0 ? [result.utxo] : [],
+    );
     if (draft.utxoSelection.mode === "manual") {
-      return utxoFunds(draft.utxoSelection.utxos);
+      return draftFundingTotals(draft, draft.utxoSelection.utxos, resolved);
     }
     if (isMultisigSource) {
-      return multisigAvailableUtxos.length > 0
-        ? utxoFunds(multisigAvailableUtxos)
+      return utxosReady
+        ? draftFundingTotals(draft, multisigAvailableUtxos, resolved)
         : undefined;
     }
     // A fetched empty list is a real "no funds"; undefined only while the
     // lookup hasn't succeeded (not started, loading, or errored).
-    return sourceUtxos.data ? utxoFunds(sourceUtxos.data) : undefined;
+    return sourceUtxos.data
+      ? draftFundingTotals(draft, sourceUtxos.data, resolved)
+      : undefined;
   }, [
-    draft.utxoSelection,
+    draft,
+    utxosReady,
+    scriptInputs.loading,
+    scriptInputs.resolutions,
     isMultisigSource,
     multisigAvailableUtxos,
     sourceUtxos.data,
@@ -415,14 +442,26 @@ export default function PageBuild() {
 
   const issues = useMemo(
     () =>
-      validateDraft(draft, {
-        network,
-        selectedFunds,
-        hasDrepContext,
-        hasStakeContext,
-        multisigAddress: appWallet?.address,
-        connectedAddress,
-      }),
+      [
+        ...validateDraft(draft, {
+          network,
+          selectedFunds,
+          hasDrepContext,
+          hasStakeContext,
+          multisigAddress: appWallet?.address,
+          connectedAddress,
+        }),
+        ...scriptInputs.issues,
+      ].filter(
+        (issue, index, all) =>
+          all.findIndex(
+            (other) =>
+              other.code === issue.code &&
+              other.inputId === issue.inputId &&
+              other.outputId === issue.outputId &&
+              other.field === issue.field,
+          ) === index,
+      ),
     [
       draft,
       network,
@@ -431,6 +470,7 @@ export default function PageBuild() {
       hasStakeContext,
       appWallet?.address,
       connectedAddress,
+      scriptInputs.issues,
     ],
   );
   const errors = issues.filter((issue) => issue.level === "error");
@@ -1142,6 +1182,7 @@ export default function PageBuild() {
             appWallet={appWallet}
             issues={visibleIssues}
             source={{
+              scriptInputs,
               sourceAddress,
               sourceName: isMultisigSource
                 ? "Multisig"

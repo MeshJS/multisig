@@ -31,6 +31,8 @@ import SourcePicker, { type SourcePickerProps } from "../source-picker";
 import CertificateEditor from "./certificate-editor";
 import IssueList from "./issue-list";
 import VoteRationaleEditor from "./vote-rationale-editor";
+import ScriptInputsEditor from "./script-inputs-editor";
+import type { DraftScriptInputsState } from "@/hooks/useDraftScriptInputs";
 
 const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Yes: "text-green-500 dark:text-green-400",
@@ -40,6 +42,7 @@ const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
 
 /** Source facts the inspector needs beyond the picker itself. */
 export type TxInspectorSourceProps = {
+  scriptInputs: DraftScriptInputsState;
   /** Resolved source address; "" while unknown. */
   sourceAddress: string;
   /** Short name for the UTxO toggle ("Connected wallet", "Source address"). */
@@ -235,8 +238,7 @@ export default function TxInspector({
             })}
             <p className="text-[10px] text-muted-foreground">
               Changing a vote keeps its attached rationale unless cleared or
-              edited — editing uploads a new rationale document when you
-              build.
+              edited — editing uploads a new rationale document when you build.
             </p>
           </CollapsibleContent>
         </Collapsible>
@@ -291,6 +293,7 @@ export default function TxInspector({
         </CollapsibleContent>
       </Collapsible>
 
+      <ScriptInputsEditor state={source.scriptInputs} issues={issues} />
       <IssueList issues={issues} />
     </div>
   );

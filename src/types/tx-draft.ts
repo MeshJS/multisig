@@ -142,5 +142,9 @@ export type LoadableTxDraft = Omit<TxDraft, "scriptInputs"> &
 /** What the builder UI currently has selected (canvas card or edge click). */
 export type BuilderSelection =
   | { kind: "output"; outputId: string; field?: "inlineDatum" }
-  | { kind: "tx" }
+  | {
+      kind: "tx";
+      inputId?: string;
+      field?: "utxoRef" | "script" | "datumSource" | "redeemer";
+    }
   | null;

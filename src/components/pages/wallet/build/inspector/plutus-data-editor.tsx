@@ -12,7 +12,7 @@ import {
 import { validatePlutusData } from "@/lib/tx-draft/plutus-data";
 import type { DraftPlutusData } from "@/types/tx-draft";
 
-/** Controlled editor shared by output datums and future input datum/redeemer fields. */
+/** Controlled editor shared by output datums, input datums, and redeemers. */
 export default function PlutusDataEditor({
   id,
   label,

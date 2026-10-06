@@ -1,6 +1,6 @@
 # Plutus Transaction Controls Implementation Plan
 
-Status: Phases 1–2 implemented; Phase 2 browser verification pending. Subsequent phases remain planned.
+Status: Phases 1–2 and Phase 3 input configuration implemented. Browser verification and pre-completion integration remain pending; Phases 4–7 remain planned.
 
 Owner: Andre  
 Suggested branch: `feat/plutus-transaction-controls`  
@@ -126,15 +126,26 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Depends on:** Phase 1; reuse Phase 2's editor.
 
-- [ ] Add Transaction → Advanced → Script inputs. Resolve a supplied UTxO reference through the existing provider, then show its address, assets, datum information, and configuration.
-- [ ] Validate the on-chain payment script hash against the supplied script and language using Mesh helpers. Check network, reference shape, live availability, and duplicate input references.
-- [ ] Support the agreed inline/supplied datum-source modes. Read inline data from the resolved UTxO; validate supplied datum hashes against chain data. Do not trust pasted amounts, addresses, or datum hashes as chain truth.
-- [ ] Require a valid redeemer for each supported spend and attach errors to that input. Distinguish data-format validity from successful contract evaluation.
-- [ ] Extend funding calculations to include explicit script-input value once, then select only the remaining needed funding inputs. Preserve current manual-selection semantics.
-- [ ] Keep Plutus inputs separate from automatic native-script/pubkey funding selection. Enforce the product policy that collateral is not also selected as a normal input, and keep reference inputs distinct if subsequently supported.
-- [ ] Revalidate resolved data immediately before completion and after source/network changes; reject stale async results for a superseded draft.
+- [x] Add Transaction → Advanced → Script inputs. Resolve a supplied UTxO reference through the existing provider, then show its address, assets, datum information, and configuration.
+- [x] Validate the on-chain payment script hash against the supplied script and language using Mesh helpers. Check network, reference shape, live availability, and duplicate input references.
+- [x] Support the agreed inline/supplied datum-source modes. Read inline data from the resolved UTxO; validate supplied datum hashes against chain data. Do not trust pasted amounts, addresses, or datum hashes as chain truth.
+- [x] Require a valid redeemer for each supported spend and attach errors to that input. Distinguish data-format validity from successful contract evaluation.
+- [x] Extend funding calculations to include explicit script-input value once, then select only the remaining needed funding inputs. Preserve current manual-selection semantics.
+- [x] Keep Plutus inputs separate from automatic native-script/pubkey funding selection. Enforce the product policy that collateral is not also selected as a normal input, and keep reference inputs distinct if subsequently supported.
+- [x] Revalidate resolved data after draft/source/account/network changes; reject stale async results for a superseded draft.
+- [ ] Connect fresh resolution immediately before Plutus completion when Phase 5 enables encoding. The current shared builder gate rejects every script spend before completion; UI snapshots must never become build inputs.
 
 **Acceptance:** mixed native-script/pubkey funding and Plutus spending can be represented without misclassifying inputs or counting funds twice. Tests cover duplicate refs, mismatched script/datum hashes, spent inputs, unsupported versions, and stale resolution results.
+
+### Phase 3 implementation notes
+
+- Added Transaction → Advanced → Script inputs with stable input IDs, transaction hash/index fields, explicit V1/V2/V3 selection, already-parameterized script CBOR, datum-source selection, and the shared datum/redeemer editor. Chain address, exact asset quantities, datum information, decoded inline data, per-input issues, and a recheck action are shown. Problem links reopen Advanced and focus the input field. Resolved script tokens are available in the output asset picker.
+- `resolve-script-inputs.ts` uses the installed Mesh script/data hashing helpers. Blockfrost's `fetchUTxOs` returns historical transaction outputs, including spent outputs, so resolution additionally finds the exact reference in `fetchAddressUTxOs`. Only the live result supplies address, amounts, and datum data. Provider failures, missing/spent refs, network mismatches, unsupported languages, script-hash mismatches, datum-hash mismatches, and invalid redeemers are blocking input issues.
+- Supported configuration: V1 with a supplied hash-matching datum; V2/V3 with either the actual inline datum or a supplied hash-matching datum. Datum-less spends and reference-script selection remain unsupported. V1 plus inline data is rejected, including inline data elsewhere in the configured transaction ([CIP-32](https://cips.cardano.org/cip/CIP-0032)). Data-format/hash validation does not claim contract evaluation success.
+- The debounced resolver belongs to the exact draft and environment; edits, source/account/network changes, removal, and explicit retry immediately hide old results and reject late responses. Nothing is persisted into editable intent. Every resolver invocation performs a new live lookup, with tests for a previously resolved input becoming spent. Phase 5 must call this uncached resolver with a current-revision guard immediately before completion, as recorded above.
+- Shared `funding.ts` counts explicit script value once, excludes script/collateral refs from ordinary automatic selection, and selects only remaining deficits including the existing fee headroom. Manual choices remain exact; overlaps are blocking rather than silently discarded. Existing native/pubkey builds use the same selection helper. Script value is included in the UI's sufficiency check, but Plutus encoding/proposal/sign/submit remains blocked until Phases 4–5. No new API/MCP write surface, runtime dependency, database migration, collateral creation, or witness behavior is introduced.
+- Upstream PRD reconciliation remains the recorded Phase 0 dependency; this slice follows the supplied plan.
+- Verification: 65 focused draft tests passed. The full CJS/ESM coverage run reported 1,690 passing tests and two existing skips; PowerShell redirected the Jest stderr summary as a `NativeCommandError`, so the wrapper returned 1 despite both suites passing. TypeScript passed. ESLint still fails while loading the existing compatibility config with a circular React plugin structure. Added Playwright coverage for configuration, chain display, issue focus, spent-input recheck, removal, and the disabled build gate; execution remains blocked because `CI_CONTEXT_PATH` is not configured. No on-chain transaction was attempted.
 
 ## Phase 4 — Add collateral selection and signature requirements
 
