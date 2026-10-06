@@ -2,6 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals
 import type { PrismaClient } from "@prisma/client";
 
 const submitTxMock = jest.fn<(txCbor: string) => Promise<string>>();
+const readinessMock = jest.fn<() => Promise<{ ready: boolean }>>().mockResolvedValue({ ready: true });
+jest.mock("@/utils/transactionReadiness", () => ({ transactionReadiness: readinessMock }));
 const enqueueMock = jest
   .fn<(...args: unknown[]) => Promise<unknown[]>>()
   .mockResolvedValue([]);
@@ -55,6 +57,7 @@ describe("createPendingMultisigTransaction", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     submitTxMock.mockResolvedValue("submitted-hash");
+    readinessMock.mockResolvedValue({ ready: true });
   });
 
   it("defaults pending transactions to signed by the proposer", async () => {
@@ -68,6 +71,14 @@ describe("createPendingMultisigTransaction", () => {
         signedAddresses: ["addr_test_proposer"],
       }),
     });
+  });
+
+  it("persists pending when threshold is met but the collateral owner has not signed", async () => {
+    readinessMock.mockResolvedValue({ ready: false });
+    const db = makeDb();
+    await createPendingMultisigTransaction(db, { ...baseArgs, wallet: { type: "any", numRequiredSigners: 1 } });
+    expect(submitTxMock).not.toHaveBeenCalled();
+    expect(db.transaction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ state: 0, txCbor: baseArgs.txCbor }) });
   });
 
   it("allows server-built transactions to start with no signed addresses", async () => {

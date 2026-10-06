@@ -6,7 +6,8 @@ import {
   generateNonce,
 } from "@meshsdk/core";
 import useMeshWallet from "@/hooks/useMeshWallet";
-import { csl } from "@meshsdk/core-csl";
+import CollateralReview from "./collateral-review";
+import { collateralRefs } from "@/lib/tx-draft/collateral";
 import useActiveWallet from "@/hooks/useActiveWallet";
 
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
@@ -67,6 +68,11 @@ import {
   shouldSubmitMultisigTx,
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
+import {
+  hasVerifiedPaymentWitness,
+  requiredSignerKeyHashes,
+  transactionReadiness,
+} from "@/utils/transactionReadiness";
 /**
  * Renders the voting rationale for a single vote in a pending transaction.
  * Prefers the DB-cached comment (saved when the ballot rationale was drafted /
@@ -263,6 +269,19 @@ export default function TransactionCard({
   const { toast } = useToast();
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
+  const [extraReadiness, setExtraReadiness] = useState<{
+    txHex: string;
+    network: number;
+    ready: boolean;
+  }>();
+  const hasExtraKeyRequirements = useMemo(() => {
+    try {
+      return collateralRefs(transaction.txCbor).length > 0 ||
+        requiredSignerKeyHashes(transaction.txCbor).length > 0;
+    } catch {
+      return true;
+    }
+  }, [transaction.txCbor]);
   const blockchainProvider =getProvider(network);
 
   const walletAssetMetadata = useWalletsStore(
@@ -451,22 +470,10 @@ export default function TransactionCard({
       }
       let signedTx = filterWitnessesToScripts(mergeResult.txHex);
 
-      // sanity check
-      const tx = csl.Transaction.from_hex(signedTx);
-      const vkeys = tx.witness_set().vkeys();
-      const len = vkeys?.len() || 0;
-
-      const signerAmount = transaction.signedAddresses.length + 1;
-
-      if (len % signerAmount != 0) {
-        setLoading(false);
-        toast({
-          title: "Error",
-          description: `Error signing transaction. Please try again. Not matching signer amount multiple.`,
-          duration: 5000,
-          variant: "destructive",
-        });
-        return;
+      if (!hasVerifiedPaymentWitness(signedTx, userAddress)) {
+        throw new Error(
+          "The wallet did not return your authorized payment-key signature. Reconnect the correct account and retry.",
+        );
       }
 
       const signedAddresses = Array.from(
@@ -474,7 +481,13 @@ export default function TransactionCard({
       );
 
       let txHash = "";
-      const submitTx = shouldSubmitMultisigTx(appWallet, signedAddresses.length);
+      const readiness = await transactionReadiness(
+        signedTx,
+        shouldSubmitMultisigTx(appWallet, signedAddresses.length),
+        blockchainProvider,
+        network,
+      );
+      const submitTx = readiness.ready;
 
       if (submitTx) {
         const submitResult = await submitTxWithScriptRecovery({
@@ -755,7 +768,10 @@ export default function TransactionCard({
   };
   
   const requiredCount = getRequiredCount();
-  const isComplete = signedCount >= requiredCount;
+  const isComplete = signedCount >= requiredCount &&
+    (!hasExtraKeyRequirements ||
+      (extraReadiness?.txHex === transaction.txCbor &&
+        extraReadiness.network === network && extraReadiness.ready));
   const progressPercentage = Math.min((signedCount / signersCount) * 100, 100);
   const thresholdPercentage = (requiredCount / signersCount) * 100;
   const pendingCount = signersCount - signedCount - rejectedCount;
@@ -1257,8 +1273,15 @@ export default function TransactionCard({
         </div>
       </CardContent>
 
+      {transaction.state === 0 && (
+        <CollateralReview
+          txHex={transaction.txCbor}
+          network={network}
+          onReadiness={setExtraReadiness}
+        />
+      )}
       {userAddress &&
-        !transaction.signedAddresses.includes(userAddress) &&
+        (!transaction.signedAddresses.includes(userAddress) || (transaction.state === 0 && hasExtraKeyRequirements)) &&
         !transaction.rejectedAddresses.includes(userAddress) && (
           <CardFooter className="flex items-center gap-2 border-t bg-muted/50 px-4 sm:px-6 py-3">
             <Button

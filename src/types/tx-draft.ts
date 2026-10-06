@@ -145,6 +145,6 @@ export type BuilderSelection =
   | {
       kind: "tx";
       inputId?: string;
-      field?: "utxoRef" | "script" | "datumSource" | "redeemer";
+      field?: "utxoRef" | "script" | "datumSource" | "redeemer" | "collateral";
     }
   | null;

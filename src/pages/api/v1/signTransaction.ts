@@ -14,7 +14,8 @@ import {
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
 import { resolvePaymentKeyHash, resolveStakeKeyHash } from "@meshsdk/core";
-import { calculateTxHash } from "@meshsdk/core-csl";
+import { resolveTxHash as calculateTxHash } from "@meshsdk/core-cst";
+import { transactionReadiness } from "@/utils/transactionReadiness";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { getBotWalletAccess } from "@/lib/auth/botAccess";
@@ -420,15 +421,23 @@ export default async function handler(
       try {
         const network = resolveNetworkId();
         const provider = getProvider(network);
-        const submitResult = await submitTxWithScriptRecovery({
-          txHex: txHexForUpdate,
-          submitter: provider,
-          appWallet: wallet,
+        const readiness = await transactionReadiness(
+          txHexForUpdate,
+          true,
+          provider,
           network,
-        });
-        finalTxHash = submitResult.txHash;
-        txHexForUpdate = submitResult.txHex;
-        nextState = 1;
+        );
+        if (readiness.ready) {
+          const submitResult = await submitTxWithScriptRecovery({
+            txHex: txHexForUpdate,
+            submitter: provider,
+            appWallet: wallet,
+            network,
+          });
+          finalTxHash = submitResult.txHash;
+          txHexForUpdate = submitResult.txHex;
+          nextState = 1;
+        }
       } catch (error: unknown) {
         const err = toError(error);
         console.error("Error submitting signed transaction", {

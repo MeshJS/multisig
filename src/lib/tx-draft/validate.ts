@@ -23,6 +23,7 @@ export type DraftIssueCode =
   | "script-input-datum-invalid"
   | "script-input-redeemer-invalid"
   | "collateral-ref-invalid"
+  | "collateral-unavailable"
   | "plutus-build-unsupported"
   | "no-outputs"
   | "missing-address"

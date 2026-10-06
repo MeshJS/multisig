@@ -61,6 +61,7 @@ import {
   ordinaryFundingUtxos,
 } from "@/lib/tx-draft/funding";
 import { useDraftScriptInputs } from "@/hooks/useDraftScriptInputs";
+import { useDraftCollateral } from "@/hooks/useDraftCollateral";
 import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import {
   createOutputProvenance,
@@ -149,6 +150,12 @@ export default function PageBuild() {
   const setSource = useTxBuilderStore((state) => state.setSource);
   const syncEnvironment = useTxBuilderStore((state) => state.syncEnvironment);
   const touched = useTxBuilderStore((state) => state.touched);
+  const collateral = useDraftCollateral(
+    draft,
+    activeWallet,
+    network,
+    JSON.stringify([appWallet?.id, walletType, walletName, userAddress]),
+  );
   const scriptInputs = useDraftScriptInputs(
     draft,
     network,
@@ -452,6 +459,7 @@ export default function PageBuild() {
           connectedAddress,
         }),
         ...scriptInputs.issues,
+        ...collateral.issues,
       ].filter(
         (issue, index, all) =>
           all.findIndex(
@@ -471,6 +479,7 @@ export default function PageBuild() {
       appWallet?.address,
       connectedAddress,
       scriptInputs.issues,
+      collateral.issues,
     ],
   );
   const errors = issues.filter((issue) => issue.level === "error");
@@ -1183,6 +1192,7 @@ export default function PageBuild() {
             issues={visibleIssues}
             source={{
               scriptInputs,
+              collateral,
               sourceAddress,
               sourceName: isMultisigSource
                 ? "Multisig"

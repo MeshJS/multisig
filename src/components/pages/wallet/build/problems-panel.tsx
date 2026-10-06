@@ -123,7 +123,8 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
                           ...(issue.field === "utxoRef" ||
                           issue.field === "script" ||
                           issue.field === "datumSource" ||
-                          issue.field === "redeemer"
+                          issue.field === "redeemer" ||
+                          issue.field === "collateral"
                             ? { field: issue.field }
                             : {}),
                         },

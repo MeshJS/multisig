@@ -33,6 +33,8 @@ import IssueList from "./issue-list";
 import VoteRationaleEditor from "./vote-rationale-editor";
 import ScriptInputsEditor from "./script-inputs-editor";
 import type { DraftScriptInputsState } from "@/hooks/useDraftScriptInputs";
+import type { DraftCollateralState } from "@/hooks/useDraftCollateral";
+import CollateralEditor from "./collateral-editor";
 
 const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Yes: "text-green-500 dark:text-green-400",
@@ -43,6 +45,7 @@ const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
 /** Source facts the inspector needs beyond the picker itself. */
 export type TxInspectorSourceProps = {
   scriptInputs: DraftScriptInputsState;
+  collateral: DraftCollateralState;
   /** Resolved source address; "" while unknown. */
   sourceAddress: string;
   /** Short name for the UTxO toggle ("Connected wallet", "Source address"). */
@@ -294,6 +297,7 @@ export default function TxInspector({
       </Collapsible>
 
       <ScriptInputsEditor state={source.scriptInputs} issues={issues} />
+      <CollateralEditor state={source.collateral} />
       <IssueList issues={issues} />
     </div>
   );

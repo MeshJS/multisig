@@ -56,10 +56,11 @@ jest.mock("@meshsdk/core", () => ({
   resolvePaymentKeyHash: resolvePaymentKeyHashMock,
 }));
 
-jest.mock("@meshsdk/core-csl", () => ({
+jest.mock("@meshsdk/core-cst", () => ({
   __esModule: true,
-  calculateTxHash: calculateTxHashMock,
+  resolveTxHash: calculateTxHashMock,
 }));
+jest.mock("@/utils/transactionReadiness", () => ({ transactionReadiness: jest.fn(async () => ({ ready: true })) }));
 
 jest.mock("@/utils/txSignUtils", () => ({
   __esModule: true,

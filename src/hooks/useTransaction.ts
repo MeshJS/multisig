@@ -14,6 +14,10 @@ import {
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { applyMetadataMessage } from "@/lib/tx-draft/metadata";
 import { getProvider } from "@/utils/get-provider";
+import {
+  hasVerifiedPaymentWitness,
+  transactionReadiness,
+} from "@/utils/transactionReadiness";
 
 export default function useTransaction() {
   const ctx = api.useUtils();
@@ -174,6 +178,11 @@ export default function useTransaction() {
         return;
       }
       let signedTx = filterWitnessesToScripts(mergeResult.txHex);
+      if (!hasVerifiedPaymentWitness(signedTx, userAddress)) {
+        throw new Error(
+          "The wallet did not sign with your authorized payment key. Reconnect the correct account and retry.",
+        );
+      }
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);
@@ -182,10 +191,13 @@ export default function useTransaction() {
 
       //Todo refactor to as util with Signable.
 
-      const submitTx = shouldSubmitMultisigTx(
-        appWallet,
-        signedAddresses.length,
+      const readiness = await transactionReadiness(
+        signedTx,
+        shouldSubmitMultisigTx(appWallet, signedAddresses.length),
+        getProvider(network),
+        network,
       );
+      const submitTx = readiness.ready;
 
       if (submitTx) {
         const blockchainProvider = getProvider(network);

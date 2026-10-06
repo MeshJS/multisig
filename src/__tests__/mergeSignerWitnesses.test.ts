@@ -113,7 +113,7 @@ describe("mergeSignerWitnesses", () => {
 });
 
 describe("filterWitnessesToScripts", () => {
-  it("drops vkeys not required by the native script while preserving the body", () => {
+  it("retains verified key-input witnesses outside the native script while preserving the body", () => {
     // Build a tx whose witness set carries a native script requiring signer A,
     // plus vkey witnesses from A (required) and B (extraneous).
     const A = csl.PrivateKey.generate_ed25519();
@@ -167,10 +167,10 @@ describe("filterWitnessesToScripts", () => {
 
     const filtered = filterWitnessesToScripts(txHex);
 
-    // B is dropped, A kept, body unchanged.
+    // B may own collateral or a key input; valid witnesses must survive.
     expect(
       csl.Transaction.from_hex(filtered).witness_set().vkeys()?.len(),
-    ).toBe(1);
+    ).toBe(2);
     expect(resolveTxHash(filtered)).toEqual(resolveTxHash(txHex));
     const keptPub = csl.Transaction.from_hex(filtered)
       .witness_set()

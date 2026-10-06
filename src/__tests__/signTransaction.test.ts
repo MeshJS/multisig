@@ -358,6 +358,9 @@ class MockTransaction {
 }
 
 const calculateTxHashMock = jest.fn<(hex: string) => string>();
+const readinessMock = jest.fn<() => Promise<{ ready: boolean }>>();
+jest.unstable_mockModule('@meshsdk/core-cst', () => ({ resolveTxHash: calculateTxHashMock }));
+jest.unstable_mockModule('@/utils/transactionReadiness', () => ({ transactionReadiness: readinessMock }));
 
 const cslMock = {
   Transaction: MockTransaction,
@@ -432,6 +435,8 @@ beforeEach(() => {
   addUniqueVkeyWitnessToTxMock.mockReset();
   resolvePaymentKeyHashMock.mockReset();
   calculateTxHashMock.mockReset();
+  readinessMock.mockReset();
+  readinessMock.mockResolvedValue({ ready: true });
   corsMock.mockReset();
   addCorsCacheBustingHeadersMock.mockReset();
   createCallerMock.mockReset();
@@ -528,6 +533,23 @@ afterAll(() => {
 });
 
 describe('signTransaction API route', () => {
+  it('records a valid member witness without broadcasting when collateral signing is incomplete', async () => {
+    const address = 'addr_test_member';
+    const record = { id: 'tx-collateral', walletId: 'wallet', state: 0, signedAddresses: [] as string[], rejectedAddresses: [] as string[], txCbor: 'stored-tx-hex', txHash: null, txJson: '{}' };
+    verifyJwtMock.mockReturnValue({ address });
+    walletGetWalletMock.mockResolvedValue({ id: 'wallet', type: 'any', numRequiredSigners: 1, signersAddresses: [address] });
+    readinessMock.mockResolvedValue({ ready: false });
+    dbTransactionFindUniqueMock.mockResolvedValueOnce(record).mockResolvedValueOnce({ ...record, signedAddresses: [address], txCbor: 'updated-tx-hex' });
+    dbTransactionUpdateManyMock.mockResolvedValue({ count: 1 });
+    getProviderMock.mockReturnValue({ submitTx: jest.fn() });
+    const res = createMockResponse();
+    await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body: { walletId: 'wallet', transactionId: record.id, address, key: 'bb'.repeat(32), signature: 'aa'.repeat(64) } } as unknown as NextApiRequest, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(submitTxWithScriptRecoveryMock).not.toHaveBeenCalled();
+    expect(dbTransactionUpdateManyMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ state: 0, txCbor: 'updated-tx-hex', signedAddresses: { set: [address] } }) }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ submitted: false }));
+  });
+
   it('updates transaction when payload is valid', async () => {
     const address = 'addr_test1qpl3w9v4l5qhxk778exampleaddress';
     const walletId = 'wallet-id-123';

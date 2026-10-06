@@ -6,6 +6,12 @@ import useTransaction from "@/hooks/useTransaction";
 const mockSign = jest.fn().mockResolvedValue("wallet-witnesses");
 const mockCreate = jest.fn().mockResolvedValue({});
 const mockComplete = jest.fn().mockResolvedValue("completed-unsigned-tx");
+const mockPaymentWitness = jest.fn().mockReturnValue(true);
+const mockReadiness = jest.fn().mockResolvedValue({ ready: false, missingKeyHashes: [] });
+jest.mock("@/utils/transactionReadiness", () => ({
+  hasVerifiedPaymentWitness: (...args: unknown[]) => mockPaymentWitness(...args),
+  transactionReadiness: (...args: unknown[]) => mockReadiness(...args),
+}));
 
 jest.mock("@/utils/api", () => ({
   api: {
@@ -60,7 +66,13 @@ const builder = () =>
   ({ meshTxBuilderBody: { outputs: [] } }) as unknown as MeshTxBuilder;
 
 describe("finalized transaction review before signing", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => { jest.clearAllMocks(); mockPaymentWitness.mockReturnValue(true); });
+
+  test("a missing authorized payment witness cannot mark the proposer signed", async () => {
+    mockPaymentWitness.mockReturnValue(false);
+    await expect(hook().newTransaction({ txBuilder: builder() })).rejects.toThrow(/authorized payment key/);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
 
   test("cancelling review never asks for a signature or creates a pending transaction", async () => {
     const beforeSign = jest.fn().mockResolvedValue(false);
