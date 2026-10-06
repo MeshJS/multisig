@@ -2,11 +2,11 @@ import { z } from "zod";
 
 import type { TxDraft } from "@/types/tx-draft";
 import type { DraftIssue } from "./validate";
-import { hasPlutusDraftData } from "./mutations";
+import { hasScriptSpendDraftData } from "./mutations";
 import { validatePlutusData } from "./plutus-data";
 
 export const PLUTUS_BUILD_UNSUPPORTED =
-  "Datum and Plutus draft fields cannot be built yet. Transaction encoding is not enabled.";
+  "Plutus script inputs and collateral cannot be built yet. Transaction encoding is not enabled.";
 
 const utxoRefSchema = z
   .object({
@@ -110,7 +110,7 @@ export function validatePlutusDraft(draft: TxDraft): DraftIssue[] {
   }
   // Until subsequent phases encode these fields, even valid intent must not be
   // silently discarded by the old builder. No UI/headless caller can bypass it.
-  if (hasPlutusDraftData(draft)) {
+  if (hasScriptSpendDraftData(draft)) {
     issues.push({
       level: "error",
       code: "plutus-build-unsupported",

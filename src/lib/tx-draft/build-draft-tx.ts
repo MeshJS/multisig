@@ -4,6 +4,7 @@ import { resolveTxHash } from "@meshsdk/core-cst";
 import type { TxDraft } from "@/types/tx-draft";
 import { applyMetadataMessage } from "./metadata";
 import { applyDraftToTxBuilder, type ApplyDraftContext } from "./to-tx-builder";
+import { reviewDraftOutputs, type OutputReview } from "./outputs";
 
 export type DraftBuildResult = {
   /** Unsigned transaction hex returned by `complete()`. */
@@ -18,6 +19,8 @@ export type DraftBuildResult = {
   sizeBytes: number;
   inputCount: number;
   outputCount: number;
+  /** Intended outputs after SDK balancing/minimum-ADA adjustments. */
+  outputReview?: OutputReview[];
 };
 
 export type BuildDraftTxOptions = {
@@ -59,5 +62,6 @@ export async function buildDraftTx(
     sizeBytes: Math.ceil(unsignedTx.length / 2),
     inputCount: body.inputs.length,
     outputCount: body.outputs.length,
+    outputReview: reviewDraftOutputs(draft, body.outputs),
   };
 }

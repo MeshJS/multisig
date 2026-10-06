@@ -65,21 +65,25 @@ describe("draftToTokenFlow", () => {
 
     const flow = draftToTokenFlow(draft, OPTS);
 
-    expect(flow.edges.find((e) => e.id.endsWith(":output:out-1"))).toMatchObject(
-      {
-        source: "txd:d1",
-        target: `addr:${OTHER}`,
-        assets: [{ unit: "lovelace", quantity: "2000000" }],
-      },
-    );
+    expect(
+      flow.edges.find((e) => e.id.endsWith(":output:out-1")),
+    ).toMatchObject({
+      source: "txd:d1",
+      target: "draftout:out-1",
+      assets: [{ unit: "lovelace", quantity: "2000000" }],
+    });
     expect(flow.nodes.find((n) => n.id === "draftout:out-2")).toMatchObject({
       kind: "address",
       label: "Set recipient",
       partyType: "unknown",
     });
-    expect(flow.edges.find((e) => e.id.endsWith(":output:out-2"))).toMatchObject(
-      { target: "draftout:out-2", assets: [], note: "no amount" },
-    );
+    expect(
+      flow.edges.find((e) => e.id.endsWith(":output:out-2")),
+    ).toMatchObject({
+      target: "draftout:out-2",
+      assets: [],
+      note: "no amount",
+    });
   });
 
   test("two outputs to the same address stay separate edges", () => {
@@ -95,7 +99,9 @@ describe("draftToTokenFlow", () => {
     }));
 
     const flow = draftToTokenFlow(draft, OPTS);
-    const toOther = outputEdges(flow).filter((e) => e.target === `addr:${OTHER}`);
+    const toOther = outputEdges(flow).filter((e) =>
+      e.target.startsWith("draftout:"),
+    );
     expect(toOther).toHaveLength(2);
     expect(toOther.map((e) => e.assets[0]!.quantity).sort()).toEqual([
       "1000000",
@@ -138,11 +144,11 @@ describe("flowIdToDraftEntity", () => {
 
   test("maps node ids, stripping layout instance suffixes", () => {
     expect(flowIdToDraftEntity(draft, "txd:d1")).toEqual({ kind: "tx" });
-    expect(flowIdToDraftEntity(draft, `addr:${OTHER}`)).toEqual({
+    expect(flowIdToDraftEntity(draft, "draftout:out-1")).toEqual({
       kind: "output",
       outputId: "out-1",
     });
-    expect(flowIdToDraftEntity(draft, `addr:${OTHER}@out`)).toEqual({
+    expect(flowIdToDraftEntity(draft, "draftout:out-1@out")).toEqual({
       kind: "output",
       outputId: "out-1",
     });
@@ -212,9 +218,7 @@ describe("draftToTokenFlow votes", () => {
     expect(flow.edges.find((e) => e.kind === "input")).toMatchObject({
       note: "auto selection",
     });
-    expect(
-      outputEdges(flow).find((e) => e.note === "change"),
-    ).toBeDefined();
+    expect(outputEdges(flow).find((e) => e.note === "change")).toBeDefined();
   });
 });
 

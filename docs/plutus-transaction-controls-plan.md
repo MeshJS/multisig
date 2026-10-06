@@ -1,6 +1,7 @@
 # Plutus Transaction Controls Implementation Plan
 
-Status: Phase 1 implemented; subsequent phases remain planned.  
+Status: Phases 1–2 implemented; Phase 2 browser verification pending. Subsequent phases remain planned.
+
 Owner: Andre  
 Suggested branch: `feat/plutus-transaction-controls`  
 Prepared: 2026-10-05
@@ -101,15 +102,25 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Depends on:** Phase 1. This is the first independently reviewable feature slice.
 
-- [ ] Add the output Advanced section with enable/remove actions, format selection where supported, validation, and a decoded preview. Reuse the same editor later for redeemers and supplied input datums.
-- [ ] Extend the output loop in `applyDraftToTxBuilder`: attach each inline datum immediately after its corresponding `txOut` call using Mesh's explicit data-format argument.
-- [ ] Preserve distinct outputs with identical addresses. Update builder-specific node/edge selection to use output IDs, and audit duplicate-output validation without changing unrelated transaction-viewer behavior.
-- [ ] Display a datum badge and expand/focus the appropriate editor when a user follows a validation issue.
-- [ ] Use SDK completion to account for datum-dependent minimum ADA and transaction size; show the resulting requirement or adjustment before signing. Do not rely solely on the current token-only floor.
-- [ ] Enable pending reload for the supported inline-output-datum subset only. Preserve datum-bearing self-outputs and separate intended outputs from generated change using reliable provenance where available; retain ambiguous legacy outputs with a warning instead of discarding them.
-- [ ] Preserve unsupported output datum/reference-script forms behind explicit compatibility errors until they have a tested representation.
+- [x] Add the output Advanced section with enable/remove actions, format selection where supported, validation, and a decoded preview. Reuse the same editor later for redeemers and supplied input datums.
+- [x] Extend the output loop in `applyDraftToTxBuilder`: attach each inline datum immediately after its corresponding `txOut` call using Mesh's explicit data-format argument.
+- [x] Preserve distinct outputs with identical addresses. Update builder-specific node/edge selection to use output IDs, and audit duplicate-output validation without changing unrelated transaction-viewer behavior.
+- [x] Display a datum badge and expand/focus the appropriate editor when a user follows a validation issue.
+- [x] Use SDK completion to account for datum-dependent minimum ADA and transaction size; show the resulting requirement or adjustment before signing. Do not rely solely on the current token-only floor.
+- [x] Enable pending reload for the supported inline-output-datum subset only. Preserve datum-bearing self-outputs and separate intended outputs from generated change using reliable provenance where available; retain ambiguous legacy outputs with a warning instead of discarding them.
+- [x] Preserve unsupported output datum/reference-script forms behind explicit compatibility errors until they have a tested representation.
 
 **Acceptance:** decoded unsigned CBOR contains each datum on the correct output. Tests cover two outputs to one address with different datums, add/remove/reorder/address edits, self-outputs, load/edit/rebuild, and ordinary transfers without datums. Output datums alone do not activate collateral requirements.
+
+### Phase 2 implementation notes
+
+- The reusable `PlutusDataEditor` uses Phase 1's codec for CBOR/Plutus JSON validation, format conversion, and decoded previews. Output cards and edges use stable output IDs, including repeated addresses and self-payments. Datum issues open and focus the associated editor.
+- Output datums now pass the build gate; script inputs and collateral remain blocked until subsequent phases. No new dependency or database migration was added.
+- The installed Mesh SDK's `complete()` does not raise an explicitly undersized ADA amount. The adapter therefore calls Mesh's `calculateMinLovelaceForOutput` with the datum before selecting funding inputs. Datum builds fetch current protocol parameters; completion checks transaction size. Draft amounts stay unchanged, while build results and a required pre-sign review show final ADA amounts and adjustments. Cancelling or changing the draft cancels review; accepting signs the same completed bytes.
+- Builder proposals store versioned output IDs and finalized-output fingerprints in existing `txJsonExtras`. Reload checks these against the body before excluding generated change. Missing or mismatched provenance retains all outputs and displays a warning. Hash/embedded datums, unsupported data encodings, malformed outputs, and reference scripts remain incompatible.
+- Real SDK tests decode unsigned CBOR and cover distinct same-address datums, self-payments, minimum ADA and size limits, edit/reorder/remove/load/rebuild, and absence of collateral/signatures. Hook tests verify cancellation and signing only after acceptance of the finalized transaction.
+- Verification: TypeScript and the full CJS/ESM suite passed (1,670 tests; two existing skips). ESLint still cannot initialize because the repository's compatibility configuration reports a circular React plugin structure.
+- A Playwright test covers independent editors, format conversion, validation focus, and datum removal. Execution is pending: the existing browser harness requires `CI_CONTEXT_PATH`, which is not configured in this checkout. No on-chain acceptance transaction was attempted.
 
 ## Phase 3 — Resolve and configure Plutus inputs
 

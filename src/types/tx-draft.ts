@@ -75,9 +75,7 @@ export type DraftVote = {
 };
 
 export type DraftCertificateKind =
-  | "RegisterStake"
-  | "DelegateStake"
-  | "DeregisterStake";
+  "RegisterStake" | "DelegateStake" | "DeregisterStake";
 
 /**
  * A staking certificate, either loaded from an existing pending transaction
@@ -143,6 +141,6 @@ export type LoadableTxDraft = Omit<TxDraft, "scriptInputs"> &
 
 /** What the builder UI currently has selected (canvas card or edge click). */
 export type BuilderSelection =
-  | { kind: "output"; outputId: string }
+  | { kind: "output"; outputId: string; field?: "inlineDatum" }
   | { kind: "tx" }
   | null;

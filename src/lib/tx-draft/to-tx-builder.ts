@@ -2,8 +2,9 @@ import { keepRelevant, type MeshTxBuilder, type UTxO } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
 import { materializeOutputAssets, requiredAssetTotals } from "./assets";
-import { hasPlutusDraftData } from "./mutations";
+import { hasScriptSpendDraftData } from "./mutations";
 import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
+import { validatePlutusData } from "./plutus-data";
 
 /**
  * Lovelace floor for auto UTxO selection when the draft casts votes or
@@ -26,8 +27,7 @@ const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
  * spends plain pubkey inputs.
  */
 export type ApplyDraftInputs =
-  | { kind: "script"; scriptCbor: string }
-  | { kind: "pubkey" };
+  { kind: "script"; scriptCbor: string } | { kind: "pubkey" };
 
 export type ApplyDraftContext = {
   inputs: ApplyDraftInputs;
@@ -58,9 +58,48 @@ export function applyDraftToTxBuilder(
   draft: TxDraft,
   ctx: ApplyDraftContext,
 ): MeshTxBuilder {
-  if (hasPlutusDraftData(draft)) {
+  if (hasScriptSpendDraftData(draft)) {
     throw new Error(PLUTUS_BUILD_UNSUPPORTED);
   }
+  // Validate all datum edits before mutating the stateful builder.
+  const datums = draft.outputs.map((output) => {
+    if (output.inlineDatum === undefined) return undefined;
+    const result = validatePlutusData(output.inlineDatum);
+    if (!result.valid) throw new Error(`Output datum: ${result.error}`);
+    return result.cbor;
+  });
+  const preparedOutputs = draft.outputs.map((output, index) => {
+    const prepared: MeshTxBuilder["meshTxBuilderBody"]["outputs"][number] = {
+      address: output.address,
+      amount: [...materializeOutputAssets(output.assets)],
+      ...(datums[index] !== undefined
+        ? {
+            datum: {
+              type: "Inline" as const,
+              data: { type: "CBOR" as const, content: datums[index]! },
+            },
+          }
+        : {}),
+    };
+    if (prepared.datum) {
+      const minimum = txBuilder.calculateMinLovelaceForOutput(prepared);
+      const ada = prepared.amount.find((asset) => asset.unit === "lovelace");
+      if (!ada)
+        prepared.amount.push({
+          unit: "lovelace",
+          quantity: minimum.toString(),
+        });
+      else if (BigInt(ada.quantity) < minimum) {
+        // materializeOutputAssets can retain asset objects from the draft.
+        prepared.amount = prepared.amount.map((asset) =>
+          asset.unit === "lovelace"
+            ? { ...asset, quantity: minimum.toString() }
+            : asset,
+        );
+      }
+    }
+    return prepared;
+  });
   if (
     draft.outputs.length === 0 &&
     draft.votes.length === 0 &&
@@ -98,7 +137,13 @@ export function applyDraftToTxBuilder(
     selectedUtxos = draft.utxoSelection.utxos;
   } else {
     const assetMap = new Map<string, string>();
-    for (const [unit, quantity] of requiredAssetTotals(draft)) {
+    for (const [unit, quantity] of requiredAssetTotals({
+      ...draft,
+      outputs: draft.outputs.map((output, index) => ({
+        ...output,
+        assets: preparedOutputs[index]!.amount,
+      })),
+    })) {
       assetMap.set(unit, quantity.toString());
     }
     if (draft.votes.length > 0 || draft.certificates.length > 0) {
@@ -132,8 +177,11 @@ export function applyDraftToTxBuilder(
     }
   }
 
-  for (const output of draft.outputs) {
-    txBuilder.txOut(output.address, materializeOutputAssets(output.assets));
+  for (const [index, output] of draft.outputs.entries()) {
+    txBuilder.txOut(output.address, preparedOutputs[index]!.amount);
+    if (datums[index] !== undefined) {
+      txBuilder.txOutInlineDatumValue(datums[index]!, "CBOR");
+    }
   }
 
   // Certificates are re-emitted against the wallet's freshly derived reward

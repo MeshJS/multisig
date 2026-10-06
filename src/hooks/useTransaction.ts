@@ -27,12 +27,20 @@ export default function useTransaction() {
     api.transaction.createTransaction.useMutation({
       onMutate: async (newTransaction) => {
         // Cancel any outgoing refetches
-        await ctx.transaction.getPendingTransactions.cancel({ walletId: newTransaction.walletId });
-        await ctx.transaction.getAllTransactions.cancel({ walletId: newTransaction.walletId });
+        await ctx.transaction.getPendingTransactions.cancel({
+          walletId: newTransaction.walletId,
+        });
+        await ctx.transaction.getAllTransactions.cancel({
+          walletId: newTransaction.walletId,
+        });
 
         // Snapshot the previous value
-        const previousPending = ctx.transaction.getPendingTransactions.getData({ walletId: newTransaction.walletId });
-        const previousAll = ctx.transaction.getAllTransactions.getData({ walletId: newTransaction.walletId });
+        const previousPending = ctx.transaction.getPendingTransactions.getData({
+          walletId: newTransaction.walletId,
+        });
+        const previousAll = ctx.transaction.getAllTransactions.getData({
+          walletId: newTransaction.walletId,
+        });
 
         // Optimistically update pending transactions
         ctx.transaction.getPendingTransactions.setData(
@@ -41,7 +49,9 @@ export default function useTransaction() {
             if (!old) return old;
             // A replace atomically deletes the edited pending tx server-side.
             const withoutReplaced = newTransaction.replaces
-              ? old.filter((tx) => tx.id !== newTransaction.replaces!.transactionId)
+              ? old.filter(
+                  (tx) => tx.id !== newTransaction.replaces!.transactionId,
+                )
               : old;
             const optimisticTx = {
               id: `temp-${Date.now()}`,
@@ -57,7 +67,7 @@ export default function useTransaction() {
               updatedAt: new Date(),
             };
             return [optimisticTx, ...withoutReplaced];
-          }
+          },
         );
 
         return { previousPending, previousAll };
@@ -67,21 +77,25 @@ export default function useTransaction() {
         if (context?.previousPending) {
           ctx.transaction.getPendingTransactions.setData(
             { walletId: newTransaction.walletId },
-            context.previousPending
+            context.previousPending,
           );
         }
         if (context?.previousAll) {
           ctx.transaction.getAllTransactions.setData(
             { walletId: newTransaction.walletId },
-            context.previousAll
+            context.previousAll,
           );
         }
         console.error("createTransaction", err);
       },
       onSuccess: async (data, variables) => {
         // Invalidate to refetch with real data
-        void ctx.transaction.getPendingTransactions.invalidate({ walletId: variables.walletId });
-        void ctx.transaction.getAllTransactions.invalidate({ walletId: variables.walletId });
+        void ctx.transaction.getPendingTransactions.invalidate({
+          walletId: variables.walletId,
+        });
+        void ctx.transaction.getAllTransactions.invalidate({
+          walletId: variables.walletId,
+        });
       },
     });
 
@@ -105,7 +119,13 @@ export default function useTransaction() {
        * live only in a Plutus redeemer, so server-side scans (deadline
        * reminders, email context) can still see what the tx votes on.
        */
-      txJsonExtras?: Record<string, unknown>;
+      txJsonExtras?:
+        | Record<string, unknown>
+        | ((
+            body: MeshTxBuilder["meshTxBuilderBody"],
+          ) => Record<string, unknown>);
+      /** Review the finalized transaction before asking the wallet to sign it. */
+      beforeSign?: (unsignedTx: string) => Promise<boolean>;
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
@@ -118,14 +138,26 @@ export default function useTransaction() {
         );
       }
 
-      const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
+      const unsignedTx = await completeTxWithFreshCostModels(
+        data.txBuilder,
+        network,
+      );
+      const extras =
+        typeof data.txJsonExtras === "function"
+          ? data.txJsonExtras(data.txBuilder.meshTxBuilderBody)
+          : data.txJsonExtras;
+
+      if (data.beforeSign && !(await data.beforeSign(unsignedTx))) return false;
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
 
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
-      const mergeResult = mergeSignerWitnesses(unsignedTx, signerWitnessPayload);
+      const mergeResult = mergeSignerWitnesses(
+        unsignedTx,
+        signerWitnessPayload,
+      );
       if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
         setLoading(false);
         console.error(
@@ -150,7 +182,10 @@ export default function useTransaction() {
 
       //Todo refactor to as util with Signable.
 
-      const submitTx = shouldSubmitMultisigTx(appWallet, signedAddresses.length);
+      const submitTx = shouldSubmitMultisigTx(
+        appWallet,
+        signedAddresses.length,
+      );
 
       if (submitTx) {
         const blockchainProvider = getProvider(network);
@@ -167,8 +202,8 @@ export default function useTransaction() {
       await createTransaction({
         walletId: appWallet.id,
         txJson: JSON.stringify(
-          data.txJsonExtras
-            ? { ...data.txBuilder.meshTxBuilderBody, ...data.txJsonExtras }
+          extras
+            ? { ...data.txBuilder.meshTxBuilderBody, ...extras }
             : data.txBuilder.meshTxBuilderBody,
         ),
         txCbor: signedTx,
@@ -187,7 +222,15 @@ export default function useTransaction() {
         duration: 10000,
       });
     },
-    [appWallet, userAddress, activeWallet, createTransaction, setLoading, toast, network],
+    [
+      appWallet,
+      userAddress,
+      activeWallet,
+      createTransaction,
+      setLoading,
+      toast,
+      network,
+    ],
   );
 
   return { newTransaction };

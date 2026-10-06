@@ -38,8 +38,7 @@ export type DraftBuildOverlay = Pick<
  *
  * Id conventions (all stable across edits):
  *   - tx card:            "txd:<draftId>"        (no collision with tx:/txp:)
- *   - placed recipient:   "addr:<bech32>"        (shared with viewer flows)
- *   - unset recipient:    "draftout:<outputId>"  (placeholder card)
+ *   - every recipient:    "draftout:<outputId>"  (independent of address)
  * Output edges always carry the output id as discriminator, so edge → output
  * mapping is a suffix match and two outputs to one address stay separate.
  *
@@ -142,25 +141,26 @@ export function draftToTokenFlow(
   }
 
   // Outputs — one edge per draft output, discriminated by output id.
-  for (const output of draft.outputs) {
-    let nodeId: string;
-    if (output.address) {
-      nodeId = graph.addressNode(output.address).id;
-    } else {
-      nodeId = `draftout:${output.id}`;
-      graph.addNode({
-        id: nodeId,
-        kind: "address",
-        address: "",
-        label: "Set recipient",
-        partyType: "unknown",
-      });
-    }
+  for (const [index, output] of draft.outputs.entries()) {
+    const nodeId = `draftout:${output.id}`;
+    const label = output.address
+      ? opts.labelAddress(output.address)
+      : undefined;
+    graph.addNode({
+      id: nodeId,
+      kind: "address",
+      address: output.address,
+      label: output.address
+        ? label?.label || `Recipient ${index + 1}`
+        : "Set recipient",
+      partyType: label?.type ?? "unknown",
+      inlineDatum: output.inlineDatum !== undefined,
+    });
     graph.addEdge(
       txNodeId,
       nodeId,
       "output",
-      output.assets,
+      built?.outputs[index]?.amount ?? output.assets,
       output.assets.length === 0 ? "no amount" : undefined,
       output.id,
     );
@@ -222,8 +222,7 @@ function builtChangeAssets(
 /**
  * Maps a React Flow node or edge id back to the draft entity it represents.
  * Handles the layout's "@in"/"@out" address instance suffixes, placeholder
- * nodes, discriminated output edges, and resolves shared address nodes to the
- * first output paying that address (input-side/change nodes select the tx).
+ * nodes and discriminated output edges. Input/change addresses select the tx.
  */
 export function flowIdToDraftEntity(
   draft: TxDraft,
@@ -253,9 +252,6 @@ export function flowIdToDraftEntity(
   }
 
   if (baseId.startsWith("addr:")) {
-    const address = baseId.slice("addr:".length);
-    const output = draft.outputs.find((o) => o.address === address);
-    if (output) return { kind: "output", outputId: output.id };
     return { kind: "tx" };
   }
 

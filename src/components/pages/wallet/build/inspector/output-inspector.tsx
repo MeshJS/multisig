@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Plus, Trash2, X } from "lucide-react";
 
 import { resolveAdaHandle } from "@/components/common/cardano-objects/resolve-adahandle";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,12 @@ import type { DraftOutput } from "@/types/tx-draft";
 import type { Wallet } from "@/types/wallet";
 import { cn } from "@/lib/utils";
 import IssueList from "./issue-list";
+import PlutusDataEditor from "./plutus-data-editor";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 function assetDecimals(
   unit: string,
@@ -59,7 +65,9 @@ function AmountInput({
       onChange={(event) => {
         const value = event.target.value;
         setDisplay(value);
-        onBase(value.trim() === "" ? "0" : (displayToBase(value, decimals) ?? "0"));
+        onBase(
+          value.trim() === "" ? "0" : (displayToBase(value, decimals) ?? "0"),
+        );
       }}
     />
   );
@@ -81,6 +89,20 @@ export default function OutputInspector({
   );
   const updateOutput = useTxBuilderStore((state) => state.updateOutput);
   const removeOutput = useTxBuilderStore((state) => state.removeOutput);
+  const setOutputDatum = useTxBuilderStore((state) => state.setOutputDatum);
+  const selection = useTxBuilderStore((state) => state.selection);
+  const [advancedOpen, setAdvancedOpen] = useState(
+    output.inlineDatum !== undefined,
+  );
+  const datumFocus =
+    selection?.kind === "output" &&
+    selection.outputId === output.id &&
+    selection.field === "inlineDatum"
+      ? selection
+      : undefined;
+  useEffect(() => {
+    if (datumFocus) setAdvancedOpen(true);
+  }, [datumFocus]);
 
   const [addressDraft, setAddressDraft] = useState(output.address);
   const [handleTimeout, setHandleTimeout] = useState<NodeJS.Timeout | null>(
@@ -256,6 +278,51 @@ export default function OutputInspector({
         )}
       </div>
 
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <CollapsibleTrigger
+          className="flex w-full items-center justify-between rounded border px-2.5 py-2 text-xs font-medium"
+          data-testid="tx-builder-output-advanced"
+        >
+          <span>
+            Advanced{output.inlineDatum !== undefined && " · Inline datum"}
+          </span>
+          <ChevronDown className="h-4 w-4" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="flex min-w-0 flex-col gap-3 pt-3">
+          {output.inlineDatum === undefined ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setOutputDatum(output.id, { format: "CBOR", text: "" })
+              }
+            >
+              Attach inline datum
+            </Button>
+          ) : (
+            <>
+              <PlutusDataEditor
+                id={`datum-${output.id}`}
+                label="Inline datum"
+                value={output.inlineDatum}
+                onChange={(value) => setOutputDatum(output.id, value)}
+                focusToken={datumFocus}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOutputDatum(output.id, undefined)}
+              >
+                Remove datum
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Datum size can increase the minimum ADA for this output. Build
+                to review the final amount.
+              </p>
+            </>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
       <IssueList issues={issues} />
     </div>
   );

@@ -199,7 +199,6 @@ describe("Plutus field validation and build boundary", () => {
 
   test("the builder cannot silently omit new intent, even if callers skip validation", () => {
     const drafts = [
-      setOutputDatum(send(), "output", datum),
       addScriptInput(send(), input).draft,
       { ...send(), collateral },
     ];

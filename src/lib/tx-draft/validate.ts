@@ -9,6 +9,7 @@ import {
 } from "./assets";
 import { hasMultisigOnlyActions } from "./mutations";
 import { validatePlutusDraft } from "./validate-plutus";
+import { validatePlutusData } from "./plutus-data";
 
 export type DraftIssueCode =
   | "output-datum-invalid"
@@ -372,7 +373,13 @@ export function validateDraft(
           outputId: output.id,
         });
       }
-      if (seenAddresses.has(output.address)) {
+      const datum =
+        output.inlineDatum && validatePlutusData(output.inlineDatum);
+      const recipientKey = JSON.stringify([
+        output.address,
+        datum?.valid ? datum.cbor : (output.inlineDatum ?? null),
+      ]);
+      if (seenAddresses.has(recipientKey)) {
         issues.push({
           level: "warning",
           code: "duplicate-output",
@@ -380,7 +387,7 @@ export function validateDraft(
           outputId: output.id,
         });
       }
-      seenAddresses.add(output.address);
+      seenAddresses.add(recipientKey);
     }
 
     const hasAmount = output.assets.some((asset) => {

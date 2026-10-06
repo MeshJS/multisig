@@ -110,7 +110,13 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
                   setPinned(true);
                   select(
                     issue.outputId
-                      ? { kind: "output", outputId: issue.outputId }
+                      ? {
+                          kind: "output",
+                          outputId: issue.outputId,
+                          ...(issue.field === "inlineDatum"
+                            ? { field: "inlineDatum" as const }
+                            : {}),
+                        }
                       : { kind: "tx" },
                   );
                 }}

@@ -31,7 +31,7 @@ import {
 } from "@/components/common/token-flow/layout";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { AddressLabeler } from "@/types/token-flow";
-import type { BuilderSelection, TxDraft } from "@/types/tx-draft";
+import type { BuilderSelection } from "@/types/tx-draft";
 import {
   draftToTokenFlow,
   flowIdToDraftEntity,
@@ -71,21 +71,14 @@ export type BuilderCanvasProps = {
 
 /**
  * Position overrides are keyed by draft ENTITY, not React Flow node id, so a
- * dragged placeholder keeps its spot when setting its address renames the
- * node from `draftout:<id>` to `addr:<bech32>` (possibly with a layout
- * `@in`/`@out` instance suffix).
+ * recipient keeps its spot across address edits and duplicate addresses.
  */
-function positionKeyForNode(draft: TxDraft, nodeId: string): string {
+function positionKeyForNode(nodeId: string): string {
   const suffixMatch = /@(in|out)$/.exec(nodeId);
   const baseId = suffixMatch ? nodeId.slice(0, suffixMatch.index) : nodeId;
   if (baseId.startsWith("txd:")) return "tx";
   if (baseId.startsWith("draftout:")) {
     return `out:${baseId.slice("draftout:".length)}`;
-  }
-  if (baseId.startsWith("addr:") && suffixMatch?.[1] !== "in") {
-    const address = baseId.slice("addr:".length);
-    const output = draft.outputs.find((o) => o.address === address);
-    if (output) return `out:${output.id}`;
   }
   // Input-side and change-only nodes: keyed by their full React Flow id.
   return nodeId;
@@ -169,7 +162,7 @@ export default function BuilderCanvas({
           (selection.kind !== "tx" || node.data.node.kind === "transaction");
         return {
           ...node,
-          position: positions[positionKeyForNode(draft, node.id)] ?? node.position,
+          position: positions[positionKeyForNode(node.id)] ?? node.position,
           className: highlighted
             ? "rounded-lg ring-2 ring-primary/70"
             : undefined,
@@ -201,7 +194,7 @@ export default function BuilderCanvas({
 
   const onNodeDragStop = useCallback(
     (_event: unknown, node: Node) =>
-      setPosition(positionKeyForNode(draft, node.id), node.position),
+      setPosition(positionKeyForNode(node.id), node.position),
     [draft, setPosition],
   );
 
@@ -248,7 +241,9 @@ export default function BuilderCanvas({
           return;
         }
         const suffixMatch = /@(in|out)$/.exec(target);
-        const baseId = suffixMatch ? target.slice(0, suffixMatch.index) : target;
+        const baseId = suffixMatch
+          ? target.slice(0, suffixMatch.index)
+          : target;
         if (baseId.startsWith("addr:")) {
           addOutput({ address: baseId.slice("addr:".length) });
         }
@@ -307,7 +302,7 @@ export default function BuilderCanvas({
         zoomOnPinch
         panOnDrag
         proOptions={{ hideAttribution: false }}
-        className="!bg-muted/20 rounded-lg border border-border/50"
+        className="rounded-lg border border-border/50 !bg-muted/20"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <BuilderPalette

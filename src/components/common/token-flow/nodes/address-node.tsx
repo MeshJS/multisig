@@ -76,7 +76,9 @@ export default function AddressNode({ id, data }: NodeProps) {
       data-testid={`tx-flow-node-${id}${testIdSuffix}`}
       // Every attached edge gets its own connector; the card stretches so
       // the taller port stack keeps its dots evenly spaced.
-      style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}
+      style={{
+        minHeight: portStackHeight(Math.max(inPortCount, outPortCount)),
+      }}
       className={cn(
         "flex w-[220px] flex-col justify-center rounded-lg border bg-card px-3 py-2 shadow-sm",
         style.border,
@@ -92,9 +94,19 @@ export default function AddressNode({ id, data }: NodeProps) {
           className="!bg-muted-foreground"
         />
       ))}
-      <div className={cn("flex items-center gap-1.5 text-xs font-medium", style.text)}>
+      <div
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-medium",
+          style.text,
+        )}
+      >
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.label || style.fallbackLabel}</span>
+        {node.inlineDatum && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
+            Inline datum
+          </span>
+        )}
         {changeHint && (
           <span className="ml-auto shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-medium text-warning">
             change

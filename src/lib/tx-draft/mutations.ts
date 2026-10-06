@@ -50,11 +50,9 @@ export function invalidateDraftContext(draft: TxDraft): TxDraft {
   return { ...draft, utxoSelection: { mode: "auto" }, collateral: undefined };
 }
 
-export function hasPlutusDraftData(draft: TxDraft): boolean {
+export function hasScriptSpendDraftData(draft: TxDraft): boolean {
   return (
-    draft.outputs.some((output) => output.inlineDatum !== undefined) ||
-    (draft.scriptInputs?.length ?? 0) > 0 ||
-    draft.collateral !== undefined
+    (draft.scriptInputs?.length ?? 0) > 0 || draft.collateral !== undefined
   );
 }
 

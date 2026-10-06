@@ -5,6 +5,8 @@ import type {
 } from "@/types/tx-draft";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { addCertificate, addOutput, addVote, createDraft } from "./mutations";
+import type { MeshTxBuilder } from "@meshsdk/core";
+import { readInlineDatum, readOutputProvenance } from "./outputs";
 
 /**
  * Converts a stored pending transaction's parsed `txJson` (MeshTxBuilderBody
@@ -47,11 +49,17 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   const tx = body as Record<string, unknown>;
 
   const nonEmpty: Array<[key: string, reason: string]> = [
-    ["withdrawals", "Contains reward withdrawals — not yet supported by the builder"],
+    [
+      "withdrawals",
+      "Contains reward withdrawals — not yet supported by the builder",
+    ],
     ["mints", "Mints or burns tokens — not yet supported by the builder"],
     ["collaterals", "Uses collateral inputs (smart contract transaction)"],
     ["referenceInputs", "Uses reference inputs (smart contract transaction)"],
-    ["requiredSignatures", "Declares extra required signers — not yet supported by the builder"],
+    [
+      "requiredSignatures",
+      "Declares extra required signers — not yet supported by the builder",
+    ],
   ];
   for (const [key, reason] of nonEmpty) {
     if (asArray(tx[key]).length > 0) reasons.push(reason);
@@ -63,7 +71,9 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   }
   for (const input of inputs) {
     if (input?.type === "Script" || input?.scriptTxIn) {
-      reasons.push("Spends from a Plutus script — not yet supported by the builder");
+      reasons.push(
+        "Spends from a Plutus script — not yet supported by the builder",
+      );
       break;
     }
   }
@@ -117,7 +127,9 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
     // last as SimpleScriptVote (voteScript is applied once after the loop),
     // so both shapes must be accepted; the rebuild re-witnesses every vote.
     if (vote?.type !== "BasicVote" && vote?.type !== "SimpleScriptVote") {
-      reasons.push("Contains Plutus script votes — not supported by the builder");
+      reasons.push(
+        "Contains Plutus script votes — not supported by the builder",
+      );
       break;
     }
     const voter = vote?.vote?.voter;
@@ -141,8 +153,33 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   if (outputs.length === 0 && votes.length === 0 && certificates.length === 0) {
     reasons.push("Transaction has no outputs");
   }
-  if (outputs.some((output) => output?.datum || output?.referenceScript)) {
-    reasons.push("Sends to outputs with datums or reference scripts");
+  for (const output of outputs) {
+    if (
+      typeof output?.address !== "string" ||
+      !Array.isArray(output?.amount) ||
+      output.amount.some(
+        (asset: any) =>
+          typeof asset?.unit !== "string" ||
+          typeof asset?.quantity !== "string",
+      )
+    ) {
+      reasons.push("Output data is malformed");
+      break;
+    }
+    if (output?.referenceScript) {
+      reasons.push(
+        "Contains output reference scripts — not supported by the builder",
+      );
+      break;
+    }
+    try {
+      readInlineDatum(output?.datum);
+    } catch {
+      reasons.push(
+        "Contains an unsupported or invalid output datum; only validated inline datums can be edited",
+      );
+      break;
+    }
   }
 
   const validityRange = tx.validityRange as Record<string, unknown> | undefined;
@@ -158,29 +195,6 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
   return { compatible: reasons.length === 0, reasons };
 }
 
-/**
- * After `complete()` Mesh appends the computed change output(s) to
- * `body.outputs` (they are never re-sorted, so change is always trailing).
- * Strip them so the draft only shows intended recipients — but only when the
- * change address matches the builder's invariant (the wallet address).
- * `minOutputs` protects self-consolidation payments (1 for send txs); vote
- * transactions legitimately strip to zero outputs (0).
- */
-function stripTrailingChangeOutputs(
-  outputs: { address: string; amount: unknown }[],
-  changeAddress: string,
-  minOutputs: number,
-): { address: string; amount: unknown }[] {
-  const kept = [...outputs];
-  while (
-    kept.length > minOutputs &&
-    kept[kept.length - 1]!.address === changeAddress
-  ) {
-    kept.pop();
-  }
-  return kept;
-}
-
 export function txJsonToDraft(
   body: any,
   opts: {
@@ -189,37 +203,41 @@ export function txJsonToDraft(
     metadataMessage?: string;
   },
 ): TxJsonToDraftResult {
+  const compatibility = isDraftCompatible(body);
+  if (!compatibility.compatible) {
+    throw new Error(compatibility.reasons.join("; "));
+  }
   const warnings: TxJsonWarning[] = [];
 
   const rawVotes = asArray(body?.votes) as any[];
   const rawCerts = asArray(body?.certificates) as any[];
 
-  const rawOutputs = asArray(body?.outputs).filter(
-    (output: any): output is { address: string; amount: unknown } =>
-      typeof output?.address === "string",
-  ) as { address: string; amount: unknown }[];
+  const rawOutputs = asArray(
+    body?.outputs,
+  ) as MeshTxBuilder["meshTxBuilderBody"]["outputs"];
 
   const changeAddress =
     typeof body?.changeAddress === "string" ? body.changeAddress : "";
-  let outputs = rawOutputs;
-  if (changeAddress && changeAddress === opts.walletAddress) {
-    // A vote-only or certificate-only body's outputs are pure change —
-    // those strip to zero.
-    outputs = stripTrailingChangeOutputs(
-      rawOutputs,
-      changeAddress,
-      rawVotes.length > 0 || rawCerts.length > 0 ? 0 : 1,
-    );
-  } else if (changeAddress) {
-    // importTransaction guesses changeAddress = outputs[0].address; there is
-    // no way to tell which output (if any) is change, so keep them all.
+  const outputIds =
+    changeAddress === opts.walletAddress
+      ? readOutputProvenance(body?.builderOutputs, rawOutputs, changeAddress)
+      : undefined;
+  const outputs = outputIds
+    ? rawOutputs.slice(0, outputIds.length)
+    : rawOutputs;
+  // Address alone cannot distinguish an intentional self-payment from change.
+  if (!outputIds && rawOutputs.length > 0) {
     warnings.push("change-not-detected");
   }
 
   let draft = createDraft();
-  for (const output of outputs) {
+  for (const [index, output] of outputs.entries()) {
+    if (output.referenceScript)
+      throw new Error("Output reference scripts cannot be edited.");
     draft = addOutput(draft, {
+      ...(outputIds ? { id: outputIds[index] } : {}),
       address: output.address,
+      inlineDatum: readInlineDatum(output.datum),
       assets: asArray(output.amount)
         .filter(
           (asset: any) =>

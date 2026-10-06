@@ -40,6 +40,8 @@ export type AddressFlowNode = {
   address: string;
   label?: string;
   partyType: AddressPartyType;
+  /** Builder-only indication; absent on ordinary viewer nodes. */
+  inlineDatum?: boolean;
 };
 
 export type TransactionFlowNode = {

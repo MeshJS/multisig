@@ -1,9 +1,7 @@
+import { createOutputProvenance } from "@/lib/tx-draft/outputs";
 import { MeshTxBuilder, resolvePoolId } from "@meshsdk/core";
 
-import {
-  isDraftCompatible,
-  txJsonToDraft,
-} from "@/lib/tx-draft/from-tx-json";
+import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import { applyDraftToTxBuilder } from "@/lib/tx-draft/to-tx-builder";
 import {
   addCertificate,
@@ -174,8 +172,14 @@ describe("isDraftCompatible", () => {
       },
     ],
     ["Plutus script votes", { votes: [scriptVote()] }],
-    ["non-DRep votes", { votes: [drepVote({ voter: { type: "StakingPool", keyHash: "kh" } })] }],
-    ["malformed vote data", { votes: [drepVote({ votingProcedure: { voteKind: "Maybe" } })] }],
+    [
+      "non-DRep votes",
+      { votes: [drepVote({ voter: { type: "StakingPool", keyHash: "kh" } })] },
+    ],
+    [
+      "malformed vote data",
+      { votes: [drepVote({ votingProcedure: { voteKind: "Maybe" } })] },
+    ],
     ["withdrawals", { withdrawals: [{ address: "stake1...", coin: "1" }] }],
     ["mints", { mints: [{ policyId: "p", mintValue: [] }] }],
     ["collaterals", { collaterals: [input(9)] }],
@@ -189,7 +193,10 @@ describe("isDraftCompatible", () => {
       "output datum",
       {
         outputs: [
-          { ...output(RECIPIENT, [{ unit: "lovelace", quantity: "1" }]), datum: { type: "Inline" } },
+          {
+            ...output(RECIPIENT, [{ unit: "lovelace", quantity: "1" }]),
+            datum: { type: "Inline" },
+          },
           output(WALLET_ADDRESS, []),
         ],
       },
@@ -198,7 +205,10 @@ describe("isDraftCompatible", () => {
       "output reference script",
       {
         outputs: [
-          { ...output(RECIPIENT, [{ unit: "lovelace", quantity: "1" }]), referenceScript: { code: "00" } },
+          {
+            ...output(RECIPIENT, [{ unit: "lovelace", quantity: "1" }]),
+            referenceScript: { code: "00" },
+          },
         ],
       },
     ],
@@ -223,14 +233,14 @@ describe("isDraftCompatible", () => {
 });
 
 describe("txJsonToDraft", () => {
-  test("maps outputs verbatim and strips the trailing change output", () => {
+  test("maps legacy outputs verbatim and warns that change is ambiguous", () => {
     const { draft, inputRefs, warnings } = txJsonToDraft(sendBody(), {
       walletAddress: WALLET_ADDRESS,
       description: "Payroll",
       metadataMessage: "hello chain",
     });
 
-    expect(draft.outputs).toHaveLength(1);
+    expect(draft.outputs).toHaveLength(2);
     expect(draft.outputs[0]).toMatchObject({
       address: RECIPIENT,
       assets: [{ unit: "lovelace", quantity: "2000000" }],
@@ -239,10 +249,10 @@ describe("txJsonToDraft", () => {
     expect(draft.description).toBe("Payroll");
     expect(draft.metadata).toBe("hello chain");
     expect(inputRefs).toEqual([{ txHash: TX_HASH, txIndex: 0 }]);
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual(["change-not-detected"]);
   });
 
-  test("strips split (multiple trailing) change outputs", () => {
+  test("retains ambiguous split change outputs from legacy transactions", () => {
     const body = sendBody({
       outputs: [
         output(RECIPIENT, [{ unit: "lovelace", quantity: "2000000" }]),
@@ -251,11 +261,11 @@ describe("txJsonToDraft", () => {
       ],
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
-    expect(draft.outputs).toHaveLength(1);
+    expect(draft.outputs).toHaveLength(3);
     expect(draft.outputs[0]!.address).toBe(RECIPIENT);
   });
 
-  test("keeps interior outputs paying the wallet address", () => {
+  test("keeps interior and trailing legacy self-payments", () => {
     const body = sendBody({
       outputs: [
         output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "1500000" }]),
@@ -267,10 +277,11 @@ describe("txJsonToDraft", () => {
     expect(draft.outputs.map((o) => o.address)).toEqual([
       WALLET_ADDRESS,
       RECIPIENT,
+      WALLET_ADDRESS,
     ]);
   });
 
-  test("never strips below one output (self-consolidation)", () => {
+  test("retains all legacy self-consolidation outputs", () => {
     const body = sendBody({
       outputs: [
         output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "9000000" }]),
@@ -278,7 +289,7 @@ describe("txJsonToDraft", () => {
       ],
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
-    expect(draft.outputs).toHaveLength(1);
+    expect(draft.outputs).toHaveLength(2);
     expect(draft.outputs[0]!.assets).toEqual([
       { unit: "lovelace", quantity: "9000000" },
     ]);
@@ -347,6 +358,7 @@ describe("txJsonToDraft", () => {
 
     expect(isDraftCompatible(body).compatible).toBe(true);
 
+    body.builderOutputs = createOutputProvenance(original, body.outputs);
     const { draft, inputRefs } = txJsonToDraft(body, {
       walletAddress: WALLET_ADDRESS,
     });
@@ -381,7 +393,11 @@ describe("vote transactions", () => {
   test("accepts the mixed BasicVote + SimpleScriptVote ballot shape", () => {
     const body = voteBody([
       drepVote(),
-      { ...drepVote(), type: "SimpleScriptVote", simpleScriptSource: { type: "Provided" } },
+      {
+        ...drepVote(),
+        type: "SimpleScriptVote",
+        simpleScriptSource: { type: "Provided" },
+      },
     ]);
     expect(isDraftCompatible(body)).toEqual({ compatible: true, reasons: [] });
   });
@@ -391,7 +407,7 @@ describe("vote transactions", () => {
     expect(isDraftCompatible(body).compatible).toBe(true);
   });
 
-  test("txJsonToDraft maps votes and strips the lone change output to zero", () => {
+  test("txJsonToDraft maps votes and retains ambiguous legacy change", () => {
     const anchor = { anchorUrl: "ipfs://cid", anchorDataHash: "d".repeat(64) };
     const body = voteBody([
       drepVote({ votingProcedure: { voteKind: "No", anchor } }),
@@ -400,7 +416,7 @@ describe("vote transactions", () => {
 
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
 
-    expect(draft.outputs).toHaveLength(0);
+    expect(draft.outputs).toHaveLength(1);
     expect(draft.votes).toHaveLength(2);
     expect(draft.votes[0]).toMatchObject({
       govActionTxHash: GOV_HASH,
@@ -417,7 +433,7 @@ describe("vote transactions", () => {
     expect(draft.votes[0]!.id).not.toBe(draft.votes[1]!.id);
   });
 
-  test("vote tx with a real payment keeps the payment, strips only change", () => {
+  test("legacy vote tx retains payment and ambiguous change", () => {
     const body = voteBody([drepVote()], {
       outputs: [
         output(RECIPIENT, [{ unit: "lovelace", quantity: "2000000" }]),
@@ -425,11 +441,14 @@ describe("vote transactions", () => {
       ],
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
-    expect(draft.outputs.map((o) => o.address)).toEqual([RECIPIENT]);
+    expect(draft.outputs.map((o) => o.address)).toEqual([
+      RECIPIENT,
+      WALLET_ADDRESS,
+    ]);
     expect(draft.votes).toHaveLength(1);
   });
 
-  test("send-only bodies still keep at least one output (regression)", () => {
+  test("legacy send-only bodies keep all self-outputs (regression)", () => {
     const body = sendBody({
       outputs: [
         output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "9000000" }]),
@@ -437,7 +456,7 @@ describe("vote transactions", () => {
       ],
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
-    expect(draft.outputs).toHaveLength(1);
+    expect(draft.outputs).toHaveLength(2);
   });
 });
 
@@ -493,7 +512,7 @@ describe("staking certificate transactions", () => {
     expect(isDraftCompatible(body).compatible).toBe(false);
   });
 
-  test("txJsonToDraft maps certs in order, normalizes hex pool ids and strips the lone change output", () => {
+  test("txJsonToDraft maps certs and preserves ambiguous legacy change", () => {
     const body = certBody([
       stakeCert({ type: "RegisterStake", stakeKeyAddress: STAKE_ADDRESS }),
       delegateCert(POOL_HEX),
@@ -501,7 +520,7 @@ describe("staking certificate transactions", () => {
 
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
 
-    expect(draft.outputs).toHaveLength(0);
+    expect(draft.outputs).toHaveLength(1);
     expect(draft.certificates).toHaveLength(2);
     expect(draft.certificates[0]).toMatchObject({
       kind: "RegisterStake",
@@ -528,7 +547,7 @@ describe("staking certificate transactions", () => {
     expect(draft.certificates[0]!.poolId).toBe("not-a-pool-id");
   });
 
-  test("cert tx with a real payment keeps the payment, strips only change", () => {
+  test("legacy cert tx retains both payment and possible change", () => {
     const body = certBody([delegateCert()], {
       outputs: [
         output(RECIPIENT, [{ unit: "lovelace", quantity: "2000000" }]),
@@ -536,7 +555,10 @@ describe("staking certificate transactions", () => {
       ],
     });
     const { draft } = txJsonToDraft(body, { walletAddress: WALLET_ADDRESS });
-    expect(draft.outputs.map((o) => o.address)).toEqual([RECIPIENT]);
+    expect(draft.outputs.map((o) => o.address)).toEqual([
+      RECIPIENT,
+      WALLET_ADDRESS,
+    ]);
     expect(draft.certificates).toHaveLength(1);
   });
 
@@ -575,6 +597,7 @@ describe("staking certificate transactions", () => {
       output(WALLET_ADDRESS, [{ unit: "lovelace", quantity: "7600000" }]),
     );
 
+    body.builderOutputs = createOutputProvenance(original, body.outputs);
     // Per-cert certificateScript means every cert serializes witnessed.
     expect(body.certificates.map((c: any) => c.type)).toEqual([
       "SimpleScriptCertificate",

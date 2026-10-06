@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
+import OutputReviewList from "./output-review-list";
 
 export type BuildResultState =
   | { status: "ok"; result: DraftBuildResult; description: string }
@@ -16,7 +17,13 @@ interface BuildResultPanelProps {
   onDismiss: () => void;
 }
 
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+function Stat({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col">
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -105,8 +112,8 @@ export default function BuildResultPanel({
           <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" />
           <span className="font-medium">Transaction builds</span>
           <span className="text-xs text-muted-foreground">
-            &mdash; fee, inputs and change are shown on the canvas; nothing
-            was signed or saved
+            &mdash; fee, inputs and change are shown on the canvas; nothing was
+            signed or saved
           </span>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2">
@@ -115,7 +122,9 @@ export default function BuildResultPanel({
               {lovelaceToAda(built.fee)}
             </span>
           </Stat>
-          <Stat label="Unsigned size">{built.sizeBytes.toLocaleString()} B</Stat>
+          <Stat label="Unsigned size">
+            {built.sizeBytes.toLocaleString()} B
+          </Stat>
           <Stat label="Inputs / outputs">
             {built.inputCount} / {built.outputCount}
           </Stat>
@@ -129,6 +138,9 @@ export default function BuildResultPanel({
             </span>
           </Stat>
         </div>
+        {built.outputReview?.some(
+          (output) => output.inlineDatum !== undefined,
+        ) && <OutputReviewList outputs={built.outputReview} />}
         {hasPendingRationaleEdits && (
           <p className="text-xs text-muted-foreground">
             Edited vote rationales are uploaded when you propose; this build

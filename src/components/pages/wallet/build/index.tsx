@@ -58,6 +58,14 @@ import {
 } from "@/lib/tx-draft/source";
 import { utxoFunds } from "@/lib/tx-draft/assets";
 import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
+import {
+  createOutputProvenance,
+  reviewDraftOutputs,
+  type OutputReview,
+} from "@/lib/tx-draft/outputs";
+import type { MeshTxBuilder } from "@meshsdk/core";
+import OutputReviewList from "./output-review-list";
+import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import {
   applyDraftToTxBuilder,
@@ -146,11 +154,18 @@ export default function PageBuild() {
   /** Source switch awaiting confirmation (it would drop certs/votes). */
   const [pendingSource, setPendingSource] = useState<DraftSource | null>(null);
   /** Outcome of the last test build; cleared whenever the draft changes. */
-  const [buildResult, setBuildResult] = useState<BuildResultState | null>(
-    null,
-  );
+  const [buildResult, setBuildResult] = useState<BuildResultState | null>(null);
   const buildResultRevision = useRef(0);
+  const [datumReview, setDatumReview] = useState<{
+    outputs: OutputReview[];
+    fee: string;
+  } | null>(null);
+  const finishDatumReview = useRef<((accepted: boolean) => void) | undefined>(
+    undefined,
+  );
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [ambiguousChangeDraftId, setAmbiguousChangeDraftId] =
+    useState<string>();
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
   const [voteDialogOpen, setVoteDialogOpen] = useState(false);
@@ -187,7 +202,17 @@ export default function PageBuild() {
   useEffect(() => {
     buildResultRevision.current += 1;
     setBuildResult(null);
+    finishDatumReview.current?.(false);
+    finishDatumReview.current = undefined;
+    setDatumReview(null);
   }, [draft, network, activeWallet, userAddress]);
+
+  useEffect(
+    () => () => {
+      finishDatumReview.current?.(false);
+    },
+    [],
+  );
 
   const utxos = useMemo(
     () => (appWallet ? (walletsUtxos[appWallet.id] ?? []) : []),
@@ -234,7 +259,8 @@ export default function PageBuild() {
     { enabled: sourceReady },
   );
   const availableUtxos = useMemo(
-    () => (isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? [])),
+    () =>
+      isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? []),
     [isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
   );
 
@@ -273,8 +299,7 @@ export default function PageBuild() {
     () =>
       (appWallet?.signersAddresses ?? []).map((address, index) => ({
         address,
-        label:
-          appWallet?.signersDescriptions?.[index] || `Signer ${index + 1}`,
+        label: appWallet?.signersDescriptions?.[index] || `Signer ${index + 1}`,
       })),
     [appWallet],
   );
@@ -456,11 +481,18 @@ export default function PageBuild() {
       return;
     }
 
-    const { draft: loaded, inputRefs } = txJsonToDraft(body, {
+    const {
+      draft: loaded,
+      inputRefs,
+      warnings,
+    } = txJsonToDraft(body, {
       walletAddress: appWallet.address,
       description: transaction.description,
       metadataMessage: extractTxMetadataMessage(transaction.txCbor),
     });
+    setAmbiguousChangeDraftId(
+      warnings.includes("change-not-detected") ? loaded.id : undefined,
+    );
 
     // Restore the original inputs as manual picks when they're all still
     // spendable (ignoring the locks held by the tx being edited itself);
@@ -601,6 +633,35 @@ export default function PageBuild() {
     return !isMultisigSource || !!appWallet.scriptCbor;
   }
 
+  async function reviewBeforeSigning(
+    body: MeshTxBuilder["meshTxBuilderBody"],
+    revision: number,
+  ): Promise<boolean> {
+    if (
+      revision !== buildResultRevision.current ||
+      draft !== useTxBuilderStore.getState().draft
+    )
+      return false;
+    if (!draft.outputs.some((output) => output.inlineDatum !== undefined))
+      return true;
+    const outputs = reviewDraftOutputs(draft, body.outputs);
+    const accepted = await new Promise<boolean>((resolve) => {
+      finishDatumReview.current = resolve;
+      setDatumReview({ outputs, fee: String(body.fee ?? "0") });
+    });
+    return (
+      accepted &&
+      revision === buildResultRevision.current &&
+      draft === useTxBuilderStore.getState().draft
+    );
+  }
+
+  function closeDatumReview(accepted: boolean) {
+    finishDatumReview.current?.(accepted);
+    finishDatumReview.current = undefined;
+    setDatumReview(null);
+  }
+
   /**
    * Builds the draft exactly as the proposal would (fee, balancing, change,
    * metadata) but stops before signing: nothing is uploaded, signed or
@@ -618,14 +679,19 @@ export default function PageBuild() {
     try {
       // Always a fresh builder: MeshTxBuilder is stateful and a completed
       // builder can't be built again.
-      const txBuilder = await getTxBuilder(network);
+      const txBuilder = await getTxBuilder(
+        network,
+        false,
+        draft.outputs.some((output) => output.inlineDatum !== undefined),
+      );
       const result = await buildDraftTx(
         txBuilder,
         draft,
         draftBuildContext(appWallet),
         {
           metadataMessage: draft.metadata || undefined,
-          complete: (builder) => completeTxWithFreshCostModels(builder, network),
+          complete: (builder) =>
+            completeTxWithFreshCostModels(builder, network),
         },
       );
       if (!isCurrent()) return;
@@ -653,18 +719,25 @@ export default function PageBuild() {
   async function buildAndSign() {
     if (!appWallet || draft.source.kind !== "connected" || !canBuildSource())
       return;
+    const revision = buildResultRevision.current;
     setSigning(true);
     try {
-      const txBuilder = await getTxBuilder(network);
+      const txBuilder = await getTxBuilder(
+        network,
+        false,
+        draft.outputs.some((output) => output.inlineDatum !== undefined),
+      );
       const result = await buildDraftTx(
         txBuilder,
         draft,
         draftBuildContext(appWallet),
         {
           metadataMessage: draft.metadata || undefined,
-          complete: (builder) => completeTxWithFreshCostModels(builder, network),
+          complete: (builder) =>
+            completeTxWithFreshCostModels(builder, network),
         },
       );
+      if (!(await reviewBeforeSigning(result.body, revision))) return;
       const { txHash } = await signAndSubmit(result.unsignedTx);
       toast({
         title: "Transaction submitted",
@@ -720,6 +793,7 @@ export default function PageBuild() {
   }) {
     if (!appWallet?.scriptCbor || !isMultisigSource || errors.length > 0)
       return;
+    const revision = buildResultRevision.current;
     setBuilding(true);
     try {
       // Resolve rationale edits into a LOCAL draft: edited rationales are
@@ -741,14 +815,23 @@ export default function PageBuild() {
         buildDraft = withVoteAnchor(buildDraft, vote.id, anchor);
       }
 
-      const txBuilder = await getTxBuilder(network);
+      const txBuilder = await getTxBuilder(
+        network,
+        false,
+        draft.outputs.some((output) => output.inlineDatum !== undefined),
+      );
       applyDraftToTxBuilder(
         txBuilder,
         buildDraft,
         draftBuildContext(appWallet),
       );
-      await newTransaction({
+      const created = await newTransaction({
         txBuilder,
+        beforeSign: () =>
+          reviewBeforeSigning(txBuilder.meshTxBuilderBody, revision),
+        txJsonExtras: (body) => ({
+          builderOutputs: createOutputProvenance(buildDraft, body.outputs),
+        }),
         description: draft.description || undefined,
         metadataValue:
           draft.metadata.length > 0
@@ -759,6 +842,7 @@ export default function PageBuild() {
           ? "The pending transaction has been replaced — signers have been notified"
           : undefined,
       });
+      if (created === false) return;
       // Best-effort ballot sync: the pending card resolves rationale text
       // from ballot rows first, so point the matching row (found via the
       // vote's OLD anchor, else the proposal id) at the new anchor + text.
@@ -971,6 +1055,16 @@ export default function PageBuild() {
           </Button>
         </div>
       )}
+      {ambiguousChangeDraftId === draft.id && (
+        <p
+          role="status"
+          className="rounded border border-warning/50 bg-warning/10 p-3 text-sm"
+        >
+          This transaction has no verified record of its intended outputs. All
+          outputs were retained; review any self-payments and remove unwanted
+          change outputs before rebuilding.
+        </p>
+      )}
       {buildResult && (
         <BuildResultPanel
           result={buildResult}
@@ -1005,9 +1099,8 @@ export default function PageBuild() {
               </>
             ) : (
               <>
-                The transaction you were editing no longer exists &mdash; it
-                was submitted or deleted. Building will create a new
-                transaction.
+                The transaction you were editing no longer exists &mdash; it was
+                submitted or deleted. Building will create a new transaction.
               </>
             )}
           </span>
@@ -1091,6 +1184,38 @@ export default function PageBuild() {
         existingProposalIds={voteProposalIds}
         drepRegistered={drepInfo?.active === true ? true : undefined}
       />
+      <Dialog
+        open={datumReview !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDatumReview(false);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Review output datums</DialogTitle>
+            <DialogDescription>
+              Check the final output amounts, including minimum ADA adjustments,
+              before signing.
+            </DialogDescription>
+          </DialogHeader>
+          {datumReview && (
+            <>
+              <OutputReviewList outputs={datumReview.outputs} />
+              <p className="text-sm">
+                Network fee: {baseToDisplay(datumReview.fee, 6)} ADA
+              </p>
+            </>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => closeDatumReview(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => closeDatumReview(true)}>
+              Continue to signing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <LoadPendingDialog
         open={loadDialogOpen}
         onOpenChange={setLoadDialogOpen}
