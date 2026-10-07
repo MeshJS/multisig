@@ -186,14 +186,17 @@ export function updateCertificatePool(
 }
 
 export type StakeActionInput =
+  | { type: "register" }
   | { type: "registerAndDelegate"; poolId: string }
   | { type: "delegate"; poolId: string }
-  | { type: "deregister" };
+  | { type: "deregister" }
+  | { type: "voteDelegation"; dRepId: string };
 
 /**
- * Adds the certificate(s) for a user-chosen staking action. A
- * register+delegate action becomes two certs (register first — on-chain
- * order matters) sharing a pairId so removal stays atomic.
+ * Adds the certificate(s) for a user-chosen staking or vote-delegation
+ * action. Register-only is one certificate. Register-and-delegate is two
+ * (register first) sharing a pairId. A DRep id is its own certificate and
+ * does not pick a stake pool.
  */
 export function addStakeAction(
   draft: TxDraft,
@@ -206,9 +209,15 @@ export function addStakeAction(
       { kind: "RegisterStake", origin: "user", pairId },
       { kind: "DelegateStake", poolId: action.poolId, origin: "user", pairId },
     ];
+  } else if (action.type === "register") {
+    partials = [{ kind: "RegisterStake", origin: "user" }];
   } else if (action.type === "delegate") {
     partials = [
       { kind: "DelegateStake", poolId: action.poolId, origin: "user" },
+    ];
+  } else if (action.type === "voteDelegation") {
+    partials = [
+      { kind: "VoteDelegation", dRepId: action.dRepId, origin: "user" },
     ];
   } else {
     partials = [{ kind: "DeregisterStake", origin: "user" }];

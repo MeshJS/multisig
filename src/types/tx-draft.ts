@@ -58,12 +58,13 @@ export type DraftVote = {
 export type DraftCertificateKind =
   | "RegisterStake"
   | "DelegateStake"
-  | "DeregisterStake";
+  | "DeregisterStake"
+  | "VoteDelegation";
 
 /**
- * A staking certificate, either loaded from an existing pending transaction
- * or created in the builder. Loaded certs (no `origin`) can only change
- * their delegation pool and can't be removed individually: a
+ * A staking or vote-delegation certificate, either loaded from an existing
+ * pending transaction or created in the builder. Loaded certs (no `origin`)
+ * can only change their delegation pool and can't be removed individually: a
  * register/delegate pair must stay intact, and a lone delegation cert is the
  * whole point of its transaction. User-created certs are removable, but a
  * register+delegate pair (shared `pairId`) is removed atomically. The reward
@@ -75,6 +76,11 @@ export type DraftCertificate = {
   kind: DraftCertificateKind;
   /** Canonical bech32 pool id (pool1...); present only on DelegateStake. */
   poolId?: string;
+  /**
+   * Governance DRep id for VoteDelegation. "Always Abstain" is the protocol
+   * Auto-Abstain credential; any other value is a drep1... id.
+   */
+  dRepId?: string;
   /** stakeKeyAddress as stored in the loaded txJson — provenance only. */
   originalStakeAddress?: string;
   /** Present only on certs created in the builder; absent = loaded. */

@@ -137,6 +137,17 @@ export function draftCertificateToBadge(
         ...(poolName ? { title: poolName } : {}),
       };
     }
+    case "VoteDelegation":
+      return {
+        kind: "certificate",
+        label: "Vote Delegation",
+        detail: cert.dRepId
+          ? cert.dRepId.length <= 24
+            ? cert.dRepId
+            : getFirstAndLast(cert.dRepId)
+          : undefined,
+        color: "text-indigo-500 dark:text-indigo-400",
+      };
   }
 }
 

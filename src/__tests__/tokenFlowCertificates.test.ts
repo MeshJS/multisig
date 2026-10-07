@@ -243,6 +243,17 @@ describe("draftCertificateToBadge", () => {
       color: "text-blue-500 dark:text-blue-400",
     });
   });
+
+  it("maps a vote-delegation DRep id", () => {
+    const badge = draftCertificateToBadge({
+      id: "c-1",
+      kind: "VoteDelegation",
+      dRepId: "Always Abstain",
+      origin: "user",
+    });
+    expect(badge.label).toBe("Vote Delegation");
+    expect(badge.detail).toBe("Always Abstain");
+  });
 });
 
 describe("meshVoteToBadge", () => {

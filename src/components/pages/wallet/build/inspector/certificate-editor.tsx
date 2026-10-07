@@ -22,6 +22,7 @@ const CERT_KIND_LABELS: Record<DraftCertificateKind, string> = {
   RegisterStake: "Stake Registration",
   DelegateStake: "Stake Delegation",
   DeregisterStake: "Stake Deregistration",
+  VoteDelegation: "Vote Delegation",
 };
 
 /**
@@ -92,6 +93,18 @@ export default function CertificateEditor({
           title={certificate.originalStakeAddress}
         >
           {getFirstAndLast(certificate.originalStakeAddress, 10, 6)}
+        </span>
+      )}
+      {certificate.kind === "VoteDelegation" && (
+        <span
+          className="text-[10px] text-muted-foreground"
+          data-testid={`tx-builder-cert-drep-${certificate.id}`}
+        >
+          {certificate.dRepId
+            ? certificate.dRepId.length <= 24
+              ? certificate.dRepId
+              : getFirstAndLast(certificate.dRepId, 12, 6)
+            : "No DRep id"}
         </span>
       )}
       {certificate.kind === "DelegateStake" && (
