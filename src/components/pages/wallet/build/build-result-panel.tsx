@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import OutputReviewList from "./output-review-list";
+import PlutusReview from "./plutus-review";
 
 export type BuildResultState =
   | { status: "ok"; result: DraftBuildResult; description: string }
@@ -147,6 +148,7 @@ export default function BuildResultPanel({
             used the current anchors.
           </p>
         )}
+        {built.plutusReview && <PlutusReview review={built.plutusReview} />}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button

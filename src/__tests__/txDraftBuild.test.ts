@@ -1,11 +1,33 @@
-import { MeshTxBuilder, type UTxO } from "@meshsdk/core";
+import {
+  MeshTxBuilder,
+  DEFAULT_PROTOCOL_PARAMETERS,
+  DEFAULT_V1_COST_MODEL_LIST,
+  DEFAULT_V2_COST_MODEL_LIST,
+  DEFAULT_V3_COST_MODEL_LIST,
+  resolvePlutusScriptAddress,
+  resolveDataHash,
+  type UTxO,
+  type IEvaluator,
+  type IFetcher,
+} from "@meshsdk/core";
 import { csl } from "@meshsdk/core-csl";
 import { resolveTxHash } from "@meshsdk/core-cst";
 
 import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
-import { addOutput, createDraft, setUtxoSelection } from "@/lib/tx-draft/mutations";
+import {
+  addOutput,
+  createDraft,
+  setUtxoSelection,
+} from "@/lib/tx-draft/mutations";
 import type { TxDraft } from "@/types/tx-draft";
 import { realTestAddresses } from "./testUtils";
+import {
+  completeTxWithFreshCostModels,
+  refreshScriptDataHash,
+} from "@/lib/completeTxWithFreshCostModels";
+import type { DraftScriptInput } from "@/types/tx-draft";
+import type { BuildDraftTxOptions } from "@/lib/tx-draft/build-draft-tx";
+import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 
 const WALLET_ADDRESS = realTestAddresses.address1;
 const RECIPIENT = realTestAddresses.address2;
@@ -72,7 +94,9 @@ function fakeComplete(txHex: string) {
   const calls: string[] = [];
   const complete = async (txBuilder: MeshTxBuilder) => {
     calls.push("complete");
-    (txBuilder as unknown as { queueAllLastItem: () => void }).queueAllLastItem();
+    (
+      txBuilder as unknown as { queueAllLastItem: () => void }
+    ).queueAllLastItem();
     txBuilder.meshTxBuilderBody.fee = FEE;
     txBuilder.meshTxBuilderBody.outputs.push({
       address: txBuilder.meshTxBuilderBody.changeAddress,
@@ -142,10 +166,10 @@ describe("buildDraftTx", () => {
         new MeshTxBuilder({}),
         createDraft("d1"),
         {
-        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
-        walletAddress: WALLET_ADDRESS,
-        availableUtxos: [],
-      },
+          inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+          walletAddress: WALLET_ADDRESS,
+          availableUtxos: [],
+        },
         { complete },
       ),
     ).rejects.toThrow("no outputs");
@@ -158,10 +182,10 @@ describe("buildDraftTx", () => {
         new MeshTxBuilder({}),
         sendDraft("2000000"),
         {
-        inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
-        walletAddress: WALLET_ADDRESS,
-        availableUtxos: [],
-      },
+          inputs: { kind: "script", scriptCbor: SCRIPT_CBOR },
+          walletAddress: WALLET_ADDRESS,
+          availableUtxos: [],
+        },
         {
           complete: async () => {
             throw new Error("UTxO Balance Insufficient");
@@ -169,5 +193,448 @@ describe("buildDraftTx", () => {
         },
       ),
     ).rejects.toThrow("UTxO Balance Insufficient");
+  });
+});
+
+const models = [
+  DEFAULT_V1_COST_MODEL_LIST,
+  DEFAULT_V2_COST_MODEL_LIST,
+  DEFAULT_V3_COST_MODEL_LIST,
+];
+const freshModels = {
+  PlutusV1: models[0],
+  PlutusV2: models[1],
+  PlutusV3: models[2],
+};
+const plutusCbor = "49480100002221200101";
+const owner = csl.PrivateKey.generate_ed25519().to_public().hash();
+const keyAddress = csl.EnterpriseAddress.new(
+  0,
+  csl.Credential.from_keyhash(owner),
+)
+  .to_address()
+  .to_bech32();
+
+/** Real SDK completion/CBOR, deterministic chain and evaluator fixtures (not on-chain acceptance). */
+function plutusFixture(
+  version: DraftScriptInput["script"]["version"] = "V2",
+  provided = false,
+  nativeFunding = false,
+) {
+  const scriptAddress = resolvePlutusScriptAddress(
+    { code: plutusCbor, version },
+    0,
+  );
+  const native = csl.NativeScript.new_script_pubkey(
+    csl.ScriptPubkey.new(owner),
+  );
+  const fundingAddress = nativeFunding
+    ? csl.EnterpriseAddress.new(
+        0,
+        csl.Credential.from_scripthash(native.hash()),
+      )
+        .to_address()
+        .to_bech32()
+    : keyAddress;
+  const scripts: UTxO[] = ["f", "a"].map((hash, i) => ({
+    input: { txHash: hash.repeat(64), outputIndex: i },
+    output: {
+      address: scriptAddress,
+      amount: [{ unit: "lovelace", quantity: "3000000" }],
+      ...(provided
+        ? { dataHash: resolveDataHash("01", "CBOR") }
+        : { plutusData: "01" }),
+    },
+  }));
+  const collateral: UTxO = {
+    input: { txHash: "c".repeat(64), outputIndex: 0 },
+    output: {
+      address: keyAddress,
+      amount: [{ unit: "lovelace", quantity: "2000000" }],
+    },
+  };
+  const funding: UTxO = {
+    input: { txHash: "b".repeat(64), outputIndex: 0 },
+    output: {
+      address: fundingAddress,
+      amount: [{ unit: "lovelace", quantity: "12000000" }],
+    },
+  };
+  const live = [...scripts, collateral, funding];
+  const provider = {
+    fetchUTxOs: jest.fn(async (hash: string) =>
+      live.filter((u) => u.input.txHash === hash),
+    ),
+    fetchAddressUTxOs: jest.fn(async (address: string) =>
+      live.filter((u) => u.output.address === address),
+    ),
+    fetchProtocolParameters: jest
+      .fn()
+      .mockResolvedValue({ ...DEFAULT_PROTOCOL_PARAMETERS }),
+  };
+  const wallet = {
+    getNetworkId: jest.fn().mockResolvedValue(0),
+    getUtxos: jest.fn().mockResolvedValue([collateral]),
+    signTx: jest.fn(),
+    submitTx: jest.fn(),
+  };
+  const evaluate: IEvaluator["evaluateTx"] = async (hex) => {
+    const redeemers = csl.Transaction.from_hex(hex).witness_set().redeemers()!;
+    return Array.from({ length: redeemers.len() }, (_, i) => {
+      const redeemer = redeemers.get(i);
+      const n = Number(redeemer.data().as_integer()!.to_str());
+      return {
+        tag: "SPEND" as const,
+        index: Number(redeemer.index().to_str()),
+        budget: { mem: n * 1000, steps: n * 10000 },
+      };
+    });
+  };
+  const evaluator = { evaluateTx: jest.fn(evaluate) };
+  const builder = new MeshTxBuilder({
+    evaluator,
+    fetcher: provider as unknown as IFetcher,
+  })
+    .setNetwork("preprod")
+    .setCostModels(models);
+  const draft: TxDraft = {
+    ...createDraft(),
+    source: nativeFunding ? { kind: "multisig" } : { kind: "connected" },
+    outputs: [
+      {
+        id: "payment",
+        address: keyAddress,
+        assets: [{ unit: "lovelace", quantity: "8000000" }],
+        ...(!provided
+          ? { inlineDatum: { format: "CBOR" as const, text: "02" } }
+          : {}),
+      },
+    ],
+    scriptInputs: scripts.map((u, i) => ({
+      id: `script-${i}`,
+      utxoRef: u.input,
+      script: { cbor: plutusCbor, version },
+      datumSource: provided
+        ? { kind: "provided", data: { format: "CBOR", text: "01" } }
+        : { kind: "inline" },
+      redeemer: { format: "CBOR", text: `0${i + 1}` },
+    })),
+    collateral: { utxoRef: collateral.input },
+  };
+  const context: ApplyDraftContext = {
+    inputs: nativeFunding
+      ? { kind: "script", scriptCbor: native.to_hex() }
+      : { kind: "pubkey" },
+    walletAddress: fundingAddress,
+    availableUtxos: [funding, ...scripts, collateral],
+  };
+  const complete = jest.fn((b: MeshTxBuilder) =>
+    completeTxWithFreshCostModels(b, 0),
+  );
+  const options: BuildDraftTxOptions = {
+    complete,
+    metadataMessage: "evaluated fixture",
+    plutus: { wallet, network: 0, provider },
+  };
+  return {
+    builder,
+    draft,
+    scripts,
+    live,
+    collateral,
+    funding,
+    provider,
+    wallet,
+    evaluator,
+    evaluate,
+    complete,
+    context,
+    options,
+    build: () => buildDraftTx(builder, draft, context, options),
+  };
+}
+
+describe("evaluated Plutus draft builds", () => {
+  beforeEach(() => {
+    // Node's structuredClone creates Maps outside Jest's VM realm; Mesh uses
+    // instanceof Map for metadata. Rehome cloned containers for real SDK tests.
+    const clone = global.structuredClone;
+    const rehome = (value: any): any => {
+      if (Object.prototype.toString.call(value) === "[object Map]")
+        return new Map(
+          Array.from(value.entries(), ([k, v]: any) => [rehome(k), rehome(v)]),
+        );
+      if (Array.isArray(value)) return value.map(rehome);
+      if (value && Object.prototype.toString.call(value) === "[object Object]")
+        return Object.fromEntries(
+          Object.entries(value).map(([k, v]) => [k, rehome(v)]),
+        );
+      return value;
+    };
+    jest
+      .spyOn(global, "structuredClone")
+      .mockImplementation((value) => rehome(clone(value)));
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ cost_models_raw: freshModels }),
+    } as Response);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test.each([false, true])(
+    "serializes mixed funding (native=%s), ledger-indexed redeemers, datums, collateral and owner without signing",
+    async (native) => {
+      const f = plutusFixture("V2", false, native);
+      const result = await f.build();
+      const tx = csl.Transaction.from_hex(result.unsignedTx);
+      const body = tx.body();
+      const ws = tx.witness_set();
+      expect(body.inputs().len()).toBe(3);
+      const redeemers = ws.redeemers()!;
+      expect(redeemers.len()).toBe(2);
+      for (let i = 0; i < redeemers.len(); i++) {
+        const r = redeemers.get(i);
+        const input = body.inputs().get(Number(r.index().to_str()));
+        const original = f.draft.scriptInputs.find(
+          (s) => s.utxoRef.txHash === input.transaction_id().to_hex(),
+        )!;
+        expect(r.data().to_hex()).toBe(original.redeemer.text);
+        expect(r.ex_units().mem().to_str()).toBe(
+          String(Number(original.redeemer.text) * 1000),
+        );
+      }
+      expect(redeemers.get(0).data().to_hex()).toBe("02"); // draft order was f then a; ledger order is a, b, f
+      expect(body.outputs().get(0).plutus_data()!.to_hex()).toBe("02");
+      expect(ws.plutus_scripts()!.len()).toBe(1);
+      expect(ws.native_scripts()?.len() ?? 0).toBe(native ? 1 : 0);
+      expect(ws.vkeys()?.len() ?? 0).toBe(0);
+      expect(body.collateral()!.get(0).transaction_id().to_hex()).toBe(
+        f.collateral.input.txHash,
+      );
+      expect(body.required_signers()!.get(0).to_hex()).toBe(owner.to_hex());
+      expect(body.collateral_return()).toBeUndefined();
+      expect(body.script_data_hash()).toBeDefined();
+      expect(result.unsignedTx).toBe(
+        refreshScriptDataHash(result.unsignedTx, freshModels, result.body),
+      );
+      expect(f.evaluator.evaluateTx.mock.calls.at(-1)![0]).toBe(
+        result.unsignedTx,
+      );
+      expect(f.evaluator.evaluateTx.mock.calls.length).toBeGreaterThan(1);
+      expect(result.fee).toBe(body.fee().to_str());
+      expect(result.plutusReview!.collateral.maximumExposureLovelace).toBe(
+        "2000000",
+      );
+      expect(result.plutusReview!.budgets).toHaveLength(2);
+      expect(f.wallet.signTx).not.toHaveBeenCalled();
+      expect(f.wallet.submitTx).not.toHaveBeenCalled();
+      expect(f.complete).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(["V1", "V2", "V3"] as const)(
+    "%s supplied hash-matched datums are encoded as witnesses",
+    async (version) => {
+      const f = plutusFixture(version, true);
+      const tx = csl.Transaction.from_hex((await f.build()).unsignedTx);
+      expect(tx.witness_set().plutus_data()!.get(0).to_hex()).toBe("01");
+      expect(
+        tx.witness_set().plutus_scripts()!.get(0).language_version().kind(),
+      ).toBe(Number(version.slice(1)) - 1);
+    },
+  );
+
+  test("V3 inline data and script-only funding need no ordinary funding input", async () => {
+    const f = plutusFixture("V3");
+    f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+    const result = await f.build();
+    expect(result.inputCount).toBe(2);
+  });
+
+  test("V1 rejects inline data before completion", async () => {
+    const f = plutusFixture("V1");
+    await expect(f.build()).rejects.toThrow(/V1/);
+    expect(f.complete).not.toHaveBeenCalled();
+  });
+
+  test("an unavailable evaluator and headless Plutus intent fail before completion", async () => {
+    const f = plutusFixture();
+    f.builder.evaluator = undefined;
+    await expect(f.build()).rejects.toThrow(/evaluator/);
+    f.options.plutus = undefined;
+    await expect(f.build()).rejects.toThrow(
+      /Headless Plutus encoding is not enabled/,
+    );
+    expect(f.complete).not.toHaveBeenCalled();
+  });
+
+  test.each(["empty", "partial", "duplicate", "negative", "unsafe", "reject"])(
+    "blocks %s evaluator responses during balancing",
+    async (mode) => {
+      const f = plutusFixture();
+      f.evaluator.evaluateTx.mockImplementation(async (hex) => {
+        const actions = await f.evaluate(hex);
+        if (mode === "reject") throw new Error("Script evaluation rejected");
+        if (mode === "empty") return [];
+        if (mode === "partial") return actions.slice(0, 1);
+        if (mode === "duplicate") return [actions[0]!, actions[0]!];
+        actions[0]!.budget.mem =
+          mode === "negative" ? -1 : Number.MAX_SAFE_INTEGER + 1;
+        return actions;
+      });
+      await expect(f.build()).rejects.toThrow(/valuation|budgets/);
+    },
+  );
+
+  test("rechecks exact final bytes and blocks underestimated budgets", async () => {
+    const f = plutusFixture();
+    f.options.complete = async (builder) => {
+      const hex = await f.complete(builder);
+      f.evaluator.evaluateTx.mockImplementation(async (tx) =>
+        (await f.evaluate(tx)).map((a) => ({
+          ...a,
+          budget: { ...a.budget, mem: a.budget.mem + 1 },
+        })),
+      );
+      return hex;
+    };
+    await expect(f.build()).rejects.toThrow(/larger execution budget/);
+  });
+
+  test.each(["chain", "spent", "parameters", "cost models"])(
+    "blocks %s failure without producing a result",
+    async (mode) => {
+      const f = plutusFixture();
+      if (mode === "chain")
+        f.provider.fetchUTxOs.mockRejectedValue(
+          new Error("provider unavailable"),
+        );
+      if (mode === "spent")
+        f.provider.fetchAddressUTxOs.mockResolvedValue([
+          f.collateral,
+          f.funding,
+        ]);
+      if (mode === "parameters")
+        f.provider.fetchProtocolParameters.mockRejectedValue(
+          new Error("parameters unavailable"),
+        );
+      if (mode === "cost models")
+        jest
+          .mocked(fetch)
+          .mockRejectedValue(new Error("cost models unavailable"));
+      await expect(f.build()).rejects.toThrow(
+        /unavailable|spent|verify this UTxO/,
+      );
+    },
+  );
+
+  test.each(["size", "memory", "steps", "collateral", "fee"])(
+    "enforces final %s limits",
+    async (limit) => {
+      const f = plutusFixture();
+      // Limits change between preparation and final review; inspect the emitted tx.
+      f.provider.fetchProtocolParameters
+        .mockResolvedValueOnce({ ...DEFAULT_PROTOCOL_PARAMETERS })
+        .mockResolvedValue({
+          ...DEFAULT_PROTOCOL_PARAMETERS,
+          ...(limit === "size"
+            ? { maxTxSize: 1 }
+            : limit === "memory"
+              ? { maxTxExMem: "1" }
+              : limit === "steps"
+                ? { maxTxExSteps: "1" }
+                : limit === "fee"
+                  ? { minFeeA: 100000 }
+                  : { collateralPercent: 100000 }),
+        });
+      await expect(f.build()).rejects.toThrow(
+        /exceeds|Insufficient collateral|fee is insufficient/,
+      );
+    },
+  );
+
+  test.each(["resolution", "completion", "evaluation"])(
+    "rejects a stale %s result",
+    async (stage) => {
+      const f = plutusFixture();
+      let current = true;
+      f.options.isCurrent = () => current;
+      if (stage === "resolution")
+        f.provider.fetchUTxOs.mockImplementation(async () => {
+          current = false;
+          return f.scripts;
+        });
+      else
+        f.options.complete = async (builder) => {
+          const hex = await f.complete(builder);
+          if (stage === "completion") current = false;
+          else
+            f.evaluator.evaluateTx.mockImplementation(async (tx) => {
+              current = false;
+              return f.evaluate(tx);
+            });
+          return hex;
+        };
+      await expect(f.build()).rejects.toThrow(/superseded/);
+    },
+  );
+
+  test("fresh cost models correct the script-data hash before the final evaluation", async () => {
+    const f = plutusFixture();
+    const changedV2 = [...DEFAULT_V2_COST_MODEL_LIST];
+    changedV2[0] = changedV2[0]! + 1;
+    jest.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        cost_models_raw: { ...freshModels, PlutusV2: changedV2 },
+      }),
+    } as Response);
+    const result = await f.build();
+    const tx = csl.Transaction.from_hex(result.unsignedTx);
+    const costs = csl.Costmdls.new();
+    const model = csl.CostModel.new();
+    changedV2.forEach((value, index) =>
+      model.set(index, csl.Int.new_i32(value)),
+    );
+    costs.insert(csl.Language.new_plutus_v2(), model);
+    const expected = csl.hash_script_data(
+      tx.witness_set().redeemers()!,
+      costs,
+      tx.witness_set().plutus_data(),
+    );
+    expect(tx.body().script_data_hash()!.to_hex()).toBe(expected.to_hex());
+    const oldHash = csl.Transaction.from_hex(
+      refreshScriptDataHash(result.unsignedTx, freshModels, result.body),
+    )
+      .body()
+      .script_data_hash()!
+      .to_hex();
+    expect(oldHash).not.toBe(expected.to_hex());
+    expect(f.evaluator.evaluateTx.mock.calls.at(-1)![0]).toBe(
+      result.unsignedTx,
+    );
+  });
+
+  test("completion cannot silently skip evaluation and retain default budgets", async () => {
+    const f = plutusFixture();
+    f.options.complete = async (builder) => {
+      builder.evaluator = undefined;
+      return f.complete(builder);
+    };
+    await expect(f.build()).rejects.toThrow(/skipped script evaluation/);
+    expect(f.builder.evaluator).toBe(f.evaluator);
+  });
+
+  test("a new build never reuses an earlier live resolution", async () => {
+    const f = plutusFixture();
+    await f.build();
+    f.provider.fetchAddressUTxOs.mockResolvedValue([f.collateral, f.funding]);
+    const next = new MeshTxBuilder({ evaluator: f.evaluator })
+      .setNetwork("preprod")
+      .setCostModels(models);
+    await expect(
+      buildDraftTx(next, f.draft, f.context, f.options),
+    ).rejects.toThrow(/spent/);
+    expect(f.complete).toHaveBeenCalledTimes(1);
   });
 });

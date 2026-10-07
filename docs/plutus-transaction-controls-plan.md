@@ -1,6 +1,6 @@
 # Plutus Transaction Controls Implementation Plan
 
-Status: Phases 1–2 and Phases 3–4 input/collateral configuration and signing foundations implemented. Browser verification and pre-completion integration remain pending; Phases 5–7 remain planned.
+Status: Phases 1?5 implemented. Browser verification, upstream PRD reconciliation, and controlled preprod acceptance remain pending; Phases 6?7 remain planned.
 
 Owner: Andre  
 Suggested branch: `feat/plutus-transaction-controls`  
@@ -133,7 +133,7 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 - [x] Extend funding calculations to include explicit script-input value once, then select only the remaining needed funding inputs. Preserve current manual-selection semantics.
 - [x] Keep Plutus inputs separate from automatic native-script/pubkey funding selection. Enforce the product policy that collateral is not also selected as a normal input, and keep reference inputs distinct if subsequently supported.
 - [x] Revalidate resolved data after draft/source/account/network changes; reject stale async results for a superseded draft.
-- [ ] Connect fresh resolution immediately before Plutus completion when Phase 5 enables encoding. The current shared builder gate rejects every script spend before completion; UI snapshots must never become build inputs.
+- [x] Connect fresh resolution immediately before Plutus completion in Phase 5. UI snapshots never become build inputs; headless script-spend callers remain explicitly blocked.
 
 **Acceptance:** mixed native-script/pubkey funding and Plutus spending can be represented without misclassifying inputs or counting funds twice. Tests cover duplicate refs, mismatched script/datum hashes, spent inputs, unsupported versions, and stale resolution results.
 
@@ -178,15 +178,26 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Depends on:** Phases 2–4.
 
-- [ ] Extend `applyDraftToTxBuilder` with per-input Plutus version, script, datum source, and redeemer calls, plus collateral and required signers. Reuse proxy-builder patterns without importing proxy-specific contract assumptions.
-- [ ] Keep `buildDraftTx`, the existing provider evaluator, and `completeTxWithFreshCostModels` as the shared completion path. Refactor duplicated preparation only as needed so test-build, export, proposal, and direct-sign flows apply identical intent.
-- [ ] Let Mesh perform input ordering, redeemer indexing, execution-budget integration, fee calculation, and script-data hashing. Preserve the existing cost-model correction behavior and test it with the new paths.
-- [ ] Evaluate against the complete transaction context. Block progression on script failure, unresolved data, unavailable evaluation, insufficient collateral, or size/budget limits; do not silently supply guessed budgets or skip evaluation.
-- [ ] Display evaluated fees, budgets where useful, script-input summaries, output datum indicators, collateral exposure, and required-signature status in existing build/review components.
-- [ ] Invalidate results after edits and reject stale asynchronous completion. Sign only a successfully evaluated current transaction; if preparation/rebalancing changes it, refresh the review before signing.
-- [ ] Verify build/export remains unsigned and does not propose, sign, or submit. Extend shared helpers without exposing new MCP/API write capabilities automatically; unsupported headless inputs remain explicitly rejected.
+- [x] Extend `applyDraftToTxBuilder` with per-input Plutus version, script, datum source, and redeemer calls, plus collateral and required signers. Reuse proxy-builder patterns without importing proxy-specific contract assumptions.
+- [x] Keep `buildDraftTx`, the existing provider evaluator, and `completeTxWithFreshCostModels` as the shared completion path. Refactor duplicated preparation only as needed so test-build, export, proposal, and direct-sign flows apply identical intent.
+- [x] Let Mesh perform input ordering, redeemer indexing, execution-budget integration, fee calculation, and script-data hashing. Preserve the existing cost-model correction behavior and test it with the new paths.
+- [x] Evaluate against the complete transaction context. Block progression on script failure, unresolved data, unavailable evaluation, insufficient collateral, or size/budget limits; do not silently supply guessed budgets or skip evaluation.
+- [x] Display evaluated fees, budgets where useful, script-input summaries, output datum indicators, collateral exposure, and required-signature status in existing build/review components.
+- [x] Invalidate results after edits and reject stale asynchronous completion. Sign only a successfully evaluated current transaction; if preparation/rebalancing changes it, refresh the review before signing.
+- [x] Verify build/export remains unsigned and does not propose, sign, or submit. Extend shared helpers without exposing new MCP/API write capabilities automatically; unsupported headless inputs remain explicitly rejected.
 
 **Acceptance:** real SDK serialization plus decoded-CBOR assertions verify script inputs, datums, redeemers, collateral, required signers, and script-data hash. Fixture tests include multiple redeemers whose input order changes, provider failure, and an evaluation rejection. A successful real evaluation is required in final preprod acceptance, not inferred from mocks.
+
+### Phase 5 implementation notes
+
+- All browser actions now call the same `buildDraftTx` path with a fresh builder. `prepare-plutus.ts` performs uncached script-input and connected-wallet collateral resolution immediately before encoding, fetches current protocol parameters, and rejects stale results. The adapter accepts resolver-created preparation only; UI snapshots and caller-supplied amounts cannot enable Plutus encoding. Ordinary native-script/pubkey funding remains separate and counts explicit script value once.
+- Per-input Mesh calls encode supplied, already-parameterized V1/V2/V3 script CBOR, the chosen datum source, and CBOR redeemers. Supported combinations remain V1 with a hash-matching supplied datum, and V2/V3 with inline or hash-matching supplied data. V1 with inline data elsewhere in the transaction is blocked, including automatically selected funding inputs. Datum-less spending, reference-script selection, and Plutus minting/staking/voting controls remain outside scope.
+- The installed Mesh builder evaluates during fee balancing. `evaluate-plutus.ts` wraps its configured evaluator to require one valid result for every emitted spending redeemer, rejecting unavailable, partial, duplicate, negative, unsafe, or failing evaluations. Mesh retains responsibility for sorting inputs, assigning indexes, integrating execution budgets and balancing fees. After `completeTxWithFreshCostModels` corrects the script-data hash, the pipeline evaluates those exact final bytes again and rejects budgets larger than the allocation; it never silently substitutes defaults or signs a changed transaction.
+- Final checks use current protocol limits, Mesh's size estimate including required witnesses and fee calculation, plus `reviewCompletedCollateral` on the emitted CBOR. They enforce the single selected collateral reference, its required payment key, no overlapping inputs or collateral return, fee-based sufficiency, and full selected exposure. There is no generic 5 ADA collateral floor, automatic collateral creation, reservation, or return management.
+- Build/export and the final signing dialog share script references, chain values, datum/redeemer data, allocated execution budgets, evaluated fee, output-datum summaries, full collateral exposure and the unsigned owner-signature requirement. All script spends require this review before signing. Proposals pass the completed bytes and body into `useTransaction` without completing or adding metadata again. Direct signing uses the same result. Revision checks cover chain resolution, evaluation, completion, review, wallet signing and readiness; edits, unmounts, source/account/wallet/network changes discard stale work. Existing member authorization and Phase 4 witness/readiness checks still apply.
+- Address-source unsigned export also requires a connected collateral supplier. Build/export performs no signing, submission or persistence. Existing API/MCP callers lack the explicit Plutus build capability and remain rejected; no new write surface or runtime dependency was added. Pending Plutus editing remains incompatible until Phase 6 implements lossless reconstruction. Upstream PRD reconciliation remains the recorded Phase 0 dependency.
+- Verification: real Mesh completion and decoded-CBOR fixtures cover mixed native/key funding, script-only funding, all five supported language/datum combinations, multiple redeemers with reordered inputs, witness/datums/collateral/required-signers preservation, and fresh cost-model hash correction. Failure cases cover unavailable or rejected evaluation, missing/invalid budgets, chain/provider errors, newly spent inputs, changed protocol limits/fees, insufficient collateral and stale async work. Hook tests verify exact-byte signing without recompletion, cancellation, metadata rejection after completion, and stale proposal/direct-sign prevention. Verification passed: TypeScript, the full CJS/ESM coverage run (1,742 passing tests; two existing skips), and the final focused draft/collateral/serialization/signing run (148 tests, including the final fee and skipped-evaluation guards).
+- Browser coverage adds configuration, evaluated review, unsigned clipboard export, cancelled proposal review and edit invalidation. Execution remains blocked by the harness's missing `CI_CONTEXT_PATH`. ESLint still fails while loading the existing compatibility configuration with a circular React plugin structure. No on-chain transaction was attempted; fixture evaluation is mocked and does not replace Phase 7's controlled preprod acceptance.
 
 ## Phase 6 — Complete pending editing and signing round trips
 

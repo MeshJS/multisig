@@ -73,6 +73,8 @@ export type DraftIssue = {
 };
 
 export type ValidateDraftContext = {
+  /** UI capability only; headless validation remains fail-closed. */
+  allowPlutus?: boolean;
   /** 1 = mainnet, otherwise testnet — matches the site store's network. */
   network: number;
   /**
@@ -226,7 +228,7 @@ export function validateDraft(
 ): DraftIssue[] {
   const issues: DraftIssue[] = [
     ...validateSource(draft, ctx),
-    ...validatePlutusDraft(draft),
+    ...validatePlutusDraft(draft, ctx.allowPlutus),
   ];
 
   if (

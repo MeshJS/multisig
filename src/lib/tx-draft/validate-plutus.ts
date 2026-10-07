@@ -6,7 +6,7 @@ import { hasScriptSpendDraftData } from "./mutations";
 import { validatePlutusData } from "./plutus-data";
 
 export const PLUTUS_BUILD_UNSUPPORTED =
-  "Plutus script inputs and collateral cannot be built yet. Transaction encoding is not enabled.";
+  "Plutus builds require a connected collateral wallet, fresh chain resolution, and an evaluator. Headless Plutus encoding is not enabled.";
 
 export const utxoRefSchema = z
   .object({
@@ -23,7 +23,10 @@ export const scriptSchema = z
   .strict();
 
 /** Local shape/data validation only; chain resolution and evaluation come later. */
-export function validatePlutusDraft(draft: TxDraft): DraftIssue[] {
+export function validatePlutusDraft(
+  draft: TxDraft,
+  allowPlutus = false,
+): DraftIssue[] {
   const issues: DraftIssue[] = [];
   for (const output of draft.outputs) {
     if (output.inlineDatum === undefined) continue;
@@ -144,9 +147,22 @@ export function validatePlutusDraft(draft: TxDraft): DraftIssue[] {
       message: "Collateral needs a transaction hash and valid output index.",
     });
   }
-  // Until subsequent phases encode these fields, even valid intent must not be
-  // silently discarded by the old builder. No UI/headless caller can bypass it.
-  if (hasScriptSpendDraftData(draft)) {
+  if (
+    allowPlutus &&
+    (((draft.scriptInputs ?? []).length > 0 && !draft.collateral) ||
+      (draft.collateral && !(draft.scriptInputs ?? []).length))
+  ) {
+    issues.push({
+      level: "error",
+      code: "collateral-unavailable",
+      field: "collateral",
+      message: (draft.scriptInputs ?? []).length
+        ? "Select an existing collateral UTxO from the connected wallet."
+        : "Remove collateral when no script inputs are configured.",
+    });
+  }
+  // Existing headless callers remain explicitly unsupported.
+  if (hasScriptSpendDraftData(draft) && !allowPlutus) {
     issues.push({
       level: "error",
       code: "plutus-build-unsupported",

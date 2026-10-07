@@ -66,8 +66,8 @@ export default function ScriptInputsEditor({
         <CollapsibleContent className="flex flex-col gap-3 pt-2">
           <p className="text-xs text-muted-foreground">
             Configure already-parameterized Plutus scripts. Data validation does
-            not evaluate the contract. Script spending will be enabled after
-            collateral and evaluated builds are available.
+            not evaluate the contract. Building checks the complete transaction
+            with the evaluator and requires connected-wallet collateral.
           </p>
           {draft.scriptInputs.map((input, index) => {
             const resolved = state.resolutions.find(

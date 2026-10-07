@@ -6,6 +6,8 @@ import { hasScriptSpendDraftData } from "./mutations";
 import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
 import { validatePlutusData } from "./plutus-data";
 import { selectDraftFunding } from "./funding";
+import { isPreparedPlutus, type PreparedPlutusDraft } from "./prepare-plutus";
+import { applyCollateral } from "./collateral";
 
 /**
  * How the source's inputs are witnessed: the multisig spends script inputs
@@ -16,6 +18,8 @@ export type ApplyDraftInputs =
   { kind: "script"; scriptCbor: string } | { kind: "pubkey" };
 
 export type ApplyDraftContext = {
+  /** Obtained only by the shared build pipeline's fresh chain resolver. */
+  preparedPlutus?: PreparedPlutusDraft;
   inputs: ApplyDraftInputs;
   /** The source address: owner of the inputs and the change target. */
   walletAddress: string;
@@ -44,7 +48,10 @@ export function applyDraftToTxBuilder(
   draft: TxDraft,
   ctx: ApplyDraftContext,
 ): MeshTxBuilder {
-  if (hasScriptSpendDraftData(draft)) {
+  if (
+    (hasScriptSpendDraftData(draft) || ctx.preparedPlutus) &&
+    !isPreparedPlutus(draft, ctx.preparedPlutus)
+  ) {
     throw new Error(PLUTUS_BUILD_UNSUPPORTED);
   }
   // Validate all datum edits before mutating the stateful builder.
@@ -127,10 +134,21 @@ export function applyDraftToTxBuilder(
       })),
     },
     ctx.availableUtxos,
+    ctx.preparedPlutus?.inputs.map((input) => input.utxo),
   );
-  if (selectedUtxos.length === 0) {
+  if (selectedUtxos.length === 0 && !ctx.preparedPlutus?.inputs.length) {
     throw new Error("Insufficient funds: no UTxOs selected");
   }
+
+  if (
+    ctx.preparedPlutus?.inputs.some(
+      (input) => input.intent.script.version === "V1",
+    ) &&
+    selectedUtxos.some((utxo) => !!utxo.output.plutusData)
+  )
+    throw new Error(
+      "Plutus V1 cannot be combined with inline datums on funding inputs.",
+    );
 
   for (const utxo of selectedUtxos) {
     txBuilder.txIn(
@@ -150,6 +168,26 @@ export function applyDraftToTxBuilder(
       txBuilder.txOutInlineDatumValue(datums[index]!, "CBOR");
     }
   }
+
+  for (const { intent, utxo, datumCbor, redeemerCbor } of ctx.preparedPlutus
+    ?.inputs ?? []) {
+    txBuilder
+      .spendingPlutusScript(intent.script.version)
+      .txIn(
+        utxo.input.txHash,
+        utxo.input.outputIndex,
+        utxo.output.amount,
+        utxo.output.address,
+        0,
+      )
+      .txInScript(intent.script.cbor);
+    if (intent.datumSource.kind === "inline")
+      txBuilder.txInInlineDatumPresent();
+    else txBuilder.txInDatumValue(datumCbor, "CBOR");
+    txBuilder.txInRedeemerValue(redeemerCbor, "CBOR");
+  }
+  if (ctx.preparedPlutus)
+    applyCollateral(txBuilder, ctx.preparedPlutus.collateral);
 
   // Certificates are re-emitted against the wallet's freshly derived reward
   // address, not the loaded tx's stakeKeyAddress. Load order is preserved so

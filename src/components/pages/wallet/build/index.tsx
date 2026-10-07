@@ -62,22 +62,18 @@ import {
 } from "@/lib/tx-draft/funding";
 import { useDraftScriptInputs } from "@/hooks/useDraftScriptInputs";
 import { useDraftCollateral } from "@/hooks/useDraftCollateral";
-import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import {
-  createOutputProvenance,
-  reviewDraftOutputs,
-  type OutputReview,
-} from "@/lib/tx-draft/outputs";
-import type { MeshTxBuilder } from "@meshsdk/core";
+  buildDraftTx,
+  type DraftBuildResult,
+} from "@/lib/tx-draft/build-draft-tx";
+import { createOutputProvenance } from "@/lib/tx-draft/outputs";
 import OutputReviewList from "./output-review-list";
+import PlutusReview from "./plutus-review";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
-import {
-  applyDraftToTxBuilder,
-  type ApplyDraftContext,
-} from "@/lib/tx-draft/to-tx-builder";
+import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { validateDraft, validateSource } from "@/lib/tx-draft/validate";
-import type { DraftSource } from "@/types/tx-draft";
+import type { DraftSource, TxDraft } from "@/types/tx-draft";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -85,6 +81,7 @@ import { api } from "@/utils/api";
 import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
 import { getFriendlyError } from "@/utils/errors";
 import { getTxBuilder } from "@/utils/get-tx-builder";
+import { getProvider } from "@/utils/get-provider";
 import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import AddStakeDialog from "./add-stake-dialog";
@@ -178,10 +175,23 @@ export default function PageBuild() {
   /** Outcome of the last test build; cleared whenever the draft changes. */
   const [buildResult, setBuildResult] = useState<BuildResultState | null>(null);
   const buildResultRevision = useRef(0);
-  const [datumReview, setDatumReview] = useState<{
-    outputs: OutputReview[];
-    fee: string;
-  } | null>(null);
+  const [datumReview, setDatumReview] = useState<DraftBuildResult | null>(null);
+  const buildEnvironment = useRef({
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    walletId: appWallet?.id,
+  });
+  buildEnvironment.current = {
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    walletId: appWallet?.id,
+  };
   const finishDatumReview = useRef<((accepted: boolean) => void) | undefined>(
     undefined,
   );
@@ -227,10 +237,19 @@ export default function PageBuild() {
     finishDatumReview.current?.(false);
     finishDatumReview.current = undefined;
     setDatumReview(null);
-  }, [draft, network, activeWallet, userAddress]);
+  }, [
+    draft,
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    appWallet?.id,
+  ]);
 
   useEffect(
     () => () => {
+      buildResultRevision.current += 1;
       finishDatumReview.current?.(false);
     },
     [],
@@ -451,6 +470,7 @@ export default function PageBuild() {
     () =>
       [
         ...validateDraft(draft, {
+          allowPlutus: true,
           network,
           selectedFunds,
           hasDrepContext,
@@ -682,27 +702,60 @@ export default function PageBuild() {
     return !isMultisigSource || !!appWallet.scriptCbor;
   }
 
+  function isBuildCurrent(revision: number) {
+    const current = buildEnvironment.current;
+    return (
+      revision === buildResultRevision.current &&
+      draft === useTxBuilderStore.getState().draft &&
+      network === current.network &&
+      activeWallet === current.activeWallet &&
+      userAddress === current.userAddress &&
+      walletName === current.walletName &&
+      walletType === current.walletType &&
+      appWallet?.id === current.walletId
+    );
+  }
+
+  async function buildCurrentDraft(buildDraft: TxDraft, revision: number) {
+    if (!appWallet || !isBuildCurrent(revision))
+      throw new Error("Build superseded. Rebuild the current draft.");
+    const txBuilder = await getTxBuilder(
+      network,
+      false,
+      buildDraft.scriptInputs.length > 0 ||
+        buildDraft.outputs.some((output) => output.inlineDatum !== undefined),
+    );
+    const result = await buildDraftTx(
+      txBuilder,
+      buildDraft,
+      draftBuildContext(appWallet),
+      {
+        metadataMessage: buildDraft.metadata || undefined,
+        complete: (builder) => completeTxWithFreshCostModels(builder, network),
+        isCurrent: () => isBuildCurrent(revision),
+        plutus: activeWallet
+          ? { wallet: activeWallet, network, provider: getProvider(network) }
+          : undefined,
+      },
+    );
+    return { txBuilder, result };
+  }
+
   async function reviewBeforeSigning(
-    body: MeshTxBuilder["meshTxBuilderBody"],
+    result: DraftBuildResult,
     revision: number,
   ): Promise<boolean> {
+    if (!isBuildCurrent(revision)) return false;
     if (
-      revision !== buildResultRevision.current ||
-      draft !== useTxBuilderStore.getState().draft
+      !result.plutusReview &&
+      !draft.outputs.some((output) => output.inlineDatum !== undefined)
     )
-      return false;
-    if (!draft.outputs.some((output) => output.inlineDatum !== undefined))
       return true;
-    const outputs = reviewDraftOutputs(draft, body.outputs);
     const accepted = await new Promise<boolean>((resolve) => {
       finishDatumReview.current = resolve;
-      setDatumReview({ outputs, fee: String(body.fee ?? "0") });
+      setDatumReview(result);
     });
-    return (
-      accepted &&
-      revision === buildResultRevision.current &&
-      draft === useTxBuilderStore.getState().draft
-    );
+    return accepted && isBuildCurrent(revision);
   }
 
   function closeDatumReview(accepted: boolean) {
@@ -721,28 +774,10 @@ export default function PageBuild() {
   async function testBuild() {
     if (!appWallet || !canBuildSource()) return;
     const revision = buildResultRevision.current;
-    const isCurrent = () =>
-      revision === buildResultRevision.current &&
-      draft === useTxBuilderStore.getState().draft;
+    const isCurrent = () => isBuildCurrent(revision);
     setTesting(true);
     try {
-      // Always a fresh builder: MeshTxBuilder is stateful and a completed
-      // builder can't be built again.
-      const txBuilder = await getTxBuilder(
-        network,
-        false,
-        draft.outputs.some((output) => output.inlineDatum !== undefined),
-      );
-      const result = await buildDraftTx(
-        txBuilder,
-        draft,
-        draftBuildContext(appWallet),
-        {
-          metadataMessage: draft.metadata || undefined,
-          complete: (builder) =>
-            completeTxWithFreshCostModels(builder, network),
-        },
-      );
+      const { result } = await buildCurrentDraft(draft, revision);
       if (!isCurrent()) return;
       setBuildResult({
         status: "ok",
@@ -771,23 +806,11 @@ export default function PageBuild() {
     const revision = buildResultRevision.current;
     setSigning(true);
     try {
-      const txBuilder = await getTxBuilder(
-        network,
-        false,
-        draft.outputs.some((output) => output.inlineDatum !== undefined),
+      const { result } = await buildCurrentDraft(draft, revision);
+      if (!(await reviewBeforeSigning(result, revision))) return;
+      const { txHash } = await signAndSubmit(result.unsignedTx, () =>
+        isBuildCurrent(revision),
       );
-      const result = await buildDraftTx(
-        txBuilder,
-        draft,
-        draftBuildContext(appWallet),
-        {
-          metadataMessage: draft.metadata || undefined,
-          complete: (builder) =>
-            completeTxWithFreshCostModels(builder, network),
-        },
-      );
-      if (!(await reviewBeforeSigning(result.body, revision))) return;
-      const { txHash } = await signAndSubmit(result.unsignedTx);
       toast({
         title: "Transaction submitted",
         description: (
@@ -803,6 +826,7 @@ export default function PageBuild() {
         ),
         duration: 12000,
       });
+      if (!isBuildCurrent(revision)) return;
       const source = draft.source;
       resetDraft(appWallet.id);
       setSource(source);
@@ -864,28 +888,19 @@ export default function PageBuild() {
         buildDraft = withVoteAnchor(buildDraft, vote.id, anchor);
       }
 
-      const txBuilder = await getTxBuilder(
-        network,
-        false,
-        draft.outputs.some((output) => output.inlineDatum !== undefined),
-      );
-      applyDraftToTxBuilder(
-        txBuilder,
+      const { txBuilder, result } = await buildCurrentDraft(
         buildDraft,
-        draftBuildContext(appWallet),
+        revision,
       );
       const created = await newTransaction({
         txBuilder,
-        beforeSign: () =>
-          reviewBeforeSigning(txBuilder.meshTxBuilderBody, revision),
+        completed: result,
+        isCurrent: () => isBuildCurrent(revision),
+        beforeSign: () => reviewBeforeSigning(result, revision),
         txJsonExtras: (body) => ({
           builderOutputs: createOutputProvenance(buildDraft, body.outputs),
         }),
         description: draft.description || undefined,
-        metadataValue:
-          draft.metadata.length > 0
-            ? { label: "674", value: draft.metadata }
-            : undefined,
         replaces,
         toastMessage: replaces
           ? "The pending transaction has been replaced — signers have been notified"
@@ -931,6 +946,7 @@ export default function PageBuild() {
           });
         }
       }
+      if (!isBuildCurrent(revision)) return;
       setReplaceConfirmOpen(false);
       resetDraft(appWallet.id);
       void router.push(`/wallets/${appWallet.id}/transactions`);
@@ -1243,7 +1259,11 @@ export default function PageBuild() {
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Review output datums</DialogTitle>
+            <DialogTitle>
+              {datumReview?.plutusReview
+                ? "Review evaluated transaction"
+                : "Review output datums"}
+            </DialogTitle>
             <DialogDescription>
               Check the final output amounts, including minimum ADA adjustments,
               before signing.
@@ -1251,7 +1271,10 @@ export default function PageBuild() {
           </DialogHeader>
           {datumReview && (
             <>
-              <OutputReviewList outputs={datumReview.outputs} />
+              <OutputReviewList outputs={datumReview.outputReview ?? []} />
+              {datumReview.plutusReview && (
+                <PlutusReview review={datumReview.plutusReview} />
+              )}
               <p className="text-sm">
                 Network fee: {baseToDisplay(datumReview.fee, 6)} ADA
               </p>

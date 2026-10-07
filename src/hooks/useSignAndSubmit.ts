@@ -18,11 +18,20 @@ export default function useSignAndSubmit() {
   const signAndSubmit = useCallback(
     async (
       unsignedTx: string,
+      isCurrent: () => boolean = () => true,
     ): Promise<{ txHash: string; signedTx: string }> => {
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
+      const assertCurrent = () => {
+        if (!isCurrent())
+          throw new Error(
+            "Transaction superseded by a draft or account change. Rebuild and review it again.",
+          );
+      };
+      assertCurrent();
       const payload = await activeWallet.signTx(unsignedTx);
+      assertCurrent();
       const merged = mergeSignerWitnesses(unsignedTx, payload);
       if (merged.invalidVkeyPubKeysHex.length)
         throw new Error("Wallet returned an invalid transaction signature.");
@@ -37,6 +46,7 @@ export default function useSignAndSubmit() {
         throw new Error(
           `Missing required payment-key signature: ${readiness.missingKeyHashes.join(", ")}. Ask the collateral owner to sign.`,
         );
+      assertCurrent();
       const txHash = await activeWallet.submitTx(signedTx);
       return { txHash, signedTx };
     },

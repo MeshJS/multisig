@@ -14,6 +14,7 @@ import {
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { applyMetadataMessage } from "@/lib/tx-draft/metadata";
 import { getProvider } from "@/utils/get-provider";
+import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import {
   hasVerifiedPaymentWitness,
   transactionReadiness,
@@ -130,9 +131,23 @@ export default function useTransaction() {
           ) => Record<string, unknown>);
       /** Review the finalized transaction before asking the wallet to sign it. */
       beforeSign?: (unsignedTx: string) => Promise<boolean>;
+      /** Already evaluated/reviewable bytes; never complete or mutate them again. */
+      completed?: Pick<DraftBuildResult, "unsignedTx" | "body">;
+      isCurrent?: () => boolean;
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
+      const assertCurrent = () => {
+        if (data.isCurrent && !data.isCurrent())
+          throw new Error(
+            "Transaction superseded by a draft or account change. Rebuild and review it again.",
+          );
+      };
+      assertCurrent();
+      if (data.completed && data.metadataValue)
+        throw new Error(
+          "Metadata must be applied before completing and reviewing the transaction.",
+        );
 
       if (data.metadataValue) {
         applyMetadataMessage(
@@ -142,22 +157,25 @@ export default function useTransaction() {
         );
       }
 
-      const unsignedTx = await completeTxWithFreshCostModels(
-        data.txBuilder,
-        network,
-      );
+      const unsignedTx =
+        data.completed?.unsignedTx ??
+        (await completeTxWithFreshCostModels(data.txBuilder, network));
+      const body = data.completed?.body ?? data.txBuilder.meshTxBuilderBody;
+      assertCurrent();
       const extras =
         typeof data.txJsonExtras === "function"
-          ? data.txJsonExtras(data.txBuilder.meshTxBuilderBody)
+          ? data.txJsonExtras(body)
           : data.txJsonExtras;
 
       if (data.beforeSign && !(await data.beforeSign(unsignedTx))) return false;
+      assertCurrent();
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
 
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
+      assertCurrent();
       const mergeResult = mergeSignerWitnesses(
         unsignedTx,
         signerWitnessPayload,
@@ -198,6 +216,7 @@ export default function useTransaction() {
         network,
       );
       const submitTx = readiness.ready;
+      assertCurrent();
 
       if (submitTx) {
         const blockchainProvider = getProvider(network);
@@ -213,11 +232,7 @@ export default function useTransaction() {
 
       await createTransaction({
         walletId: appWallet.id,
-        txJson: JSON.stringify(
-          extras
-            ? { ...data.txBuilder.meshTxBuilderBody, ...extras }
-            : data.txBuilder.meshTxBuilderBody,
-        ),
+        txJson: JSON.stringify(extras ? { ...body, ...extras } : body),
         txCbor: signedTx,
         signedAddresses: signedAddresses,
         state: submitTx ? 1 : 0,

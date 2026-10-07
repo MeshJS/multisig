@@ -2,14 +2,19 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { MeshTxBuilder } from "@meshsdk/core";
 import useTransaction from "@/hooks/useTransaction";
+import useSignAndSubmit from "@/hooks/useSignAndSubmit";
 
 const mockSign = jest.fn().mockResolvedValue("wallet-witnesses");
 const mockCreate = jest.fn().mockResolvedValue({});
+const mockSubmit = jest.fn().mockResolvedValue("tx-hash");
 const mockComplete = jest.fn().mockResolvedValue("completed-unsigned-tx");
 const mockPaymentWitness = jest.fn().mockReturnValue(true);
-const mockReadiness = jest.fn().mockResolvedValue({ ready: false, missingKeyHashes: [] });
+const mockReadiness = jest
+  .fn()
+  .mockResolvedValue({ ready: false, missingKeyHashes: [] });
 jest.mock("@/utils/transactionReadiness", () => ({
-  hasVerifiedPaymentWitness: (...args: unknown[]) => mockPaymentWitness(...args),
+  hasVerifiedPaymentWitness: (...args: unknown[]) =>
+    mockPaymentWitness(...args),
   transactionReadiness: (...args: unknown[]) => mockReadiness(...args),
 }));
 
@@ -32,7 +37,7 @@ jest.mock("@/hooks/useActiveWallet", () => ({
   __esModule: true,
   default: () => ({
     userAddress: "signer",
-    activeWallet: { signTx: mockSign },
+    activeWallet: { signTx: mockSign, submitTx: mockSubmit },
   }),
 }));
 jest.mock("@/lib/zustand/site", () => ({
@@ -53,9 +58,10 @@ jest.mock("@/utils/txSignUtils", () => ({
 }));
 
 function hook() {
-  let result!: ReturnType<typeof useTransaction>;
+  let result!: ReturnType<typeof useTransaction> &
+    ReturnType<typeof useSignAndSubmit>;
   function Harness() {
-    result = useTransaction();
+    result = { ...useTransaction(), ...useSignAndSubmit() };
     return null;
   }
   renderToStaticMarkup(createElement(Harness));
@@ -66,11 +72,18 @@ const builder = () =>
   ({ meshTxBuilderBody: { outputs: [] } }) as unknown as MeshTxBuilder;
 
 describe("finalized transaction review before signing", () => {
-  beforeEach(() => { jest.clearAllMocks(); mockPaymentWitness.mockReturnValue(true); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPaymentWitness.mockReturnValue(true);
+    mockReadiness.mockResolvedValue({ ready: false, missingKeyHashes: [] });
+    mockSign.mockResolvedValue("wallet-witnesses");
+  });
 
   test("a missing authorized payment witness cannot mark the proposer signed", async () => {
     mockPaymentWitness.mockReturnValue(false);
-    await expect(hook().newTransaction({ txBuilder: builder() })).rejects.toThrow(/authorized payment key/);
+    await expect(
+      hook().newTransaction({ txBuilder: builder() }),
+    ).rejects.toThrow(/authorized payment key/);
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -118,5 +131,89 @@ describe("finalized transaction review before signing", () => {
     expect(JSON.parse(mockCreate.mock.calls[0]![0].txJson)).toMatchObject({
       builderOutputs: { version: 1 },
     });
+  });
+
+  test("a prepared proposal signs the evaluated bytes without recompletion and persists their body", async () => {
+    const txBuilder = builder();
+    const body = { ...txBuilder.meshTxBuilderBody, fee: "222222" };
+    await hook().newTransaction({
+      txBuilder,
+      completed: { unsignedTx: "evaluated-bytes", body },
+      beforeSign: async (hex) => hex === "evaluated-bytes",
+    });
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockSign).toHaveBeenCalledTimes(1);
+    expect(mockSign).toHaveBeenCalledWith("evaluated-bytes", true);
+    expect(JSON.parse(mockCreate.mock.calls[0]![0].txJson).fee).toBe("222222");
+  });
+
+  test("completed bytes cannot receive new metadata after review", async () => {
+    const txBuilder = builder();
+    await expect(
+      hook().newTransaction({
+        txBuilder,
+        completed: {
+          unsignedTx: "evaluated-bytes",
+          body: txBuilder.meshTxBuilderBody,
+        },
+        metadataValue: { label: "674", value: "changed" },
+      }),
+    ).rejects.toThrow(/before completing/);
+    expect(mockSign).not.toHaveBeenCalled();
+  });
+
+  test.each(["review", "wallet", "readiness"])(
+    "a draft/account change during %s prevents proposal persistence",
+    async (stage) => {
+      let current = true;
+      const txBuilder = builder();
+      if (stage === "wallet")
+        mockSign.mockImplementation(async () => {
+          current = false;
+          return "wallet-witnesses";
+        });
+      if (stage === "readiness")
+        mockReadiness.mockImplementation(async () => {
+          current = false;
+          return { ready: true };
+        });
+      await expect(
+        hook().newTransaction({
+          txBuilder,
+          completed: {
+            unsignedTx: "evaluated-bytes",
+            body: txBuilder.meshTxBuilderBody,
+          },
+          isCurrent: () => current,
+          beforeSign: async () => {
+            if (stage === "review") current = false;
+            return true;
+          },
+        }),
+      ).rejects.toThrow(/superseded/);
+      expect(mockCreate).not.toHaveBeenCalled();
+      if (stage === "review") expect(mockSign).not.toHaveBeenCalled();
+    },
+  );
+
+  test("direct signing submits only the reviewed bytes with all required signatures", async () => {
+    mockReadiness.mockResolvedValue({ ready: true });
+    await hook().signAndSubmit("evaluated-bytes");
+    expect(mockSign).toHaveBeenCalledWith("evaluated-bytes");
+    expect(mockSubmit).toHaveBeenCalledWith("signed-tx");
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  test("an account change during direct signing cannot submit", async () => {
+    let current = true;
+    mockSign.mockImplementation(async () => {
+      current = false;
+      return "wallet-witnesses";
+    });
+    await expect(
+      hook().signAndSubmit("evaluated-bytes", () => current),
+    ).rejects.toThrow(/superseded/);
+    expect(mockSubmit).not.toHaveBeenCalled();
   });
 });
