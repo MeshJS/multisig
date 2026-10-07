@@ -36,6 +36,7 @@ export const CERTIFICATE_KINDS: readonly DraftCertificateKind[] = [
 const CERTIFICATE_ORDER: Record<DraftCertificateKind, number> = {
   RegisterStake: 0,
   DelegateStake: 1,
+  VoteDelegation: 1,
   DeregisterStake: 2,
 };
 export const VOTE_KINDS: readonly DraftVoteKind[] = ["Yes", "No", "Abstain"];

@@ -242,6 +242,36 @@ describe("tx-draft stake action mutations", () => {
     expect(delegate!.pairId).toBe(register!.pairId);
   });
 
+  test("register adds a single unpaired RegisterStake with no pool", () => {
+    const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
+      type: "register",
+    });
+    expect(certificateIds).toHaveLength(1);
+    expect(draft.certificates).toEqual([
+      {
+        id: certificateIds[0],
+        kind: "RegisterStake",
+        origin: "user",
+      },
+    ]);
+  });
+
+  test("voteDelegation stores the DRep id on its own certificate", () => {
+    const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
+      type: "voteDelegation",
+      dRepId: "Always Abstain",
+    });
+    expect(certificateIds).toHaveLength(1);
+    expect(draft.certificates).toEqual([
+      {
+        id: certificateIds[0],
+        kind: "VoteDelegation",
+        dRepId: "Always Abstain",
+        origin: "user",
+      },
+    ]);
+  });
+
   test("delegate adds a single unpaired user cert with the pool", () => {
     const { draft, certificateIds } = addStakeAction(createDraft("d1"), {
       type: "delegate",

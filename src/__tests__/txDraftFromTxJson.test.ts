@@ -133,12 +133,13 @@ describe("isDraftCompatible", () => {
       },
     ],
     [
-      "unsupported certificate types (VoteDelegation)",
+      "unsupported certificate types (StakeAndVoteDelegation)",
       {
         certificates: [
           stakeCert({
-            type: "VoteDelegation",
+            type: "StakeAndVoteDelegation",
             stakeKeyAddress: STAKE_ADDRESS,
+            poolKeyHash: "aa".repeat(28),
             drep: { dRepId: "drep1abc" },
           }),
         ],
@@ -479,6 +480,33 @@ describe("staking certificate transactions", () => {
       stakeCert({ type: "DeregisterStake", stakeKeyAddress: STAKE_ADDRESS }),
     ]);
     expect(isDraftCompatible(deregister).compatible).toBe(true);
+  });
+
+  test("accepts VoteDelegation including Always Abstain", () => {
+    const drep = certBody([
+      stakeCert({
+        type: "VoteDelegation",
+        stakeKeyAddress: STAKE_ADDRESS,
+        drep: { dRepId: "drep1abc" },
+      }),
+    ]);
+    expect(isDraftCompatible(drep).compatible).toBe(true);
+
+    const abstain = certBody([
+      stakeCert({
+        type: "VoteDelegation",
+        stakeKeyAddress: STAKE_ADDRESS,
+        drep: { alwaysAbstain: null },
+      }),
+    ]);
+    expect(isDraftCompatible(abstain).compatible).toBe(true);
+
+    const { draft } = txJsonToDraft(abstain, { walletAddress: WALLET_ADDRESS });
+    expect(draft.certificates[0]).toMatchObject({
+      kind: "VoteDelegation",
+      dRepId: "Always Abstain",
+      originalStakeAddress: STAKE_ADDRESS,
+    });
   });
 
   test("cert-only body does not trip the no-outputs gate", () => {

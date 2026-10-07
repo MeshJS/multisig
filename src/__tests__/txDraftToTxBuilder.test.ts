@@ -456,6 +456,26 @@ describe("applyDraftToTxBuilder certificates", () => {
       "DeregisterStake",
     );
   });
+
+  test("VoteDelegation Always Abstain is a separate cert from RegisterStake", () => {
+    const { draft } = addStakeAction(
+      addStakeAction(createDraft("d1"), { type: "register" }).draft,
+      { type: "voteDelegation", dRepId: "Always Abstain" },
+    );
+    const built = body(applyDraftToTxBuilder(bareTxBuilder(), draft, certCtx));
+    expect(built.certificates.map((c: any) => c.certType.type)).toEqual([
+      "RegisterStake",
+      "VoteDelegation",
+    ]);
+    expect((built.certificates[1] as any).certType.drep).toEqual({
+      alwaysAbstain: null,
+    });
+    expect((built.certificates[1] as any).certType.poolId).toBeUndefined();
+    for (const cert of built.certificates) {
+      expect(cert.type).toBe("SimpleScriptCertificate");
+      expect((cert as any).certType.stakeKeyAddress).toBe(REWARD_ADDRESS);
+    }
+  });
 });
 
 describe("applyDraftToTxBuilder rationale edits", () => {
