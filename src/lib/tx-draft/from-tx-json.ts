@@ -7,6 +7,7 @@ import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { addCertificate, addOutput, addVote, createDraft } from "./mutations";
 import type { MeshTxBuilder } from "@meshsdk/core";
 import { readInlineDatum, readOutputProvenance } from "./outputs";
+import { readPendingInputs } from "./read-pending-inputs";
 
 /**
  * Converts a stored pending transaction's parsed `txJson` (MeshTxBuilderBody
@@ -14,9 +15,8 @@ import { readInlineDatum, readOutputProvenance } from "./outputs";
  * back into an editable TxDraft.
  *
  * Simple sends, native-script DRep votes and native-script staking
- * certificates round-trip — the draft model has no representation for
- * withdrawals, mints or Plutus scripts, so `isDraftCompatible` gates every
- * load.
+ * certificates and supported Plutus spends round-trip. Unsupported shapes
+ * remain behind `isDraftCompatible`; no execution results or signatures load.
  */
 
 const SUPPORTED_CERT_KINDS: DraftCertificateKind[] = [
@@ -54,37 +54,56 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
       "Contains reward withdrawals — not yet supported by the builder",
     ],
     ["mints", "Mints or burns tokens — not yet supported by the builder"],
-    ["collaterals", "Uses collateral inputs (smart contract transaction)"],
     ["referenceInputs", "Uses reference inputs (smart contract transaction)"],
     [
-      "requiredSignatures",
-      "Declares extra required signers — not yet supported by the builder",
+      "proposals",
+      "Contains governance proposals — not supported by the builder",
+    ],
+    [
+      "scriptMetadata",
+      "Contains script metadata — not supported by the builder",
     ],
   ];
   for (const [key, reason] of nonEmpty) {
-    if (asArray(tx[key]).length > 0) reasons.push(reason);
+    if (
+      tx[key] !== undefined &&
+      (!Array.isArray(tx[key]) || asArray(tx[key]).length > 0)
+    )
+      reasons.push(reason);
   }
+
+  for (const key of ["outputs", "votes", "certificates"]) {
+    if (tx[key] !== undefined && !Array.isArray(tx[key]))
+      reasons.push(`Malformed transaction ${key}`);
+  }
+  if (
+    ["totalCollateral", "collateralReturnAddress", "collateralReturn"].some(
+      (key) => tx[key] !== undefined,
+    )
+  )
+    reasons.push(
+      "Collateral return or total-collateral controls cannot be preserved by the builder",
+    );
 
   const inputs = asArray(tx.inputs) as any[];
   if (inputs.length === 0) {
     reasons.push("Transaction has no inputs");
   }
-  for (const input of inputs) {
-    if (input?.type === "Script" || input?.scriptTxIn) {
-      reasons.push(
-        "Spends from a Plutus script — not yet supported by the builder",
-      );
-      break;
-    }
-  }
-  if (
-    inputs.some(
-      (input) =>
-        typeof input?.txIn?.txHash !== "string" ||
-        typeof input?.txIn?.txIndex !== "number",
+  try {
+    const parsed = readPendingInputs(tx);
+    if (
+      parsed.scriptInputs.some((input) => input.script.version === "V1") &&
+      asArray(tx.outputs).some(
+        (output: any) => output?.datum?.type === "Inline",
+      )
     )
-  ) {
-    reasons.push("Transaction inputs are missing UTxO references");
+      reasons.push("Plutus V1 cannot be combined with inline output datums");
+  } catch (error) {
+    reasons.push(
+      error instanceof Error && error.name !== "ZodError"
+        ? error.message
+        : "Unsupported or malformed transaction input shape, reference, or collateral",
+    );
   }
 
   const certificates = asArray(tx.certificates) as any[];
@@ -208,6 +227,7 @@ export function txJsonToDraft(
     throw new Error(compatibility.reasons.join("; "));
   }
   const warnings: TxJsonWarning[] = [];
+  const pendingInputs = readPendingInputs(body);
 
   const rawVotes = asArray(body?.votes) as any[];
   const rawCerts = asArray(body?.certificates) as any[];
@@ -295,18 +315,15 @@ export function txJsonToDraft(
     ...draft,
     description: opts.description ?? "",
     metadata: opts.metadataMessage ?? "",
+    scriptInputs: pendingInputs.scriptInputs,
+    collateral: pendingInputs.collateral,
+    ...(pendingInputs.requiredSigners.length
+      ? { requiredSigners: pendingInputs.requiredSigners }
+      : {}),
   };
 
-  const inputRefs = (asArray(body?.inputs) as any[])
-    .filter(
-      (input) =>
-        typeof input?.txIn?.txHash === "string" &&
-        typeof input?.txIn?.txIndex === "number",
-    )
-    .map((input) => ({
-      txHash: input.txIn.txHash as string,
-      txIndex: input.txIn.txIndex as number,
-    }));
+  // Script references resolve independently; never reselect them as funding.
+  const inputRefs = pendingInputs.fundingRefs;
 
   return { draft, inputRefs, warnings };
 }

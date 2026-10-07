@@ -133,6 +133,8 @@ export type TxDraft = {
   /** Explicit Plutus spends, separate from ordinary funding selection. */
   scriptInputs: DraftScriptInput[];
   collateral?: DraftCollateral;
+  /** Required payment keys imported from the body; preserved across edits. */
+  requiredSigners?: string[];
 };
 
 /** Drafts created before Plutus controls have no scriptInputs field. */

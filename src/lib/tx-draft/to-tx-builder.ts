@@ -3,7 +3,10 @@ import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 import type { TxDraft } from "@/types/tx-draft";
 import { materializeOutputAssets } from "./assets";
 import { hasScriptSpendDraftData } from "./mutations";
-import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
+import {
+  PLUTUS_BUILD_UNSUPPORTED,
+  requiredSignersSchema,
+} from "./validate-plutus";
 import { validatePlutusData } from "./plutus-data";
 import { selectDraftFunding } from "./funding";
 import { isPreparedPlutus, type PreparedPlutusDraft } from "./prepare-plutus";
@@ -48,6 +51,9 @@ export function applyDraftToTxBuilder(
   draft: TxDraft,
   ctx: ApplyDraftContext,
 ): MeshTxBuilder {
+  const requiredSigners = requiredSignersSchema.parse(
+    draft.requiredSigners ?? [],
+  );
   if (
     (hasScriptSpendDraftData(draft) || ctx.preparedPlutus) &&
     !isPreparedPlutus(draft, ctx.preparedPlutus)
@@ -188,6 +194,8 @@ export function applyDraftToTxBuilder(
   }
   if (ctx.preparedPlutus)
     applyCollateral(txBuilder, ctx.preparedPlutus.collateral);
+  for (const key of new Set(requiredSigners.map((key) => key.toLowerCase())))
+    txBuilder.requiredSignerHash(key);
 
   // Certificates are re-emitted against the wallet's freshly derived reward
   // address, not the loaded tx's stakeKeyAddress. Load order is preserved so

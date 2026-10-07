@@ -1,6 +1,6 @@
 # Plutus Transaction Controls Implementation Plan
 
-Status: Phases 1?5 implemented. Browser verification, upstream PRD reconciliation, and controlled preprod acceptance remain pending; Phases 6?7 remain planned.
+Status: Phases 1–6 implemented. Browser verification, upstream PRD reconciliation, and controlled preprod acceptance remain pending; Phase 7 remains planned.
 
 Owner: Andre  
 Suggested branch: `feat/plutus-transaction-controls`  
@@ -203,15 +203,25 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Depends on:** Phase 5.
 
-- [ ] Extend `isDraftCompatible` and `txJsonToDraft` for precisely the implemented script-input, datum, collateral, and required-signer shapes. Keep unsupported features blocked with specific reasons.
-- [ ] Reconstruct input-to-script/datum/redeemer relationships by UTxO reference and the stored Mesh representation, not by assuming draft order matches ledger input order.
-- [ ] Preserve all supported required signers. If an imported transaction has an unrepresentable extra requirement, reject editing rather than remove it.
-- [ ] Preserve intended output identity and datum association through stored transaction JSON. Use existing `txJsonExtras` for versioned builder provenance if needed; validate provenance against actual body outputs and do not add a database migration by default.
-- [ ] Resolve live inputs and collateral again on load/build. Changed account, spent collateral, or insufficient collateral prompts correction before rebuilding.
-- [ ] Keep the existing replacement confirmation and signature-reset behavior. Re-evaluate after edits; never carry old signatures or execution results onto a changed body.
-- [ ] Ensure later transaction review/co-signing shows collateral exposure and the required owner even outside the builder.
+- [x] Extend `isDraftCompatible` and `txJsonToDraft` for precisely the implemented script-input, datum, collateral, and required-signer shapes. Keep unsupported features blocked with specific reasons.
+- [x] Reconstruct input-to-script/datum/redeemer relationships by UTxO reference and the stored Mesh representation, not by assuming draft order matches ledger input order.
+- [x] Preserve all supported required signers. If an imported transaction has an unrepresentable extra requirement, reject editing rather than remove it.
+- [x] Preserve intended output identity and datum association through stored transaction JSON. Use existing `txJsonExtras` for versioned builder provenance if needed; validate provenance against actual body outputs and do not add a database migration by default.
+- [x] Resolve live inputs and collateral again on load/build. Changed account, spent collateral, or insufficient collateral prompts correction before rebuilding.
+- [x] Keep the existing replacement confirmation and signature-reset behavior. Re-evaluate after edits; never carry old signatures or execution results onto a changed body.
+- [x] Ensure later transaction review/co-signing shows collateral exposure and the required owner even outside the builder.
 
 **Acceptance:** create → build → propose → load → edit → rebuild fixtures preserve supported semantics. Tests include legacy transactions without provenance, explicit self-outputs, same-address outputs, unknown input shapes, and partial-signature replacement. Witness merging preserves the transaction hash and existing script data.
+
+### Phase 6 implementation notes
+
+- `read-pending-inputs.ts` validates the installed Mesh representation and reconstructs each script, datum source and redeemer from its own input reference. Inline datum references must identify that same input. Supported forms remain supplied V1 scripts with provided data and supplied V2/V3 scripts with inline or provided data; CBOR and validated Plutus JSON use the existing lossless codec. Unknown/conflicting input shapes, reference scripts, missing data, invalid required-signer forms, multiple/overlapping collateral inputs, collateral-return controls and unsupported governance/script metadata are blocked explicitly.
+- Pending loading separates ordinary funding references from explicit script inputs, so script value cannot also become manual funding. Loaded drafts immediately enter the existing live script/collateral hooks; every build still performs uncached chain and wallet resolution, current-parameter collateral checks and full evaluation. Stored amounts, owner addresses and execution budgets never become trusted build inputs. Script-only pending transactions no longer produce a misleading funding-reselection warning.
+- Optional draft `requiredSigners` preserves all valid 28-byte key hashes from the stored body. The adapter re-emits them with Mesh, and completion checks their presence in the actual unsigned CBOR. Requirements remain through edits and account/source/collateral changes, including the previous collateral key if the user selects a new owner. They are displayed in the inspector and unsigned/final signing reviews; there is no editor that can silently drop an imported requirement. Existing pending-card review and shared co-signing readiness already verify these recorded keys and expose the actual collateral owner and full exposure independently of collapsed details.
+- Reused Phase 2's version-1 `builderOutputs` provenance without a schema migration: IDs and datum association survive when finalized-output fingerprints match; missing or invalid provenance retains every legacy output and the ambiguous-change warning. Intentional self-payments and distinct outputs at one address remain separate.
+- Replacement keeps the existing confirmation and known-signature-count concurrency guard. Reconstruction carries no signatures or evaluation results, and edited proposals sign only the newly evaluated bytes. Real SDK fixtures cover all five language/datum combinations, reordered stored inputs and ledger redeemers, extra required keys, same-address/self-outputs, legacy/bad provenance, malformed inputs, changed accounts, spent inputs/collateral and insufficient collateral. Signature-merge assertions preserve body hash, scripts, datums, redeemers and auxiliary data; hook coverage verifies replacement persists only the fresh proposer's signature.
+- Verification passed: TypeScript, the full CJS/ESM coverage run (1,771 passing tests; two existing skips), the final focused importer/build/collateral/datum/witness/replacement run (164 tests), and `git diff --check`.
+- Browser coverage extends the existing evaluated-build fixture with pending reload, live collateral recheck, redeemer editing/re-evaluation and cancellation of partial-signature replacement. Execution remains blocked by missing `CI_CONTEXT_PATH`. ESLint still fails loading the repository's existing circular React-plugin compatibility configuration. Upstream PRD reconciliation and controlled preprod acceptance remain pending; evaluation fixtures are mocked, and no on-chain transaction was attempted. No runtime dependency, database migration, API/MCP write surface, collateral creation, reservation or return-management workflow was added.
 
 ## Phase 7 — Verify the complete user flow and document delivery
 

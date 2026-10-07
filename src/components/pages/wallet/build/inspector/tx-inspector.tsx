@@ -35,6 +35,7 @@ import ScriptInputsEditor from "./script-inputs-editor";
 import type { DraftScriptInputsState } from "@/hooks/useDraftScriptInputs";
 import type { DraftCollateralState } from "@/hooks/useDraftCollateral";
 import CollateralEditor from "./collateral-editor";
+import RequiredSigners from "../required-signers";
 
 const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Yes: "text-green-500 dark:text-green-400",
@@ -120,6 +121,7 @@ export default function TxInspector({
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-sm font-semibold">Transaction</h3>
+      <RequiredSigners keys={draft.requiredSigners} />
 
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs">Description (off-chain, for signers)</Label>

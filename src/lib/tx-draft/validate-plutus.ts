@@ -8,6 +8,10 @@ import { validatePlutusData } from "./plutus-data";
 export const PLUTUS_BUILD_UNSUPPORTED =
   "Plutus builds require a connected collateral wallet, fresh chain resolution, and an evaluator. Headless Plutus encoding is not enabled.";
 
+export const requiredSignersSchema = z.array(
+  z.string().regex(/^[0-9a-fA-F]{56}$/),
+);
+
 export const utxoRefSchema = z
   .object({
     txHash: z.string().regex(/^[0-9a-fA-F]{64}$/),
@@ -28,6 +32,16 @@ export function validatePlutusDraft(
   allowPlutus = false,
 ): DraftIssue[] {
   const issues: DraftIssue[] = [];
+  if (
+    draft.requiredSigners !== undefined &&
+    !requiredSignersSchema.safeParse(draft.requiredSigners).success
+  ) {
+    issues.push({
+      level: "error",
+      code: "required-signers-invalid",
+      message: "Required signers must be 28-byte payment-key hashes.",
+    });
+  }
   for (const output of draft.outputs) {
     if (output.inlineDatum === undefined) continue;
     const result = validatePlutusData(output.inlineDatum);

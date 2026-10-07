@@ -101,6 +101,57 @@ function sendBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe("isDraftCompatible", () => {
+  test.each([
+    { inputs: [input(0, { type: "Unknown" })] },
+    { inputs: [input(-1)] },
+    { inputs: [input(0), input(0)] },
+    { inputs: [input(0, { scriptTxIn: {} })] },
+    {
+      inputs: [
+        input(0, {
+          simpleScriptTxIn: {
+            scriptSource: { type: "Inline", txHash: TX_HASH, txIndex: 4 },
+          },
+        }),
+      ],
+    },
+    { collaterals: {} },
+    { withdrawals: {} },
+    { outputs: {} },
+    { requiredSignatures: {} },
+    { requiredSignatures: null },
+    { collaterals: null },
+    { totalCollateral: "1000000" },
+    { collateralReturnAddress: WALLET_ADDRESS },
+    { proposals: [{}] },
+  ])("rejects unrepresentable input/body semantics: %j", (overrides) => {
+    expect(isDraftCompatible(sendBody(overrides)).compatible).toBe(false);
+    expect(() =>
+      txJsonToDraft(sendBody(overrides), { walletAddress: WALLET_ADDRESS }),
+    ).toThrow();
+  });
+
+  test("preserves every valid required signer on an ordinary transaction", () => {
+    const keys = ["a".repeat(56), "b".repeat(56)];
+    const { draft } = txJsonToDraft(sendBody({ requiredSignatures: keys }), {
+      walletAddress: WALLET_ADDRESS,
+    });
+    expect(draft.requiredSigners).toEqual(keys);
+    const builder = applyDraftToTxBuilder(new MeshTxBuilder({}), draft, {
+      inputs: { kind: "pubkey" },
+      walletAddress: WALLET_ADDRESS,
+      availableUtxos: [
+        {
+          input: { txHash: TX_HASH, outputIndex: 0 },
+          output: {
+            address: WALLET_ADDRESS,
+            amount: [{ unit: "lovelace", quantity: "20000000" }],
+          },
+        },
+      ],
+    });
+    expect(builder.meshTxBuilderBody.requiredSignatures).toEqual(keys);
+  });
   test("accepts a completed simple-send body", () => {
     expect(isDraftCompatible(sendBody())).toEqual({
       compatible: true,

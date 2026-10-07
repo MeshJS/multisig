@@ -19,6 +19,7 @@ import {
 import { reviewCompletedCollateral } from "./collateral";
 import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
 import { hasScriptSpendDraftData } from "./mutations";
+import { requiredSignerKeyHashes } from "@/utils/transactionReadiness";
 
 export type PlutusBuildReview = {
   inputs: PreparedPlutusDraft["inputs"];
@@ -110,6 +111,15 @@ export async function buildDraftTx(
     applyMetadataMessage(txBuilder, "674", opts.metadataMessage);
     const unsignedTx = await opts.complete(txBuilder);
     assertCurrent();
+    const emittedSigners = new Set(requiredSignerKeyHashes(unsignedTx));
+    if (
+      (draft.requiredSigners ?? []).some(
+        (key) => !emittedSigners.has(key.toLowerCase()),
+      )
+    )
+      throw new Error(
+        "Completed transaction dropped a required signer. Rebuild and review again.",
+      );
     let plutusReview: PlutusBuildReview | undefined;
     if (prepared) {
       if (!evaluatedDuringCompletion)

@@ -22,7 +22,7 @@ interface LoadPendingDialogProps {
 
 /**
  * Picker for editing an existing pending transaction in the builder. Only
- * simple sends can round-trip into a draft — incompatible transactions are
+ * supported transaction shapes can round-trip — incompatible transactions are
  * shown disabled with the reason.
  */
 export default function LoadPendingDialog({
@@ -53,8 +53,8 @@ export default function LoadPendingDialog({
           <DialogTitle>Edit a pending transaction</DialogTitle>
           <DialogDescription>
             Load a pending transaction into the builder. Building the edited
-            version will replace the original, and any collected signatures
-            will need to be collected again.
+            version will replace the original, and any collected signatures will
+            need to be collected again.
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto py-2 pr-2">

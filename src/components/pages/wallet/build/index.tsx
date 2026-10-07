@@ -69,6 +69,7 @@ import {
 import { createOutputProvenance } from "@/lib/tx-draft/outputs";
 import OutputReviewList from "./output-review-list";
 import PlutusReview from "./plutus-review";
+import RequiredSigners from "./required-signers";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
@@ -596,7 +597,7 @@ export default function PageBuild() {
           },
         }
       : loaded;
-    if (!allInputsFound && utxosReady) {
+    if (inputRefs.length > 0 && !allInputsFound && utxosReady) {
       toast({
         title: "Inputs will be re-selected",
         description:
@@ -618,6 +619,8 @@ export default function PageBuild() {
     setLoadDialogOpen(false);
     const draftIsDirty =
       (draft.outputs.length > 0 ||
+        draft.scriptInputs.length > 0 ||
+        (draft.requiredSigners?.length ?? 0) > 0 ||
         draft.votes.length > 0 ||
         draft.certificates.length > 0) &&
       editingTxId !== transaction.id;
@@ -748,6 +751,7 @@ export default function PageBuild() {
     if (!isBuildCurrent(revision)) return false;
     if (
       !result.plutusReview &&
+      !result.body.requiredSignatures.length &&
       !draft.outputs.some((output) => output.inlineDatum !== undefined)
     )
       return true;
@@ -1262,16 +1266,22 @@ export default function PageBuild() {
             <DialogTitle>
               {datumReview?.plutusReview
                 ? "Review evaluated transaction"
-                : "Review output datums"}
+                : datumReview?.body.requiredSignatures.length
+                  ? "Review transaction"
+                  : "Review output datums"}
             </DialogTitle>
             <DialogDescription>
-              Check the final output amounts, including minimum ADA adjustments,
-              before signing.
+              Check the final output amounts, minimum ADA adjustments and
+              required signatures before signing.
             </DialogDescription>
           </DialogHeader>
           {datumReview && (
             <>
               <OutputReviewList outputs={datumReview.outputReview ?? []} />
+              <RequiredSigners
+                keys={datumReview.body.requiredSignatures}
+                unsigned
+              />
               {datumReview.plutusReview && (
                 <PlutusReview review={datumReview.plutusReview} />
               )}

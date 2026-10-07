@@ -5,6 +5,7 @@ import {
   DEFAULT_V3_COST_MODEL_LIST,
 } from "@meshsdk/core";
 import { csl } from "@meshsdk/core-csl";
+import superjson from "superjson";
 import { test, expect } from "../fixtures/authFixture";
 import { getWallet, loadContext } from "../helpers/contextLoader";
 import { mockWalletUtxos } from "../helpers/phase3Mocks";
@@ -91,7 +92,7 @@ test("configure and revalidate an explicit Plutus input while incomplete builds 
   await expect(editor).toHaveCount(0);
 });
 
-test("evaluate, review and export unsigned Plutus bytes; edits invalidate the result", async ({
+test("evaluate, export and reload pending Plutus intent; edits invalidate the result", async ({
   page,
   authenticateAs,
 }) => {
@@ -261,4 +262,131 @@ test("evaluate, review and export unsigned Plutus bytes; edits invalidate the re
   ).toBe(0);
   await page.getByRole("spinbutton").fill("4");
   await expect(page.getByTestId("tx-builder-build-result")).not.toBeVisible();
+
+  // Serve the supported stored Mesh shape through the existing pending query.
+  // No transaction is persisted or broadcast by this browser fixture.
+  const completed = csl.Transaction.from_hex(evaluated.at(-1)!);
+  const completedOutputs = completed.body().outputs();
+  const outputs = Array.from({ length: completedOutputs.len() }, (_, i) => ({
+    address: completedOutputs.get(i).address().to_bech32(),
+    amount: [
+      {
+        unit: "lovelace",
+        quantity: completedOutputs.get(i).amount().coin().to_str(),
+      },
+    ],
+  }));
+  const keys = completed.body().required_signers()!;
+  const requiredSignatures = Array.from({ length: keys.len() }, (_, i) =>
+    keys.get(i).to_hex(),
+  );
+  const pendingId = "phase6-pending";
+  const stored = {
+    inputs: [
+      {
+        type: "Script",
+        txIn: { txHash: hash, txIndex: 0 },
+        scriptTxIn: {
+          scriptSource: { type: "Provided", script: { code, version: "V3" } },
+          datumSource: { type: "Inline", txHash: hash, txIndex: 0 },
+          redeemer: {
+            data: { type: "CBOR", content: "01" },
+            exUnits: { mem: 1000, steps: 10000 },
+          },
+        },
+      },
+    ],
+    collaterals: [
+      { type: "PubKey", txIn: { txHash: collateralHash, txIndex: 0 } },
+    ],
+    outputs,
+    requiredSignatures,
+    changeAddress: wallet.walletAddress,
+    builderOutputs: {
+      version: 1,
+      outputs: [
+        { id: "loaded-payment", fingerprint: JSON.stringify(outputs[0]) },
+      ],
+    },
+  };
+  await page.route("**/api/trpc/**", async (route) => {
+    const procedures = new URL(route.request().url()).pathname
+      .split("/api/trpc/")[1]!
+      .split(",");
+    const index = procedures.indexOf("transaction.getPendingTransactions");
+    if (index < 0) return route.fallback();
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload[index] = {
+      result: {
+        data: superjson.serialize([
+          {
+            id: pendingId,
+            walletId: wallet.walletId,
+            txJson: JSON.stringify(stored),
+            txCbor: evaluated.at(-1)!,
+            signedAddresses: context.signerAddresses.slice(0, 2),
+            rejectedAddresses: [],
+            state: 0,
+            description: "Editable Plutus fixture",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            txHash: null,
+          },
+        ]),
+      },
+    };
+    await route.fulfill({ response, json: payload });
+  });
+  await page.goto(`/wallets/${wallet.walletId}/build?tx=${pendingId}`);
+  const scriptToggle = page.getByTestId("tx-builder-script-advanced");
+  await expect(scriptToggle).toContainText("(1)");
+  if ((await scriptToggle.getAttribute("aria-expanded")) === "false")
+    await scriptToggle.click();
+  await expect(page.getByTestId("tx-builder-script-input")).toBeVisible();
+  await expect(page.getByLabel("Redeemer", { exact: true })).toHaveValue("01");
+  await expect(page.getByTestId("tx-builder-required-signers")).toContainText(
+    requiredSignatures[0]!,
+  );
+  await expect(
+    page.locator('[data-testid^="tx-flow-node-draftout:"]'),
+  ).toHaveCount(1);
+  await page.evaluate((hex) => {
+    (
+      window as unknown as { __ci_getUtxos: () => Promise<string[]> }
+    ).__ci_getUtxos = async () => [hex];
+  }, collateralCbor);
+  const collateralToggle = page.getByTestId("tx-builder-collateral-advanced");
+  if ((await collateralToggle.getAttribute("aria-expanded")) === "false")
+    await collateralToggle.click();
+  await page
+    .getByRole("button", { name: "Recheck collateral", exact: true })
+    .click();
+  await expect(page.getByTestId("collateral-summary")).toContainText(
+    collateralHash,
+  );
+  await page.getByLabel("Redeemer", { exact: true }).fill("02");
+  await page.getByTestId("tx-builder-test-build").click();
+  await expect(page.getByTestId("tx-builder-build-result")).toHaveAttribute(
+    "data-status",
+    "ok",
+  );
+  expect(
+    csl.Transaction.from_hex(evaluated.at(-1)!)
+      .witness_set()
+      .redeemers()!
+      .get(0)
+      .data()
+      .to_hex(),
+  ).toBe("02");
+  await page.getByTestId("tx-builder-build").click();
+  const replacement = page.getByRole("dialog", {
+    name: "Replace pending transaction?",
+  });
+  await expect(replacement).toContainText(
+    "all collected signatures become invalid",
+  );
+  await replacement
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
 });

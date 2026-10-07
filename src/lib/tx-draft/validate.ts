@@ -12,6 +12,7 @@ import { validatePlutusDraft } from "./validate-plutus";
 import { validatePlutusData } from "./plutus-data";
 
 export type DraftIssueCode =
+  | "required-signers-invalid"
   | "output-datum-invalid"
   | "script-input-ref-invalid"
   | "script-input-duplicate"

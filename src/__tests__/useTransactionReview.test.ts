@@ -162,6 +162,41 @@ describe("finalized transaction review before signing", () => {
     expect(mockSign).not.toHaveBeenCalled();
   });
 
+  test("replacing a partially signed pending transaction persists only the new signer and reviewed body", async () => {
+    const txBuilder = builder();
+    const body = {
+      ...txBuilder.meshTxBuilderBody,
+      requiredSignatures: ["a".repeat(56)],
+      fee: "222222",
+    };
+    const replaces = {
+      transactionId: "partially-signed-original",
+      knownSignedCount: 2,
+    };
+    await hook().newTransaction({
+      txBuilder,
+      completed: { unsignedTx: "rebuilt-evaluated-bytes", body },
+      replaces,
+      beforeSign: async () => true,
+      txJsonExtras: { builderOutputs: { version: 1, outputs: [] } },
+    });
+    expect(mockComplete).not.toHaveBeenCalled();
+    expect(mockSign).toHaveBeenCalledWith("rebuilt-evaluated-bytes", true);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replaces,
+        signedAddresses: ["signer"],
+        state: 0,
+        txCbor: "signed-tx",
+      }),
+    );
+    expect(JSON.parse(mockCreate.mock.calls[0]![0].txJson)).toMatchObject({
+      requiredSignatures: body.requiredSignatures,
+      builderOutputs: { version: 1 },
+    });
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
   test.each(["review", "wallet", "readiness"])(
     "a draft/account change during %s prevents proposal persistence",
     async (stage) => {

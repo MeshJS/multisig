@@ -6,6 +6,7 @@ import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import OutputReviewList from "./output-review-list";
 import PlutusReview from "./plutus-review";
+import RequiredSigners from "./required-signers";
 
 export type BuildResultState =
   | { status: "ok"; result: DraftBuildResult; description: string }
@@ -149,6 +150,7 @@ export default function BuildResultPanel({
           </p>
         )}
         {built.plutusReview && <PlutusReview review={built.plutusReview} />}
+        <RequiredSigners keys={built.body.requiredSignatures} unsigned />
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button

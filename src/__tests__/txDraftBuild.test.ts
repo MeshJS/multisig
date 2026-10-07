@@ -28,6 +28,10 @@ import {
 import type { DraftScriptInput } from "@/types/tx-draft";
 import type { BuildDraftTxOptions } from "@/lib/tx-draft/build-draft-tx";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
+import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
+import { createOutputProvenance } from "@/lib/tx-draft/outputs";
+import { mergeSignerWitnesses } from "@/utils/txSignUtils";
+import { invalidateDraftContext } from "@/lib/tx-draft/mutations";
 
 const WALLET_ADDRESS = realTestAddresses.address1;
 const RECIPIENT = realTestAddresses.address2;
@@ -108,6 +112,25 @@ function fakeComplete(txHex: string) {
 }
 
 describe("buildDraftTx", () => {
+  test("completion cannot drop an imported required signer", async () => {
+    const draft = {
+      ...sendDraft("2000000"),
+      requiredSigners: ["d".repeat(56)],
+    };
+    const { complete } = fakeComplete(minimalTxHex());
+    await expect(
+      buildDraftTx(
+        new MeshTxBuilder({}),
+        draft,
+        {
+          inputs: { kind: "pubkey" },
+          walletAddress: WALLET_ADDRESS,
+          availableUtxos: [],
+        },
+        { complete },
+      ),
+    ).rejects.toThrow(/dropped a required signer/);
+  });
   test("applies the draft and metadata, completes once, and reports the result", async () => {
     const txHex = minimalTxHex();
     const { complete, calls } = fakeComplete(txHex);
@@ -380,6 +403,246 @@ describe("evaluated Plutus draft builds", () => {
     } as Response);
   });
   afterEach(() => jest.restoreAllMocks());
+
+  test.each([
+    ["V1", true],
+    ["V2", true],
+    ["V2", false],
+    ["V3", true],
+    ["V3", false],
+  ] as const)(
+    "%s provided=%s survives propose/load/edit/rebuild without old signatures or budgets",
+    async (version, provided) => {
+      const f = plutusFixture(version, provided, true);
+      f.draft.requiredSigners = ["d".repeat(56)];
+      // Intentional self-output and distinct outputs at the same address.
+      f.draft.outputs[0]!.assets[0]!.quantity = "4000000";
+      f.draft.outputs.push({
+        ...f.draft.outputs[0]!,
+        id: "second",
+        inlineDatum: provided ? undefined : { format: "CBOR", text: "03" },
+      });
+      f.draft.outputs.push({
+        id: "self",
+        address: f.context.walletAddress,
+        assets: [{ unit: "lovelace", quantity: "2000000" }],
+        inlineDatum: provided ? undefined : { format: "CBOR", text: "04" },
+      });
+      const built = await f.build();
+      const signer = csl.PrivateKey.generate_ed25519();
+      const witnesses = csl.TransactionWitnessSet.new();
+      const vkeys = csl.Vkeywitnesses.new();
+      vkeys.add(
+        csl.Vkeywitness.new(
+          csl.Vkey.new(signer.to_public()),
+          signer.sign(Buffer.from(built.txHash, "hex")),
+        ),
+      );
+      witnesses.set_vkeys(vkeys);
+      const signed = mergeSignerWitnesses(built.unsignedTx, witnesses.to_hex());
+      expect(resolveTxHash(signed.txHex)).toBe(built.txHash);
+      const unsigned = csl.Transaction.from_hex(built.unsignedTx);
+      const merged = csl.Transaction.from_hex(signed.txHex);
+      expect(merged.witness_set().plutus_scripts()!.to_hex()).toBe(
+        unsigned.witness_set().plutus_scripts()!.to_hex(),
+      );
+      expect(merged.witness_set().plutus_data()?.to_hex()).toBe(
+        unsigned.witness_set().plutus_data()?.to_hex(),
+      );
+      expect(merged.witness_set().redeemers()!.to_hex()).toBe(
+        unsigned.witness_set().redeemers()!.to_hex(),
+      );
+      expect(merged.auxiliary_data()?.to_hex()).toBe(
+        unsigned.auxiliary_data()?.to_hex(),
+      );
+      const pending = {
+        txJson: JSON.stringify({
+          ...built.body,
+          builderOutputs: createOutputProvenance(f.draft, built.body.outputs),
+        }),
+        txCbor: signed.txHex,
+        signedAddresses: [keyAddress],
+      };
+      const stored = JSON.parse(pending.txJson);
+      // Stored input order need not match either draft or ledger order.
+      stored.inputs.reverse();
+      const { draft, inputRefs, warnings } = txJsonToDraft(stored, {
+        walletAddress: f.context.walletAddress,
+      });
+      expect(warnings).toEqual([]);
+      expect(draft.outputs.map((output) => output.id)).toEqual([
+        "payment",
+        "second",
+        "self",
+      ]);
+      expect(draft.outputs.map((output) => output.inlineDatum?.text)).toEqual(
+        provided ? [undefined, undefined, undefined] : ["02", "03", "04"],
+      );
+      expect(inputRefs).toEqual([
+        { txHash: f.funding.input.txHash, txIndex: 0 },
+      ]);
+      expect(draft.collateral).toEqual(f.draft.collateral);
+      expect(draft.requiredSigners).toEqual(
+        expect.arrayContaining([owner.to_hex(), "d".repeat(56)]),
+      );
+      expect(invalidateDraftContext(draft).requiredSigners).toEqual(
+        draft.requiredSigners,
+      );
+      for (const input of draft.scriptInputs) {
+        const original = f.draft.scriptInputs.find(
+          (entry) => entry.utxoRef.txHash === input.utxoRef.txHash,
+        )!;
+        expect(input).toMatchObject({
+          script: original.script,
+          datumSource: original.datumSource,
+          redeemer: original.redeemer,
+        });
+        expect(input).not.toHaveProperty("exUnits");
+      }
+      draft.scriptInputs.find(
+        (input) => input.utxoRef.txHash === "f".repeat(64),
+      )!.redeemer.text = "03";
+      draft.outputs[0]!.assets[0]!.quantity = "3500000";
+      const again = await buildDraftTx(
+        plutusFixture(version, provided, true).builder,
+        draft,
+        f.context,
+        f.options,
+      );
+      expect(again.txHash).not.toBe(built.txHash);
+      const tx = csl.Transaction.from_hex(again.unsignedTx);
+      expect(tx.witness_set().vkeys()?.len() ?? 0).toBe(0);
+      expect(tx.witness_set().plutus_scripts()!.len()).toBe(1);
+      expect(tx.body().required_signers()!.len()).toBe(2);
+      expect(tx.body().script_data_hash()).toBeDefined();
+      const datums = tx.witness_set().plutus_data();
+      expect([
+        ...new Set(
+          Array.from({ length: datums?.len() ?? 0 }, (_, i) =>
+            datums!.get(i).to_hex(),
+          ),
+        ),
+      ]).toEqual(provided ? ["01"] : []);
+      const redeemers = tx.witness_set().redeemers()!;
+      for (let i = 0; i < redeemers.len(); i++) {
+        const redeemer = redeemers.get(i);
+        const ref = tx.body().inputs().get(Number(redeemer.index().to_str()));
+        const input = draft.scriptInputs.find(
+          (entry) => entry.utxoRef.txHash === ref.transaction_id().to_hex(),
+        )!;
+        expect(redeemer.data().to_hex()).toBe(input.redeemer.text);
+        expect(redeemer.ex_units().mem().to_str()).toBe(
+          String(Number(input.redeemer.text) * 1000),
+        );
+      }
+      expect(f.wallet.signTx).not.toHaveBeenCalled();
+      expect(f.wallet.submitTx).not.toHaveBeenCalled();
+    },
+  );
+
+  test("legacy Plutus JSON retains all outputs and malformed provenance cannot discard them", async () => {
+    const f = plutusFixture();
+    const built = await f.build();
+    const stored = JSON.parse(JSON.stringify(built.body));
+    for (const builderOutputs of [
+      undefined,
+      { version: 2, outputs: [] },
+      { version: 1, outputs: [{ id: "payment", fingerprint: "wrong" }] },
+    ]) {
+      const loaded = txJsonToDraft(
+        { ...stored, builderOutputs },
+        { walletAddress: keyAddress },
+      );
+      expect(loaded.draft.outputs).toHaveLength(stored.outputs.length);
+      expect(loaded.warnings).toEqual(["change-not-detected"]);
+      expect(loaded.draft.scriptInputs).toHaveLength(2);
+    }
+  });
+
+  test("unknown, incomplete and mismatched Plutus shapes stay incompatible", async () => {
+    const f = plutusFixture();
+    const built = await f.build();
+    const modifications: ((body: any) => void)[] = [
+      (body) => {
+        body.inputs.find(
+          (i: any) => i.type === "Script",
+        ).scriptTxIn.scriptSource.type = "Inline";
+      },
+      (body) => {
+        delete body.inputs.find((i: any) => i.type === "Script").scriptTxIn
+          .datumSource;
+      },
+      (body) => {
+        body.inputs.find(
+          (i: any) => i.type === "Script",
+        ).scriptTxIn.datumSource.txIndex = 42;
+      },
+      (body) => {
+        body.inputs.find(
+          (i: any) => i.type === "Script",
+        ).scriptTxIn.redeemer.data.content = "invalid";
+      },
+      (body) => {
+        body.inputs.find((i: any) => i.type === "Script").scriptTxIn.extra =
+          "unsupported";
+      },
+      (body) => {
+        body.inputs.find(
+          (i: any) => i.type === "Script",
+        ).scriptTxIn.scriptSource.script.version = "V1";
+      },
+      (body) => {
+        body.collaterals = [];
+      },
+      (body) => {
+        body.collaterals.push(body.collaterals[0]);
+      },
+      (body) => {
+        body.collaterals[0].txIn = body.inputs[0].txIn;
+      },
+      (body) => {
+        body.requiredSignatures.push({ scriptHash: "d".repeat(56) });
+      },
+    ];
+    for (const modify of modifications) {
+      const stored = JSON.parse(JSON.stringify(built.body));
+      modify(stored);
+      expect(isDraftCompatible(stored).compatible).toBe(false);
+      expect(() =>
+        txJsonToDraft(stored, { walletAddress: keyAddress }),
+      ).toThrow();
+    }
+  });
+
+  test.each([
+    "spent-script",
+    "spent-collateral",
+    "changed-account",
+    "insufficient-collateral",
+  ])("loaded transactions recheck %s before rebuilding", async (failure) => {
+    const f = plutusFixture();
+    const built = await f.build();
+    const { draft } = txJsonToDraft(
+      JSON.parse(
+        JSON.stringify({
+          ...built.body,
+          builderOutputs: createOutputProvenance(f.draft, built.body.outputs),
+        }),
+      ),
+      { walletAddress: keyAddress },
+    );
+    if (failure === "spent-script")
+      f.live.splice(f.live.indexOf(f.scripts[0]!), 1);
+    if (failure === "spent-collateral")
+      f.live.splice(f.live.indexOf(f.collateral), 1);
+    if (failure === "changed-account") f.wallet.getUtxos.mockResolvedValue([]);
+    if (failure === "insufficient-collateral")
+      f.collateral.output.amount[0]!.quantity = "1";
+    await expect(
+      buildDraftTx(plutusFixture().builder, draft, f.context, f.options),
+    ).rejects.toThrow();
+    expect(f.wallet.signTx).not.toHaveBeenCalled();
+  });
 
   test.each([false, true])(
     "serializes mixed funding (native=%s), ledger-indexed redeemers, datums, collateral and owner without signing",
