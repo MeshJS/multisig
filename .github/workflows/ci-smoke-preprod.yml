@@ -31,7 +31,7 @@ jobs:
           # On deployment_status, check out the exact SHA that was deployed.
           ref: ${{ github.event.deployment.sha || github.sha }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
