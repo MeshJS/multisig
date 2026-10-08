@@ -1200,6 +1200,8 @@ export default function PageBuild() {
             addStakeDisabledReason={addStakeDisabledReason}
             onAddVote={() => setVoteDialogOpen(true)}
             addVoteDisabledReason={addVoteDisabledReason}
+            scriptResolutions={scriptInputs.resolutions}
+            collateralUtxo={collateral.selected?.utxo}
             built={
               buildResult?.status === "ok" ? buildResult.result.body : null
             }

@@ -12,10 +12,12 @@ export type BlockfrostTxInput = UTXO & {
   collateral: boolean;
   reference: boolean;
   data_hash: string | null;
+  inline_datum?: string | null;
 };
 
 export type BlockfrostTxOutput = UTXO & {
   data_hash: string | null;
+  inline_datum?: string | null;
   /** Collateral return output; only consumed when the script fails. */
   collateral?: boolean;
 };

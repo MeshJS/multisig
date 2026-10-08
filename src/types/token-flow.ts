@@ -25,7 +25,7 @@ export type AddressPartyType =
   | "unknown";
 
 export type FlowBadge = {
-  kind: "certificate" | "vote";
+  kind: "certificate" | "vote" | "script";
   label: string;
   detail?: string;
   /** Tailwind text color class, matching existing certificate conventions. */
@@ -40,8 +40,11 @@ export type AddressFlowNode = {
   address: string;
   label?: string;
   partyType: AddressPartyType;
-  /** Builder-only indication; absent on ordinary viewer nodes. */
+  /** Inline datum attached to this specific input/output UTxO. */
   inlineDatum?: boolean;
+  /** Per-UTxO context, kept separate from the address's identity. */
+  details?: string[];
+  role?: "script" | "collateral" | "reference";
 };
 
 export type TransactionFlowNode = {
@@ -67,6 +70,8 @@ export type FlowNode = AddressFlowNode | TransactionFlowNode | ProtocolFlowNode;
 
 export type FlowEdgeKind =
   | "input" // address -> tx
+  | "collateral" // conditional backing, NOT successful-transaction funding
+  | "reference" // read-only dependency, NOT spent
   | "output" // tx -> address
   | "fee" // tx -> protocol:fee
   | "withdrawal" // stake address -> tx
@@ -87,6 +92,8 @@ export type FlowEdge = {
   assets: AssetQuantity[];
   /** Short annotation when assets are unknown or special, e.g. "change". */
   note?: string;
+  /** Always-visible semantic label, separate from the UTxO-ref tooltip. */
+  label?: string;
 };
 
 export type TokenFlow = {

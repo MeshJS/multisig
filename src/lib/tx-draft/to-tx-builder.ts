@@ -194,8 +194,18 @@ export function applyDraftToTxBuilder(
   }
   if (ctx.preparedPlutus)
     applyCollateral(txBuilder, ctx.preparedPlutus.collateral);
-  for (const key of new Set(requiredSigners.map((key) => key.toLowerCase())))
+  // Reloaded requirements already contain the collateral owner's key.
+  // Mesh appends requiredSignerHash calls without deduplicating the CBOR set.
+  const emittedSigners = new Set(
+    txBuilder.meshTxBuilderBody.requiredSignatures.map((key) =>
+      key.toLowerCase(),
+    ),
+  );
+  for (const key of requiredSigners.map((key) => key.toLowerCase())) {
+    if (emittedSigners.has(key)) continue;
     txBuilder.requiredSignerHash(key);
+    emittedSigners.add(key);
+  }
 
   // Certificates are re-emitted against the wallet's freshly derived reward
   // address, not the loaded tx's stakeKeyAddress. Load order is preserved so

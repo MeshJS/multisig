@@ -64,6 +64,10 @@ export type BuilderCanvasProps = {
    * clears it on any draft edit.
    */
   built?: DraftBuildOverlay | null;
+  scriptResolutions?: Parameters<
+    typeof draftToTokenFlow
+  >[1]["scriptResolutions"];
+  collateralUtxo?: Parameters<typeof draftToTokenFlow>[1]["collateralUtxo"];
   /** The multisig's address when it is NOT the source (palette "Multisig" button). */
   multisigAddress?: string;
   className?: string;
@@ -87,7 +91,15 @@ function positionKeyForNode(nodeId: string): string {
 function sameSelection(a: BuilderSelection, b: BuilderSelection): boolean {
   if (a === null || b === null) return a === b;
   if (a.kind !== b.kind) return false;
-  return a.kind === "tx" || a.outputId === (b as { outputId: string }).outputId;
+  if (a.kind === "tx" && b.kind === "tx") {
+    return (
+      a.inputId === b.inputId &&
+      (a.field === "collateral") === (b.field === "collateral")
+    );
+  }
+  return (
+    a.kind === "output" && b.kind === "output" && a.outputId === b.outputId
+  );
 }
 
 /**
@@ -112,6 +124,8 @@ export default function BuilderCanvas({
   onAddVote,
   addVoteDisabledReason,
   built,
+  scriptResolutions,
+  collateralUtxo,
   multisigAddress,
   className,
 }: BuilderCanvasProps) {
@@ -132,6 +146,8 @@ export default function BuilderCanvas({
         resolveProposalTitle,
         resolvePoolName,
         built,
+        scriptResolutions,
+        collateralUtxo,
       }),
     [
       draft,
@@ -140,6 +156,8 @@ export default function BuilderCanvas({
       resolveProposalTitle,
       resolvePoolName,
       built,
+      scriptResolutions,
+      collateralUtxo,
     ],
   );
   // connectablePorts: empty card sides keep a dot as the drag-to-connect
@@ -159,7 +177,10 @@ export default function BuilderCanvas({
         const highlighted =
           selection !== null &&
           sameSelection(entity, selection) &&
-          (selection.kind !== "tx" || node.data.node.kind === "transaction");
+          (selection.kind !== "tx" ||
+            selection.inputId ||
+            selection.field === "collateral" ||
+            node.data.node.kind === "transaction");
         return {
           ...node,
           position: positions[positionKeyForNode(node.id)] ?? node.position,
@@ -250,7 +271,7 @@ export default function BuilderCanvas({
         return;
       }
       if (isTxNode(target)) {
-        select({ kind: "tx" });
+        select(flowIdToDraftEntity(draft, source));
       }
     },
     [draft, isTxNode, select, addOutput],

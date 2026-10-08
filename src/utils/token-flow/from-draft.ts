@@ -1,4 +1,5 @@
-import type { MeshTxBuilder } from "@meshsdk/core";
+import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
+import type { ScriptInputResolution } from "@/lib/tx-draft/resolve-script-inputs";
 
 import type {
   AddressLabeler,
@@ -30,7 +31,8 @@ import {
 export type DraftBuildOverlay = Pick<
   MeshTxBuilder["meshTxBuilderBody"],
   "inputs" | "outputs" | "changeAddress" | "fee"
->;
+> &
+  Partial<Pick<MeshTxBuilder["meshTxBuilderBody"], "collaterals">>;
 
 /**
  * Projects a builder draft onto the shared TokenFlow model so the canvas
@@ -62,6 +64,8 @@ export function draftToTokenFlow(
     resolvePoolName?: PoolNameResolver;
     /** Completed body of the current draft; overlays fee, inputs and change. */
     built?: DraftBuildOverlay | null;
+    scriptResolutions?: ScriptInputResolution[];
+    collateralUtxo?: UTxO;
   },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
@@ -96,6 +100,15 @@ export function draftToTokenFlow(
     fee: builtFee,
     // Certificates before votes, matching the pending-view badge order.
     badges: [
+      ...(draft.scriptInputs.length
+        ? [
+            {
+              kind: "script" as const,
+              label: `${draft.scriptInputs.length} Plutus spend${draft.scriptInputs.length === 1 ? "" : "s"}`,
+              color: "text-amber-600 dark:text-amber-400",
+            },
+          ]
+        : []),
       ...draft.certificates.map((cert) =>
         draftCertificateToBadge(cert, opts.resolvePoolName),
       ),
@@ -106,11 +119,100 @@ export function draftToTokenFlow(
   };
   graph.addNode(txNode);
 
+  // Stable per-input cards survive resolution and completion. Snapshots are
+  // presentation only; the build pipeline still resolves everything afresh.
+  const scriptRefs = new Set<string>();
+  for (const input of draft.scriptInputs) {
+    const ref = `${input.utxoRef.txHash.toLowerCase()}#${input.utxoRef.outputIndex}`;
+    scriptRefs.add(ref);
+    const completed = built?.inputs.find(
+      (item) =>
+        `${item.txIn.txHash.toLowerCase()}#${item.txIn.txIndex}` === ref,
+    )?.txIn;
+    const resolution = opts.scriptResolutions?.find(
+      (item) => item.inputId === input.id,
+    );
+    const snapshot = resolution?.utxo;
+    const matching =
+      snapshot &&
+      `${snapshot.input.txHash.toLowerCase()}#${snapshot.input.outputIndex}` ===
+        ref
+        ? snapshot
+        : undefined;
+    const address = completed?.address ?? matching?.output.address ?? "";
+    const nodeId = `draftscript:${input.id}`;
+    graph.addNode({
+      id: nodeId,
+      kind: "address",
+      address,
+      partyType: "script",
+      role: "script",
+      label: `Plutus ${input.script.version} input`,
+      details: [
+        input.datumSource.kind === "inline" ? "Inline datum" : "Supplied datum",
+        input.redeemer.text.trim()
+          ? "Redeemer configured"
+          : "Redeemer required",
+        ...(resolution?.issues.length && !built ? ["Needs attention"] : []),
+      ],
+    });
+    graph.addEdge(
+      nodeId,
+      txNodeId,
+      "input",
+      completed?.amount ?? matching?.output.amount ?? [],
+      address
+        ? `${getFirstAndLast(input.utxoRef.txHash, 8, 4)}#${input.utxoRef.outputIndex}`
+        : "unresolved amount",
+      input.id,
+      "Script spend",
+    );
+  }
+
+  if (draft.scriptInputs.length || draft.collateral) {
+    const ref = draft.collateral?.utxoRef;
+    const matches = (hash: string, index: number) =>
+      !!ref &&
+      hash.toLowerCase() === ref.txHash.toLowerCase() &&
+      index === ref.outputIndex;
+    const completed = built?.collaterals?.find((item) =>
+      matches(item.txIn.txHash, item.txIn.txIndex),
+    )?.txIn;
+    const snapshot = opts.collateralUtxo;
+    const matching =
+      snapshot && matches(snapshot.input.txHash, snapshot.input.outputIndex)
+        ? snapshot
+        : undefined;
+    const nodeId = `draftcollateral:${draft.id}`;
+    graph.addNode({
+      id: nodeId,
+      kind: "address",
+      address: completed?.address ?? matching?.output.address ?? "",
+      partyType: "signer",
+      role: "collateral",
+      label: ref ? "Collateral" : "Select collateral",
+      details: ["Only consumed if scripts fail"],
+    });
+    graph.addEdge(
+      nodeId,
+      txNodeId,
+      "collateral",
+      completed?.amount ?? matching?.output.amount ?? [],
+      ref
+        ? `${getFirstAndLast(ref.txHash, 8, 4)}#${ref.outputIndex}`
+        : "required",
+      undefined,
+      "Collateral at risk",
+    );
+  }
+
   // Inputs — a built body knows the exact UTxOs (auto selection resolved);
   // manual picks are used verbatim by the builder, so the sets coincide.
   if (built) {
     for (const input of built.inputs) {
       const txIn = input.txIn;
+      if (scriptRefs.has(`${txIn.txHash.toLowerCase()}#${txIn.txIndex}`))
+        continue;
       const nodeId = txIn.address
         ? graph.addressNode(txIn.address).id
         : sourceNodeId();
@@ -229,6 +331,19 @@ export function flowIdToDraftEntity(
   flowId: string,
 ): BuilderSelection {
   const baseId = flowId.replace(/@(in|out)$/, "");
+
+  const script = draft.scriptInputs.find(
+    (input) =>
+      baseId === `draftscript:${input.id}` ||
+      baseId.startsWith(`draftscript:${input.id}->`),
+  );
+  if (script) return { kind: "tx", inputId: script.id, field: "utxoRef" };
+  if (
+    baseId === `draftcollateral:${draft.id}` ||
+    baseId.startsWith(`draftcollateral:${draft.id}->`)
+  ) {
+    return { kind: "tx", field: "collateral" };
+  }
 
   if (baseId.includes("->")) {
     // Edge id: `${source}->${target}:${kind}` + optional `:${discriminator}`.

@@ -11,7 +11,7 @@ import {
   type IFetcher,
 } from "@meshsdk/core";
 import { csl } from "@meshsdk/core-csl";
-import { resolveTxHash } from "@meshsdk/core-cst";
+import { resolveTxHash, Transaction, TxCBOR } from "@meshsdk/core-cst";
 
 import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
 import {
@@ -514,6 +514,18 @@ describe("evaluated Plutus draft builds", () => {
       expect(tx.witness_set().vkeys()?.len() ?? 0).toBe(0);
       expect(tx.witness_set().plutus_scripts()!.len()).toBe(1);
       expect(tx.body().required_signers()!.len()).toBe(2);
+      // CSL normalizes this ledger set when decoding, masking duplicate keys.
+      // Inspect the actual Mesh/CST serialization used by the provider too.
+      expect(again.body.requiredSignatures).toHaveLength(2);
+      const encodedSigners = Transaction.fromCbor(TxCBOR(again.unsignedTx))
+        .body()
+        .requiredSigners()!
+        .values()
+        .map((key) => key.toCore());
+      expect(encodedSigners).toEqual(
+        expect.arrayContaining([owner.to_hex(), "d".repeat(56)]),
+      );
+      expect(encodedSigners).toHaveLength(2);
       expect(tx.body().script_data_hash()).toBeDefined();
       const datums = tx.witness_set().plutus_data();
       expect([

@@ -51,7 +51,13 @@ export class FlowGraphBuilder {
   private edgeAssets = new Map<string, Map<string, bigint>>();
   private edgeMeta = new Map<
     string,
-    { source: string; target: string; kind: FlowEdgeKind; note?: string }
+    {
+      source: string;
+      target: string;
+      kind: FlowEdgeKind;
+      note?: string;
+      label?: string;
+    }
   >();
 
   constructor(private labelAddress: AddressLabeler) {}
@@ -63,9 +69,13 @@ export class FlowGraphBuilder {
   /** Adds (or reuses) an address node labeled via the injected labeler. */
   addressNode(
     address: string,
-    opts?: { idPrefix?: "addr" | "stake"; partyType?: AddressPartyType },
+    opts?: {
+      id?: string;
+      idPrefix?: "addr" | "stake";
+      partyType?: AddressPartyType;
+    },
   ): AddressFlowNode {
-    const id = `${opts?.idPrefix ?? "addr"}:${address}`;
+    const id = opts?.id ?? `${opts?.idPrefix ?? "addr"}:${address}`;
     const existing = this.nodes.get(id);
     if (existing?.kind === "address") return existing;
     const resolved = this.labelAddress(address);
@@ -111,11 +121,19 @@ export class FlowGraphBuilder {
     assets: { unit: string; quantity: string }[],
     note?: string,
     discriminator?: string,
+    label?: string,
   ): void {
     const id =
-      `${source}->${target}:${kind}` + (discriminator ? `:${discriminator}` : "");
+      `${source}->${target}:${kind}` +
+      (discriminator ? `:${discriminator}` : "");
     if (!this.edgeMeta.has(id)) {
-      this.edgeMeta.set(id, { source, target, kind, note });
+      this.edgeMeta.set(id, {
+        source,
+        target,
+        kind,
+        note,
+        ...(label ? { label } : {}),
+      });
       this.edgeAssets.set(id, new Map());
     } else if (note) {
       this.edgeMeta.get(id)!.note = note;

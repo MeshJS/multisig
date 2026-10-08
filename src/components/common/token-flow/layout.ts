@@ -60,6 +60,10 @@ const TX_BOTTOM_CENTER_OFFSET = 60;
 function estimateHeight(node: FlowNode, ports = 1): number {
   if (node.kind === "protocol") return 36;
   let content = 68;
+  if (node.kind === "address") {
+    content += (node.details?.length ?? 0) * 16;
+    if (node.inlineDatum) content += 20;
+  }
   if (node.kind === "transaction") {
     // Titled badges (votes with a resolved proposal name) render the full
     // wrapped title plus a vote pill below it; untitled badges wrap ~2 pills
@@ -67,13 +71,10 @@ function estimateHeight(node: FlowNode, ports = 1): number {
     // at 9px, ~12px per line, plus ~22px for the pill row.
     const titledBadges = node.badges.filter((badge) => badge.title);
     const titledHeight = titledBadges.reduce(
-      (sum, badge) =>
-        sum + Math.ceil(badge.title!.length / 45) * 12 + 22,
+      (sum, badge) => sum + Math.ceil(badge.title!.length / 45) * 12 + 22,
       0,
     );
-    const badgeRows = Math.ceil(
-      (node.badges.length - titledBadges.length) / 2,
-    );
+    const badgeRows = Math.ceil((node.badges.length - titledBadges.length) / 2);
     const detailRows = node.blockHeight !== undefined ? 1 : 0;
     content = 84 + detailRows * 16 + badgeRows * 24 + titledHeight;
   }
@@ -265,7 +266,10 @@ export function layoutTokenFlow(
       // all of them). Local instances keep every value edge exactly one
       // column long; a tx's output consumed by the NEXT tx still lands
       // both roles on the same column and stays a single join node.
-      const byCol = new Map<number, { producers: string[]; consumers: string[] }>();
+      const byCol = new Map<
+        number,
+        { producers: string[]; consumers: string[] }
+      >();
       const at = (col: number) => {
         if (!byCol.has(col)) byCol.set(col, { producers: [], consumers: [] });
         return byCol.get(col)!;
@@ -347,8 +351,10 @@ export function layoutTokenFlow(
                 ? TIMELINE_LANE_OFFSET
                 : 0,
         });
-        for (const c of group.consumers) consumerInstance.set(`${node.id}|${c}`, id);
-        for (const p of group.producers) producerInstance.set(`${node.id}|${p}`, id);
+        for (const c of group.consumers)
+          consumerInstance.set(`${node.id}|${c}`, id);
+        for (const p of group.producers)
+          producerInstance.set(`${node.id}|${p}`, id);
         column.set(id, col);
       }
       continue;
@@ -386,16 +392,20 @@ export function layoutTokenFlow(
         // "change" when the same tx both spends from and pays this address
         changeHint: producers.some((p) => inConsumers.includes(p)),
       });
-      for (const tx of inConsumers) consumerInstance.set(`${node.id}|${tx}`, inId);
-      for (const tx of outConsumers) consumerInstance.set(`${node.id}|${tx}`, outId);
+      for (const tx of inConsumers)
+        consumerInstance.set(`${node.id}|${tx}`, inId);
+      for (const tx of outConsumers)
+        consumerInstance.set(`${node.id}|${tx}`, outId);
       for (const p of producers) producerInstance.set(`${node.id}|${p}`, outId);
       column.set(inId, inCol);
       column.set(outId, outCol);
     } else {
       const col = inCol ?? outCol ?? 0;
       instances.push({ id: node.id, node, column: col });
-      for (const tx of consumers) consumerInstance.set(`${node.id}|${tx}`, node.id);
-      for (const p of producers) producerInstance.set(`${node.id}|${p}`, node.id);
+      for (const tx of consumers)
+        consumerInstance.set(`${node.id}|${tx}`, node.id);
+      for (const p of producers)
+        producerInstance.set(`${node.id}|${p}`, node.id);
       column.set(node.id, col);
     }
   }
@@ -421,7 +431,8 @@ export function layoutTokenFlow(
       // Timeline mode: protocol edges attach to the per-tx pill instance
       // (see the protocol placement section below).
       if (opts?.txOrder) {
-        const sourceIsProtocol = nodesById.get(edge.source)?.kind === "protocol";
+        const sourceIsProtocol =
+          nodesById.get(edge.source)?.kind === "protocol";
         const txId = sourceIsProtocol ? edge.target : edge.source;
         const instanceId = `${sourceIsProtocol ? edge.source : edge.target}@c${
           column.get(txId) ?? 1
@@ -429,10 +440,17 @@ export function layoutTokenFlow(
         if (sourceIsProtocol) source = instanceId;
         else target = instanceId;
       }
-    } else if (edge.kind === "input" || edge.kind === "withdrawal") {
-      source = consumerInstance.get(`${edge.source}|${edge.target}`) ?? edge.source;
+    } else if (
+      edge.kind === "input" ||
+      edge.kind === "withdrawal" ||
+      edge.kind === "collateral" ||
+      edge.kind === "reference"
+    ) {
+      source =
+        consumerInstance.get(`${edge.source}|${edge.target}`) ?? edge.source;
     } else if (edge.kind === "output") {
-      target = producerInstance.get(`${edge.target}|${edge.source}`) ?? edge.target;
+      target =
+        producerInstance.get(`${edge.target}|${edge.source}`) ?? edge.target;
     }
 
     return {
@@ -442,7 +460,16 @@ export function layoutTokenFlow(
       sourceHandle: handles.sourceHandle,
       targetHandle: handles.targetHandle,
       type: "asset",
-      animated: edge.assets.length > 0,
+      animated:
+        edge.assets.length > 0 &&
+        edge.kind !== "collateral" &&
+        edge.kind !== "reference",
+      style:
+        edge.kind === "collateral"
+          ? { stroke: "#d97706", strokeDasharray: "6 4" }
+          : edge.kind === "reference"
+            ? { strokeDasharray: "3 5" }
+            : undefined,
       data: { edge },
     };
   });
@@ -464,8 +491,7 @@ export function layoutTokenFlow(
   const inPortCount = (id: string) => Math.max(minPorts, inPorts.get(id) ?? 0);
   const outPortCount = (id: string) =>
     Math.max(minPorts, outPorts.get(id) ?? 0);
-  const portCount = (id: string) =>
-    Math.max(inPortCount(id), outPortCount(id));
+  const portCount = (id: string) => Math.max(inPortCount(id), outPortCount(id));
 
   // Pill top ports render only when an edge actually uses them — otherwise
   // pills show stray unconnected dots. (Tx bottom ports are per-edge and
@@ -518,10 +544,7 @@ export function layoutTokenFlow(
       0,
     ) +
     Math.max(0, entries.length - 1) * VERTICAL_GAP;
-  const maxHeight = Math.max(
-    36,
-    ...[...byColumn.values()].map(columnHeight),
-  );
+  const maxHeight = Math.max(36, ...[...byColumn.values()].map(columnHeight));
 
   // Neighbours in lower columns, per instance id (from the remapped edges).
   const lowerNeighbors = new Map<string, string[]>();
@@ -531,7 +554,9 @@ export function layoutTokenFlow(
     const targetCol = column.get(edge.target);
     if (sourceCol === undefined || targetCol === undefined) continue;
     const [lower, higher] =
-      sourceCol < targetCol ? [edge.source, edge.target] : [edge.target, edge.source];
+      sourceCol < targetCol
+        ? [edge.source, edge.target]
+        : [edge.target, edge.source];
     lowerNeighbors.set(higher, [...(lowerNeighbors.get(higher) ?? []), lower]);
   }
 
@@ -549,6 +574,13 @@ export function layoutTokenFlow(
         : Number.POSITIVE_INFINITY; // unconnected entries sink to the bottom
     };
     const sorted = [...entries].sort((a, b) => {
+      const dependencyRank = (entry: ColumnEntry) =>
+        entry.node.kind === "address" &&
+        (entry.node.role === "collateral" || entry.node.role === "reference")
+          ? 1
+          : 0;
+      const dependencyDiff = dependencyRank(a) - dependencyRank(b);
+      if (dependencyDiff) return dependencyDiff;
       const diff = rank(a) - rank(b);
       if (diff !== 0 && !Number.isNaN(diff)) return diff;
       return a.id < b.id ? -1 : 1;
@@ -662,7 +694,8 @@ export function layoutTokenFlow(
   sortedProtocol.forEach((instance, i) => {
     const group = [...anchorGroups.values()].find((g) => g.includes(i))!;
     const posInGroup = group.indexOf(i);
-    const x = anchors[i]! + (posInGroup - (group.length - 1) / 2) * PROTOCOL_SPACING;
+    const x =
+      anchors[i]! + (posInGroup - (group.length - 1) / 2) * PROTOCOL_SPACING;
     pillX.set(instance.id, x);
     positioned.push({
       id: instance.id,
@@ -704,7 +737,10 @@ export function layoutTokenFlow(
         const id = protoPort(index);
         if (isSource) edge.sourceHandle = id;
         else edge.targetHandle = id;
-        return { id, type: isSource ? ("source" as const) : ("target" as const) };
+        return {
+          id,
+          type: isSource ? ("source" as const) : ("target" as const),
+        };
       }),
     );
   }

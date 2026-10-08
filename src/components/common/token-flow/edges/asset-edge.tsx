@@ -91,7 +91,7 @@ export default function AssetEdge(props: EdgeProps) {
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      {edge && (shown.length > 0 || edge.note) && (
+      {edge && (shown.length > 0 || edge.note || edge.label) && (
         <EdgeLabelRenderer>
           <div
             style={{
@@ -108,6 +108,18 @@ export default function AssetEdge(props: EdgeProps) {
               isDebit ? "text-red-500 dark:text-red-400" : "text-foreground",
             )}
           >
+            {edge.label && (
+              <div
+                className={cn(
+                  "whitespace-nowrap text-[9px] font-semibold",
+                  edge.kind === "collateral"
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground",
+                )}
+              >
+                {edge.label}
+              </div>
+            )}
             {shown.map((asset) => {
               const desc = describeAsset(asset, data?.assetMetadata);
               return (
