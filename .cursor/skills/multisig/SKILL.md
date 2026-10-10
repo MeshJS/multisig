@@ -38,6 +38,7 @@ description: Build and integrate with the Mesh Multisig (Cardano multisig wallet
 - **Bot keys**: Created in-app (User → Create bot). One bot key can have one `paymentAddress`; same address cannot be used by another bot.
 - **Scopes**: Bot keys have scope (e.g. `multisig:read`); `botAccess.ts` enforces wallet access for bots.
 - **V1 endpoints used by bots**: `walletIds` (query `address` = bot’s `paymentAddress`), `pendingTransactions`, `freeUtxos`, `addTransaction`, `signTransaction`, etc. Same as wallet-authenticated calls but identity is the bot’s registered address.
+- **⚠️ Proxy spends (`proxySpend`) — AuthToken UTxOs**: `freeUtxos` marks each UTxO with `authToken: true/false`. A proxy-enabled wallet holds up to 10 AuthToken UTxOs. When calling `POST /api/v1/proxySpend`, your `utxoRefs` must include **exactly one** `authToken: true` UTxO (the one the API will use to authorize the spend) and **zero** others. Including a second `authToken: true` UTxO will be rejected server-side (`buildProxySpendTx` throws), but do not rely on that — filter them out (`authToken !== true`, keeping only the single one you intend) yourself during coin selection.
 
 ## Conventions
 

@@ -184,11 +184,24 @@ export default async function handler(
         ),
     );
 
+    // Flag UTxOs that carry an active proxy AuthToken so callers building a
+    // proxySpend request have a positive signal to avoid sweeping in more than
+    // one of them as generic funding (see buildProxySpendTx's stray-AuthToken guard).
+    const activeProxies = await db.proxy.findMany({
+      where: { walletId, isActive: true },
+      select: { authTokenId: true },
+    });
+    const authTokenIds = new Set(activeProxies.map((p) => p.authTokenId));
+    const freeUtxosWithAuthTokenFlag = freeUtxos.map((utxo) => ({
+      ...utxo,
+      authToken: (utxo.output?.amount ?? []).some((asset) => authTokenIds.has(asset.unit)),
+    }));
+
     res.setHeader(
       "Cache-Control",
       fresh ? "no-store" : "public, s-maxage=30, stale-while-revalidate=60",
     );
-    res.status(200).json(freeUtxos);
+    res.status(200).json(freeUtxosWithAuthTokenFlag);
   } catch (error) {
     console.error("Error in freeUtxos handler", {
       message: (error as Error)?.message,

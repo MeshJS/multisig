@@ -11,6 +11,7 @@ const isBotJwtMock: jest.Mock = jest.fn();
 const getBotWalletAccessMock: jest.Mock = jest.fn();
 const assertBotWalletAccessMock: jest.Mock = jest.fn();
 const findPendingTransactionsMock: jest.Mock = jest.fn();
+const findProxiesMock: jest.Mock = jest.fn();
 const buildMultisigWalletMock: jest.Mock = jest.fn();
 const addressToNetworkMock: jest.Mock = jest.fn();
 const getProviderMock: jest.Mock = jest.fn();
@@ -49,6 +50,7 @@ jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {
     transaction: { findMany: findPendingTransactionsMock },
+    proxy: { findMany: findProxiesMock },
   },
 }));
 
@@ -111,6 +113,7 @@ beforeEach(() => {
   isBotJwtMock.mockReturnValue(true);
   (getBotWalletAccessMock as any).mockResolvedValue({ allowed: true, role: "cosigner" });
   (findPendingTransactionsMock as any).mockResolvedValue([]);
+  (findProxiesMock as any).mockResolvedValue([]);
   (assertBotWalletAccessMock as any).mockResolvedValue({ wallet: { id: "wallet-1" }, role: "cosigner" });
   buildMultisigWalletMock.mockReturnValue({
     getScript: () => ({ address: "addr_test1walletscript" }),
@@ -149,7 +152,7 @@ describe("freeUtxos bot API", () => {
     await handler(req, res);
     expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 } }]);
+    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 }, authToken: false }]);
   });
 
   it("falls back to direct provider fetch when cached UTxO lookup fails", async () => {
@@ -165,7 +168,7 @@ describe("freeUtxos bot API", () => {
 
     expect(fetchAddressUTxOsMock).toHaveBeenCalledWith("addr_test1walletscript");
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "direct", outputIndex: 1 } }]);
+    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "direct", outputIndex: 1 }, authToken: false }]);
   });
 
   it("returns an empty array when the provider has no UTxOs for the script address", async () => {

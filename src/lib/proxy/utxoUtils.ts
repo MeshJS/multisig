@@ -20,6 +20,31 @@ export function sameUtxoRef(a: UTxO["input"], b: UTxO["input"]): boolean {
 }
 
 /**
+ * Security guard: proxy spend/sweep transactions must only ever spend a single,
+ * explicitly-designated AuthToken UTxO. A wallet holds up to 10 identical AuthToken
+ * UTxOs (minted at proxy setup); if a caller-supplied `walletUtxos` list includes any
+ * of the *other* AuthToken UTxOs alongside the designated one, they would silently be
+ * spent as plain funding inputs and their AuthToken asset would leak out as change.
+ * For `buildProxySpendTx`, that change lands at `proxyAddress`, whose validator has no
+ * signer/quorum check - the leaked token would let anyone drain the proxy address.
+ * Fail closed instead of letting that happen.
+ */
+export function assertNoStrayAuthTokenUtxos(
+  walletUtxos: UTxO[],
+  authTokenPolicyId: string,
+  designatedAuthTokenUtxo: UTxO,
+): void {
+  for (const utxo of walletUtxos) {
+    if (sameUtxoRef(utxo.input, designatedAuthTokenUtxo.input)) continue;
+    if (hasAsset(utxo, authTokenPolicyId)) {
+      throw new Error(
+        `walletUtxos contains an additional AuthToken UTxO (${utxo.input.txHash}#${utxo.input.outputIndex}) besides the designated authTokenUtxo. Refusing to build this transaction: spending it here would leak the AuthToken as unprotected change. Exclude every AuthToken-bearing UTxO from walletUtxos except the one you intend to use.`,
+      );
+    }
+  }
+}
+
+/**
  * Greedy UTxO selection covering `outputs` plus an optional `feeBuffer` of lovelace.
  * Throws if the proxy balance is insufficient.
  * Browser callers pass feeBuffer = 500_000n; server callers pass 0n or omit.
