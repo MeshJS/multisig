@@ -28,6 +28,7 @@ const FALLBACK_LINKS = [
   { path: "/roadmap", label: "Roadmap" },
   { path: "/roadmap/graph", label: "Feature Graph" },
   { path: "/vault", label: "Shielded Sign-Off" },
+  { path: "/verify", label: "Verify a Sign-Off Proof" },
   { path: "/governance", label: "Cardano Governance" },
   { path: "/governance/drep", label: "DRep Explorer" },
   { path: "/api-docs", label: "API & Bot Documentation" },

@@ -30,6 +30,9 @@ import {
   StakingPreview,
 } from "@/components/pages/homepage/previews";
 import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+// Import-free module: the scope catalogue is safe in a client bundle, unlike
+// the tool registry it describes.
+import { MCP_SCOPES } from "@/lib/mcp/scopes";
 import { SITE_URL } from "@/lib/seo";
 
 /**
@@ -800,10 +803,10 @@ export function PageHomepage() {
                       the exact address set it will cover.
                     </p>
                     <p className="pl-7 text-muted-foreground">
-                      The three permissions below are listed there as separate
-                      checkboxes, ticked by default. Untick any you would rather
-                      not grant — the tools it covers then simply do not exist for
-                      that client.
+                      The {MCP_SCOPES.length} permissions below are listed there as
+                      separate checkboxes, ticked by default. Untick any you would
+                      rather not grant — the tools it covers then simply do not
+                      exist for that client.
                     </p>
                   </li>
 
@@ -822,12 +825,10 @@ export function PageHomepage() {
                       </strong>{" "}
                       if you granted everything. Fewer means fewer permissions,
                       not a broken connection — the counts are{" "}
-                      {(["wallets:read", "governance:read", "ballots:write"] as const)
-                        .map(
-                          (scope) =>
-                            `${MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).length} for ${scope}`,
-                        )
-                        .join(", ")}
+                      {MCP_SCOPES.map(
+                        (scope) =>
+                          `${MCP_TOOL_SUMMARIES.filter((t) => t.scope === scope).length} for ${scope}`,
+                      ).join(", ")}
                       .
                     </p>
                   </li>
@@ -848,11 +849,14 @@ export function PageHomepage() {
                 <div className="flex flex-col gap-2">
                   <h4 className="text-sm font-medium">What it can do</h4>
                   <p className="text-xs text-muted-foreground">
-                    Thirteen tools, grouped by the permission they need. You choose
-                    which permissions to grant, and can change them later.
+                    {MCP_TOOL_SUMMARIES.length} tools, grouped by the permission they
+                    need. You choose which permissions to grant, and can change them
+                    later. Nothing here signs or broadcasts: an agent can draft an
+                    unsigned transaction and show you a review card, but every
+                    signature is still yours to add in the app.
                   </p>
                   <div className="mt-1 flex flex-col gap-3">
-                    {(["wallets:read", "governance:read", "ballots:write"] as const).map(
+                    {MCP_SCOPES.map(
                       (scope) => (
                         <div key={scope}>
                           <code className="text-xs font-medium text-foreground">{scope}</code>
@@ -918,6 +922,7 @@ export function PageHomepage() {
                 <li><code className="rounded bg-muted px-1">GET /api/v1/walletIds?address=&lt;paymentAddress&gt;</code> — list wallets for the bot</li>
                 <li><code className="rounded bg-muted px-1">GET /api/v1/pendingTransactions?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — pending transactions</li>
                 <li><code className="rounded bg-muted px-1">GET /api/v1/freeUtxos?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — free UTxOs</li>
+                <li><code className="rounded bg-muted px-1">GET /api/v1/tasks?walletId=&lt;id&gt;&amp;address=&lt;paymentAddress&gt;</code> — project task board with payout state (read-only for bots)</li>
                 <li><code className="rounded bg-muted px-1">POST /api/v1/addTransaction</code>, <code className="rounded bg-muted px-1">POST /api/v1/signTransaction</code> — add/sign transactions (with Bearer token)</li>
               </ul>
             </CardUI>

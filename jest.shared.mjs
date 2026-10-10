@@ -33,6 +33,7 @@
 export const ESM_TESTS = [
   'apiSecurity',
   'botBallotsUpsert',
+  'botSetupGuide',
   'governanceActiveProposals',
   'mcpConnections',
   'og',
@@ -40,6 +41,9 @@ export const ESM_TESTS = [
   'reviewSignersCardKey',
   'signing',
   'signTransaction',
+  // next/og is an ESM bundle (import.meta.url for its WASM and font); the
+  // CJS project cannot load it, so the render test lives here.
+  'txReviewRenderPng',
 ];
 
 // trpc/* are database integration tests; they run in their own workflow

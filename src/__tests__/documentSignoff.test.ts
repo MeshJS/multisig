@@ -21,6 +21,8 @@ import {
 import {
   PROOF_FORMAT,
   VERIFICATION_INSTRUCTIONS,
+  parseProofPackage,
+  proofPackageProblem,
   verifyProofPackage,
   type ProofPackage,
   type ProofReview,
@@ -390,5 +392,55 @@ describe("verifyProofPackage", () => {
     });
     expect(result.valid).toBe(false);
     expect(result.reviews[0]?.errors.join(" ")).toMatch(/cbor decode failed/);
+  });
+});
+
+/**
+ * The gate in front of the verifier. A counterparty pasting the wrong file into
+ * the public verifier is the common case, not the exception — the answer has to
+ * say which wrong thing it was, not just "invalid".
+ */
+describe("parseProofPackage", () => {
+  it("accepts a proof package", () => {
+    const proof = makeProof([makeReview(SIGNER_A)]);
+    const result = parseProofPackage(JSON.stringify(proof));
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.proof.version.contentHash).toBe(CONTENT_HASH);
+  });
+
+  it("separates 'not JSON' from 'not a proof'", () => {
+    expect(parseProofPackage("{nope")).toEqual({
+      ok: false,
+      error: "That is not valid JSON.",
+    });
+    const notAProof = parseProofPackage('{"hello":"world"}');
+    expect(notAProof.ok).toBe(false);
+    expect(!notAProof.ok && notAProof.error).toMatch(/no version or policy/i);
+  });
+
+  it("names the format it does not understand", () => {
+    const foreign = JSON.stringify({
+      ...makeProof([makeReview(SIGNER_A)]),
+      format: "acme.signoff.v9",
+    });
+    const result = parseProofPackage(foreign);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("acme.signoff.v9");
+    expect(!result.ok && result.error).toContain(PROOF_FORMAT);
+  });
+
+  it("leaves an unfamiliar format to the verifier, which reports on it", () => {
+    // The paste box refuses it; verification still runs and says why, so a
+    // counterparty holding a newer package learns whether the signatures hold.
+    const foreign = { ...makeProof([makeReview(SIGNER_A)]), format: "acme.v9" };
+    expect(proofPackageProblem(foreign)).toBeNull();
+  });
+
+  it("rejects the values JSON.parse will happily return", () => {
+    for (const value of [null, 42, "a string", true]) {
+      expect(proofPackageProblem(value)).not.toBeNull();
+    }
+    // An array is an object, so it has to fail on the missing fields instead.
+    expect(proofPackageProblem([])).toMatch(/no version or policy/i);
   });
 });

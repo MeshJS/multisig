@@ -4,15 +4,20 @@ import { useRouter } from "next/router";
 import {
   Archive,
   Download,
+  FileJson,
+  FileText,
   MoreVertical,
   Pencil,
   PlayCircle,
+  ShieldCheck,
   Trash2,
   Upload,
 } from "lucide-react";
 
 import { api } from "@/utils/api";
 import useAppWallet from "@/hooks/useAppWallet";
+import { absoluteUrl } from "@/lib/seo";
+import { downloadFile, downloadJson } from "@/utils/download-file";
 import { toastError } from "@/utils/toast-error";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -110,20 +115,37 @@ export default function PageDocumentDetail() {
     onError: (error) => toastError(error, "Could not delete the document"),
   });
 
-  const exportProof = api.document.exportProof.useMutation({
-    onSuccess: (proof) => {
-      const blob = new Blob([JSON.stringify(proof, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const anchor = window.document.createElement("a");
-      anchor.href = url;
-      anchor.download = `signoff-proof-${proof.document.id}-v${proof.version.versionNumber}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    },
-    onError: (error) => toastError(error, "Could not export the proof"),
-  });
+  const exportProof = api.document.exportProof.useMutation();
+
+  /**
+   * Both exports are the same package. The JSON is what a verifier checks; the
+   * PDF is what gets filed, attached to a board pack or handed to someone who
+   * is never going to open a JSON file. The PDF is built here in the browser,
+   * behind a dynamic import, so its renderer stays out of the wallet bundle
+   * until somebody actually asks for one.
+   */
+  async function onExportProof(versionId: string, format: "json" | "pdf") {
+    try {
+      const proof = await exportProof.mutateAsync({ versionId });
+      if (format === "json") {
+        downloadJson(
+          proof,
+          `signoff-proof-${proof.document.id}-v${proof.version.versionNumber}.json`,
+        );
+        return;
+      }
+      const { buildProofPdf, proofPdfFileName } = await import(
+        "@/lib/documents/proof-pdf"
+      );
+      downloadFile(
+        buildProofPdf(proof, { verifyUrl: absoluteUrl("/verify") }),
+        proofPdfFileName(proof),
+        "application/pdf",
+      );
+    } catch (error) {
+      toastError(error, "Could not export the proof");
+    }
+  }
 
   async function onUploadFile(file: File | null) {
     if (!file) return;
@@ -271,17 +293,38 @@ export default function PageDocumentDetail() {
                     </Button>
                   )}
                   {snapshot && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={exportProof.isPending}
-                      onClick={() =>
-                        exportProof.mutate({ versionId: version.id })
-                      }
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      Proof
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={exportProof.isPending}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Proof
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => onExportProof(version.id, "json")}
+                        >
+                          <FileJson className="mr-2 h-4 w-4" />
+                          JSON — the verifiable package
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => onExportProof(version.id, "pdf")}
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          PDF — a readable summary
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/verify" target="_blank">
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            Verify a proof
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               </CardHeader>

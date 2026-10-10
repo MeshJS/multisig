@@ -130,6 +130,14 @@ const OG_CARDS = [
     subhead: ["A hash-linked document vault with selective disclosure."],
     chips: ["Trust graph", "Selective disclosure"],
   },
+  {
+    file: "public/og/verify.png",
+    accent: "#4f9d69",
+    eyebrow: "Verify a proof",
+    headline: ["Check a signed-off", "document yourself."],
+    subhead: ["Re-hash the file, verify every signature, count the threshold."],
+    chips: ["No account", "CIP-8", "Offline steps"],
+  },
 ];
 
 const FONT = "Helvetica, Arial, sans-serif";

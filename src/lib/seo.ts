@@ -47,6 +47,7 @@ export const OG_CARD = {
   dapps: "/og/dapps.png",
   importWallet: "/og/import-wallet.png",
   vault: "/og/vault.png",
+  verify: "/og/verify.png",
 } as const;
 
 /**
@@ -168,6 +169,13 @@ export const routeSeo: Record<string, RouteSeo> = {
     description:
       "An Obsidian-style document vault where every trust edge commits to a hash. Disclose a single document and its path to the root without revealing the documents beside it.",
   },
+  "/verify": {
+    title: "Verify a Sign-Off Proof",
+    image: OG_CARD.verify,
+    imageAlt: "Mesh Multisig — check a document approval without an account.",
+    description:
+      "Check a Mesh Multisig document sign-off proof: re-hash the document, verify each signer's CIP-8 signature against the frozen signer set, and confirm the approval threshold was reached. No account needed.",
+  },
   "/wallets/import-wallet": {
     title: "Import a Multisig Wallet",
     image: OG_CARD.importWallet,
@@ -238,6 +246,7 @@ export const INDEXABLE_ROUTES: SitemapRoute[] = [
   { path: "/roadmap", changefreq: "monthly", priority: 0.6 },
   { path: "/roadmap/graph", changefreq: "monthly", priority: 0.5 },
   { path: "/vault", changefreq: "monthly", priority: 0.5 },
+  { path: "/verify", changefreq: "monthly", priority: 0.5 },
   { path: "/blog", changefreq: "weekly", priority: 0.7 },
   { path: "/governance", changefreq: "daily", priority: 0.8 },
   { path: "/governance/drep", changefreq: "daily", priority: 0.7 },

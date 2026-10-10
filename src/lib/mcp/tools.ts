@@ -10,6 +10,12 @@ import {
   DOCUMENT_LIST_INPUT,
   OPEN_PROPOSALS_INPUT,
   PUBLISH_RATIONALE_INPUT,
+  REVIEW_PENDING_TRANSACTION_INPUT,
+  TASK_LIST_INPUT,
+  TASK_PREPARE_PAYOUT_INPUT,
+  TASK_UPSERT_INPUT,
+  TRANSACTION_PREVIEW_INPUT,
+  TRANSACTION_PROPOSE_INPUT,
   VOTE_HISTORY_INPUT,
   WALLET_BALLOTS_INPUT,
   EMPTY_INPUT,
@@ -25,22 +31,44 @@ import {
   participantsInclude,
   type Label1854LookupItem,
 } from "@/utils/cip146Registration";
+import { REVIEW_CARD_RESOURCE_URI } from "@/lib/mcp/apps/review-card";
 
 /**
  * The MCP tool registry — the single source of truth for the exposed surface.
  *
- * This release is read-only plus ballot drafts. Nothing here can sign a
- * transaction, move funds, or broadcast to chain. That is a deliberate boundary,
- * not an oversight: tool results carry user-authored strings (wallet names,
- * transaction descriptions, ballot rationales), so anything an attacker can
- * write into a wallet the caller can read is text that reaches the model. Adding
- * a write tool alongside that turns prompt injection into a funds-movement path,
- * so a signing surface needs its own design pass rather than a new registry row.
+ * Nothing here can sign a transaction, move funds, or broadcast to chain. That
+ * is a deliberate boundary, not an oversight: tool results carry user-authored
+ * strings (wallet names, transaction descriptions, ballot rationales), so
+ * anything an attacker can write into a wallet the caller can read is text that
+ * reaches the model. A signing tool alongside that would turn prompt injection
+ * into a funds-movement path.
+ *
+ * What the surface CAN do beyond reading: draft ballots, pin rationales, and —
+ * under the opt-in `transactions:write` scope — draft unsigned transactions in
+ * two steps. `transaction_preview` builds the transaction and returns a review
+ * card (PNG) plus a signed draft token; nothing is stored. `transaction_propose`
+ * accepts only that token, so the pending transaction it creates is exactly
+ * what the human saw in chat, and it starts with zero signatures: every witness
+ * is still added by a signer in the app. See `src/lib/tx-review/`.
  */
 
 export type ToolContext = {
   caller: McpCaller;
   clientIp: string;
+};
+
+/**
+ * What a tool body returns. `status`/`body` mirror the v1 handler contract
+ * (`body` becomes `structuredContent`). The optional fields exist for the
+ * review tools: a readable `text` block in place of the JSON dump, `images`
+ * that become `image` content blocks (base64 PNG, never placed in
+ * `structuredContent`), and an `audit` bag of identifiers merged into the
+ * audit row — ids only, never prose.
+ */
+export type McpToolResult = V1Result & {
+  text?: string;
+  images?: { data: string; mimeType: "image/png" }[];
+  audit?: Record<string, string | number | boolean | null>;
 };
 
 export type McpToolDef = {
@@ -62,7 +90,15 @@ export type McpToolDef = {
    * `src/__tests__/mcpTools.test.ts`, so a handler rename breaks CI.
    */
   v1Path: string | null;
-  run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<V1Result>;
+  /**
+   * MCP Apps: the `ui://` resource the host renders inline when this tool
+   * is called (`_meta.ui.resourceUri`). Only the review tools set it.
+   */
+  uiResourceUri?: string;
+  run: (
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => Promise<McpToolResult>;
 };
 
 const READ_ONLY = {
@@ -102,6 +138,18 @@ const load = {
   ballotRationaleAnchor: () => import("@/pages/api/v1/ballotRationaleAnchor"),
   documents: () => import("@/pages/api/v1/documents"),
   documentDetail: () => import("@/pages/api/v1/documentDetail"),
+  // The review pipeline pulls Mesh (builder, address parsing) and, on first
+  // render, the next/og WASM — same lazy rule as the handlers above.
+  txPreview: () => import("@/lib/tx-review/preview"),
+  txPropose: () => import("@/lib/tx-review/propose"),
+  txReview: () => import("@/lib/tx-review/review"),
+  // Task board: two v1 handlers, and the payout side of the same review
+  // pipeline.
+  tasks: () => import("@/pages/api/v1/tasks"),
+  taskUpsert: () => import("@/pages/api/v1/taskUpsert"),
+  taskPayoutPreview: () => import("@/lib/task-payout/preview"),
+  taskPayoutHooks: () => import("@/lib/task-payout/hooks"),
+  db: () => import("@/server/db"),
 };
 
 /** Vote history is two hops: resolve the wallet's DRep, then read its votes. */
@@ -136,7 +184,7 @@ type VoteRow = {
   blockTime: number;
 };
 
-async function callV1(
+export async function callV1(
   loader: () => Promise<{ default: NextApiHandler }>,
   ctx: ToolContext,
   init: {
@@ -156,8 +204,33 @@ async function callV1(
   });
 }
 
+/**
+ * The review pipeline's UTxO source: `multisig_list_free_utxos`'s v1 handler,
+ * run in-process for the caller and always fresh from chain. One definition
+ * for every pipeline entry point (the three drafting tools here, and the web
+ * app's task-payout procedures via `src/lib/task-payout/deps.ts`), so
+ * pending-input locking and wallet authorization stay in that handler.
+ */
+export function freeUtxosFetcher(
+  ctx: ToolContext,
+): (walletId: string) => Promise<V1Result> {
+  return (walletId) =>
+    callV1(load.freeUtxos, ctx, {
+      method: "GET",
+      query: { walletId, address: ctx.caller.subject, fresh: "true" },
+    });
+}
+
 const str = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
+
+/**
+ * The review tools' `card` option: the PNG is rendered only on request. The
+ * default leaves the card to the client's inline view (drawn from
+ * `structuredContent.summary`), which reflows instead of fitting a raster.
+ */
+const wantsCardImage = (args: Record<string, unknown>): boolean =>
+  args.card === "image";
 
 /** JSON Schema validation has already run by the time a `run` body executes. */
 export const MCP_TOOLS: McpToolDef[] = [
@@ -606,6 +679,186 @@ export const MCP_TOOLS: McpToolDef[] = [
           address: ctx.caller.subject,
         },
       }),
+  },
+  {
+    name: "transaction_preview",
+    title: "Preview an unsigned transaction",
+    description:
+      "Build an unsigned multisig transaction — payments in ADA and native assets, staking certificates, DRep votes — for the user to check in chat. The result is the review card: by default the client's inline card view draws it next to this call, with a Confirm button the user may click (you will be told) instead of replying; if the user cannot see a card, relay the summary in the same turn, then ask them to confirm. Pass card: \"image\" when the user wants a picture of the card (or this client shows images but not inline views) and show the returned image in your reply. NOTHING is saved, signed or broadcast. Only after the user confirms, call transaction_propose with the returned draftToken. Amounts are in display units (ADA, not lovelace). Change always returns to the wallet itself. Votes need the wallet to be registered as a DRep on chain; if it is not, the draft is refused and you must tell the user the wallet cannot vote until it registers as a DRep in the app.",
+    scope: "transactions:write",
+    inputSchema: TRANSACTION_PREVIEW_INPUT,
+    annotations: {
+      // Builds in memory against live chain state and stores nothing.
+      readOnlyHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    v1Path: null,
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
+    run: async (args, ctx) => {
+      const [{ runTransactionPreview }, { db }] = await Promise.all([
+        load.txPreview(),
+        load.db(),
+      ]);
+      return runTransactionPreview(args as never, ctx, {
+        db,
+        omitCard: !wantsCardImage(args),
+        fetchFreeUtxos: freeUtxosFetcher(ctx),
+      });
+    },
+  },
+  {
+    name: "transaction_propose",
+    title: "Create the previewed transaction for signers",
+    description:
+      "Create the pending multisig transaction that transaction_preview showed, so the wallet's signers can review and sign it in the app. Takes ONLY the draftToken from the preview the user approved — it is rebuilt from that exact draft, starts with zero signatures, and is never signed or broadcast by this tool. The result is the final review card, delivered the same way the preview was (inline card view by default; as an image when the preview used card: \"image\" — then show that image in your reply). Any vote rationale in the draft is published to IPFS at this point. Calling again with the same token returns the same transaction.",
+    scope: "transactions:write",
+    inputSchema: TRANSACTION_PROPOSE_INPUT,
+    annotations: {
+      readOnlyHint: false,
+      // Adds a pending row; deletes nothing, moves no value, signs nothing.
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    v1Path: null,
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
+    run: async (args, ctx) => {
+      const [{ runTransactionPropose }, { withTaskPayoutHooks }, { db }] =
+        await Promise.all([load.txPropose(), load.taskPayoutHooks(), load.db()]);
+      // A token minted by task_prepare_payout carries the task ids; the hooks
+      // link them to the created transaction. Other tokens pass through.
+      return runTransactionPropose(
+        { draftToken: String(args.draftToken ?? "") },
+        ctx,
+        withTaskPayoutHooks({
+          db,
+          clientIp: ctx.clientIp,
+          fetchFreeUtxos: freeUtxosFetcher(ctx),
+        }),
+      );
+    },
+  },
+  {
+    name: "multisig_review_pending_transaction",
+    title: "Review a pending transaction",
+    description:
+      "Render one pending transaction as a review card: recipients and amounts, staking or governance actions, fee, change, and who has signed or rejected so far. By default the client's inline card view draws the card next to this call; if the user cannot see it, relay the summary. Pass card: \"image\" for a picture of the card and show the returned image in your reply rather than paraphrasing it. Read-only; works for transactions created in the app or through MCP.",
+    scope: "wallets:read",
+    inputSchema: REVIEW_PENDING_TRANSACTION_INPUT,
+    annotations: READ_ONLY_CHAIN,
+    v1Path: "pendingTransactions.ts",
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
+    run: async (args, ctx) => {
+      const [{ runPendingTransactionReview }, { db }] = await Promise.all([
+        load.txReview(),
+        load.db(),
+      ]);
+      return runPendingTransactionReview(
+        {
+          walletId: String(args.walletId),
+          transactionId: String(args.transactionId),
+        },
+        ctx,
+        {
+          db,
+          omitCard: !wantsCardImage(args),
+          fetchPendingTransactions: (walletId) =>
+            callV1(load.pendingTransactions, ctx, {
+              method: "GET",
+              query: { walletId, address: ctx.caller.subject },
+            }),
+        },
+      );
+    },
+  },
+  {
+    name: "task_list",
+    title: "List project tasks",
+    description:
+      "The wallet's project task board: every task with its column (Backlog, InProgress, InReview, Done), assignee, due date, payment recipients (amounts in base units: lovelace, or a token's raw quantity) and payout — its state (none, ready, pending with the transactionId awaiting signatures, or paid), payable (true when the task can be paid right now: Done, with recipients, no pending or paid payout) and blocker (why not: not_done, no_recipients, pending, paid, or null). Pass payable tasks' ids to task_prepare_payout. Optionally filter by column or to payable tasks only; payableCount is the wallet-wide total.",
+    scope: "wallets:read",
+    inputSchema: TASK_LIST_INPUT,
+    annotations: READ_ONLY,
+    v1Path: "tasks.ts",
+    run: async (args, ctx) =>
+      callV1(load.tasks, ctx, {
+        method: "GET",
+        query: {
+          walletId: str(args.walletId),
+          address: ctx.caller.subject,
+          status: str(args.status),
+          ...(args.payable === true ? { payable: "true" } : {}),
+        },
+      }),
+  },
+  {
+    name: "task_upsert",
+    title: "Create, edit or move a task",
+    description:
+      "Create a task on the wallet's board (title required) or update an existing one by taskId: title, description, priority, assignee, due date, column (status) and position, and its payment recipients in display units (ADA, or a token with its registered decimals — the same shape as transaction_preview outputs). Moving a task that has recipients to Done makes it payable. A task becomes entirely read-only while its payout awaits signatures and remains read-only after payment; cancelling the pending transaction unlocks an unpaid task. This records a task only; it creates, signs and broadcasts nothing — use task_prepare_payout to draft the payout.",
+    scope: "tasks:write",
+    inputSchema: TASK_UPSERT_INPUT,
+    annotations: {
+      readOnlyHint: false,
+      // Adds or edits a board row; never removes a task, never moves value.
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    v1Path: "taskUpsert.ts",
+    run: async (args, ctx) => {
+      // The tool's arguments are the handler's body verbatim (recipients in
+      // display units); the handler owns validation and authorization.
+      const result = await callV1(load.taskUpsert, ctx, {
+        method: "POST",
+        body: args,
+      });
+      const body = result.body as
+        | { task?: { id?: string }; created?: boolean }
+        | null;
+      return result.status < 400 && body?.task?.id
+        ? {
+            ...result,
+            audit: { taskId: body.task.id, created: body.created === true },
+          }
+        : result;
+    },
+  },
+  {
+    name: "task_prepare_payout",
+    title: "Preview a payout for tasks",
+    description:
+      "Build the unsigned transaction that pays one or more Done tasks' recipients (merged per address) against the wallet's spendable UTxOs, and show it. Work must reach the Done column before it can be paid; omit taskIds to pay every payable task, and read the result's tasks list to see exactly which were included. Nothing is stored, signed or sent. The result is the review card: the client's inline card view draws it next to this call (with a Confirm button); if the user cannot see it, relay the summary, or pass card: \"image\" for a picture and show the returned image. Ask the user to confirm; on confirmation call transaction_propose with the returned draftToken — the tasks are linked to the pending transaction automatically and show as awaiting signatures on the board. The token expires in 15 minutes and is bound to exactly these tasks and amounts.",
+    scope: "transactions:write",
+    inputSchema: TASK_PREPARE_PAYOUT_INPUT,
+    annotations: {
+      // Builds in memory against live chain state and stores nothing.
+      readOnlyHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    v1Path: null,
+    uiResourceUri: REVIEW_CARD_RESOURCE_URI,
+    run: async (args, ctx) => {
+      const [{ prepareTaskPayoutPreview }, { db }] = await Promise.all([
+        load.taskPayoutPreview(),
+        load.db(),
+      ]);
+      // Absent means "every payable task"; the preview names the ones it picked.
+      const taskIds = Array.isArray(args.taskIds)
+        ? args.taskIds.map((id) => String(id))
+        : undefined;
+      return prepareTaskPayoutPreview(
+        { walletId: String(args.walletId), taskIds },
+        ctx,
+        {
+          db,
+          omitCard: !wantsCardImage(args),
+          fetchFreeUtxos: freeUtxosFetcher(ctx),
+        },
+      );
+    },
   },
 ];
 

@@ -92,6 +92,15 @@ const config = {
     "@sidan-lab/whisky-js-nodejs",
   ],
 
+  // The MCP transaction review card is rendered with `next/og` in the Node
+  // runtime (src/lib/tx-review/render-png.ts). Its bundle loads resvg.wasm,
+  // yoga.wasm and the Geist face through `import.meta.url`, which output file
+  // tracing cannot see — without this the deployed function has the JS but
+  // not the assets.
+  outputFileTracingIncludes: {
+    "/api/mcp": ["./node_modules/next/dist/compiled/@vercel/og/**/*"],
+  },
+
   // OAuth discovery documents must live under /.well-known/, but Next ignores
   // dot-directories inside pages/, so they cannot be files. Rewrites map the
   // well-known paths onto real API routes.
