@@ -1,23 +1,22 @@
 ---
 type: feature
 area: Release & Production Health
-state: blocked
+state: delivered
 owner: Quirin
 milestone: 2026-08
-prs: [319, 321]
-updated: 2026-07-27
+prs: [319, 321, 369, 393]
+updated: 2026-10-10
 ---
 
 # Production Release Gap
 
-Production has applied no migration since 2026-05-10, and `preprod` sits 75 commits
-ahead of `main` — so June and July are built but unreleased. The migration workflow
-only fires on pushes to `main` touching `prisma/migrations/**`, so fixing it never
-re-triggered the run that failed on 17 June. Governance tallies error, the
-notification center has no tables, and address-less bot registration cannot work.
+Closed. The June and July backlog reached production with the 14 August release
+(#369), and everything through mid-September with the 5 October release (#393); the
+migration workflow reported success on both.
 
-Unblocking is one release plus one manual workflow dispatch, and it is the first
-task of August.
+The underlying hazard has not gone away: the migration workflow only fires on pushes
+to `main` touching `prisma/migrations/**` and never retries itself, so a failed run
+still has to be noticed and dispatched by hand. Check its result on every release.
 
 ## Related
 
