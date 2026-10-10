@@ -9,7 +9,11 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border border-zinc-200/50 bg-white text-zinc-950 shadow dark:border-zinc-800/50 dark:bg-zinc-950 dark:text-zinc-50 overflow-hidden",
+      // Glass-morphism surface (matches the .glass-card design token): translucent
+      // + backdrop blur so the animated app background shows through. Opacity is
+      // kept high enough (80% light / 60% dark) to preserve text contrast on
+      // content-dense cards. Call sites can override the bg via className.
+      "rounded-xl border border-zinc-200/40 bg-white/80 text-zinc-950 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-50 overflow-hidden",
       className
     )}
     {...props}

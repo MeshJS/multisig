@@ -17,131 +17,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Clock, Calendar, Coins, Hash, FileText, Wallet } from "lucide-react";
-
-const hasUsableJsonMetadata = (value: any): boolean =>
-  Boolean(value && typeof value === "object" && value.body && typeof value.body === "object");
-
-const getAnchorUrls = (anchorUrl: string): string[] => {
-  if (!anchorUrl) return [];
-  if (!anchorUrl.startsWith("ipfs://")) {
-    return [anchorUrl];
-  }
-  const cidPath = anchorUrl.replace("ipfs://", "");
-  return [
-    `https://ipfs.io/ipfs/${cidPath}`,
-    `https://cloudflare-ipfs.com/ipfs/${cidPath}`,
-    `https://dweb.link/ipfs/${cidPath}`,
-  ];
-};
-
-async function fetchJsonFromUrl(url: string): Promise<any> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-    const text = await res.text();
-    return JSON.parse(text);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function hydrateMetadataFromAnchor(rawMetadata: any, txHash: string, certIndex: number): Promise<any> {
-  if (hasUsableJsonMetadata(rawMetadata?.json_metadata)) {
-    return rawMetadata;
-  }
-  const anchorUrl =
-    typeof rawMetadata?.url === "string" && rawMetadata.url.length > 0
-      ? rawMetadata.url
-      : null;
-  if (!anchorUrl) return rawMetadata;
-
-  const candidateUrls = getAnchorUrls(anchorUrl);
-  for (const url of candidateUrls) {
-    try {
-      const anchorJson = await fetchJsonFromUrl(url);
-      const jsonMetadata = anchorJson?.body ? anchorJson : { body: anchorJson };
-      if (hasUsableJsonMetadata(jsonMetadata)) {
-        return { ...rawMetadata, json_metadata: jsonMetadata };
-      }
-    } catch {
-      // Try next URL candidate.
-    }
-  }
-  return rawMetadata;
-}
-
-const normalizeProposalMetadata = (
-  rawMetadata: any,
-  txHash: string,
-  certIndex: number,
-): ProposalMetadata => {
-  const rawBody = rawMetadata?.json_metadata?.body;
-  const body = rawBody && typeof rawBody === "object" ? rawBody : {};
-  const rawAuthors = rawMetadata?.json_metadata?.authors;
-  const authors = Array.isArray(rawAuthors)
-    ? rawAuthors
-        .map((author) =>
-          typeof author?.name === "string" ? { name: author.name } : null,
-        )
-        .filter((author): author is { name: string } => Boolean(author))
-    : [];
-  const references = Array.isArray((body as any).references)
-    ? (body as any).references.filter(
-        (ref: any) =>
-          ref &&
-          typeof ref === "object" &&
-          typeof ref.label === "string" &&
-          typeof ref.uri === "string" &&
-          typeof ref["@type"] === "string",
-      )
-    : [];
-
-  return {
-    tx_hash:
-      typeof rawMetadata?.tx_hash === "string" ? rawMetadata.tx_hash : txHash,
-    cert_index:
-      Number.isFinite(Number(rawMetadata?.cert_index))
-        ? Number(rawMetadata.cert_index)
-        : certIndex,
-    governance_type:
-      typeof rawMetadata?.governance_type === "string"
-        ? rawMetadata.governance_type
-        : "",
-    hash: typeof rawMetadata?.hash === "string" ? rawMetadata.hash : "",
-    url: typeof rawMetadata?.url === "string" ? rawMetadata.url : "",
-    bytes: typeof rawMetadata?.bytes === "string" ? rawMetadata.bytes : "",
-    json_metadata: {
-      body: {
-        title:
-          typeof (body as any).title === "string"
-            ? (body as any).title
-            : "Metadata could not be loaded.",
-        abstract:
-          typeof (body as any).abstract === "string"
-            ? (body as any).abstract
-            : `${txHash}#${certIndex}`,
-        motivation:
-          typeof (body as any).motivation === "string"
-            ? (body as any).motivation
-            : "",
-        rationale:
-          typeof (body as any).rationale === "string"
-            ? (body as any).rationale
-            : "",
-        references,
-      },
-      authors,
-    },
-  };
-};
+import {
+  createProposalMetadataFallback,
+  fetchProposalMetadataWithFallback,
+} from "@/lib/governance/proposalMetadata";
 
 function WalletGovernanceProposalContent({ id }: { id: string }) {
   const network = useSiteStore((state) => state.network);
@@ -186,40 +65,19 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
           .get(detailsPath)
           .catch(() => null) as Promise<ProposalDetails | null>;
 
-        // Try primary metadata path first.
-        let metadata: ProposalMetadata | null = null;
-        const metadataPath = `/governance/proposals/${txHash}/${certIndex}/metadata`;
-        try {
-          metadata = (await hydrateMetadataFromAnchor(
-            await blockchainProvider.get(metadataPath),
-            txHash,
-            Number(certIndex),
-          )) as ProposalMetadata;
-        } catch {
-
-          // Fallback: use details.id (gov_action_id) endpoint when available.
-          const detailsForFallback = await detailsPromise;
-          const govActionId =
-            detailsForFallback && typeof detailsForFallback.id === "string"
-              ? detailsForFallback.id
-              : null;
-
-          if (govActionId) {
-            const fallbackPath = `/governance/proposals/${govActionId}/metadata`;
-            try {
-              metadata = (await hydrateMetadataFromAnchor(
-                await blockchainProvider.get(fallbackPath),
-                txHash,
-                Number(certIndex),
-              )) as ProposalMetadata;
-            } catch {
-              // Use default metadata below.
-            }
-          }
-        }
+        const proposal = {
+          tx_hash: txHash,
+          cert_index: Number(certIndex),
+          governance_type: "",
+        };
+        const metadata = await fetchProposalMetadataWithFallback({
+          provider: blockchainProvider,
+          proposal,
+          fetchDetails: () => detailsPromise,
+        });
 
         setProposalMetadata(
-          normalizeProposalMetadata(metadata, txHash, Number(certIndex)),
+          metadata ?? createProposalMetadataFallback(proposal),
         );
 
         // Fetch proposal details
@@ -543,6 +401,122 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
             {Object.keys(proposalParameters.parameters).length > 12 && (
               <div className="text-xs text-gray-500 dark:text-gray-400 pt-2">
                 + {Object.keys(proposalParameters.parameters).length - 12} more parameters
+              </div>
+            )}
+          </div>
+        </CardUI>
+      )}
+
+      {/* Your ballot entry - shows the user's rationale + anchor for this proposal */}
+      {(() => {
+        if (!ballots || !proposalMetadata) return null;
+        const proposalId = `${proposalMetadata.tx_hash}#${proposalMetadata.cert_index}`;
+        for (const b of ballots) {
+          const idx = Array.isArray(b.items) ? b.items.indexOf(proposalId) : -1;
+          if (idx === -1) continue;
+          const choice = b.choices?.[idx] ?? "";
+          const rationale = b.rationaleComments?.[idx] ?? "";
+          const anchorUrl = b.anchorUrls?.[idx] ?? "";
+          const anchorHash = b.anchorHashes?.[idx] ?? "";
+          if (!choice && !rationale && !anchorUrl && !anchorHash) continue;
+          return (
+            <CardUI title="Your ballot entry" cardClassName="w-full" key={b.id}>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Ballot: </span>
+                  <span className="font-medium">{b.description || "Untitled ballot"}</span>
+                </div>
+                {choice && (
+                  <div>
+                    <span className="text-muted-foreground">Choice: </span>
+                    <Badge variant="secondary">{choice}</Badge>
+                  </div>
+                )}
+                {rationale && (
+                  <div>
+                    <div className="text-muted-foreground mb-1">Rationale:</div>
+                    <div className="rounded bg-muted/30 p-3 text-xs sm:text-sm whitespace-pre-wrap">
+                      {rationale}
+                    </div>
+                  </div>
+                )}
+                {(anchorUrl || anchorHash) && (
+                  <div className="space-y-1 text-xs">
+                    {anchorUrl && (
+                      <div className="break-all">
+                        <span className="text-muted-foreground">Anchor URL: </span>
+                        <a
+                          className="text-blue-600 dark:text-blue-400 underline"
+                          href={anchorUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {anchorUrl}
+                        </a>
+                      </div>
+                    )}
+                    {anchorHash && (
+                      <div className="break-all font-mono">
+                        <span className="text-muted-foreground">Anchor hash: </span>
+                        {anchorHash}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardUI>
+          );
+        }
+        return null;
+      })()}
+
+      {/* Technical details - fetched fields not surfaced elsewhere */}
+      {proposalDetails && (
+        <CardUI title="Technical details" cardClassName="w-full">
+          <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+            {proposalDetails.governance_description?.tag && (
+              <div>
+                <div className="text-muted-foreground">Action tag</div>
+                <div className="font-mono break-all">
+                  {proposalDetails.governance_description.tag}
+                </div>
+              </div>
+            )}
+            {proposalDetails.return_address && (
+              <div>
+                <div className="text-muted-foreground">Return address (deposit refund)</div>
+                <div className="font-mono break-all">{proposalDetails.return_address}</div>
+              </div>
+            )}
+            {proposalMetadata?.url && (
+              <div>
+                <div className="text-muted-foreground">Metadata anchor URL</div>
+                <a
+                  href={proposalMetadata.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 dark:text-blue-400 underline break-all"
+                >
+                  {proposalMetadata.url}
+                </a>
+              </div>
+            )}
+            {proposalMetadata?.hash && (
+              <div>
+                <div className="text-muted-foreground">Metadata anchor hash</div>
+                <div className="font-mono break-all">{proposalMetadata.hash}</div>
+              </div>
+            )}
+            <div>
+              <div className="text-muted-foreground">Proposal ID</div>
+              <div className="font-mono break-all">
+                {proposalDetails.tx_hash}#{proposalDetails.cert_index}
+              </div>
+            </div>
+            {proposalDetails.id && (
+              <div>
+                <div className="text-muted-foreground">Governance action ID</div>
+                <div className="font-mono break-all">{proposalDetails.id}</div>
               </div>
             )}
           </div>

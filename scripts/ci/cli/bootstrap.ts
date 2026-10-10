@@ -257,6 +257,36 @@ async function main() {
       });
     }
 
+    // Hierarchical (nested all/atLeast) wallets are the app's "Summon" type:
+    // buildWallet resolves their address from rawImportBodies.multisig rather than
+    // rebuilding a flat script from the signer keys. The createWallet bot API stores
+    // the correct nested scriptCbor but not rawImportBodies, so the client would
+    // otherwise classify the wallet as legacy and derive the wrong (flat) address.
+    // Populate rawImportBodies here so the existing Summon path handles it.
+    if (walletType === "hierarchical") {
+      const created = await prisma.wallet.findUnique({
+        where: { id: createWalletBody.walletId as string },
+        select: { scriptCbor: true },
+      });
+      if (!created?.scriptCbor) {
+        throw new Error(
+          `createWallet (hierarchical) did not persist a scriptCbor for wallet ${createWalletBody.walletId}`,
+        );
+      }
+      await prisma.wallet.update({
+        where: { id: createWalletBody.walletId as string },
+        data: {
+          rawImportBodies: {
+            multisig: {
+              address: createWalletBody.address as string,
+              payment_script: created.scriptCbor,
+              stake_script: null,
+            },
+          },
+        },
+      });
+    }
+
     for (const bot of signerBots.slice(1)) {
       await prisma.walletBotAccess.upsert({
         where: {

@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { serializeNativeScript } from "@meshsdk/core";
 import { Wallet } from "@/types/wallet";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
-import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common";
-import { scriptHashFromCbor } from "@/utils/nativeScriptUtils";
+import { buildWallet } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletBalancesStore } from "@/lib/zustand/wallet-balances";
 
@@ -60,7 +58,7 @@ export default function useWalletBalances(
   const setBalance = useWalletBalancesStore((state) => state.setBalance);
   const getCachedBalance = useWalletBalancesStore((state) => state.getCachedBalance);
   const clearExpiredBalances = useWalletBalancesStore((state) => state.clearExpiredBalances);
-  
+
   const [balances, setBalances] = useState<Record<string, number | null>>({});
   const [loadingStates, setLoadingStates] = useState<
     Record<string, WalletBalanceState>
@@ -93,14 +91,15 @@ export default function useWalletBalances(
     };
   }, []);
 
+  // The address to query Blockfrost with. `buildWallet()` resolves it once and
+  // caches it on `capabilities`, but `capabilities` is optional on `Wallet` —
+  // rows that reach this hook without going through `buildWallet()` (cached
+  // records, tests, future call sites) would otherwise crash here. Fall back to
+  // resolving it the old way, and to the stored address if even that throws.
   const getCanonicalWalletAddress = useCallback(
     (wallet: Wallet): string => {
-      // Goal: get the address we should query Blockfrost with, without throwing for
-      // legacy/summon wallets (which do not have an SDK MultisigWallet).
+      if (wallet.capabilities?.address) return wallet.capabilities.address;
       try {
-        const walletType = getWalletType(wallet);
-
-        // Prefer deriving network from the best available address.
         const fallbackAddress =
           wallet.rawImportBodies?.multisig?.address ||
           wallet.signersAddresses?.find((a) => !!a) ||
@@ -108,45 +107,7 @@ export default function useWalletBalances(
         const walletNetwork = fallbackAddress
           ? addressToNetwork(fallbackAddress)
           : network;
-
-        if (walletType === "sdk") {
-          const mWallet = buildMultisigWallet(wallet, walletNetwork);
-          return mWallet?.getScript().address || wallet.address;
-        }
-
-        if (walletType === "summon") {
-          const importedAddress =
-            wallet.rawImportBodies?.multisig?.address || wallet.address;
-          const importedPaymentCbor =
-            wallet.rawImportBodies?.multisig?.payment_script;
-          const summonWallet = buildWallet(wallet, walletNetwork);
-
-          // Build payment CBOR from the wallet's native script and compare hashes
-          // with imported payment CBOR to ensure we are checking the same script.
-          const builtPaymentCbor = serializeNativeScript(
-            summonWallet.nativeScript,
-            undefined,
-            walletNetwork,
-          ).scriptCbor;
-          const importedPaymentHash = scriptHashFromCbor(importedPaymentCbor);
-          const builtPaymentHash = scriptHashFromCbor(builtPaymentCbor);
-
-          if (
-            importedPaymentHash &&
-            builtPaymentHash &&
-            importedPaymentHash !== builtPaymentHash
-          ) {
-            console.warn(
-              `[useWalletBalances] Summon payment script mismatch for wallet ${wallet.id}: importedHash=${importedPaymentHash}, builtHash=${builtPaymentHash}`,
-            );
-            return importedAddress || summonWallet.address;
-          }
-
-          return summonWallet.address || importedAddress;
-        }
-
-        // legacy
-        return buildWallet(wallet, walletNetwork).address;
+        return buildWallet(wallet, walletNetwork).address || wallet.address;
       } catch {
         return wallet.address;
       }
@@ -205,10 +166,10 @@ export default function useWalletBalances(
         // Update local state
         setBalances((prev) => ({ ...prev, [wallet.id]: balance }));
         setLoadingStates((prev) => ({ ...prev, [wallet.id]: "loaded" }));
-        
+
         // Cache the balance in Zustand store (including successful fetches)
         setBalance(wallet.id, balance, walletAddress);
-        
+
         fetchedWalletsRef.current.add(wallet.id);
       } catch (error: unknown) {
         // 404 is expected for never-used addresses.
@@ -324,7 +285,7 @@ export default function useWalletBalances(
         fetchedWalletsRef.current.add(wallet.id);
       }
     });
-    
+
     if (Object.keys(cached).length > 0) {
       setBalances((prev) => ({ ...prev, ...cached }));
     }

@@ -19,40 +19,47 @@ const submitTxWithScriptRecoveryMock: jest.Mock = jest.fn();
 const findWalletMock: jest.Mock = jest.fn();
 const findTransactionMock: jest.Mock = jest.fn();
 const updateManyTransactionMock: jest.Mock = jest.fn();
+const enqueueThresholdReachedMock: jest.Mock = jest.fn();
+
+jest.mock("@/lib/notifications/center", () => ({
+  __esModule: true,
+  enqueueThresholdReachedNotifications: enqueueThresholdReachedMock,
+}));
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core", () => ({
   __esModule: true,
   resolvePaymentKeyHash: resolvePaymentKeyHashMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core-csl", () => ({
   __esModule: true,
   calculateTxHash: calculateTxHashMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/txSignUtils", () => ({
   __esModule: true,
@@ -60,17 +67,17 @@ jest.mock("@/utils/txSignUtils", () => ({
   addUniqueVkeyWitnessToTx: addUniqueVkeyWitnessToTxMock,
   shouldSubmitMultisigTx: shouldSubmitMultisigTxMock,
   submitTxWithScriptRecovery: submitTxWithScriptRecoveryMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: () => ({ submitTx: jest.fn() }),
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/multisigSDK", () => ({
   __esModule: true,
   addressToNetwork: () => 0,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -81,17 +88,17 @@ jest.mock("@/server/db", () => ({
       updateMany: updateManyTransactionMock,
     },
   },
-}), { virtual: true });
+}));
 
 jest.mock("@/server/api/root", () => ({
   __esModule: true,
   createCaller: () => ({ wallet: { getWallet: jest.fn() } }),
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/rateLimit", () => ({
   __esModule: true,
   getClientIP: () => "127.0.0.1",
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
@@ -165,9 +172,56 @@ beforeEach(() => {
     txHex: "deadbeef-merged",
   });
   (updateManyTransactionMock as any).mockResolvedValue({ count: 1 });
+  (enqueueThresholdReachedMock as any).mockResolvedValue([]);
 });
 
 describe("signTransaction bot API", () => {
+  it("hands the before/after signer sets to the threshold notifier", async () => {
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        transactionId: "tx-1",
+        address: BOT_TEST_ADDRESS,
+        signature: "aa".repeat(64),
+        key: "bb".repeat(64),
+        broadcast: false,
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(enqueueThresholdReachedMock).toHaveBeenCalledTimes(1);
+    expect(enqueueThresholdReachedMock.mock.calls[0]![1]).toMatchObject({
+      resourceType: "transaction",
+      resourceId: "tx-1",
+      previousSignedAddresses: [],
+      signedAddresses: [BOT_TEST_ADDRESS],
+      actorAddress: BOT_TEST_ADDRESS,
+      txHash: null,
+    });
+  });
+
+  it("still records the witness when the threshold notifier throws", async () => {
+    (enqueueThresholdReachedMock as any).mockRejectedValueOnce(new Error("boom"));
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        transactionId: "tx-1",
+        address: BOT_TEST_ADDRESS,
+        signature: "aa".repeat(64),
+        key: "bb".repeat(64),
+        broadcast: false,
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it("returns 403 when bot is not cosigner", async () => {
     (getBotWalletAccessMock as any).mockResolvedValue({ allowed: true, role: "observer" });
     const req = {

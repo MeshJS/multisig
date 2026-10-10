@@ -5,8 +5,8 @@ import {
 } from "../../scripts/ci/scenarios/flows/signingFlow";
 
 describe("route-chain pending transaction selection", () => {
-  it("does not retry signTransaction after a witness may have been recorded", () => {
-    expect(SIGN_TRANSACTION_REQUEST_OPTIONS).toEqual({ retries: 0 });
+  it("only retries signTransaction rate-limit responses", () => {
+    expect(SIGN_TRANSACTION_REQUEST_OPTIONS).toEqual({ retryStatuses: [429] });
   });
 
   it("selects the preferred transaction when present", () => {

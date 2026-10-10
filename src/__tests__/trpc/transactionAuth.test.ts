@@ -2,15 +2,6 @@ import { describe, expect, it, jest, beforeAll, beforeEach } from "@jest/globals
 
 import { makeAnonymousCtx, makeWalletCtx } from "./helpers";
 
-jest.mock("@/env", () => ({
-  __esModule: true,
-  env: {
-    DATABASE_URL: process.env.DATABASE_URL,
-    DIRECT_URL: process.env.DIRECT_URL,
-    NODE_ENV: "test",
-  },
-}), { virtual: true });
-
 jest.mock("superjson", () => ({
   __esModule: true,
   default: {

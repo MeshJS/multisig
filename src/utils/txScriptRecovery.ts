@@ -4,6 +4,7 @@ import {
   serializeNativeScript,
 } from "@meshsdk/core";
 import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
+import { resolveTxHash } from "@meshsdk/core-cst";
 import type {
   MultisigSubmissionWallet,
   ScriptRecoveryWallet,
@@ -299,6 +300,7 @@ export function buildSerializedNativeScriptCbor(
 
 export function resolveExpectedPaymentScriptCbor(
   appWallet: ScriptRecoveryWallet,
+  network?: number,
 ): string | undefined {
   const { paymentScript, stakeScript } = resolveMultisigScripts(
     appWallet.rawImportBodies,
@@ -335,6 +337,17 @@ export function resolveExpectedPaymentScriptCbor(
     }
     if (walletScriptHash === addressScriptHash && appWallet.scriptCbor) {
       return appWallet.scriptCbor;
+    }
+    // Legacy/SDK wallets: the DB-stored scriptCbor can be stale (older
+    // serializer, later signer/type edits) while the address is re-derived at
+    // runtime from nativeScript — so when none of the stored candidates match,
+    // try the runtime-rebuilt script. Reached only for wallets whose submits
+    // already fail and get repaired today; wallets with a matching scriptCbor
+    // return above, unchanged. (Script CBOR is network-independent; network
+    // only affects the derived address, so 0 is a safe default.)
+    const rebuiltScript = buildSerializedNativeScriptCbor(appWallet, network ?? 0);
+    if (rebuiltScript && scriptHashFromCbor(rebuiltScript) === addressScriptHash) {
+      return rebuiltScript;
     }
   }
 
@@ -434,7 +447,7 @@ function buildRecoveryCandidateScriptSets(
   const { paymentScript, stakeScript } = resolveMultisigScripts(
     appWallet.rawImportBodies,
   );
-  const expectedScript = resolveExpectedPaymentScriptCbor(appWallet);
+  const expectedScript = resolveExpectedPaymentScriptCbor(appWallet, network);
 
   const currentWitnessScripts = getNativeScriptWitnessCbors(txHex);
   const retainedCurrentScripts = currentWitnessScripts.filter((scriptCbor) => {
@@ -479,18 +492,67 @@ async function retrySubmitWithCandidateScriptSets(
   initialError: unknown,
 ): Promise<SubmitTxWithRecoveryResult> {
   let lastRetryError: unknown = initialError;
+  let attempt = 0;
 
   for (const scriptSet of candidateScriptSets.values()) {
+    attempt += 1;
     const repairedTx = setNativeScriptWitnesses(txHex, scriptSet);
     try {
       const txHash = await submitter.submitTx(repairedTx);
+      console.warn(
+        "[tx-submit-recovery] submit succeeded after replacing native script witnesses — the wallet's stored scriptCbor does not match the script hash its address requires",
+        {
+          attempt,
+          candidateSets: candidateScriptSets.size,
+          scriptHashes: scriptSet.map((script) => scriptHashFromCbor(script)),
+          txHash,
+        },
+      );
       return { txHash, txHex: repairedTx, repaired: true };
     } catch (retryError) {
       lastRetryError = retryError;
     }
   }
 
+  console.warn(
+    "[tx-submit-recovery] all candidate script sets were rejected",
+    { candidateSets: candidateScriptSets.size },
+  );
   throw lastRetryError;
+}
+
+/**
+ * [ballot-witness-diag] Diagnostic only — no behaviour change.
+ * Recomputes the body hash of the exact tx we are about to submit and checks
+ * every vkey witness against it. Any witness that fails here is signed over a
+ * different body encoding than the one reaching the node — the root cause of
+ * `InvalidWitnessesUTXOW` on Conway ballot/vote transactions.
+ */
+export function diagnoseTxWitnesses(txHex: string): {
+  bodyHash: string;
+  total: number;
+  stale: { pubKeyHex: string; keyHashHex: string }[];
+} {
+  const tx = csl.Transaction.from_hex(txHex);
+  // Hash with core-cst (the build serializer) so this matches the body hash the
+  // node computes from the submitted bytes — core-csl's calculateTxHash
+  // re-serializes the body and would false-flag valid Conway-vote witnesses.
+  const bodyHash = resolveTxHash(txHex).toLowerCase();
+  const bodyHashBytes = Buffer.from(bodyHash, "hex");
+  const vkeys = tx.witness_set().vkeys();
+  const total = vkeys ? vkeys.len() : 0;
+  const stale: { pubKeyHex: string; keyHashHex: string }[] = [];
+  for (let i = 0; i < total; i++) {
+    const w = vkeys!.get(i);
+    const pk = w.vkey().public_key();
+    if (!pk.verify(bodyHashBytes, w.signature())) {
+      stale.push({
+        pubKeyHex: bytesToHex(pk.as_bytes()),
+        keyHashHex: bytesToHex(pk.hash().to_bytes()),
+      });
+    }
+  }
+  return { bodyHash, total, stale };
 }
 
 export async function submitTxWithScriptRecovery({
@@ -500,9 +562,32 @@ export async function submitTxWithScriptRecovery({
   network,
 }: SubmitTxWithRecoveryArgs): Promise<SubmitTxWithRecoveryResult> {
   try {
+    try {
+      const diag = diagnoseTxWitnesses(txHex);
+      if (diag.stale.length > 0) {
+        console.warn(
+          "[ballot-witness-diag] vkey witness(es) do NOT verify against the submit body — node will reject with InvalidWitnessesUTXOW",
+          {
+            submitBodyHash: diag.bodyHash,
+            totalWitnesses: diag.total,
+            staleWitnesses: diag.stale,
+          },
+        );
+      }
+    } catch (diagError) {
+      console.warn("[ballot-witness-diag] pre-submit diagnostic failed", diagError);
+    }
+
     const txHash = await submitter.submitTx(txHex);
     return { txHash, txHex, repaired: false };
   } catch (submitError) {
+    // The 400 the browser just logged for this POST is expected here — the
+    // paths below repair the witness set and resubmit.
+    console.warn(
+      "[tx-submit-recovery] initial submit rejected — attempting repair",
+      { error: extractErrorMessage(submitError) },
+    );
+
     throwIfUnrecoverableSubmitError(submitError);
 
     if (hasPPViewHashMismatch(submitError)) {
@@ -523,6 +608,10 @@ export async function submitTxWithScriptRecovery({
         );
         try {
           const txHash = await submitter.submitTx(repairedTx);
+          console.warn(
+            "[tx-submit-recovery] submit succeeded after removing invalid vkey witnesses",
+            { removedPubKeys: invalidVKeys, txHash },
+          );
           return { txHash, txHex: repairedTx, repaired: true };
         } catch (retryError) {
           throwIfUnrecoverableSubmitError(retryError);

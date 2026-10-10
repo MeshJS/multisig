@@ -76,12 +76,15 @@ export type ProxyLifecycleUtxoShapeAnalysis = {
 export type ProxyLifecycleUtxoShapeInput = {
   walletUtxos: ScriptUtxo[];
   collateralUtxos: ScriptUtxo[];
+  minKeyCollateralCandidates?: number;
 };
 
 export function analyzeProxyFullLifecycleUtxoShape(args: {
   walletUtxos: ScriptUtxo[];
   collateralUtxos: ScriptUtxo[];
+  minKeyCollateralCandidates?: number;
 }): ProxyLifecycleUtxoShapeAnalysis {
+  const minKeyCollateralCandidates = Math.max(1, args.minKeyCollateralCandidates ?? 1);
   const lovelaces = args.walletUtxos.map(parseLovelace);
   const totalLovelace = lovelaces.reduce((sum, value) => sum + value, 0n);
   const largestUtxoLovelace = lovelaces.reduce(
@@ -95,7 +98,7 @@ export function analyzeProxyFullLifecycleUtxoShape(args: {
       utxo.output.amount.every((asset) => asset.unit === "lovelace"),
   );
   const hasSetupCandidate = setupCandidates > 0;
-  const hasKeyCollateral = keyCollateralCandidates.length > 0;
+  const hasKeyCollateral = keyCollateralCandidates.length >= minKeyCollateralCandidates;
   const drepRequiredLovelace = getProxyFullLifecycleRequiredLovelace();
   const drepSelectableLovelace = totalLovelace;
   const requiredTotalLovelace = getProxyFullLifecycleRequiredLovelace();
@@ -103,7 +106,7 @@ export function analyzeProxyFullLifecycleUtxoShape(args: {
     drepRequiredLovelace + PROXY_LIFECYCLE_COLLATERAL_SPLIT_LOVELACE + SELF_SPLIT_FEE_BUFFER_LOVELACE;
   const diagnostics =
     `total=${formatAda(totalLovelace)}, largestUtxO=${formatAda(largestUtxoLovelace)}, ` +
-    `setupCandidates=${setupCandidates}, keyCollateralCandidates=${keyCollateralCandidates.length}, ` +
+    `setupCandidates=${setupCandidates}, keyCollateralCandidates=${keyCollateralCandidates.length}/${minKeyCollateralCandidates}, ` +
     `drepSelectable=${formatAda(drepSelectableLovelace)}, drepRequired=${formatAda(drepRequiredLovelace)}, ` +
     `required=${formatAda(requiredTotalLovelace)} ` +
     `(DRep register ${formatAda(DREP_REGISTER_REQUIRED_LOVELACE)} + ` +
@@ -142,15 +145,21 @@ export function analyzeProxyFullLifecycleUtxoShape(args: {
 export function assertProxyFullLifecyclePreflight(args: {
   walletUtxos: ScriptUtxo[];
   collateralUtxos: ScriptUtxo[];
+  minKeyCollateralCandidates?: number;
 }): Omit<
   ProxyLifecycleUtxoShapeAnalysis,
   "status" | "diagnostics" | "selfSplitRequiredLovelace" | "hasSetupCandidate" | "hasKeyCollateral"
 > {
+  const minKeyCollateralCandidates = Math.max(1, args.minKeyCollateralCandidates ?? 1);
   const analysis = analyzeProxyFullLifecycleUtxoShape(args);
 
-  if (analysis.keyCollateralCandidates === 0) {
+  if (analysis.keyCollateralCandidates < minKeyCollateralCandidates) {
+    const collateralMessage =
+      minKeyCollateralCandidates === 1
+        ? `no bot payment-address UTxO has at least ${formatAda(COLLATERAL_REQUIRED_LOVELACE)} for Plutus collateral`
+        : `expected ${minKeyCollateralCandidates} distinct bot payment-address collateral UTxO(s) with at least ${formatAda(COLLATERAL_REQUIRED_LOVELACE)}, found ${analysis.keyCollateralCandidates}`;
     throw new Error(
-      `Proxy full lifecycle preflight failed: no bot payment-address UTxO has at least ${formatAda(COLLATERAL_REQUIRED_LOVELACE)} for Plutus collateral. ${analysis.diagnostics}. Run proxy lifecycle UTxO shaping or fund the bot payment address before running proxy full lifecycle.`,
+      `Proxy full lifecycle preflight failed: ${collateralMessage}. ${analysis.diagnostics}. Run proxy lifecycle UTxO shaping or fund the bot payment address before running proxy full lifecycle.`,
     );
   }
   if (analysis.setupCandidates === 0) {

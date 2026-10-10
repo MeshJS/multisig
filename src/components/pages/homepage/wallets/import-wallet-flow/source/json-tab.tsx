@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
 import type {
@@ -21,22 +22,25 @@ interface Props {
  * wallet info page: an envelope with `payload` and `payloadHash`. We
  * verify the hash server-side too (during importWallet), but checking
  * client-side gives faster feedback if the file is corrupt.
+ *
+ * Accepts either a file or pasted JSON text — mobile in-app browsers
+ * often can't reach the downloaded file, but can paste from clipboard.
  */
 export default function JsonTab({ flow }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [sourceInstance, setSourceInstance] = useState("");
+  const [pastedJson, setPastedJson] = useState("");
 
-  const handleFile = async (file: File) => {
+  const handleText = (text: string) => {
     try {
-      const text = await file.text();
       const parsed = JSON.parse(text) as {
         payload?: ResolvedWalletPayload;
         payloadHash?: string;
         sourceInstance?: string;
       };
       if (!parsed.payload || typeof parsed.payloadHash !== "string") {
-        throw new Error("File is missing payload or payloadHash");
+        throw new Error("Backup is missing payload or payloadHash");
       }
       if (parsed.payload.schemaVersion !== 1) {
         throw new Error("Unsupported schema version");
@@ -52,10 +56,22 @@ export default function JsonTab({ flow }: Props) {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to read JSON file";
+        err instanceof Error ? err.message : "Failed to read JSON backup";
+      toast({
+        title: "Invalid backup",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFile = async (file: File) => {
+    try {
+      handleText(await file.text());
+    } catch {
       toast({
         title: "Invalid backup file",
-        description: message,
+        description: "Could not read the selected file",
         variant: "destructive",
       });
     }
@@ -67,8 +83,8 @@ export default function JsonTab({ flow }: Props) {
         <p className="font-medium">From a JSON backup</p>
         <p className="mt-1 text-muted-foreground">
           Drop in a file produced by the <em>Download JSON backup</em>{" "}
-          action on the wallet info page. We'll verify the payload hash
-          before creating the local record.
+          action on the wallet info page, or paste its contents below.
+          We'll verify the payload hash before creating the local record.
         </p>
       </div>
 
@@ -98,16 +114,42 @@ export default function JsonTab({ flow }: Props) {
             if (file) void handleFile(file);
           }}
         />
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            onClick={() => inputRef.current?.click()}
+            className="w-full sm:w-auto"
+          >
+            Choose file
+          </Button>
+        </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={() => inputRef.current?.click()}
-          className="w-full sm:w-auto"
-        >
-          Choose file
-        </Button>
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border/40" />
+        <span className="text-xs uppercase text-muted-foreground">or</span>
+        <div className="h-px flex-1 bg-border/40" />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="backup-json">Paste backup JSON</Label>
+        <Textarea
+          id="backup-json"
+          placeholder='{"payload": {…}, "payloadHash": "…"}'
+          value={pastedJson}
+          onChange={(e) => setPastedJson(e.target.value)}
+          rows={6}
+          className="font-mono text-xs"
+        />
+        <div className="flex justify-end">
+          <Button
+            onClick={() => handleText(pastedJson)}
+            disabled={!pastedJson.trim()}
+            className="w-full sm:w-auto"
+          >
+            Import pasted JSON
+          </Button>
+        </div>
       </div>
     </div>
   );

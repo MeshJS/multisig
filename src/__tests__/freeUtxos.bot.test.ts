@@ -15,6 +15,7 @@ const buildMultisigWalletMock: jest.Mock = jest.fn();
 const addressToNetworkMock: jest.Mock = jest.fn();
 const getProviderMock: jest.Mock = jest.fn();
 const cachedFetchAddressUTxOsMock: jest.Mock = jest.fn();
+const fetchAddressUTxOsMock: jest.Mock = jest.fn();
 const serializeNativeScriptMock: jest.Mock = jest.fn();
 const decodeNativeScriptFromCborMock: jest.Mock = jest.fn();
 const decodedToNativeScriptMock: jest.Mock = jest.fn();
@@ -23,63 +24,64 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
   assertBotWalletAccess: assertBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {
     transaction: { findMany: findPendingTransactionsMock },
   },
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/common", () => ({
   __esModule: true,
   buildMultisigWallet: buildMultisigWalletMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/multisigSDK", () => ({
   __esModule: true,
   addressToNetwork: addressToNetworkMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: getProviderMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/blockchain-cache", () => ({
   __esModule: true,
   cachedFetchAddressUTxOs: cachedFetchAddressUTxOsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/nativeScriptUtils", () => ({
   __esModule: true,
   decodeNativeScriptFromCbor: decodeNativeScriptFromCborMock,
   decodedToNativeScript: decodedToNativeScriptMock,
-}), { virtual: true });
+}));
 
 jest.mock("@meshsdk/core", () => ({
   __esModule: true,
   serializeNativeScript: serializeNativeScriptMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/api/root", () => ({
   __esModule: true,
@@ -87,12 +89,12 @@ jest.mock("@/server/api/root", () => ({
     transaction: { getPendingTransactions: jest.fn() },
     wallet: { getWallet: jest.fn() },
   }),
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/rateLimit", () => ({
   __esModule: true,
   getClientIP: () => "127.0.0.1",
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 
@@ -125,7 +127,8 @@ beforeEach(() => {
   decodedToNativeScriptMock.mockReturnValue({ type: "all", scripts: [] });
   serializeNativeScriptMock.mockReturnValue({ address: "addr_test1canonicalwalletscript" });
   addressToNetworkMock.mockReturnValue(0);
-  getProviderMock.mockReturnValue({ get: jest.fn() });
+  (fetchAddressUTxOsMock as any).mockResolvedValue([{ input: { txHash: "direct", outputIndex: 1 } }]);
+  getProviderMock.mockReturnValue({ get: jest.fn(), fetchAddressUTxOs: fetchAddressUTxOsMock });
   (cachedFetchAddressUTxOsMock as any).mockResolvedValue([
     { input: { txHash: "a", outputIndex: 0 } },
   ]);
@@ -155,6 +158,39 @@ describe("freeUtxos bot API", () => {
     expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 } }]);
+  });
+
+  it("falls back to direct provider fetch when cached UTxO lookup fails", async () => {
+    (cachedFetchAddressUTxOsMock as any).mockRejectedValue(new Error("incremental cache unavailable"));
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(fetchAddressUTxOsMock).toHaveBeenCalledWith("addr_test1walletscript");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "direct", outputIndex: 1 } }]);
+  });
+
+  it("returns an empty array when the provider has no UTxOs for the script address", async () => {
+    (cachedFetchAddressUTxOsMock as any).mockRejectedValue({
+      response: { data: { status_code: 404 } },
+    });
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([]);
   });
 
   it("falls back to canonical scriptCbor when multisig wallet is unavailable", async () => {

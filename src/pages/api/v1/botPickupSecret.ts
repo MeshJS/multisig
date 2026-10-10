@@ -52,13 +52,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new PickupError(410, "already_picked_up", "Secret is no longer available");
       }
 
-      // Find the BotUser by paymentAddress (unique) to get the botKeyId
-      const botUser = await tx.botUser.findUnique({
-        where: { paymentAddress: pendingBot.paymentAddress },
-      });
+      // The claim stores the minted botKeyId on the PendingBot. Fall back to
+      // the legacy BotUser-by-address lookup for rows claimed before that
+      // column existed (address-less registrations have no BotUser yet).
+      let botKeyId = pendingBot.botKeyId;
+      if (!botKeyId && pendingBot.paymentAddress) {
+        const botUser = await tx.botUser.findUnique({
+          where: { paymentAddress: pendingBot.paymentAddress },
+        });
+        botKeyId = botUser?.botKeyId ?? null;
+      }
 
-      if (!botUser) {
-        throw new PickupError(500, "internal_error", "Bot user not found");
+      if (!botKeyId) {
+        throw new PickupError(500, "internal_error", "Bot key not found");
       }
 
       // Mark as picked up and clear the secret
@@ -71,8 +77,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       return {
-        botKeyId: botUser.botKeyId,
+        botKeyId,
         secret,
+        // Null for address-less registrations; the bot binds an address at
+        // its first botAuth.
         paymentAddress: pendingBot.paymentAddress,
       };
     });

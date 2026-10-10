@@ -23,8 +23,10 @@ function getBlockfrostProjectId(network: number): string {
   const projectId =
     network === 0
       ? process.env.CI_BLOCKFROST_PREPROD_API_KEY?.trim() ||
+        process.env.BLOCKFROST_API_KEY_PREPROD?.trim() ||
         env.NEXT_PUBLIC_BLOCKFROST_API_KEY_PREPROD?.trim()
       : process.env.CI_BLOCKFROST_MAINNET_API_KEY?.trim() ||
+        process.env.BLOCKFROST_API_KEY_MAINNET?.trim() ||
         env.NEXT_PUBLIC_BLOCKFROST_API_KEY_MAINNET?.trim();
   if (!projectId) {
     throw new Error(`Missing Blockfrost project id for network ${network}`);

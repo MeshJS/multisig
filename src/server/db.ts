@@ -9,6 +9,22 @@ const INITIAL_RETRY_DELAY_MS = 500;
 
 // Check if error is a connection error that should be retried
 const isConnectionError = (error: unknown): boolean => {
+  // Pool saturation must NEVER be retried. Retrying hammers an already
+  // saturated pool and amplifies the outage. This covers the Supabase
+  // Supavisor session-mode limit (EMAXCONNSESSION / "max clients reached")
+  // and the node-postgres pool acquire timeout ("timeout exceeded when
+  // trying to connect"). Fail fast so the request errors instead of looping.
+  if (error instanceof Error) {
+    const m = error.message.toLowerCase();
+    if (
+      m.includes("max clients reached") ||
+      m.includes("pool_size") ||
+      m.includes("emaxconnsession") ||
+      m.includes("timeout exceeded when trying to connect")
+    ) {
+      return false;
+    }
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     // P1001: Can't reach database server
     // P1008: Operations timed out
@@ -55,14 +71,9 @@ const withRetry = async <T>(
       }
       
       await new Promise((resolve) => setTimeout(resolve, delay));
-      
-      // Try to reconnect before retrying
-      try {
-        await prismaClient.$connect();
-      } catch {
-        // Ignore connection errors here, let the retry handle it
-      }
-      
+
+      // Do NOT call $connect() here: the pg driver-adapter pool reconnects
+      // lazily, and forcing a connect against a saturated pool only adds load.
       return withRetry(operation, retries - 1);
     }
     throw error;
@@ -104,7 +115,20 @@ const createPrismaClient = () => {
   // Prisma 7 requires a driver adapter (or Accelerate) instead of a schema/url
   // connection. The pg adapter connects via the pooled DATABASE_URL; migrations
   // use the direct connection configured in prisma.config.ts.
-  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
+  // Cap the node-postgres pool per serverless instance. Without `max`,
+  // node-postgres defaults to 10 connections/instance — a few warm Vercel
+  // instances overrun Supabase's session-mode pool (15 client slots) and
+  // every query fails with EMAXCONNSESSION. A small max keeps connections
+  // well under the pooler limit and preserves transaction-mode multiplexing;
+  // concurrent intra-request queries queue rather than deadlock (they each
+  // release per statement). Finite timeouts make a saturated pool fail fast
+  // instead of hanging on the pg default connectionTimeoutMillis: 0 (infinite).
+  const adapter = new PrismaPg({
+    connectionString: env.DATABASE_URL,
+    max: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  });
 
   const client = new PrismaClient({
     adapter,

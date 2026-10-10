@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { resolveNativeScriptHash } from "@meshsdk/core";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ interface Props {
  * don't accept anonymous garbage rows.
  */
 export default function CborTab({ flow }: Props) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { toast } = useToast();
 
   const [name, setName] = useState("");

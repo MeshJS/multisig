@@ -9,6 +9,13 @@ import { shared, ESM_TESTS, INTEGRATION_GLOB } from './jest.shared.mjs';
  */
 export default {
   ...shared,
+  // Own cache directory. The two projects share one transform config but run
+  // under different module systems (this one without --experimental-vm-modules),
+  // so a cache entry produced by one is not valid for the other. Sharing jest's
+  // default cache dir let them clobber each other's entries for ESM packages in
+  // node_modules — surfacing as an intermittent "Cannot use import statement
+  // outside a module" from superjson, in whichever suite happened to lose.
+  cacheDirectory: '<rootDir>/node_modules/.cache/jest-cjs',
   testMatch: [
     '**/__tests__/**/*.(test|spec).+(ts|tsx|js)',
     '**/*.(test|spec).+(ts|tsx|js)',

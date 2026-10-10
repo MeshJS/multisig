@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import useActiveWallet from "@/hooks/useActiveWallet";
 import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
+import { getFriendlyError } from "@/utils/errors";
 
 interface PutResponse {
   url: string;
@@ -215,7 +216,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
           !e.message.includes("No UTxOs")) {
         toast({
           title: "Registration Failed",
-          description: e instanceof Error ? e.message : "An unexpected error occurred during DRep registration.",
+          description: getFriendlyError(e),
           variant: "destructive",
           duration: 10000,
           action: (

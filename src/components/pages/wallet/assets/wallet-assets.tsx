@@ -4,6 +4,7 @@ import LinkCardanoscan from "@/components/common/link-cardanoscan";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
 import { ArrowUpRight } from "lucide-react";
+import { truncateTokenSymbol, numberWithCommas } from "@/utils/strings";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -75,12 +76,12 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
       return (
         <div
           key={asset.unit}
-          className="flex w-full flex-row items-center justify-between"
+          className="flex w-full min-w-0 flex-row items-center justify-between gap-3"
         >
-          <div className="flex flex-row items-center gap-3">
+          <div className="flex min-w-0 flex-1 flex-row items-center gap-3">
             {imageSrc ? (
               <div
-                className={`relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full`}
+                className={`relative flex h-[60px] w-[60px] flex-shrink-0 items-center justify-center overflow-hidden rounded-full`}
               >
                 {isImageIpfs ? (
                   <IPFSImage
@@ -102,7 +103,7 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
                 )}
               </div>
             ) : (
-              <div className="relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full">
+              <div className="relative flex h-[60px] w-[60px] flex-shrink-0 items-center justify-center overflow-hidden rounded-full">
                 <Image
                   src={"/assets/unknown.png"}
                   width={60}
@@ -113,17 +114,28 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
             )}
             <LinkCardanoscan
               url={`tokenPolicy/${policyId}`}
-              className="ml-auto gap-1"
+              className="min-w-0 gap-1"
             >
-              <div className="flex flex-row items-center gap-1">
-                <h3 className="text-lg font-bold">{name}</h3>
-                <ArrowUpRight className="h-4 w-4" />
+              <div className="flex min-w-0 flex-row items-center gap-1">
+                <h3 className="truncate text-lg font-bold" title={name}>
+                  {truncateTokenSymbol(name)}
+                </h3>
+                <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
               </div>
             </LinkCardanoscan>
           </div>
-          <div className="flex flex-row gap-1">
-            <p className="font-bold">{quantity}</p>
-            <p className="text-gray-400">${ticker}</p>
+          <div className="flex flex-shrink-0 flex-row items-baseline gap-1">
+            <p className="font-bold tabular-nums">
+              {numberWithCommas(quantity)}
+            </p>
+            {ticker && (
+              <p
+                className="max-w-[80px] truncate text-gray-400"
+                title={`$${ticker}`}
+              >
+                ${ticker}
+              </p>
+            )}
           </div>
         </div>
       );

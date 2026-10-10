@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { resolvePoolId } from "@meshsdk/core";
-import { normalizePoolIdForDelegation } from "@/lib/server/normalizePoolId";
+import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 
 describe("normalizePoolIdForDelegation", () => {
   it("normalizes 56-char hex", () => {

@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { assertBotWalletAccess } from "@/lib/auth/botAccess";
+import { assertBotWalletAccess, BotAccessError, botHasScope } from "@/lib/auth/botAccess";
 import { createPendingMultisigTransaction } from "@/lib/server/createPendingMultisigTransaction";
 
 export default async function handler(
@@ -34,7 +34,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -44,6 +44,12 @@ export default async function handler(
 
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) {
     return;
+  }
+
+  // Scope gate before body validation: a scope-less bot gets a clean 403
+  // instead of misleading 400s from payload shape checks.
+  if (isBotJwt(payload) && !(await botHasScope(db, payload.botId, "multisig:sign"))) {
+    return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
   const session = {
@@ -104,6 +110,9 @@ export default async function handler(
       const result = await assertBotWalletAccess(db, walletId, payload, true);
       wallet = result.wallet;
     } catch (err) {
+      if (err instanceof BotAccessError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       return res.status(403).json({ error: err instanceof Error ? err.message : "Not authorized for this wallet" });
     }
   } else {

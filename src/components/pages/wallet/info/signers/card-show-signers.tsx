@@ -240,7 +240,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
                 </Button>
               )}
               {!discordId && !isLoadingDiscordIds && isCurrentUser && (
-                <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-xs flex-1">
+                <Button variant="outline" size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-xs flex-1">
                   Connect Discord
                 </Button>
               )}
@@ -313,7 +313,7 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
 
               {/* Connect Discord Button */}
               {!discordId && !isLoadingDiscordIds && isCurrentUser && (
-                <Button size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-sm">
+                <Button variant="outline" size="sm" onClick={() => handleConnectDiscord()} className="h-8 px-3 text-sm">
                   Connect Discord
                 </Button>
               )}

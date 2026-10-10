@@ -4,6 +4,7 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
+import { markPayoutsPaid } from "@/lib/task-payout/sync";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import {
@@ -17,6 +18,7 @@ import { calculateTxHash } from "@meshsdk/core-csl";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { getBotWalletAccess } from "@/lib/auth/botAccess";
+import { enqueueThresholdReachedNotifications } from "@/lib/notifications/center";
 
 function coerceBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
@@ -73,7 +75,7 @@ export default async function handler(
     : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -143,7 +145,13 @@ export default async function handler(
     let wallet: Awaited<ReturnType<ReturnType<typeof createCaller>["wallet"]["getWallet"]>>;
     if (isBotJwt(payload)) {
       const access = await getBotWalletAccess(db, walletId, payload.botId);
-      if (!access.allowed || access.role !== "cosigner") {
+      if (!access.allowed) {
+        // Convention: 404 = unknown wallet, 403 = known but not permitted.
+        return access.reason === "wallet_not_found"
+          ? res.status(404).json({ error: "Wallet not found" })
+          : res.status(403).json({ error: "Not authorized for this wallet" });
+      }
+      if (access.role !== "cosigner") {
         return res.status(403).json({ error: "Not authorized for this wallet" });
       }
       const w = await db.wallet.findUnique({ where: { id: walletId } });
@@ -334,6 +342,26 @@ export default async function handler(
       }
     }
 
+    // [ballot-witness-diag] Detect whether merging/rebuilding the tx changed the
+    // body the signatures were made over. `txHashHex` is the body hash the
+    // incoming witness was verified against (line ~245). If the final tx hashes
+    // differently, every collected witness is now stale → InvalidWitnessesUTXOW.
+    try {
+      const finalBodyHash = calculateTxHash(txHexForUpdate).toLowerCase();
+      if (finalBodyHash !== txHashHex) {
+        console.warn("[ballot-witness-diag] tx body hash changed after witness merge", {
+          transactionId,
+          storedBodyHash: txHashHex,
+          finalBodyHash,
+        });
+      }
+    } catch (diagError: unknown) {
+      console.warn(
+        "[ballot-witness-diag] failed to compute final body hash",
+        toError(diagError),
+      );
+    }
+
     const witnessSummaries: {
       keyHashHex: string;
       publicKeyBech32: string;
@@ -491,6 +519,38 @@ export default async function handler(
 
     if (!updatedTransaction) {
       return res.status(500).json({ error: "Failed to load updated transaction state" });
+    }
+
+    // A task-board payout that just reached the chain: flip its task links
+    // to Paid. Best-effort like the notifications below.
+    if (nextState === 1 && transaction.state !== 1) {
+      try {
+        await markPayoutsPaid(db, {
+          transactionId,
+          txHash: updatedTransaction.txHash ?? finalTxHash ?? null,
+        });
+      } catch (error: unknown) {
+        console.error("Failed to mark task payouts paid", toError(error));
+      }
+    }
+
+    // The witness is persisted on both the 200 and 502 paths below, so the
+    // threshold crossing (if any) is real either way. Never let a
+    // notification failure turn a recorded signature into a 500.
+    try {
+      await enqueueThresholdReachedNotifications(db, {
+        wallet,
+        resourceType: "transaction",
+        resourceId: transactionId,
+        previousSignedAddresses: transaction.signedAddresses,
+        signedAddresses: updatedTransaction.signedAddresses,
+        actorAddress: address,
+        description: updatedTransaction.description,
+        txJson: transaction.txJson,
+        txHash: updatedTransaction.txHash ?? null,
+      });
+    } catch (error: unknown) {
+      console.error("Failed to enqueue threshold notifications", toError(error));
     }
 
     if (submissionError) {

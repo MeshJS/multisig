@@ -1,6 +1,8 @@
 import { api } from "@/utils/api";
 import { UTxO } from "@meshsdk/core";
 
+import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
+
 /**
  * React Hook to filter available (spendable) UTxOs for a given wallet.
  * Accepts UTxOs as input instead of fetching them, improving efficiency.
@@ -8,15 +10,18 @@ import { UTxO } from "@meshsdk/core";
 export default function useAvailableUtxos({
   walletId,
   utxos,
+  excludeTransactionId,
 }: {
   walletId?: string;
   utxos: UTxO[];
+  /** Pending tx whose inputs should NOT count as blocked (the tx being edited). */
+  excludeTransactionId?: string;
 }) {
   // Fetch pending transactions using TRPC
   const { data: transactions, isLoading: transactionsLoading } =
     api.transaction.getPendingTransactions.useQuery(
       { walletId: walletId! },
-      { 
+      {
         enabled: !!walletId,
         staleTime: 30 * 1000, // 30 seconds
         gcTime: 2 * 60 * 1000, // 2 minutes
@@ -34,14 +39,7 @@ export default function useAvailableUtxos({
     return { availableUtxos: utxos, isLoading: false, error: null };
   }
 
-  // Extract blocked UTxOs from pending transactions
-  const blockedUtxos = transactions.flatMap((tx) => {
-    const txJson = JSON.parse(tx.txJson);
-    return txJson.inputs.map((input: { txIn: { txHash: string; txIndex: number } }) => ({
-      hash: input.txIn.txHash,
-      index: input.txIn.txIndex,
-    }));
-  });
+  const blockedUtxos = deriveBlockedUtxoRefs(transactions, excludeTransactionId);
 
   // Filter UTxOs to exclude blocked ones
   const availableUtxos = utxos.filter(

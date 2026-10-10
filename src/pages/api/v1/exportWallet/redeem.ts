@@ -2,8 +2,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { createHash } from "crypto";
 import { db } from "@/server/db";
 import { checkSignature, DataSignature } from "@meshsdk/core";
-import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { publicCors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import { nonceKey } from "./getNonce";
 
 /**
@@ -30,7 +31,7 @@ export default async function handler(
     return;
   }
 
-  await cors(req, res);
+  await publicCors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -41,7 +42,11 @@ export default async function handler(
 
   if (!enforceBodySize(req, res, 64 * 1024)) return;
 
-  const { address, walletId, signature, key } = req.body ?? {};
+  const { address: rawAddress, walletId, signature, key } = req.body ?? {};
+  const address =
+    typeof rawAddress === "string"
+      ? normalizeAddressToBech32(rawAddress)
+      : rawAddress;
   if (
     typeof address !== "string" ||
     typeof walletId !== "string" ||

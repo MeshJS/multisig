@@ -3,7 +3,7 @@ import { Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import useActiveWallet from "@/hooks/useActiveWallet";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 
 export default function CardSendAll({ appWallet }: { appWallet: Wallet }) {
-  const { wallet, connected } = useWallet();
+  const { wallet, connected } = useMeshWallet();
   const { isWalletReady } = useActiveWallet();
   // const [loading, setLoading] = useState<boolean>(false);
   const [recipientAddress, setRecipientAddress] = useState<string>("");

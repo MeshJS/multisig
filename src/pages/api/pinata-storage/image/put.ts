@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { env } from "@/env";
+import { ipfsGatewayUrl } from "@/lib/ipfs";
 import formidable, { Fields, Files, File } from "formidable";
 import fs from "fs";
 
@@ -114,9 +115,9 @@ export default async function handler(
     }
 
     const pinataData = (await pinataResponse.json()) as PinataResponse;
-    
-    // Construct IPFS gateway URL using public IPFS gateway
-    const ipfsUrl = `https://ipfs.io/ipfs/${pinataData.data.cid}`;
+
+    // Return a reliable gateway URL (dedicated Pinata gateway when configured).
+    const ipfsUrl = ipfsGatewayUrl(pinataData.data.cid);
 
     return res.status(200).json({ 
       url: ipfsUrl,

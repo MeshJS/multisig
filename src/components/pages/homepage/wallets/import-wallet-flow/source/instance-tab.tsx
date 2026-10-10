@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 import type {
   ResolvedWalletPayload,
@@ -37,7 +38,10 @@ type Mode =
  * and lets them pick before signing.
  */
 export default function InstanceTab({ flow }: Props) {
-  const { wallet, connected } = useWallet();
+  // Mesh 1.9 bridge — signData(payload, address). react-2.0's useWallet()
+  // wallet has the args swapped, which made VESPR sign the wrong bytes and
+  // throw CIP-30 InternalError (-2) during cross-instance import.
+  const { wallet, connected } = useMeshWallet();
   const { toast } = useToast();
   const [urlInput, setUrlInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -246,7 +250,11 @@ async function getStakeAddress(wallet: unknown): Promise<string | null> {
   const rewardAddresses = await (
     wallet as { getRewardAddresses: () => Promise<string[]> }
   ).getRewardAddresses();
-  return rewardAddresses[0] ?? null;
+  const raw = rewardAddresses[0];
+  if (!raw) return null;
+  // Mobile in-app browsers return hex-encoded CBOR bytes here; Mesh's
+  // signData and the origin's bech32 signer list both need bech32.
+  return normalizeAddressToBech32(raw);
 }
 
 async function fetchNonce(
@@ -255,7 +263,7 @@ async function fetchNonce(
   address: string,
 ): Promise<string> {
   const url = `${origin}/api/v1/exportWallet/getNonce?walletId=${encodeURIComponent(walletId)}&address=${encodeURIComponent(address)}`;
-  const res = await fetch(url, { credentials: "omit" });
+  const res = await fetchFromOrigin(url, { credentials: "omit" });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(body.error || `Origin returned ${res.status}`);
@@ -275,7 +283,7 @@ async function fetchRedeem(
     key: string;
   },
 ): Promise<{ payload: ResolvedWalletPayload; payloadHash: string }> {
-  const res = await fetch(`${origin}/api/v1/exportWallet/redeem`, {
+  const res = await fetchFromOrigin(`${origin}/api/v1/exportWallet/redeem`, {
     method: "POST",
     credentials: "omit",
     headers: { "Content-Type": "application/json" },
@@ -296,12 +304,31 @@ async function fetchList(
   address: string,
 ): Promise<RemoteWalletSummary[]> {
   const url = `${origin}/api/v1/exportWallet/listMine?address=${encodeURIComponent(address)}`;
-  const res = await fetch(url, { credentials: "omit" });
+  const res = await fetchFromOrigin(url, { credentials: "omit" });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(body.error || `Origin returned ${res.status}`);
   }
   return Array.isArray(body.wallets) ? body.wallets : [];
+}
+
+/**
+ * Cross-origin fetch failures surface as an opaque TypeError ("Load failed"
+ * on Safari, "Failed to fetch" on Chrome) whether the origin is down, runs
+ * an older version without the exportWallet API, or rejects CORS. Translate
+ * that into something the user can act on.
+ */
+async function fetchFromOrigin(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new Error(
+      "Couldn't reach the origin. It may be offline, blocking cross-origin requests, or running a version without export support.",
+    );
+  }
 }
 
 function policyLabel(w: RemoteWalletSummary): string {
