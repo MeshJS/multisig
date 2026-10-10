@@ -3,7 +3,13 @@ import dynamic from "next/dynamic";
 import React, { useEffect, useState, useRef } from "react";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
-import Globe from "./globe";
+import { useGraphicsTier } from "@/hooks/useGraphicsTier";
+
+// Dynamic, not static: this pulls three.js + three-globe (~hundreds of KB) and
+// most visitors never render it — the hardware tier decides. Keeping the static
+// import shipped that payload to every device including the ones we then refuse
+// to draw a globe on.
+const Globe = dynamic(() => import("./globe"), { ssr: false, loading: () => null });
 
 // Avoid SSR for Swagger UI
 // Note: swagger-ui CSS is imported globally from src/pages/_app.tsx because
@@ -17,6 +23,9 @@ export default function ApiDocs() {
   // wallet has the args swapped, which broke bearer-token generation on
   // wallets like VESPR (CIP-30 InternalError -2).
   const { wallet, connected } = useMeshWallet();
+  // The globe is a three.js scene; only devices detected (and measured) as
+  // capable get it. Everything else reads the docs over the plain background.
+  const { features: gfx } = useGraphicsTier();
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -300,17 +309,19 @@ export default function ApiDocs() {
 
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
-      <div
-        className="globe-background-container"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: -10,
-          overflow: "hidden",
-        }}
-      >
-        <Globe />
-      </div>
+      {gfx.webglGlobe && (
+        <div
+          className="globe-background-container"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: -10,
+            overflow: "hidden",
+          }}
+        >
+          <Globe />
+        </div>
+      )}
       <div
         className="api-docs-wrapper"
         style={{
@@ -321,8 +332,11 @@ export default function ApiDocs() {
           maxWidth: "100%",
           width: "calc(100% - 4rem)",
           margin: "2rem auto",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
+          // A full-page backdrop-filter is one of the most expensive things a
+          // compositor can be asked for, and there is nothing behind it to blur
+          // unless the globe is rendering.
+          backdropFilter: gfx.webglGlobe ? "blur(16px)" : undefined,
+          WebkitBackdropFilter: gfx.webglGlobe ? "blur(16px)" : undefined,
         }}
       >
         <div className="mb-8 max-w-3xl">
