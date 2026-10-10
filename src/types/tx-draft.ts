@@ -58,12 +58,13 @@ export type DraftVote = {
 export type DraftCertificateKind =
   | "RegisterStake"
   | "DelegateStake"
-  | "DeregisterStake";
+  | "DeregisterStake"
+  | "VoteDelegation";
 
 /**
- * A staking certificate, either loaded from an existing pending transaction
- * or created in the builder. Loaded certs (no `origin`) can only change
- * their delegation pool and can't be removed individually: a
+ * A staking or vote-delegation certificate, either loaded from an existing
+ * pending transaction or created in the builder. Loaded certs (no `origin`)
+ * can only change their delegation pool and can't be removed individually: a
  * register/delegate pair must stay intact, and a lone delegation cert is the
  * whole point of its transaction. User-created certs are removable, but a
  * register+delegate pair (shared `pairId`) is removed atomically. The reward
@@ -75,6 +76,11 @@ export type DraftCertificate = {
   kind: DraftCertificateKind;
   /** Canonical bech32 pool id (pool1...); present only on DelegateStake. */
   poolId?: string;
+  /**
+   * Governance DRep id for VoteDelegation. "Always Abstain" is the protocol
+   * Auto-Abstain credential; any other value is a drep1... id.
+   */
+  dRepId?: string;
   /** stakeKeyAddress as stored in the loaded txJson — provenance only. */
   originalStakeAddress?: string;
   /** Present only on certs created in the builder; absent = loaded. */
@@ -83,9 +89,26 @@ export type DraftCertificate = {
   pairId?: string;
 };
 
+/**
+ * Who funds the transaction and receives its change. Only the multisig
+ * source can be proposed (and carry staking certificates / votes, which need
+ * the multisig's script credentials); the connected wallet signs and submits
+ * directly; an arbitrary address is build-and-export only.
+ */
+export type DraftSource =
+  | { kind: "multisig" }
+  /** The connected CIP-30 signer wallet; its address is resolved at runtime. */
+  | { kind: "connected" }
+  /** Any pasted payment address the user controls elsewhere. */
+  | { kind: "address"; address: string };
+
+export type DraftSourceKind = DraftSource["kind"];
+
 export type TxDraft = {
   /** Draft id; the flow tx node id becomes `txd:<id>`. */
   id: string;
+  /** Funding wallet and change target; defaults to the multisig. */
+  source: DraftSource;
   outputs: DraftOutput[];
   utxoSelection: DraftUtxoSelection;
   /** Off-chain description shown to signers (≤128 chars convention). */

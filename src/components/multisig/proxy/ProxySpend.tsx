@@ -18,6 +18,7 @@ import {
   ArrowRight,
   X
 } from "lucide-react";
+import ProxyFlowAnimation from "./ProxyFlowAnimation";
 
 interface ProxyOutput {
   address: string;
@@ -84,6 +85,9 @@ const ProxySpend = memo(function ProxySpend({
       <p className="text-sm text-muted-foreground">
         Create transactions to spend assets from your proxy address
       </p>
+
+      {/* The auth token round trip this transaction will perform. */}
+      <ProxyFlowAnimation variant="action" animate={!spendLoading} />
 
       {/* Collateral Requirement Alert */}
       <Alert>

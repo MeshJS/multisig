@@ -34,6 +34,14 @@ describe("MCP tool registry", () => {
       "governance_open_proposals",
       "ballot_upsert",
       "ballot_publish_rationale",
+      "document_list",
+      "document_get",
+      "transaction_preview",
+      "transaction_propose",
+      "multisig_review_pending_transaction",
+      "task_list",
+      "task_upsert",
+      "task_prepare_payout",
     ]);
   });
 
@@ -52,17 +60,22 @@ describe("MCP tool registry", () => {
   });
 
   it("exposes no tool that can sign, spend or broadcast", () => {
-    // The agreed boundary: agents may read, draft ballots, and publish a
-    // rationale to IPFS. Submitting a vote and signing stay with humans. Any
+    // The agreed boundary: agents may read, draft ballots, publish a
+    // rationale to IPFS, and draft unsigned transactions for humans to sign.
+    // Signing, submitting a vote and broadcasting stay with humans. Any
     // further write tool must be a deliberate decision that updates this list,
     // not a quiet registry addition.
     const writable = MCP_TOOLS.filter((t) => !t.annotations.readOnlyHint);
     expect(writable.map((t) => t.name)).toEqual([
       "ballot_upsert",
       "ballot_publish_rationale",
+      "transaction_propose",
+      // Board rows only: a task is a record, not a transaction. Paying it
+      // goes through task_prepare_payout → transaction_propose.
+      "task_upsert",
     ]);
-    // Neither write tool may be destructive: they add or replace drafts and
-    // anchors, they never remove a ballot or move value.
+    // No write tool may be destructive: they add or replace drafts, anchors
+    // and pending rows; they never remove a ballot or move value.
     for (const tool of writable) {
       expect(tool.annotations.destructiveHint).toBe(false);
     }
@@ -92,6 +105,113 @@ describe("MCP tool registry", () => {
     expect(ballot?.annotations.idempotentHint).toBe(true);
   });
 
+  it("wraps the task board tools around v1 handlers", () => {
+    // Bots reach task_list under wallets:read, and a v1 handler is where the
+    // bot-grant vs. signer authorization is defined once. A tool body that
+    // called the tRPC router directly would admit bots by signer membership
+    // (which they never have) and skip the handler's rate limits.
+    expect(MCP_TOOLS.find((t) => t.name === "task_list")?.v1Path).toBe("tasks.ts");
+    expect(MCP_TOOLS.find((t) => t.name === "task_upsert")?.v1Path).toBe("taskUpsert.ts");
+  });
+
+  it("keeps the transaction preview read-only and off the v1 surface", () => {
+    // The preview builds in memory and stores nothing, so it must advertise
+    // as read-only; and it wraps no v1 handler, because no REST route builds
+    // an arbitrary transaction for a caller.
+    const preview = MCP_TOOLS.find((t) => t.name === "transaction_preview");
+    expect(preview?.annotations.readOnlyHint).toBe(true);
+    expect(preview?.v1Path).toBeNull();
+    expect(preview?.scope).toBe("transactions:write");
+  });
+
+  it("lets propose accept nothing but the draft token", () => {
+    // The whole safety argument of preview→confirm rests on this: if propose
+    // took recipients or amounts, the model could alter them after the
+    // human approved the card.
+    const propose = MCP_TOOLS.find((t) => t.name === "transaction_propose");
+    expect(Object.keys(propose?.inputSchema.properties as object)).toEqual([
+      "draftToken",
+    ]);
+    expect(propose?.inputSchema.required).toEqual(["draftToken"]);
+    expect(propose?.annotations.idempotentHint).toBe(true);
+    expect(propose?.scope).toBe("transactions:write");
+  });
+
+  it("tells the model how the review card is delivered and how to get a picture", () => {
+    // The card is the deliverable. By default the client's inline view draws
+    // it; a model that is not told so paraphrases it, or never learns that
+    // card: "image" exists for clients (or users) that want the PNG.
+    for (const name of [
+      "transaction_preview",
+      "transaction_propose",
+      "multisig_review_pending_transaction",
+      "task_prepare_payout",
+    ]) {
+      const tool = MCP_TOOLS.find((t) => t.name === name);
+      expect(tool?.description).toMatch(/inline card view/);
+      expect(tool?.description).toMatch(/card: "image"/);
+      expect(tool?.description).toMatch(/show/i);
+    }
+  });
+
+  it("offers the card option on every card tool except propose", () => {
+    // Propose inherits the mode from the draft token, so the human confirms
+    // the card exactly as they saw it and propose still takes nothing else.
+    for (const name of [
+      "transaction_preview",
+      "multisig_review_pending_transaction",
+      "task_prepare_payout",
+    ]) {
+      const tool = MCP_TOOLS.find((t) => t.name === name);
+      const card = (tool?.inputSchema.properties as Record<string, { enum?: string[] }>).card;
+      expect(card?.enum).toEqual(["html", "image"]);
+      expect(tool?.inputSchema.required).not.toContain("card");
+    }
+    const propose = MCP_TOOLS.find((t) => t.name === "transaction_propose");
+    expect((propose?.inputSchema.properties as object)).not.toHaveProperty("card");
+  });
+
+  it("hides the transaction tools from a read-only grant", () => {
+    const names = toolsForScopes(["wallets:read"]).map((t) => t.name);
+    expect(names).not.toContain("transaction_preview");
+    expect(names).not.toContain("transaction_propose");
+    expect(names).not.toContain("task_prepare_payout");
+    expect(names).not.toContain("task_upsert");
+    // Reviewing an existing pending transaction is a read; so is the board.
+    expect(names).toContain("multisig_review_pending_transaction");
+    expect(names).toContain("task_list");
+  });
+
+  it("routes a task payout through the same preview → propose contract", () => {
+    // The payout preview mints a draft token that only transaction_propose
+    // consumes, so it needs the drafting scope, is read-only (stores
+    // nothing), and renders in the same inline card view whose Confirm
+    // button calls transaction_propose.
+    const payout = MCP_TOOLS.find((t) => t.name === "task_prepare_payout");
+    const preview = MCP_TOOLS.find((t) => t.name === "transaction_preview");
+    expect(payout?.scope).toBe("transactions:write");
+    expect(payout?.annotations.readOnlyHint).toBe(true);
+    expect(payout?.v1Path).toBeNull();
+    expect(payout?.uiResourceUri).toBe(preview?.uiResourceUri);
+    expect(payout?.description).toMatch(/transaction_propose/);
+    expect(payout?.description).toMatch(/\bDone\b/);
+    // taskIds is optional: omitted means every payable task, and the preview
+    // names the ones it picked before the human confirms anything.
+    expect(payout?.inputSchema.required).toEqual(["walletId"]);
+    const taskIds = (payout?.inputSchema.properties as Record<string, { description?: string }>).taskIds;
+    expect(taskIds?.description).toMatch(/\bDone\b/);
+    expect(taskIds?.description).toMatch(/omit/i);
+    // An agent must not have to derive payability from column + state itself.
+    const list = MCP_TOOLS.find((t) => t.name === "task_list");
+    expect(list?.description).toMatch(/payable/);
+    expect(list?.inputSchema.properties).toHaveProperty("payable");
+    const upsert = MCP_TOOLS.find((t) => t.name === "task_upsert");
+    expect(upsert?.description).toMatch(/read-only after payment/i);
+    // Board writes never reach the transaction table.
+    expect(upsert?.scope).toBe("tasks:write");
+    expect(upsert?.uiResourceUri).toBeUndefined();
+  });
+
   it("gives every tool a closed input schema", () => {
     // additionalProperties:false makes a mistyped argument fail loudly in ajv
     // instead of being silently ignored.
@@ -100,6 +220,18 @@ describe("MCP tool registry", () => {
       expect(tool.inputSchema.additionalProperties).toBe(false);
       expect(tool.description.length).toBeGreaterThan(20);
     }
+  });
+
+  it("lets the wallet lookup select by signer, policy or address", () => {
+    // Exactly-one-selector is enforced in the run body (JSON Schema can't
+    // express it without oneOf, which the MCP client UIs render poorly), so
+    // the schema must not `require` any single selector.
+    const tool = MCP_TOOLS.find((t) => t.name === "multisig_lookup_wallet");
+    const props = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining(["pubKeyHashes", "scriptHash", "address"]),
+    );
+    expect(tool?.inputSchema.required).toBeUndefined();
   });
 
   it("caps the governance page size", () => {
@@ -169,17 +301,19 @@ describe("bot scope projection", () => {
     expect(mcpScopesForBot(["multisig:sign"] as BotScope[])).toEqual([]);
   });
 
-  it("maps the full bot scope set onto the full MCP set", () => {
+  it("maps the full bot scope set onto the MCP set, minus transaction drafting", () => {
     const all = [
+      "multisig:create",
       "multisig:read",
+      "multisig:sign",
       "governance:read",
       "ballot:write",
     ] as BotScope[];
-    expect(mcpScopesForBot(all)).toEqual([
-      "wallets:read",
-      "governance:read",
-      "ballots:write",
-    ]);
+    const granted = mcpScopesForBot(all);
+    expect(granted).toEqual(["wallets:read", "governance:read", "ballots:write"]);
+    // Transaction drafting is a human, consent-screen scope: a bot with
+    // multisig:sign already has the REST route and needs no chat review.
+    expect(granted).not.toContain("transactions:write");
   });
 });
 

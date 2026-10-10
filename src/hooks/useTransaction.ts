@@ -12,6 +12,7 @@ import {
   submitTxWithScriptRecovery,
 } from "@/utils/txSignUtils";
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
+import { applyMetadataMessage } from "@/lib/tx-draft/metadata";
 import { getProvider } from "@/utils/get-provider";
 
 export default function useTransaction() {
@@ -98,19 +99,23 @@ export default function useTransaction() {
         transactionId: string;
         knownSignedCount: number;
       };
+      /**
+       * Extra keys merged into the stored txJson next to the builder body —
+       * e.g. a `proxyBot` block describing proxy votes whose proposal ids
+       * live only in a Plutus redeemer, so server-side scans (deadline
+       * reminders, email context) can still see what the tx votes on.
+       */
+      txJsonExtras?: Record<string, unknown>;
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
 
       if (data.metadataValue) {
-        let value: string | string[] = data.metadataValue.value;
-
-        if (value.length > 63) {
-          value = value.match(/.{1,63}/g)!;
-        }
-        data.txBuilder.metadataValue(data.metadataValue.label, {
-          msg: value,
-        });
+        applyMetadataMessage(
+          data.txBuilder,
+          data.metadataValue.label,
+          data.metadataValue.value,
+        );
       }
 
       const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
@@ -161,7 +166,11 @@ export default function useTransaction() {
 
       await createTransaction({
         walletId: appWallet.id,
-        txJson: JSON.stringify(data.txBuilder.meshTxBuilderBody),
+        txJson: JSON.stringify(
+          data.txJsonExtras
+            ? { ...data.txBuilder.meshTxBuilderBody, ...data.txJsonExtras }
+            : data.txBuilder.meshTxBuilderBody,
+        ),
         txCbor: signedTx,
         signedAddresses: signedAddresses,
         state: submitTx ? 1 : 0,

@@ -294,6 +294,34 @@ Endpoints:
 - **Response**: Array of matching metadata items
 - **Error Handling**: 400 (validation), 500 (server)
 
+#### `resolveRegistrationScript.ts` - GET `/api/v1/resolveRegistrationScript`
+
+- **Purpose**: Resolve the native script(s) behind a CIP-0146 registration transaction
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Reads the transaction's UTxO addresses and resolves each script-credential address
+  - Returns timelock JSON per script hash (Plutus/unknown scripts are skipped)
+- **Query Parameters**:
+  - `txHash`: Registration transaction hash (64 hex)
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ txHash, candidates: [{ address, scriptHash, stakeCredentialHash, scriptJson }] }`
+- **Error Handling**: 400 (validation), 500 (server)
+
+#### `resolveScript.ts` - GET `/api/v1/resolveScript`
+
+- **Purpose**: Resolve a native script by hash (policy) or multisig wallet address to its signer key hashes — backs "lookup by policy" on the Discover tab and the MCP `multisig_lookup_wallet` tool
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Accepts exactly one of `scriptHash` or `address` (script payment credential)
+  - Returns the timelock JSON and sig key hashes in script order
+  - Unknown / Plutus scripts return 200 with `scriptJson: null` and `sigHashes: []`
+- **Query Parameters**:
+  - `scriptHash`: Native-script hash / policy id (56 hex)
+  - `address`: Bech32 multisig wallet address
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ scriptHash, stakeCredentialHash, scriptJson, sigHashes }`
+- **Error Handling**: 400 (validation), 500 (server)
+
 ### UTxO Management
 
 #### `freeUtxos.ts` - GET `/api/v1/freeUtxos`
@@ -662,3 +690,30 @@ is unchanged in both cases:
 - **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
   same signer-or-owner check every ballot procedure in the tRPC router already applies, so
   the REST path is no more permissive than the app's own UI.
+
+### Task Board
+
+#### `tasks.ts` - GET `/api/v1/tasks`
+
+- **Purpose**: A wallet's project task board with each task's derived payout state (backs the `task_list` MCP tool)
+- **Authentication**: Required (JWT Bearer token). Human signer/owner, or a bot key with any granted wallet access (observer is enough)
+- **Query Parameters**:
+  - `walletId`: Wallet identifier
+  - `address`: Requester address (must match JWT payload)
+  - `status`: Optional column filter (`Backlog`, `InProgress`, `InReview`, `Done`)
+  - `payable`: Optional `true` to return only tasks that can be paid right now
+- **Response**: `{ tasks, count, payableCount }` — recipients in base units; `payout` carries `state`, `payable`, `blocker` and the pending `transactionId`; `payableCount` is wallet-wide before filters
+- **Error Handling**: 400 (validation), 401 (auth), 403 (address mismatch / not a signer / bot not granted), 404 (wallet), 500 (server)
+
+#### `taskUpsert.ts` - POST `/api/v1/taskUpsert`
+
+- **Purpose**: Create a task, or update and/or move an existing one (backs the `task_upsert` MCP tool). Records a task only; creates no transaction
+- **Authentication**: Required (JWT Bearer token). Human wallet JWTs only — bot keys receive 403
+- **Request Body**:
+  - `walletId`: Wallet identifier
+  - `taskId`: Omit to create (then `title` is required)
+  - `title`, `description`, `priority`, `assigneeAddress`, `dueDate` (ISO or `null`)
+  - `status`, `position`: Column and index; on an existing task these move it
+  - `recipients`: Display units (`{ address, ada?, assets?: [{ unit, quantity }] }`), converted to base units with the token's registered decimals; replaces the task's recipient list
+- **Response**: `201 { task, created: true }` or `200 { task, created: false }`
+- **Error Handling**: 400 (validation, `INVALID_SPEC` recipients), 401 (auth), 403 (not a signer / bot key), 404 (wallet or task), 409 (task locked by a pending or paid payout), 413 (body), 500 (server)

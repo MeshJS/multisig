@@ -4,7 +4,13 @@ export {
   resolvedInputKey,
   type ResolvedInputMap,
 } from "./from-pending";
-export { draftToTokenFlow, flowIdToDraftEntity } from "./from-draft";
+export {
+  DRAFT_SOURCE_NODE_ID,
+  draftToTokenFlow,
+  flowIdToDraftEntity,
+  type DraftBuildOverlay,
+} from "./from-draft";
+export { splitTrailingChange } from "./change";
 export { mergeTokenFlows } from "./merge";
 export {
   focusColumnRange,

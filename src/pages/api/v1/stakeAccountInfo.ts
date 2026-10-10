@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
+import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
 import { getProvider } from "@/utils/get-provider";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -28,16 +29,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const provider = getProvider(network);
 
   try {
-    const info = await provider.fetchAccountInfo(stakeAddress.trim());
-    return res.status(200).json({ active: info.active, poolId: info.poolId ?? null });
+    // Never-registered accounts (Blockfrost 404) come back as inactive.
+    const info = await fetchStakeAccountStatus(provider, stakeAddress);
+    return res.status(200).json(info);
   } catch (e) {
-    // Blockfrost returns 404 for accounts that have never been registered — treat as inactive
-    const is404 =
-      (e as { status?: number })?.status === 404 ||
-      (e instanceof Error && e.message.includes("404"));
-    if (is404) {
-      return res.status(200).json({ active: false, poolId: null });
-    }
     console.error("stakeAccountInfo error:", e);
     return res.status(500).json({ error: "Failed to fetch stake account info" });
   }

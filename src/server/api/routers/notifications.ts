@@ -144,6 +144,8 @@ export const notificationRouter = createTRPCRouter({
           emailOptIn: true,
           notifyTransactionSignatures: true,
           notifySignableSignatures: true,
+          notifyThresholdReached: true,
+          notifyBallotDeadlines: true,
           createdAt: null,
           updatedAt: null,
         }
@@ -159,6 +161,8 @@ export const notificationRouter = createTRPCRouter({
         emailOptIn: z.boolean().optional(),
         notifyTransactionSignatures: z.boolean().optional(),
         notifySignableSignatures: z.boolean().optional(),
+        notifyThresholdReached: z.boolean().optional(),
+        notifyBallotDeadlines: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -202,6 +206,12 @@ export const notificationRouter = createTRPCRouter({
         ...(typeof input.notifySignableSignatures === "boolean"
           ? { notifySignableSignatures: input.notifySignableSignatures }
           : {}),
+        ...(typeof input.notifyThresholdReached === "boolean"
+          ? { notifyThresholdReached: input.notifyThresholdReached }
+          : {}),
+        ...(typeof input.notifyBallotDeadlines === "boolean"
+          ? { notifyBallotDeadlines: input.notifyBallotDeadlines }
+          : {}),
       };
 
       const setting = await ctx.db.walletSignerNotificationSetting.upsert({
@@ -222,6 +232,8 @@ export const notificationRouter = createTRPCRouter({
           notifyTransactionSignatures:
             input.notifyTransactionSignatures ?? true,
           notifySignableSignatures: input.notifySignableSignatures ?? true,
+          notifyThresholdReached: input.notifyThresholdReached ?? true,
+          notifyBallotDeadlines: input.notifyBallotDeadlines ?? true,
         },
       });
 

@@ -10,7 +10,13 @@
 
 export type McpToolSummary = {
   name: string;
-  scope: "wallets:read" | "governance:read" | "ballots:write";
+  scope:
+    | "wallets:read"
+    | "governance:read"
+    | "ballots:write"
+    | "documents:read"
+    | "transactions:write"
+    | "tasks:write";
   /** One line, phrased for someone deciding whether to connect. */
   blurb: string;
 };
@@ -34,7 +40,8 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "multisig_list_free_utxos",
     scope: "wallets:read",
-    blurb: "UTxOs not already locked by a pending transaction — what you can actually spend.",
+    blurb:
+      "UTxOs not already locked by a pending transaction — what you can actually spend.",
   },
   {
     name: "multisig_list_proxies",
@@ -49,7 +56,8 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "multisig_lookup_wallet",
     scope: "wallets:read",
-    blurb: "Find on-chain multisig registration metadata by participant key hash.",
+    blurb:
+      "Find on-chain multisig registration metadata by participant key hash, script hash or wallet address.",
   },
   {
     name: "governance_list_active_proposals",
@@ -69,16 +77,67 @@ export const MCP_TOOL_SUMMARIES: McpToolSummary[] = [
   {
     name: "governance_open_proposals",
     scope: "governance:read",
-    blurb: "Active proposals you have not voted on yet — the outstanding decisions.",
+    blurb:
+      "Active proposals you have not voted on yet — the outstanding decisions.",
   },
   {
     name: "ballot_upsert",
     scope: "ballots:write",
-    blurb: "Create or update a ballot draft: a choice per proposal, plus rationale text.",
+    blurb:
+      "Create or update a ballot draft: a choice per proposal, plus rationale text.",
   },
   {
     name: "ballot_publish_rationale",
     scope: "ballots:write",
-    blurb: "Publish a rationale to IPFS and record its anchor, ready for you to vote.",
+    blurb:
+      "Publish a rationale to IPFS and record its anchor, ready for you to vote.",
+  },
+  {
+    name: "document_list",
+    scope: "documents:read",
+    blurb:
+      "Sign-off documents for a wallet, and who still needs to sign each one.",
+  },
+  {
+    name: "document_get",
+    scope: "documents:read",
+    blurb:
+      "One document in full: every version, its hash, and who approved it.",
+  },
+  {
+    name: "transaction_preview",
+    scope: "transactions:write",
+    blurb:
+      "Build an unsigned transaction and show it as a review card in chat. Nothing is saved, signed or sent.",
+  },
+  {
+    name: "transaction_propose",
+    scope: "transactions:write",
+    blurb:
+      "Create the previewed transaction for your signers to review and sign in the app. Still unsigned.",
+  },
+  {
+    name: "multisig_review_pending_transaction",
+    scope: "wallets:read",
+    blurb:
+      "Render any pending transaction as a review card: recipients, amounts, fee, and who has signed.",
+  },
+  {
+    name: "task_list",
+    scope: "wallets:read",
+    blurb:
+      "The project task board: tasks by column, assignees, due dates, recipients and payout state.",
+  },
+  {
+    name: "task_upsert",
+    scope: "tasks:write",
+    blurb:
+      "Create, edit or move a task and set its payment recipients. Records a task only; drafts no transaction.",
+  },
+  {
+    name: "task_prepare_payout",
+    scope: "transactions:write",
+    blurb:
+      "Preview one payout transaction for selected tasks as a review card; confirm it with transaction_propose.",
   },
 ];

@@ -4,6 +4,7 @@ import type {
   TxDraft,
 } from "@/types/tx-draft";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
+import { AUTO_ABSTAIN_DREP } from "./drep";
 import { addCertificate, addOutput, addVote, createDraft } from "./mutations";
 
 /**
@@ -21,6 +22,7 @@ const SUPPORTED_CERT_KINDS: DraftCertificateKind[] = [
   "RegisterStake",
   "DelegateStake",
   "DeregisterStake",
+  "VoteDelegation",
 ];
 
 export type TxJsonCompat = { compatible: boolean; reasons: string[] };
@@ -94,8 +96,8 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
     }
     const certType = cert?.certType;
     if (!SUPPORTED_CERT_KINDS.includes(certType?.type)) {
-      // VoteDelegation, DRep and pool certificates, combined
-      // stake+vote-delegation certs etc. stay blocked.
+      // DRep and pool certificates, combined stake+vote-delegation certs
+      // etc. stay blocked.
       reasons.push(
         "Contains certificate types not yet supported by the builder",
       );
@@ -104,7 +106,10 @@ export function isDraftCompatible(body: unknown): TxJsonCompat {
     if (
       typeof certType?.stakeKeyAddress !== "string" ||
       (certType.type === "DelegateStake" &&
-        typeof certType?.poolId !== "string")
+        typeof certType?.poolId !== "string") ||
+      (certType.type === "VoteDelegation" &&
+        typeof certType?.drep?.dRepId !== "string" &&
+        !("alwaysAbstain" in (certType?.drep ?? {})))
     ) {
       reasons.push("Certificate data is malformed");
       break;
@@ -243,9 +248,18 @@ export function txJsonToDraft(
         poolId = String(certType?.poolId ?? "");
       }
     }
+    const dRepId =
+      certType?.type === "VoteDelegation"
+        ? typeof certType?.drep?.dRepId === "string"
+          ? certType.drep.dRepId
+          : "alwaysAbstain" in (certType?.drep ?? {})
+            ? AUTO_ABSTAIN_DREP
+            : undefined
+        : undefined;
     draft = addCertificate(draft, {
       kind: certType?.type as DraftCertificateKind,
       ...(poolId !== undefined ? { poolId } : {}),
+      ...(dRepId ? { dRepId } : {}),
       ...(typeof certType?.stakeKeyAddress === "string"
         ? { originalStakeAddress: certType.stakeKeyAddress }
         : {}),

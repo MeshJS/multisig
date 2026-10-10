@@ -1,0 +1,50 @@
+name: Ballot Deadline Reminders
+
+# Enqueues 48h/24h ballot-deadline reminder emails (derived from on-chain
+# proposal expiration epochs) and drains the outbox, by calling the
+# authenticated reminder endpoint. Shares NOTIFICATION_DRAIN_SECRET with the
+# outbox drain workflow; until it is set both here and on the deployment, runs
+# are graceful no-ops.
+
+on:
+  schedule:
+    # Hourly; reminder windows are 24h wide so this is ample resolution.
+    - cron: '17 * * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Scan ballots and enqueue deadline reminders
+        env:
+          API_BASE_URL: 'https://multisig.meshjs.dev'
+          DRAIN_SECRET: ${{ secrets.NOTIFICATION_DRAIN_SECRET }}
+        run: |
+          if [ -z "$DRAIN_SECRET" ]; then
+            echo "NOTIFICATION_DRAIN_SECRET repo secret is not set; skipping."
+            exit 0
+          fi
+
+          status=$(curl -s -o response.json -w "%{http_code}" -X POST \
+            "$API_BASE_URL/api/notifications/ballot-deadlines" \
+            -H "Authorization: Bearer $DRAIN_SECRET")
+
+          echo "HTTP $status"
+          cat response.json || true
+          echo
+
+          case "$status" in
+            200)
+              ;;
+            503)
+              echo "Endpoint reports NOTIFICATION_DRAIN_SECRET is not configured on the deployment; skipping."
+              ;;
+            *)
+              echo "Ballot deadline reminder request failed."
+              exit 1
+              ;;
+          esac

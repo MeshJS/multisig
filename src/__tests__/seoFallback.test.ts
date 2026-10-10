@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOMServer from "react-dom/server";
 
 import SeoFallback from "@/components/ui/seo-fallback";
+import { publicRoutes } from "@/data/public-routes";
 import { buildJsonLd, DEFAULT_DESCRIPTION, INDEXABLE_ROUTES } from "@/lib/seo";
 import { buildLlmsTxt } from "@/pages/llms.txt";
 
@@ -87,5 +88,27 @@ describe("buildJsonLd — structured data for the initial HTML", () => {
   it("adds SoftwareApplication only on the home page", () => {
     expect(types("/")).toContain("SoftwareApplication");
     expect(types("/features")).not.toContain("SoftwareApplication");
+  });
+});
+
+
+/**
+ * A route can be in the sitemap, carry its own metadata and still show the
+ * visitor something else entirely: the layout swaps any route that is not in
+ * `publicRoutes` for the marketing homepage whenever no wallet is connected.
+ * The page then advertises itself correctly in <head> and renders the wrong
+ * body — which is exactly how /verify shipped, and is invisible to anyone
+ * testing while connected.
+ */
+describe("indexable routes render themselves without a wallet", () => {
+  // Written by getServerSideProps as plain text; it never mounts the layout.
+  const NOT_RENDERED_BY_THE_LAYOUT = ["/llms.txt"];
+
+  it.each(
+    INDEXABLE_ROUTES.map((route) => route.path).filter(
+      (path) => !NOT_RENDERED_BY_THE_LAYOUT.includes(path),
+    ),
+  )("%s is in publicRoutes", (path) => {
+    expect([path, publicRoutes.includes(path)]).toEqual([path, true]);
   });
 });

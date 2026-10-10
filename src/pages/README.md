@@ -228,6 +228,14 @@ A comprehensive Next.js pages directory containing all application routes, API e
   - Metadata filtering and validation
   - CORS support for cross-origin requests
 
+#### `api/v1/resolveRegistrationScript.ts`
+- **Purpose**: Resolve the native script(s) of a CIP-0146 registration transaction
+- **Features**: Script-credential address discovery from tx UTxOs, timelock JSON per script hash
+
+#### `api/v1/resolveScript.ts`
+- **Purpose**: Resolve a native script by hash (policy) or multisig address to its signer key hashes
+- **Features**: Backs lookup-by-policy on the Discover tab and the MCP wallet lookup tool
+
 #### `api/v1/addTransaction.ts`
 - **Purpose**: Add new transactions to the system
 - **Features**: Transaction creation and validation

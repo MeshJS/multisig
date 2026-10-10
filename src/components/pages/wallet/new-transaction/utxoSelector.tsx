@@ -34,6 +34,14 @@ interface UTxOSelectorProps {
   onSelectionChange: (selectedUtxos: UTxO[], manualSelected: boolean) => void;
   recipientAmounts?: string[];
   recipientAssets?: string[];
+  /**
+   * Page this address instead of the multisig's (builder sources other than
+   * the multisig). Pending-transaction blocking only applies to the multisig
+   * and is skipped.
+   */
+  sourceAddress?: string;
+  /** Wording for the toggle, e.g. "Connected wallet"; defaults to "Multisig". */
+  sourceName?: string;
 }
 
 export default function UTxOSelector({
@@ -42,6 +50,8 @@ export default function UTxOSelector({
   onSelectionChange,
   recipientAmounts = [],
   recipientAssets = [],
+  sourceAddress,
+  sourceName = "Multisig",
 }: UTxOSelectorProps) {
   const [loaded, setLoaded] = useState<boolean>(false);
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
@@ -62,7 +72,7 @@ export default function UTxOSelector({
   const [isSummaryExpanded, setIsSummaryExpanded] = useState<boolean>(false);
   
   const { transactions } = usePendingTransactions({
-    walletId: appWallet.id,
+    walletId: sourceAddress ? undefined : appWallet.id,
   });
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
@@ -70,7 +80,7 @@ export default function UTxOSelector({
 
   const fetchUtxos = useCallback(async (page: number = currentPage, count: number = pageSize) => {
     if (!appWallet) return;
-    const address = appWallet.address;
+    const address = sourceAddress ?? appWallet.address;
     const blockchainProvider = getProvider(network);
 
     try {
@@ -173,7 +183,7 @@ export default function UTxOSelector({
     } finally {
       setLoading(false);
     }
-  }, [appWallet, network, currentPage, pageSize]);
+  }, [appWallet, network, currentPage, pageSize, sourceAddress]);
 
   useEffect(() => {
     if (!loaded) {
@@ -181,13 +191,13 @@ export default function UTxOSelector({
     }
   }, [fetchUtxos, loaded]);
 
-  // Reset pagination when wallet changes
+  // Reset pagination when the wallet or source address changes
   useEffect(() => {
     setCurrentPage(1);
     setTotalPages(1);
     setTotalUtxos(0);
     setLoaded(false);
-  }, [appWallet?.id]);
+  }, [appWallet?.id, sourceAddress]);
 
   // Memoize blocked UTxOs computation
   const computedBlockedUtxos = useMemo(() => {
@@ -410,7 +420,9 @@ export default function UTxOSelector({
           pressed={manualSelected}
           className="shrink-0 self-start"
         >
-          {manualSelected ? "Hide Multisig UTxOs" : "Select Multisig UTxOs"}
+          {manualSelected
+            ? `Hide ${sourceName} UTxOs`
+            : `Select ${sourceName} UTxOs`}
         </Toggle>
         
         {manualSelected && (

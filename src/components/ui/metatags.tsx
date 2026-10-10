@@ -9,6 +9,7 @@ import {
   OG_IMAGE_WIDTH,
   OG_IMAGE_HEIGHT,
   absoluteUrl,
+  ogImageUrl,
   buildJsonLd,
 } from "@/lib/seo";
 
@@ -22,6 +23,8 @@ export default function Metatags({
   description = DEFAULT_DESCRIPTION,
   keywords = DEFAULT_KEYWORDS,
   image = OG_IMAGE_PATH,
+  /** Alt text for the social card. Falls back to the page title. */
+  imageAlt,
   /** Site-relative path of the current page, used for canonical + og:url. */
   path = "/",
   /** Open Graph object type. "website" for marketing pages, "article" for content. */
@@ -34,6 +37,7 @@ export default function Metatags({
   description?: string;
   keywords?: string;
   image?: string;
+  imageAlt?: string;
   path?: string;
   type?: string;
   noindex?: boolean;
@@ -41,7 +45,8 @@ export default function Metatags({
   extraJsonLd?: Record<string, any>[];
 }) {
   const canonical = absoluteUrl(path);
-  const imageUrl = absoluteUrl(image);
+  const imageUrl = ogImageUrl(image);
+  const alt = imageAlt ?? title;
   const jsonLd = JSON.stringify([
     ...buildJsonLd(path),
     ...(extraJsonLd ?? []),
@@ -78,7 +83,7 @@ export default function Metatags({
         <meta property="og:image:width" content={String(OG_IMAGE_WIDTH)} />
         <meta property="og:image:height" content={String(OG_IMAGE_HEIGHT)} />
         <meta property="og:image:type" content="image/png" />
-        <meta property="og:image:alt" content={title} />
+        <meta property="og:image:alt" content={alt} />
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
@@ -87,7 +92,7 @@ export default function Metatags({
         <meta name="twitter:title" content={title} />
         <meta name="twitter:description" content={description} />
         <meta name="twitter:image" content={imageUrl} />
-        <meta name="twitter:image:alt" content={title} />
+        <meta name="twitter:image:alt" content={alt} />
 
         {/* Icons + manifest */}
         <link

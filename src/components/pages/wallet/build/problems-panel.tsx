@@ -43,7 +43,7 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
   const open = pinned || flash;
 
   return (
-    <div className="absolute bottom-3 left-3 z-10">
+    <div className="absolute bottom-3 left-3 right-3 z-10">
       <button
         type="button"
         data-testid="tx-builder-problems-toggle"
@@ -72,7 +72,7 @@ export default function ProblemsPanel({ issues }: { issues: DraftIssue[] }) {
       <div
         data-testid="tx-builder-problems"
         className={cn(
-          "absolute bottom-0 left-0 w-80 rounded-md transition-opacity duration-500",
+          "absolute bottom-0 left-0 w-80 max-w-full rounded-md transition-opacity duration-500",
           GLASS_PANEL_CLASS,
           !open && "pointer-events-none opacity-0",
         )}

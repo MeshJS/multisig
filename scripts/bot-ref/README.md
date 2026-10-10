@@ -178,6 +178,19 @@ cd scripts/bot-ref && npx tsx create-wallet-us.ts
 
 Uses the owner’s address from `botMe` and the bot’s address from config. **The bot must have its own wallet and address** (not the same as the owner). Set `paymentAddress` in `bot-config.json` to the bot’s Cardano address, complete register -> claim -> pickup, then run `auth` and this script.
 
+### 12. Task board (read-only for bots)
+
+```bash
+curl -sS -H "Authorization: Bearer $BOT_TOKEN" \
+  "http://localhost:3000/api/v1/tasks?walletId=<uuid>&address=<paymentAddress>&payable=true"
+```
+
+Returns `{ tasks, count, payableCount }`: every task with its column, recipients (base
+units) and derived `payout` state (`payable`, `blocker`, pending `transactionId`).
+Optional `status=Backlog|InProgress|InReview|Done` and `payable=true` filters. Any
+granted wallet access is enough (observer included). Writes — `POST /api/v1/taskUpsert`
+— are for human wallet JWTs only; bot keys get 403.
+
 ## Cursor agent testing
 
 1. Self-register the bot (`POST /api/v1/botRegister`) and capture `pendingBotId` + `claimCode`.

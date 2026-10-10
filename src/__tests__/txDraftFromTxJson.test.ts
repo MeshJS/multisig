@@ -133,12 +133,13 @@ describe("isDraftCompatible", () => {
       },
     ],
     [
-      "unsupported certificate types (VoteDelegation)",
+      "unsupported certificate types (StakeAndVoteDelegation)",
       {
         certificates: [
           stakeCert({
-            type: "VoteDelegation",
+            type: "StakeAndVoteDelegation",
             stakeKeyAddress: STAKE_ADDRESS,
+            poolKeyHash: "aa".repeat(28),
             drep: { dRepId: "drep1abc" },
           }),
         ],
@@ -319,7 +320,7 @@ describe("txJsonToDraft", () => {
     }).draft;
 
     const txBuilder = applyDraftToTxBuilder(new MeshTxBuilder({}), original, {
-      scriptCbor: "8201828200581c00",
+      inputs: { kind: "script", scriptCbor: "8201828200581c00" },
       walletAddress: WALLET_ADDRESS,
       availableUtxos: [
         {
@@ -481,6 +482,33 @@ describe("staking certificate transactions", () => {
     expect(isDraftCompatible(deregister).compatible).toBe(true);
   });
 
+  test("accepts VoteDelegation including Always Abstain", () => {
+    const drep = certBody([
+      stakeCert({
+        type: "VoteDelegation",
+        stakeKeyAddress: STAKE_ADDRESS,
+        drep: { dRepId: "drep1abc" },
+      }),
+    ]);
+    expect(isDraftCompatible(drep).compatible).toBe(true);
+
+    const abstain = certBody([
+      stakeCert({
+        type: "VoteDelegation",
+        stakeKeyAddress: STAKE_ADDRESS,
+        drep: { alwaysAbstain: null },
+      }),
+    ]);
+    expect(isDraftCompatible(abstain).compatible).toBe(true);
+
+    const { draft } = txJsonToDraft(abstain, { walletAddress: WALLET_ADDRESS });
+    expect(draft.certificates[0]).toMatchObject({
+      kind: "VoteDelegation",
+      dRepId: "Always Abstain",
+      originalStakeAddress: STAKE_ADDRESS,
+    });
+  });
+
   test("cert-only body does not trip the no-outputs gate", () => {
     const body = certBody([delegateCert()], { outputs: [] });
     expect(isDraftCompatible(body).compatible).toBe(true);
@@ -553,7 +581,7 @@ describe("staking certificate transactions", () => {
     }).draft;
 
     const txBuilder = applyDraftToTxBuilder(new MeshTxBuilder({}), original, {
-      scriptCbor: "8201828200581c00",
+      inputs: { kind: "script", scriptCbor: "8201828200581c00" },
       walletAddress: WALLET_ADDRESS,
       availableUtxos: [
         {

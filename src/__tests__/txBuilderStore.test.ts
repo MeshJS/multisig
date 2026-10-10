@@ -362,6 +362,28 @@ describe("tx-builder store creating stake actions and votes", () => {
     expect(state.touched[outputId]).toBe(true);
   });
 
+  it("register and a DRep id stay separate certificates", () => {
+    useTxBuilderStore.getState().addStakeAction({ type: "register" });
+    useTxBuilderStore.getState().addStakeAction({
+      type: "voteDelegation",
+      dRepId: "Always Abstain",
+    });
+    expect(
+      useTxBuilderStore.getState().draft.certificates.map((c) => ({
+        kind: c.kind,
+        dRepId: c.dRepId,
+        pairId: c.pairId,
+      })),
+    ).toEqual([
+      { kind: "RegisterStake", dRepId: undefined, pairId: undefined },
+      {
+        kind: "VoteDelegation",
+        dRepId: "Always Abstain",
+        pairId: undefined,
+      },
+    ]);
+  });
+
   it("removeCertificate drops a user-added pair atomically", () => {
     useTxBuilderStore.getState().addStakeAction({
       type: "registerAndDelegate",
