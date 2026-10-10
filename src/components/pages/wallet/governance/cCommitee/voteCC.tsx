@@ -103,7 +103,7 @@ export default function VoteCC({
 
     setLoading(true);
     try {
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const paymentScript = appWallet.scriptCbor;
       if (!paymentScript) return;
 
@@ -145,7 +145,7 @@ export default function VoteCC({
       });
       // send discord message
       await sendDiscordMessage(
-        discordIds,
+        discordIds as [],
         `**NEW MULTISIG TRANSACTION:** A new CC Vote was created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
       );
       router.push(`/wallets/${appWallet.id}/transactions`);

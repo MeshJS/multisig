@@ -169,7 +169,7 @@ export const useProxyStore = create<ProxyState>()(
           get().setDrepLoading(proxyId, true);
           get().setDrepError(proxyId, null);
           
-          const txBuilder = getTxBuilder(parseInt(network));
+          const txBuilder = await getTxBuilder(parseInt(network));
           const proxyContract = new MeshProxyContract(
             {
               mesh: txBuilder,
@@ -215,7 +215,7 @@ export const useProxyStore = create<ProxyState>()(
           get().setDrepLoading(proxyId, true);
           get().setDrepError(proxyId, null);
           
-          const txBuilder = getTxBuilder(parseInt(network));
+          const txBuilder = await getTxBuilder(parseInt(network));
           const proxyContract = new MeshProxyContract(
             {
               mesh: txBuilder,
@@ -303,7 +303,7 @@ export const useProxyStore = create<ProxyState>()(
           get().setError(walletId, null);
           
           // Create a single txBuilder instance to reuse across all proxies
-          const txBuilder = getTxBuilder(parseInt(network));
+          const txBuilder = await getTxBuilder(parseInt(network));
           
           // Create all fetch promises in parallel
           const fetchPromises = proxies.map(async (proxy) => {

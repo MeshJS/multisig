@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useAppWallet from "@/hooks/useAppWallet";
 import { keepRelevant, type Quantity, type Unit } from "@meshsdk/core";
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import useActiveWallet from "@/hooks/useActiveWallet";
 import { Loader, PlusCircle, Send, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { getBalanceFromUtxos } from "@/utils/getBalance";
 
 export default function PageNewTransaction() {
-  const { connected, wallet } = useWallet();
+  const { connected, wallet } = useMeshWallet();
   const { isWalletReady } = useActiveWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const { appWallet } = useAppWallet();
@@ -152,6 +152,7 @@ export default function PageNewTransaction() {
     if (!isWalletReady) throw new Error("Wallet not connected");
     if (!appWallet) throw new Error("Wallet not found");
     if (!userAddress) throw new Error("User address not found");
+    if (!wallet) throw new Error("No connected wallet");
     const address = appWallet.address;
     setLoading(true);
     setError(undefined);
@@ -199,7 +200,7 @@ export default function PageNewTransaction() {
         return;
       }
 
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       for (const utxo of selectedUtxos) {
         txBuilder.txIn(

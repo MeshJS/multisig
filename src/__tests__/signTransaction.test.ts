@@ -81,10 +81,18 @@ const dbTransactionUpdateManyMock = jest.fn<
   }) => Promise<{ count: number }>
 >();
 
+// A submitted transaction flips any task-payout links to Paid
+// (src/lib/task-payout/sync.ts); the handler must reach that table without
+// logging, or the "no console.error" assertions below fail.
+const dbTaskPayoutUpdateManyMock = jest.fn<(args: unknown) => Promise<{ count: number }>>();
+
 const dbMock = {
   transaction: {
     findUnique: dbTransactionFindUniqueMock,
     updateMany: dbTransactionUpdateManyMock,
+  },
+  taskPayout: {
+    updateMany: dbTaskPayoutUpdateManyMock,
   },
 };
 
@@ -156,6 +164,9 @@ jest.unstable_mockModule(
   () => ({
     __esModule: true,
     resolvePaymentKeyHash: resolvePaymentKeyHashMock,
+    // The handler also imports resolveStakeKeyHash; ESM static linking requires
+    // the mock to provide it even if the tested paths don't call it.
+    resolveStakeKeyHash: jest.fn(),
   }),
 );
 
@@ -411,6 +422,8 @@ beforeEach(() => {
   walletGetWalletMock.mockReset();
   dbTransactionFindUniqueMock.mockReset();
   dbTransactionUpdateManyMock.mockReset();
+  dbTaskPayoutUpdateManyMock.mockReset();
+  dbTaskPayoutUpdateManyMock.mockResolvedValue({ count: 0 });
   getProviderMock.mockReset();
   addressToNetworkMock.mockReset();
   shouldSubmitMultisigTxMock.mockReset();
@@ -443,6 +456,8 @@ beforeEach(() => {
   resolvePaymentKeyHashMock.mockReturnValue(witnessKeyHashHex);
   addressToNetworkMock.mockReturnValue(0);
   applyRateLimitMock.mockReturnValue(true);
+  applyBotRateLimitMock.mockReturnValue(true);
+  isBotJwtMock.mockReturnValue(false);
   enforceBodySizeMock.mockReturnValue(true);
   getClientIPMock.mockReturnValue('127.0.0.1');
   shouldSubmitMultisigTxMock.mockReturnValue(true);
@@ -466,6 +481,9 @@ beforeEach(() => {
     const existingWitnessCount = mergedWitnesses.len();
     for (let i = 0; i < existingWitnessCount; i++) {
       const existingWitness = mergedWitnesses.get(i);
+      if (!existingWitness) {
+        continue;
+      }
       const existingKeyHash = Buffer.from(
         existingWitness!.vkey().public_key().hash().to_bytes(),
       ).toString('hex').toLowerCase();
@@ -620,6 +638,98 @@ describe('signTransaction API route', () => {
     });
   });
 
+  it('records witness and returns 502 when signed transaction has PPView hash mismatch', async () => {
+    const address = 'addr_test1qpl3w9v4l5qhxk778exampleaddress';
+    const walletId = 'wallet-id-ppview';
+    const transactionId = 'transaction-id-ppview';
+    const signatureHex = 'aa'.repeat(64);
+    const keyHex = 'bb'.repeat(64);
+    const submissionError =
+      'Transaction rejected: scriptIntegrityHash mismatch (PPViewHashesDontMatch). This transaction cannot be repaired';
+
+    verifyJwtMock.mockReturnValue({ address });
+
+    walletGetWalletMock.mockResolvedValue({
+      id: walletId,
+      type: 'atLeast',
+      numRequiredSigners: 1,
+      signersAddresses: [address],
+    });
+
+    const transactionRecord = {
+      id: transactionId,
+      walletId,
+      state: 0,
+      signedAddresses: [] as string[],
+      rejectedAddresses: [] as string[],
+      txCbor: 'stored-tx-hex',
+      txHash: null as string | null,
+      txJson: '{}',
+    };
+
+    const updatedTransaction = {
+      ...transactionRecord,
+      signedAddresses: [address],
+      txCbor: 'updated-tx-hex',
+      state: 0,
+      txJson: JSON.stringify({
+        multisig: {
+          state: 0,
+          submitted: false,
+          submissionError,
+        },
+      }),
+    };
+
+    dbTransactionFindUniqueMock
+      .mockResolvedValueOnce(transactionRecord)
+      .mockResolvedValueOnce(updatedTransaction);
+
+    dbTransactionUpdateManyMock.mockResolvedValue({ count: 1 });
+    getProviderMock.mockReturnValue({ submitTx: jest.fn() });
+    submitTxWithScriptRecoveryMock.mockRejectedValueOnce(new Error(submissionError));
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        walletId,
+        transactionId,
+        address,
+        signature: signatureHex,
+        key: keyHex,
+      },
+    } as unknown as NextApiRequest;
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(submitTxWithScriptRecoveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHex: 'updated-tx-hex',
+      }),
+    );
+    expect(dbTransactionUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          signedAddresses: { set: [address] },
+          txCbor: 'updated-tx-hex',
+          state: 0,
+          txJson: expect.stringContaining('PPViewHashesDontMatch'),
+        }),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Transaction witness recorded, but submission to network failed',
+      transaction: updatedTransaction,
+      submitted: false,
+      txHash: undefined,
+      submissionError,
+    });
+  });
+
   it('returns 403 when JWT address mismatches request address', async () => {
     verifyJwtMock.mockReturnValue({ address: 'addr_test1qpotheraddress' });
 
@@ -725,7 +835,7 @@ describe('signTransaction API route', () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing token' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)' });
     expect(verifyJwtMock).not.toHaveBeenCalled();
     expect(createCallerMock).not.toHaveBeenCalled();
   });

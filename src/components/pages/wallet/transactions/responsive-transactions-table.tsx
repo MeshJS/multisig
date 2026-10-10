@@ -17,6 +17,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
 import { useMemo } from "react";
+import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
 
 interface ResponsiveTransactionsTableProps {
   appWallet: Wallet;
@@ -220,29 +221,32 @@ function TransactionCard({
     <div className="rounded-lg border p-4 space-y-3 bg-card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <LinkCardanoscan
-            url={`transaction/${transaction.hash}`}
-            className="inline-flex items-center gap-1 text-sm font-medium hover:underline break-all"
-          >
-            <span className="break-all">
-              {transaction.hash.substring(0, 8)}...
-              {transaction.hash.slice(-8)}
-            </span>
-            <ArrowUpRight className="h-3 w-3 flex-shrink-0" />
-          </LinkCardanoscan>
-          <div className="text-xs text-muted-foreground mt-1">
+          {/* Lead with the human label (fall back to direction). */}
+          <div className="text-sm font-medium text-foreground break-words">
+            {dbTransaction?.description ??
+              (transaction.inputs.some(
+                (i: { address: string }) => i.address === appWallet.address,
+              )
+                ? "Sent"
+                : "Received")}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
             {dateToFormatted(new Date(transaction.tx.block_time * 1000))}
           </div>
+          {/* Hash demoted to a quiet mono link. */}
+          <LinkCardanoscan
+            url={`transaction/${transaction.hash}`}
+            className="mt-1 inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+          >
+            <span>{getFirstAndLast(transaction.hash, 8, 8)}</span>
+            <ArrowUpRight className="h-3 w-3 flex-shrink-0" />
+          </LinkCardanoscan>
         </div>
         <div className="flex-shrink-0">
         <RowAction transaction={transaction} appWallet={appWallet} />
         </div>
       </div>
-      
-      {dbTransaction && (
-        <div className="text-sm break-words">{dbTransaction.description}</div>
-      )}
-      
+
       <div className="space-y-2">{outputList}</div>
 
       {certificatesList && certificatesList.length > 0 && (
@@ -269,6 +273,16 @@ function TransactionCard({
           </div>
         </div>
       )}
+
+      <TokenFlowSection
+        source={{
+          type: "onchain",
+          txHash: transaction.hash,
+          description: dbTransaction?.description,
+        }}
+        appWallet={appWallet}
+        testIdSuffix="-mobile"
+      />
     </div>
   );
 }
@@ -289,7 +303,7 @@ function RowAction({
     );
 
     if (allTxInputsFromSameAddress) {
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
 
       const _amount: { [unit: string]: number } = {};
 

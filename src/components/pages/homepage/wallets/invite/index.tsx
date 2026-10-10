@@ -19,8 +19,10 @@ import GlassMorphismPageWrapper from "@/components/pages/homepage/wallets/new-wa
 import WalletInfoCard from "./WalletInfoCard";
 import JoinAsSignerCard from "./JoinAsSignerCard";
 import ManageSignerCard from "./ManageSignerCard";
+import ClaimSlotCard from "./ClaimSlotCard";
 import { serializeRewardAddress, deserializeAddress } from "@meshsdk/core";
 import { paymentKeyHash, stakeKeyHash } from "@/utils/multisigSDK";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 
@@ -134,6 +136,14 @@ export default function PageNewWalletInvite() {
   const isNativeKeyHash = (value: string | undefined): boolean =>
     !!value && /^[0-9a-fA-F]{56}$/.test(value);
 
+  // Fixed-script drafts (e.g. CIP-0146 discovery invites): the signer
+  // set is fixed by an on-chain script. Joining is claim-only — no free
+  // append, no removal, and no owner-only normalization writes (the
+  // owner is the importer, so joiners can't call updateNewWalletSigners).
+  const isFixedScriptDraft = !!(
+    newWallet?.rawImportBodies as { lockedSigners?: boolean } | null
+  )?.lockedSigners;
+
   // Compare script CBORs if present
   const hasBothCbors = !!((newWallet as any)?.paymentCbor && (newWallet as any)?.stakeCbor);
   const paymentEqualsStake = !!(
@@ -143,8 +153,26 @@ export default function PageNewWalletInvite() {
     hasBothCbors && (newWallet as any)?.paymentCbor !== (newWallet as any)?.stakeCbor
   );
 
-  const userPaymentHash = userAddress ? paymentKeyHash(userAddress) : "";
-  const userStakeHash = user?.stakeAddress ? stakeKeyHash(user.stakeAddress) : "";
+  // Key-hash derivation must never throw during render: userAddress can be
+  // a CIP-30 hex address and the user record's stakeAddress can hold a
+  // malformed value — either would crash the whole page into the error
+  // boundary. Fall back to "" (treated as "no match") on any parse failure.
+  const userPaymentHash = useMemo(() => {
+    if (!userAddress) return "";
+    try {
+      return paymentKeyHash(normalizeAddressToBech32(userAddress));
+    } catch {
+      return "";
+    }
+  }, [userAddress]);
+  const userStakeHash = useMemo(() => {
+    if (!user?.stakeAddress) return "";
+    try {
+      return stakeKeyHash(user.stakeAddress);
+    } catch {
+      return "";
+    }
+  }, [user?.stakeAddress]);
 
   // Fallback payment key hashes derived from user's stake address payment addresses
   const [stakePaymentHashes, setStakePaymentHashes] = useState<string[]>([]);
@@ -156,6 +184,7 @@ export default function PageNewWalletInvite() {
   useEffect(() => {
     if (!user?.stakeAddress) return;
     if (!newWallet) return;
+    if (isFixedScriptDraft) return; // claim mutation handles slot writes
     if (!newWallet.signersAddresses?.some(isNativeKeyHash)) return;
     const userHashMatches = !!(
       userPaymentHash &&
@@ -260,7 +289,7 @@ export default function PageNewWalletInvite() {
       .catch((err: any) => {
         console.error("[invite] failed fetching addresses by stake address", err);
       });
-  }, [user?.stakeAddress, newWallet, userPaymentHash, blockchainProvider]);
+  }, [user?.stakeAddress, newWallet, userPaymentHash, blockchainProvider, isFixedScriptDraft]);
 
   // Combined check: does any of the user's payment hashes (own or derived) match signer key-hash entries?
   const paymentHashMatchedInSigners = useMemo(() => {
@@ -351,6 +380,7 @@ export default function PageNewWalletInvite() {
   // Normalize any key-hash placeholders to actual addresses when we can identify the user
   useEffect(() => {
     if (!newWallet) return;
+    if (isFixedScriptDraft) return; // claim mutation handles slot writes
     if (normalizationTriggered.current) return;
     if (!userAddress && !user?.stakeAddress) return;
 
@@ -422,7 +452,7 @@ export default function PageNewWalletInvite() {
         },
       },
     );
-  }, [newWallet, userAddress, user?.stakeAddress, userPaymentHash, userStakeHash, updateNewWalletSigners, utils, newWalletId]);
+  }, [newWallet, userAddress, user?.stakeAddress, userPaymentHash, userStakeHash, updateNewWalletSigners, utils, newWalletId, isFixedScriptDraft]);
 
   // Set initial signer name when wallet data loads
   useEffect(() => {
@@ -490,6 +520,71 @@ export default function PageNewWalletInvite() {
     updateNewWalletSignersDescriptionsMutation.mutate;
   const isUpdatingName =
     updateNewWalletSignersDescriptionsMutation.status === "pending";
+
+  // Whether the connected wallet's own payment key hash matches an
+  // unclaimed placeholder slot (fixed-script drafts only; the widened
+  // stake-derived hashes are intentionally excluded — the server can only
+  // verify the session address's own hash).
+  const userMatchesPlaceholderSlot = !!(
+    userPaymentHash &&
+    newWallet?.signersAddresses?.some(
+      (addr) =>
+        isNativeKeyHash(addr) &&
+        addr.toLowerCase() === userPaymentHash.toLowerCase(),
+    )
+  );
+
+  const claimSlotMutation = api.wallet.claimNewWalletSignerSlot.useMutation({
+    onSuccess: (updated) => {
+      setSignerDescription("");
+      // Confirm the connected wallet's address actually landed in the
+      // signer list — an idempotent server response (e.g. a different
+      // session address already occupied a slot) must not read as success.
+      const claimed = !!(
+        userAddress && updated?.signersAddresses?.includes(userAddress)
+      );
+      if (claimed) {
+        toast({
+          title: "Slot claimed",
+          description:
+            "Your address is now linked to this wallet — it will appear in your account once the wallet is created.",
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Slot not claimed",
+          description:
+            "Your session doesn't cover this wallet address. Log out, reconnect this wallet and authorize it, then claim again.",
+          variant: "destructive",
+          duration: 8000,
+        });
+      }
+      void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
+    },
+    onError: (error) => {
+      const isConflict = error.data?.code === "CONFLICT";
+      toast({
+        title: isConflict ? "Signer list changed" : "Couldn't claim slot",
+        description: isConflict
+          ? "Someone else updated this invite — refresh and try again."
+          : error.message,
+        variant: "destructive",
+        duration: 5000,
+      });
+      void utils.wallet.getNewWallet.invalidate({ walletId: newWalletId! });
+    },
+  });
+
+  function claimSlot() {
+    if (!newWalletId) return;
+    claimSlotMutation.mutate({
+      walletId: newWalletId,
+      description: signersDescription || undefined,
+      // Bind the claim to the connected wallet — the session may hold
+      // several authorized addresses and default to a different one.
+      address: userAddress || undefined,
+    });
+  }
 
   async function addSigner() {
     if (newWallet === undefined || newWallet === null)
@@ -665,8 +760,10 @@ export default function PageNewWalletInvite() {
                   />
                 )}
 
-                {/* Only Signers (not owner) get Remove button */}
-                {isAlreadySigner && !isOwner && (
+                {/* Only Signers (not owner) get Remove button — except on
+                    fixed-script drafts, where the signer set is fixed by
+                    the on-chain script. */}
+                {isAlreadySigner && !isOwner && !isFixedScriptDraft && (
                   <div className="mt-6 flex justify-end sm:mt-8">
                     <Button
                       onClick={handleRemoveClick}
@@ -680,8 +777,37 @@ export default function PageNewWalletInvite() {
                   </div>
                 )}
 
+                {/* Not a signer yet — fixed-script drafts are claim-only */}
+                {!isOwner && !isAlreadySigner && isFixedScriptDraft && (
+                  userMatchesPlaceholderSlot ? (
+                    <ClaimSlotCard
+                      userAddress={userAddress || ""}
+                      signerName={signersDescription}
+                      setSignerName={setSignerDescription}
+                      onClaim={claimSlot}
+                      loading={claimSlotMutation.status === "pending"}
+                    />
+                  ) : (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Signer set is fixed</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground">
+                          This wallet's signers are fixed by its on-chain
+                          script, and your connected wallet's key is not one
+                          of the registered signers. If you believe you are a
+                          signer, connect the wallet you used for this
+                          multisig, or ask the person who created this invite
+                          to add your address for you.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )
+                )}
+
                 {/* Not a signer yet - Show Join card */}
-                {!isOwner && !isAlreadySigner && (
+                {!isOwner && !isAlreadySigner && !isFixedScriptDraft && (
                   <>
                     <JoinAsSignerCard
                       userAddress={userAddress || ""}

@@ -4,7 +4,6 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 //remove all wallet input utxos found in pending txs from the whole pool of txs.
 import type { Wallet as DbWallet } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { buildMultisigWallet } from "@/utils/common";
 import { getProvider } from "@/utils/get-provider";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import type { UTxO } from "@meshsdk/core";
@@ -15,6 +14,8 @@ import { DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";
+import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
+import { isProviderNotFoundError } from "@/lib/server/providerErrors";
 
 export default async function handler(
   req: NextApiRequest,
@@ -39,7 +40,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -84,7 +85,10 @@ export default async function handler(
     if (isBotJwt(payload)) {
       const access = await getBotWalletAccess(db, walletId, payload.botId);
       if (!access.allowed) {
-        return res.status(403).json({ error: "Not authorized for this wallet" });
+        // Convention: 404 = unknown wallet, 403 = known but not permitted.
+        return access.reason === "wallet_not_found"
+          ? res.status(404).json({ error: "Wallet not found" })
+          : res.status(403).json({ error: "Not authorized for this wallet" });
       }
       pendingTxsResult = await db.transaction.findMany({
         where: { walletId, state: 0 },
@@ -107,25 +111,60 @@ export default async function handler(
     if (!walletFetch) {
       return res.status(404).json({ error: "Wallet not found" });
     }
-    const mWallet = buildMultisigWallet(walletFetch as DbWalletWithLegacy);
-    if (!mWallet) {
-      return res.status(500).json({ error: "Wallet could not be constructed" });
+    let addr: string;
+    try {
+      addr = resolveWalletScriptAddress(
+        walletFetch as DbWalletWithLegacy,
+        address,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      return res.status(500).json({
+        error: `Wallet script address resolution failed: ${message}`,
+      });
     }
-    const addr = mWallet.getScript().address;
     const network = addressToNetwork(addr);
 
     const blockchainProvider = getProvider(network);
+    const fresh = req.query.fresh === "true";
 
-    // Use cached UTxO fetch to reduce Blockfrost API calls
-    const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
-    const utxos: UTxO[] = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+    let utxos: UTxO[];
+    try {
+      if (fresh) {
+        utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+      } else {
+        const { cachedFetchAddressUTxOs } = await import("@/utils/blockchain-cache");
+        try {
+          utxos = await cachedFetchAddressUTxOs(blockchainProvider, addr, network);
+        } catch (cacheError) {
+          if (isProviderNotFoundError(cacheError)) {
+            utxos = [];
+          } else {
+            console.warn("cached freeUtxos fetch failed; retrying without cache", {
+              message: (cacheError as Error)?.message,
+            });
+            utxos = await blockchainProvider.fetchAddressUTxOs(addr);
+          }
+        }
+      }
+    } catch (providerError) {
+      if (isProviderNotFoundError(providerError)) {
+        utxos = [];
+      } else {
+        throw providerError;
+      }
+    }
 
     const blockedUtxos: { hash: string; index: number }[] =
       pendingTxsResult.flatMap((m): { hash: string; index: number }[] => {
         try {
           const txJson: {
             inputs: { txIn: { txHash: string; txIndex: number } }[];
+            multisig?: { submissionError?: string | null };
           } = JSON.parse(m.txJson);
+          // A tx that was broadcast but rejected by the node has a submissionError.
+          // Its inputs are still unspent on-chain — don't block them.
+          if (txJson.multisig?.submissionError) return [];
           return txJson.inputs.map((n) => ({
             hash: n.txIn.txHash,
             index: n.txIn.txIndex,
@@ -145,10 +184,9 @@ export default async function handler(
         ),
     );
 
-    // Set cache headers for CDN/edge caching
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=30, stale-while-revalidate=60",
+      fresh ? "no-store" : "public, s-maxage=30, stale-while-revalidate=60",
     );
     res.status(200).json(freeUtxos);
   } catch (error) {

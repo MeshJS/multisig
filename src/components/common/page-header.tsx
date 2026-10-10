@@ -12,7 +12,7 @@ export default function PageHeader({
   backUrl?: string | undefined;
 }) {
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       {backUrl && (
         <Button variant="outline" size="icon" className="h-7 w-7" asChild>
           <Link href={backUrl}>
@@ -25,7 +25,9 @@ export default function PageHeader({
         {pageTitle}
       </h1>
       <div className="ml-auto sm:ml-0"></div>
-      <div className="hidden items-center gap-2 md:ml-auto md:flex">
+      {/* Page actions must stay reachable on mobile; wrap below the title
+          instead of disappearing under the md breakpoint. */}
+      <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto">
         {children}
       </div>
     </div>

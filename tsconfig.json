@@ -46,6 +46,8 @@
   ],
   "exclude": [
     "node_modules",
-    "coverage"
+    "coverage",
+    "ci-artifacts",
+    "playwright-report"
   ]
 }

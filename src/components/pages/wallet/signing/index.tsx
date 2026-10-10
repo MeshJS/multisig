@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 
-import { useWallet } from "@meshsdk/react";
+import useMeshWallet from "@/hooks/useMeshWallet";
 import { sign } from "@/utils/signing";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 
 export default function WalletSigning() {
   const [signingMethod, setSigningMethod] = useState<string>("CIP-0095");
-  const { wallet } = useWallet();
+  const { wallet } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
   const [payload, setPayload] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -60,6 +60,7 @@ export default function WalletSigning() {
   const signPayload = useCallback(async () => {
     if (!appWallet) throw new Error("No wallet");
     if (!userAddress) throw new Error("No user address");
+    if (!wallet) throw new Error("No connected wallet");
 
     //ToDo improve address selection Stake dRep etc.
     const paymentKeyHash = resolvePaymentKeyHash(userAddress);

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "../ui/button";
+import { Check, Copy } from "lucide-react";
 import React from "react";
 
 export default function RowLabelInfo({
@@ -18,6 +20,20 @@ export default function RowLabelInfo({
   allowOverflow?: boolean;
 }) {
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!copyString) return;
+    navigator.clipboard.writeText(copyString);
+    setCopied(true);
+    toast({
+      title: "Copied",
+      description: "Copied to clipboard",
+      duration: 3000,
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className={`flex gap-4 ${allowOverflow ? 'flex-col sm:flex-row sm:items-start' : 'items-center'}`}>
       <div className={`flex max-w-full ${allowOverflow ? 'flex-col gap-1 flex-1 min-w-0' : 'items-center justify-center gap-2'}`}>
@@ -27,24 +43,29 @@ export default function RowLabelInfo({
           </div>
         )}
         {copyString ? (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              navigator.clipboard.writeText(copyString);
-              toast({
-                title: "Copied",
-                description: "Address copied to clipboard",
-                duration: 5000,
-              });
-            }}
-            className={`m-0 h-auto max-w-full justify-start p-0 ${allowOverflow ? '' : 'truncate'} text-left font-mono text-xs sm:text-sm`}
-          >
+          // Explicit copy icon (with copy→check feedback) next to the value,
+          // matching the affordance used in the signers list.
+          <div className="flex min-w-0 items-center gap-1">
             <Value
               value={value}
               className={className}
               allowOverflow={allowOverflow}
+              mono
             />
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              aria-label="Copy to clipboard"
+              className="h-7 w-7 flex-shrink-0 p-0"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-600" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
         ) : (
           <Value
             value={value}
@@ -62,15 +83,19 @@ function Value({
   value,
   className,
   allowOverflow = false,
+  mono = false,
 }: {
   value: string | React.ReactNode;
   className?: string;
   allowOverflow?: boolean;
+  mono?: boolean;
 }) {
-  const defaultClassName = allowOverflow
-    ? "max-w-full break-all text-sm text-muted-foreground"
-    : "max-w-full overflow-hidden truncate whitespace-nowrap text-sm text-muted-foreground";
-  
+  const defaultClassName = `${
+    allowOverflow
+      ? "max-w-full break-all"
+      : "max-w-full overflow-hidden truncate whitespace-nowrap"
+  } text-sm text-muted-foreground${mono ? " font-mono" : ""}`;
+
   return (
     <div className={className || defaultClassName}>
       {value}

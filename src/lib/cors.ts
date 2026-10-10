@@ -59,6 +59,25 @@ export const cors = initMiddleware(
   }),
 );
 
+/**
+ * Public CORS for endpoints that are *meant* to be called from arbitrary
+ * other origins (cross-instance wallet export). These endpoints carry no
+ * cookies (clients fetch with credentials: "omit") and are protected by
+ * CIP-30 signature verification instead, so reflecting any origin is safe.
+ * The allowlist-based `cors` above would reject unknown instances and the
+ * browser surfaces that as an opaque "Load failed" network error.
+ */
+export const publicCors = initMiddleware(
+  Cors({
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+    credentials: false,
+    optionsSuccessStatus: 200,
+    preflightContinue: false,
+    origin: "*",
+  }),
+);
+
 // Helper function to add cache-busting headers for CORS
 export function addCorsCacheBustingHeaders(res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

@@ -4,6 +4,11 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { requireSessionAddress, assertWalletAccess } from "@/server/api/auth";
+import {
+  enqueueSignatureRequiredNotifications,
+  enqueueThresholdReachedNotifications,
+} from "@/lib/notifications/center";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
 export const signableRouter = createTRPCRouter({
   createSignable: protectedProcedure
@@ -20,8 +25,8 @@ export const signableRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionAddress = requireSessionAddress(ctx);
-      await assertWalletAccess(ctx, input.walletId, sessionAddress);
-      return ctx.db.signable.create({
+      const wallet = await assertWalletAccess(ctx, input.walletId, sessionAddress);
+      const signable = await ctx.db.signable.create({
         data: {
           walletId: input.walletId,
           payload: input.payload,
@@ -32,6 +37,26 @@ export const signableRouter = createTRPCRouter({
           description: input.description,
         },
       });
+      if (signable.state === 0) {
+        try {
+          await enqueueSignatureRequiredNotifications(ctx.db, {
+            wallet,
+            resourceType: "signable",
+            resourceId: signable.id,
+            signedAddresses: signable.signedAddresses,
+            rejectedAddresses: signable.rejectedAddresses,
+            creatorAddress: sessionAddress,
+            description: signable.description,
+            signatureContext: summarizeSignableSignatureContext({
+              method: signable.method,
+              description: signable.description,
+            }),
+          });
+        } catch (error) {
+          console.error("Failed to enqueue signable notifications", error);
+        }
+      }
+      return signable;
     }),
 
   updateSignable: protectedProcedure
@@ -51,7 +76,7 @@ export const signableRouter = createTRPCRouter({
       if (!signable) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Signable not found" });
       }
-      await assertWalletAccess(ctx, signable.walletId, sessionAddress);
+      const wallet = await assertWalletAccess(ctx, signable.walletId, sessionAddress);
       const updated = await ctx.db.signable.update({
         where: {
           id: input.signableId,
@@ -63,6 +88,23 @@ export const signableRouter = createTRPCRouter({
           state: input.state,
         },
       });
+      try {
+        await enqueueThresholdReachedNotifications(ctx.db, {
+          wallet,
+          resourceType: "signable",
+          resourceId: signable.id,
+          previousSignedAddresses: signable.signedAddresses,
+          signedAddresses: updated.signedAddresses,
+          actorAddress: sessionAddress,
+          description: signable.description,
+          signatureContext: summarizeSignableSignatureContext({
+            method: signable.method,
+            description: signable.description,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to enqueue signable threshold notifications", error);
+      }
       const justSigned = input.signedAddresses.includes(sessionAddress) &&
         !signable.signedAddresses.includes(sessionAddress);
       const justRejected = input.rejectedAddresses.includes(sessionAddress) &&

@@ -20,6 +20,8 @@ import { useProxy } from "@/hooks/useProxy";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import useActiveWallet from "@/hooks/useActiveWallet";
+import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
+import { getFriendlyError } from "@/utils/errors";
 
 interface PutResponse {
   url: string;
@@ -69,18 +71,19 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
 
   // Helper to resolve inputs for multisig controlled txs
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
-    if (!multisigWallet?.getScript().address) {
+    const walletAddress = multisigWallet?.getScript().address ?? appWallet?.address;
+    if (!walletAddress) {
       throw new Error("Multisig wallet address not available");
     }
     if (!manualUtxos || manualUtxos.length === 0) {
       throw new Error("No UTxOs selected. Please select UTxOs from the selector.");
     }
-    return { utxos: manualUtxos, walletAddress: multisigWallet.getScript().address };
-  }, [multisigWallet?.getScript().address, manualUtxos]);
+    return { utxos: manualUtxos, walletAddress };
+  }, [multisigWallet?.getScript().address, appWallet?.address, manualUtxos]);
 
   async function createAnchor(): Promise<{
     anchorUrl: string;
-    anchorHash: string;
+    anchorJson: object;
   }> {
     if (!appWallet) {
       const errorMessage = "Wallet not connected. Please ensure your wallet is connected and try again.";
@@ -97,7 +100,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       formState,
       appWallet,
     );
-    
+
     // Upload the compacted JSON-LD (readable format)
     const rawResponse = await fetch("/api/pinata-storage/put", {
       method: "POST",
@@ -112,11 +115,9 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
     });
     const res = (await rawResponse.json()) as PutResponse;
     const anchorUrl = res.url;
-    
-    // Compute hash from the canonicalized (normalized) form per CIP-100/CIP-119
-    // The normalized form is in N-Quads format which is the canonical representation
-    const anchorHash = hashDrepAnchor(metadataResult.compacted);
-    return { anchorUrl, anchorHash };
+
+    // Return the raw JSON-LD object; the hash is computed deterministically inside the tx builder
+    return { anchorUrl, anchorJson: metadataResult.compacted };
   }
 
   async function registerDrep(): Promise<void> {
@@ -132,7 +133,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
     }
 
     setLoading(true);
-    const txBuilder = getTxBuilder(network);
+    const txBuilder = await getTxBuilder(network);
     
     // For legacy wallets (no multisigWallet), use appWallet values directly (preserves input order)
     // For SDK wallets, use multisigWallet to compute DRep ID and script
@@ -171,7 +172,8 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       throw new Error("Script or change address not found");
     }
     try {
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
+      const anchorDataHash = hashDrepAnchor(anchorJson);
 
       const selectedUtxos: UTxO[] = manualUtxos;
 
@@ -186,24 +188,15 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
         return;
       }
 
-      for (const utxo of selectedUtxos) {
-        txBuilder
-          .txIn(
-            utxo.input.txHash,
-            utxo.input.outputIndex,
-            utxo.output.amount,
-            utxo.output.address,
-          )
-          .txInScript(scriptCbor);
-      }
-
-      txBuilder
-        .drepRegistrationCertificate(dRepId, {
-          anchorUrl: anchorUrl,
-          anchorDataHash: anchorHash,
-        })
-        .certificateScript(drepCbor)
-        .changeAddress(changeAddress);
+      applyDRepCert(txBuilder, {
+        action: "register",
+        dRepId,
+        drepCbor,
+        scriptCbor,
+        changeAddress,
+        utxos: selectedUtxos,
+        anchor: { anchorUrl, anchorDataHash },
+      });
 
       await newTransaction({
         txBuilder,
@@ -223,7 +216,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
           !e.message.includes("No UTxOs")) {
         toast({
           title: "Registration Failed",
-          description: e instanceof Error ? e.message : "An unexpected error occurred during DRep registration.",
+          description: getFriendlyError(e),
           variant: "destructive",
           duration: 10000,
           action: (
@@ -255,8 +248,8 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       return registerDrep();
     }
 
-    if (!activeWallet || !userAddress || !multisigWallet || !appWallet) {
-      const errorMessage = "Proxy registration requires both connected wallet signer and multisig wallet configuration.";
+    if (!activeWallet || !userAddress || !appWallet) {
+      const errorMessage = "Proxy registration requires a connected wallet signer.";
       toast({
         title: "Wallet Not Connected",
         description: errorMessage,
@@ -268,7 +261,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
 
     setLoading(true);
     try {
-      const { anchorUrl, anchorHash } = await createAnchor();
+      const { anchorUrl, anchorJson } = await createAnchor();
 
       // Get multisig inputs
       const { utxos, walletAddress } = await getMsInputs();
@@ -281,7 +274,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       }
 
       // Create proxy contract instance with the selected proxy
-      const txBuilder = getTxBuilder(network);
+      const txBuilder = await getTxBuilder(network);
       const proxyContract = new MeshProxyContract(
         {
           mesh: txBuilder,
@@ -296,7 +289,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Register DRep using proxy
-      const txHex = await proxyContract.registerProxyDrep(anchorUrl, anchorHash, utxos, walletAddress);
+      const txHex = await proxyContract.registerProxyDrep(anchorUrl, anchorJson, utxos, walletAddress);
 
       await newTransaction({
         txBuilder: txHex,

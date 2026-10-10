@@ -1,5 +1,12 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 
 interface PaginationProps {
@@ -22,69 +29,83 @@ const Pagination: React.FC<PaginationProps> = ({
   setPageSize,
   order,
   setOrder,
+  // defaultPageSize is intentionally accepted (call-site compat) but unused.
   defaultPageSize = 25,
   maxPageSize = 100,
   stepSize = 25,
   onLastPage,
 }) => {
+  const pageSizeOptions = Array.from(
+    { length: maxPageSize / stepSize },
+    (_, i) => (i + 1) * stepSize,
+  ).filter((size) => size <= maxPageSize);
+
   return (
-    <div className="flex w-full items-center justify-between rounded-md border-x border-gray-400 p-4 shadow-md">
-      {/* Sorting Toggle */}
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm">
+      {/* Sort order */}
       <Button
+        variant="outline"
+        size="sm"
         onClick={() => setOrder(order === "asc" ? "desc" : "asc")}
-        className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700"
+        aria-label={order === "asc" ? "Sort ascending" : "Sort descending"}
+        className="gap-1.5"
       >
         {order === "asc" ? (
-          <ArrowUp className="h-5 w-5" />
+          <ArrowUp className="h-4 w-4" />
         ) : (
-          <ArrowDown className="h-5 w-5" />
+          <ArrowDown className="h-4 w-4" />
         )}
-        {order === "asc" ? "Ascending" : "Descending"}
+        <span className="hidden sm:inline">
+          {order === "asc" ? "Ascending" : "Descending"}
+        </span>
       </Button>
 
-      {/* Page Size Selector */}
-      <select
-        className="rounded border bg-gray-900 p-2 text-white"
-        value={pageSize}
-        onChange={(e) => {
-          setPageSize(Number(e.target.value));
+      {/* Page size */}
+      <Select
+        value={String(pageSize)}
+        onValueChange={(value) => {
+          setPageSize(Number(value));
           setCurrentPage(1); // Reset to first page when page size changes
         }}
       >
-        {Array.from(
-          { length: maxPageSize / stepSize },
-          (_, i) => (i + 1) * stepSize,
-        )
-          .filter((size) => size <= maxPageSize)
-          .map((size) => (
-            <option key={size} value={size}>
-              {size} per page
-            </option>
+        <SelectTrigger className="h-9 w-[110px] text-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {pageSizeOptions.map((size) => (
+            <SelectItem key={size} value={String(size)}>
+              {size} / page
+            </SelectItem>
           ))}
-      </select>
+        </SelectContent>
+      </Select>
 
-      {/* Pagination Controls */}
-      <div className="flex items-center gap-4">
+      {/* Navigation */}
+      <div className="ml-auto flex items-center gap-1">
         <Button
-          onClick={() => setCurrentPage((prev: number) => Math.max(prev - 1, 1))} // ✅ Explicitly typed
+          variant="outline"
+          size="icon"
+          className="h-9 w-9"
           disabled={currentPage === 1}
-          className={`flex items-center gap-2 ${
-            currentPage === 1 ? "cursor-not-allowed opacity-50" : ""
-          }`}
+          aria-label="Previous page"
+          onClick={() => setCurrentPage((prev: number) => Math.max(prev - 1, 1))}
         >
-          <ChevronLeft className="h-5 w-5" /> Previous
+          <ChevronLeft className="h-4 w-4" />
         </Button>
 
-        <span className="text-white">Page {currentPage}</span>
+        <span className="px-1 tabular-nums text-muted-foreground">
+          Page {currentPage}
+        </span>
 
         <Button
-          onClick={() => setCurrentPage((prev: number) => prev + 1)} // ✅ Explicitly typed
+          variant="outline"
+          size="icon"
+          className="h-9 w-9"
           disabled={onLastPage}
-          className={`flex items-center gap-2 ${
-            onLastPage ? "cursor-not-allowed opacity-50" : ""
-          }`}
+          aria-label="Next page"
+          onClick={() => setCurrentPage((prev: number) => prev + 1)}
         >
-          Next <ChevronRight className="h-5 w-5" />
+          <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     </div>

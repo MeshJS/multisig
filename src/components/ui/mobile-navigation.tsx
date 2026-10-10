@@ -53,7 +53,7 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
         <div
           className="fixed z-40 bg-white/50 dark:bg-black/50 transition-opacity duration-200"
           style={{
-            top: '56px',
+            top: 'calc(56px + env(safe-area-inset-top))',
             left: 0,
             right: 0,
             bottom: 0,
@@ -121,7 +121,11 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
           )}
-          style={{ top: '56px', height: 'calc(100vh - 56px)' }}
+          style={{
+            top: 'calc(56px + env(safe-area-inset-top))',
+            height: 'calc(100dvh - 56px - env(safe-area-inset-top))',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
           onOpenAutoFocus={(e) => {
             // Blur any focused elements in the header to prevent aria-hidden conflicts
             const header = document.querySelector('[data-header="main"]');

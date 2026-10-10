@@ -111,6 +111,28 @@ describe("og handler — SSRF defense", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects an explicit non-default port even on an allowlisted host", async () => {
+    // Port pinning: without it, an allowlisted (or wildcarded) host could be
+    // used to probe arbitrary services, e.g. https://github.com:8443/.
+    envState.OG_ALLOWED_HOSTS = "github.com";
+    const { default: handler } = await handlerPromise;
+    const { res, status, json } = makeRes();
+    await handler(makeReq("https://github.com:8443/example"), res);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringMatching(/port/i) }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts an explicit :443 (normalised to the default port)", async () => {
+    envState.OG_ALLOWED_HOSTS = "example.com";
+    dnsLookupMock.mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }]);
+    fetchMock.mockResolvedValueOnce(new Response("<html></html>", { status: 200 }));
+    const { default: handler } = await handlerPromise;
+    const { res, status } = makeRes();
+    await handler(makeReq("https://example.com:443/page"), res);
+    expect(status).toHaveBeenCalledWith(200);
+  });
+
   it("rejects host not on the allowlist with 400", async () => {
     envState.OG_ALLOWED_HOSTS = "github.com,x.com";
     const { default: handler } = await handlerPromise;
