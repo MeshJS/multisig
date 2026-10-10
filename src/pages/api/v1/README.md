@@ -231,7 +231,7 @@ Endpoints:
 - **Purpose**: Create/update governance ballots with bot vote decisions and draft rationale comments
 - **Authentication**: Required (bot JWT Bearer token)
 - **Scope**: `ballot:write`
-- **Wallet Access**: Requires bot `cosigner` role for `walletId`
+- **Wallet Access**: Any granted role for `walletId` — **observer is enough** (ballot drafts are unsigned advisory rows; bots cannot set anchors)
 - **Features**:
   - Deterministic ballot target resolution (`ballotId` preferred, `ballotName` fallback)
   - `409` on ambiguous `ballotName` matches
@@ -239,13 +239,30 @@ Endpoints:
   - Upserts proposals and choices while preserving omitted rationale comments on existing entries
   - Stores draft rationale text in `rationaleComments[]`; bots cannot set `anchorUrl`/`anchorHash`
   - Uses optimistic concurrency (`updatedAt` guard) to prevent lost updates
+  - Validates `proposalId`s: `txHash` must be 64-char hex **and the governance action must exist on-chain** (unknown ids → 400 listing them; indexer outages fail open)
 - **Request Body**:
   - `walletId`: string (required)
   - `ballotId`: string (optional, recommended when updating existing ballots)
   - `ballotName`: string (optional)
   - `proposals`: array of `{ proposalId, proposalTitle, choice, rationaleComment? }`
-- **Response**: `{ ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments`
-- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown ballotId), 409 (ambiguity/concurrent write), 500 (server)
+- **Response**: `{ created: boolean, ballot: { ... } }` with aligned `items`, `itemDescriptions`, `choices`, `anchorUrls`, `anchorHashes`, `rationaleComments` — track `ballot.id` for later upserts and deletes
+- **Error Handling**: 400 (validation, unknown proposalIds), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballotId), 409 (ambiguity/concurrent write), 500 (server)
+
+#### `botBallots.ts` - GET/DELETE `/api/v1/botBallots`
+
+- **Purpose**: Read and clean up bot ballot drafts — the other half of the drafting lifecycle
+- **Authentication**: Required (bot JWT Bearer token); scope `ballot:write`; any wallet grant (**observer is enough**)
+- **GET**: `?walletId=` — lists all governance ballots (type 1) on the wallet, newest first
+- **DELETE**: body `{ walletId, ballotId }` — deletes one governance ballot (400 if it belongs to another wallet or isn't type 1)
+- **Error Handling**: 400 (validation), 401 (auth), 403 (scope/access), 404 (unknown wallet or ballot), 429, 500
+
+#### `botRotateSecret.ts` - POST `/api/v1/botRotateSecret`
+
+- **Purpose**: Self-service rotation of a (possibly leaked) bot key secret without re-registering
+- **Authentication**: None (proving possession of the current secret is the credential); strict rate limit 5/min per IP
+- **Request Body**: `{ botKeyId, secret }` (current secret)
+- **Response**: `{ botKeyId, secret }` — the **new** secret, returned exactly once; the old secret stops working immediately
+- **Error Handling**: 400 (validation), 401 (invalid key/secret), 429, 500
 
 #### `nativeScript.ts` - GET `/api/v1/nativeScript`
 
@@ -275,6 +292,34 @@ Endpoints:
   - `pubKeyHashes`: Comma-separated public key hashes
   - `network`: Network identifier (optional, defaults to mainnet)
 - **Response**: Array of matching metadata items
+- **Error Handling**: 400 (validation), 500 (server)
+
+#### `resolveRegistrationScript.ts` - GET `/api/v1/resolveRegistrationScript`
+
+- **Purpose**: Resolve the native script(s) behind a CIP-0146 registration transaction
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Reads the transaction's UTxO addresses and resolves each script-credential address
+  - Returns timelock JSON per script hash (Plutus/unknown scripts are skipped)
+- **Query Parameters**:
+  - `txHash`: Registration transaction hash (64 hex)
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ txHash, candidates: [{ address, scriptHash, stakeCredentialHash, scriptJson }] }`
+- **Error Handling**: 400 (validation), 500 (server)
+
+#### `resolveScript.ts` - GET `/api/v1/resolveScript`
+
+- **Purpose**: Resolve a native script by hash (policy) or multisig wallet address to its signer key hashes — backs "lookup by policy" on the Discover tab and the MCP `multisig_lookup_wallet` tool
+- **Authentication**: Not required (public endpoint, rate-limited 30/min)
+- **Features**:
+  - Accepts exactly one of `scriptHash` or `address` (script payment credential)
+  - Returns the timelock JSON and sig key hashes in script order
+  - Unknown / Plutus scripts return 200 with `scriptJson: null` and `sigHashes: []`
+- **Query Parameters**:
+  - `scriptHash`: Native-script hash / policy id (56 hex)
+  - `address`: Bech32 multisig wallet address
+  - `network`: Network identifier (optional, defaults to mainnet)
+- **Response**: `{ scriptHash, stakeCredentialHash, scriptJson, sigHashes }`
 - **Error Handling**: 400 (validation), 500 (server)
 
 ### UTxO Management
@@ -335,11 +380,11 @@ Endpoints:
   - Creates a `PendingBot` record in `UNCLAIMED` state
   - Generates one-time claim code and hashed claim token
   - Validates requested scopes against allowed bot scopes
-  - Rejects already-registered bot payment addresses
+  - Rejects already-registered bot payment addresses (when an address is provided)
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (required)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
   - `stakeAddress`: string (optional)
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
@@ -386,8 +431,9 @@ Endpoints:
 - **Features**:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
-  - BotUser upsert with payment and optional stake address
+  - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
   - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)
@@ -431,10 +477,10 @@ Endpoints:
 
 ### Bot Onboarding Flow
 
-1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes
+1. **Bot Registers**: Bot calls `POST /api/v1/botRegister` with requested scopes — initially without a `paymentAddress` (the bot typically has no wallet yet)
 2. **Human Claims**: Owner calls `POST /api/v1/botClaim` with JWT + claim code
 3. **Bot Picks Up Secret**: Bot calls `GET /api/v1/botPickupSecret` once
-4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT
+4. **Bot Authenticates**: Bot calls `POST /api/v1/botAuth` to receive bot JWT — this binds the bot's `paymentAddress` (creating its `BotUser` if registration was address-less)
 5. **Bot API Access**: Bot uses JWT for bot endpoints (e.g. `botMe`, `createWallet`, governance APIs, and certificate builders **`/api/v1/botStakeCertificate`** / **`/api/v1/botDRepCertificate`** when `multisig:sign` is granted)
 
 ### Error Handling
@@ -625,3 +671,49 @@ Current route-chain scenarios include:
 
 To add coverage for a new v1 endpoint, add one step and register it in the scenario manifest without changing workflow orchestration.
 Use `scripts/ci/scenarios/steps/template-route-step.ts` as a starter scaffold.
+
+## MCP endpoint (`POST /api/mcp`)
+
+A Model Context Protocol server exposing a **read-only** subset of this API to AI agents,
+plus governance ballot drafts. It does not add business logic: each tool invokes the v1
+handler above in-process, so authorization, validation and error codes stay defined once.
+
+Tools and the endpoint contract: **[src/pages/api/mcp/README.md](../mcp/README.md)**.
+Its OAuth 2.1 authorization server: **[src/pages/api/oauth/README.md](../oauth/README.md)**.
+
+Two v1 handlers gained a human-JWT path so the MCP surface can reach them; bot behaviour
+is unchanged in both cases:
+
+- **`governanceActiveProposals`** — was bot-only. It is a pure Blockfrost passthrough over
+  public chain data touching no wallet, so a human JWT is now accepted, metered per
+  address instead of per bot.
+- **`botBallotsUpsert`** — was bot-cosigner-only. A human caller is now authorized by the
+  same signer-or-owner check every ballot procedure in the tRPC router already applies, so
+  the REST path is no more permissive than the app's own UI.
+
+### Task Board
+
+#### `tasks.ts` - GET `/api/v1/tasks`
+
+- **Purpose**: A wallet's project task board with each task's derived payout state (backs the `task_list` MCP tool)
+- **Authentication**: Required (JWT Bearer token). Human signer/owner, or a bot key with any granted wallet access (observer is enough)
+- **Query Parameters**:
+  - `walletId`: Wallet identifier
+  - `address`: Requester address (must match JWT payload)
+  - `status`: Optional column filter (`Backlog`, `InProgress`, `InReview`, `Done`)
+  - `payable`: Optional `true` to return only tasks that can be paid right now
+- **Response**: `{ tasks, count, payableCount }` — recipients in base units; `payout` carries `state`, `payable`, `blocker` and the pending `transactionId`; `payableCount` is wallet-wide before filters
+- **Error Handling**: 400 (validation), 401 (auth), 403 (address mismatch / not a signer / bot not granted), 404 (wallet), 500 (server)
+
+#### `taskUpsert.ts` - POST `/api/v1/taskUpsert`
+
+- **Purpose**: Create a task, or update and/or move an existing one (backs the `task_upsert` MCP tool). Records a task only; creates no transaction
+- **Authentication**: Required (JWT Bearer token). Human wallet JWTs only — bot keys receive 403
+- **Request Body**:
+  - `walletId`: Wallet identifier
+  - `taskId`: Omit to create (then `title` is required)
+  - `title`, `description`, `priority`, `assigneeAddress`, `dueDate` (ISO or `null`)
+  - `status`, `position`: Column and index; on an existing task these move it
+  - `recipients`: Display units (`{ address, ada?, assets?: [{ unit, quantity }] }`), converted to base units with the token's registered decimals; replaces the task's recipient list
+- **Response**: `201 { task, created: true }` or `200 { task, created: false }`
+- **Error Handling**: 400 (validation, `INVALID_SPEC` recipients), 401 (auth), 403 (not a signer / bot key), 404 (wallet or task), 409 (task locked by a pending or paid payout), 413 (body), 500 (server)

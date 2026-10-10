@@ -19,6 +19,7 @@ import {
 } from "@/lib/notifications/events";
 import { createNotificationDelivery } from "@/lib/notifications/outbox";
 import { normalizeEmail } from "@/lib/notifications/recipients";
+import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 import { renderVerifyEmail } from "@/lib/notifications/templates/verifyEmail";
 import { drainNotificationOutbox } from "@/lib/notifications/worker";
 
@@ -143,6 +144,8 @@ export const notificationRouter = createTRPCRouter({
           emailOptIn: true,
           notifyTransactionSignatures: true,
           notifySignableSignatures: true,
+          notifyThresholdReached: true,
+          notifyBallotDeadlines: true,
           createdAt: null,
           updatedAt: null,
         }
@@ -158,6 +161,8 @@ export const notificationRouter = createTRPCRouter({
         emailOptIn: z.boolean().optional(),
         notifyTransactionSignatures: z.boolean().optional(),
         notifySignableSignatures: z.boolean().optional(),
+        notifyThresholdReached: z.boolean().optional(),
+        notifyBallotDeadlines: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -201,6 +206,12 @@ export const notificationRouter = createTRPCRouter({
         ...(typeof input.notifySignableSignatures === "boolean"
           ? { notifySignableSignatures: input.notifySignableSignatures }
           : {}),
+        ...(typeof input.notifyThresholdReached === "boolean"
+          ? { notifyThresholdReached: input.notifyThresholdReached }
+          : {}),
+        ...(typeof input.notifyBallotDeadlines === "boolean"
+          ? { notifyBallotDeadlines: input.notifyBallotDeadlines }
+          : {}),
       };
 
       const setting = await ctx.db.walletSignerNotificationSetting.upsert({
@@ -221,6 +232,8 @@ export const notificationRouter = createTRPCRouter({
           notifyTransactionSignatures:
             input.notifyTransactionSignatures ?? true,
           notifySignableSignatures: input.notifySignableSignatures ?? true,
+          notifyThresholdReached: input.notifyThresholdReached ?? true,
+          notifyBallotDeadlines: input.notifyBallotDeadlines ?? true,
         },
       });
 
@@ -374,6 +387,7 @@ export const notificationRouter = createTRPCRouter({
           signedAddresses: transaction.signedAddresses,
           rejectedAddresses: transaction.rejectedAddresses,
           description: transaction.description,
+          txJson: transaction.txJson,
           onlyRecipientAddress: input.recipientAddress,
           eventType: NOTIFICATION_EVENT_SIGNATURE_REMINDER,
         });
@@ -405,6 +419,10 @@ export const notificationRouter = createTRPCRouter({
         signedAddresses: signable.signedAddresses,
         rejectedAddresses: signable.rejectedAddresses,
         description: signable.description,
+        signatureContext: summarizeSignableSignatureContext({
+          method: signable.method,
+          description: signable.description,
+        }),
         onlyRecipientAddress: input.recipientAddress,
         eventType: NOTIFICATION_EVENT_SIGNATURE_REMINDER,
       });

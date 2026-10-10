@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Trash2, Loader2, Pencil, Link } from "lucide-react";
+import { Bot, Trash2, Loader2, Pencil, Link, Copy, Check } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
 import { Button } from "@/components/ui/button";
@@ -41,13 +41,13 @@ export default function BotManagementCard() {
   const [claimCode, setClaimCode] = useState("");
   const [pendingBotInfo, setPendingBotInfo] = useState<{
     name: string;
-    paymentAddress: string;
+    paymentAddress: string | null;
     requestedScopes: string[];
   } | null>(null);
   const [approvedScopes, setApprovedScopes] = useState<BotScope[]>([]);
   const [claimResult, setClaimResult] = useState<{
     botKeyId: string;
-    botId: string;
+    botId: string | null;
     name: string;
     scopes: BotScope[];
   } | null>(null);
@@ -213,6 +213,39 @@ export default function BotManagementCard() {
 
   const missingReadScopeInEdit = editScopes.length > 0 && !editScopes.includes(READ_SCOPE);
 
+  const [agentPromptCopied, setAgentPromptCopied] = useState(false);
+  const copyAgentPrompt = async () => {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "https://multisig.meshjs.dev";
+    const prompt = `You are being onboarded as a bot on this Mesh Multisig instance: ${origin}
+
+Follow these steps and report back to me at each pause:
+
+1. Generate or load a Cardano payment address you control. Tell me which address you will use.
+2. Fetch ${origin}/api/v1/botSetupGuide for the full protocol — that is the source of truth.
+3. Call POST ${origin}/api/v1/botRegister with body { name, paymentAddress, requestedScopes }. Request the minimum scopes you need (start with ["multisig:read"]; add "multisig:sign", "multisig:create", "governance:read", or "ballot:write" only if you need them).
+4. Report the returned pendingBotId and claimCode to me. I will approve in the UI within 10 minutes.
+5. Once I confirm, call GET ${origin}/api/v1/botPickupSecret?pendingBotId=<id> to retrieve your botKeyId and one-time secret. Store them securely; never log the secret.
+6. Call POST ${origin}/api/v1/botAuth with { botKeyId, secret, paymentAddress } to obtain a 1-hour JWT.
+7. Confirm by calling GET ${origin}/api/v1/botMe with Authorization: Bearer <jwt>. Print the response.
+8. Wait for me to grant your bot access to specific wallets in the UI before attempting any wallet operations.
+
+Do not skip steps. Do not ask for the secret over an insecure channel. Re-authenticate when the JWT expires.`;
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setAgentPromptCopied(true);
+      setTimeout(() => setAgentPromptCopied(false), 2000);
+      toast({ title: "Prompt copied", description: "Paste it into your AI agent." });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Your browser blocked clipboard access.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <CardUI
       title="Bot accounts"
@@ -220,6 +253,31 @@ export default function BotManagementCard() {
       icon={Bot}
     >
       <div className="space-y-4">
+        <div className="rounded-md border bg-muted/40 p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-sm font-medium">Connect an AI agent</div>
+              <p className="text-xs text-muted-foreground">
+                Copy a self-contained prompt that walks any AI agent (Claude,
+                Cursor, etc.) through registering itself as a bot on this
+                instance.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1 self-start sm:self-auto"
+              onClick={copyAgentPrompt}
+            >
+              {agentPromptCopied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {agentPromptCopied ? "Copied" : "Copy agent prompt"}
+            </Button>
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">Bots</span>
           <Button
@@ -301,11 +359,18 @@ export default function BotManagementCard() {
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <RowLabelInfo label="Bot name" value={pendingBotInfo.name} />
-                    <RowLabelInfo
-                      label="Address"
-                      value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
-                      copyString={pendingBotInfo.paymentAddress}
-                    />
+                    {pendingBotInfo.paymentAddress ? (
+                      <RowLabelInfo
+                        label="Address"
+                        value={getFirstAndLast(pendingBotInfo.paymentAddress, 12, 8)}
+                        copyString={pendingBotInfo.paymentAddress}
+                      />
+                    ) : (
+                      <RowLabelInfo
+                        label="Address"
+                        value="Not set yet — bound when the bot first authenticates"
+                      />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Requested scopes</Label>
@@ -368,11 +433,18 @@ export default function BotManagementCard() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-1">
-                  <RowLabelInfo
-                    label="Bot ID"
-                    value={getFirstAndLast(claimResult.botId, 10, 8)}
-                    copyString={claimResult.botId}
-                  />
+                  {claimResult.botId ? (
+                    <RowLabelInfo
+                      label="Bot ID"
+                      value={getFirstAndLast(claimResult.botId, 10, 8)}
+                      copyString={claimResult.botId}
+                    />
+                  ) : (
+                    <RowLabelInfo
+                      label="Bot ID"
+                      value="Assigned when the bot first authenticates"
+                    />
+                  )}
                   <RowLabelInfo
                     label="Key ID"
                     value={getFirstAndLast(claimResult.botKeyId, 10, 8)}
@@ -456,7 +528,7 @@ export default function BotManagementCard() {
         ) : !botKeys?.length ? (
           <p className="text-sm text-muted-foreground">No bots yet. Register a bot and claim it to enable API access.</p>
         ) : (
-          <ul className="space-y-3 max-h-[280px] overflow-y-auto">
+          <ul className="max-h-[36rem] space-y-3 overflow-y-auto pr-1">
             {botKeys.map((key) => {
               const scopes = key.scopes ?? [];
               return (
@@ -525,13 +597,66 @@ export default function BotManagementCard() {
 
                       <div className="mt-2 space-y-2 rounded-md border p-2">
                         <p className="text-xs font-medium text-muted-foreground">Wallet access</p>
+
+                        {/* All current grants at a glance — not just the one
+                            for whichever wallet the dropdown happens to show. */}
+                        {key.botWalletAccesses?.length ? (
+                          <div className="flex flex-col gap-1.5">
+                            {key.botWalletAccesses.map((access) => {
+                              const grantWallet = userWallets?.find((w) => w.id === access.walletId);
+                              return (
+                                <div
+                                  key={access.walletId}
+                                  className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5"
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate text-xs font-medium">
+                                      {grantWallet?.name || getFirstAndLast(access.walletId, 8, 6)}
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        access.role === "cosigner"
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                          : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300"
+                                      }
+                                    >
+                                      {access.role}
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 shrink-0 px-2 text-xs text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                      if (!userAddress) return;
+                                      revokeBotAccess.mutate({
+                                        requesterAddress: userAddress,
+                                        walletId: access.walletId,
+                                        botId: botUser.id,
+                                      });
+                                    }}
+                                    disabled={revokeBotAccess.isPending || !userAddress}
+                                  >
+                                    Revoke
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No wallet grants yet — the bot can&apos;t read or draft anywhere until you grant one below.
+                          </p>
+                        )}
+
                         {isLoadingWallets ? (
                           <p className="text-xs text-muted-foreground">Loading multisigs...</p>
                         ) : !userWallets?.length ? (
                           <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
                         ) : (
                           <>
-                            <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto_auto] sm:items-center">
+                            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-center">
                               {(() => {
                                 const selectedWalletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? "";
                                 const currentAccess = key.botWalletAccesses?.find(
@@ -613,30 +738,9 @@ export default function BotManagementCard() {
                                   "Grant access"
                                 )}
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  const walletId = selectedWalletId;
-                                  if (!walletId || !userAddress) return;
-                                  revokeBotAccess.mutate({
-                                    requesterAddress: userAddress,
-                                    walletId,
-                                    botId: botUser.id,
-                                  });
-                                }}
-                                disabled={revokeBotAccess.isPending || !userAddress || !selectedWalletId || !currentAccess}
-                              >
-                                {revokeBotAccess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Revoke"}
-                              </Button>
-                              <p className="text-xs text-muted-foreground sm:col-span-4">
-                                {currentAccess
-                                  ? `Current access on selected wallet: ${currentAccess.role}`
-                                  : "Current access on selected wallet: none"}
-                              </p>
                               {!canBeCosigner && (
-                                <p className="text-xs text-amber-600 sm:col-span-4">
-                                  Cosigner is only available when the bot payment address is included in this wallet&apos;s signer list.
+                                <p className="text-xs text-muted-foreground sm:col-span-3">
+                                  Cosigner requires the bot&apos;s address in this wallet&apos;s signer list — observer is the right role for advisory bots.
                                 </p>
                               )}
                             </>

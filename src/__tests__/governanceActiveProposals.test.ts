@@ -5,6 +5,7 @@ const addCorsCacheBustingHeadersMock = jest.fn<(res: NextApiResponse) => void>()
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 const applyRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => boolean>();
 const applyBotRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, botId: string) => boolean>();
+const applyAddressRateLimitMock = jest.fn<(req: NextApiRequest, res: NextApiResponse, address: string) => boolean>();
 const verifyJwtMock = jest.fn<() => unknown>();
 const isBotJwtMock = jest.fn<() => boolean>();
 const findBotUserMock = jest.fn<() => Promise<unknown>>();
@@ -29,6 +30,7 @@ jest.unstable_mockModule(
     __esModule: true,
     applyRateLimit: applyRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
+    applyAddressRateLimit: applyAddressRateLimitMock,
   }),
 );
 
@@ -107,6 +109,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   applyRateLimitMock.mockReturnValue(true);
   applyBotRateLimitMock.mockReturnValue(true);
+  applyAddressRateLimitMock.mockReturnValue(true);
   corsMock.mockResolvedValue(undefined);
   verifyJwtMock.mockReturnValue({ address: "addr_test1", botId: "bot-1", type: "bot" });
   isBotJwtMock.mockReturnValue(true);
@@ -137,7 +140,7 @@ describe("governanceActiveProposals API", () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized - Missing token" });
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   });
 
   it("returns only active proposals and tolerates metadata 404", async () => {
@@ -451,5 +454,140 @@ describe("governanceActiveProposals API", () => {
       }
       fetchSpy.mockRestore();
     }
+  });
+
+  it("rejects out-of-bounds or malformed query params", async () => {
+    const cases: Array<Record<string, string>> = [
+      { count: "0" },
+      { count: "-5" },
+      { count: "101" },
+      { count: "abc" },
+      { page: "0" },
+      { details: "maybe" },
+      { includeRatified: "nah" },
+    ];
+    for (const query of cases) {
+      const req = {
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "1", ...query },
+      } as unknown as NextApiRequest;
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  });
+
+  it("includes ratified proposals only when includeRatified=true and reports currentEpoch", async () => {
+    providerGetMock.mockImplementation(async (path) => {
+      if (path === "/epochs/latest") {
+        return { epoch: 644 };
+      }
+      if (path.startsWith("/governance/proposals?")) {
+        return [
+          { tx_hash: "tx-active", cert_index: 0, governance_type: "info_action" },
+          { tx_hash: "tx-ratified", cert_index: 1, governance_type: "treasury_withdrawals" },
+        ];
+      }
+      if (path === "/governance/proposals/tx-active/0") {
+        return { ratified_epoch: null, enacted_epoch: null, dropped_epoch: null, expired_epoch: null, expiration: 646 };
+      }
+      if (path === "/governance/proposals/tx-ratified/1") {
+        return { ratified_epoch: 644, enacted_epoch: null, dropped_epoch: null, expired_epoch: null, expiration: 645 };
+      }
+      return null;
+    });
+
+    const baseReq = {
+      method: "GET",
+      headers: { authorization: "Bearer token" },
+    };
+
+    const resDefault = createMockResponse();
+    await handler(
+      { ...baseReq, query: { network: "1" } } as unknown as NextApiRequest,
+      resDefault,
+    );
+    const bodyDefault = (resDefault.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(bodyDefault.proposals).toHaveLength(1);
+    expect(bodyDefault.currentEpoch).toBe(644);
+    expect(bodyDefault.includeRatified).toBe(false);
+
+    const resRatified = createMockResponse();
+    await handler(
+      { ...baseReq, query: { network: "1", includeRatified: "true" } } as unknown as NextApiRequest,
+      resRatified,
+    );
+    const bodyRatified = (resRatified.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    expect(bodyRatified.proposals).toHaveLength(2);
+    const statuses = bodyRatified.proposals.map((p: any) => p.status).sort();
+    expect(statuses).toEqual(["active", "ratified"]);
+  });
+
+  describe("human (non-bot) callers", () => {
+    const asHuman = () => {
+      verifyJwtMock.mockReturnValue({ address: "addr_test1qphuman" });
+      isBotJwtMock.mockReturnValue(false);
+      providerGetMock.mockImplementation(async (path) =>
+        path.startsWith("governance/proposals?") ? [] : null,
+      );
+    };
+
+    const humanRequest = () =>
+      ({
+        method: "GET",
+        headers: { authorization: "Bearer token" },
+        query: { network: "1", count: "10", page: "1", order: "desc" },
+      }) as unknown as NextApiRequest;
+
+    it("allows a human JWT through — this is public chain data", async () => {
+      asHuman();
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("meters humans per address, not per bot", async () => {
+      asHuman();
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(applyAddressRateLimitMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "addr_test1qphuman",
+      );
+      // The bot budget must not be charged for a caller that has no bot id.
+      expect(applyBotRateLimitMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 429 when a human exceeds the address budget", async () => {
+      asHuman();
+      applyAddressRateLimitMock.mockReturnValue(false);
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).not.toHaveBeenCalledWith(200);
+    });
+
+    it("still enforces the bot scope gate for bot callers", async () => {
+      // The human path must not have opened a hole in the bot path.
+      findBotUserMock.mockResolvedValue({
+        id: "bot-1",
+        botKey: { scope: JSON.stringify(["multisig:read"]) },
+      });
+      const res = createMockResponse();
+
+      await handler(humanRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: "Insufficient scope: governance:read required",
+      });
+    });
   });
 });

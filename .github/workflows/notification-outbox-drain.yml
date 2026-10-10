@@ -1,0 +1,49 @@
+name: Notification Outbox Drain
+
+# Drains the notification outbox (pending + due-for-retry deliveries) by calling
+# the authenticated drain endpoint. Requires NOTIFICATION_DRAIN_SECRET to be set
+# both as a GitHub Actions secret and as an env var on the deployment; until
+# both exist, runs are graceful no-ops.
+
+on:
+  schedule:
+    # Every 15 minutes; the shortest retry delay in the worker is 5 minutes.
+    - cron: '*/15 * * * *'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Drain notification outbox
+        env:
+          API_BASE_URL: 'https://multisig.meshjs.dev'
+          DRAIN_SECRET: ${{ secrets.NOTIFICATION_DRAIN_SECRET }}
+        run: |
+          if [ -z "$DRAIN_SECRET" ]; then
+            echo "NOTIFICATION_DRAIN_SECRET repo secret is not set; skipping."
+            exit 0
+          fi
+
+          status=$(curl -s -o response.json -w "%{http_code}" -X POST \
+            "$API_BASE_URL/api/notifications/drain?limit=100" \
+            -H "Authorization: Bearer $DRAIN_SECRET")
+
+          echo "HTTP $status"
+          cat response.json || true
+          echo
+
+          case "$status" in
+            200)
+              ;;
+            503)
+              echo "Drain endpoint reports NOTIFICATION_DRAIN_SECRET is not configured on the deployment; skipping."
+              ;;
+            *)
+              echo "Drain request failed."
+              exit 1
+              ;;
+          esac

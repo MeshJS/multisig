@@ -37,7 +37,39 @@ Specs live in the vault, not this repo. The maintainer keeps a document-driven d
 - **OpenAPI**: `GET /api/swagger` (JSON).
 - **Bot auth**: `POST /api/v1/botAuth` with body `{ "botKeyId", "secret", "paymentAddress" }` → `{ "token", "botId" }`. Use token as Bearer for `walletIds`, `pendingTransactions`, `freeUtxos`, `addTransaction`, `signTransaction`, etc. Reference client: `scripts/bot-ref/` (see README there).
 
+## MCP (AI agents)
+
+- **Endpoint**: `POST /api/mcp` — a stateless Model Context Protocol server built on
+  `@modelcontextprotocol/server` v2. Docs: `src/pages/api/mcp/README.md`.
+- **Surface**: read-only, governance ballot drafts, and — under the opt-in
+  `transactions:write` scope — unsigned transaction drafts in two steps
+  (`transaction_preview` returns a review-card PNG plus a signed draft token;
+  `transaction_propose` takes only that token and creates the pending transaction with
+  zero signatures). It cannot sign, spend or broadcast, and that boundary is enforced by
+  a test (`src/__tests__/mcpTools.test.ts`) — adding a write tool must be a deliberate
+  decision, not a registry addition.
+- **Tools wrap the existing v1 handlers in-process** via `src/lib/mcp/invokeV1.ts`, so
+  authorization and validation stay defined once — including the dual identity (human
+  signer JWT vs. bot key with a WalletBotAccess grant), which a tool body calling a
+  tRPC router directly would not reproduce. A tool that needs an operation with no REST
+  route gets a new v1 handler first (`tasks.ts` / `taskUpsert.ts` are the model). The
+  transaction review tools are the exception: they live in `src/lib/tx-review/` and
+  reuse the canvas builder's `src/lib/tx-draft/` pipeline server-side, and even they
+  take their UTxOs from `freeUtxos.ts` through `freeUtxosFetcher` in `tools.ts`. Handler
+  imports in `src/lib/mcp/tools.ts` must stay **lazy** or the Mesh/whisky WASM (and the
+  `next/og` renderer) lands in the route's cold path.
+- **Auth**: an OAuth 2.1 access token, or an existing v1 bearer token. The authorization
+  server lives under `src/pages/api/oauth/` — see `src/pages/api/oauth/README.md`.
+- **Inline card (MCP App)**: the review tools point at `ui://mesh-multisig/review-card`
+  (`src/lib/mcp/apps/review-card.ts`), a self-contained HTML view the Claude app renders
+  inline with a Confirm button. Keep it dependency-free (default CSP: no fetch, no external
+  assets) and keep the `ui/initialize` handshake — the host hides the frame until it completes.
+- **Server instructions** (`MCP_SERVER_INSTRUCTIONS`, `src/lib/mcp/server.ts`) are sent
+  at initialize and land in the model's context for every conversation: keep them short
+  and behavioural (what to do with tool results), never a feature list.
+
 ## Docs to keep in sync
 
 - Landing “Developers & Bots” section: `src/components/pages/homepage/index.tsx` (id `#developers-and-bots`).
 - API/bot docs: `src/utils/swagger.ts`, `scripts/bot-ref/README.md`.
+- MCP/OAuth: `src/pages/api/mcp/README.md`, `src/pages/api/oauth/README.md`.

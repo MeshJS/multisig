@@ -41,6 +41,13 @@ type BlockfrostUtxo = {
   reference_script_hash?: string | null;
 };
 
+type PendingTransaction = {
+  id: string;
+  signedAddresses?: string[];
+  rejectedAddresses?: string[];
+  state?: number;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -155,7 +162,6 @@ async function waitForUtxoSelectorLoaded(
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     diagnostics.push(`loading new transaction page attempt ${attempt}`);
     await page.goto(newTransactionUrl);
-    await page.waitForLoadState("networkidle", { timeout: 60_000 }).catch(() => {});
 
     const loaded = await page
       .waitForSelector('[data-testid="utxo-selector"][data-loaded="true"]', {
@@ -227,7 +233,7 @@ async function getPendingTransactions(
   page: Page,
   walletId: string,
   signerAddress: string,
-): Promise<Array<{ id: string }>> {
+): Promise<PendingTransaction[]> {
   const jwtSecret = process.env.CI_JWT_SECRET;
   if (!jwtSecret) {
     throw new Error("CI_JWT_SECRET must be set to verify pending transactions");
@@ -246,7 +252,7 @@ async function getPendingTransactions(
       `pendingTransactions failed ${resp.status()}: ${await resp.text().catch(() => "")}`,
     );
   }
-  return (await resp.json()) as Array<{ id: string }>;
+  return (await resp.json()) as PendingTransaction[];
 }
 
 async function expectNoPendingTransactions(
@@ -262,6 +268,46 @@ async function expectNoPendingTransactions(
         .join(", ")}. Reset the Playwright stack with docker compose -f docker-compose.playwright.yml --env-file .env.playwright down -v --remove-orphans, then rerun bootstrap.`,
     );
   }
+}
+
+async function expectPendingTransactionState(
+  page: Page,
+  walletId: string,
+  signerAddress: string,
+  txId: string,
+  expected: {
+    signedAddresses: string[];
+    rejectedAddresses?: string[];
+    state?: number;
+  },
+): Promise<PendingTransaction> {
+  const transactions = await getPendingTransactions(page, walletId, signerAddress);
+  const transaction = transactions.find((pending) => pending.id === txId);
+
+  expect(
+    transaction,
+    `Expected pending transaction ${txId} in wallet ${walletId}`,
+  ).toBeTruthy();
+
+  const signedAddresses = transaction!.signedAddresses ?? [];
+  expect(
+    signedAddresses.sort(),
+    `Unexpected signed addresses for pending transaction ${txId}`,
+  ).toEqual([...expected.signedAddresses].sort());
+
+  if (expected.rejectedAddresses) {
+    const rejectedAddresses = transaction!.rejectedAddresses ?? [];
+    expect(
+      rejectedAddresses.sort(),
+      `Unexpected rejected addresses for pending transaction ${txId}`,
+    ).toEqual([...expected.rejectedAddresses].sort());
+  }
+
+  if (expected.state !== undefined) {
+    expect(transaction!.state).toBe(expected.state);
+  }
+
+  return transaction!;
 }
 
 // Poll /api/v1/pendingTransactions until the given tx ID is no longer listed,
@@ -367,7 +413,6 @@ test.describe("ring transfer", () => {
       const transactionsUrl = `/wallets/${srcWallet.walletId}/transactions`;
       await page.goto(transactionsUrl);
       await expect(page).toHaveURL(new RegExp(`/wallets/${srcWallet.walletId}/transactions$`));
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
 
       // Extract the newly created transaction's ID from the first pending tx card
       const txCard = page.locator('[data-testid^="tx-card-"]').first();
@@ -376,16 +421,50 @@ test.describe("ring transfer", () => {
       const transactionId = cardTestId!.replace("tx-card-", "");
       expect(transactionId).toBeTruthy();
 
+      await expectPendingTransactionState(
+        page,
+        srcWallet.walletId,
+        ctx.signerAddresses[0]!,
+        transactionId,
+        {
+          signedAddresses: [ctx.signerAddresses[0]!],
+          rejectedAddresses: [],
+          state: 0,
+        },
+      );
+
+      // The proposer auto-signed while creating the transaction, so they should
+      // see the pending card but no duplicate signing action.
+      await expect(
+        page.locator(`[data-testid="tx-card-${transactionId}"]`),
+      ).toBeVisible();
+      await expect(
+        page.locator(`[data-testid="sign-button-${transactionId}"]`),
+      ).toHaveCount(0);
+
       // ── Step 2: Signer 1 signs → broadcast (threshold 2-of-3 now met) ─────
       await authenticateAs(page, 1);
 
       await page.goto(`/wallets/${srcWallet.walletId}/transactions`);
-      await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
 
       // Confirm the tx card is still pending (proposer signed, threshold not yet met)
       await page.waitForSelector(`[data-testid="tx-card-${transactionId}"]`, {
         timeout: 20_000,
       });
+      await expectPendingTransactionState(
+        page,
+        srcWallet.walletId,
+        ctx.signerAddresses[1]!,
+        transactionId,
+        {
+          signedAddresses: [ctx.signerAddresses[0]!],
+          rejectedAddresses: [],
+          state: 0,
+        },
+      );
+      await expect(
+        page.locator(`[data-testid="sign-button-${transactionId}"]`),
+      ).toBeVisible();
 
       // Sign — this will call signTx(), reach the 2-of-3 threshold, submit on-chain,
       // and set broadcastDone=true which renders the tx-broadcast-success indicator.

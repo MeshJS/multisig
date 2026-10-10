@@ -42,6 +42,12 @@ Thumbs.db
 # Documentation
 *.md
 !README.md
+# The feature vault is data, not documentation: /roadmap/graph reads these notes
+# at runtime, so they have to survive the *.md filter above. Keep this as the
+# bare directory — Railpack turns each negation into a literal copy instruction,
+# and a `!vault/**` glob becomes `copy /vault/** /app/**`, which buildkit rejects
+# with "cannot copy to non-directory". `!vault` alone copies the tree recursively.
+!vault
 docs
 
 # Docker

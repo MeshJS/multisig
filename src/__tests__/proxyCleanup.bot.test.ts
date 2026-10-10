@@ -44,45 +44,45 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
   applyRateLimit: applyRateLimitMock,
   applyBotRateLimit: applyBotRateLimitMock,
   enforceBodySize: enforceBodySizeMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   verifyJwt: verifyJwtMock,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
   db: {},
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/v1WalletAuth", () => ({
   __esModule: true,
   authorizeWalletSignerForV1Tx: authorizeWalletSignerForV1TxMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/proxyAccess", () => ({
   __esModule: true,
   loadActiveProxyForWallet: loadActiveProxyForWalletMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/walletScriptAddress", () => ({
   __esModule: true,
   resolveWalletScriptAddress: resolveWalletScriptAddressMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/resolveUtxoRefsFromChain", () => ({
   __esModule: true,
   resolveUtxoRefsFromChain: resolveUtxoRefsFromChainMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/proxyUtxos", () => ({
   __esModule: true,
@@ -90,39 +90,39 @@ jest.mock("@/lib/server/proxyUtxos", () => ({
   loadBlockedUtxoRefsForWallet: loadBlockedUtxoRefsForWalletMock,
   resolveCollateralRefFromChain: resolveCollateralRefFromChainMock,
   resolveSingleUtxoRefFromChain: resolveSingleUtxoRefFromChainMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/proxy/utxoUtils", () => ({
   __esModule: true,
   selectAuthTokenUtxo: selectAuthTokenUtxoMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/createPendingMultisigTransaction", () => ({
   __esModule: true,
   createPendingMultisigTransaction: createPendingMultisigTransactionMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/completeTxWithFreshCostModels", () => ({
   __esModule: true,
   completeTxWithFreshCostModels: completeTxWithFreshCostModelsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: () => ({ fetchAddressUTxOs: fetchAddressUTxOsMock }),
-}), { virtual: true });
+}));
 
 jest.mock("@/utils/get-tx-builder", () => ({
   __esModule: true,
   getTxBuilder: getTxBuilderMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/server/proxyTxBuilders", () => ({
   __esModule: true,
   buildProxyCleanupSweepTx: buildProxyCleanupSweepTxMock,
   buildProxyCleanupTx: buildProxyCleanupTxMock,
   deriveProxyScripts: deriveProxyScriptsMock,
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
 

@@ -5,7 +5,7 @@ import type { UTxO } from "@meshsdk/core";
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: jest.fn(),
-}), { virtual: true });
+}));
 
 const proxy = {
   id: "proxy-1",

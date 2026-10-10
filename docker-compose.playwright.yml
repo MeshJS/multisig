@@ -94,6 +94,7 @@ services:
       CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
       CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
       CI_WALLET_TYPES: ${CI_WALLET_TYPES:-legacy,hierarchical,sdk}
+      CI_STAKE_POOL_ID_HEX: ${CI_STAKE_POOL_ID_HEX:-}
       CI_CONTEXT_PATH: /artifacts/ci-wallet-context.json
     depends_on:
       app:
@@ -123,6 +124,10 @@ services:
       CI_MNEMONIC_3: ${CI_MNEMONIC_3:-}
       CI_BLOCKFROST_PREPROD_API_KEY: ${CI_BLOCKFROST_PREPROD_API_KEY:-}
       CI_TRANSFER_LOVELACE: ${CI_TRANSFER_LOVELACE:-2000000}
+      # Fallback for specs when the bootstrap context predates stakePoolIdHex.
+      CI_STAKE_POOL_ID_HEX: ${CI_STAKE_POOL_ID_HEX:-}
+      CI_DREP_ANCHOR_URL: ${CI_DREP_ANCHOR_URL:-}
+      CI_DREP_ANCHOR_JSON: ${CI_DREP_ANCHOR_JSON:-}
       PLAYWRIGHT_HTML_REPORT: /artifacts/playwright-report
       PLAYWRIGHT_OUTPUT_DIR: /artifacts/playwright-traces
     depends_on:

@@ -9,9 +9,11 @@ import { normalizeWalletTypeFromLabel } from "../../framework/walletType";
 export type PendingTransactionForSigning = { id: string; txCbor?: string };
 
 // signTransaction mutates the pending tx before broadcast. Retrying a 502 can
-// turn the useful submission error into a duplicate-signature 409.
+// turn the useful submission error into a duplicate-signature 409. A 429 is
+// produced by request guards before mutation, so the CI flow can safely wait
+// through the app's rate-limit window.
 export const SIGN_TRANSACTION_REQUEST_OPTIONS = {
-  retries: 0,
+  retryStatuses: [429],
 } as const;
 
 export function selectPendingTransactionForSigning(

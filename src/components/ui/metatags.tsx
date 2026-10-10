@@ -1,5 +1,4 @@
 import Head from "next/head";
-import JsonLd from "@/components/ui/json-ld";
 import {
   SITE_NAME,
   TWITTER_HANDLE,
@@ -10,6 +9,7 @@ import {
   OG_IMAGE_WIDTH,
   OG_IMAGE_HEIGHT,
   absoluteUrl,
+  ogImageUrl,
   buildJsonLd,
 } from "@/lib/seo";
 
@@ -23,23 +23,34 @@ export default function Metatags({
   description = DEFAULT_DESCRIPTION,
   keywords = DEFAULT_KEYWORDS,
   image = OG_IMAGE_PATH,
+  /** Alt text for the social card. Falls back to the page title. */
+  imageAlt,
   /** Site-relative path of the current page, used for canonical + og:url. */
   path = "/",
   /** Open Graph object type. "website" for marketing pages, "article" for content. */
   type = "website",
   noindex = false,
+  /** Extra JSON-LD blocks (e.g. an Article) appended to the site-wide ones. */
+  extraJsonLd,
 }: {
   title?: string;
   description?: string;
   keywords?: string;
   image?: string;
+  imageAlt?: string;
   path?: string;
   type?: string;
   noindex?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extraJsonLd?: Record<string, any>[];
 }) {
   const canonical = absoluteUrl(path);
-  const imageUrl = absoluteUrl(image);
-  const jsonLd = JSON.stringify(buildJsonLd(path));
+  const imageUrl = ogImageUrl(image);
+  const alt = imageAlt ?? title;
+  const jsonLd = JSON.stringify([
+    ...buildJsonLd(path),
+    ...(extraJsonLd ?? []),
+  ]);
 
   return (
     <>
@@ -72,7 +83,7 @@ export default function Metatags({
         <meta property="og:image:width" content={String(OG_IMAGE_WIDTH)} />
         <meta property="og:image:height" content={String(OG_IMAGE_HEIGHT)} />
         <meta property="og:image:type" content="image/png" />
-        <meta property="og:image:alt" content={title} />
+        <meta property="og:image:alt" content={alt} />
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
@@ -81,7 +92,7 @@ export default function Metatags({
         <meta name="twitter:title" content={title} />
         <meta name="twitter:description" content={description} />
         <meta name="twitter:image" content={imageUrl} />
-        <meta name="twitter:image:alt" content={title} />
+        <meta name="twitter:image:alt" content={alt} />
 
         {/* Icons + manifest */}
         <link
@@ -120,10 +131,16 @@ export default function Metatags({
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-      </Head>
 
-      {/* Structured data (injected safely into <head> on the client). */}
-      <JsonLd json={jsonLd} />
+        {/* Structured data, server-rendered so non-JS crawlers and LLM fetchers
+            (which never execute our client bundle) read it in the initial HTML.
+            The content is app-controlled JSON.stringify output; escaping "<" to
+            its "<" JSON form keeps it valid JSON while making a "</script>"
+            breakout impossible, so no raw-HTML injection is involved. */}
+        <script type="application/ld+json">
+          {jsonLd.replace(/</g, "\\u003c")}
+        </script>
+      </Head>
     </>
   );
 }

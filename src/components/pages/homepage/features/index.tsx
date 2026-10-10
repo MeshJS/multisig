@@ -15,6 +15,7 @@ import {
   FeatureIcon,
   type FeatureIconName,
 } from "@/components/pages/homepage/feature-icons";
+import { TokenFlowDemo } from "@/components/pages/homepage/token-flow-demo";
 
 export function PageFeature() {
   const features: {
@@ -121,6 +122,8 @@ export function PageFeature() {
           </Reveal>
         ))}
       </div>
+
+      <TokenFlowDemo />
     </div>
   );
 }

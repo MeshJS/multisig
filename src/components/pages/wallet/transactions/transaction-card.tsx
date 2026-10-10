@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 
 import {
   checkSignature,
@@ -54,6 +55,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
+import useProposalTitles from "@/hooks/useProposalTitles";
+import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
+import PayoutTasksBadge from "@/components/pages/wallet/tasks/payout-tasks-badge";
 import { getProvider } from "@/utils/get-provider";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
@@ -219,6 +224,36 @@ export default function TransactionCard({
       return null;
     }
   }, [transaction.txJson]);
+  const router = useRouter();
+  // Whether this pending tx can round-trip into the visual builder (simple
+  // sends, DRep votes and staking certificates — withdrawals, mints etc.
+  // have no draft representation).
+  const editCompat = useMemo(
+    () =>
+      txJson
+        ? isDraftCompatible(txJson)
+        : { compatible: false, reasons: ["Unreadable transaction"] },
+    [txJson],
+  );
+  // Proposal titles for the Votes section, so signers can see what
+  // governance action each vote targets.
+  const voteProposalIds = useMemo(() => {
+    if (!Array.isArray(txJson?.votes)) return [];
+    return txJson.votes
+      .filter(
+        (vote: any) =>
+          typeof vote?.vote?.govActionId?.txHash === "string" &&
+          typeof vote?.vote?.govActionId?.txIndex === "number",
+      )
+      .map(
+        (vote: any) =>
+          `${vote.vote.govActionId.txHash}#${vote.vote.govActionId.txIndex}`,
+      );
+  }, [txJson]);
+  const { resolveProposalTitle } = useProposalTitles(
+    walletId,
+    voteProposalIds,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [isSignersOpen, setIsSignersOpen] = useState<boolean>(false);
   // Set once an on-chain broadcast succeeds during signing; surfaces a hidden
@@ -727,7 +762,8 @@ export default function TransactionCard({
   
   return (
     <Card
-      className="self-start overflow-hidden w-full"
+      id={`tx-${transaction.id}`}
+      className="self-start overflow-hidden w-full scroll-mt-24"
       data-testid={`tx-card-${transaction.id}`}
     >
       {broadcastDone && (
@@ -736,8 +772,11 @@ export default function TransactionCard({
       <CardHeader className="flex flex-col gap-3 bg-muted/50 p-4 sm:p-6">
         <div className="flex flex-row items-start w-full">
           <div className="grid gap-0.5 flex-1 min-w-0 pr-2">
-            <CardTitle className="group flex items-center gap-2 text-base sm:text-lg break-words">
+            <CardTitle className="group flex flex-wrap items-center gap-2 text-base sm:text-lg break-words">
               {transaction.description}
+              {appWallet && (
+                <PayoutTasksBadge txJson={txJson} walletId={appWallet.id} />
+              )}
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
               {dateToFormatted(transaction.createdAt)}
@@ -783,13 +822,26 @@ export default function TransactionCard({
                 Copy Tx CBOR
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {/* <DropdownMenuItem
-                onClick={() => {
-                  rebuildTx(); // todo add confirmation
-                }}
-              >
-                Rebuild Transaction
-              </DropdownMenuItem> */}
+              {transaction.state === 0 && (
+                <DropdownMenuItem
+                  disabled={!editCompat.compatible}
+                  data-testid={`edit-in-builder-${transaction.id}`}
+                  onClick={() =>
+                    void router.push(
+                      `/wallets/${walletId}/build?tx=${transaction.id}`,
+                    )
+                  }
+                >
+                  <div className="flex flex-col">
+                    <span>Edit in Builder</span>
+                    {!editCompat.compatible && (
+                      <span className="text-xs text-muted-foreground">
+                        {editCompat.reasons[0]}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => {
                   deleteTx(); // todo add confirmation
@@ -920,15 +972,23 @@ export default function TransactionCard({
                     const anchor = vote.vote?.votingProcedure?.anchor;
                     const anchorUrl: string | undefined = anchor?.anchorUrl;
                     const anchorHash: string | undefined = anchor?.anchorDataHash;
+                    const proposalTitle = resolveProposalTitle(
+                      `${govActionHash}#${govActionIndex}`,
+                    );
 
                     return (
                       <div key={index} className="space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <VoteBadge voteKind={voteKindDisplay} />
                           <span className="text-xs text-muted-foreground">on</span>
-                          <div className="flex items-center gap-1.5">
-                            <Vote className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs font-medium">Governance Action</span>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <Vote className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span
+                              className="truncate text-xs font-medium"
+                              title={proposalTitle}
+                            >
+                              {proposalTitle ?? "Governance Action"}
+                            </span>
                           </div>
                         </div>
                         <div className="space-y-1.5 pl-5">
@@ -1050,6 +1110,17 @@ export default function TransactionCard({
               <Separator className="my-2" />
             </>
           )}
+
+          {/* Token Flow - Collapsible */}
+          <TokenFlowSection
+            source={{
+              type: "pending",
+              txId: transaction.id,
+              txJson,
+              description: transaction.description,
+            }}
+            appWallet={appWallet}
+          />
 
           {/* Signers List - Collapsible */}
           <Collapsible open={isSignersOpen} onOpenChange={setIsSignersOpen}>

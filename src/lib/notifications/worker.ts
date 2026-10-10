@@ -1,12 +1,18 @@
-import type { PrismaClient } from "@prisma/client";
+import type {
+  PrismaClient,
+  WalletSignerNotificationSetting,
+} from "@prisma/client";
 
 import {
+  getNotificationPreferenceField,
   NOTIFICATION_STATUS_FAILED,
   NOTIFICATION_STATUS_PENDING,
   NOTIFICATION_STATUS_RETRYING,
   NOTIFICATION_STATUS_SENDING,
   NOTIFICATION_STATUS_SENT,
+  type NotificationPreferenceField,
 } from "./events";
+import { getSkipReason } from "./recipients";
 import { sendEmailViaResend } from "./channels/email/resend";
 
 const RETRY_DELAYS_MS = [
@@ -35,6 +41,22 @@ function getPayloadString(
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// Preference-gated deliveries re-check the signer's current settings at send
+// time so a toggle flipped after enqueue is still honored. Returns null for
+// exempt events (email.verify must be able to reach an address that is not
+// yet opted in or verified) and for rows without a wallet scope.
+function preferenceFieldFor(delivery: {
+  eventType: string;
+  walletId: string | null;
+  resourceType: string;
+}): NotificationPreferenceField | null {
+  if (!delivery.walletId) return null;
+  return getNotificationPreferenceField(
+    delivery.eventType,
+    delivery.resourceType,
+  );
+}
+
 export async function drainNotificationOutbox(
   db: PrismaClient,
   options: { limit?: number } = {},
@@ -51,9 +73,51 @@ export async function drainNotificationOutbox(
     take: limit,
   });
 
+  const gatedDeliveries = deliveries.filter(
+    (delivery) => preferenceFieldFor(delivery) !== null,
+  );
+  const settingsByKey = new Map<string, WalletSignerNotificationSetting>();
+  if (gatedDeliveries.length > 0) {
+    const settings = await db.walletSignerNotificationSetting.findMany({
+      where: {
+        OR: gatedDeliveries.map((delivery) => ({
+          walletId: delivery.walletId!,
+          signerAddress: delivery.recipientAddress,
+        })),
+      },
+    });
+    for (const setting of settings) {
+      settingsByKey.set(`${setting.walletId}:${setting.signerAddress}`, setting);
+    }
+  }
+
   const results = [];
 
   for (const delivery of deliveries) {
+    const preferenceField = preferenceFieldFor(delivery);
+    if (preferenceField) {
+      const setting = settingsByKey.get(
+        `${delivery.walletId}:${delivery.recipientAddress}`,
+      );
+      const skipReason = getSkipReason(setting, preferenceField);
+      if (skipReason) {
+        const marked = await db.notificationDelivery.updateMany({
+          where: {
+            id: delivery.id,
+            status: delivery.status,
+          },
+          data: {
+            status: skipReason,
+            lastError: null,
+          },
+        });
+        if (marked.count > 0) {
+          results.push({ ...delivery, status: skipReason, lastError: null });
+        }
+        continue;
+      }
+    }
+
     const claimed = await db.notificationDelivery.updateMany({
       where: {
         id: delivery.id,

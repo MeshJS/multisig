@@ -8,42 +8,26 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader } from "lucide-react";
 import ActiveIndicator from "../activeIndicator";
 import ScriptIndicator from "../scriptIndicator";
-import useMeshWallet from "@/hooks/useMeshWallet";
+import usePublicNetwork from "@/hooks/usePublicNetwork";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
 import DelegateButton from "./delegateButton";
+import VoteHistory from "./voteHistory";
 
 export default function DrepDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { wallet, connected } = useMeshWallet();
   const [drepInfo, setDrepInfo] = useState<BlockfrostDrepInfo | null>(null);
   const [drepMetadata, setDrepMetadata] =
     useState<BlockfrostDrepMetadata | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [network, setNetwork] = useState<number>(3); // Default to mainnet
+  // Mainnet for anonymous visitors, the wallet's network once connected.
+  const network = usePublicNetwork();
 
-    useEffect(() => {
-      async function fetchNetwork() {
-        if (connected && wallet) {
-          try {
-            const net = await wallet.getNetworkId();
-            setNetwork(net);
-          } catch (error) {
-          setNetwork(1);
-            console.error("Error fetching network ID:", error);
-          }
-        }
-      }
-    
-      fetchNetwork();
-    }, [connected, wallet]);
-    
   useEffect(() => {
-    if (network === 3) return; // Prevent fetching if network is not set
     if (id) fetchDrepData(id as string);
-  }, [id, wallet, network]);
+  }, [id, network]);
 
   async function fetchDrepData(drepId: string) {
     setLoading(true);
@@ -81,14 +65,14 @@ export default function DrepDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader className="h-8 w-8 animate-spin text-gray-500" />
+        <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!drepInfo) {
     return (
-      <p className="text-center text-gray-500">DRep data is unavailable.</p>
+      <p className="text-center text-muted-foreground">DRep data is unavailable.</p>
     );
   }
 
@@ -109,7 +93,7 @@ export default function DrepDetailPage() {
 
   return (
     <TooltipProvider>
-      <main className="flex flex-col gap-4 p-4 text-gray-300 md:p-8">
+      <main className="flex flex-col gap-4 p-4 text-foreground md:p-8">
         
         {/*  Top Action Buttons */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -133,7 +117,7 @@ export default function DrepDetailPage() {
               />
             ) : (
               <svg
-                className="h-24 w-24 sm:h-32 sm:w-32 text-gray-500"
+                className="h-24 w-24 sm:h-32 sm:w-32 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -151,7 +135,7 @@ export default function DrepDetailPage() {
             {/* Name, Status, and Indicators */}
             <div className="flex flex-wrap items-center space-x-2">
               <ActiveIndicator isActive={active} />
-              <span className="text-lg font-semibold text-gray-200">{givenName}</span>
+              <span className="text-lg font-semibold text-foreground">{givenName}</span>
               {has_script && <ScriptIndicator hasScript={has_script} />}
             </div>
 
@@ -160,7 +144,7 @@ export default function DrepDetailPage() {
               label="DRep ID:"
               value={drep_id}
               copyString={drep_id}
-              className="truncate sm:whitespace-nowrap break-all text-sm text-gray-400"
+              className="truncate sm:whitespace-nowrap break-all text-sm text-muted-foreground"
             />
 
             {/* Payment Address */}
@@ -168,18 +152,21 @@ export default function DrepDetailPage() {
               label="Address:"
               value={paymentAddress}
               copyString={paymentAddress}
-              className="truncate sm:whitespace-nowrap break-all text-sm text-gray-400"
+              className="truncate sm:whitespace-nowrap break-all text-sm text-muted-foreground"
             />
           </div>
 
           {/* ADA Amount */}
           <div className="flex-shrink-0 sm:text-right text-center w-full sm:w-auto">
-            <p className="text-lg font-semibold text-gray-300">{adaAmount}</p>
+            <p className="text-lg font-semibold text-foreground">{adaAmount}</p>
           </div>
         </div>
 
         {/* Metadata Section */}
         <Metadata drepMetadata={drepMetadata} />
+
+        {/* On-chain votes with rationales + CSV export */}
+        <VoteHistory drepId={drep_id} network={network} />
       </main>
     </TooltipProvider>
   );

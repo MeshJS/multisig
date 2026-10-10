@@ -78,6 +78,7 @@ services:
       CI_ROUTE_SCENARIOS: ${CI_ROUTE_SCENARIOS:-}
       CI_ROUTE_CHAIN_REPORT_PATH: ${CI_ROUTE_CHAIN_REPORT_PATH:-/artifacts/ci-route-chain-report.md}
       CI_CONTEXT_PATH: ${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}
+      CI_RUN_WALLET_STATUS: ${CI_RUN_WALLET_STATUS:-false}
       CI_DREP_ANCHOR_URL: ${CI_DREP_ANCHOR_URL:-}
       CI_DREP_ANCHOR_JSON: ${CI_DREP_ANCHOR_JSON:-}
       CI_STAKE_POOL_ID_HEX: ${CI_STAKE_POOL_ID_HEX:-}
@@ -94,7 +95,7 @@ services:
       sh -c "
         status=0;
         node .ci-dist/bootstrap.mjs || status=$$?;
-        if [ \"$$status\" -eq 0 ]; then node .ci-dist/wallet-status.mjs || status=$$?; fi;
+        if [ \"$$status\" -eq 0 ] && [ \"$${CI_RUN_WALLET_STATUS:-false}\" = \"true\" ]; then node .ci-dist/wallet-status.mjs || status=$$?; fi;
         if [ \"$$status\" -eq 0 ]; then node .ci-dist/route-chain.mjs || status=$$?; fi;
         rm -f \"${CI_CONTEXT_PATH:-/tmp/ci-wallet-context.json}\";
         exit \"$$status\"

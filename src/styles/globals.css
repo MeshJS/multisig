@@ -761,6 +761,13 @@ body.add-wallet-glass-page #logo-header svg {
     --accent-foreground: 240 5.9% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
+    /* warning/success mirror amber-600/green-600 (light) and amber-400/
+       green-400 (dark) — the shades semantic-status code already used, so
+       token migration is pixel-identical. */
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 10% 3.9%;
@@ -787,6 +794,10 @@ body.add-wallet-glass-page #logo-header svg {
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 240 5.9% 10%;
+    --success: 142 69% 58%;
+    --success-foreground: 240 5.9% 10%;
     --border: 0 0% 15%;
     --input: 0 0% 15%;
     --ring: 240 4.9% 83.9%;

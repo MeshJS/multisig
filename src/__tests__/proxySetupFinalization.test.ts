@@ -4,7 +4,7 @@ import type { UTxO } from "@meshsdk/core";
 jest.mock("@/utils/get-provider", () => ({
   __esModule: true,
   getProvider: jest.fn(),
-}), { virtual: true });
+}));
 
 const setup = {
   proxyAddress: "addr_test_proxy",

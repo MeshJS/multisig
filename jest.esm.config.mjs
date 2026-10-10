@@ -9,5 +9,7 @@ import { shared, ESM_TESTS } from './jest.shared.mjs';
  */
 export default {
   ...shared,
+  // Separate from the CJS project's cache — see the note in jest.config.mjs.
+  cacheDirectory: '<rootDir>/node_modules/.cache/jest-esm',
   testMatch: ESM_TESTS.map((name) => `<rootDir>/src/__tests__/${name}.test.ts`),
 };

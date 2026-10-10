@@ -7,12 +7,13 @@ const getBotWalletAccessMock: jest.Mock = jest.fn();
 jest.mock("@/lib/verifyJwt", () => ({
   __esModule: true,
   isBotJwt: isBotJwtMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/botAccess", () => ({
+  BotAccessError: class extends Error { constructor(public status: number, message: string) { super(message); } },
   __esModule: true,
   getBotWalletAccess: getBotWalletAccessMock,
-}), { virtual: true });
+}));
 
 const wallet = {
   id: "wallet-1",

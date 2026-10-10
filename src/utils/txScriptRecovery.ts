@@ -300,6 +300,7 @@ export function buildSerializedNativeScriptCbor(
 
 export function resolveExpectedPaymentScriptCbor(
   appWallet: ScriptRecoveryWallet,
+  network?: number,
 ): string | undefined {
   const { paymentScript, stakeScript } = resolveMultisigScripts(
     appWallet.rawImportBodies,
@@ -336,6 +337,17 @@ export function resolveExpectedPaymentScriptCbor(
     }
     if (walletScriptHash === addressScriptHash && appWallet.scriptCbor) {
       return appWallet.scriptCbor;
+    }
+    // Legacy/SDK wallets: the DB-stored scriptCbor can be stale (older
+    // serializer, later signer/type edits) while the address is re-derived at
+    // runtime from nativeScript — so when none of the stored candidates match,
+    // try the runtime-rebuilt script. Reached only for wallets whose submits
+    // already fail and get repaired today; wallets with a matching scriptCbor
+    // return above, unchanged. (Script CBOR is network-independent; network
+    // only affects the derived address, so 0 is a safe default.)
+    const rebuiltScript = buildSerializedNativeScriptCbor(appWallet, network ?? 0);
+    if (rebuiltScript && scriptHashFromCbor(rebuiltScript) === addressScriptHash) {
+      return rebuiltScript;
     }
   }
 
@@ -435,7 +447,7 @@ function buildRecoveryCandidateScriptSets(
   const { paymentScript, stakeScript } = resolveMultisigScripts(
     appWallet.rawImportBodies,
   );
-  const expectedScript = resolveExpectedPaymentScriptCbor(appWallet);
+  const expectedScript = resolveExpectedPaymentScriptCbor(appWallet, network);
 
   const currentWitnessScripts = getNativeScriptWitnessCbors(txHex);
   const retainedCurrentScripts = currentWitnessScripts.filter((scriptCbor) => {
@@ -480,17 +492,32 @@ async function retrySubmitWithCandidateScriptSets(
   initialError: unknown,
 ): Promise<SubmitTxWithRecoveryResult> {
   let lastRetryError: unknown = initialError;
+  let attempt = 0;
 
   for (const scriptSet of candidateScriptSets.values()) {
+    attempt += 1;
     const repairedTx = setNativeScriptWitnesses(txHex, scriptSet);
     try {
       const txHash = await submitter.submitTx(repairedTx);
+      console.warn(
+        "[tx-submit-recovery] submit succeeded after replacing native script witnesses — the wallet's stored scriptCbor does not match the script hash its address requires",
+        {
+          attempt,
+          candidateSets: candidateScriptSets.size,
+          scriptHashes: scriptSet.map((script) => scriptHashFromCbor(script)),
+          txHash,
+        },
+      );
       return { txHash, txHex: repairedTx, repaired: true };
     } catch (retryError) {
       lastRetryError = retryError;
     }
   }
 
+  console.warn(
+    "[tx-submit-recovery] all candidate script sets were rejected",
+    { candidateSets: candidateScriptSets.size },
+  );
   throw lastRetryError;
 }
 
@@ -554,6 +581,13 @@ export async function submitTxWithScriptRecovery({
     const txHash = await submitter.submitTx(txHex);
     return { txHash, txHex, repaired: false };
   } catch (submitError) {
+    // The 400 the browser just logged for this POST is expected here — the
+    // paths below repair the witness set and resubmit.
+    console.warn(
+      "[tx-submit-recovery] initial submit rejected — attempting repair",
+      { error: extractErrorMessage(submitError) },
+    );
+
     throwIfUnrecoverableSubmitError(submitError);
 
     if (hasPPViewHashMismatch(submitError)) {
@@ -574,6 +608,10 @@ export async function submitTxWithScriptRecovery({
         );
         try {
           const txHash = await submitter.submitTx(repairedTx);
+          console.warn(
+            "[tx-submit-recovery] submit succeeded after removing invalid vkey witnesses",
+            { removedPubKeys: invalidVKeys, txHash },
+          );
           return { txHash, txHex: repairedTx, repaired: true };
         } catch (retryError) {
           throwIfUnrecoverableSubmitError(retryError);

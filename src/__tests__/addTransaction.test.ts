@@ -12,8 +12,7 @@ jest.mock(
     __esModule: true,
     addCorsCacheBustingHeaders: addCorsCacheBustingHeadersMock,
     cors: corsMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const verifyJwtMock = jest.fn<(token: string | undefined) => { address: string } | null>();
@@ -25,8 +24,7 @@ jest.mock(
     __esModule: true,
     verifyJwt: verifyJwtMock,
     isBotJwt: isBotJwtMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const applyRateLimitMock = jest.fn<
@@ -46,8 +44,7 @@ jest.mock(
     applyRateLimit: applyRateLimitMock,
     applyBotRateLimit: applyBotRateLimitMock,
     enforceBodySize: enforceBodySizeMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const assertBotWalletAccessMock = jest.fn<
@@ -59,8 +56,7 @@ jest.mock(
   () => ({
     __esModule: true,
     assertBotWalletAccess: assertBotWalletAccessMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const dbTransactionCreateMock = jest.fn<(args: unknown) => Promise<unknown>>();
@@ -76,8 +72,7 @@ jest.mock(
   () => ({
     __esModule: true,
     db: dbMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const getProviderMock = jest.fn<(network: number) => { submitTx: (cbor: string) => unknown }>();
@@ -87,8 +82,7 @@ jest.mock(
   () => ({
     __esModule: true,
     getProvider: getProviderMock,
-  }),
-  { virtual: true },
+  })
 );
 
 const transactionFromHexMock = jest.fn<(hex: string) => { _parsed: true }>();
@@ -100,8 +94,7 @@ jest.mock(
     csl: {
       Transaction: { from_hex: transactionFromHexMock },
     },
-  }),
-  { virtual: true },
+  })
 );
 
 // --- helpers -------------------------------------------------------------

@@ -1,6 +1,7 @@
 import AllTransactions from "./all-transactions";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import TransactionCard from "./transaction-card";
+import TokenFlowTimelineSection from "./token-flow-timeline-section";
 import CardBalance from "./card-balance";
 import SectionTitle from "@/components/ui/section-title";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -47,6 +48,9 @@ export default function PageTransactions() {
           </div>
         </>
       )}
+      <div className="w-full">
+        <TokenFlowTimelineSection appWallet={appWallet} />
+      </div>
       <SectionTitle>All Transactions</SectionTitle>
       <div className="w-full">
         <AllTransactions appWallet={appWallet} />

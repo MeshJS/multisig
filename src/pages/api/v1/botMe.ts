@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { getWalletAccessForBot } from "@/lib/auth/botAccess";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 
 /**
@@ -31,7 +32,7 @@ export default async function handler(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Missing token" });
+    return res.status(401).json({ error: "Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)" });
   }
 
   const payload = verifyJwt(token);
@@ -56,11 +57,16 @@ export default async function handler(
     return res.status(404).json({ error: "Bot not found" });
   }
 
+  // Wallet grants let the bot self-discover where it may read/write instead
+  // of being told walletIds out-of-band.
+  const botWallets = await getWalletAccessForBot(db, botUser.id);
+
   res.status(200).json({
     botId: botUser.id,
     paymentAddress: botUser.paymentAddress,
     displayName: botUser.displayName ?? null,
     botName: botUser.botKey.name,
     ownerAddress: botUser.botKey.ownerAddress,
+    botWallets,
   });
 }

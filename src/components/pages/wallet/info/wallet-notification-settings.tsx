@@ -64,7 +64,6 @@ export function WalletNotificationSettings({
   const utils = api.useUtils();
   const {
     data: setting,
-    isLoading,
     isFetching,
     isSuccess,
     isError,
@@ -75,6 +74,7 @@ export function WalletNotificationSettings({
       enabled: isSigner && connectedAddress.length > 0,
       staleTime: 0,
       refetchOnMount: "always",
+      refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
         if (
           error &&
@@ -106,6 +106,8 @@ export function WalletNotificationSettings({
   const [emailOptIn, setEmailOptIn] = useState(true);
   const [notifyTransactions, setNotifyTransactions] = useState(true);
   const [notifySignables, setNotifySignables] = useState(true);
+  const [notifyThreshold, setNotifyThreshold] = useState(true);
+  const [notifyBallotDeadlines, setNotifyBallotDeadlines] = useState(true);
   const [appliedScope, setAppliedScope] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,20 +116,27 @@ export function WalletNotificationSettings({
     setEmailOptIn(true);
     setNotifyTransactions(true);
     setNotifySignables(true);
+    setNotifyThreshold(true);
+    setNotifyBallotDeadlines(true);
     void utils.notification.getWalletSignerSetting.cancel();
     void utils.notification.getWalletSignerSetting.reset();
   }, [signerScope, utils.notification.getWalletSignerSetting]);
 
+  // One-shot per scope: after the first successful load, local state owns the
+  // controls; later refetches must not clobber in-flight edits.
   useEffect(() => {
     if (!isSettingResolved || !setting || !signerScope) return;
+    if (appliedScope === signerScope) return;
     setAppliedScope(signerScope);
     setEmail(setting.email ?? "");
     setEmailOptIn(setting.emailOptIn);
     setNotifyTransactions(setting.notifyTransactionSignatures);
     setNotifySignables(setting.notifySignableSignatures);
-  }, [isSettingResolved, setting, signerScope]);
+    setNotifyThreshold(setting.notifyThresholdReached);
+    setNotifyBallotDeadlines(setting.notifyBallotDeadlines);
+  }, [isSettingResolved, setting, signerScope, appliedScope]);
 
-  const canShowSavedSettings = appliedScope === signerScope && isSettingResolved;
+  const hasLoadedSettings = appliedScope === signerScope;
 
   const invalidate = async () => {
     if (!connectedAddress) return;
@@ -139,8 +148,20 @@ export function WalletNotificationSettings({
 
   const { mutate: saveSetting, isPending: saving } =
     api.notification.upsertWalletSignerSetting.useMutation({
-      onSuccess: async () => {
-        await invalidate();
+      onMutate: async () => {
+        if (!connectedAddress) return;
+        await utils.notification.getWalletSignerSetting.cancel({
+          walletId: appWallet.id,
+          signerAddress: connectedAddress,
+        });
+      },
+      onSuccess: (updated) => {
+        if (connectedAddress) {
+          utils.notification.getWalletSignerSetting.setData(
+            { walletId: appWallet.id, signerAddress: connectedAddress },
+            updated,
+          );
+        }
         toast({
           title: "Notification settings saved",
           description: "Your wallet email preferences have been updated.",
@@ -154,6 +175,10 @@ export function WalletNotificationSettings({
           variant: "destructive",
           duration: 6000,
         });
+        // Re-sync local state from the server: clearing the applied scope
+        // re-arms the one-shot sync effect for the refetched data.
+        setAppliedScope(null);
+        void invalidate();
       },
     });
 
@@ -188,14 +213,13 @@ export function WalletNotificationSettings({
   const needsAuthorization =
     !isSessionAuthorized || (isError && !isSettingResolved);
   const isResolvingSettings =
-    connectedAddress.length > 0 &&
-    (isLoading || isFetching || !canShowSavedSettings);
+    connectedAddress.length > 0 && !hasLoadedSettings && !isError;
 
   if (needsAuthorization && !isResolvingSettings) {
     return (
       <CardUI
         title="Email Notifications"
-        description="Manage email alerts for signatures needed from your signer address on this wallet."
+        description="Manage email alerts for this wallet: signatures needed from you, completed signature sets, and ballot deadlines."
         icon={Mail}
         cardClassName="col-span-2"
       >
@@ -208,36 +232,38 @@ export function WalletNotificationSettings({
     );
   }
 
-  const verified = canShowSavedSettings
+  const verified = hasLoadedSettings
     ? Boolean(setting?.emailVerifiedAt)
     : false;
-  const savedEmail = canShowSavedSettings ? (setting?.email ?? "") : "";
+  const savedEmail = hasLoadedSettings ? (setting?.email ?? "") : "";
   const emailChanged = email.trim() !== savedEmail;
   const canSendVerification = Boolean(savedEmail) && !emailChanged;
-  const inputEmail = canShowSavedSettings ? email : "";
+  const inputEmail = hasLoadedSettings ? email : "";
 
-  const persist = (overrides: Partial<{
-    email: string;
-    emailOptIn: boolean;
-    notifyTransactionSignatures: boolean;
-    notifySignableSignatures: boolean;
-  }> = {}) => {
-    if (!connectedAddress || !canShowSavedSettings) return;
+  // Persist only the fields that actually changed; the backend applies
+  // partial updates, so untouched fields (and the email) stay as-is.
+  const persist = (
+    changes: Partial<{
+      email: string;
+      emailOptIn: boolean;
+      notifyTransactionSignatures: boolean;
+      notifySignableSignatures: boolean;
+      notifyThresholdReached: boolean;
+      notifyBallotDeadlines: boolean;
+    }>,
+  ) => {
+    if (!connectedAddress || !hasLoadedSettings) return;
     saveSetting({
       walletId: appWallet.id,
       signerAddress: connectedAddress,
-      email: inputEmail,
-      emailOptIn,
-      notifyTransactionSignatures: notifyTransactions,
-      notifySignableSignatures: notifySignables,
-      ...overrides,
+      ...changes,
     });
   };
 
   return (
     <CardUI
       title="Email Notifications"
-      description="Manage email alerts for signatures needed from your signer address on this wallet."
+      description="Manage email alerts for this wallet: signatures needed from you, completed signature sets, and ballot deadlines."
       icon={Mail}
       cardClassName="col-span-2"
     >
@@ -252,12 +278,12 @@ export function WalletNotificationSettings({
                   ? "Not verified"
                   : "No email"}
           </Badge>
-          {canShowSavedSettings && savedEmail && (
+          {hasLoadedSettings && savedEmail && (
             <span className="text-sm text-muted-foreground">{savedEmail}</span>
           )}
         </div>
 
-        {!verified && savedEmail && !emailChanged && canShowSavedSettings && (
+        {!verified && savedEmail && !emailChanged && hasLoadedSettings && (
           <Alert>
             <AlertDescription>
               Verify this email before signature-required notifications can be sent.
@@ -265,7 +291,7 @@ export function WalletNotificationSettings({
           </Alert>
         )}
 
-        {canShowSavedSettings && !savedEmail && (
+        {hasLoadedSettings && !savedEmail && (
           <Alert>
             <AlertDescription>
               Add your email address below to receive alerts when this wallet needs your signature.
@@ -280,14 +306,14 @@ export function WalletNotificationSettings({
               id="wallet-notification-email"
               type="email"
               value={inputEmail}
-              disabled={isResolvingSettings || saving}
+              disabled={!hasLoadedSettings || saving}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
             />
             <Button
               type="button"
-              disabled={isResolvingSettings || saving || !canShowSavedSettings}
-              onClick={() => persist()}
+              disabled={!hasLoadedSettings || saving}
+              onClick={() => persist({ email: inputEmail })}
               className="shrink-0"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -306,7 +332,7 @@ export function WalletNotificationSettings({
             </div>
             <Switch
               checked={emailOptIn}
-              disabled={isResolvingSettings || saving || !canShowSavedSettings}
+              disabled={!hasLoadedSettings || saving}
               onCheckedChange={(checked) => {
                 setEmailOptIn(checked);
                 persist({ emailOptIn: checked });
@@ -316,7 +342,7 @@ export function WalletNotificationSettings({
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <div>
+            <div className={emailOptIn ? undefined : "opacity-50"}>
               <p className="text-sm font-medium">Transaction signatures</p>
               <p className="text-xs text-muted-foreground">
                 Email me when a pending transaction needs my signature.
@@ -324,7 +350,7 @@ export function WalletNotificationSettings({
             </div>
             <Switch
               checked={notifyTransactions}
-              disabled={isResolvingSettings || saving || !canShowSavedSettings}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
               onCheckedChange={(checked) => {
                 setNotifyTransactions(checked);
                 persist({ notifyTransactionSignatures: checked });
@@ -334,7 +360,7 @@ export function WalletNotificationSettings({
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <div>
+            <div className={emailOptIn ? undefined : "opacity-50"}>
               <p className="text-sm font-medium">Signable payloads</p>
               <p className="text-xs text-muted-foreground">
                 Email me when a datum or payload needs my signature.
@@ -342,12 +368,48 @@ export function WalletNotificationSettings({
             </div>
             <Switch
               checked={notifySignables}
-              disabled={isResolvingSettings || saving || !canShowSavedSettings}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
               onCheckedChange={(checked) => {
                 setNotifySignables(checked);
                 persist({ notifySignableSignatures: checked });
               }}
               aria-label="Toggle signable payload notifications"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className={emailOptIn ? undefined : "opacity-50"}>
+              <p className="text-sm font-medium">Signatures complete</p>
+              <p className="text-xs text-muted-foreground">
+                Email me when a transaction or payload collects enough signatures.
+              </p>
+            </div>
+            <Switch
+              checked={notifyThreshold}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
+              onCheckedChange={(checked) => {
+                setNotifyThreshold(checked);
+                persist({ notifyThresholdReached: checked });
+              }}
+              aria-label="Toggle threshold reached notifications"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className={emailOptIn ? undefined : "opacity-50"}>
+              <p className="text-sm font-medium">Ballot deadlines</p>
+              <p className="text-xs text-muted-foreground">
+                Email me 48h and 24h before proposals in a ballot or pending vote transaction stop accepting votes.
+              </p>
+            </div>
+            <Switch
+              checked={notifyBallotDeadlines}
+              disabled={!hasLoadedSettings || saving || !emailOptIn}
+              onCheckedChange={(checked) => {
+                setNotifyBallotDeadlines(checked);
+                persist({ notifyBallotDeadlines: checked });
+              }}
+              aria-label="Toggle ballot deadline notifications"
             />
           </div>
         </div>
@@ -356,7 +418,7 @@ export function WalletNotificationSettings({
           type="button"
           variant="outline"
           disabled={
-            !canShowSavedSettings ||
+            !hasLoadedSettings ||
             !canSendVerification ||
             sendingVerification
           }

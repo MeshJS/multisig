@@ -81,10 +81,18 @@ const dbTransactionUpdateManyMock = jest.fn<
   }) => Promise<{ count: number }>
 >();
 
+// A submitted transaction flips any task-payout links to Paid
+// (src/lib/task-payout/sync.ts); the handler must reach that table without
+// logging, or the "no console.error" assertions below fail.
+const dbTaskPayoutUpdateManyMock = jest.fn<(args: unknown) => Promise<{ count: number }>>();
+
 const dbMock = {
   transaction: {
     findUnique: dbTransactionFindUniqueMock,
     updateMany: dbTransactionUpdateManyMock,
+  },
+  taskPayout: {
+    updateMany: dbTaskPayoutUpdateManyMock,
   },
 };
 
@@ -414,6 +422,8 @@ beforeEach(() => {
   walletGetWalletMock.mockReset();
   dbTransactionFindUniqueMock.mockReset();
   dbTransactionUpdateManyMock.mockReset();
+  dbTaskPayoutUpdateManyMock.mockReset();
+  dbTaskPayoutUpdateManyMock.mockResolvedValue({ count: 0 });
   getProviderMock.mockReset();
   addressToNetworkMock.mockReset();
   shouldSubmitMultisigTxMock.mockReset();
@@ -825,7 +835,7 @@ describe('signTransaction API route', () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing token' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized - Missing or malformed Authorization header (expected: Bearer <token>)' });
     expect(verifyJwtMock).not.toHaveBeenCalled();
     expect(createCallerMock).not.toHaveBeenCalled();
   });
