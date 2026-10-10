@@ -1,6 +1,7 @@
 import { deserializeAddress } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
+import { isValidDrepId } from "@/lib/tx-draft/drep";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import {
   materializeOutputAssets,
@@ -26,6 +27,8 @@ export type DraftIssueCode =
   | "cert-delegate-unregistered"
   | "cert-already-registered"
   | "cert-deregister-unregistered"
+  | "cert-vote-unregistered"
+  | "cert-drep-missing"
   | "vote-drep-unregistered"
   | "source-address-missing"
   | "source-address-invalid"
@@ -243,20 +246,31 @@ export function validateDraft(
   // Defensive: the inspector normalizes pool ids on entry, but a loaded tx
   // may carry a pool id that didn't normalize (kept raw by txJsonToDraft).
   for (const cert of draft.certificates) {
-    if (cert.kind !== "DelegateStake") continue;
-    let valid = false;
-    try {
-      valid = !!cert.poolId && !!normalizePoolIdForDelegation(cert.poolId);
-    } catch {
-      valid = false;
+    if (cert.kind === "DelegateStake") {
+      let valid = false;
+      try {
+        valid = !!cert.poolId && !!normalizePoolIdForDelegation(cert.poolId);
+      } catch {
+        valid = false;
+      }
+      if (!valid) {
+        issues.push({
+          level: "error",
+          code: "cert-pool-missing",
+          message: "Delegation certificate has no valid stake pool id.",
+        });
+        break; // one summary issue is enough
+      }
     }
-    if (!valid) {
-      issues.push({
-        level: "error",
-        code: "cert-pool-missing",
-        message: "Delegation certificate has no valid stake pool id.",
-      });
-      break; // one summary issue is enough
+    if (cert.kind === "VoteDelegation") {
+      if (!cert.dRepId || !isValidDrepId(cert.dRepId)) {
+        issues.push({
+          level: "error",
+          code: "cert-drep-missing",
+          message: "Vote delegation needs an Auto-Abstain or drep1... id.",
+        });
+        break;
+      }
     }
   }
 
@@ -312,6 +326,14 @@ export function validateDraft(
           code: "cert-delegate-unregistered",
           message:
             "The wallet's stake credential is not registered on chain — include a RegisterStake certificate (2 ADA deposit) before DelegateStake.",
+        });
+      }
+      if (seenKinds.has("VoteDelegation") && !registersHere) {
+        issues.push({
+          level: "error",
+          code: "cert-vote-unregistered",
+          message:
+            "Vote delegation needs a registered stake credential. Add Register stake credential in this transaction (2 ADA deposit). That does not delegate to a stake pool.",
         });
       }
       if (seenKinds.has("DeregisterStake") && !registersHere) {

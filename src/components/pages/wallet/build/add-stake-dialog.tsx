@@ -11,7 +11,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { GLASS_DIALOG_CLASS } from "@/components/common/token-flow/flow-canvas";
+import { AUTO_ABSTAIN_DREP, isValidDrepId } from "@/lib/tx-draft/drep";
 import type { StakeActionInput } from "@/lib/tx-draft/mutations";
 import { useSiteStore } from "@/lib/zustand/site";
 import { cn } from "@/lib/utils";
@@ -20,9 +22,10 @@ import { getProvider } from "@/utils/get-provider";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { getFirstAndLast } from "@/utils/strings";
 
-type StakeActionType = StakeActionInput["type"];
+type StakeActionType = Exclude<StakeActionInput["type"], "voteDelegation">;
 
 const ACTION_LABELS: Record<StakeActionType, string> = {
+  register: "Register stake credential",
   registerAndDelegate: "Register & delegate",
   delegate: "Change delegation",
   deregister: "Deregister",
@@ -61,11 +64,16 @@ export default function AddStakeDialog({
 }) {
   const network = useSiteStore((state) => state.network);
   const addStakeAction = useTxBuilderStore((state) => state.addStakeAction);
+  const presentKinds = useTxBuilderStore((state) =>
+    state.draft.certificates.map((certificate) => certificate.kind),
+  );
 
   const [accountState, setAccountState] = useState<AccountState>(null);
   const [actionType, setActionType] = useState<StakeActionType | null>(null);
   const [manualPoolId, setManualPoolId] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
+  const [dRepId, setDRepId] = useState(AUTO_ABSTAIN_DREP);
+  const [drepError, setDrepError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +81,8 @@ export default function AddStakeDialog({
     setActionType(null);
     setManualPoolId("");
     setManualError(null);
+    setDRepId(AUTO_ABSTAIN_DREP);
+    setDrepError(null);
     let cancelled = false;
     getProvider(network)
       .get(`/accounts/${stakeAddress}`)
@@ -80,7 +90,7 @@ export default function AddStakeDialog({
         if (cancelled) return;
         const active = data.active === true;
         setAccountState({ active, poolId: data.pool_id ?? null });
-        setActionType(active ? "delegate" : "registerAndDelegate");
+        setActionType(active ? "delegate" : "register");
       })
       .catch(() => {
         if (!cancelled) setAccountState("error");
@@ -90,15 +100,40 @@ export default function AddStakeDialog({
     };
   }, [open, network, stakeAddress]);
 
-  const availableActions: StakeActionType[] =
+  const registrationActions: StakeActionType[] =
     accountState === "error"
-      ? ["registerAndDelegate", "delegate", "deregister"]
+      ? ["register", "registerAndDelegate", "delegate", "deregister"]
       : accountState?.active
         ? ["delegate", "deregister"]
-        : ["registerAndDelegate"];
+        : ["register", "registerAndDelegate"];
+
+  // The draft holds at most one certificate of each kind, and a draft that
+  // deregisters can't also register or delegate. Offer only what still fits.
+  const inDraft = (kind: (typeof presentKinds)[number]) =>
+    presentKinds.includes(kind);
+  const availableActions = registrationActions.filter((action) => {
+    switch (action) {
+      case "register":
+        return !inDraft("RegisterStake") && !inDraft("DeregisterStake");
+      case "registerAndDelegate":
+        return (
+          !inDraft("RegisterStake") &&
+          !inDraft("DelegateStake") &&
+          !inDraft("DeregisterStake")
+        );
+      case "delegate":
+        return !inDraft("DelegateStake") && !inDraft("DeregisterStake");
+      case "deregister":
+        return presentKinds.length === 0;
+    }
+  });
+  const canAddDrep =
+    !inDraft("VoteDelegation") && !inDraft("DeregisterStake");
 
   const needsPool =
-    actionType === "registerAndDelegate" || actionType === "delegate";
+    actionType !== null &&
+    availableActions.includes(actionType) &&
+    (actionType === "registerAndDelegate" || actionType === "delegate");
 
   /** Picking a pool IS the confirmation for pool-requiring actions. */
   function commitWithPool(raw: string) {
@@ -116,8 +151,19 @@ export default function AddStakeDialog({
     }
   }
 
-  function onConfirmDeregister() {
-    addStakeAction({ type: "deregister" });
+  function onConfirmNoPool() {
+    if (actionType !== "register" && actionType !== "deregister") return;
+    addStakeAction({ type: actionType });
+    onOpenChange(false);
+  }
+
+  function onAddDrep() {
+    const value = dRepId.trim();
+    if (!isValidDrepId(value)) {
+      setDrepError(`Enter "${AUTO_ABSTAIN_DREP}" or a drep1... id.`);
+      return;
+    }
+    addStakeAction({ type: "voteDelegation", dRepId: value });
     onOpenChange(false);
   }
 
@@ -221,16 +267,50 @@ export default function AddStakeDialog({
             <PoolSelector onSelect={(poolHex) => commitWithPool(poolHex)} />
           </>
         )}
+
+        {accountState !== null && canAddDrep && (
+          <div className="flex flex-col gap-1.5 border-t border-border/50 pt-4">
+            <Label htmlFor="stake-drep-input" className="text-xs">
+              Governance delegation (DRep) added as a separate certificate
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="stake-drep-input"
+                data-testid="tx-builder-vote-drep-input"
+                value={dRepId}
+                placeholder={`${AUTO_ABSTAIN_DREP} or drep1...`}
+                onChange={(event) => {
+                  setDRepId(event.target.value);
+                  setDrepError(null);
+                }}
+              />
+              <Button
+                size="sm"
+                disabled={!dRepId.trim()}
+                data-testid="tx-builder-vote-drep-apply"
+                onClick={onAddDrep}
+              >
+                Add
+              </Button>
+            </div>
+            {drepError && (
+              <p className="text-xs text-red-500 dark:text-red-400">
+                {drepError}
+              </p>
+            )}
+          </div>
+        )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          {actionType === "deregister" && (
+          {(actionType === "register" || actionType === "deregister") &&
+            availableActions.includes(actionType) && (
             <Button
               data-testid="tx-builder-stake-confirm"
-              onClick={onConfirmDeregister}
+              onClick={onConfirmNoPool}
             >
               Add to transaction
             </Button>

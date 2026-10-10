@@ -1,6 +1,7 @@
 import { keepRelevant, type MeshTxBuilder, type UTxO } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
+import { AUTO_ABSTAIN_DREP } from "./drep";
 import { materializeOutputAssets, requiredAssetTotals } from "./assets";
 
 /**
@@ -87,6 +88,13 @@ export function applyDraftToTxBuilder(
   ) {
     throw new Error("Delegation certificate has no pool id");
   }
+  if (
+    draft.certificates.some(
+      (cert) => cert.kind === "VoteDelegation" && !cert.dRepId,
+    )
+  ) {
+    throw new Error("Vote delegation certificate has no DRep id");
+  }
 
   let selectedUtxos: UTxO[];
   if (draft.utxoSelection.mode === "manual") {
@@ -149,6 +157,14 @@ export function applyDraftToTxBuilder(
         break;
       case "DeregisterStake":
         txBuilder.deregisterStakeCertificate(ctx.stakeRewardAddress!);
+        break;
+      case "VoteDelegation":
+        txBuilder.voteDelegationCertificate(
+          cert.dRepId === AUTO_ABSTAIN_DREP
+            ? { alwaysAbstain: null }
+            : { dRepId: cert.dRepId! },
+          ctx.stakeRewardAddress!,
+        );
         break;
     }
     txBuilder.certificateScript(ctx.stakeScriptCbor!);
