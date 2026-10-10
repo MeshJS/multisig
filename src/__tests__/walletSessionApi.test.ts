@@ -18,7 +18,7 @@ jest.mock("@/lib/cors", () => ({
   __esModule: true,
   addCorsCacheBustingHeaders: addCorsHeadersMock,
   cors: corsMock,
-}), { virtual: true });
+}));
 
 jest.mock("@/server/db", () => ({
   __esModule: true,
@@ -28,28 +28,28 @@ jest.mock("@/server/db", () => ({
       delete: nonceDeleteMock,
     },
   },
-}), { virtual: true });
+}));
 
 // DataSignature is a type-only use; stub the module so it never loads heavy WASM.
-jest.mock("@meshsdk/core", () => ({ __esModule: true }), { virtual: true });
+jest.mock("@meshsdk/core", () => ({ __esModule: true }));
 
 jest.mock("@meshsdk/core-cst", () => ({
   __esModule: true,
   checkSignature: checkSignatureMock,
-}), { virtual: true });
+}));
 
 // Identity normalize keeps these tests focused on status-code behavior; the real
 // normalize is exercised by addressCompatibility's own coverage.
 jest.mock("@/utils/addressCompatibility", () => ({
   __esModule: true,
   normalizeAddressToBech32: (a: string) => a,
-}), { virtual: true });
+}));
 
 jest.mock("@/lib/auth/walletSession", () => ({
   __esModule: true,
   getWalletSessionFromReq: getWalletSessionFromReqMock,
   setWalletSessionCookie: setWalletSessionCookieMock,
-}), { virtual: true });
+}));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<unknown>;
 
