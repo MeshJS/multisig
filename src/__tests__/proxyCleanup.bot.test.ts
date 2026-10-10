@@ -128,6 +128,7 @@ jest.mock("@/lib/server/proxyTxBuilders", () => ({
   buildProxyCleanupSweepTx: buildProxyCleanupSweepTxMock,
   buildProxyCleanupTx: buildProxyCleanupTxMock,
   deriveProxyScripts: deriveProxyScriptsMock,
+  proxyStakeCredentialFromAddress: () => ({ kind: "self" }),
 }));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;

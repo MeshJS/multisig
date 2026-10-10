@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
+import { deserializeAddress } from "@meshsdk/core";
 import type { UTxO } from "@meshsdk/core";
 import {
   buildProxyDRepCertificateTx,
@@ -7,6 +8,9 @@ import {
   buildProxyVoteTx,
   buildProxySetupTx,
   DEFAULT_PROXY_SETUP_LOVELACE,
+  deriveProxyScripts,
+  findProxyAddressInOutputs,
+  proxyStakeCredentialFromAddress,
 } from "@/lib/proxy/txBuilders";
 
 const mkUtxo = (
@@ -273,5 +277,84 @@ describe("proxy action funding validation", () => {
         action: "deregister",
       }),
     ).toThrow(/proxy DRep deregister requires at least 2 ADA in selected wallet inputs, but only 1.2 ADA was selected/);
+  });
+});
+
+describe("proxy address stake credential", () => {
+  const paramUtxo = { txHash: "a".repeat(64), outputIndex: 0 };
+
+  it("defaults new proxies to the proxy script itself as a script stake credential", () => {
+    const scripts = deriveProxyScripts({ paramUtxo, network: 0 });
+    const parsed = deserializeAddress(scripts.proxyAddress);
+    expect(parsed.scriptHash).toBe(scripts.proxyScriptHash);
+    expect(parsed.stakeScriptCredentialHash).toBe(scripts.proxyScriptHash);
+    expect(parsed.stakeCredentialHash).toBe("");
+    expect(scripts.proxyAddress.startsWith("addr_test1")).toBe(true);
+  });
+
+  it("round-trips existing proxies through proxyStakeCredentialFromAddress (self, key, none)", () => {
+    const self = deriveProxyScripts({ paramUtxo, network: 0 });
+    expect(proxyStakeCredentialFromAddress(self.proxyAddress)).toEqual({
+      kind: "script",
+      hash: self.proxyScriptHash,
+    });
+    expect(
+      deriveProxyScripts({ paramUtxo, network: 0, stake: proxyStakeCredentialFromAddress(self.proxyAddress) })
+        .proxyAddress,
+    ).toBe(self.proxyAddress);
+
+    // Legacy v1 derivation: base address with a key-hash stake part.
+    const legacyKeyHash = "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575";
+    const legacy = deriveProxyScripts({ paramUtxo, network: 0, stake: { kind: "key", hash: legacyKeyHash } });
+    expect(legacy.proxyAddress).not.toBe(self.proxyAddress);
+    expect(proxyStakeCredentialFromAddress(legacy.proxyAddress)).toEqual({ kind: "key", hash: legacyKeyHash });
+    expect(
+      deriveProxyScripts({ paramUtxo, network: 0, stake: proxyStakeCredentialFromAddress(legacy.proxyAddress) })
+        .proxyAddress,
+    ).toBe(legacy.proxyAddress);
+
+    // Legacy browser derivation: enterprise address.
+    const enterprise = deriveProxyScripts({ paramUtxo, network: 0, stake: { kind: "none" } });
+    expect(enterprise.proxyAddress).not.toBe(self.proxyAddress);
+    expect(proxyStakeCredentialFromAddress(enterprise.proxyAddress)).toEqual({ kind: "none" });
+    expect(
+      deriveProxyScripts({ paramUtxo, network: 0, stake: proxyStakeCredentialFromAddress(enterprise.proxyAddress) })
+        .proxyAddress,
+    ).toBe(enterprise.proxyAddress);
+
+    // The payment part, token policy and DRep id never depend on the stake part.
+    for (const variant of [legacy, enterprise]) {
+      expect(variant.authTokenId).toBe(self.authTokenId);
+      expect(variant.dRepId).toBe(self.dRepId);
+      expect(deserializeAddress(variant.proxyAddress).scriptHash).toBe(self.proxyScriptHash);
+    }
+  });
+
+  it("findProxyAddressInOutputs picks the output paid to the proxy script regardless of stake part", () => {
+    const self = deriveProxyScripts({ paramUtxo, network: 0 });
+    const legacy = deriveProxyScripts({
+      paramUtxo,
+      network: 0,
+      stake: { kind: "key", hash: "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575" },
+    });
+    const walletAddr = mkUtxo("addr_test_wallet", "1").output.address;
+    expect(findProxyAddressInOutputs([walletAddr, legacy.proxyAddress], self.proxyScriptHash)).toBe(
+      legacy.proxyAddress,
+    );
+    expect(findProxyAddressInOutputs([walletAddr, "not-an-address"], self.proxyScriptHash)).toBeNull();
+  });
+
+  it("buildProxySetupTx funds the self-staked proxy address", () => {
+    const { builder, txOuts } = createTxBuilderMock();
+    const setup = buildProxySetupTx({
+      txBuilder: builder as never,
+      network: 0,
+      walletUtxos: [mkUtxo("addr_test_wallet", "25000000", "b".repeat(64), 1)],
+      walletAddress: "addr_test_wallet",
+      collateral: mkUtxo("addr_test_collateral", "5000000", "d".repeat(64), 3),
+    });
+    const expected = deriveProxyScripts({ paramUtxo: setup.paramUtxo, network: 0 });
+    expect(setup.proxyAddress).toBe(expected.proxyAddress);
+    expect(txOuts.some((out) => out.address === expected.proxyAddress)).toBe(true);
   });
 });

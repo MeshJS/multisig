@@ -157,7 +157,7 @@ describe("freeUtxos bot API", () => {
     ]);
   });
 
-  it("flags UTxOs that carry an active proxy auth token", async () => {
+  it("flags UTxOs that carry a proxy auth token (every proxy row, active or not)", async () => {
     const policy = "d".repeat(56);
     (findProxiesMock as any).mockResolvedValue([{ authTokenId: policy }]);
     (cachedFetchAddressUTxOsMock as any).mockResolvedValue([
@@ -179,8 +179,10 @@ describe("freeUtxos bot API", () => {
 
     await handler(req, res);
 
+    // No isActive filter: the DB flag must not hide a token policy that still
+    // exists on-chain from coin-selecting callers.
     expect(findProxiesMock).toHaveBeenCalledWith({
-      where: { walletId: "wallet-1", isActive: true },
+      where: { walletId: "wallet-1" },
       select: { authTokenId: true },
     });
     expect(res.status).toHaveBeenCalledWith(200);

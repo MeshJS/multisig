@@ -57,6 +57,20 @@ export const transactionRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const wallet = await assertWalletAccess(ctx, input.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+
+      // Proxy safety: never persist a pending transaction that would move one of
+      // this wallet's proxy auth tokens away from the wallet address (or burn them
+      // while the proxy still holds funds). Co-signers must never see such a tx.
+      const proxyAuditError = await auditPendingTxForProxyWallet(ctx.db, {
+        wallet,
+        signerAddress: sessionAddress ?? input.signedAddresses[0] ?? "",
+        txCbor: input.txCbor,
+        context: "transaction.createTransaction",
+      });
+      if (proxyAuditError) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: proxyAuditError });
+      }
+
       const data = {
         walletId: input.walletId,
         txJson: input.txJson,
@@ -311,6 +325,26 @@ export const transactionRouter = createTRPCRouter({
           createdAt: "desc",
         },
       });
+    }),
+
+  /**
+   * Pre-signature proxy audit for the browser. The UI calls this before asking the
+   * connected wallet for a witness, because the final signer submits to the chain
+   * before `updateTransaction` runs and a server-side refusal would come too late.
+   * Returns `{ error: null }` when the transaction is safe to sign.
+   */
+  preSignProxyAudit: protectedProcedure
+    .input(z.object({ walletId: z.string(), txCbor: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const wallet = await assertWalletAccess(ctx, input.walletId);
+      const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? "";
+      const error = await auditPendingTxForProxyWallet(ctx.db, {
+        wallet,
+        signerAddress: sessionAddress,
+        txCbor: input.txCbor,
+        context: "transaction.preSignProxyAudit",
+      });
+      return { error };
     }),
 
   importTransaction: protectedProcedure
@@ -647,6 +681,19 @@ export const transactionRouter = createTRPCRouter({
 
       // Create pending transaction
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+
+      // Proxy safety: externally built transactions get the same auth-token audit
+      // as everything else before co-signers can see them.
+      const proxyAuditError = await auditPendingTxForProxyWallet(ctx.db, {
+        wallet,
+        signerAddress: sessionAddress ?? signedAddresses[0] ?? "",
+        txCbor: txHex,
+        context: "transaction.importTransaction",
+      });
+      if (proxyAuditError) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: proxyAuditError });
+      }
+
       const created = await ctx.db.transaction.create({
         data: {
           walletId: input.walletId,

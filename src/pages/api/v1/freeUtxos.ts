@@ -184,15 +184,16 @@ export default async function handler(
         ),
     );
 
-    // Flag UTxOs that carry an active proxy auth token so callers doing coin
-    // selection can tell a plain funding UTxO from a proxy permission token.
-    // The builders conserve tokens regardless, but bots should still pass only
-    // the single token UTxO they intend to use per proxy action.
-    const activeProxies = await db.proxy.findMany({
-      where: { walletId, isActive: true },
+    // Flag UTxOs that carry a proxy auth token so callers doing coin selection
+    // can tell a plain funding UTxO from a proxy permission token. Every proxy
+    // row counts, active or not: the DB flag says nothing about whether tokens
+    // still exist on-chain. The builders conserve tokens regardless, but bots
+    // should still pass only the single token UTxO they intend to use per action.
+    const walletProxies = await db.proxy.findMany({
+      where: { walletId },
       select: { authTokenId: true },
     });
-    const authTokenIds = new Set(activeProxies.map((p) => p.authTokenId));
+    const authTokenIds = new Set(walletProxies.map((p) => p.authTokenId));
     const freeUtxosWithAuthTokenFlag = freeUtxos.map((utxo) => {
       const authTokenId =
         (utxo.output?.amount ?? []).find((asset) => authTokenIds.has(asset.unit))?.unit ??

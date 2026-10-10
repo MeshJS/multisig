@@ -118,7 +118,14 @@ describe("countAuthTokens", () => {
 });
 
 describe("buildProxySpendTx auth-token conservation", () => {
-  const spend = (walletUtxos: UTxO[], authTokenUtxo: UTxO) => {
+  const defaultProxyUtxos = () => [
+    mkUtxo(scripts.proxyAddress, [{ unit: "lovelace", quantity: "10000000" }], "e".repeat(64)),
+  ];
+  const spend = (
+    walletUtxos: UTxO[],
+    authTokenUtxo: UTxO,
+    proxyUtxos: UTxO[] = defaultProxyUtxos(),
+  ) => {
     const rec = createRecordingBuilder();
     buildProxySpendTx({
       txBuilder: rec.builder,
@@ -126,7 +133,7 @@ describe("buildProxySpendTx auth-token conservation", () => {
       proxyAddress: scripts.proxyAddress,
       paramUtxo: PARAM_UTXO,
       walletUtxos,
-      proxyUtxos: [mkUtxo(scripts.proxyAddress, [{ unit: "lovelace", quantity: "10000000" }], "e".repeat(64))],
+      proxyUtxos,
       authTokenUtxo,
       collateral,
       outputs: [{ address: "addr_test_payee", unit: "lovelace", amount: "1000000" }],
@@ -183,6 +190,25 @@ describe("buildProxySpendTx auth-token conservation", () => {
   it("refuses to build when no input carries the auth token", () => {
     const notAToken = adaUtxo("b".repeat(64));
     expect(() => spend([], notAToken)).toThrow(/requires an input holding the proxy auth token/);
+  });
+
+  it("recovers a token that was previously leaked to the proxy address instead of recycling it into proxy change", () => {
+    const designated = tokenUtxo("b".repeat(64));
+    const leakedProxyUtxo = mkUtxo(
+      scripts.proxyAddress,
+      [
+        { unit: "lovelace", quantity: "10000000" },
+        { unit: TOKEN, quantity: "1" },
+      ],
+      "e".repeat(64),
+    );
+    const rec = spend([designated], designated, [leakedProxyUtxo]);
+
+    // 1 from the wallet + 1 recovered from the proxy, both back at the wallet, split.
+    expect(tokensSentTo(rec.txOuts, WALLET)).toBe(2n);
+    expect(tokenOutputs(rec.txOuts)).toHaveLength(2);
+    expect(tokensSentTo(rec.txOuts, scripts.proxyAddress)).toBe(0n);
+    expect(rec.getChangeAddress()).toBe(scripts.proxyAddress);
   });
 });
 

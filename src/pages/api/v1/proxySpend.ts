@@ -24,7 +24,11 @@ import { createPendingMultisigTransaction } from "@/lib/server/createPendingMult
 import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshCostModels";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { buildProxySpendTx, deriveProxyScripts } from "@/lib/server/proxyTxBuilders";
+import {
+  buildProxySpendTx,
+  deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
+} from "@/lib/server/proxyTxBuilders";
 import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
@@ -197,7 +201,8 @@ export default async function handler(
   }
 
   const network = address.includes("test") ? 0 : 1;
-  const scripts = deriveProxyScripts({ paramUtxo, network });
+  const stake = proxyStakeCredentialFromAddress(proxy.proxyAddress);
+  const scripts = deriveProxyScripts({ paramUtxo, network, stake });
   if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
     return res.status(409).json({ error: "Stored proxy metadata does not match derived scripts" });
   }
@@ -271,6 +276,7 @@ export default async function handler(
       outputs,
       walletAddress,
       multisigScriptCbor: walletRow.scriptCbor,
+      stake,
     });
   } catch (error) {
     return res.status(400).json({

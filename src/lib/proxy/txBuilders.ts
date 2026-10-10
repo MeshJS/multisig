@@ -1,6 +1,7 @@
 import { mConStr0, mConStr1, mOutputReference } from "@meshsdk/common";
 import {
   applyParamsToScript,
+  deserializeAddress,
   hashDrepAnchor,
   resolveScriptHash,
   resolveScriptHashDRepId,
@@ -20,8 +21,37 @@ import {
 export const DEFAULT_PROXY_SETUP_LOVELACE = "1000000";
 const PROXY_ACTION_MIN_LOVELACE = 2_000_000n;
 
-const DEFAULT_PROXY_STAKE_CREDENTIAL =
-  "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575";
+/**
+ * Stake part of the proxy address.
+ *
+ * - `self` (default for new proxies): the proxy script's own hash as a *script* stake
+ *   credential. Staking rewards and delegation of the ADA parked at the proxy are then
+ *   gated by the proxy validator exactly like spending (any withdraw/cert purpose needs
+ *   an auth-token output), so nobody outside the multisig holds rights over them.
+ * - `none`: enterprise address (what the browser class used to derive).
+ * - `key` / `script` with an explicit hash: whatever an existing proxy was created with.
+ *
+ * Existing proxies must always be derived from their stored `proxyAddress` via
+ * `proxyStakeCredentialFromAddress`, never from a default, or the derived address
+ * would not match the UTxOs on-chain.
+ */
+export type ProxyStakeCredential =
+  | { kind: "self" }
+  | { kind: "none" }
+  | { kind: "key" | "script"; hash: string };
+
+export const PROXY_STAKE_SELF: ProxyStakeCredential = { kind: "self" };
+
+export function proxyStakeCredentialFromAddress(proxyAddress: string): ProxyStakeCredential {
+  const parsed = deserializeAddress(proxyAddress);
+  if (parsed.stakeScriptCredentialHash) {
+    return { kind: "script", hash: parsed.stakeScriptCredentialHash };
+  }
+  if (parsed.stakeCredentialHash) {
+    return { kind: "key", hash: parsed.stakeCredentialHash };
+  }
+  return { kind: "none" };
+}
 
 export type ProxySetupInfo = {
   paramUtxo: UTxO["input"];
@@ -56,7 +86,8 @@ function assertSelectedLovelace(args: {
 export function deriveProxyScripts(args: {
   paramUtxo: UTxO["input"];
   network: number;
-  stakeCredential?: string;
+  /** Defaults to `self`. Pass `proxyStakeCredentialFromAddress(stored)` for existing proxies. */
+  stake?: ProxyStakeCredential;
 }) {
   const authTokenCbor = applyParamsToScript(
     blueprint.validators[0]!.compiledCode,
@@ -66,21 +97,45 @@ export function deriveProxyScripts(args: {
   const proxyCbor = applyParamsToScript(blueprint.validators[2]!.compiledCode, [
     authTokenId,
   ]);
-  const proxyAddress = serializePlutusScript(
-    { code: proxyCbor, version: "V3" },
-    args.stakeCredential ?? DEFAULT_PROXY_STAKE_CREDENTIAL,
-    args.network,
-  ).address;
   const proxyScriptHash = resolveScriptHash(proxyCbor, "V3");
+  const stake = args.stake ?? PROXY_STAKE_SELF;
+  const script = { code: proxyCbor, version: "V3" as const };
+  const proxyAddress =
+    stake.kind === "self"
+      ? serializePlutusScript(script, proxyScriptHash, args.network, true).address
+      : stake.kind === "none"
+        ? serializePlutusScript(script, undefined, args.network).address
+        : serializePlutusScript(script, stake.hash, args.network, stake.kind === "script").address;
   const dRepId = resolveScriptHashDRepId(proxyScriptHash);
 
   return {
     authTokenCbor,
     authTokenId,
     proxyCbor,
+    proxyScriptHash,
     proxyAddress,
     dRepId,
   };
+}
+
+/**
+ * Finds the address a setup transaction actually paid the proxy at, given the
+ * addresses of its outputs: the one whose payment credential is the proxy script.
+ * Lets chain-recovery code adopt proxies created with any stake-credential
+ * derivation without guessing.
+ */
+export function findProxyAddressInOutputs(
+  outputAddresses: string[],
+  proxyScriptHash: string,
+): string | null {
+  for (const address of outputAddresses) {
+    try {
+      if (deserializeAddress(address).scriptHash === proxyScriptHash) return address;
+    } catch {
+      // not a parsable Shelley address; skip
+    }
+  }
+  return null;
 }
 
 function addScriptInput(
@@ -167,7 +222,7 @@ export function buildProxySetupTx(args: {
   collateral: UTxO;
   multisigScriptCbor?: string;
   initialProxyLovelace?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }): ProxySetupInfo {
   const paramUtxo = selectSetupUtxo(args.walletUtxos);
   if (!paramUtxo) {
@@ -179,7 +234,7 @@ export function buildProxySetupTx(args: {
   const scripts = deriveProxyScripts({
     paramUtxo: paramUtxo.input,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
 
   addScriptInput(args.txBuilder, paramUtxo, args.multisigScriptCbor);
@@ -224,12 +279,12 @@ export function buildProxySpendTx(args: {
   outputs: { address: string; unit: string; amount: string }[];
   walletAddress: string;
   multisigScriptCbor?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }) {
   const scripts = deriveProxyScripts({
     paramUtxo: args.paramUtxo,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
 
   for (const proxyUtxo of args.proxyUtxos) {
@@ -254,9 +309,12 @@ export function buildProxySpendTx(args: {
   addCollateral(args.txBuilder, args.collateral);
   // Change goes to the proxy address below, so every auth token spent here must be
   // explicitly returned to the wallet or it would land at the proxy unprotected.
+  // Proxy inputs are counted too: a token that was ever leaked to the proxy address
+  // rides back to the wallet instead of cycling through change (which the audit
+  // would refuse, blocking every spend until a full cleanup).
   returnAuthTokensToWallet({
     txBuilder: args.txBuilder,
-    inputs: walletInputs,
+    inputs: [...walletInputs, ...args.proxyUtxos],
     authTokenId: scripts.authTokenId,
     walletAddress: args.walletAddress,
     context: "proxy spend",
@@ -284,12 +342,12 @@ export function buildProxyDRepCertificateTx(args: {
   anchorUrl?: string;
   anchorJson?: object;
   multisigScriptCbor?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }): { dRepId: string; anchorDataHash?: string } {
   const scripts = deriveProxyScripts({
     paramUtxo: args.paramUtxo,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
 
   let anchorDataHash: string | undefined;
@@ -356,7 +414,7 @@ export function buildProxyVoteTx(args: {
   walletAddress: string;
   votes: ProxyVoteInput[];
   multisigScriptCbor?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }): { dRepId: string } {
   if (args.votes.length === 0) {
     throw new Error("votes must be a non-empty array");
@@ -365,7 +423,7 @@ export function buildProxyVoteTx(args: {
   const scripts = deriveProxyScripts({
     paramUtxo: args.paramUtxo,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
 
   addCollateral(args.txBuilder, args.collateral);
@@ -425,12 +483,12 @@ export function buildProxyCleanupTx(args: {
   walletAddress: string;
   authTokenId: string;
   multisigScriptCbor?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }): { burnedAuthTokens: string } {
   const scripts = deriveProxyScripts({
     paramUtxo: args.paramUtxo,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
   if (scripts.authTokenId !== args.authTokenId) {
     throw new Error("Stored proxy metadata does not match derived auth token");
@@ -496,7 +554,7 @@ export function buildProxyCleanupSweepTx(args: {
   collateral: UTxO;
   walletAddress: string;
   multisigScriptCbor?: string;
-  stakeCredential?: string;
+  stake?: ProxyStakeCredential;
 }): { sweptProxyUtxos: string; preservedAuthTokens: string } {
   if (args.proxyUtxos.length === 0) {
     throw new Error("proxy cleanup sweep requires at least one proxy UTxO");
@@ -505,7 +563,7 @@ export function buildProxyCleanupSweepTx(args: {
   const scripts = deriveProxyScripts({
     paramUtxo: args.paramUtxo,
     network: args.network,
-    stakeCredential: args.stakeCredential,
+    stake: args.stake,
   });
 
   for (const proxyUtxo of args.proxyUtxos) {

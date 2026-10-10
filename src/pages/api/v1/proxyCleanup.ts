@@ -27,6 +27,7 @@ import {
   buildProxyCleanupSweepTx,
   buildProxyCleanupTx,
   deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
 } from "@/lib/server/proxyTxBuilders";
 import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
@@ -187,7 +188,8 @@ export default async function handler(
   }
 
   const network = address.includes("test") ? 0 : 1;
-  const scripts = deriveProxyScripts({ paramUtxo, network });
+  const stake = proxyStakeCredentialFromAddress(proxy.proxyAddress);
+  const scripts = deriveProxyScripts({ paramUtxo, network, stake });
   if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
     return res.status(409).json({ error: "Stored proxy metadata does not match derived scripts" });
   }
@@ -253,6 +255,7 @@ export default async function handler(
           collateral: resolvedCollateral.collateral,
           walletAddress,
           multisigScriptCbor: walletRow.scriptCbor,
+          stake,
         }),
       };
     } else {
@@ -267,6 +270,7 @@ export default async function handler(
           walletAddress,
           authTokenId: proxy.authTokenId,
           multisigScriptCbor: walletRow.scriptCbor,
+          stake,
         }),
       };
     }

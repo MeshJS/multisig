@@ -162,10 +162,10 @@ export default function VoteButton({
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet.scriptCbor,
       );
-      proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Prepare vote data
       const voteData = {

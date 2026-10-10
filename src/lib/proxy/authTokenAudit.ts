@@ -103,3 +103,57 @@ export function auditAuthTokenOutputs(args: {
 export function formatAuthTokenAuditError(result: { violations: string[] }): string {
   return `Transaction moves a proxy auth token away from the wallet address: ${result.violations.join("; ")}`;
 }
+
+export type AuthTokenBurnScan =
+  | { ok: true; burnedPolicyIds: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Lists which of `authTokenIds` the transaction burns (negative mint quantity).
+ * Used to gate the cleanup burn: once the 10 tokens are gone the proxy validator can
+ * never pass again, so anything still sitting at the proxy address is locked forever.
+ * Callers combine this with a live look at the proxy address before signing.
+ *
+ * Fails closed on undecodable CBOR.
+ */
+export function findAuthTokenBurns(args: {
+  txCbor: string;
+  authTokenIds: string[];
+}): AuthTokenBurnScan {
+  const policyIds = Array.from(
+    new Set(args.authTokenIds.map((id) => id.trim().toLowerCase()).filter(Boolean)),
+  );
+  if (policyIds.length === 0) return { ok: true, burnedPolicyIds: [] };
+
+  let mint: ReturnType<ReturnType<ReturnType<typeof csl.Transaction.from_hex>["body"]>["mint"]>;
+  try {
+    mint = csl.Transaction.from_hex(args.txCbor.trim()).body().mint();
+  } catch {
+    return { ok: false, error: "transaction CBOR could not be decoded" };
+  }
+  if (!mint) return { ok: true, burnedPolicyIds: [] };
+
+  const burned: string[] = [];
+  for (const policyId of policyIds) {
+    let scriptHash: ReturnType<typeof csl.ScriptHash.from_hex>;
+    try {
+      scriptHash = csl.ScriptHash.from_hex(policyId);
+    } catch {
+      return { ok: false, error: `auth token policy ${policyId} is not a valid script hash` };
+    }
+    const entries = mint.get(scriptHash);
+    if (!entries) continue;
+    let burnsThisPolicy = false;
+    for (let i = 0; i < entries.len(); i++) {
+      const assets = entries.get(i);
+      if (!assets) continue;
+      const names = assets.keys();
+      for (let j = 0; j < names.len(); j++) {
+        const amount = assets.get(names.get(j));
+        if (amount && !amount.is_positive() && amount.to_str() !== "0") burnsThisPolicy = true;
+      }
+    }
+    if (burnsThisPolicy) burned.push(policyId);
+  }
+  return { ok: true, burnedPolicyIds: burned };
+}

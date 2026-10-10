@@ -1,7 +1,11 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import { csl } from "@meshsdk/core-csl";
-import { auditAuthTokenOutputs, formatAuthTokenAuditError } from "@/lib/proxy/authTokenAudit";
-import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
+import {
+  auditAuthTokenOutputs,
+  findAuthTokenBurns,
+  formatAuthTokenAuditError,
+} from "@/lib/proxy/authTokenAudit";
+import { auditAuthTokenBurn, auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 
 const POLICY = "d".repeat(56);
 const OTHER_POLICY = "e".repeat(56);
@@ -25,7 +29,9 @@ type OutputSpec = {
   tokens?: { policy: string; quantity: string; name?: string }[];
 };
 
-function buildTxHex(specs: OutputSpec[]): string {
+type MintSpec = { policy: string; quantity: string; name?: string };
+
+function buildTxHex(specs: OutputSpec[], mints: MintSpec[] = []): string {
   const inputs = csl.TransactionInputs.new();
   inputs.add(
     csl.TransactionInput.new(csl.TransactionHash.from_bytes(Buffer.from("00".repeat(32), "hex")), 0),
@@ -50,6 +56,18 @@ function buildTxHex(specs: OutputSpec[]): string {
   }
 
   const body = csl.TransactionBody.new(inputs, outputs, csl.BigNum.from_str("200000"), undefined);
+  if (mints.length > 0) {
+    const mint = csl.Mint.new();
+    for (const spec of mints) {
+      const assets = csl.MintAssets.new();
+      assets.insert(
+        csl.AssetName.new(Buffer.from(spec.name ?? "", "hex")),
+        csl.Int.from_str(spec.quantity),
+      );
+      mint.insert(csl.ScriptHash.from_hex(spec.policy), assets);
+    }
+    body.set_mint(mint);
+  }
   return csl.Transaction.new(body, csl.TransactionWitnessSet.new(), undefined).to_hex();
 }
 
@@ -149,6 +167,95 @@ describe("auditAuthTokenOutputs", () => {
     expect(
       auditAuthTokenOutputs({ txCbor, authTokenIds: [POLICY], walletAddress: walletHex }).ok,
     ).toBe(true);
+  });
+});
+
+describe("findAuthTokenBurns", () => {
+  it("reports the policies with a negative mint quantity", () => {
+    const txCbor = buildTxHex(
+      [{ address: WALLET, lovelace: "5000000" }],
+      [
+        { policy: POLICY, quantity: "-10" },
+        { policy: OTHER_POLICY, quantity: "3" },
+      ],
+    );
+    expect(findAuthTokenBurns({ txCbor, authTokenIds: [POLICY, OTHER_POLICY] })).toEqual({
+      ok: true,
+      burnedPolicyIds: [POLICY],
+    });
+  });
+
+  it("returns nothing for transactions without a mint field or for unrelated burns", () => {
+    const plain = buildTxHex([{ address: WALLET, lovelace: "5000000" }]);
+    expect(findAuthTokenBurns({ txCbor: plain, authTokenIds: [POLICY] })).toEqual({
+      ok: true,
+      burnedPolicyIds: [],
+    });
+
+    const unrelated = buildTxHex(
+      [{ address: WALLET, lovelace: "5000000" }],
+      [{ policy: OTHER_POLICY, quantity: "-1" }],
+    );
+    expect(findAuthTokenBurns({ txCbor: unrelated, authTokenIds: [POLICY] })).toEqual({
+      ok: true,
+      burnedPolicyIds: [],
+    });
+  });
+
+  it("fails closed on undecodable CBOR", () => {
+    expect(findAuthTokenBurns({ txCbor: "zz", authTokenIds: [POLICY] })).toEqual({
+      ok: false,
+      error: "transaction CBOR could not be decoded",
+    });
+  });
+});
+
+describe("auditAuthTokenBurn", () => {
+  const burnTx = buildTxHex(
+    [{ address: WALLET, lovelace: "5000000" }],
+    [{ policy: POLICY, quantity: "-10" }],
+  );
+  const proxies = [{ authTokenId: POLICY, proxyAddress: PROXY }];
+
+  it("allows the burn when the proxy address is empty", async () => {
+    const fetchProxyUtxos = jest.fn(async (_address: string) => [] as never[]);
+    await expect(
+      auditAuthTokenBurn({ txCbor: burnTx, proxies, fetchProxyUtxos, context: "test" }),
+    ).resolves.toBeNull();
+    expect(fetchProxyUtxos).toHaveBeenCalledWith(PROXY);
+  });
+
+  it("refuses the burn while the proxy address still holds UTxOs (funds would be locked forever)", async () => {
+    const fetchProxyUtxos = jest.fn(async (_address: string) => [{} as never, {} as never]);
+    const message = await auditAuthTokenBurn({
+      txCbor: burnTx,
+      proxies,
+      fetchProxyUtxos,
+      context: "test",
+    });
+    expect(message).toMatch(/still holds 2 UTxO\(s\)/);
+  });
+
+  it("fails closed when the proxy balance cannot be fetched", async () => {
+    const fetchProxyUtxos = jest.fn(async (_address: string): Promise<never[]> => {
+      throw new Error("blockfrost down");
+    });
+    const message = await auditAuthTokenBurn({
+      txCbor: burnTx,
+      proxies,
+      fetchProxyUtxos,
+      context: "test",
+    });
+    expect(message).toMatch(/Unable to verify the proxy address is empty/);
+  });
+
+  it("does not touch the chain for transactions that burn nothing", async () => {
+    const fetchProxyUtxos = jest.fn(async (_address: string) => [] as never[]);
+    const txCbor = buildTxHex([{ address: WALLET, tokens: [{ policy: POLICY, quantity: "1" }] }]);
+    await expect(
+      auditAuthTokenBurn({ txCbor, proxies, fetchProxyUtxos, context: "test" }),
+    ).resolves.toBeNull();
+    expect(fetchProxyUtxos).not.toHaveBeenCalled();
   });
 });
 
