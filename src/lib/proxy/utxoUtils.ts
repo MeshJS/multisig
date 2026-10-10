@@ -20,28 +20,27 @@ export function sameUtxoRef(a: UTxO["input"], b: UTxO["input"]): boolean {
 }
 
 /**
- * Security guard: proxy spend/sweep transactions must only ever spend a single,
- * explicitly-designated AuthToken UTxO. A wallet holds up to 10 identical AuthToken
- * UTxOs (minted at proxy setup); if a caller-supplied `walletUtxos` list includes any
- * of the *other* AuthToken UTxOs alongside the designated one, they would silently be
- * spent as plain funding inputs and their AuthToken asset would leak out as change.
- * For `buildProxySpendTx`, that change lands at `proxyAddress`, whose validator has no
- * signer/quorum check - the leaked token would let anyone drain the proxy address.
- * Fail closed instead of letting that happen.
+ * Total quantity of the proxy auth token (unit === policy id, empty asset name)
+ * across `utxos`. Duplicate UTxO refs are counted once.
+ *
+ * Security context: the proxy validator (`validators/proxy/spend.ak`) only checks that
+ * *some* output carries the auth-token policy; it has no signer check. The off-chain
+ * invariant that keeps the proxy safe is therefore that every auth token that enters a
+ * transaction as an input leaves it in an output at the multisig wallet address.
+ * Builders use this helper to size those outputs so no token can ever fall through to
+ * change (which, for `buildProxySpendTx`, is the proxy address itself).
  */
-export function assertNoStrayAuthTokenUtxos(
-  walletUtxos: UTxO[],
-  authTokenPolicyId: string,
-  designatedAuthTokenUtxo: UTxO,
-): void {
-  for (const utxo of walletUtxos) {
-    if (sameUtxoRef(utxo.input, designatedAuthTokenUtxo.input)) continue;
-    if (hasAsset(utxo, authTokenPolicyId)) {
-      throw new Error(
-        `walletUtxos contains an additional AuthToken UTxO (${utxo.input.txHash}#${utxo.input.outputIndex}) besides the designated authTokenUtxo. Refusing to build this transaction: spending it here would leak the AuthToken as unprotected change. Exclude every AuthToken-bearing UTxO from walletUtxos except the one you intend to use.`,
-      );
-    }
+export function countAuthTokens(utxos: UTxO[], authTokenUnit: string): bigint {
+  const seen = new Set<string>();
+  let total = 0n;
+  for (const utxo of utxos) {
+    const key = `${utxo.input.txHash}#${utxo.input.outputIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const quantity = utxo.output.amount.find((asset) => asset.unit === authTokenUnit)?.quantity;
+    if (quantity) total += BigInt(quantity);
   }
+  return total;
 }
 
 /**

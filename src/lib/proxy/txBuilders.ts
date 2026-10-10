@@ -11,7 +11,7 @@ import blueprint from "@/components/multisig/proxy/aiken-workspace/plutus.json";
 import { parseProposalId } from "@/lib/governance";
 import {
   accumulateFundingUtxos,
-  assertNoStrayAuthTokenUtxos,
+  countAuthTokens,
   getLovelace,
   sameUtxoRef,
   selectSetupUtxo,
@@ -108,6 +108,57 @@ function addCollateral(txBuilder: MeshTxBuilder, collateral: UTxO) {
   );
 }
 
+/**
+ * Returns every auth token consumed by `inputs` to the multisig wallet. This is the
+ * off-chain safety invariant for the proxy: the on-chain validator does not check where
+ * the token goes, so a token that reached change (the proxy address, in
+ * `buildProxySpendTx`) would make the proxy drainable by anyone.
+ *
+ * - `split`: one lovelace-free output per token (Mesh fills min-ADA, as for setup's
+ *   outputs). Used by spend/DRep/vote so the pool of independently spendable tokens
+ *   (several pending proxy transactions at once) is preserved.
+ * - `bundle`: a single output holding all tokens together with `bundleWith` (the swept
+ *   proxy value). Used by the cleanup sweep, which is immediately followed by the burn
+ *   that needs all tokens in one transaction anyway. Riding in the swept-value output
+ *   matters: a token-only output would get min-ADA and the burn, which callers fund with
+ *   token UTxOs alone, could then not pay its fee plus a min-ADA change output.
+ */
+function returnAuthTokensToWallet(args: {
+  txBuilder: MeshTxBuilder;
+  inputs: UTxO[];
+  authTokenId: string;
+  walletAddress: string;
+  context: string;
+  mode: "split" | "bundle";
+  bundleWith?: UTxO["output"]["amount"];
+}): bigint {
+  const count = countAuthTokens(args.inputs, args.authTokenId);
+  if (count < 1n) {
+    throw new Error(`${args.context} requires an input holding the proxy auth token`);
+  }
+  if (args.mode === "bundle") {
+    const carried = (args.bundleWith ?? []).filter((asset) => asset.unit !== args.authTokenId);
+    args.txBuilder.txOut(args.walletAddress, [
+      ...carried,
+      { unit: args.authTokenId, quantity: count.toString() },
+    ]);
+    return count;
+  }
+  for (let i = 0n; i < count; i++) {
+    args.txBuilder.txOut(args.walletAddress, [
+      { unit: args.authTokenId, quantity: "1" },
+    ]);
+  }
+  return count;
+}
+
+function withDesignatedAuthToken(authTokenUtxo: UTxO, walletUtxos: UTxO[]): UTxO[] {
+  return [
+    authTokenUtxo,
+    ...walletUtxos.filter((utxo) => !sameUtxoRef(utxo.input, authTokenUtxo.input)),
+  ];
+}
+
 export function buildProxySetupTx(args: {
   txBuilder: MeshTxBuilder;
   network: number;
@@ -181,12 +232,6 @@ export function buildProxySpendTx(args: {
     stakeCredential: args.stakeCredential,
   });
 
-  assertNoStrayAuthTokenUtxos(
-    args.walletUtxos ?? [],
-    scripts.authTokenId,
-    args.authTokenUtxo,
-  );
-
   for (const proxyUtxo of args.proxyUtxos) {
     args.txBuilder
       .spendingPlutusScriptV3()
@@ -201,17 +246,22 @@ export function buildProxySpendTx(args: {
       .txInRedeemerValue(mConStr0([]));
   }
 
-  addScriptInput(args.txBuilder, args.authTokenUtxo, args.multisigScriptCbor);
-  for (const utxo of (args.walletUtxos ?? [])) {
-    if (!sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
-      addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
-    }
+  const walletInputs = withDesignatedAuthToken(args.authTokenUtxo, args.walletUtxos ?? []);
+  for (const utxo of walletInputs) {
+    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
   }
 
   addCollateral(args.txBuilder, args.collateral);
-  args.txBuilder.txOut(args.walletAddress, [
-    { unit: scripts.authTokenId, quantity: "1" },
-  ]);
+  // Change goes to the proxy address below, so every auth token spent here must be
+  // explicitly returned to the wallet or it would land at the proxy unprotected.
+  returnAuthTokensToWallet({
+    txBuilder: args.txBuilder,
+    inputs: walletInputs,
+    authTokenId: scripts.authTokenId,
+    walletAddress: args.walletAddress,
+    context: "proxy spend",
+    mode: "split",
+  });
 
   for (const output of args.outputs) {
     args.txBuilder.txOut(output.address, [
@@ -265,9 +315,14 @@ export function buildProxyDRepCertificateTx(args: {
     addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
   }
 
-  args.txBuilder.txOut(args.walletAddress, [
-    { unit: scripts.authTokenId, quantity: "1" },
-  ]);
+  returnAuthTokensToWallet({
+    txBuilder: args.txBuilder,
+    inputs: selectedUtxos,
+    authTokenId: scripts.authTokenId,
+    walletAddress: args.walletAddress,
+    context: `proxy DRep ${args.action}`,
+    mode: "split",
+  });
 
   if (args.action === "register") {
     args.txBuilder.drepRegistrationCertificate(scripts.dRepId, {
@@ -326,9 +381,14 @@ export function buildProxyVoteTx(args: {
     addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
   }
 
-  args.txBuilder.txOut(args.walletAddress, [
-    { unit: scripts.authTokenId, quantity: "1" },
-  ]);
+  returnAuthTokensToWallet({
+    txBuilder: args.txBuilder,
+    inputs: selectedUtxos,
+    authTokenId: scripts.authTokenId,
+    walletAddress: args.walletAddress,
+    context: "proxy vote",
+    mode: "split",
+  });
 
   for (const vote of args.votes) {
     const parsed = parseProposalId(vote.proposalId);
@@ -448,12 +508,6 @@ export function buildProxyCleanupSweepTx(args: {
     stakeCredential: args.stakeCredential,
   });
 
-  assertNoStrayAuthTokenUtxos(
-    args.walletUtxos,
-    scripts.authTokenId,
-    args.authTokenUtxo,
-  );
-
   for (const proxyUtxo of args.proxyUtxos) {
     if (proxyUtxo.output.address !== args.proxyAddress) {
       throw new Error("proxy cleanup sweep received a UTxO outside the proxy address");
@@ -471,24 +525,34 @@ export function buildProxyCleanupSweepTx(args: {
       .txInRedeemerValue(mConStr0([]));
   }
 
-  addScriptInput(args.txBuilder, args.authTokenUtxo, args.multisigScriptCbor);
-  for (const utxo of args.walletUtxos) {
-    if (!sameUtxoRef(utxo.input, args.authTokenUtxo.input)) {
-      addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
-    }
+  const walletInputs = withDesignatedAuthToken(args.authTokenUtxo, args.walletUtxos);
+  for (const utxo of walletInputs) {
+    addScriptInput(args.txBuilder, utxo, args.multisigScriptCbor);
   }
 
   addCollateral(args.txBuilder, args.collateral);
-  args.txBuilder.txOut(
-    args.walletAddress,
-    aggregateUtxoAmounts(args.proxyUtxos, [
-      { unit: scripts.authTokenId, quantity: "1" },
-    ]),
+  // Swept proxy value and every auth token go back to the wallet in ONE output. Any
+  // auth token that was ever leaked to the proxy address is recovered here too, so
+  // include proxy inputs when counting tokens. Keeping the tokens with the swept ADA
+  // (rather than in a token-only output that would get bare min-ADA) is what lets the
+  // burn that follows pay its fee when the caller passes only auth-token UTxOs.
+  // Remaining wallet-input ADA goes to the wallet as change.
+  const sweptAmounts = aggregateUtxoAmounts(args.proxyUtxos).filter(
+    (asset) => asset.unit !== scripts.authTokenId,
   );
+  const preservedAuthTokens = returnAuthTokensToWallet({
+    txBuilder: args.txBuilder,
+    inputs: [...walletInputs, ...args.proxyUtxos],
+    authTokenId: scripts.authTokenId,
+    walletAddress: args.walletAddress,
+    context: "proxy cleanup sweep",
+    mode: "bundle",
+    bundleWith: sweptAmounts,
+  });
   args.txBuilder.changeAddress(args.walletAddress);
 
   return {
     sweptProxyUtxos: args.proxyUtxos.length.toString(),
-    preservedAuthTokens: "1",
+    preservedAuthTokens: preservedAuthTokens.toString(),
   };
 }

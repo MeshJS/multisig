@@ -25,6 +25,7 @@ import { completeTxWithFreshCostModels } from "@/lib/server/completeTxWithFreshC
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { buildProxySpendTx, deriveProxyScripts } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type ProxyOutput = { address: string; unit: string; amount: string };
@@ -285,6 +286,16 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [proxy.authTokenId],
+    walletAddress,
+    context: "proxySpend",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =

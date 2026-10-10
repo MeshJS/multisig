@@ -152,7 +152,42 @@ describe("freeUtxos bot API", () => {
     await handler(req, res);
     expect(cachedFetchAddressUTxOsMock).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "a", outputIndex: 0 }, authToken: false }]);
+    expect(res.json).toHaveBeenCalledWith([
+      { input: { txHash: "a", outputIndex: 0 }, authToken: false, authTokenId: null },
+    ]);
+  });
+
+  it("flags UTxOs that carry an active proxy auth token", async () => {
+    const policy = "d".repeat(56);
+    (findProxiesMock as any).mockResolvedValue([{ authTokenId: policy }]);
+    (cachedFetchAddressUTxOsMock as any).mockResolvedValue([
+      {
+        input: { txHash: "tok", outputIndex: 0 },
+        output: { address: "addr_test1walletscript", amount: [{ unit: "lovelace", quantity: "2000000" }, { unit: policy, quantity: "1" }] },
+      },
+      {
+        input: { txHash: "ada", outputIndex: 1 },
+        output: { address: "addr_test1walletscript", amount: [{ unit: "lovelace", quantity: "5000000" }] },
+      },
+    ]);
+    const req = {
+      method: "GET",
+      headers: makeBearerAuth(),
+      query: { walletId: "wallet-1", address: BOT_TEST_ADDRESS },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(findProxiesMock).toHaveBeenCalledWith({
+      where: { walletId: "wallet-1", isActive: true },
+      select: { authTokenId: true },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([
+      expect.objectContaining({ input: { txHash: "tok", outputIndex: 0 }, authToken: true, authTokenId: policy }),
+      expect.objectContaining({ input: { txHash: "ada", outputIndex: 1 }, authToken: false, authTokenId: null }),
+    ]);
   });
 
   it("falls back to direct provider fetch when cached UTxO lookup fails", async () => {
@@ -168,7 +203,9 @@ describe("freeUtxos bot API", () => {
 
     expect(fetchAddressUTxOsMock).toHaveBeenCalledWith("addr_test1walletscript");
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith([{ input: { txHash: "direct", outputIndex: 1 }, authToken: false }]);
+    expect(res.json).toHaveBeenCalledWith([
+      { input: { txHash: "direct", outputIndex: 1 }, authToken: false, authTokenId: null },
+    ]);
   });
 
   it("returns an empty array when the provider has no UTxOs for the script address", async () => {

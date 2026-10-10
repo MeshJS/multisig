@@ -154,6 +154,7 @@ Endpoints:
 - `POST /api/v1/proxySetup`: body `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, optional `description`; returns pending/submitted transaction plus setup metadata. When omitted, `initialProxyLovelace` defaults to the current minimal proxy output amount.
 - `POST /api/v1/proxySetupFinalize`: body `walletId`, `address`, `txHash`, `proxyAddress`, `authTokenId`, `paramUtxo`, optional `description`; creates or reactivates the confirmed proxy row after chain validation.
 - `POST /api/v1/proxySpend`: body `walletId`, `address`, `proxyId`, `outputs`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `description`; requires one multisig input containing the proxy auth token. If `proxyUtxoRefs` is omitted, the server fetches proxy-address UTxOs and selects enough to cover `outputs` plus a fee buffer.
+- **Auth-token safety (all proxy routes)**: the on-chain proxy validator only checks that some output carries the auth token, so the server enforces off-chain that every auth token spent returns to the multisig wallet address (`src/lib/proxy/txBuilders.ts`; split 1 per output for spend/DRep/vote; the cleanup sweep returns them all in the swept-value output so the token UTxO stays funded for the burn), audits the finished CBOR before persisting (`src/lib/server/proxyAuthTokenAudit.ts`; a failure is a 500 because it means the builder misbehaved), and `signTransaction` / tRPC `transaction.updateTransaction` refuse to add a witness to any pending transaction of a proxy wallet that would move a token elsewhere (409 / `PRECONDITION_FAILED`).
 - `POST /api/v1/proxyDRepCertificate`: body `walletId`, `address`, `proxyId`, `action` (`register`, `update`, `deregister`), `utxoRefs`, `collateralRef`, optional `description`; `anchorUrl` and `anchorJson` are required for `register` and `update`, and the server computes `hashDrepAnchor(anchorJson)` without fetching `anchorUrl`.
 - `POST /api/v1/proxyVote`: body `walletId`, `address`, `proxyId`, `votes`, `utxoRefs`, `collateralRef`, optional `description`; each vote has `proposalId` in `<txHash>#<certIndex>` form and `voteKind` (`Yes`, `No`, `Abstain`).
 - `POST /api/v1/proxyCleanup`: body `walletId`, `address`, `proxyId`, `utxoRefs`, `collateralRef`, optional `proxyUtxoRefs`, optional `deactivateProxy`, optional `description`; returns cleanup metadata with phase `sweep` while proxy-address UTxOs remain, then phase `burn` once the proxy address is empty. When `proxyUtxoRefs` is provided for cleanup, it must include every currently visible proxy UTxO.
@@ -337,7 +338,7 @@ Endpoints:
 - **Query Parameters**:
   - `walletId`: Wallet identifier
   - `address`: User address for authorization
-- **Response**: Array of free UTxO objects
+- **Response**: Array of free UTxO objects. Each carries `authToken: boolean` and `authTokenId: string | null`, set when the UTxO holds an auth token of one of the wallet's active proxies, so callers can keep proxy permission tokens out of generic coin selection.
 - **Error Handling**: 400 (validation), 401 (auth), 403 (authorization), 404 (not found), 500 (server)
 
 ### Authentication Endpoints

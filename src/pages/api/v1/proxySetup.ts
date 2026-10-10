@@ -18,6 +18,7 @@ import {
   buildProxySetupTx,
   DEFAULT_PROXY_SETUP_LOVELACE,
 } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
@@ -183,6 +184,18 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  // All 10 freshly minted auth tokens must land at the wallet address (the builder
+  // emits them 1 per output; the audit only checks the address).
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [setup.authTokenId],
+    walletAddress,
+    context: "proxySetup",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =

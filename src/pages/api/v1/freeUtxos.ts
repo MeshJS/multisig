@@ -184,18 +184,21 @@ export default async function handler(
         ),
     );
 
-    // Flag UTxOs that carry an active proxy AuthToken so callers building a
-    // proxySpend request have a positive signal to avoid sweeping in more than
-    // one of them as generic funding (see buildProxySpendTx's stray-AuthToken guard).
+    // Flag UTxOs that carry an active proxy auth token so callers doing coin
+    // selection can tell a plain funding UTxO from a proxy permission token.
+    // The builders conserve tokens regardless, but bots should still pass only
+    // the single token UTxO they intend to use per proxy action.
     const activeProxies = await db.proxy.findMany({
       where: { walletId, isActive: true },
       select: { authTokenId: true },
     });
     const authTokenIds = new Set(activeProxies.map((p) => p.authTokenId));
-    const freeUtxosWithAuthTokenFlag = freeUtxos.map((utxo) => ({
-      ...utxo,
-      authToken: (utxo.output?.amount ?? []).some((asset) => authTokenIds.has(asset.unit)),
-    }));
+    const freeUtxosWithAuthTokenFlag = freeUtxos.map((utxo) => {
+      const authTokenId =
+        (utxo.output?.amount ?? []).find((asset) => authTokenIds.has(asset.unit))?.unit ??
+        null;
+      return { ...utxo, authToken: authTokenId !== null, authTokenId };
+    });
 
     res.setHeader(
       "Cache-Control",

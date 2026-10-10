@@ -25,6 +25,7 @@ import {
   buildProxyDRepCertificateTx,
   deriveProxyScripts,
 } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type ProxyDRepAction = "register" | "update" | "deregister";
@@ -220,6 +221,16 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [proxy.authTokenId],
+    walletAddress,
+    context: "proxyDRepCertificate",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =

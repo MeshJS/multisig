@@ -26,6 +26,7 @@ import {
   deriveProxyScripts,
   type ProxyVoteInput,
 } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import { parseProposalId } from "@/lib/governance";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
@@ -241,6 +242,16 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [proxy.authTokenId],
+    walletAddress,
+    context: "proxyVote",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =

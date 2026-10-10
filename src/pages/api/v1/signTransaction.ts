@@ -19,6 +19,7 @@ import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/securi
 import { getClientIP } from "@/lib/security/rateLimit";
 import { getBotWalletAccess } from "@/lib/auth/botAccess";
 import { enqueueThresholdReachedNotifications } from "@/lib/notifications/center";
+import { auditPendingTxForProxyWallet } from "@/lib/server/proxyAuthTokenAudit";
 
 function coerceBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
@@ -213,6 +214,18 @@ export default async function handler(
     const storedTxHex = transaction.txCbor?.trim();
     if (!storedTxHex) {
       return res.status(500).json({ error: "Stored transaction is missing txCbor" });
+    }
+
+    // Proxy safety: never add a witness to a transaction that would move one of this
+    // wallet's proxy auth tokens away from the wallet address (see authTokenAudit.ts).
+    const proxyAuditError = await auditPendingTxForProxyWallet(db, {
+      wallet,
+      signerAddress: address,
+      txCbor: storedTxHex,
+      context: "signTransaction",
+    });
+    if (proxyAuditError) {
+      return res.status(409).json({ error: proxyAuditError });
     }
 
     const signatureHex = normalizeHex(signature, "signature");

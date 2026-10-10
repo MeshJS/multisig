@@ -15,6 +15,7 @@ import {
   enqueueThresholdReachedNotifications,
 } from "@/lib/notifications/center";
 import { cancelPayoutsForTransaction, markPayoutsPaid } from "@/lib/task-payout/sync";
+import { auditPendingTxForProxyWallet } from "@/lib/server/proxyAuthTokenAudit";
 
 function toHex(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("hex");
@@ -162,6 +163,25 @@ export const transactionRouter = createTRPCRouter({
       }
       const wallet = await assertWalletAccess(ctx, tx.walletId);
       const sessionAddress = ctx.session?.user?.id ?? ctx.sessionAddress ?? null;
+
+      // Proxy safety (UI signing path): when a signature is being added, refuse to
+      // record it if the transaction would move one of this wallet's proxy auth
+      // tokens away from the wallet address. Mirrors v1 signTransaction.
+      const addsSignature = input.signedAddresses.some(
+        (addr) => !tx.signedAddresses.includes(addr),
+      );
+      if (addsSignature) {
+        const proxyAuditError = await auditPendingTxForProxyWallet(ctx.db, {
+          wallet,
+          signerAddress: sessionAddress ?? input.signedAddresses[0] ?? "",
+          txCbor: input.txCbor,
+          context: "transaction.updateTransaction",
+        });
+        if (proxyAuditError) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: proxyAuditError });
+        }
+      }
+
       const updated = await ctx.db.transaction.update({
         where: {
           id: input.transactionId,

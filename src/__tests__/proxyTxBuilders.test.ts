@@ -191,13 +191,17 @@ describe("buildProxySetupTx", () => {
       outputIndex: 2,
       address: setup.proxyAddress,
     });
-    expect(sweepBuilder.txOuts).toContainEqual({
-      address: "addr_test_wallet",
-      amount: expect.arrayContaining([
-        { unit: "lovelace", quantity: "2500000" },
-        { unit: setup.authTokenId, quantity: "1" },
-      ]),
-    });
+    // Swept value and the preserved auth token share one wallet output so the token
+    // UTxO keeps enough ADA to fund the burn that follows.
+    expect(sweepBuilder.txOuts).toEqual([
+      {
+        address: "addr_test_wallet",
+        amount: [
+          { unit: "lovelace", quantity: "2500000" },
+          { unit: setup.authTokenId, quantity: "1" },
+        ],
+      },
+    ]);
     expect(sweepBuilder.mints).toEqual([]);
   });
 });
