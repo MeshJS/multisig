@@ -577,10 +577,10 @@ describe("MeshProxyContract — builder delegation", () => {
     expect(spendSpy).toHaveBeenCalledWith(
       expect.objectContaining({ proxyAddress: contract.proxyAddress }),
     );
-    // Confirm proxyAddress was actually set (not still undefined)
+    // Confirm proxyAddress was actually set (not still undefined) and that the
+    // builder and the contract agree on it (same stake-credential derivation).
     expect(contract.proxyAddress).toBeDefined();
-    // Confirm the stored address was used (not setupResult.proxyAddress which
-    // comes from the builder's DEFAULT_PROXY_STAKE_CREDENTIAL fallback)
+    expect(contract.proxyAddress).toBe(setupResult.proxyAddress);
     expect(setupResult.paramUtxo).toEqual(LARGE_UTXO.input);
   });
 });

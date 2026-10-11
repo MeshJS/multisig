@@ -18,6 +18,12 @@ const createPendingMultisigTransactionMock: jest.Mock = jest.fn();
 const completeTxWithFreshCostModelsMock: jest.Mock = jest.fn();
 const completeMock: jest.Mock = jest.fn();
 const getTxBuilderMock: jest.Mock = jest.fn();
+const auditBuiltProxyTxMock: jest.Mock = jest.fn();
+
+jest.mock("@/lib/server/proxyAuthTokenAudit", () => ({
+  __esModule: true,
+  auditBuiltProxyTx: auditBuiltProxyTxMock,
+}));
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -114,9 +120,36 @@ beforeEach(() => {
   getTxBuilderMock.mockReturnValue(txBuilder);
   (completeTxWithFreshCostModelsMock as any).mockResolvedValue("fresh-tx-cbor");
   (createPendingMultisigTransactionMock as any).mockResolvedValue({ id: "tx-1" });
+  auditBuiltProxyTxMock.mockReturnValue(null);
 });
 
 describe("proxySetup bot API", () => {
+  it("audits the finished CBOR for auth-token outputs and refuses to persist on failure", async () => {
+    auditBuiltProxyTxMock.mockReturnValue("Transaction moves a proxy auth token away from the wallet address: x");
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        address: makeBotJwtPayload().address,
+        utxoRefs: [{ txHash: "aa", outputIndex: 0 }],
+        collateralRef: { txHash: "bb", outputIndex: 1 },
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(auditBuiltProxyTxMock).toHaveBeenCalledWith({
+      txCbor: "fresh-tx-cbor",
+      authTokenIds: ["policy"],
+      walletAddress: "addr_test_wallet_script",
+      context: "proxySetup",
+    });
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(createPendingMultisigTransactionMock).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid initialProxyLovelace before resolving UTxOs", async () => {
     const req = {
       method: "POST",

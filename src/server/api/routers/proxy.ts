@@ -413,6 +413,12 @@ export const proxyRouter = createTRPCRouter({
       });
     }),
 
+  /**
+   * Soft delete. The row is kept (flagged inactive) on purpose: the pre-sign
+   * auth-token audit keys off every Proxy row of a wallet, and a DB delete must
+   * not be able to switch that guard off while the 10 auth tokens can still exist
+   * on-chain. Proxies only truly end with the on-chain burn (proxyCleanup).
+   */
   deleteProxy: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -422,9 +428,12 @@ export const proxyRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Proxy not found" });
       }
       await assertProxyManageAccess(ctx, proxy, sessionAddress);
-      return ctx.db.proxy.delete({
+      return ctx.db.proxy.update({
         where: {
           id: input.id,
+        },
+        data: {
+          isActive: false,
         },
       });
     }),

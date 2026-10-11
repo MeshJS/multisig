@@ -157,6 +157,20 @@ jest.unstable_mockModule(
   }),
 );
 
+// Proxy auth-token pre-sign audit: no active proxies in these fixtures, so it is a
+// no-op. Mocked so the handler does not pull CSL/Mesh into this ESM-mocked module graph.
+const auditPendingTxForProxyWalletMock = jest.fn<
+  (db: unknown, args: unknown) => Promise<string | null>
+>();
+
+jest.unstable_mockModule(
+  '@/lib/server/proxyAuthTokenAudit',
+  () => ({
+    __esModule: true,
+    auditPendingTxForProxyWallet: auditPendingTxForProxyWalletMock,
+  }),
+);
+
 const resolvePaymentKeyHashMock = jest.fn<(address: string) => string>();
 
 jest.unstable_mockModule(
@@ -424,6 +438,8 @@ beforeEach(() => {
   dbTransactionUpdateManyMock.mockReset();
   dbTaskPayoutUpdateManyMock.mockReset();
   dbTaskPayoutUpdateManyMock.mockResolvedValue({ count: 0 });
+  auditPendingTxForProxyWalletMock.mockReset();
+  auditPendingTxForProxyWalletMock.mockResolvedValue(null);
   getProviderMock.mockReset();
   addressToNetworkMock.mockReset();
   shouldSubmitMultisigTxMock.mockReset();

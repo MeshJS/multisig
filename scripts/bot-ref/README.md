@@ -219,6 +219,8 @@ All proxy transaction builders accept UTxO references, not raw UTxO JSON:
 
 Use `GET /api/v1/freeUtxos?walletId=...&address=...&fresh=true` to select wallet inputs. `collateralRef` must be an ADA-only UTxO with at least 5 ADA at the bot payment address. Proxy actions also require a wallet input containing the proxy auth token, returned from setup/finalization metadata as `authTokenId`.
 
+**Auth-token hygiene.** A proxy-enabled wallet holds up to 10 auth-token UTxOs. `freeUtxos` marks them with `authToken: true` and `authTokenId`. For `proxySpend`, `proxyDRepCertificate`, and `proxyVote`, include exactly one `authToken: true` UTxO in `utxoRefs` and select the rest of your funding from `authToken: false` UTxOs. The server returns every auth token it spends to the wallet address (split 1 per output for these actions) and audits the finished transaction, so a stray token cannot leak to the proxy address; `signTransaction` also refuses (409) any pending transaction for a proxy wallet that would move a token elsewhere. Cleanup is the exception: pass all auth-token UTxOs (the burn phase needs all 10) plus at least one `authToken: false` UTxO with a few ADA, because token UTxOs may hold only min-ADA and the burn has nothing else to pay the fee and change from. The sweep returns the tokens in a single output together with the swept proxy value.
+
 ### Setup and finalize
 
 1. `POST /api/v1/proxySetup` with `walletId`, `address`, `utxoRefs`, `collateralRef`, optional `initialProxyLovelace`, and optional `description`.
