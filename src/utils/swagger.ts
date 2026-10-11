@@ -265,6 +265,17 @@ This API uses **Bearer Token** authentication (JWT).
                             },
                           },
                         },
+                        authToken: {
+                          type: "boolean",
+                          description:
+                            "True when this UTxO carries an auth token of any of the wallet's proxies (active or not). Pass only the single auth-token UTxO you intend to use in utxoRefs for proxySpend, proxyDRepCertificate, and proxyVote; the server returns every spent auth token to the wallet address regardless.",
+                        },
+                        authTokenId: {
+                          type: "string",
+                          nullable: true,
+                          description:
+                            "Policy id of the proxy auth token carried by this UTxO, or null.",
+                        },
                       },
                     },
                   },
@@ -523,7 +534,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy setup transaction",
           description:
-            "Builds a Plutus proxy setup transaction, persists it through the multisig pending transaction flow with no initial signed addresses, and returns derived setup metadata. Bots need multisig:sign and cosigner access. Proxy rows are not created until POST /api/v1/proxySetupFinalize validates confirmed chain state.",
+            "Builds a Plutus proxy setup transaction, persists it through the multisig pending transaction flow with no initial signed addresses, and returns derived setup metadata. The returned proxyAddress uses the proxy script's own hash as a script stake credential, so reward withdrawals and delegation are governed by the same validator as spends. Bots need multisig:sign and cosigner access. Proxy rows are not created until POST /api/v1/proxySetupFinalize validates confirmed chain state.",
           requestBody: {
             required: true,
             content: {
@@ -632,7 +643,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy spend transaction",
           description:
-            "Builds a proxy script spend transaction and persists it through the multisig pending transaction flow with no initial signed addresses. Requires an auth-token UTxO at the multisig wallet address. If proxyUtxoRefs is omitted, the server selects enough proxy-address UTxOs for the requested outputs plus fee buffer. Bots need multisig:sign and cosigner access.",
+            "Builds a proxy script spend transaction and persists it through the multisig pending transaction flow with no initial signed addresses. Requires an auth-token UTxO at the multisig wallet address; pass only the one you intend to use in utxoRefs (see freeUtxos authToken flag). Every auth token spent is returned to the wallet address (1 per output), including any token found among the proxy-address inputs, and the finished transaction is audited so no token can reach the proxy address as change. If proxyUtxoRefs is omitted, the server selects enough proxy-address UTxOs for the requested outputs plus fee buffer. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -765,7 +776,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy cleanup transaction",
           description:
-            "Builds the next safe cleanup transaction through the multisig pending transaction flow with no initial signed addresses. If the proxy address still has UTxOs, the transaction sweeps them back to the multisig wallet while preserving an auth token. Once the proxy address is empty, the transaction burns all auth tokens. Bots need multisig:sign and cosigner access. The Proxy row is deactivated only after POST /api/v1/proxyCleanupFinalize validates the confirmed burn transaction hash and current chain state.",
+            "Builds the next safe cleanup transaction through the multisig pending transaction flow with no initial signed addresses. If the proxy address still has UTxOs, the transaction sweeps them back to the multisig wallet in a single output that also carries every spent auth token. Once the proxy address is empty, the transaction burns all auth tokens; the server-side audit refuses to persist or sign a burn while the proxy address still holds any UTxO, because a burn is irreversible. Pass every auth-token UTxO in utxoRefs plus at least one ADA-only wallet UTxO: token UTxOs may hold only min-ADA, and the burn has no other inputs to pay the fee and a min-ADA change output from. Bots need multisig:sign and cosigner access. The Proxy row is deactivated only after POST /api/v1/proxyCleanupFinalize validates the confirmed burn transaction hash and current chain state.",
           requestBody: {
             required: true,
             content: {
@@ -976,7 +987,7 @@ This API uses **Bearer Token** authentication (JWT).
             404: { description: "Wallet or transaction not found" },
             409: {
               description:
-                "Transaction already finalized or conflicting update detected",
+                "Transaction already finalized, conflicting update detected, or (for wallets that have or had a proxy) the transaction would move a proxy auth token away from the wallet address, or would burn the auth tokens while the proxy address still holds UTxOs, and is refused before any witness is added",
             },
             502: {
               description:

@@ -7,6 +7,7 @@ import { api } from "@/utils/api";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { useAppearanceStore } from "@/lib/zustand/appearance";
+import { useGraphicsTier } from "@/hooks/useGraphicsTier";
 import { Background } from "@/components/ui/background";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useAppWallet from "@/hooks/useAppWallet";
@@ -128,13 +129,12 @@ export default function RootLayout({
   const [hasCheckedSession, setHasCheckedSession] = useState(false); // Prevent duplicate checks
   const [showPostAuthLoading, setShowPostAuthLoading] = useState(false); // Show loading after authorization
 
-  // Animated background preference (persisted to localStorage). Gate render on a
-  // mounted flag so the server (which can't read localStorage) and the first
-  // client paint agree, avoiding a hydration mismatch.
-  const backgroundEnabled = useAppearanceStore((s) => s.backgroundEnabled);
+  // How much background to render: hardware detection by default, overridable
+  // in profile → Appearance. `resolved` is false until detection has run on the
+  // client, so the server markup and the first client paint agree (no hydration
+  // mismatch) and no WebGL surface mounts before we know the device can take it.
   const backgroundPreset = useAppearanceStore((s) => s.backgroundPreset);
-  const [appearanceMounted, setAppearanceMounted] = useState(false);
-  useEffect(() => setAppearanceMounted(true), []);
+  const { features: gfx, resolved: gfxResolved } = useGraphicsTier();
 
   // Use WalletState for connection check
   const connected = String(walletState) === String(WalletState.CONNECTED);
@@ -602,14 +602,17 @@ export default function RootLayout({
 
   return (
     <div className="flex h-[100dvh] w-screen flex-col overflow-hidden">
-      {/* Animated app background (on by default; toggle in profile → Appearance).
-          Renders on every route including the homepage, behind the homepage's
-          own hero background. */}
-      {appearanceMounted && backgroundEnabled && (
+      {/* App background. The aurora itself is cheap enough to render anywhere;
+          the hardware tier decides whether its keyframes and pointer parallax
+          run (profile → Appearance overrides it). Renders on every route
+          including the homepage, behind the homepage's own hero background. */}
+      {gfxResolved && gfx.background && (
         <div className="pointer-events-none fixed inset-0 -z-10">
           <Background
             variant="aurora"
             preset={backgroundPreset}
+            animated={gfx.auroraAnimated}
+            parallax={gfx.auroraParallax}
             className="opacity-50"
           />
         </div>

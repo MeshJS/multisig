@@ -95,9 +95,8 @@ describe("browser vs direct builder — identical tx calls", () => {
   });
 
   it("spendProxySimple produces the same builder calls as buildProxySpendTx", async () => {
-    // The contract's proxyAddress (setProxyAddress with undefined stakeCredential) may differ
-    // from deriveProxyScripts().proxyAddress (which falls back to DEFAULT_PROXY_STAKE_CREDENTIAL).
-    // Obtain the authoritative proxyAddress from the contract so both paths agree.
+    // Both paths derive the proxy address the same way now (stake credential =
+    // the proxy script itself); pin that so they can never drift apart again.
     const tmpProvider = createMockProvider();
     const { mesh: tmpMesh } = createMeshMock(tmpProvider);
     const tmpContract = new MeshProxyContract(
@@ -106,6 +105,7 @@ describe("browser vs direct builder — identical tx calls", () => {
     );
     const proxyAddress = tmpContract.proxyAddress!;
     const authTokenPolicyId = tmpContract.getAuthTokenPolicyId();
+    expect(proxyAddress).toBe(deriveProxyScripts({ paramUtxo: PARAM_UTXO, network: 0 }).proxyAddress);
 
     const authTokenUtxo: UTxO = {
       input: { txHash: "f".repeat(64), outputIndex: 0 },

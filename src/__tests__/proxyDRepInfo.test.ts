@@ -58,6 +58,7 @@ jest.mock("@/lib/server/proxyAccess", () => ({
 jest.mock("@/lib/server/proxyTxBuilders", () => ({
   __esModule: true,
   deriveProxyScripts: deriveProxyScriptsMock,
+  proxyStakeCredentialFromAddress: () => ({ kind: "self" }),
 }));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;

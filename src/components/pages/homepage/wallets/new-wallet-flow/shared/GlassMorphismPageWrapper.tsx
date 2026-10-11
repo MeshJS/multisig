@@ -6,6 +6,7 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
+import { useGraphicsTier } from '@/hooks/useGraphicsTier';
 
 // Lazy load Globe
 const Globe = dynamic(() => import('@/components/pages/homepage/globe'), {
@@ -23,6 +24,10 @@ export default function GlassMorphismPageWrapper({
   className = '' 
 }: GlassMorphismPageWrapperProps) {
   const [isDarkMode, setIsDarkMode] = React.useState(false);
+  // three.js scene: only where the hardware tier says the device can afford it.
+  // Everything else keeps the flat background — the glass body class below still
+  // applies, so the page reads the same, just without the globe behind it.
+  const { features: gfx } = useGraphicsTier();
   
   // Add subtle glass effect styles
   React.useEffect(() => {
@@ -53,33 +58,35 @@ export default function GlassMorphismPageWrapper({
 
   return (
     <>
-      {/* Globe background - centered and always visible */}
-      <div className="globe-background" style={{
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '100vw',
-        height: '100vh',
-        zIndex: -100,
-        background: isDarkMode ? '#121212' : '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{ 
-          width: '100vmin',
-          height: '100vmin',
-          maxWidth: '750px',
-          maxHeight: '750px',
-          opacity: 0.75,
+      {/* Globe background - centered, gated on the device's graphics tier */}
+      {gfx.webglGlobe && (
+        <div className="globe-background" style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '100vw',
+          height: '100vh',
+          zIndex: -100,
+          background: isDarkMode ? '#121212' : '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center'
         }}>
-          <Globe />
+          <div style={{ 
+            width: '100vmin',
+            height: '100vmin',
+            maxWidth: '750px',
+            maxHeight: '750px',
+            opacity: 0.75,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Globe />
+          </div>
         </div>
-      </div>
+      )}
       
       {/* Page content */}
       <div style={{ position: 'relative' }} className={className}>

@@ -1,7 +1,6 @@
 import { mOutputReference } from "@meshsdk/common";
 import {
   resolveScriptHash,
-  serializePlutusScript,
   applyParamsToScript,
   resolveScriptHashDRepId,
 } from "@meshsdk/core";
@@ -19,6 +18,9 @@ import {
   buildProxyCleanupTx,
   buildProxyCleanupSweepTx,
   deriveProxyScripts,
+  PROXY_STAKE_SELF,
+  proxyStakeCredentialFromAddress,
+  type ProxyStakeCredential,
 } from "@/lib/proxy/txBuilders";
 import {
   selectProxyUtxosForOutputs,
@@ -32,7 +34,12 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 export class MeshProxyContract extends MeshTxInitiator {
   paramUtxo: UTxO["input"] = { outputIndex: 0, txHash: "" };
   proxyAddress?: string;
-  stakeCredential?: string | undefined;
+  /**
+   * Stake part of the proxy address. `self` (proxy script hash) for new setups;
+   * for an existing proxy it is read from the stored `proxyAddress` so the derived
+   * address always matches the UTxOs on-chain. See `ProxyStakeCredential`.
+   */
+  stake: ProxyStakeCredential = PROXY_STAKE_SELF;
   networkId: number;
   msCbor?: string; // Multisig script cbor
 
@@ -40,7 +47,7 @@ export class MeshProxyContract extends MeshTxInitiator {
   reset() {
     this.paramUtxo = { outputIndex: 0, txHash: "" };
     this.proxyAddress = undefined;
-    this.stakeCredential = undefined;
+    this.stake = PROXY_STAKE_SELF;
   }
 
   // Static method to clear DRep status cache
@@ -69,14 +76,11 @@ export class MeshProxyContract extends MeshTxInitiator {
   };
 
   setProxyAddress = () => {
-    const proxyAddress = serializePlutusScript(
-      {
-        code: this.getProxyCbor(),
-        version: "V3",
-      },
-      this.stakeCredential,
-      this.networkId,
-    ).address;
+    const proxyAddress = deriveProxyScripts({
+      paramUtxo: this.paramUtxo,
+      network: this.networkId,
+      stake: this.stake,
+    }).proxyAddress;
     this.proxyAddress = proxyAddress;
     return proxyAddress;
   };
@@ -85,18 +89,38 @@ export class MeshProxyContract extends MeshTxInitiator {
     inputs: MeshTxInitiatorInput,
     contract: {
       paramUtxo?: UTxO["input"];
+      /**
+       * Stored address of an existing proxy. When given, the stake credential is
+       * read from it instead of defaulting to `self`, so proxies created with an
+       * older derivation keep resolving to the address that holds their funds.
+       */
+      proxyAddress?: string;
     },
     msCbor?: string,
   ) {
     super(inputs);
-    this.stakeCredential = inputs.stakeCredential;
     this.networkId = inputs.networkId ?? 0;
     this.msCbor = msCbor;
+
+    if (contract.proxyAddress) {
+      this.stake = proxyStakeCredentialFromAddress(contract.proxyAddress);
+    }
 
     // Set the proxyAddress if paramUtxo is provided
     if (contract.paramUtxo) {
       this.paramUtxo = contract.paramUtxo;
       this.setProxyAddress();
+      if (contract.proxyAddress && this.proxyAddress !== contract.proxyAddress) {
+        // The stored address is where the funds are; keep it and surface the
+        // inconsistency instead of silently talking to an empty address.
+        console.warn("MeshProxyContract: stored proxy address differs from derived", {
+          stored: contract.proxyAddress,
+          derived: this.proxyAddress,
+        });
+        this.proxyAddress = contract.proxyAddress;
+      }
+    } else if (contract.proxyAddress) {
+      this.proxyAddress = contract.proxyAddress;
     }
   }
 
@@ -142,7 +166,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       walletAddress,
       collateral,
       multisigScriptCbor: this.msCbor,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
 
     this.paramUtxo = result.paramUtxo;
@@ -174,7 +198,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const scripts = deriveProxyScripts({
       paramUtxo: this.paramUtxo,
       network: this.networkId,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
     const selectedProxyUtxos = selectProxyUtxosForOutputs(
       proxyUtxos,
@@ -195,7 +219,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       outputs,
       walletAddress,
       multisigScriptCbor: this.msCbor,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
 
     return this.mesh;
@@ -226,7 +250,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const scripts = deriveProxyScripts({
       paramUtxo: this.paramUtxo,
       network: this.networkId,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
     const authTokenUtxo = selectAuthTokenUtxo(utxos, scripts.authTokenId);
 
@@ -242,7 +266,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       anchorUrl,
       anchorJson,
       multisigScriptCbor: this.msCbor,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
 
     return this.mesh;
@@ -534,7 +558,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const scripts = deriveProxyScripts({
       paramUtxo: this.paramUtxo,
       network: this.networkId,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
     const authTokenUtxo = selectAuthTokenUtxo(utxos, scripts.authTokenId);
 
@@ -548,7 +572,7 @@ export class MeshProxyContract extends MeshTxInitiator {
       walletAddress,
       votes,
       multisigScriptCbor: this.msCbor,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
 
     return this.mesh;
@@ -577,7 +601,7 @@ export class MeshProxyContract extends MeshTxInitiator {
     const scripts = deriveProxyScripts({
       paramUtxo: this.paramUtxo,
       network: this.networkId,
-      stakeCredential: this.stakeCredential,
+      stake: this.stake,
     });
 
     if (proxyUtxos.length > 0) {
@@ -593,7 +617,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         collateral,
         walletAddress,
         multisigScriptCbor: this.msCbor,
-        stakeCredential: this.stakeCredential,
+        stake: this.stake,
       });
     } else {
       buildProxyCleanupTx({
@@ -605,7 +629,7 @@ export class MeshProxyContract extends MeshTxInitiator {
         walletAddress,
         authTokenId: scripts.authTokenId,
         multisigScriptCbor: this.msCbor,
-        stakeCredential: this.stakeCredential,
+        stake: this.stake,
       });
     }
 

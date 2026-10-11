@@ -19,6 +19,7 @@ import {
   hasVerifiedPaymentWitness,
   transactionReadiness,
 } from "@/utils/transactionReadiness";
+import { runPreSignProxyAudit } from "@/utils/preSignProxyAudit";
 
 export default function useTransaction() {
   const ctx = api.useUtils();
@@ -174,6 +175,25 @@ export default function useTransaction() {
         throw new Error("No wallet available for signing transaction");
       }
 
+      // Proxy safety: refuse before the wallet signs. For a 1-of-N wallet the
+      // proposer broadcasts immediately, so this is the only point where an
+      // auth-token leak or a premature burn can still be stopped.
+      const preSign = await runPreSignProxyAudit({
+        fetchAudit: (input) => ctx.transaction.preSignProxyAudit.fetch(input),
+        walletId: appWallet.id,
+        txCbor: unsignedTx,
+      });
+      if (!preSign.ok) {
+        setLoading(false);
+        toast({
+          title: "Transaction refused",
+          description: preSign.message,
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
       assertCurrent();
       const mergeResult = mergeSignerWitnesses(
@@ -257,6 +277,7 @@ export default function useTransaction() {
       setLoading,
       toast,
       network,
+      ctx,
     ],
   );
 

@@ -436,6 +436,57 @@ describe("validateDraft certificates", () => {
       expect(validateDraft(deregisterOnly, active)).toEqual([]);
     });
 
+    test("vote-delegation-only on an unregistered credential is an error", () => {
+      const voteOnly = addCertificate(createDraft("d1"), {
+        kind: "VoteDelegation",
+        dRepId: "Always Abstain",
+      }).draft;
+      expect(codes(validateDraft(voteOnly, inactive))).toEqual([
+        "cert-vote-unregistered",
+      ]);
+    });
+
+    test("register + Always Abstain on an unregistered credential passes", () => {
+      let { draft } = addCertificate(createDraft("d1"), {
+        kind: "RegisterStake",
+      });
+      ({ draft } = addCertificate(draft, {
+        kind: "VoteDelegation",
+        dRepId: "Always Abstain",
+      }));
+      expect(validateDraft(draft, inactive)).toEqual([]);
+    });
+
+    test("Always Abstain on a registered credential passes", () => {
+      const voteOnly = addCertificate(createDraft("d1"), {
+        kind: "VoteDelegation",
+        dRepId: "Always Abstain",
+      }).draft;
+      expect(validateDraft(voteOnly, active)).toEqual([]);
+    });
+
+    test("vote delegation without a target is an error", () => {
+      const missing = addCertificate(createDraft("d1"), {
+        kind: "VoteDelegation",
+      }).draft;
+      expect(codes(validateDraft(missing, { network: 0 }))).toEqual([
+        "cert-drep-missing",
+      ]);
+    });
+
+    test("vote delegation accepts a real drep id and rejects junk", () => {
+      const drep = (dRepId: string) =>
+        addCertificate(createDraft("d1"), { kind: "VoteDelegation", dRepId })
+          .draft;
+      const valid = "drep1yw42424242424242424242424242424242424242424242sd640tm";
+      expect(validateDraft(drep(valid), active)).toEqual([]);
+      for (const bad of ["drep1abc", "aa".repeat(28), "Auto Abstain"]) {
+        expect(codes(validateDraft(drep(bad), active))).toEqual([
+          "cert-drep-missing",
+        ]);
+      }
+    });
+
     test("unknown state skips every registration check", () => {
       const unknown = { network: 0, hasStakeContext: true };
       expect(validateDraft(delegationDraft(POOL_ID), unknown)).toEqual([]);

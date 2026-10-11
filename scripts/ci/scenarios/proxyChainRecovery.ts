@@ -1,7 +1,11 @@
 import { PrismaClient, type Proxy as DbProxy } from "@prisma/client";
 import { createPrismaClient } from "../framework/prismaClient";
 import { BlockfrostProvider, type UTxO } from "@meshsdk/core";
-import { deriveProxyScripts } from "../../../src/lib/server/proxyTxBuilders";
+import {
+  deriveProxyScripts,
+  findProxyAddressInOutputs,
+  proxyStakeCredentialFromAddress,
+} from "../../../src/lib/server/proxyTxBuilders";
 import type { UtxoRef } from "../../../src/lib/server/proxyUtxos";
 import type { CIBootstrapContext, CIWalletType } from "../framework/types";
 import { getWalletByType } from "./steps/helpers";
@@ -58,10 +62,12 @@ type AssetHistoryEntry = {
 type TxUtxoEntry = {
   tx_hash?: string;
   output_index?: number;
+  address?: string;
 };
 
 type TxUtxosResponse = {
   inputs?: TxUtxoEntry[];
+  outputs?: TxUtxoEntry[];
 };
 
 export type ProxyChainRecoverySkipReason =
@@ -231,12 +237,26 @@ async function inspectAssetCandidate(args: {
   }
 
   const inputs = Array.isArray(txUtxos.inputs) ? txUtxos.inputs : [];
+  const outputAddresses = (Array.isArray(txUtxos.outputs) ? txUtxos.outputs : [])
+    .map((output) => (typeof output.address === "string" ? output.address : ""))
+    .filter(Boolean);
   for (const input of inputs) {
     const paramUtxo = inputToRef(input);
     if (!paramUtxo) continue;
 
-    const scripts = deriveProxyScripts({ paramUtxo, network: args.network });
+    let scripts = deriveProxyScripts({ paramUtxo, network: args.network });
     if (scripts.authTokenId !== args.assetUnit) continue;
+
+    // The setup tx paid the proxy at whatever stake-credential derivation was
+    // current at the time; adopt that address rather than today's default.
+    const paidAddress = findProxyAddressInOutputs(outputAddresses, scripts.proxyScriptHash);
+    if (paidAddress && paidAddress !== scripts.proxyAddress) {
+      scripts = deriveProxyScripts({
+        paramUtxo,
+        network: args.network,
+        stake: proxyStakeCredentialFromAddress(paidAddress),
+      });
+    }
 
     let proxyUtxoCount: number | undefined;
     try {

@@ -61,6 +61,7 @@ import useProposalTitles from "@/hooks/useProposalTitles";
 import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
 import PayoutTasksBadge from "@/components/pages/wallet/tasks/payout-tasks-badge";
 import { getProvider } from "@/utils/get-provider";
+import { runPreSignProxyAudit } from "@/utils/preSignProxyAudit";
 import { useSiteStore } from "@/lib/zustand/site";
 import {
   filterWitnessesToScripts,
@@ -446,6 +447,26 @@ export default function TransactionCard({
 
     try {
       setLoading(true);
+
+      // Proxy safety: ask the server whether this tx moves a proxy auth token away
+      // from the wallet (or burns tokens while the proxy holds funds) BEFORE the
+      // wallet signs. If we are the final signer we broadcast right after signing,
+      // so a refusal from updateTransaction would come too late.
+      const preSign = await runPreSignProxyAudit({
+        fetchAudit: (input) => ctx.transaction.preSignProxyAudit.fetch(input),
+        walletId: appWallet.id,
+        txCbor: transaction.txCbor,
+      });
+      if (!preSign.ok) {
+        setLoading(false);
+        toast({
+          title: "Transaction refused",
+          description: preSign.message,
+          duration: 10000,
+          variant: "destructive",
+        });
+        return;
+      }
 
       const signerWitnessPayload = await activeWallet.signTx(transaction.txCbor, true);
 

@@ -27,7 +27,9 @@ import {
   buildProxyCleanupSweepTx,
   buildProxyCleanupTx,
   deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
 } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
@@ -186,7 +188,8 @@ export default async function handler(
   }
 
   const network = address.includes("test") ? 0 : 1;
-  const scripts = deriveProxyScripts({ paramUtxo, network });
+  const stake = proxyStakeCredentialFromAddress(proxy.proxyAddress);
+  const scripts = deriveProxyScripts({ paramUtxo, network, stake });
   if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
     return res.status(409).json({ error: "Stored proxy metadata does not match derived scripts" });
   }
@@ -252,6 +255,7 @@ export default async function handler(
           collateral: resolvedCollateral.collateral,
           walletAddress,
           multisigScriptCbor: walletRow.scriptCbor,
+          stake,
         }),
       };
     } else {
@@ -266,6 +270,7 @@ export default async function handler(
           walletAddress,
           authTokenId: proxy.authTokenId,
           multisigScriptCbor: walletRow.scriptCbor,
+          stake,
         }),
       };
     }
@@ -283,6 +288,17 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  // Sweep returns tokens to the wallet; burn leaves no token outputs. Both pass.
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [proxy.authTokenId],
+    walletAddress,
+    context: "proxyCleanup",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =

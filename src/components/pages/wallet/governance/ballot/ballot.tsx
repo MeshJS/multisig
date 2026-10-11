@@ -312,10 +312,10 @@ export default function BallotCard({
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet.scriptCbor,
       );
-      proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Prepare votes array
       const votes = selectedBallot.items.map((proposalId: string, index: number) => {

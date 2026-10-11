@@ -65,6 +65,11 @@ const PROXY_LIFECYCLE_COLLATERAL_SIGNER_INDEX = 0;
 const PROXY_LIFECYCLE_SIGNER_INDEXES = [0, 1] as const;
 export const PROXY_ACTION_REQUIRED_LOVELACE = 2_000_000n;
 export const PROXY_ACTION_FEE_BUFFER_LOVELACE = 2_000_000n;
+/**
+ * Minimum lovelace across the wallet inputs passed to `proxyCleanup` (sweep or burn):
+ * fee plus a min-ADA change output, with headroom for Plutus script costs.
+ */
+export const PROXY_CLEANUP_REQUIRED_LOVELACE = 4_000_000n;
 
 export function getProxyDRepAnchorUrl(
   env: Record<string, string | undefined> = process.env,
@@ -248,14 +253,33 @@ export function selectAuthTokenRefs(args: {
 }): { utxoRefs: UtxoRef[]; collateralRef: UtxoRef } {
   const collateral = selectSeparateCollateral(args.collateralUtxos, "proxy action", args.reservedCollateralRef);
   if (args.includeAllAuthTokens) {
-    // Cleanup path: include every auth-token UTxO
-    const authTokenUtxos = args.walletUtxos.filter((utxo) =>
-      utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n),
-    );
+    // Cleanup path: include every auth-token UTxO, plus plain ADA funding when the
+    // token UTxOs alone cannot cover the fee and a min-ADA change output. Token UTxOs
+    // may carry only min-ADA (e.g. the bundled output of a previous sweep, or 1-token
+    // outputs from spend/DRep/vote), and the burn phase has no other inputs.
+    const isAuthToken = (utxo: ScriptUtxo) =>
+      utxo.output.amount.some((asset) => asset.unit === args.authTokenId && BigInt(asset.quantity) > 0n);
+    const authTokenUtxos = args.walletUtxos.filter(isAuthToken);
     if (!authTokenUtxos.length) {
       throw new Error("No proxy auth-token UTxO found in freeUtxos response");
     }
-    return { utxoRefs: authTokenUtxos.map(toRef), collateralRef: toRef(collateral) };
+    const requiredLovelace = PROXY_CLEANUP_REQUIRED_LOVELACE;
+    const selected = [...authTokenUtxos];
+    let selectedLovelace = selected.reduce((sum, utxo) => sum + parseLovelace(utxo), 0n);
+    const funding = args.walletUtxos
+      .filter((utxo) => !isAuthToken(utxo))
+      .sort((left, right) => Number(parseLovelace(right) - parseLovelace(left)));
+    for (const utxo of funding) {
+      if (selectedLovelace >= requiredLovelace) break;
+      selected.push(utxo);
+      selectedLovelace += parseLovelace(utxo);
+    }
+    if (selectedLovelace < requiredLovelace) {
+      throw new Error(
+        `proxy cleanup requires ${formatAda(requiredLovelace)} in selected wallet inputs but only ${formatAda(selectedLovelace)} is available after reserving separate collateral. Fund or consolidate the CI wallet before running scenario.proxy-full-lifecycle.`,
+      );
+    }
+    return { utxoRefs: selected.map(toRef), collateralRef: toRef(collateral) };
   }
   // Standard path: use the same selection as the client (highest lovelace, blocked-ref filtering)
   const authTokenUtxo = selectAuthTokenUtxo(args.walletUtxos as unknown as UTxO[], args.authTokenId);

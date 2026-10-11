@@ -103,10 +103,10 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet.scriptCbor,
       );
-      proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Deregister DRep using proxy
       const txHex = await proxyContract.deregisterProxyDrep(utxos, walletAddress);

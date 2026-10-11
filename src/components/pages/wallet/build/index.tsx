@@ -417,9 +417,7 @@ export default function PageBuild() {
   const addStakeDisabledReason =
     externalSourceReason ??
     (stakeCtx
-      ? draft.certificates.length > 0
-        ? "The draft already has a staking action"
-        : undefined
+      ? undefined
       : multisigWalletLoading
         ? "Loading wallet…"
         : "This wallet has no staking identity");

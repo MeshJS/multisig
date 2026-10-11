@@ -86,6 +86,53 @@ describe("proxy bot UTxO selection", () => {
     ).toThrow(/bot payment-address collateral UTxO/);
   });
 
+  it("cleanup selection passes every auth-token UTxO plus ADA funding when tokens carry only min-ADA", () => {
+    // Wallet state after a sweep whose token output was bundled: one min-ADA token
+    // UTxO, the swept proxy value and plain change. The burn must still be fundable.
+    const refs = selectAuthTokenRefs({
+      walletUtxos: [
+        mkUtxo("999920", "token-bundle", 0, "10"),
+        mkUtxo("8789186", "swept"),
+        mkUtxo("5234629981", "change"),
+      ],
+      collateralUtxos: [mkUtxo("6000000", "collateral", 0, undefined, "addr_test_signer_1")],
+      authTokenId: AUTH_TOKEN_ID,
+      includeAllAuthTokens: true,
+    });
+
+    expect(refs.utxoRefs).toEqual([
+      { txHash: "token-bundle", outputIndex: 0 },
+      { txHash: "change", outputIndex: 0 },
+    ]);
+    expect(refs.collateralRef).toEqual({ txHash: "collateral", outputIndex: 0 });
+  });
+
+  it("cleanup selection adds no funding when the token UTxOs already cover the budget", () => {
+    const refs = selectAuthTokenRefs({
+      walletUtxos: [
+        ...Array.from({ length: 10 }, (_, i) => mkUtxo("1000000", `token-${i}`, 0, "1")),
+        mkUtxo("300000000", "funding"),
+      ],
+      collateralUtxos: [mkUtxo("6000000", "collateral", 0, undefined, "addr_test_signer_1")],
+      authTokenId: AUTH_TOKEN_ID,
+      includeAllAuthTokens: true,
+    });
+
+    expect(refs.utxoRefs).toHaveLength(10);
+    expect(refs.utxoRefs).not.toContainEqual({ txHash: "funding", outputIndex: 0 });
+  });
+
+  it("rejects cleanup selection when the wallet cannot fund the fee and change", () => {
+    expect(() =>
+      selectAuthTokenRefs({
+        walletUtxos: [mkUtxo("999920", "token-bundle", 0, "10"), mkUtxo("500000", "dust")],
+        collateralUtxos: [mkUtxo("6000000", "collateral", 0, undefined, "addr_test_signer_1")],
+        authTokenId: AUTH_TOKEN_ID,
+        includeAllAuthTokens: true,
+      }),
+    ).toThrow(/proxy cleanup requires 4 ADA in selected wallet inputs/);
+  });
+
   it("adds funding inputs for DRep register while keeping collateral separate", () => {
     const refs = selectDRepRegisterRefs({
       walletUtxos: [

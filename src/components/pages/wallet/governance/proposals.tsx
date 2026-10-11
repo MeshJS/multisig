@@ -146,10 +146,10 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
             },
             {
               paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
+              proxyAddress: selectedProxy.proxyAddress,
             },
             appWallet.scriptCbor,
           );
-          proxyContract.proxyAddress = selectedProxy.proxyAddress;
           const drepId = proxyContract.getDrepId();
           setProxyDrepId(drepId);
         } catch (error) {

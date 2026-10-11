@@ -98,10 +98,10 @@ export default function CardInfo({ appWallet, manualUtxos }: { appWallet: Wallet
           },
           {
             paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
+            proxyAddress: selectedProxy.proxyAddress,
           },
           appWallet.scriptCbor,
         );
-        proxyContract.proxyAddress = selectedProxy.proxyAddress;
         
         // Get DRep ID
         const drepId = proxyContract.getDrepId();

@@ -12,6 +12,9 @@ const mockPaymentWitness = jest.fn().mockReturnValue(true);
 const mockReadiness = jest
   .fn()
   .mockResolvedValue({ ready: false, missingKeyHashes: [] });
+// Proxy auth-token audit consulted right before the wallet signs; a clean
+// result lets the flow proceed, a message refuses it before signTx.
+const mockPreSignAudit = jest.fn().mockResolvedValue({ error: null });
 jest.mock("@/utils/transactionReadiness", () => ({
   hasVerifiedPaymentWitness: (...args: unknown[]) =>
     mockPaymentWitness(...args),
@@ -20,7 +23,13 @@ jest.mock("@/utils/transactionReadiness", () => ({
 
 jest.mock("@/utils/api", () => ({
   api: {
-    useUtils: () => ({}),
+    useUtils: () => ({
+      transaction: {
+        preSignProxyAudit: {
+          fetch: (...args: unknown[]) => mockPreSignAudit(...args),
+        },
+      },
+    }),
     transaction: {
       createTransaction: { useMutation: () => ({ mutateAsync: mockCreate }) },
     },
@@ -77,6 +86,18 @@ describe("finalized transaction review before signing", () => {
     mockPaymentWitness.mockReturnValue(true);
     mockReadiness.mockResolvedValue({ ready: false, missingKeyHashes: [] });
     mockSign.mockResolvedValue("wallet-witnesses");
+    mockPreSignAudit.mockResolvedValue({ error: null });
+  });
+
+  test("a failed proxy auth-token audit refuses the transaction before the wallet signs", async () => {
+    mockPreSignAudit.mockResolvedValue({ error: "token would leave the wallet" });
+    await hook().newTransaction({ txBuilder: builder() });
+    expect(mockPreSignAudit).toHaveBeenCalledWith({
+      walletId: "wallet",
+      txCbor: "completed-unsigned-tx",
+    });
+    expect(mockSign).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   test("a missing authorized payment witness cannot mark the proposer signed", async () => {

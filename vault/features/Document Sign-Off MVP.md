@@ -1,21 +1,24 @@
 ---
 type: feature
 area: Document Sign-Off
-state: planned
+state: delivered
 owner: Quirin & Andre
 milestone: 2026-08
-updated: 2026-07-27
+prs: [356, 373, 375, 377, 378, 380, 381, 382, 384, 386, 387, 388, 397, 398]
+updated: 2026-10-10
 ---
 
 # Document Sign-Off MVP
 
-The four primitives: document creation, hash-bound versioning, signer review against
-the wallet's inherited threshold, and an exportable audit proof as JSON and PDF.
+The four primitives, shipped: document creation, hash-bound versioning, signer
+review against the wallet's inherited threshold, and an exportable audit proof as
+JSON and PDF, checkable by anyone at the public `/verify` route without an account.
 Approval belongs to a version, never a mutable container — a new version starts a
-fresh round at zero approvals. Specified as PRD-001, which is still in Draft, so
-finalizing it is the first sub-task.
+fresh round at zero approvals. All six PRD-001 user stories run end to end, and the
+whole chain is covered against a real database with real CIP-8 keys.
 
-Ready means a pilot team runs all six user stories end to end without developer help.
+Two things remain before PRD-001's own bar is met: Playwright browser specs for the
+sign-off flows, and a pilot team running the six stories without developer help.
 
 ## Related
 

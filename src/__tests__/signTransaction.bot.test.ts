@@ -20,6 +20,12 @@ const findWalletMock: jest.Mock = jest.fn();
 const findTransactionMock: jest.Mock = jest.fn();
 const updateManyTransactionMock: jest.Mock = jest.fn();
 const enqueueThresholdReachedMock: jest.Mock = jest.fn();
+const auditPendingTxForProxyWalletMock: jest.Mock = jest.fn();
+
+jest.mock("@/lib/server/proxyAuthTokenAudit", () => ({
+  __esModule: true,
+  auditPendingTxForProxyWallet: auditPendingTxForProxyWalletMock,
+}));
 
 jest.mock("@/lib/notifications/center", () => ({
   __esModule: true,
@@ -134,6 +140,9 @@ beforeEach(() => {
     numRequiredSigners: 2,
     type: "atLeast",
   });
+  // mockReset (not just clear) so a test that returns early does not leave the
+  // second once-value queued for the next test.
+  findTransactionMock.mockReset();
   (findTransactionMock as any)
     .mockResolvedValueOnce({
       id: "tx-1",
@@ -174,6 +183,7 @@ beforeEach(() => {
   });
   (updateManyTransactionMock as any).mockResolvedValue({ count: 1 });
   (enqueueThresholdReachedMock as any).mockResolvedValue([]);
+  (auditPendingTxForProxyWalletMock as any).mockResolvedValue(null);
 });
 
 describe("signTransaction bot API", () => {
@@ -239,6 +249,43 @@ describe("signTransaction bot API", () => {
     const res = createMockResponse();
     await handler(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("refuses to add a witness when the proxy auth-token audit fails", async () => {
+    (auditPendingTxForProxyWalletMock as any).mockResolvedValue(
+      "Transaction moves a proxy auth token away from the wallet address: output #1",
+    );
+    const req = {
+      method: "POST",
+      headers: makeBearerAuth(),
+      body: {
+        walletId: "wallet-1",
+        transactionId: "tx-1",
+        address: BOT_TEST_ADDRESS,
+        signature: "aa".repeat(64),
+        key: "bb".repeat(64),
+        broadcast: false,
+      },
+    } as unknown as NextApiRequest;
+    const res = createMockResponse();
+    await handler(req, res);
+
+    expect(auditPendingTxForProxyWalletMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        wallet: expect.objectContaining({ id: "wallet-1" }),
+        signerAddress: BOT_TEST_ADDRESS,
+        txCbor: "deadbeef",
+        context: "signTransaction",
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Transaction moves a proxy auth token away from the wallet address: output #1",
+    });
+    // Refused before any witness work or persistence.
+    expect(createVkeyWitnessFromHexMock).not.toHaveBeenCalled();
+    expect(updateManyTransactionMock).not.toHaveBeenCalled();
   });
 
   it("records bot witness on happy path", async () => {
