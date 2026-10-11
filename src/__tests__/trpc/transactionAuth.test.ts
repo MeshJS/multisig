@@ -24,6 +24,9 @@ const makeMockDb = () => ({
     findUnique: jest.fn(),
     findMany: jest.fn(),
   },
+  // createTransaction runs the proxy auth-token audit before persisting; with
+  // no proxy rows it returns early without touching the chain.
+  proxy: { findMany: jest.fn(async (_args: unknown) => [] as never[]) },
 });
 
 const wallet = (overrides: Record<string, unknown> = {}) => ({
@@ -113,6 +116,10 @@ describe("transaction router authorization", () => {
         state: 0,
       }),
     ).resolves.toMatchObject({ id: "tx-1" });
+
+    expect(mockDb.proxy.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { walletId: "wallet-1" } }),
+    );
   });
 
   it("allows a signer from the wallet-session context", async () => {
@@ -130,5 +137,9 @@ describe("transaction router authorization", () => {
         state: 0,
       }),
     ).resolves.toMatchObject({ id: "tx-1" });
+
+    expect(mockDb.proxy.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { walletId: "wallet-1" } }),
+    );
   });
 });
