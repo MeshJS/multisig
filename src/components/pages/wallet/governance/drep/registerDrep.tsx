@@ -283,10 +283,10 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet.scriptCbor,
       );
-      proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Register DRep using proxy
       const txHex = await proxyContract.registerProxyDrep(anchorUrl, anchorJson, utxos, walletAddress);

@@ -5,7 +5,10 @@ import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { authorizeProxyReadForV1, loadActiveProxyForWallet } from "@/lib/server/proxyAccess";
-import { deriveProxyScripts } from "@/lib/server/proxyTxBuilders";
+import {
+  deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
+} from "@/lib/server/proxyTxBuilders";
 import type { UtxoRef } from "@/lib/server/proxyUtxos";
 
 function getBlockfrostConfig(network: 0 | 1): { key: string; baseUrl: string } | null {
@@ -101,7 +104,11 @@ export default async function handler(
   }
 
   const network: 0 | 1 = address.includes("test") ? 0 : 1;
-  const scripts = deriveProxyScripts({ paramUtxo, network });
+  const scripts = deriveProxyScripts({
+    paramUtxo,
+    network,
+    stake: proxyStakeCredentialFromAddress(proxy.proxyAddress),
+  });
   if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
     return res.status(409).json({ error: "Stored proxy metadata does not match derived scripts" });
   }

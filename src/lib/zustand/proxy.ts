@@ -178,10 +178,10 @@ export const useProxyStore = create<ProxyState>()(
             },
             {
               paramUtxo: JSON.parse(paramUtxo || '{}'),
+              proxyAddress,
             },
             scriptCbor,
           );
-          proxyContract.proxyAddress = proxyAddress;
           
           // Get DRep ID
           const drepId = proxyContract.getDrepId();
@@ -224,10 +224,10 @@ export const useProxyStore = create<ProxyState>()(
             },
             {
               paramUtxo: JSON.parse(paramUtxo || '{}'),
+              proxyAddress,
             },
             scriptCbor,
           );
-          proxyContract.proxyAddress = proxyAddress;
           
           // Check if DRep is registered before fetching delegators
           const drepStatus = await proxyContract.getDrepStatus(forceRefresh);
@@ -321,10 +321,10 @@ export const useProxyStore = create<ProxyState>()(
                 },
                 {
                   paramUtxo: JSON.parse(proxy.paramUtxo || '{}'),
+                  proxyAddress: proxy.proxyAddress,
                 },
                 scriptCbor,
               );
-              proxyContract.proxyAddress = proxy.proxyAddress;
               
               // Fetch balance and DRep status first
               const [balance, drepStatus] = await Promise.allSettled([

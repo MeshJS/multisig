@@ -143,10 +143,10 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo),
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet.scriptCbor,
       );
-      proxyContract.proxyAddress = proxy.proxyAddress;
 
       // Update DRep using proxy
       const txHex = await proxyContract.updateProxyDrep(anchorUrl, anchorJson, utxos, walletAddress);

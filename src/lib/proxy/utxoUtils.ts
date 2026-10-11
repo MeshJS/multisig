@@ -20,6 +20,30 @@ export function sameUtxoRef(a: UTxO["input"], b: UTxO["input"]): boolean {
 }
 
 /**
+ * Total quantity of the proxy auth token (unit === policy id, empty asset name)
+ * across `utxos`. Duplicate UTxO refs are counted once.
+ *
+ * Security context: the proxy validator (`validators/proxy/spend.ak`) only checks that
+ * *some* output carries the auth-token policy; it has no signer check. The off-chain
+ * invariant that keeps the proxy safe is therefore that every auth token that enters a
+ * transaction as an input leaves it in an output at the multisig wallet address.
+ * Builders use this helper to size those outputs so no token can ever fall through to
+ * change (which, for `buildProxySpendTx`, is the proxy address itself).
+ */
+export function countAuthTokens(utxos: UTxO[], authTokenUnit: string): bigint {
+  const seen = new Set<string>();
+  let total = 0n;
+  for (const utxo of utxos) {
+    const key = `${utxo.input.txHash}#${utxo.input.outputIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const quantity = utxo.output.amount.find((asset) => asset.unit === authTokenUnit)?.quantity;
+    if (quantity) total += BigInt(quantity);
+  }
+  return total;
+}
+
+/**
  * Greedy UTxO selection covering `outputs` plus an optional `feeBuffer` of lovelace.
  * Throws if the proxy balance is insufficient.
  * Browser callers pass feeBuffer = 500_000n; server callers pass 0n or omit.

@@ -1,7 +1,10 @@
 import { PrismaClient, type Proxy as DbProxy, type Wallet as DbWallet } from "@prisma/client";
 import { createPrismaClient } from "../framework/prismaClient";
 import { BlockfrostProvider, type UTxO } from "@meshsdk/core";
-import { deriveProxyScripts } from "../../../src/lib/server/proxyTxBuilders";
+import {
+  deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
+} from "../../../src/lib/server/proxyTxBuilders";
 import { hasAsset, type UtxoRef } from "../../../src/lib/server/proxyUtxos";
 import { resolveWalletScriptAddressSafe } from "../../../src/lib/server/walletScriptAddress";
 import type { CIBootstrapContext, CIWalletType } from "../framework/types";
@@ -242,7 +245,11 @@ export async function adoptProxyOrphansForWalletType(args: {
       continue;
     }
 
-    const scripts = deriveProxyScripts({ paramUtxo, network: args.ctx.networkId });
+    const scripts = deriveProxyScripts({
+      paramUtxo,
+      network: args.ctx.networkId,
+      stake: proxyStakeCredentialFromAddress(proxy.proxyAddress),
+    });
     if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
       skipped.push({
         proxyId: proxy.id,

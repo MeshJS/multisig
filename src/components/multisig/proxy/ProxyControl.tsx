@@ -516,11 +516,11 @@ export default function ProxyControl() {
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo) as { txHash: string; outputIndex: number },
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet?.scriptCbor ?? undefined,
       );
-      tempContract.proxyAddress = proxy.proxyAddress;
-      
+
       // Get DRep ID and status
       const drepId = tempContract.getDrepId();
       const status = tempContract.getDrepStatus();
@@ -665,10 +665,10 @@ export default function ProxyControl() {
         },
         {
           paramUtxo: JSON.parse(proxy.paramUtxo) as { txHash: string; outputIndex: number },
+          proxyAddress: proxy.proxyAddress,
         },
         appWallet?.scriptCbor ?? undefined,
       );
-      selectedProxyContract.proxyAddress = proxy.proxyAddress;
 
       // Pass multisig inputs to spend as well
       const { utxos, walletAddress } = await getMsInputs();

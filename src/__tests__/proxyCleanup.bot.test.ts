@@ -27,6 +27,12 @@ const completeTxWithFreshCostModelsMock: jest.Mock = jest.fn();
 const completeMock: jest.Mock = jest.fn();
 const getTxBuilderMock: jest.Mock = jest.fn();
 const fetchAddressUTxOsMock: jest.Mock = jest.fn();
+const auditBuiltProxyTxMock: jest.Mock = jest.fn();
+
+jest.mock("@/lib/server/proxyAuthTokenAudit", () => ({
+  __esModule: true,
+  auditBuiltProxyTx: auditBuiltProxyTxMock,
+}));
 
 const proxy = {
   id: "proxy-1",
@@ -122,6 +128,7 @@ jest.mock("@/lib/server/proxyTxBuilders", () => ({
   buildProxyCleanupSweepTx: buildProxyCleanupSweepTxMock,
   buildProxyCleanupTx: buildProxyCleanupTxMock,
   deriveProxyScripts: deriveProxyScriptsMock,
+  proxyStakeCredentialFromAddress: () => ({ kind: "self" }),
 }));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
@@ -158,6 +165,7 @@ beforeEach(() => {
   getTxBuilderMock.mockReturnValue({ complete: completeMock, meshTxBuilderBody: {} });
   (completeTxWithFreshCostModelsMock as any).mockResolvedValue("fresh-tx-cbor");
   (createPendingMultisigTransactionMock as any).mockResolvedValue({ id: "tx-1" });
+  auditBuiltProxyTxMock.mockReturnValue(null);
 });
 
 function cleanupRequest(body: Record<string, unknown>): NextApiRequest {

@@ -32,7 +32,9 @@ export class MeshTxInitiator {
     fetcher,
     wallet,
     networkId = 0,
-    stakeCredential = "c08f0294ead5ab7ae0ce5471dd487007919297ba95230af22f25e575",
+    // No default stake credential: a hardcoded key hash would hand the staking
+    // rights of every script address built here to whoever holds that key.
+    stakeCredential,
     version = 2,
   }: MeshTxInitiatorInput) {
     this.mesh = mesh;

@@ -24,8 +24,10 @@ import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
   buildProxyVoteTx,
   deriveProxyScripts,
+  proxyStakeCredentialFromAddress,
   type ProxyVoteInput,
 } from "@/lib/server/proxyTxBuilders";
+import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
 import { parseProposalId } from "@/lib/governance";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
@@ -172,7 +174,8 @@ export default async function handler(
   }
 
   const network = address.includes("test") ? 0 : 1;
-  const scripts = deriveProxyScripts({ paramUtxo, network });
+  const stake = proxyStakeCredentialFromAddress(proxy.proxyAddress);
+  const scripts = deriveProxyScripts({ paramUtxo, network, stake });
   if (scripts.authTokenId !== proxy.authTokenId || scripts.proxyAddress !== proxy.proxyAddress) {
     return res.status(409).json({ error: "Stored proxy metadata does not match derived scripts" });
   }
@@ -226,6 +229,7 @@ export default async function handler(
       walletAddress,
       votes,
       multisigScriptCbor: walletRow.scriptCbor,
+      stake,
     });
   } catch (error) {
     return res.status(400).json({
@@ -241,6 +245,16 @@ export default async function handler(
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to build transaction",
     });
+  }
+
+  const auditError = auditBuiltProxyTx({
+    txCbor,
+    authTokenIds: [proxy.authTokenId],
+    walletAddress,
+    context: "proxyVote",
+  });
+  if (auditError) {
+    return res.status(500).json({ error: auditError });
   }
 
   const description =
