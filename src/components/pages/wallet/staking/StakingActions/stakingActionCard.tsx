@@ -13,12 +13,14 @@ export default function StakingActionCard({
   mWallet,
   network,
   poolHex,
+  dRep,
 }: {
   stakingInfo: StakingInfo;
   appWallet: Wallet;
   mWallet: MultisigWallet;
   network: number;
   poolHex: string;
+  dRep?: string;
 }) {
   const [selectedUtxos, setSelectedUtxos] = useState<UTxO[]>([]);
   const [manualSelected, setManualSelected] = useState<boolean>(false);
@@ -34,6 +36,7 @@ export default function StakingActionCard({
             utxos={selectedUtxos}
             network={network}
             poolHex={poolHex}
+            dRep={dRep}
             action="registerAndDelegate"
           />
         )}
@@ -46,6 +49,7 @@ export default function StakingActionCard({
               utxos={selectedUtxos}
               network={network}
               poolHex={poolHex}
+            dRep={dRep}
               action="delegate"
             />
             <StakeButton
@@ -55,6 +59,7 @@ export default function StakingActionCard({
               utxos={selectedUtxos}
               network={network}
               poolHex={poolHex}
+            dRep={dRep}
               action="deregister"
             />
           </>
@@ -67,6 +72,7 @@ export default function StakingActionCard({
             utxos={selectedUtxos}
             network={network}
             poolHex={poolHex}
+            dRep={dRep}
             action="withdrawal"
           />
         )}

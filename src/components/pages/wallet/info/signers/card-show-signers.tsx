@@ -104,12 +104,25 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
 
   const { mutate: updateWalletVerifiedList } =
     api.wallet.updateWalletVerifiedList.useMutation({
-      onSuccess: async () => {
-        toast({
-          title: "Wallet verified",
-          description: "You have successfully verified this wallet",
-          duration: 5000,
-        });
+      onSuccess: async (updated) => {
+        // The server only ever records the signed-in session address, and
+        // returns success even when that isn't the connected wallet's address
+        // (wallet switched after sign-in). Don't claim success in that case.
+        if (userAddress && !updated.verified.includes(userAddress)) {
+          toast({
+            title: "Verification not recorded",
+            description:
+              "Your signed-in session is for a different address than the connected wallet. Re-authorize with the connected wallet and try again.",
+            variant: "destructive",
+            duration: 8000,
+          });
+        } else {
+          toast({
+            title: "Wallet verified",
+            description: "You have successfully verified this wallet",
+            duration: 5000,
+          });
+        }
         void ctx.wallet.getWallet.invalidate({
           address: userAddress,
           walletId: appWallet.id,
@@ -117,6 +130,12 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
       },
       onError: (e) => {
         console.error(e);
+        toast({
+          title: "Verification failed",
+          description: e.message,
+          variant: "destructive",
+          duration: 6000,
+        });
       },
     });
 
@@ -146,12 +165,9 @@ export default function ShowSigners({ appWallet }: ShowSignersProps) {
       const result = await checkSignature(nonce, signature);
 
       if (result) {
-        const _verified = appWallet.verified;
-        _verified.push(userAddress);
-
         updateWalletVerifiedList({
           walletId: appWallet.id,
-          verified: _verified,
+          verified: [...appWallet.verified, userAddress],
         });
       }
     }

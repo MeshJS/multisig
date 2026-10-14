@@ -13,8 +13,10 @@ import { buildMultisigWallet, buildWallet, getWalletType } from "@/utils/common"
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import {
   buildStakingCertificateActions,
+  isValidStakingDRep,
   type StakingActionApi,
 } from "@/utils/stakingCertificates";
+import { AUTO_ABSTAIN_DREP } from "@/lib/tx-draft/drep";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
@@ -81,6 +83,8 @@ export default async function handler(
     address?: string;
     action?: string;
     poolId?: string;
+    /** "Always Abstain" (default), "Always No Confidence" or drep1... — used when delegating. */
+    dRep?: string;
     utxoRefs?: { txHash: string; outputIndex: number }[];
     description?: string;
   };
@@ -108,6 +112,20 @@ export default async function handler(
     (typeof body.poolId !== "string" || !body.poolId.trim())
   ) {
     return res.status(400).json({ error: "poolId is required for this action" });
+  }
+  // Optional for backwards compatibility; delegation always pairs a DRep, defaulting to Auto-Abstain.
+  const dRep =
+    typeof body.dRep === "string" && body.dRep.trim()
+      ? body.dRep.trim()
+      : AUTO_ABSTAIN_DREP;
+  if (
+    (action === "delegate" || action === "register_and_delegate") &&
+    !isValidStakingDRep(dRep)
+  ) {
+    return res.status(400).json({
+      error:
+        'Invalid dRep: use "Always Abstain", "Always No Confidence" or a drep1... id',
+    });
   }
 
   try {
@@ -205,6 +223,7 @@ export default async function handler(
     rewardAddress,
     stakingScript,
     poolHex,
+    dRep,
   });
   certActions[action].execute();
   txBuilder.changeAddress(mWallet.getScript().address);
