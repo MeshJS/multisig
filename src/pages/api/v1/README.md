@@ -109,6 +109,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `address`: string (required; must match JWT)
   - `action`: `"register"` | `"deregister"` | `"delegate"` | `"register_and_delegate"` (required)
   - `poolId`: string (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-character hex pool id)
+  - `dRep`: string (optional; `"Always Abstain"` (default), `"Always No Confidence"` or a `drep1...` id). Delegation always adds a vote delegation to this DRep.
   - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
   - `description`: string (optional; defaults to a short label for the action)
 - **Response**: Same as `addTransaction` — either a pending `Transaction` row (**201**) when multiple signatures are required, or the immediate **`submitTx`** result when the wallet submits in one step (single signer / `type === "any"`).

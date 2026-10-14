@@ -20,6 +20,7 @@ export default function StakeButton({
   utxos,
   network,
   poolHex,
+  dRep,
   action,
 }: {
   stakingInfo: StakingInfo;
@@ -28,10 +29,12 @@ export default function StakeButton({
   utxos: UTxO[];
   network: number;
   poolHex: string;
+  dRep?: string;
   action: StakingAction;
 }) {
   const { newTransaction } = useTransaction();
   const [loading, setLoading] = useState(false);
+  const needsDRep = action === "delegate" || action === "registerAndDelegate";
 
   async function handleStake() {
     setLoading(true);
@@ -65,6 +68,8 @@ export default function StakeButton({
         stakingScript,
         poolHex,
         rewards: stakingInfo.rewards,
+        dRep,
+        dRepAlreadyDelegated: !!stakingInfo.dRepId,
       });
       const actionConfig = actionConfigs[action];
 
@@ -122,7 +127,11 @@ export default function StakeButton({
   }
 
   return (
-    <Button variant="outline" onClick={handleStake} disabled={loading}>
+    <Button
+      variant="outline"
+      onClick={handleStake}
+      disabled={loading || (needsDRep && !dRep && !stakingInfo.dRepId)}
+    >
       {loading ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : null}
       {action.charAt(0).toUpperCase() + action.slice(1)}
     </Button>

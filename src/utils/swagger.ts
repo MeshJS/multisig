@@ -339,7 +339,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build stake certificate transaction (SDK multisig)",
           description:
-            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex).",
+            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\" default, \"Always No Confidence\", or drep1...).",
           requestBody: {
             required: true,
             content: {
@@ -354,6 +354,7 @@ This API uses **Bearer Token** authentication (JWT).
                       enum: ["register", "deregister", "delegate", "register_and_delegate"],
                     },
                     poolId: { type: "string" },
+                    dRep: { type: "string" },
                     utxoRefs: {
                       type: "array",
                       items: {
