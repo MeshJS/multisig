@@ -1,4 +1,5 @@
 import { CircleUser, Copy, Unlink, LogOut, User } from "lucide-react";
+import { clearClientWalletState } from "@/lib/auth/clearClientWalletState";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -199,6 +200,8 @@ export default function UserDropDownWrapper({
     }
     
     setPastWallet(undefined);
+    setPastUtxosEnabled(false);
+    clearClientWalletState();
     router.push("/");
     setTimeout(() => {
       router.reload();
