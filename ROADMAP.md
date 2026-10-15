@@ -241,13 +241,14 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 ## Month 5 — August 2026
 
-**Focus:** Document Sign-Off MVP — ship (8–10 wk effort completes); discovery consolidation.
+**Focus:** Document Sign-Off MVP — ship (8–10 wk effort completes); MCP server; discovery consolidation.
 
 **Quirin**
 
 | Task | Issues |
 |------|--------|
 | Document Sign-Off MVP (ship) — proof export (JSON + PDF), verify route. Ready = a pilot team runs all six user stories end-to-end without developer help (PRD-001's own bar)| |
+| MCP server — stateless endpoint behind an OAuth 2.1 authorization server, scope-by-scope consent, connection management and per-wallet activity, a published tool list, and vendor-neutral setup docs. Read-only by design: nothing signs or broadcasts | |
 | Test depth — extend the Playwright suite to cover the Sign-Off flows, plus transaction-builder & tRPC integration tests | #255 |
 
 **Andre**
@@ -276,7 +277,7 @@ Revised 2026-07-26. July's actual output ([Delivered to date](#delivered-to-date
 
 | Task | Issues |
 |------|--------|
-| MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review | |
+| MCP unsigned transaction creation — create unsigned multisig transactions through MCP and prepare them for signer review. Builds on the M5 MCP server: the endpoint, OAuth, scopes and tool registry already exist, so this is the write path only | |
 | Transaction review PNG & in-chat review — generate a clear PNG summary containing the key transaction details and display it in the user's chat for human review; MCP must not sign or broadcast on the user's behalf | |
 | Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval | |
 
