@@ -361,10 +361,10 @@ export const TRACKS: Track[] = [
         label: "FROST & PQC — kickoff to go/no-go",
         start: 4,
         span: 3,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "FROST threshold Schnorr for Cardano (#220), plus Lemour post-quantum multi-sig. Kickoff slipped from July — starting in August keeps runway for the October go/no-go. Deliverables: a trade-off note, a PoC if libraries allow, and a recommendation.",
+          "FROST threshold Schnorr for Cardano (#220) and Lemur post-quantum multi-sig, decided: a PoC verifies FROST(Ed25519) aggregates as ordinary Cardano vkey witnesses. No-go on replacing native scripts, conditional go on a FROST signer as one leaf inside a native script, no-go on PQ until the ledger can verify a PQ signature.",
       },
     ],
   },
