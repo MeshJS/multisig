@@ -53,7 +53,8 @@ function sides(text: { old: string; new: string }) {
 describe("splitLines", () => {
   it("does not invent a line for a trailing newline", () => {
     expect(splitLines("a\nb\n")).toEqual(["a", "b"]);
-    expect(splitLines("a\r\nb")).toEqual(["a", "b"]);
+    // \r stays on its line, so a line-ending change is a visible change.
+    expect(splitLines("a\r\nb")).toEqual(["a\r", "b"]);
     expect(splitLines("")).toEqual([]);
   });
 });
@@ -78,8 +79,8 @@ describe("diffLines", () => {
     const { lines } = sides({ old: "a\nb\nc\n", new: "a\nX\nc\n" });
     expect(lines).toEqual([
       { op: "equal", oldLine: 1, newLine: 1, text: "a" },
-      { op: "add", oldLine: null, newLine: 2, text: "X" },
       { op: "remove", oldLine: 2, newLine: null, text: "b" },
+      { op: "add", oldLine: null, newLine: 2, text: "X" },
       { op: "equal", oldLine: 3, newLine: 3, text: "c" },
     ]);
   });
@@ -145,6 +146,14 @@ describe("decodeVersionText", () => {
     ).toBe(false);
   });
 
+  it("keeps a byte-order mark as text instead of rejecting the file", () => {
+    const r = decodeVersionText({
+      storageMode: "inline",
+      contentInline: Buffer.from([0xef, 0xbb, 0xbf, 0x61]).toString("base64"),
+    });
+    expect(r).toEqual({ ok: true, text: "\uFEFFa" });
+  });
+
   it("keeps a genuine replacement character", () => {
     const r = decodeVersionText({
       storageMode: "inline",
@@ -182,6 +191,23 @@ describe("diffVersions", () => {
     expect(d.fieldChanges).toEqual([
       { field: "reviewInstructions", from: null, to: "re-approve" },
     ]);
+  });
+
+  it("shows a line-ending change instead of an empty diff", () => {
+    const d = diffVersions(
+      inline("v1", 1, "a\r\nb\r\n"),
+      inline("v2", 2, "a\nb\n"),
+    );
+    expect(d.content).toMatchObject({ kind: "text", added: 2, removed: 2 });
+  });
+
+  it("explains a trailing-newline-only change rather than showing nothing", () => {
+    const d = diffVersions(inline("v1", 1, "a\nb"), inline("v2", 2, "a\nb\n"));
+    expect(d.contentChanged).toBe(true);
+    expect(d.content).toEqual({
+      kind: "unavailable",
+      reason: expect.stringMatching(/trailing newline/),
+    });
   });
 
   it("still reports a change between hash-only versions, without a line diff", () => {

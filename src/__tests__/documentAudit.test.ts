@@ -3,6 +3,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   AUDIT_FORMAT,
+  auditPackageProblem,
   buildAuditPackage,
   verifyAuditPackage,
   versionLineage,
@@ -194,6 +195,13 @@ function honestSource() {
     },
     {
       versionId: "ver_1",
+      type: "review.started",
+      actorAddress: SIGNERS[0]!,
+      createdAt: at(11),
+      metadata: { requiredSigners: 2, signerCount: 3 },
+    },
+    {
+      versionId: "ver_1",
       type: "version.superseded",
       actorAddress: SIGNERS[0]!,
       createdAt: at(20),
@@ -223,6 +231,13 @@ function honestSource() {
         restoredFromVersionNumber: 1,
         restoredFromVersionId: "ver_1",
       },
+    },
+    {
+      versionId: "ver_3",
+      type: "review.started",
+      actorAddress: SIGNERS[1]!,
+      createdAt: at(31),
+      metadata: { requiredSigners: 2, signerCount: 3 },
     },
   ];
   return { versions, events, attestations: attest(versions) };
@@ -270,7 +285,7 @@ describe("buildAuditPackage", () => {
     expect(pkg.format).toBe(AUDIT_FORMAT);
     expect(pkg.versions.map((v) => v.version.versionNumber)).toEqual([1, 2, 3]);
     expect(pkg.versions.map((v) => v.attestationSequence)).toEqual([1, 2, 3]);
-    expect(pkg.events).toHaveLength(6);
+    expect(pkg.events).toHaveLength(8);
     expect(pkg.attestation?.chain).toHaveLength(3);
   });
 
@@ -283,7 +298,11 @@ describe("buildAuditPackage", () => {
     ]);
     // A version's proof carries only its own events plus document-level ones.
     const v3Events = pkg.versions[2]!.proof!.events.map((e) => e.type);
-    expect(v3Events).toEqual(["document.created", "version.restored"]);
+    expect(v3Events).toEqual([
+      "document.created",
+      "version.restored",
+      "review.started",
+    ]);
   });
 
   it("omits the chain when the deployment never attested", () => {
@@ -457,5 +476,115 @@ describe("verifyAuditPackage", () => {
     expect(result.errors.join(" ")).toMatch(
       /v2 is missing from the attestation chain/,
     );
+  });
+});
+
+describe("verifyAuditPackage — records that are not signed", () => {
+  const verify = (pkg: AuditPackage, extra = {}) =>
+    verifyAuditPackage(pkg, {
+      checkSignature: acceptAll,
+      publicKeys: KEYS,
+      ...extra,
+    });
+
+  it("catches a lowered threshold, even though no signature covers it", async () => {
+    const pkg = clone(honestPackage());
+    pkg.versions[2]!.version.status = "Approved";
+    pkg.versions[2]!.proof!.policy.requiredSigners = 1;
+    const result = await verify(pkg);
+    expect(result.valid).toBe(false);
+    expect(result.versions[2]!.errors.join(" ")).toMatch(
+      /round started with 2/,
+    );
+  });
+
+  it("surfaces proof-level errors, not just review errors", async () => {
+    const pkg = clone(honestPackage());
+    (pkg.versions[0]!.proof as { format: string }).format = "evil";
+    const result = await verify(pkg);
+    expect(result.valid).toBe(false);
+    expect(result.versions[0]!.errors.join(" ")).toMatch(
+      /proof: Unknown proof format/,
+    );
+  });
+
+  it("catches a signed round stripped from a superseded version", async () => {
+    const pkg = clone(honestPackage());
+    pkg.versions[0]!.proof = null;
+    const result = await verify(pkg);
+    expect(result.valid).toBe(false);
+    expect(result.versions[0]!.errors.join(" ")).toMatch(
+      /no proof was included/,
+    );
+  });
+
+  it("catches a restore relabelled as an upload", async () => {
+    const pkg = clone(honestPackage());
+    pkg.versions[2]!.lineage = {
+      origin: "upload",
+      supersedes: 2,
+      restoredFrom: null,
+    };
+    const result = await verify(pkg);
+    expect(result.valid).toBe(false);
+    expect(result.versions[2]!.errors.join(" ")).toMatch(
+      /does not match the event log/,
+    );
+  });
+
+  it("refuses an emptied event log", async () => {
+    const pkg = clone(honestPackage());
+    pkg.events = [];
+    const result = await verify(pkg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/event log is empty/);
+  });
+
+  it("can require the chain, so stripping it cannot hide a swapped hash", async () => {
+    const pkg = clone(honestPackage());
+    pkg.attestation = null;
+    pkg.versions[1]!.version.contentHash = "0".repeat(64);
+    expect((await verify(pkg)).valid).toBe(true);
+    const strict = await verify(pkg, { requireAttestation: true });
+    expect(strict.valid).toBe(false);
+    expect(strict.errors.join(" ")).toMatch(
+      /expects the exporting deployment to attest/,
+    );
+  });
+});
+
+describe("auditPackageProblem", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const honest = () => clone(honestPackage()) as unknown as Record<string, any>;
+
+  it("accepts an honest package", () => {
+    expect(auditPackageProblem(honest())).toBeNull();
+  });
+
+  it("names what is wrong with malformed input instead of throwing", () => {
+    const mutate = (fn: (p: ReturnType<typeof honest>) => void) => {
+      const p = honest();
+      fn(p);
+      return p;
+    };
+    const cases: unknown[] = [
+      null,
+      { document: {}, versions: [{}] },
+      mutate((p) => (p.versions[0] = null)),
+      mutate((p) => delete p.versions[0].lineage),
+      mutate((p) => delete p.versions[0].proof.policy),
+      mutate((p) => (p.attestation.chain = "nope")),
+      mutate((p) => (p.attestation.chain[0] = { signature: "x" })),
+    ];
+    for (const value of cases) {
+      expect(typeof auditPackageProblem(value)).toBe("string");
+    }
+  });
+
+  it("bounds the work a public caller can ask for", () => {
+    const p = clone(honestPackage());
+    const review = p.versions[0]!.proof!.reviews[0]!;
+    p.versions[0]!.proof!.reviews = Array.from({ length: 201 }, () => review);
+    expect(auditPackageProblem(p)).toMatch(/too long/);
   });
 });

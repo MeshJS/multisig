@@ -164,8 +164,8 @@ describeWithDb("document provenance — diff, rollback, audit", () => {
       .filter((l) => l.op !== "equal")
       .map((l) => `${l.op}:${l.text}`);
     expect(changed).toEqual([
-      "add:The ceiling is 90000 EUR.",
       "remove:The ceiling is 50000 EUR.",
+      "add:The ceiling is 90000 EUR.",
     ]);
 
     // --- rollback ------------------------------------------------------------
@@ -177,10 +177,28 @@ describeWithDb("document provenance — diff, rollback, audit", () => {
       }),
     ).rejects.toThrow(/already the current version/);
 
+    // A stale view of the head is refused, not silently superseded.
+    await expect(
+      caller.document.restoreVersion({
+        documentId: document.id,
+        versionId: v1.id,
+        expectedHeadVersionId: v1.id,
+      }),
+    ).rejects.toThrow(/newer version/);
+
     const v3 = await caller.document.restoreVersion({
       documentId: document.id,
       versionId: v1.id,
+      expectedHeadVersionId: v2.id,
     });
+
+    // Restoring v1 again would only re-publish what is already current.
+    await expect(
+      caller.document.restoreVersion({
+        documentId: document.id,
+        versionId: v1.id,
+      }),
+    ).rejects.toThrow(/already has v1's content/);
     expect(v3.versionNumber).toBe(3);
     expect(v3.contentHash).toBe(v1.contentHash);
     expect(v3.contentInline).toBe(v1.contentInline);
@@ -251,6 +269,11 @@ describeWithDb("document provenance — diff, rollback, audit", () => {
     // The public procedure reaches the same verdict.
     const remote = await caller.document.verifyAudit({ audit: pkg });
     expect(remote.valid).toBe(true);
+
+    // Malformed input is a clear 400, not a crash.
+    await expect(
+      caller.document.verifyAudit({ audit: { document: {}, versions: [{}] } }),
+    ).rejects.toThrow(/not a Document Sign-Off audit package|malformed/);
 
     // And catches a tampered export: drop the version that was rolled back from.
     const tampered = JSON.parse(JSON.stringify(pkg)) as typeof pkg;

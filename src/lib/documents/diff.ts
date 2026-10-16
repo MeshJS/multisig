@@ -91,8 +91,9 @@ export interface VersionDiff {
 
 /**
  * Upper bound on the comparison grid after the common prefix and suffix are
- * trimmed. The LCS table is old×new cells; at 4M cells it stays well under
- * 100ms and 16MB. Past it the result says the diff is too large rather than
+ * trimmed. The LCS table is old×new cells; at 4M cells it is 8MB and a few
+ * hundred milliseconds, synchronous on the request. Past it the result says
+ * the diff is too large rather than
  * stalling a request — two hash-bound versions are still distinguishable by
  * their hashes, which the metadata diff always reports.
  */
@@ -124,19 +125,29 @@ export function decodeVersionText(
   if (bytes.includes(0)) {
     return { ok: false, reason: "binary content" };
   }
-  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-  // TextDecoder substitutes U+FFFD for invalid sequences. Round-tripping tells
-  // a genuine replacement character apart from a decoding failure.
-  if (!Buffer.from(text, "utf8").equals(bytes)) {
+  // fatal: invalid sequences throw instead of becoming U+FFFD. ignoreBOM: keep
+  // a byte-order mark as text rather than stripping it, so a BOM-only change
+  // still shows up as a difference.
+  try {
+    const text = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
+    return { ok: true, text };
+  } catch {
     return { ok: false, reason: "not valid UTF-8 text" };
   }
-  return { ok: true, text };
 }
 
-/** Split into lines, keeping a trailing newline from becoming a phantom line. */
+/**
+ * Split into lines on \n only, keeping a trailing newline from becoming a
+ * phantom line. A carriage return stays part of its line, so a change of line
+ * endings is a visible change rather than an empty diff over two different
+ * hashes.
+ */
 export function splitLines(text: string): string[] {
   if (text === "") return [];
-  const lines = text.split(/\r\n|\n|\r/);
+  const lines = text.split("\n");
   if (lines[lines.length - 1] === "") lines.pop();
   return lines;
 }
@@ -178,7 +189,12 @@ export function diffLines(
 
   // lcs[i][j] = LCS length of midA[i..] and midB[j..], flattened row-major.
   const width = m + 1;
-  const lcs = new Uint32Array((n + 1) * width);
+  // Within the cell cap, min(n, m) <= sqrt(MAX_DIFF_CELLS) = 2000, so LCS
+  // lengths fit 16 bits: 8MB at the cap instead of 16MB.
+  const lcs =
+    Math.min(n, m) < 0xffff
+      ? new Uint16Array((n + 1) * width)
+      : new Uint32Array((n + 1) * width);
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
       lcs[i * width + j] =
@@ -204,17 +220,10 @@ export function diffLines(
       i++;
       j++;
     } else if (
-      j < m &&
-      (i >= n || lcs[i * width + (j + 1)]! >= lcs[(i + 1) * width + j]!)
+      i < n &&
+      (j >= m || lcs[(i + 1) * width + j]! >= lcs[i * width + (j + 1)]!)
     ) {
-      out.push({
-        op: "add",
-        oldLine: null,
-        newLine: newLine++,
-        text: midB[j]!,
-      });
-      j++;
-    } else {
+      // Removals first on a tie — the unified-diff convention.
       out.push({
         op: "remove",
         oldLine: oldLine++,
@@ -222,6 +231,14 @@ export function diffLines(
         text: midA[i]!,
       });
       i++;
+    } else {
+      out.push({
+        op: "add",
+        oldLine: null,
+        newLine: newLine++,
+        text: midB[j]!,
+      });
+      j++;
     }
   }
 
@@ -256,27 +273,27 @@ export function toHunks(
     }
   }
 
+  // Walk once, carrying the last line number seen on each side, so building
+  // the hunks stays linear however many there are.
+  let lastOld = 0;
+  let lastNew = 0;
+  let cursor = 0;
   return ranges.map(([start, end]) => {
+    for (; cursor < start; cursor++) {
+      const l = lines[cursor]!;
+      if (l.oldLine !== null) lastOld = l.oldLine;
+      if (l.newLine !== null) lastNew = l.newLine;
+    }
     const slice = lines.slice(start, end + 1);
     // A hunk's start is the first line number it shows on that side. For a
     // side with no lines in the hunk (pure insert/delete) use the line before
     // it, which is what unified diff does.
     const firstOld = slice.find((l) => l.oldLine !== null)?.oldLine;
     const firstNew = slice.find((l) => l.newLine !== null)?.newLine;
-    const priorOld =
-      lines
-        .slice(0, start)
-        .reverse()
-        .find((l) => l.oldLine !== null)?.oldLine ?? 0;
-    const priorNew =
-      lines
-        .slice(0, start)
-        .reverse()
-        .find((l) => l.newLine !== null)?.newLine ?? 0;
     return {
-      oldStart: firstOld ?? priorOld,
+      oldStart: firstOld ?? lastOld,
       oldLines: slice.filter((l) => l.op !== "add").length,
-      newStart: firstNew ?? priorNew,
+      newStart: firstNew ?? lastNew,
       newLines: slice.filter((l) => l.op !== "remove").length,
       lines: slice,
     };
@@ -359,6 +376,18 @@ export function diffVersions(
         reason:
           "The changed region is too large to diff here. The content hashes " +
           "differ, so the content did change.",
+      },
+    };
+  }
+
+  if (lines.every((l) => l.op === "equal")) {
+    return {
+      ...summary,
+      content: {
+        kind: "unavailable",
+        reason:
+          "The text is line-for-line the same; the hashes differ only by a " +
+          "trailing newline at the end of the file.",
       },
     };
   }

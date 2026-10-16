@@ -224,7 +224,8 @@ export default function PageDocumentDetail() {
   );
 
   // Versions arrive newest first, so the head is index 0.
-  const headId = document.versions[0]?.id;
+  const head = document.versions[0];
+  const headId = head?.id;
   const versionOptions = document.versions.map((v) => ({
     id: v.id,
     versionNumber: v.versionNumber,
@@ -355,22 +356,24 @@ export default function PageDocumentDetail() {
                       Changes
                     </Button>
                   )}
-                  {version.id !== headId && document.status !== "Archived" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={restoreVersion.isPending}
-                      onClick={() =>
-                        setRestoring({
-                          id: version.id,
-                          versionNumber: version.versionNumber,
-                        })
-                      }
-                    >
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      Restore
-                    </Button>
-                  )}
+                  {version.id !== headId &&
+                    version.contentHash !== head?.contentHash &&
+                    document.status !== "Archived" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={restoreVersion.isPending}
+                        onClick={() =>
+                          setRestoring({
+                            id: version.id,
+                            versionNumber: version.versionNumber,
+                          })
+                        }
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Restore
+                      </Button>
+                    )}
                   {version.status === "Draft" && (
                     <Button
                       size="sm"
@@ -541,6 +544,15 @@ export default function PageDocumentDetail() {
                   Approvals do not come back. The restored version starts a
                   fresh round at zero, and signers approve it again.
                 </p>
+                {head?.status === "InReview" && (
+                  <p className="text-red-500">
+                    Version {head.versionNumber} is in review
+                    {head.reviews.length > 0
+                      ? ` with ${head.reviews.length} signature${head.reviews.length === 1 ? "" : "s"}`
+                      : ""}
+                    . Restoring ends that round.
+                  </p>
+                )}
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -555,6 +567,7 @@ export default function PageDocumentDetail() {
                 restoreVersion.mutate({
                   documentId,
                   versionId: restoring.id,
+                  expectedHeadVersionId: headId,
                 })
               }
             >

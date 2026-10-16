@@ -70,6 +70,7 @@ import {
 } from "@/lib/documents/proof";
 import { diffVersions } from "@/lib/documents/diff";
 import {
+  auditPackageProblem,
   buildAuditPackage,
   verifyAuditPackage,
   type AuditPackage,
@@ -1478,6 +1479,12 @@ export const documentRouter = createTRPCRouter({
         documentId: z.string().min(1),
         versionId: z.string().min(1),
         reviewInstructions: z.string().max(5000).optional(),
+        /**
+         * The head the caller was looking at. If someone else published or
+         * restored in the meantime, the restore is refused rather than
+         * silently superseding a version the caller never saw.
+         */
+        expectedHeadVersionId: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -1503,44 +1510,75 @@ export const documentRouter = createTRPCRouter({
         });
       }
 
-      const restored = await ctx.db.$transaction(async (tx) => {
-        // Read the head inside the transaction so two concurrent restores
-        // cannot both decide they are restoring something other than the head.
-        const head = await tx.documentVersion.findFirst({
-          where: { documentId: document.id },
-          orderBy: { versionNumber: "desc" },
-        });
-        if (head?.id === source.id) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: `v${source.versionNumber} is already the current version`,
+      const restored = await ctx.db
+        .$transaction(async (tx) => {
+          const head = await tx.documentVersion.findFirst({
+            where: { documentId: document.id },
+            orderBy: { versionNumber: "desc" },
           });
-        }
+          if (
+            input.expectedHeadVersionId &&
+            head?.id !== input.expectedHeadVersionId
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "This document has a newer version than the one you were looking " +
+                "at. Reload before restoring.",
+            });
+          }
+          // Compared by content, not id: re-publishing the bytes that are
+          // already current would only discard the head's review round.
+          if (head && head.contentHash === source.contentHash) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                head.id === source.id
+                  ? `v${source.versionNumber} is already the current version`
+                  : `The current version (v${head.versionNumber}) already has ` +
+                    `v${source.versionNumber}'s content`,
+            });
+          }
 
-        return appendVersion(tx, {
-          document,
-          actor,
-          eventType: "version.restored",
-          eventMetadata: {
-            restoredFromVersionId: source.id,
-            restoredFromVersionNumber: source.versionNumber,
-            ...(head ? { replacedVersionNumber: head.versionNumber } : {}),
-          },
-          row: {
-            contentHash: source.contentHash,
-            fileName: source.fileName ?? undefined,
-            mimeType: source.mimeType ?? undefined,
-            fileSize: source.fileSize ?? undefined,
-            storageMode: source.storageMode,
-            contentRef: source.contentRef ?? undefined,
-            contentInline: source.contentInline ?? undefined,
-            reviewInstructions:
-              input.reviewInstructions ??
-              source.reviewInstructions ??
-              undefined,
-          },
+          return appendVersion(tx, {
+            document,
+            actor,
+            eventType: "version.restored",
+            eventMetadata: {
+              restoredFromVersionId: source.id,
+              restoredFromVersionNumber: source.versionNumber,
+              ...(head ? { replacedVersionNumber: head.versionNumber } : {}),
+            },
+            row: {
+              contentHash: source.contentHash,
+              fileName: source.fileName ?? undefined,
+              mimeType: source.mimeType ?? undefined,
+              fileSize: source.fileSize ?? undefined,
+              storageMode: source.storageMode,
+              contentRef: source.contentRef ?? undefined,
+              contentInline: source.contentInline ?? undefined,
+              reviewInstructions:
+                input.reviewInstructions ??
+                source.reviewInstructions ??
+                undefined,
+            },
+          });
+        })
+        .catch((error: unknown) => {
+          // Two writers racing for the same version number (or attestation
+          // sequence) — the unique constraint picked a winner. Say so.
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Someone else changed this document at the same moment. Reload and try again.",
+            });
+          }
+          throw error;
         });
-      });
 
       void audit(ctx.db, {
         actorAddress: actor,
@@ -1575,27 +1613,34 @@ export const documentRouter = createTRPCRouter({
       );
       const actor = actingAddress(addresses);
 
-      const [versions, events, attestations] = await Promise.all([
-        ctx.db.documentVersion.findMany({
-          where: { documentId: document.id },
-          orderBy: { versionNumber: "asc" },
-          include: {
-            signerSnapshot: true,
-            reviews: {
-              orderBy: { signedAt: "asc" },
-              include: { party: { select: { role: true } } },
-            },
-          },
-        }),
-        ctx.db.documentEvent.findMany({
-          where: { documentId: document.id },
-          orderBy: { createdAt: "asc" },
-        }),
-        ctx.db.documentAttestation.findMany({
-          where: { documentId: document.id },
-          orderBy: { sequence: "asc" },
-        }),
-      ]);
+      // One snapshot: a version, event or attestation written between separate
+      // reads would make an honest export fail its own verification.
+      const [versions, events, attestations] = await ctx.db.$transaction(
+        (tx) =>
+          Promise.all([
+            tx.documentVersion.findMany({
+              where: { documentId: document.id },
+              orderBy: { versionNumber: "asc" },
+              omit: { contentInline: true },
+              include: {
+                signerSnapshot: true,
+                reviews: {
+                  orderBy: { signedAt: "asc" },
+                  include: { party: { select: { role: true } } },
+                },
+              },
+            }),
+            tx.documentEvent.findMany({
+              where: { documentId: document.id },
+              orderBy: { createdAt: "asc" },
+            }),
+            tx.documentAttestation.findMany({
+              where: { documentId: document.id },
+              orderBy: { sequence: "asc" },
+            }),
+          ]),
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
 
       const pkg = buildAuditPackage({
         document,
@@ -1636,22 +1681,27 @@ export const documentRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input }) => {
-      const pkg = input.audit as Partial<AuditPackage> | null;
-      if (
-        !pkg ||
-        typeof pkg !== "object" ||
-        !Array.isArray(pkg.versions) ||
-        !pkg.document
-      ) {
+      const problem = auditPackageProblem(input.audit);
+      if (problem !== null) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: problem });
+      }
+      // No keys configured here means nothing of ours to check against; fall
+      // back to the package's own keys, which the result then flags.
+      const ours = getAttestationPublicKeys();
+      const publicKeys =
+        input.publicKeys ?? (Object.keys(ours).length > 0 ? ours : undefined);
+      try {
+        return await verifyAuditPackage(input.audit as AuditPackage, {
+          checkSignature,
+          publicKeys,
+        });
+      } catch {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "That is not a Document Sign-Off audit package.",
+          message:
+            "That audit package could not be verified — it is malformed.",
         });
       }
-      return verifyAuditPackage(pkg as AuditPackage, {
-        checkSignature,
-        publicKeys: input.publicKeys ?? getAttestationPublicKeys(),
-      });
     }),
 
   /** Archive a document — history is retained, it just leaves active use. */

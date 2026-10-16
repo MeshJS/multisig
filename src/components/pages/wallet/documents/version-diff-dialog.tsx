@@ -38,7 +38,7 @@ const LINE_STYLE: Record<DiffLine["op"], string> = {
 const LINE_MARK: Record<DiffLine["op"], string> = {
   equal: " ",
   add: "+",
-  remove: "−",
+  remove: "-",
 };
 
 function short(value: string | number | null): string {
@@ -156,7 +156,7 @@ export default function VersionDiffDialog({
             {data.content.kind === "text" ? (
               <div className="flex flex-col gap-2">
                 <span className="text-xs text-muted-foreground">
-                  +{data.content.added} / −{data.content.removed} lines
+                  +{data.content.added} / -{data.content.removed} lines
                 </span>
                 {data.content.hunks.map((hunk, index) => (
                   <pre
@@ -164,7 +164,7 @@ export default function VersionDiffDialog({
                     className="overflow-x-auto rounded-md border text-xs leading-5"
                   >
                     <div className="bg-muted px-2 text-muted-foreground">
-                      @@ −{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},
+                      @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},
                       {hunk.newLines} @@
                     </div>
                     {hunk.lines.map((line, i) => (

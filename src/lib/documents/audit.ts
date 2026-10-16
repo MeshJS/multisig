@@ -79,8 +79,11 @@ export interface AuditPackage {
   };
   /** Ascending by version number. */
   versions: AuditVersion[];
-  /** The whole log, ascending — document-level and every version's. */
-  events: ProofPackage["events"];
+  /**
+   * The whole log, ascending — document-level and every version's. Each entry
+   * names its version, so lineage and review rounds can be re-derived here.
+   */
+  events: (ProofPackage["events"][number] & { versionId: string | null })[];
   /** Null when the deployment has no attestation key configured. */
   attestation: {
     domain: string;
@@ -100,6 +103,8 @@ export const AUDIT_INSTRUCTIONS = [
   "2. If `attestation` is present, verify the chain: each payload is signed (Ed25519) by the key named in `publicKeyId`, links to the SHA-256 of the previous canonical payload, and runs sequence 1..N in non-decreasing time. Prefer public keys you obtained independently over the ones in this file.",
   "3. Cross-check: every version appears in the chain exactly once, with the same versionId, versionNumber and contentHash.",
   "4. A version whose lineage says `restoredFrom: k` must carry the same contentHash as version k. A restore re-publishes old bytes as a new version; it never carries the old version's approvals forward.",
+  "5. Lineage and review rounds must agree with `events`: each version's origin is the event that created it, and a version with a `review.started` event must carry a proof whose threshold matches that event.",
+  "What is authenticated: the CIP-8 signatures (by the signers) and the attestation chain (by the platform key). The event log, lineage, statuses and each round's threshold are records from the exporting database — consistent with the signed material when this verifies, but not themselves signed.",
   "The attestation chain is a timestamp and ordering record by the platform. It is not an approval. Approval is the CIP-8 signatures inside each version's proof.",
 ];
 
@@ -145,7 +150,11 @@ function metadataNumber(metadata: unknown, key: string): number | null {
  */
 export function versionLineage(
   versions: readonly { id: string; versionNumber: number }[],
-  events: readonly AuditSourceEvent[],
+  events: readonly {
+    versionId: string | null;
+    type: string;
+    metadata?: unknown;
+  }[],
 ): Map<string, AuditVersion["lineage"]> {
   const byId = new Map<string, AuditVersion["lineage"]>();
   const sorted = [...versions].sort(
@@ -256,6 +265,7 @@ export function buildAuditPackage(input: {
       attestationSequence: sequenceFor.get(v.id) ?? null,
     })),
     events: events.map((e) => ({
+      versionId: e.versionId,
       type: e.type,
       actorAddress: e.actorAddress,
       createdAt: e.createdAt.toISOString(),
@@ -320,6 +330,12 @@ export async function verifyAuditPackage(
   options: {
     checkSignature: CheckSignatureFn;
     publicKeys?: Readonly<Record<string, string>>;
+    /**
+     * Treat a missing attestation chain as an error rather than a warning —
+     * for a verifier that knows the exporting deployment attests, so that
+     * stripping the chain cannot be used to hide a tampered version.
+     */
+    requireAttestation?: boolean;
   },
 ): Promise<AuditVerification> {
   const errors: string[] = [];
@@ -340,6 +356,25 @@ export async function verifyAuditPackage(
     byNumber.set(n, entry);
   });
 
+  if (pkg.versions.length > 0 && pkg.events.length === 0) {
+    errors.push("The event log is empty, but the document has versions.");
+  }
+  const lineage = versionLineage(
+    pkg.versions.map((v) => v.version),
+    pkg.events,
+  );
+  const roundStarted = new Map<string, { requiredSigners?: number }>();
+  for (const e of pkg.events) {
+    if (e.type !== "review.started" || !e.versionId) continue;
+    const meta = e.metadata as { requiredSigners?: unknown } | null;
+    roundStarted.set(e.versionId, {
+      requiredSigners:
+        typeof meta?.requiredSigners === "number"
+          ? meta.requiredSigners
+          : undefined,
+    });
+  }
+
   const verdicts: AuditVersionVerdict[] = [];
   for (const entry of pkg.versions) {
     const n = entry.version.versionNumber;
@@ -357,8 +392,11 @@ export async function verifyAuditPackage(
 
     if (entry.proof) {
       const proof = entry.proof;
-      if (proof.document.id !== pkg.document.id) {
-        verdict.errors.push("proof belongs to a different document");
+      if (
+        proof.document.id !== pkg.document.id ||
+        proof.document.walletId !== pkg.document.walletId
+      ) {
+        verdict.errors.push("proof belongs to a different document or wallet");
       }
       if (
         proof.version.id !== entry.version.id ||
@@ -376,9 +414,21 @@ export async function verifyAuditPackage(
       verdict.rejections = result.rejections;
       verdict.requiredSigners = result.requiredSigners;
       verdict.thresholdReached = result.thresholdReached;
+      for (const e of result.errors) verdict.errors.push(`proof: ${e}`);
       for (const r of result.reviews) {
         for (const e of r.errors)
           verdict.errors.push(`${r.signerAddress}: ${e}`);
+      }
+      // The threshold is not in any signed payload, so it is cross-checked
+      // against the log entry that started the round.
+      const started = roundStarted.get(entry.version.id);
+      if (
+        started?.requiredSigners !== undefined &&
+        started.requiredSigners !== proof.policy.requiredSigners
+      ) {
+        verdict.errors.push(
+          `proof says ${proof.policy.requiredSigners} required signers, the round started with ${started.requiredSigners}`,
+        );
       }
       // A version marked Approved must actually carry enough valid approvals.
       if (entry.version.status === "Approved" && !result.thresholdReached) {
@@ -393,6 +443,20 @@ export async function verifyAuditPackage(
       verdict.errors.push(
         `marked ${entry.version.status} but carries no review round`,
       );
+    } else if (roundStarted.has(entry.version.id)) {
+      verdict.errors.push(
+        "the log shows a review round for this version, but no proof was included",
+      );
+    }
+
+    const derived = lineage.get(entry.version.id);
+    if (
+      !derived ||
+      derived.origin !== entry.lineage.origin ||
+      derived.restoredFrom !== entry.lineage.restoredFrom ||
+      derived.supersedes !== entry.lineage.supersedes
+    ) {
+      verdict.errors.push("stated lineage does not match the event log");
     }
 
     if (entry.lineage.origin === "restore") {
@@ -431,8 +495,13 @@ export async function verifyAuditPackage(
     for (const record of pkg.attestation.chain) {
       const p = record.payload;
       const entry = byNumber.get(p.versionNumber);
-      if (p.documentId !== pkg.document.id) {
-        errors.push(`attestation ${p.sequence} names a different document`);
+      if (
+        p.documentId !== pkg.document.id ||
+        p.walletId !== pkg.document.walletId
+      ) {
+        errors.push(
+          `attestation ${p.sequence} names a different document or wallet`,
+        );
       }
       if (!entry || entry.version.id !== p.versionId) {
         errors.push(
@@ -462,8 +531,9 @@ export async function verifyAuditPackage(
     // through a document's life leaves its earliest versions unattested. That
     // is a warning. A version AFTER the first attested one with no link is a
     // gap in the record, and that is an error.
-    const firstAttested = Math.min(
-      ...pkg.attestation.chain.map((r) => r.payload.versionNumber),
+    const firstAttested = pkg.attestation.chain.reduce(
+      (min, r) => Math.min(min, r.payload.versionNumber),
+      Infinity,
     );
     for (const entry of pkg.versions) {
       if (seen.has(entry.version.id)) continue;
@@ -477,9 +547,15 @@ export async function verifyAuditPackage(
       }
     }
   } else if (pkg.versions.length > 0) {
-    warnings.push(
-      "No attestation chain: version order and timing rest on the exporting database alone.",
-    );
+    if (options.requireAttestation) {
+      errors.push(
+        "No attestation chain, but this verifier expects the exporting deployment to attest.",
+      );
+    } else {
+      warnings.push(
+        "No attestation chain: version order and timing rest on the exporting database alone.",
+      );
+    }
   }
   if (keysFromPackage && pkg.attestation) {
     warnings.push(
@@ -499,4 +575,158 @@ export async function verifyAuditPackage(
     errors,
     warnings,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Shape check for untrusted input
+// ---------------------------------------------------------------------------
+
+/** Caps for a package arriving at a public endpoint. Real documents sit far below. */
+export const AUDIT_LIMITS = {
+  versions: 500,
+  reviewsPerVersion: 200,
+  chain: 500,
+  events: 20_000,
+} as const;
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+const isString = (v: unknown): v is string => typeof v === "string";
+const isInt = (v: unknown): v is number => Number.isInteger(v);
+const isNullableString = (v: unknown) => v === null || isString(v);
+
+function proofProblem(proof: unknown, where: string): string | null {
+  if (!isObject(proof)) return `${where}: proof is not an object`;
+  const { document, version, policy, reviews } = proof;
+  if (
+    !isObject(document) ||
+    !isString(document.id) ||
+    !isString(document.walletId)
+  ) {
+    return `${where}: proof.document is malformed`;
+  }
+  if (
+    !isObject(version) ||
+    !isString(version.id) ||
+    !isInt(version.versionNumber) ||
+    !isString(version.contentHash)
+  ) {
+    return `${where}: proof.version is malformed`;
+  }
+  if (
+    !isObject(policy) ||
+    !isInt(policy.requiredSigners) ||
+    !isString(policy.walletPolicyHash) ||
+    !Array.isArray(policy.signersAddresses) ||
+    !policy.signersAddresses.every(isString)
+  ) {
+    return `${where}: proof.policy is malformed`;
+  }
+  if (
+    !Array.isArray(reviews) ||
+    reviews.length > AUDIT_LIMITS.reviewsPerVersion
+  ) {
+    return `${where}: proof.reviews is missing or too long`;
+  }
+  for (const r of reviews) {
+    if (
+      !isObject(r) ||
+      !isString(r.signerAddress) ||
+      !isString(r.payload) ||
+      !isString(r.signature) ||
+      !isString(r.signatureKey) ||
+      !isString(r.signedAt) ||
+      !isString(r.action)
+    ) {
+      return `${where}: a review is malformed`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Why `value` cannot be verified as an audit package, or null if it can.
+ *
+ * Structural, and bounded: the verify endpoint is public, so malformed input
+ * must come back as a clear 400 rather than a TypeError, and a package padded
+ * with thousands of signatures must not buy unbounded CIP-8 work.
+ */
+export function auditPackageProblem(value: unknown): string | null {
+  if (!isObject(value)) return "That is not a Document Sign-Off audit package.";
+  const { document, versions, events, attestation } = value;
+  if (
+    !isObject(document) ||
+    !isString(document.id) ||
+    !isString(document.walletId)
+  ) {
+    return "That is not a Document Sign-Off audit package — it carries no document.";
+  }
+  if (!Array.isArray(versions) || versions.length > AUDIT_LIMITS.versions) {
+    return `versions must be an array of at most ${AUDIT_LIMITS.versions}`;
+  }
+  if (!Array.isArray(events) || events.length > AUDIT_LIMITS.events) {
+    return `events must be an array of at most ${AUDIT_LIMITS.events}`;
+  }
+  for (const e of events) {
+    if (
+      !isObject(e) ||
+      !isString(e.type) ||
+      !isNullableString(e.versionId ?? null)
+    ) {
+      return "an event is malformed";
+    }
+  }
+  for (const [i, entry] of versions.entries()) {
+    const where = `versions[${i}]`;
+    if (!isObject(entry)) return `${where} is not an object`;
+    const { version, lineage, proof } = entry;
+    if (
+      !isObject(version) ||
+      !isString(version.id) ||
+      !isInt(version.versionNumber) ||
+      !isString(version.contentHash) ||
+      !isString(version.status)
+    ) {
+      return `${where}.version is malformed`;
+    }
+    if (
+      !isObject(lineage) ||
+      !isString(lineage.origin) ||
+      !(lineage.supersedes === null || isInt(lineage.supersedes)) ||
+      !(lineage.restoredFrom === null || isInt(lineage.restoredFrom))
+    ) {
+      return `${where}.lineage is malformed`;
+    }
+    if (proof !== null) {
+      const problem = proofProblem(proof, where);
+      if (problem) return problem;
+    }
+  }
+  if (attestation !== null) {
+    if (
+      !isObject(attestation) ||
+      !Array.isArray(attestation.chain) ||
+      !isObject(attestation.publicKeys)
+    ) {
+      return "attestation is malformed";
+    }
+    if (attestation.chain.length > AUDIT_LIMITS.chain) {
+      return `attestation.chain is longer than ${AUDIT_LIMITS.chain}`;
+    }
+    for (const r of attestation.chain) {
+      if (
+        !isObject(r) ||
+        !isObject(r.payload) ||
+        !isString(r.signature) ||
+        !isString(r.publicKeyId) ||
+        !isInt(r.payload.versionNumber) ||
+        !isInt(r.payload.sequence) ||
+        !isString(r.payload.versionId) ||
+        !isString(r.payload.contentHash)
+      ) {
+        return "an attestation record is malformed";
+      }
+    }
+  }
+  return null;
 }
