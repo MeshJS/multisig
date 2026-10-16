@@ -17,6 +17,7 @@ import {
   useWalletRuntime,
 } from "@/lib/wallet-runtime";
 import { publicRoutes } from "@/data/public-routes";
+import budget from "../../scripts/bundle-budget.json";
 
 /**
  * When the wallet runtime loads decides both how fast public pages are and
@@ -45,6 +46,16 @@ describe("wallet runtime policy", () => {
     for (const route of LIGHT_ROUTES) {
       if (allowedExtras.has(route)) continue;
       expect(publicRoutes).toContain(route);
+    }
+  });
+
+  it("holds every light route to its own bundle budget", () => {
+    // Without a per-page entry a light route falls back to the wallet-route
+    // budget, and a page that starts importing the Cardano stack would pass.
+    const pages = budget.pages as Record<string, number>;
+    for (const route of LIGHT_ROUTES) {
+      if (["/404", "/500", "/_error"].includes(route)) continue;
+      expect(pages[route]).toBeLessThanOrEqual(500);
     }
   });
 
