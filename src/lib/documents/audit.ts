@@ -1,0 +1,502 @@
+/**
+ * Document Sign-Off v1 (Revision Provenance) — the audit export.
+ *
+ * A proof package (`proof.ts`) answers one question about one version: did the
+ * wallet's signers approve these exact bytes? An audit package answers the
+ * question an auditor asks about the whole document: what happened, in what
+ * order, and can I check it without trusting this database?
+ *
+ * It bundles, for every version:
+ *  - the version row and its lineage (what it superseded, what it restored),
+ *  - its proof package, built by the same `buildProofPackage` that
+ *    `exportProof` uses, so any proof verifier checks it unchanged,
+ *  - its position in the platform attestation chain,
+ * plus the full event log and the attestation chain with the public keys.
+ *
+ * `verifyAuditPackage` re-runs every check offline: each version's signatures,
+ * the attestation chain, and the cross-checks that tie the two together (every
+ * version attested once, at its own hash; every restore carrying the hash of
+ * the version it names). Like proof.ts it takes the CIP-8 check as an argument
+ * and has no Cardano dependency.
+ *
+ * A new format rather than more fields on `proof.v1`: that format's field
+ * names are a contract existing verifiers parse.
+ */
+
+import {
+  ATTESTATION_DOMAIN,
+  ATTESTATION_STATEMENT,
+  verifyAttestationChain,
+  type AttestationPayload,
+  type AttestationRecord,
+  type ChainVerification,
+} from "./attestation";
+import { normalizeContentHash } from "./payload";
+import {
+  buildProofPackage,
+  verifyProofPackage,
+  type CheckSignatureFn,
+  type ProofPackage,
+  type ProofSourceDocument,
+  type ProofSourceEvent,
+  type ProofSourceReview,
+  type ProofSourceSnapshot,
+  type ProofSourceVersion,
+} from "./proof";
+
+export const AUDIT_FORMAT = "mesh-multisig.document-signoff.audit.v1";
+
+/** How a version came to exist, read from the event that created it. */
+export type VersionOrigin = "upload" | "draft" | "restore" | "unknown";
+
+export interface AuditVersion {
+  version: ProofPackage["version"] & {
+    storageMode: string;
+    contentRef: string | null;
+    reviewInstructions: string | null;
+    supersededAt: string | null;
+  };
+  lineage: {
+    origin: VersionOrigin;
+    /** Version number this one superseded, if any. */
+    supersedes: number | null;
+    /** For a restore: the version whose content this one re-publishes. */
+    restoredFrom: number | null;
+  };
+  /** Null when no review round was ever started for this version. */
+  proof: ProofPackage | null;
+  /** Position in the attestation chain, or null when the version is unattested. */
+  attestationSequence: number | null;
+}
+
+export interface AuditPackage {
+  format: typeof AUDIT_FORMAT;
+  exportedAt: string;
+  document: ProofPackage["document"] & {
+    status: string;
+    signingMode: string;
+    archivedAt: string | null;
+  };
+  /** Ascending by version number. */
+  versions: AuditVersion[];
+  /** The whole log, ascending — document-level and every version's. */
+  events: ProofPackage["events"];
+  /** Null when the deployment has no attestation key configured. */
+  attestation: {
+    domain: string;
+    statement: string;
+    /** Key id → SPKI DER hex, as published by the exporting deployment. */
+    publicKeys: Record<string, string>;
+    chain: AttestationRecord[];
+  } | null;
+  verification: {
+    domain: typeof AUDIT_FORMAT;
+    instructions: string[];
+  };
+}
+
+export const AUDIT_INSTRUCTIONS = [
+  "1. Versions must run 1..N without gaps. For each version with a `proof`, verify that proof exactly as a standalone `proof.v1` package — its four steps are in `proof.verification.instructions`.",
+  "2. If `attestation` is present, verify the chain: each payload is signed (Ed25519) by the key named in `publicKeyId`, links to the SHA-256 of the previous canonical payload, and runs sequence 1..N in non-decreasing time. Prefer public keys you obtained independently over the ones in this file.",
+  "3. Cross-check: every version appears in the chain exactly once, with the same versionId, versionNumber and contentHash.",
+  "4. A version whose lineage says `restoredFrom: k` must carry the same contentHash as version k. A restore re-publishes old bytes as a new version; it never carries the old version's approvals forward.",
+  "The attestation chain is a timestamp and ordering record by the platform. It is not an approval. Approval is the CIP-8 signatures inside each version's proof.",
+];
+
+// ---------------------------------------------------------------------------
+// Build
+// ---------------------------------------------------------------------------
+
+export interface AuditSourceVersion extends ProofSourceVersion {
+  storageMode: string;
+  contentRef: string | null;
+  reviewInstructions: string | null;
+  supersededAt: Date | null;
+  signerSnapshot: ProofSourceSnapshot | null;
+  reviews: readonly ProofSourceReview[];
+}
+
+export interface AuditSourceEvent extends ProofSourceEvent {
+  metadata: unknown;
+}
+
+export interface AuditSourceAttestation {
+  versionId: string;
+  sequence: number;
+  /** The exact canonical JSON that was signed. */
+  payload: string;
+  signature: string;
+  publicKeyId: string;
+}
+
+function metadataNumber(metadata: unknown, key: string): number | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Lineage for every version, from the event log.
+ *
+ * The event that created a version names how it was made; the matching
+ * `version.superseded` event (same transaction) names what it replaced. Reading
+ * this from events rather than inferring it from version numbers is what lets a
+ * restore of v2 as v5 be told apart from an ordinary v5 upload.
+ */
+export function versionLineage(
+  versions: readonly { id: string; versionNumber: number }[],
+  events: readonly AuditSourceEvent[],
+): Map<string, AuditVersion["lineage"]> {
+  const byId = new Map<string, AuditVersion["lineage"]>();
+  const sorted = [...versions].sort(
+    (a, b) => a.versionNumber - b.versionNumber,
+  );
+
+  for (const [index, version] of sorted.entries()) {
+    const created = events.find(
+      (e) =>
+        e.versionId === version.id &&
+        (e.type === "version.uploaded" ||
+          e.type === "version.published" ||
+          e.type === "version.restored"),
+    );
+    const origin: VersionOrigin =
+      created?.type === "version.uploaded"
+        ? "upload"
+        : created?.type === "version.published"
+          ? "draft"
+          : created?.type === "version.restored"
+            ? "restore"
+            : "unknown";
+
+    byId.set(version.id, {
+      origin,
+      supersedes: index > 0 ? sorted[index - 1]!.versionNumber : null,
+      restoredFrom:
+        origin === "restore"
+          ? metadataNumber(created?.metadata, "restoredFromVersionNumber")
+          : null,
+    });
+  }
+  return byId;
+}
+
+export function buildAuditPackage(input: {
+  document: ProofSourceDocument & {
+    status: string;
+    signingMode: string;
+    archivedAt: Date | null;
+  };
+  versions: readonly AuditSourceVersion[];
+  events: readonly AuditSourceEvent[];
+  attestations: readonly AuditSourceAttestation[];
+  publicKeys: Record<string, string>;
+  exportedAt: Date;
+}): AuditPackage {
+  const { document } = input;
+  const events = [...input.events].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
+  const versions = [...input.versions].sort(
+    (a, b) => a.versionNumber - b.versionNumber,
+  );
+  const attestations = [...input.attestations].sort(
+    (a, b) => a.sequence - b.sequence,
+  );
+  const lineage = versionLineage(versions, events);
+  const sequenceFor = new Map(
+    attestations.map((a) => [a.versionId, a.sequence]),
+  );
+
+  return {
+    format: AUDIT_FORMAT,
+    exportedAt: input.exportedAt.toISOString(),
+    document: {
+      id: document.id,
+      walletId: document.walletId,
+      title: document.title,
+      description: document.description,
+      documentType: document.documentType,
+      createdBy: document.createdBy,
+      createdAt: document.createdAt.toISOString(),
+      status: document.status,
+      signingMode: document.signingMode,
+      archivedAt: document.archivedAt?.toISOString() ?? null,
+    },
+    versions: versions.map((v) => ({
+      version: {
+        id: v.id,
+        versionNumber: v.versionNumber,
+        contentHash: v.contentHash,
+        hashAlgorithm: v.hashAlgorithm,
+        fileName: v.fileName,
+        mimeType: v.mimeType,
+        fileSize: v.fileSize,
+        status: v.status,
+        createdBy: v.createdBy,
+        createdAt: v.createdAt.toISOString(),
+        reviewStartedAt: v.reviewStartedAt?.toISOString() ?? null,
+        decidedAt: v.decidedAt?.toISOString() ?? null,
+        storageMode: v.storageMode,
+        contentRef: v.contentRef,
+        reviewInstructions: v.reviewInstructions,
+        supersededAt: v.supersededAt?.toISOString() ?? null,
+      },
+      lineage: lineage.get(v.id)!,
+      proof: v.signerSnapshot
+        ? buildProofPackage({
+            document,
+            version: v,
+            snapshot: v.signerSnapshot,
+            reviews: v.reviews,
+            events,
+            exportedAt: input.exportedAt,
+          })
+        : null,
+      attestationSequence: sequenceFor.get(v.id) ?? null,
+    })),
+    events: events.map((e) => ({
+      type: e.type,
+      actorAddress: e.actorAddress,
+      createdAt: e.createdAt.toISOString(),
+      metadata: e.metadata,
+    })),
+    attestation:
+      attestations.length > 0
+        ? {
+            domain: ATTESTATION_DOMAIN,
+            statement: ATTESTATION_STATEMENT,
+            publicKeys: input.publicKeys,
+            chain: attestations.map((a) => ({
+              payload: JSON.parse(a.payload) as AttestationPayload,
+              signature: a.signature,
+              publicKeyId: a.publicKeyId,
+            })),
+          }
+        : null,
+    verification: {
+      domain: AUDIT_FORMAT,
+      instructions: AUDIT_INSTRUCTIONS,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Verify
+// ---------------------------------------------------------------------------
+
+export interface AuditVersionVerdict {
+  versionNumber: number;
+  status: string;
+  hasProof: boolean;
+  /** Every review's payload binds to this version and its signature verifies. */
+  signaturesValid: boolean;
+  approvals: number;
+  rejections: number;
+  requiredSigners: number | null;
+  thresholdReached: boolean;
+  errors: string[];
+}
+
+export interface AuditVerification {
+  /** Every check passed. A version that was never approved does not fail this. */
+  valid: boolean;
+  format: string;
+  versions: AuditVersionVerdict[];
+  chain: ChainVerification | null;
+  /**
+   * True when the chain was checked against keys carried in the package itself.
+   * That proves internal consistency only; pass `publicKeys` obtained
+   * independently to prove it came from the deployment that holds them.
+   */
+  keysFromPackage: boolean;
+  errors: string[];
+  /** Not failures, but worth an auditor's attention. */
+  warnings: string[];
+}
+
+export async function verifyAuditPackage(
+  pkg: AuditPackage,
+  options: {
+    checkSignature: CheckSignatureFn;
+    publicKeys?: Readonly<Record<string, string>>;
+  },
+): Promise<AuditVerification> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (pkg.format !== AUDIT_FORMAT) {
+    errors.push(`Unknown audit format "${String(pkg.format)}"`);
+  }
+
+  const byNumber = new Map<number, AuditVersion>();
+  pkg.versions.forEach((entry, index) => {
+    const n = entry.version.versionNumber;
+    if (n !== index + 1) {
+      errors.push(
+        `Versions must run 1..N in order; position ${index + 1} holds v${n}.`,
+      );
+    }
+    byNumber.set(n, entry);
+  });
+
+  const verdicts: AuditVersionVerdict[] = [];
+  for (const entry of pkg.versions) {
+    const n = entry.version.versionNumber;
+    const verdict: AuditVersionVerdict = {
+      versionNumber: n,
+      status: entry.version.status,
+      hasProof: entry.proof !== null,
+      signaturesValid: true,
+      approvals: 0,
+      rejections: 0,
+      requiredSigners: null,
+      thresholdReached: false,
+      errors: [],
+    };
+
+    if (entry.proof) {
+      const proof = entry.proof;
+      if (proof.document.id !== pkg.document.id) {
+        verdict.errors.push("proof belongs to a different document");
+      }
+      if (
+        proof.version.id !== entry.version.id ||
+        proof.version.versionNumber !== n ||
+        normalizeContentHash(proof.version.contentHash) !==
+          normalizeContentHash(entry.version.contentHash)
+      ) {
+        verdict.errors.push("proof does not describe this version");
+      }
+      const result = await verifyProofPackage(proof, {
+        checkSignature: options.checkSignature,
+      });
+      verdict.signaturesValid = result.reviews.every((r) => r.valid);
+      verdict.approvals = result.approvals;
+      verdict.rejections = result.rejections;
+      verdict.requiredSigners = result.requiredSigners;
+      verdict.thresholdReached = result.thresholdReached;
+      for (const r of result.reviews) {
+        for (const e of r.errors)
+          verdict.errors.push(`${r.signerAddress}: ${e}`);
+      }
+      // A version marked Approved must actually carry enough valid approvals.
+      if (entry.version.status === "Approved" && !result.thresholdReached) {
+        verdict.errors.push(
+          "marked Approved but its valid approvals do not reach the threshold",
+        );
+      }
+    } else if (
+      entry.version.status === "Approved" ||
+      entry.version.status === "Rejected"
+    ) {
+      verdict.errors.push(
+        `marked ${entry.version.status} but carries no review round`,
+      );
+    }
+
+    if (entry.lineage.origin === "restore") {
+      const source =
+        entry.lineage.restoredFrom === null
+          ? undefined
+          : byNumber.get(entry.lineage.restoredFrom);
+      if (!source) {
+        verdict.errors.push(
+          "restore names a version that is not in this package",
+        );
+      } else if (
+        normalizeContentHash(source.version.contentHash) !==
+        normalizeContentHash(entry.version.contentHash)
+      ) {
+        verdict.errors.push(
+          `restore of v${source.version.versionNumber} does not carry its content hash`,
+        );
+      } else if (source.version.versionNumber >= n) {
+        verdict.errors.push("restore names a later version");
+      }
+    }
+
+    verdicts.push(verdict);
+  }
+
+  let chain: ChainVerification | null = null;
+  const keysFromPackage = !options.publicKeys;
+  if (pkg.attestation) {
+    chain = verifyAttestationChain(
+      pkg.attestation.chain,
+      options.publicKeys ?? pkg.attestation.publicKeys,
+    );
+
+    const seen = new Set<string>();
+    for (const record of pkg.attestation.chain) {
+      const p = record.payload;
+      const entry = byNumber.get(p.versionNumber);
+      if (p.documentId !== pkg.document.id) {
+        errors.push(`attestation ${p.sequence} names a different document`);
+      }
+      if (!entry || entry.version.id !== p.versionId) {
+        errors.push(
+          `attestation ${p.sequence} names v${p.versionNumber}, which is not in this package`,
+        );
+        continue;
+      }
+      if (
+        normalizeContentHash(entry.version.contentHash) !==
+        normalizeContentHash(p.contentHash)
+      ) {
+        errors.push(
+          `attestation ${p.sequence} attests a different content hash than v${p.versionNumber}`,
+        );
+      }
+      if (entry.attestationSequence !== p.sequence) {
+        errors.push(
+          `v${p.versionNumber} claims attestation ${String(entry.attestationSequence)}, chain says ${p.sequence}`,
+        );
+      }
+      if (seen.has(p.versionId)) {
+        errors.push(`v${p.versionNumber} is attested more than once`);
+      }
+      seen.add(p.versionId);
+    }
+    // Attestation is optional per deployment, so a key configured part-way
+    // through a document's life leaves its earliest versions unattested. That
+    // is a warning. A version AFTER the first attested one with no link is a
+    // gap in the record, and that is an error.
+    const firstAttested = Math.min(
+      ...pkg.attestation.chain.map((r) => r.payload.versionNumber),
+    );
+    for (const entry of pkg.versions) {
+      if (seen.has(entry.version.id)) continue;
+      const n = entry.version.versionNumber;
+      if (n < firstAttested) {
+        warnings.push(
+          `v${n} predates the attestation chain (attestation began at v${firstAttested})`,
+        );
+      } else {
+        errors.push(`v${n} is missing from the attestation chain`);
+      }
+    }
+  } else if (pkg.versions.length > 0) {
+    warnings.push(
+      "No attestation chain: version order and timing rest on the exporting database alone.",
+    );
+  }
+  if (keysFromPackage && pkg.attestation) {
+    warnings.push(
+      "The chain was checked against public keys carried in this file. Supply keys obtained independently to rule out a re-signed export.",
+    );
+  }
+
+  return {
+    valid:
+      errors.length === 0 &&
+      verdicts.every((v) => v.errors.length === 0 && v.signaturesValid) &&
+      (chain === null || chain.ok),
+    format: pkg.format,
+    versions: verdicts,
+    chain,
+    keysFromPackage,
+    errors,
+    warnings,
+  };
+}

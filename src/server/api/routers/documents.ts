@@ -5,6 +5,10 @@
  * submitSignerAction, exportProof, verifyProof — plus the reads the four
  * Documents pages need.
  *
+ * v1 (Revision Provenance) adds diffVersions, restoreVersion (rollback by
+ * re-publishing, never by rewriting), and exportAudit / verifyAudit (the
+ * whole document's record, checkable offline — src/lib/documents/audit.ts).
+ *
  * Two rules carry the whole feature and are enforced here, not in the UI:
  *
  *  1. **Version-hash binding.** A review is attached to a DocumentVersion's
@@ -59,13 +63,17 @@ import {
   walletPolicyHash,
 } from "@/lib/documents/payload";
 import {
-  PROOF_FORMAT,
-  VERIFICATION_INSTRUCTIONS,
+  buildProofPackage,
   proofPackageProblem,
   verifyProofPackage,
   type ProofPackage,
 } from "@/lib/documents/proof";
-import { SIGNOFF_DOMAIN } from "@/lib/documents/payload";
+import { diffVersions } from "@/lib/documents/diff";
+import {
+  buildAuditPackage,
+  verifyAuditPackage,
+  type AuditPackage,
+} from "@/lib/documents/audit";
 
 /** Inline content is a convenience for small files, not a document store. */
 const MAX_INLINE_BYTES = 512 * 1024;
@@ -479,69 +487,24 @@ export const documentRouter = createTRPCRouter({
       }
       const actor = actingAddress(addresses);
 
-      const version = await ctx.db.$transaction(async (tx) => {
-        const latest = await tx.documentVersion.findFirst({
-          where: { documentId: document.id },
-          orderBy: { versionNumber: "desc" },
-        });
-
-        if (
-          latest &&
-          latest.status !== "Superseded" &&
-          latest.status !== "Archived"
-        ) {
-          await tx.documentVersion.update({
-            where: { id: latest.id },
-            data: { status: "Superseded", supersededAt: new Date() },
-          });
-          await tx.documentEvent.create({
-            data: {
-              documentId: document.id,
-              versionId: latest.id,
-              type: "version.superseded",
-              actorAddress: actor,
-              metadata: { versionNumber: latest.versionNumber },
-            },
-          });
-        }
-
-        const created = await createVersionRow(tx, {
-          documentId: document.id,
-          versionNumber: (latest?.versionNumber ?? 0) + 1,
-          createdBy: actor,
-          contentHash: input.contentHash,
-          fileName: input.fileName,
-          mimeType: input.mimeType,
-          fileSize: input.fileSize,
-          storageMode: input.storageMode,
-          contentRef: input.contentRef,
-          contentInline: input.contentInline,
-          reviewInstructions: input.reviewInstructions,
-        });
-
-        await tx.documentEvent.create({
-          data: {
-            documentId: document.id,
-            versionId: created.id,
-            type: "version.uploaded",
-            actorAddress: actor,
-            metadata: {
-              versionNumber: created.versionNumber,
-              contentHash: created.contentHash,
-              approvalsReset: true,
-            },
+      const version = await ctx.db.$transaction((tx) =>
+        appendVersion(tx, {
+          document,
+          actor,
+          eventType: "version.uploaded",
+          eventMetadata: {},
+          row: {
+            contentHash: input.contentHash,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            fileSize: input.fileSize,
+            storageMode: input.storageMode,
+            contentRef: input.contentRef,
+            contentInline: input.contentInline,
+            reviewInstructions: input.reviewInstructions,
           },
-        });
-
-        await attestVersion(tx, created, document.walletId);
-
-        await tx.document.update({
-          where: { id: document.id },
-          data: { status: "Draft" },
-        });
-
-        return created;
-      });
+        }),
+      );
 
       return version;
     }),
@@ -852,7 +815,10 @@ export const documentRouter = createTRPCRouter({
         include: {
           document: { include: { events: { orderBy: { createdAt: "asc" } } } },
           signerSnapshot: true,
-          reviews: { orderBy: { signedAt: "asc" } },
+          reviews: {
+            orderBy: { signedAt: "asc" },
+            include: { party: { select: { role: true } } },
+          },
         },
       });
       if (!version) {
@@ -875,68 +841,14 @@ export const documentRouter = createTRPCRouter({
         });
       }
 
-      const descriptionFor = (address: string): string | null => {
-        const idx = snapshot.signersAddresses.indexOf(address);
-        return idx >= 0 ? (snapshot.signersDescriptions[idx] ?? null) : null;
-      };
-
-      const pkg: ProofPackage = {
-        format: PROOF_FORMAT,
-        exportedAt: new Date().toISOString(),
-        document: {
-          id: version.document.id,
-          walletId: version.document.walletId,
-          title: version.document.title,
-          description: version.document.description,
-          documentType: version.document.documentType,
-          createdBy: version.document.createdBy,
-          createdAt: version.document.createdAt.toISOString(),
-        },
-        version: {
-          id: version.id,
-          versionNumber: version.versionNumber,
-          contentHash: version.contentHash,
-          hashAlgorithm: version.hashAlgorithm,
-          fileName: version.fileName,
-          mimeType: version.mimeType,
-          fileSize: version.fileSize,
-          status: version.status,
-          createdBy: version.createdBy,
-          createdAt: version.createdAt.toISOString(),
-          reviewStartedAt: version.reviewStartedAt?.toISOString() ?? null,
-          decidedAt: version.decidedAt?.toISOString() ?? null,
-        },
-        policy: {
-          walletId: snapshot.walletId,
-          walletPolicyHash: snapshot.walletPolicyHash,
-          requiredSigners: snapshot.requiredSigners,
-          signersAddresses: snapshot.signersAddresses,
-          signersDescriptions: snapshot.signersDescriptions,
-          capturedAt: snapshot.capturedAt.toISOString(),
-        },
-        reviews: version.reviews.map((r) => ({
-          signerAddress: r.signerAddress,
-          signerDescription: descriptionFor(r.signerAddress),
-          action: r.action,
-          comment: r.comment,
-          payload: r.payload,
-          signature: r.signature,
-          signatureKey: r.signatureKey,
-          signedAt: r.signedAt.toISOString(),
-        })),
-        events: version.document.events
-          .filter((e) => e.versionId === null || e.versionId === version.id)
-          .map((e) => ({
-            type: e.type,
-            actorAddress: e.actorAddress,
-            createdAt: e.createdAt.toISOString(),
-            metadata: e.metadata,
-          })),
-        verification: {
-          domain: SIGNOFF_DOMAIN,
-          instructions: VERIFICATION_INSTRUCTIONS,
-        },
-      };
+      const pkg = buildProofPackage({
+        document: version.document,
+        version,
+        snapshot,
+        reviews: version.reviews,
+        events: version.document.events,
+        exportedAt: new Date(),
+      });
 
       await ctx.db.documentEvent.create({
         data: {
@@ -1172,69 +1084,23 @@ export const documentRouter = createTRPCRouter({
         });
       }
 
-      return ctx.db.$transaction(async (tx) => {
-        const latest = await tx.documentVersion.findFirst({
-          where: { documentId: document.id },
-          orderBy: { versionNumber: "desc" },
-        });
-
-        if (
-          latest &&
-          latest.status !== "Superseded" &&
-          latest.status !== "Archived"
-        ) {
-          await tx.documentVersion.update({
-            where: { id: latest.id },
-            data: { status: "Superseded", supersededAt: new Date() },
-          });
-          await tx.documentEvent.create({
-            data: {
-              documentId: document.id,
-              versionId: latest.id,
-              type: "version.superseded",
-              actorAddress: actor,
-              metadata: { versionNumber: latest.versionNumber },
-            },
-          });
-        }
-
-        const created = await createVersionRow(tx, {
-          documentId: document.id,
-          versionNumber: (latest?.versionNumber ?? 0) + 1,
-          createdBy: actor,
-          contentHash: sha256Hex(bytes),
-          fileName: input.fileName ?? `${document.title}.md`,
-          mimeType: "text/markdown",
-          fileSize: bytes.length,
-          storageMode: "inline",
-          contentInline: bytes.toString("base64"),
-          reviewInstructions: input.reviewInstructions,
-        });
-
-        await tx.documentEvent.create({
-          data: {
-            documentId: document.id,
-            versionId: created.id,
-            type: "version.published",
-            actorAddress: actor,
-            metadata: {
-              versionNumber: created.versionNumber,
-              contentHash: created.contentHash,
-              fromDraftRevision: draft.revision,
-              approvalsReset: true,
-            },
+      return ctx.db.$transaction((tx) =>
+        appendVersion(tx, {
+          document,
+          actor,
+          eventType: "version.published",
+          eventMetadata: { fromDraftRevision: draft.revision },
+          row: {
+            contentHash: sha256Hex(bytes),
+            fileName: input.fileName ?? `${document.title}.md`,
+            mimeType: "text/markdown",
+            fileSize: bytes.length,
+            storageMode: "inline",
+            contentInline: bytes.toString("base64"),
+            reviewInstructions: input.reviewInstructions,
           },
-        });
-
-        await attestVersion(tx, created, document.walletId);
-
-        await tx.document.update({
-          where: { id: document.id },
-          data: { status: "Draft" },
-        });
-
-        return created;
-      });
+        }),
+      );
     }),
 
   /**
@@ -1548,6 +1414,246 @@ export const documentRouter = createTRPCRouter({
       return { documentId: party!.documentId, role: party!.role };
     }),
 
+  // -------------------------------------------------------------------------
+  // v1 — Revision Provenance: diff, rollback, audit export
+  // -------------------------------------------------------------------------
+
+  /**
+   * Compare two versions of one document.
+   *
+   * Party-aware like `getById`: anyone who may read the document may compare
+   * its versions. The metadata diff always works; the line diff needs both
+   * versions' bytes inline and readable as text, and says why when it cannot
+   * run (see src/lib/documents/diff.ts).
+   */
+  diffVersions: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        fromVersionId: z.string().min(1),
+        toVersionId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { document } = await resolveDocumentAccess(ctx, input.documentId);
+      const versions = await ctx.db.documentVersion.findMany({
+        where: {
+          documentId: document.id,
+          id: { in: [input.fromVersionId, input.toVersionId] },
+        },
+      });
+      const from = versions.find((v) => v.id === input.fromVersionId);
+      const to = versions.find((v) => v.id === input.toVersionId);
+      if (!from || !to) {
+        // Same answer whether the version does not exist or belongs to another
+        // document, so this cannot be used to probe ids across documents.
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found on this document",
+        });
+      }
+      return diffVersions(from, to);
+    }),
+
+  /**
+   * Roll back to an earlier version — by re-publishing it, never by rewriting.
+   *
+   * Creates version N+1 carrying the chosen version's exact content (same hash,
+   * same bytes or reference), supersedes the current head, and starts it at
+   * zero approvals like any other new version. The old version's approvals do
+   * not come back: they were given in a round over a different history, and
+   * the snapshot that counted them may no longer match the wallet. Signers
+   * approve the restored content again.
+   *
+   * Append-only: the versions in between stay, the event log records
+   * `version.restored` with the source, and the attestation chain gains a link
+   * — so "we went back to v2" is itself part of the audited record.
+   *
+   * Wallet members only, like `uploadVersion`; a contract party can read and
+   * sign but not change which content is up for signature.
+   */
+  restoreVersion: protectedProcedure
+    .input(
+      z.object({
+        documentId: z.string().min(1),
+        versionId: z.string().min(1),
+        reviewInstructions: z.string().max(5000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        input.documentId,
+      );
+      if (document.status === "Archived") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Document is archived",
+        });
+      }
+      const actor = actingAddress(addresses);
+
+      const source = await ctx.db.documentVersion.findFirst({
+        where: { id: input.versionId, documentId: document.id },
+      });
+      if (!source) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Version not found on this document",
+        });
+      }
+
+      const restored = await ctx.db.$transaction(async (tx) => {
+        // Read the head inside the transaction so two concurrent restores
+        // cannot both decide they are restoring something other than the head.
+        const head = await tx.documentVersion.findFirst({
+          where: { documentId: document.id },
+          orderBy: { versionNumber: "desc" },
+        });
+        if (head?.id === source.id) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `v${source.versionNumber} is already the current version`,
+          });
+        }
+
+        return appendVersion(tx, {
+          document,
+          actor,
+          eventType: "version.restored",
+          eventMetadata: {
+            restoredFromVersionId: source.id,
+            restoredFromVersionNumber: source.versionNumber,
+            ...(head ? { replacedVersionNumber: head.versionNumber } : {}),
+          },
+          row: {
+            contentHash: source.contentHash,
+            fileName: source.fileName ?? undefined,
+            mimeType: source.mimeType ?? undefined,
+            fileSize: source.fileSize ?? undefined,
+            storageMode: source.storageMode,
+            contentRef: source.contentRef ?? undefined,
+            contentInline: source.contentInline ?? undefined,
+            reviewInstructions:
+              input.reviewInstructions ??
+              source.reviewInstructions ??
+              undefined,
+          },
+        });
+      });
+
+      void audit(ctx.db, {
+        actorAddress: actor,
+        actorType: "user",
+        action: "document.version.restore",
+        resourceType: "document",
+        resourceId: document.id,
+        outcome: "success",
+        metadata: {
+          restoredFromVersionNumber: source.versionNumber,
+          newVersionNumber: restored.versionNumber,
+        },
+      });
+
+      return restored;
+    }),
+
+  /**
+   * The full audit package for a document: every version with its lineage and
+   * proof, the whole event log, and the attestation chain with its keys. A
+   * mutation, like `exportProof`, because exporting is itself logged.
+   *
+   * Wallet members only. A party's view is scoped to what they sign; the audit
+   * bundle carries every round, including ones they were never part of.
+   */
+  exportAudit: protectedProcedure
+    .input(z.object({ documentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }): Promise<AuditPackage> => {
+      const { document, addresses } = await assertDocumentAccess(
+        ctx,
+        input.documentId,
+      );
+      const actor = actingAddress(addresses);
+
+      const [versions, events, attestations] = await Promise.all([
+        ctx.db.documentVersion.findMany({
+          where: { documentId: document.id },
+          orderBy: { versionNumber: "asc" },
+          include: {
+            signerSnapshot: true,
+            reviews: {
+              orderBy: { signedAt: "asc" },
+              include: { party: { select: { role: true } } },
+            },
+          },
+        }),
+        ctx.db.documentEvent.findMany({
+          where: { documentId: document.id },
+          orderBy: { createdAt: "asc" },
+        }),
+        ctx.db.documentAttestation.findMany({
+          where: { documentId: document.id },
+          orderBy: { sequence: "asc" },
+        }),
+      ]);
+
+      const pkg = buildAuditPackage({
+        document,
+        versions,
+        events,
+        attestations,
+        publicKeys: getAttestationPublicKeys(),
+        exportedAt: new Date(),
+      });
+
+      await ctx.db.documentEvent.create({
+        data: {
+          documentId: document.id,
+          type: "audit.exported",
+          actorAddress: actor,
+          metadata: {
+            versionCount: pkg.versions.length,
+            eventCount: pkg.events.length,
+            attested: pkg.attestation !== null,
+          },
+        },
+      });
+
+      return pkg;
+    }),
+
+  /**
+   * Verify an audit package. Public and database-free, like `verifyProof`:
+   * it re-runs the maths in src/lib/documents/audit.ts and nothing else.
+   * Checks the chain against this deployment's published keys unless the
+   * caller supplies their own.
+   */
+  verifyAudit: publicProcedure
+    .input(
+      z.object({
+        audit: z.unknown(),
+        publicKeys: z.record(z.string(), z.string()).optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const pkg = input.audit as Partial<AuditPackage> | null;
+      if (
+        !pkg ||
+        typeof pkg !== "object" ||
+        !Array.isArray(pkg.versions) ||
+        !pkg.document
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "That is not a Document Sign-Off audit package.",
+        });
+      }
+      return verifyAuditPackage(pkg as AuditPackage, {
+        checkSignature,
+        publicKeys: input.publicKeys ?? getAttestationPublicKeys(),
+      });
+    }),
+
   /** Archive a document — history is retained, it just leaves active use. */
   archiveDocument: protectedProcedure
     .input(z.object({ documentId: z.string().min(1) }))
@@ -1660,6 +1766,93 @@ async function attestVersion(
       attestedAt: new Date(payload.attestedAt),
     },
   });
+}
+
+type AppendVersionRow = Omit<
+  VersionRowInput,
+  "documentId" | "versionNumber" | "createdBy"
+>;
+
+/**
+ * Append the next version to a document — the only way a version is created
+ * after the first.
+ *
+ * Supersedes the current head (approvals never carry forward), creates the row,
+ * logs the creating event, attests the new version and returns the document to
+ * Draft, all in the caller's transaction. Upload, publish-from-draft and
+ * restore differ only in where the bytes come from and which event names the
+ * origin, so they share this rather than three copies of the supersede logic.
+ *
+ * Append-only by construction: nothing here edits or removes an existing
+ * version, which is what lets a restore be a rollback without rewriting
+ * history.
+ */
+async function appendVersion(
+  tx: Prisma.TransactionClient,
+  input: {
+    document: { id: string; walletId: string };
+    actor: string;
+    eventType: "version.uploaded" | "version.published" | "version.restored";
+    eventMetadata: Record<string, Prisma.InputJsonValue>;
+    row: AppendVersionRow;
+  },
+) {
+  const { document, actor } = input;
+  const latest = await tx.documentVersion.findFirst({
+    where: { documentId: document.id },
+    orderBy: { versionNumber: "desc" },
+  });
+
+  if (
+    latest &&
+    latest.status !== "Superseded" &&
+    latest.status !== "Archived"
+  ) {
+    await tx.documentVersion.update({
+      where: { id: latest.id },
+      data: { status: "Superseded", supersededAt: new Date() },
+    });
+    await tx.documentEvent.create({
+      data: {
+        documentId: document.id,
+        versionId: latest.id,
+        type: "version.superseded",
+        actorAddress: actor,
+        metadata: { versionNumber: latest.versionNumber },
+      },
+    });
+  }
+
+  const created = await createVersionRow(tx, {
+    ...input.row,
+    documentId: document.id,
+    versionNumber: (latest?.versionNumber ?? 0) + 1,
+    createdBy: actor,
+  });
+
+  await tx.documentEvent.create({
+    data: {
+      documentId: document.id,
+      versionId: created.id,
+      type: input.eventType,
+      actorAddress: actor,
+      metadata: {
+        versionNumber: created.versionNumber,
+        contentHash: created.contentHash,
+        ...input.eventMetadata,
+        approvalsReset: true,
+      },
+    },
+  });
+
+  await attestVersion(tx, created, document.walletId);
+
+  await tx.document.update({
+    where: { id: document.id },
+    data: { status: "Draft" },
+  });
+
+  return created;
 }
 
 async function createVersionRow(

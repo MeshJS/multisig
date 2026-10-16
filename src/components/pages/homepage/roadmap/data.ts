@@ -87,7 +87,7 @@ export const TRACKS: Track[] = [
         label: "MVP — build & ship",
         start: 4,
         span: 2,
-        status: "planned",
+        status: "done",
         owner: "Q·A",
         detail:
           "Finalize PRD-001 (still Draft), then a five-model schema, tRPC routes, CIP-8 enforcement, version-hash binding, Documents UI, six-state lifecycle and proof export. Ready = a pilot team runs all six user stories unaided.",
@@ -96,10 +96,10 @@ export const TRACKS: Track[] = [
         label: "v1 history",
         start: 6,
         span: 1,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "v1: revision history first-class, diff and rollback, richer audit export. Still off-chain.",
+          "v1: chained version attestations, diff between any two versions, rollback by re-publishing (append-only, approvals reset), and an offline-verifiable audit export of the whole document. Still off-chain.",
       },
       {
         label: "v2 anchor",
