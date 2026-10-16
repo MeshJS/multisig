@@ -1,4 +1,4 @@
-import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
+import ConnectWalletSlot from "@/components/common/connect-wallet-slot";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
@@ -306,7 +306,7 @@ export function PageHomepage() {
               </>
             ) : (
               <>
-                <ConnectWallet />
+                <ConnectWalletSlot />
                 <Button size="lg" variant="outline" asChild>
                   <Link href="/features">Explore features</Link>
                 </Button>
@@ -950,7 +950,7 @@ export function PageHomepage() {
                   <Link href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
                 </Button>
               ) : (
-                <ConnectWallet />
+                <ConnectWalletSlot />
               )}
             </div>
           </div>

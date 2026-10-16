@@ -24,6 +24,7 @@ import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useWalletDetection } from "@/hooks/useWalletDetection";
+import { useWalletRuntime } from "@/lib/wallet-runtime";
 
 /**
  * Where the connector may render the large "Get Started with UTXOS" call to
@@ -207,6 +208,16 @@ function ConnectWalletContent({
       setDetectingWallets(false);
     }
   }, [wallets]);
+
+  // The visitor clicked "Connect wallet" in the light public shell, which only
+  // loaded the wallet runtime. Finish what they asked for: open the picker
+  // once detection has settled, exactly once.
+  const consumeOpenConnect = useWalletRuntime((s) => s.consumeOpenConnect);
+  useEffect(() => {
+    if (!detectingWallets && consumeOpenConnect()) {
+      setDropdownOpen(true);
+    }
+  }, [detectingWallets, consumeOpenConnect]);
 
   // Initialize MeshJS persistence on mount
   useEffect(() => {

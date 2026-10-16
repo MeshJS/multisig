@@ -13,9 +13,17 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/common/overall-layout/logo";
-import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
+import dynamic from "next/dynamic";
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
-import WalletSelector from "@/components/common/overall-layout/wallet-selector";
+
+// Only a signed-in visitor sees these, and both pull in the wallet stack. Loaded
+// on demand so the public shell's mobile menu stays light.
+const MenuWallet = dynamic(
+  () => import("@/components/common/overall-layout/menus/multisig-wallet"),
+);
+const WalletSelector = dynamic(
+  () => import("@/components/common/overall-layout/wallet-selector"),
+);
 import { cn } from "@/lib/utils";
 
 interface MobileNavigationProps {
