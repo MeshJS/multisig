@@ -366,3 +366,154 @@ async function verifyReview(
 
   return verdict;
 }
+
+// ---------------------------------------------------------------------------
+// Building a package from stored rows
+// ---------------------------------------------------------------------------
+
+/** The row shapes a proof is built from — a structural subset of the Prisma models. */
+export interface ProofSourceDocument {
+  id: string;
+  walletId: string;
+  title: string;
+  description: string | null;
+  documentType: string | null;
+  createdBy: string;
+  createdAt: Date;
+}
+
+export interface ProofSourceVersion {
+  id: string;
+  versionNumber: number;
+  contentHash: string;
+  hashAlgorithm: string;
+  fileName: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  status: string;
+  createdBy: string;
+  createdAt: Date;
+  reviewStartedAt: Date | null;
+  decidedAt: Date | null;
+}
+
+export interface ProofSourceSnapshot {
+  walletId: string;
+  walletPolicyHash: string;
+  requiredSigners: number;
+  signersAddresses: string[];
+  signersDescriptions: string[];
+  capturedAt: Date;
+}
+
+export interface ProofSourceReview {
+  signerAddress: string;
+  partyId?: string | null;
+  party?: { role: string } | null;
+  action: SignOffAction;
+  comment: string | null;
+  payload: string;
+  signature: string;
+  signatureKey: string;
+  signedAt: Date;
+}
+
+export interface ProofSourceEvent {
+  versionId: string | null;
+  type: string;
+  actorAddress: string | null;
+  createdAt: Date;
+  metadata: unknown;
+}
+
+/**
+ * Assemble the proof package for one version from its stored rows.
+ *
+ * Shared by `exportProof` and the audit export, so a version's proof inside an
+ * audit bundle is byte-for-byte the package `exportProof` would have produced
+ * (apart from `exportedAt`) and any proof verifier checks it unchanged.
+ *
+ * Events are filtered to the document-level ones plus this version's own.
+ * Reviews are sorted by `signedAt` here rather than trusting the caller.
+ */
+export function buildProofPackage(input: {
+  document: ProofSourceDocument;
+  version: ProofSourceVersion;
+  snapshot: ProofSourceSnapshot;
+  reviews: readonly ProofSourceReview[];
+  events: readonly ProofSourceEvent[];
+  exportedAt: Date;
+}): ProofPackage {
+  const { document, version, snapshot } = input;
+
+  const descriptionFor = (address: string): string | null => {
+    const idx = snapshot.signersAddresses.indexOf(address);
+    return idx >= 0 ? (snapshot.signersDescriptions[idx] ?? null) : null;
+  };
+
+  return {
+    format: PROOF_FORMAT,
+    exportedAt: input.exportedAt.toISOString(),
+    document: {
+      id: document.id,
+      walletId: document.walletId,
+      title: document.title,
+      description: document.description,
+      documentType: document.documentType,
+      createdBy: document.createdBy,
+      createdAt: document.createdAt.toISOString(),
+    },
+    version: {
+      id: version.id,
+      versionNumber: version.versionNumber,
+      contentHash: version.contentHash,
+      hashAlgorithm: version.hashAlgorithm,
+      fileName: version.fileName,
+      mimeType: version.mimeType,
+      fileSize: version.fileSize,
+      status: version.status,
+      createdBy: version.createdBy,
+      createdAt: version.createdAt.toISOString(),
+      reviewStartedAt: version.reviewStartedAt?.toISOString() ?? null,
+      decidedAt: version.decidedAt?.toISOString() ?? null,
+    },
+    policy: {
+      walletId: snapshot.walletId,
+      walletPolicyHash: snapshot.walletPolicyHash,
+      requiredSigners: snapshot.requiredSigners,
+      signersAddresses: snapshot.signersAddresses,
+      signersDescriptions: snapshot.signersDescriptions,
+      capturedAt: snapshot.capturedAt.toISOString(),
+    },
+    reviews: [...input.reviews]
+      .sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())
+      .map((r) => ({
+        signerAddress: r.signerAddress,
+        signerDescription: descriptionFor(r.signerAddress),
+        // Only present for contract-party signatures. The verifier binds the
+        // payload's partyId to this field, so omitting it would make every
+        // party signature fail verification.
+        ...(r.partyId
+          ? { partyId: r.partyId, partyRole: r.party?.role ?? null }
+          : {}),
+        action: r.action,
+        comment: r.comment,
+        payload: r.payload,
+        signature: r.signature,
+        signatureKey: r.signatureKey,
+        signedAt: r.signedAt.toISOString(),
+      })),
+    events: input.events
+      .filter((e) => e.versionId === null || e.versionId === version.id)
+      .map((e) => ({
+        type: e.type,
+        actorAddress: e.actorAddress,
+        createdAt: e.createdAt.toISOString(),
+        metadata: e.metadata,
+      })),
+    verification: {
+      domain: SIGNOFF_DOMAIN,
+      instructions: VERIFICATION_INSTRUCTIONS,
+    },
+  };
+}

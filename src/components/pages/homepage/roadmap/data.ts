@@ -87,7 +87,7 @@ export const TRACKS: Track[] = [
         label: "MVP — build & ship",
         start: 4,
         span: 2,
-        status: "planned",
+        status: "done",
         owner: "Q·A",
         detail:
           "Finalize PRD-001 (still Draft), then a five-model schema, tRPC routes, CIP-8 enforcement, version-hash binding, Documents UI, six-state lifecycle and proof export. Ready = a pilot team runs all six user stories unaided.",
@@ -96,10 +96,10 @@ export const TRACKS: Track[] = [
         label: "v1 history",
         start: 6,
         span: 1,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "v1: revision history first-class, diff and rollback, richer audit export. Still off-chain.",
+          "v1: chained version attestations, diff between any two versions, rollback by re-publishing (append-only, approvals reset), and an offline-verifiable audit export of the whole document. Still off-chain.",
       },
       {
         label: "v2 anchor",
@@ -361,10 +361,10 @@ export const TRACKS: Track[] = [
         label: "FROST & PQC — kickoff to go/no-go",
         start: 4,
         span: 3,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "FROST threshold Schnorr for Cardano (#220), plus Lemour post-quantum multi-sig. Kickoff slipped from July — starting in August keeps runway for the October go/no-go. Deliverables: a trade-off note, a PoC if libraries allow, and a recommendation.",
+          "FROST threshold Schnorr for Cardano (#220) and Lemur post-quantum multi-sig, decided: a PoC verifies FROST(Ed25519) aggregates as ordinary Cardano vkey witnesses. No-go on replacing native scripts, conditional go on a FROST signer as one leaf inside a native script, no-go on PQ until the ledger can verify a PQ signature.",
       },
     ],
   },

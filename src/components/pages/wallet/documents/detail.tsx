@@ -4,11 +4,14 @@ import { useRouter } from "next/router";
 import {
   Archive,
   Download,
+  FileArchive,
   FileJson,
   FileText,
+  GitCompare,
   MoreVertical,
   Pencil,
   PlayCircle,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   Upload,
@@ -42,6 +45,7 @@ import PageHeader from "@/components/ui/page-header";
 import WalletDetailSkeleton from "@/components/pages/wallet/wallet-detail-skeleton";
 import DocumentStatusBadge from "./status-badge";
 import { sha256HexFromFile } from "./hash-file";
+import VersionDiffDialog from "./version-diff-dialog";
 
 /**
  * Document detail — lifecycle, version history, who approved, who is missing.
@@ -58,6 +62,14 @@ export default function PageDocumentDetail() {
   const [uploading, setUploading] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [typedTitle, setTypedTitle] = useState("");
+  const [comparing, setComparing] = useState<{
+    fromId: string;
+    toId: string;
+  } | null>(null);
+  const [restoring, setRestoring] = useState<{
+    id: string;
+    versionNumber: number;
+  } | null>(null);
 
   const utils = api.useUtils();
   const { data: document, isLoading } = api.document.getById.useQuery(
@@ -115,7 +127,36 @@ export default function PageDocumentDetail() {
     onError: (error) => toastError(error, "Could not delete the document"),
   });
 
+  const restoreVersion = api.document.restoreVersion.useMutation({
+    onSuccess: async (version) => {
+      setRestoring(null);
+      await refresh();
+      toast({
+        title: `Restored as version ${version.versionNumber}`,
+        description:
+          "Same content, new round — signers approve it again from zero.",
+      });
+    },
+    onError: (error) => toastError(error, "Could not restore that version"),
+  });
+
   const exportProof = api.document.exportProof.useMutation();
+  const exportAudit = api.document.exportAudit.useMutation();
+
+  /**
+   * The whole document's record in one file: every version with its lineage
+   * and proof, the event log, and the attestation chain. Checkable offline —
+   * see src/lib/documents/audit.ts.
+   */
+  async function onExportAudit() {
+    try {
+      const pkg = await exportAudit.mutateAsync({ documentId });
+      downloadJson(pkg, `signoff-audit-${pkg.document.id}.json`);
+      await utils.document.getById.invalidate({ documentId });
+    } catch (error) {
+      toastError(error, "Could not export the audit trail");
+    }
+  }
 
   /**
    * Both exports are the same package. The JSON is what a verifier checks; the
@@ -134,9 +175,8 @@ export default function PageDocumentDetail() {
         );
         return;
       }
-      const { buildProofPdf, proofPdfFileName } = await import(
-        "@/lib/documents/proof-pdf"
-      );
+      const { buildProofPdf, proofPdfFileName } =
+        await import("@/lib/documents/proof-pdf");
       downloadFile(
         buildProofPdf(proof, { verifyUrl: absoluteUrl("/verify") }),
         proofPdfFileName(proof),
@@ -183,6 +223,27 @@ export default function PageDocumentDetail() {
     0,
   );
 
+  // Versions arrive newest first, so the head is index 0.
+  const head = document.versions[0];
+  const headId = head?.id;
+  const versionOptions = document.versions.map((v) => ({
+    id: v.id,
+    versionNumber: v.versionNumber,
+  }));
+  const restoredFrom = new Map<string, number>();
+  for (const event of document.events) {
+    const meta = event.metadata as {
+      restoredFromVersionNumber?: unknown;
+    } | null;
+    if (
+      event.type === "version.restored" &&
+      event.versionId &&
+      typeof meta?.restoredFromVersionNumber === "number"
+    ) {
+      restoredFrom.set(event.versionId, meta.restoredFromVersionNumber);
+    }
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 lg:gap-8 lg:p-8">
       <PageHeader
@@ -203,6 +264,13 @@ export default function PageDocumentDetail() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              disabled={exportAudit.isPending}
+              onClick={() => void onExportAudit()}
+            >
+              <FileArchive className="mr-2 h-4 w-4" />
+              Export audit trail (JSON)
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={
                 document.status === "Archived" || archiveDocument.isPending
@@ -250,7 +318,8 @@ export default function PageDocumentDetail() {
       </Card>
 
       <div className="flex flex-col gap-3">
-        {document.versions.map((version) => {
+        {document.versions.map((version, index) => {
+          const previous = document.versions[index + 1];
           const snapshot = version.signerSnapshot;
           const approvals = version.reviews.filter(
             (r) => r.action === "approve",
@@ -265,11 +334,46 @@ export default function PageDocumentDetail() {
           return (
             <Card key={version.id}>
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-                <CardTitle className="text-base">
+                <CardTitle className="flex items-baseline gap-2 text-base">
                   Version {version.versionNumber}
+                  {restoredFrom.has(version.id) && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      restored from v{restoredFrom.get(version.id)}
+                    </span>
+                  )}
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <DocumentStatusBadge status={version.status} />
+                  {previous && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setComparing({ fromId: previous.id, toId: version.id })
+                      }
+                    >
+                      <GitCompare className="mr-2 h-4 w-4" />
+                      Changes
+                    </Button>
+                  )}
+                  {version.id !== headId &&
+                    version.contentHash !== head?.contentHash &&
+                    document.status !== "Archived" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={restoreVersion.isPending}
+                        onClick={() =>
+                          setRestoring({
+                            id: version.id,
+                            versionNumber: version.versionNumber,
+                          })
+                        }
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Restore
+                      </Button>
+                    )}
                   {version.status === "Draft" && (
                     <Button
                       size="sm"
@@ -407,6 +511,72 @@ export default function PageDocumentDetail() {
         An exported proof is an approval attestation by this wallet&apos;s
         signers. It is not a qualified electronic signature.
       </p>
+
+      {comparing && (
+        <VersionDiffDialog
+          documentId={documentId}
+          versions={versionOptions}
+          initialFromId={comparing.fromId}
+          initialToId={comparing.toId}
+          open={comparing !== null}
+          onOpenChange={(open) => !open && setComparing(null)}
+        />
+      )}
+
+      <Dialog
+        open={restoring !== null}
+        onOpenChange={(open) => !open && setRestoring(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Restore version {restoring?.versionNumber}?
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  This publishes version {restoring?.versionNumber}&apos;s exact
+                  content as a new version and supersedes the current one.
+                  Nothing is deleted — the versions in between stay in the
+                  history, and the restore itself is logged and attested.
+                </p>
+                <p>
+                  Approvals do not come back. The restored version starts a
+                  fresh round at zero, and signers approve it again.
+                </p>
+                {head?.status === "InReview" && (
+                  <p className="text-red-500">
+                    Version {head.versionNumber} is in review
+                    {head.reviews.length > 0
+                      ? ` with ${head.reviews.length} signature${head.reviews.length === 1 ? "" : "s"}`
+                      : ""}
+                    . Restoring ends that round.
+                  </p>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoring(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={restoreVersion.isPending || !restoring}
+              onClick={() =>
+                restoring &&
+                restoreVersion.mutate({
+                  documentId,
+                  versionId: restoring.id,
+                  expectedHeadVersionId: headId,
+                })
+              }
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Restore as new version
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <DialogContent>
