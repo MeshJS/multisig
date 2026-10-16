@@ -3,7 +3,10 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useUTXOSStore } from "@/lib/zustand/utxos";
 import { env } from "@/env";
 import { BlockfrostProvider } from "@meshsdk/provider";
-import { Web3Wallet, type EnableWeb3WalletOptions } from "@utxos/sdk";
+// Type-only: the SDK embeds the Spark/FROST WASM as base64 (~8 MB raw), so it
+// is loaded with import() when a user actually picks the UTXOS wallet, never
+// as part of the shared app bundle.
+import type { Web3Wallet, EnableWeb3WalletOptions } from "@utxos/sdk";
 import { useToast } from "./use-toast";
 
 interface UseUTXOSReturn {
@@ -87,6 +90,7 @@ export default function useUTXOS(): UseUTXOSReturn {
 
       console.log("[useUTXOS] Enabling wallet...");
       // Enable the wallet
+      const { Web3Wallet } = await import("@utxos/sdk");
       const enabledWallet = await Web3Wallet.enable(options);
       
       // Verify wallet.cardano property exists (per UTXOS docs)

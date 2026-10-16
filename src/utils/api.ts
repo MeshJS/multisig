@@ -68,6 +68,12 @@ export const api = createTRPCNext<AppRouter>({
       queryClientConfig: {
         defaultOptions: {
           queries: {
+            // Data counts as fresh for 15 s. With the default of 0, moving
+            // between wallet pages re-ran every query each mount even though
+            // the same data had just arrived. Mutations still invalidate what
+            // they change, and focus/reconnect still refetch once stale, so
+            // other signers' activity shows up within 15 s.
+            staleTime: 15_000,
             retry: (failureCount, error) => {
               // Don't retry on authorization errors (403/401)
               if (error && typeof error === "object") {

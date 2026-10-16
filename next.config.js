@@ -5,6 +5,17 @@
  * Note: We use dynamic import here to avoid blocking Next.js initialization.
  * The env validation will happen when the module is actually used, not during config load.
  */
+import { createRequire } from "node:module";
+import path from "node:path";
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Real location of `@utxos/sdk`, for the browser-only alias below. Resolved
+ * through the package's own entry so it follows whatever version is installed.
+ */
+const UTXOS_SDK_REAL = require.resolve("@utxos/sdk").replace(/index\.c?js$/, "index.js");
+
 if (!process.env.SKIP_ENV_VALIDATION) {
   // Use dynamic import to avoid blocking initialization
   import("./src/env.js").catch((err) => {
@@ -50,7 +61,14 @@ const config = {
   // breaks resolution of the whisky WASM during dev SSR. `import.meta.dirname`
   // is the project root in every checkout, so this is safe in CI and prod too.
   // WebAssembly support is enabled by default in Turbopack.
-  turbopack: { root: import.meta.dirname },
+  turbopack: {
+    root: import.meta.dirname,
+    // Same lazy UTXOS stand-in as the webpack alias below, for `next dev`.
+    resolveAlias: {
+      "@utxos/sdk": { browser: "./src/lib/utxos-sdk-lazy.ts" },
+      "@utxos/sdk-real": { browser: UTXOS_SDK_REAL },
+    },
+  },
   
   // Webpack config for builds that explicitly use webpack (e.g., with --webpack flag)
   webpack: function (config, options) {
@@ -76,6 +94,17 @@ const config = {
         ".js": [".js", ".ts", ".tsx"],
       },
     };
+
+    // Browser builds: route every `@utxos/sdk` import (ours and @meshsdk/react's)
+    // through a lazy stand-in, so the SDK's ~15 MB of inlined Spark WASM loads
+    // only when someone picks the UTXOS wallet. See src/lib/utxos-sdk-lazy.ts.
+    if (!options.isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@utxos/sdk$": path.resolve(import.meta.dirname, "src/lib/utxos-sdk-lazy.ts"),
+        "@utxos/sdk-real$": UTXOS_SDK_REAL,
+      };
+    }
     
     return config;
   },

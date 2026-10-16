@@ -15,8 +15,6 @@ import { getRouteSeo, type PageSeo } from "@/lib/seo";
 import { api } from "@/utils/api";
 
 import "@/styles/globals.css";
-import "swagger-ui-react/swagger-ui.css";
-import "@/styles/swagger-overrides.css";
 import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import SeoFallback from "@/components/ui/seo-fallback";

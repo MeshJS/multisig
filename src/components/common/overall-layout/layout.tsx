@@ -30,7 +30,6 @@ import {
   UserDropDownWrapper,
 } from "@/components/common/overall-layout/mobile-wrappers";
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
-import { PageHomepage } from "@/components/pages/homepage";
 import Logo from "@/components/common/overall-layout/logo";
 import SiteFooter from "@/components/common/overall-layout/site-footer";
 import dynamic from "next/dynamic";
@@ -40,6 +39,13 @@ import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+
+// The landing page is only the fallback for a signed-out visitor on a private
+// route. A static import put the whole landing page (hero, effects, sections)
+// into the shared bundle of every route.
+const PageHomepage = dynamic(() =>
+  import("@/components/pages/homepage").then((m) => m.PageHomepage),
+);
 
 // Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
 // Using a version-based key ensures fresh mount on updates, preventing cache issues
