@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import SectionTitle from "@/components/ui/section-title";
 import Pagination from "@/components/common/overall-layout/pagination";
-import { getProvider } from "@/utils/get-provider";
+import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
 import usePublicNetwork from "@/hooks/usePublicNetwork";
-import DelegateButton from "./id/delegateButton";
+import dynamic from "next/dynamic";
+
+// Delegating needs a connected wallet and the transaction builder; viewing does
+// not. Loaded on demand so the public explorer stays light.
+const DelegateButton = dynamic(() => import("./id/delegateButton"), { ssr: false });
 import RowLabelInfo from "@/components/common/row-label-info";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ActiveIndicator from "./activeIndicator";
