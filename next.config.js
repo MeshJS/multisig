@@ -67,9 +67,7 @@ const config = {
     resolveAlias: {
       "@utxos/sdk": { browser: "./src/lib/utxos-sdk-lazy.ts" },
       // Turbopack only accepts project-relative paths here.
-      "@utxos/sdk-real": {
-        browser: "./" + path.relative(import.meta.dirname, UTXOS_SDK_REAL),
-      },
+      "@utxos/sdk-real": "./" + path.relative(import.meta.dirname, UTXOS_SDK_REAL),
     },
   },
   
@@ -101,13 +99,22 @@ const config = {
     // Browser builds: route every `@utxos/sdk` import (ours and @meshsdk/react's)
     // through a lazy stand-in, so the SDK's ~15 MB of inlined Spark WASM loads
     // only when someone picks the UTXOS wallet. See src/lib/utxos-sdk-lazy.ts.
-    if (!options.isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        "@utxos/sdk$": path.resolve(import.meta.dirname, "src/lib/utxos-sdk-lazy.ts"),
-        "@utxos/sdk-real$": UTXOS_SDK_REAL,
-      };
-    }
+    // `@utxos/sdk-real` is how the stand-in reaches the real package; it must
+    // resolve in every build, because the server compiles the stand-in too
+    // (useUTXOS imports it). Only the redirect of `@utxos/sdk` itself is
+    // browser-only.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@utxos/sdk-real$": UTXOS_SDK_REAL,
+      ...(options.isServer
+        ? {}
+        : {
+            "@utxos/sdk$": path.resolve(
+              import.meta.dirname,
+              "src/lib/utxos-sdk-lazy.ts",
+            ),
+          }),
+    };
     
     return config;
   },
