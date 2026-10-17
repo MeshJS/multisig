@@ -28,6 +28,7 @@ import {
 import LogoutWrapper from "@/components/common/overall-layout/mobile-wrappers/logout-wrapper";
 import dynamic from "next/dynamic";
 import Loading from "@/components/common/overall-layout/loading";
+import { HEADER_CONNECT_ANCHOR } from "@/lib/wallet-runtime";
 import LayoutFrame, { SidebarHomeLink } from "@/components/common/overall-layout/layout-frame";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
@@ -38,8 +39,9 @@ import { cn } from "@/lib/utils";
 // The landing page is only the fallback for a signed-out visitor on a private
 // route. A static import put the whole landing page (hero, effects, sections)
 // into the shared bundle of every route.
-const PageHomepage = dynamic(() =>
-  import("@/components/pages/homepage").then((m) => m.PageHomepage),
+const PageHomepage = dynamic(
+  () => import("@/components/pages/homepage").then((m) => m.PageHomepage),
+  { loading: () => <Loading /> },
 );
 
 // Dynamically import ConnectWallet with SSR disabled to avoid production SSR issues
@@ -638,7 +640,11 @@ export default function RootLayout({
           // On the homepage, the hero renders the wallet connector (avoid double-mount).
           // On all other routes, show it in the header.
           isHomepage ? null : (
-            <ConnectWallet key="wallet-connector" variant="compact" />
+            <ConnectWallet
+              key="wallet-connector"
+              variant="compact"
+              connectAnchor={HEADER_CONNECT_ANCHOR}
+            />
           )
         ) : (
           <>

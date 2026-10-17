@@ -68,12 +68,11 @@ export const api = createTRPCNext<AppRouter>({
       queryClientConfig: {
         defaultOptions: {
           queries: {
-            // Data counts as fresh for 15 s. With the default of 0, moving
-            // between wallet pages re-ran every query each mount even though
-            // the same data had just arrived. Mutations still invalidate what
-            // they change, and focus/reconnect still refetch once stale, so
-            // other signers' activity shows up within 15 s.
-            staleTime: 15_000,
+            // staleTime stays at the default 0 on purpose. A global value
+            // also applies to imperative `utils.*.fetch()` calls, and some of
+            // those are checks that must see current data — e.g. the
+            // fail-closed proxy audit run right before signing. Set staleTime
+            // per query where serving cached data is known to be safe.
             retry: (failureCount, error) => {
               // Don't retry on authorization errors (403/401)
               if (error && typeof error === "object") {

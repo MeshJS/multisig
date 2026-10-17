@@ -12,11 +12,7 @@ import usePublicNetwork from "@/hooks/usePublicNetwork";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
-import dynamic from "next/dynamic";
-
-// Delegating needs a connected wallet and the transaction builder; viewing does
-// not. Loaded on demand so the public explorer stays light.
-const DelegateButton = dynamic(() => import("./delegateButton"), { ssr: false });
+import DelegateButton from "./delegate-slot";
 import VoteHistory from "./voteHistory";
 
 export default function DrepDetailPage() {

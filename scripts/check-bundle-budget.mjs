@@ -6,6 +6,11 @@
  * chunk a page needs on first load (the shared `_app` chunks plus the page's
  * own). Budgets live in scripts/bundle-budget.json.
  *
+ * Not counted: chunks loaded later with import() — the wallet runtime, the
+ * UTXOS SDK, components behind next/dynamic. A dynamic import that fires on
+ * every visit still costs every visitor, so keep those behind a real
+ * condition (see DelegateSlot) rather than relying on this check.
+ *
  * Why this exists: the shared `_app` bundle reached 11.9 MB gzipped — every
  * page, public ones included — because one static import pulled ~15 MB of
  * base64 WASM into it, and nothing noticed. A size gate makes the next such
@@ -36,7 +41,13 @@ const sizes = new Map();
 function gzipped(file) {
   if (!sizes.has(file)) {
     const full = path.join(nextDir, file);
-    const bytes = fs.existsSync(full) ? fs.readFileSync(full) : Buffer.alloc(0);
+    // A manifest entry with no file means the build output is not what this
+    // script expects; counting it as 0 bytes would let anything pass.
+    if (!fs.existsSync(full)) {
+      console.error(`Manifest lists ${file}, which is not in .next — stale or partial build?`);
+      process.exit(2);
+    }
+    const bytes = fs.readFileSync(full);
     sizes.set(file, zlib.gzipSync(bytes, { level: 9 }).length);
   }
   return sizes.get(file);
@@ -46,10 +57,11 @@ const totalJs = (files) =>
 const totalCss = (files) =>
   files.filter((f) => f.endsWith(".css")).reduce((sum, f) => sum + gzipped(f), 0);
 
+// polyfillFiles are served as `nomodule` and only download in browsers
+// without ES-module support, so they are not part of a modern first load.
 const shared = [
   ...new Set([
     ...(manifest.pages["/_app"] ?? []),
-    ...(manifest.polyfillFiles ?? []),
     ...(manifest.rootMainFiles ?? []),
   ]),
 ];

@@ -19,10 +19,37 @@ import { mapWithConcurrency } from "@/utils/concurrency";
 /** Blockfrost's page size for list endpoints. */
 const BLOCKFROST_PAGE_SIZE = 100;
 /**
- * Lookups in flight per wallet refresh. Blockfrost allows a burst of 500 and
- * 10 requests/s sustained, so 8 keeps a refresh fast without draining it.
+ * Lookups in flight per wallet refresh. The browser uses the site's public
+ * Blockfrost key, shared by every visitor (burst 500, 10 requests/s
+ * sustained), so this stays modest: 4 parallel lookups already turn minutes of
+ * serial round trips into seconds.
  */
-const BLOCKFROST_CONCURRENCY = 8;
+const BLOCKFROST_CONCURRENCY = 4;
+
+/** Mesh's providers reject with a JSON string carrying the HTTP status. */
+function isRateLimited(error: unknown): boolean {
+  return typeof error === "string" && /"status":\s*429/.test(error);
+}
+
+/**
+ * GET with a short backoff on 429, so a burst that trips the shared key's
+ * rate limit slows down instead of failing the refresh.
+ */
+async function getWithBackoff(
+  provider: { get: (path: string) => Promise<any> }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  path: string,
+): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const delays = [500, 1500, 4000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await provider.get(path);
+    } catch (error) {
+      const delay = delays[attempt];
+      if (!isRateLimited(error) || delay === undefined) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -99,18 +126,24 @@ export default function WalletDataLoaderWrapper({
         // Then the per-transaction UTxO lookups, several at a time rather than
         // one round trip after another (up to 400 of them for a busy wallet).
         // Order is preserved, so the list stays newest first.
+        // A lookup that still fails after backoff costs only its own detail:
+        // the transaction stays in the list with no inputs/outputs, instead of
+        // one error emptying the whole history.
         const details = await mapWithConcurrency(
           listed,
           BLOCKFROST_CONCURRENCY,
-          (tx) => blockchainProvider.get(`/txs/${tx.tx_hash}/utxos`),
+          (tx) =>
+            getWithBackoff(blockchainProvider, `/txs/${tx.tx_hash}/utxos`).catch(
+              () => null,
+            ),
         );
         listed.forEach((tx, index) => {
           const txData = details[index];
           _transactions.push({
             hash: tx.tx_hash,
             tx: tx,
-            inputs: txData.inputs,
-            outputs: txData.outputs,
+            inputs: txData?.inputs ?? [],
+            outputs: txData?.outputs ?? [],
           });
         });
 
@@ -147,10 +180,15 @@ export default function WalletDataLoaderWrapper({
         const tokens = (assets.amount as { unit: string }[]).filter(
           (asset) => asset.unit !== "lovelace",
         );
+        // A failed metadata lookup falls back to the unit, like a token with
+        // no registered metadata, rather than dropping every asset.
         const infos = await mapWithConcurrency(
           tokens,
           BLOCKFROST_CONCURRENCY,
-          (asset) => blockchainProvider.get(`/assets/${asset.unit}`),
+          (asset) =>
+            getWithBackoff(blockchainProvider, `/assets/${asset.unit}`).catch(
+              () => null,
+            ),
         );
         for (const [index, asset] of tokens.entries()) {
           const assetInfo = infos[index];

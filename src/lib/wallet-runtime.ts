@@ -56,37 +56,50 @@ export function hasRememberedWallet(): boolean {
     if (!raw) return false;
     const parsed = JSON.parse(raw) as { walletName?: unknown } | null;
     // Mesh itself discards a remembered UTXOS session rather than restoring it.
-    return typeof parsed?.walletName === "string" && parsed.walletName !== "utxos";
+    return (
+      typeof parsed?.walletName === "string" && parsed.walletName !== "utxos"
+    );
   } catch {
     return false;
   }
 }
+
+/** Anchor for a connector that does not name one. */
+export const DEFAULT_CONNECT_ANCHOR = "default";
+/** The header connector, in both the public shell and the wallet layout. */
+export const HEADER_CONNECT_ANCHOR = "header";
 
 interface WalletRuntimeState {
   /** Something asked for the runtime; the frame loads it. */
   requested: boolean;
   /** The runtime has mounted and wallet components can render. */
   active: boolean;
-  /** Open the wallet picker as soon as the runtime is up. */
-  openConnect: boolean;
-  request: (options?: { openConnect?: boolean }) => void;
+  /**
+   * Open the wallet picker as soon as the runtime is up — at the connector the
+   * visitor actually clicked (a page can have several), named by its anchor.
+   */
+  openConnect: string | null;
+  request: (options?: { openConnect?: boolean; anchor?: string }) => void;
   markActive: () => void;
-  consumeOpenConnect: () => boolean;
+  /** True once, for the connector whose anchor was clicked. */
+  consumeOpenConnect: (anchor: string) => boolean;
 }
 
 export const useWalletRuntime = create<WalletRuntimeState>()((set, get) => ({
   requested: false,
   active: false,
-  openConnect: false,
+  openConnect: null,
   request: (options) =>
     set({
       requested: true,
-      ...(options?.openConnect ? { openConnect: true } : {}),
+      ...(options?.openConnect
+        ? { openConnect: options.anchor ?? DEFAULT_CONNECT_ANCHOR }
+        : {}),
     }),
   markActive: () => set({ active: true, requested: true }),
-  consumeOpenConnect: () => {
-    const open = get().openConnect;
-    if (open) set({ openConnect: false });
-    return open;
+  consumeOpenConnect: (anchor) => {
+    if (get().openConnect !== anchor) return false;
+    set({ openConnect: null });
+    return true;
   },
 }));

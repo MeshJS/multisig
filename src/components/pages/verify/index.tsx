@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { create } from "zustand";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -67,9 +68,26 @@ function CheckRow({
  * browser and only the digest is compared, which is what makes it safe to check
  * a confidential contract against a proof.
  */
+/**
+ * The proof text and the hashed file live outside the component. This page
+ * can be re-mounted once while it is open — when the visitor clicks Connect
+ * and the light public shell hands over to the wallet runtime — and a pasted
+ * proof must survive that. Nothing here is persisted.
+ */
+const useVerifyInput = create<{
+  proofText: string;
+  file: { name: string; hash: string } | null;
+  setProofText: (text: string) => void;
+  setFile: (file: { name: string; hash: string } | null) => void;
+}>()((set) => ({
+  proofText: "",
+  file: null,
+  setProofText: (proofText) => set({ proofText }),
+  setFile: (file) => set({ file }),
+}));
+
 export default function PageVerifyProof() {
-  const [proofText, setProofText] = useState("");
-  const [file, setFile] = useState<{ name: string; hash: string } | null>(null);
+  const { proofText, setProofText, file, setFile } = useVerifyInput();
   const [hashing, setHashing] = useState(false);
 
   const parsed = useMemo(() => {

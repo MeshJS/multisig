@@ -306,7 +306,7 @@ export function PageHomepage() {
               </>
             ) : (
               <>
-                <ConnectWalletSlot />
+                <ConnectWalletSlot anchor="hero" />
                 <Button size="lg" variant="outline" asChild>
                   <Link href="/features">Explore features</Link>
                 </Button>
@@ -950,7 +950,7 @@ export function PageHomepage() {
                   <Link href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
                 </Button>
               ) : (
-                <ConnectWalletSlot />
+                <ConnectWalletSlot anchor="cta" />
               )}
             </div>
           </div>

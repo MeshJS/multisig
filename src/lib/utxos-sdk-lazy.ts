@@ -22,15 +22,47 @@ import type * as Real from "@utxos/sdk";
 export type * from "@utxos/sdk";
 
 let loading: Promise<typeof Real> | null = null;
+let loaded = false;
 
-/** Load the real SDK once; later calls share the same promise. */
+/**
+ * Load the real SDK once; later calls share the same promise. A failed load is
+ * forgotten so the next attempt retries instead of replaying the failure.
+ */
 export function loadUtxosSdk(): Promise<typeof Real> {
   // The specifier is an alias defined in next.config.js, so TypeScript cannot
   // resolve it; the cast restores the real module's type.
-  loading ??= import(
-    /* webpackChunkName: "utxos-sdk" */ "@utxos/sdk-real" as string
-  ) as Promise<typeof Real>;
+  loading ??= (
+    import(
+      /* webpackChunkName: "utxos-sdk" */ "@utxos/sdk-real" as string
+    ) as Promise<typeof Real>
+  ).then(
+    (sdk) => {
+      loaded = true;
+      return sdk;
+    },
+    (error: unknown) => {
+      loading = null;
+      throw error;
+    },
+  );
   return loading;
+}
+
+/** Whether `Web3Wallet.enable` can run without a download first. */
+export function isUtxosSdkLoaded(): boolean {
+  return loaded;
+}
+
+/**
+ * Start the download ahead of the click that needs it. `enable` opens a
+ * sign-in popup, and browsers only allow that within a few seconds of the
+ * user's click — the ~7 MB gzipped SDK can take longer than that to arrive.
+ * Call this as soon as a UTXOS option is on screen or about to be.
+ */
+export function preloadUtxosSdk(): void {
+  void loadUtxosSdk().catch(() => {
+    // Preloading is best-effort; `enable` reports a real failure.
+  });
 }
 
 export const Web3Wallet = {

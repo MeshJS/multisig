@@ -5,6 +5,7 @@ import ConnectWalletSlot from "@/components/common/connect-wallet-slot";
 import LayoutFrame, {
   SidebarHomeLink,
 } from "@/components/common/overall-layout/layout-frame";
+import { HEADER_CONNECT_ANCHOR } from "@/lib/wallet-runtime";
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 import { MobileNavigation } from "@/components/ui/mobile-navigation";
 
@@ -32,7 +33,9 @@ export default function PublicShell({ children }: { children: ReactNode }) {
       }
       headerRight={
         // On the homepage the hero carries the connector.
-        isHomepage ? null : <ConnectWalletSlot variant="compact" />
+        isHomepage ? null : (
+          <ConnectWalletSlot variant="compact" anchor={HEADER_CONNECT_ANCHOR} />
+        )
       }
       sidebar={
         <>

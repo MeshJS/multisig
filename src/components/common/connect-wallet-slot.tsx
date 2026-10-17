@@ -3,7 +3,7 @@ import { Loader2, Wallet } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useWalletRuntime } from "@/lib/wallet-runtime";
+import { DEFAULT_CONNECT_ANCHOR, useWalletRuntime } from "@/lib/wallet-runtime";
 
 const ConnectWallet = dynamic(
   () => import("@/components/common/cardano-objects/connect-wallet"),
@@ -23,21 +23,28 @@ type Variant = "hero" | "compact";
  */
 export default function ConnectWalletSlot({
   variant = "hero",
+  anchor = DEFAULT_CONNECT_ANCHOR,
 }: {
   variant?: Variant;
+  /**
+   * Names this connector, so after the runtime loads the picker opens here and
+   * not at another connector on the same page.
+   */
+  anchor?: string;
 }) {
   const active = useWalletRuntime((s) => s.active);
   const requested = useWalletRuntime((s) => s.requested);
   const request = useWalletRuntime((s) => s.request);
 
-  if (active) return <ConnectWallet variant={variant} />;
+  if (active) return <ConnectWallet variant={variant} connectAnchor={anchor} />;
 
   return (
     <Button
       variant="secondary"
       size={variant === "hero" ? "lg" : "default"}
-      disabled={requested}
-      onClick={() => request({ openConnect: true })}
+      // Stays clickable while the runtime is loading (e.g. for a remembered
+      // wallet), so the click still records where to open the picker.
+      onClick={() => request({ openConnect: true, anchor })}
       className={cn(
         "gap-2 rounded-full border border-zinc-200 bg-white text-zinc-900 shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800",
         variant === "compact" && "h-auto px-4 py-2",

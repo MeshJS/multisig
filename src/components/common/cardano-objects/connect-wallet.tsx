@@ -24,7 +24,8 @@ import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useWalletDetection } from "@/hooks/useWalletDetection";
-import { useWalletRuntime } from "@/lib/wallet-runtime";
+import { DEFAULT_CONNECT_ANCHOR, useWalletRuntime } from "@/lib/wallet-runtime";
+import { preloadUtxosSdk } from "@/lib/utxos-sdk-lazy";
 
 /**
  * Where the connector may render the large "Get Started with UTXOS" call to
@@ -37,8 +38,11 @@ export type ConnectWalletVariant = "hero" | "compact";
 // Main component - uses walletDetectionKey to force remount of useWalletList
 export default function ConnectWallet({
   variant = "hero",
+  connectAnchor = DEFAULT_CONNECT_ANCHOR,
 }: {
   variant?: ConnectWalletVariant;
+  /** See ConnectWalletSlot: which click this connector answers. */
+  connectAnchor?: string;
 } = {}) {
   // Force re-mount key for useWalletList when wallets are detected
   const [walletDetectionKey, setWalletDetectionKey] = useState(0);
@@ -77,11 +81,23 @@ export default function ConnectWallet({
     };
   }, []);
 
-  return <ConnectWalletInner key={walletDetectionKey} variant={variant} />;
+  return (
+    <ConnectWalletInner
+      key={walletDetectionKey}
+      variant={variant}
+      connectAnchor={connectAnchor}
+    />
+  );
 }
 
 // Internal component that uses useWalletList - will remount when key changes
-function ConnectWalletInner({ variant }: { variant: ConnectWalletVariant }) {
+function ConnectWalletInner({
+  variant,
+  connectAnchor,
+}: {
+  variant: ConnectWalletVariant;
+  connectAnchor: string;
+}) {
   const wallets = useWalletList();
   const networkId = useNetwork();
   const assets = useAssets();
@@ -93,6 +109,7 @@ function ConnectWalletInner({ variant }: { variant: ConnectWalletVariant }) {
       networkId={networkId}
       assets={assets}
       variant={variant}
+      connectAnchor={connectAnchor}
     />
   );
 }
@@ -103,11 +120,13 @@ function ConnectWalletContent({
   networkId,
   assets,
   variant,
+  connectAnchor,
 }: {
   wallets: ReturnType<typeof useWalletList>;
   networkId: ReturnType<typeof useNetwork>;
   assets: ReturnType<typeof useAssets>;
   variant: ConnectWalletVariant;
+  connectAnchor: string;
 }) {
   const setNetwork = useSiteStore((state) => state.setNetwork);
   const pastUtxosEnabled = useUserStore((state) => state.pastUtxosEnabled);
@@ -198,6 +217,9 @@ function ConnectWalletContent({
     if (open && checkIfSheetOpen()) {
       return; // Don't open if Sheet is open
     }
+    // The menu offers UTXOS; start its download now so a click on it can
+    // still open the sign-in popup within the browser's allowance.
+    if (open) preloadUtxosSdk();
     setDropdownOpen(open);
   }, [checkIfSheetOpen]);
 
@@ -214,10 +236,11 @@ function ConnectWalletContent({
   // once detection has settled, exactly once.
   const consumeOpenConnect = useWalletRuntime((s) => s.consumeOpenConnect);
   useEffect(() => {
-    if (!detectingWallets && consumeOpenConnect()) {
+    if (!detectingWallets && consumeOpenConnect(connectAnchor)) {
+      preloadUtxosSdk();
       setDropdownOpen(true);
     }
-  }, [detectingWallets, consumeOpenConnect]);
+  }, [detectingWallets, consumeOpenConnect, connectAnchor]);
 
   // Initialize MeshJS persistence on mount
   useEffect(() => {
@@ -581,7 +604,7 @@ function ConnectWalletContent({
 
   const handleUtxosEnable = async () => {
     try {
-      await enableUtxos();
+      await enableUtxos({ userGesture: true });
     } catch (error) {
       console.error("[UTXOS] Failed to enable wallet:", error);
     }
@@ -735,7 +758,14 @@ function ConnectWalletContent({
     wallets.length === 0 &&
     !isAnyWalletConnected;
 
-  if (noWalletDetected && variant === "hero") {
+  // The hero's no-wallet view leads with the UTXOS button: fetch its SDK while
+  // the visitor reads, so the click can open the sign-in popup straight away.
+  const leadsWithUtxos = noWalletDetected && variant === "hero";
+  useEffect(() => {
+    if (leadsWithUtxos) preloadUtxosSdk();
+  }, [leadsWithUtxos]);
+
+  if (leadsWithUtxos) {
     return (
       <div className="flex flex-col items-center gap-2">
         <Button

@@ -5,11 +5,7 @@ import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Link from "next/link";
 import usePublicNetwork from "@/hooks/usePublicNetwork";
-import dynamic from "next/dynamic";
-
-// Delegating needs a connected wallet and the transaction builder; viewing does
-// not. Loaded on demand so the public explorer stays light.
-const DelegateButton = dynamic(() => import("./id/delegateButton"), { ssr: false });
+import DelegateButton from "./id/delegate-slot";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ActiveIndicator from "./activeIndicator";

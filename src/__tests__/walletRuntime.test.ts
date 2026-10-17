@@ -29,7 +29,7 @@ describe("wallet runtime policy", () => {
     useWalletRuntime.setState({
       requested: false,
       active: false,
-      openConnect: false,
+      openConnect: null,
     });
   });
 
@@ -76,16 +76,19 @@ describe("wallet runtime policy", () => {
     expect(hasRememberedWallet()).toBe(false);
   });
 
-  it("opens the picker once after a connect request, not on every mount", () => {
-    const store = useWalletRuntime.getState();
-    store.request({ openConnect: true });
+  it("opens the picker once, at the connector that was clicked", () => {
+    useWalletRuntime.getState().request({ openConnect: true, anchor: "cta" });
     expect(useWalletRuntime.getState().requested).toBe(true);
-    expect(useWalletRuntime.getState().consumeOpenConnect()).toBe(true);
-    expect(useWalletRuntime.getState().consumeOpenConnect()).toBe(false);
+    // Another connector on the page (the hero) must not take the click.
+    expect(useWalletRuntime.getState().consumeOpenConnect("hero")).toBe(false);
+    expect(useWalletRuntime.getState().consumeOpenConnect("cta")).toBe(true);
+    expect(useWalletRuntime.getState().consumeOpenConnect("cta")).toBe(false);
   });
 
   it("a background request (remembered wallet) does not open the picker", () => {
     useWalletRuntime.getState().request();
-    expect(useWalletRuntime.getState().consumeOpenConnect()).toBe(false);
+    expect(useWalletRuntime.getState().consumeOpenConnect("default")).toBe(
+      false,
+    );
   });
 });
