@@ -123,11 +123,11 @@ export default function PageWallets() {
       <>
         <PageHeader pageTitle="Wallets">
           <Button size="sm" asChild>
-            <Link href="/wallets/new-wallet-flow/save">New Wallet</Link>
+            <Link prefetch={false} href="/wallets/new-wallet-flow/save">New Wallet</Link>
           </Button>
           <ImportTransferDialog />
           <Button size="sm" variant="secondary" asChild>
-            <Link href="/wallets/import-wallet">Import Wallet</Link>
+            <Link prefetch={false} href="/wallets/import-wallet">Import Wallet</Link>
           </Button>
           {wallets && wallets.some((wallet) => wallet.isArchived) && (
             <Button

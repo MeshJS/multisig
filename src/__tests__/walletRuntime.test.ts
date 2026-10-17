@@ -13,6 +13,7 @@ const store = new Map<string, string>();
 import {
   LIGHT_ROUTES,
   hasRememberedWallet,
+  isLightHref,
   isLightRoute,
   useWalletRuntime,
 } from "@/lib/wallet-runtime";
@@ -39,6 +40,15 @@ describe("wallet runtime policy", () => {
     expect(isLightRoute("/wallets/[wallet]")).toBe(false);
     expect(isLightRoute("/api-docs")).toBe(false); // signs a bearer token
     expect(isLightRoute("/dapps")).toBe(false);
+  });
+
+  it("tells concrete light URLs from wallet URLs, for link prefetching", () => {
+    expect(isLightHref("/features")).toBe(true);
+    expect(isLightHref("/blog/my-post")).toBe(true);
+    expect(isLightHref("/governance/drep/drep1xyz?tab=votes")).toBe(true);
+    expect(isLightHref("/api-docs")).toBe(false);
+    expect(isLightHref("/wallets/abc/documents")).toBe(false);
+    expect(isLightHref("/blog/a/b")).toBe(false);
   });
 
   it("never makes a private route light", () => {

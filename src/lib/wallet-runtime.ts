@@ -43,6 +43,22 @@ export const LIGHT_ROUTES: ReadonlySet<string> = new Set([
 export const isLightRoute = (pathname: string): boolean =>
   LIGHT_ROUTES.has(pathname);
 
+const LIGHT_ROUTE_PATTERNS = [...LIGHT_ROUTES].map(
+  (route) =>
+    new RegExp(`^${route.replace(/\[[^\]]+\]/g, "[^/]+")}/?$`),
+);
+
+/**
+ * Whether a concrete URL (`/blog/my-post`, not `/blog/[slug]`) is a light
+ * route. Links use this to decide whether to prefetch: Next prefetches every
+ * in-view link in production, and prefetching a wallet route downloads the
+ * Cardano stack (~2 MB gz) on a page that otherwise never loads it.
+ */
+export function isLightHref(href: string): boolean {
+  const path = href.split(/[?#]/)[0] ?? href;
+  return LIGHT_ROUTE_PATTERNS.some((pattern) => pattern.test(path));
+}
+
 /** localStorage key @meshsdk/react uses to restore a connection on load. */
 const MESH_PERSIST_KEY = "mesh-wallet-persist";
 

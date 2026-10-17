@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isLightHref } from "@/lib/wallet-runtime";
 import Logo from "@/components/common/overall-layout/logo";
 
 const productLinks = [
@@ -82,6 +83,7 @@ export default function SiteFooter() {
                 <li key={link.href}>
                   <Link
                     href={link.href}
+                    prefetch={isLightHref(link.href) ? undefined : false}
                     className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {link.label}
@@ -113,6 +115,7 @@ export default function SiteFooter() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
+                      prefetch={isLightHref(link.href) ? undefined : false}
                       className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {link.label}
