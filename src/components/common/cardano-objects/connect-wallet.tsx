@@ -46,6 +46,11 @@ export default function ConnectWallet({
 } = {}) {
   // Force re-mount key for useWalletList when wallets are detected
   const [walletDetectionKey, setWalletDetectionKey] = useState(0);
+  // Whether the inner component has stopped re-mounting. An automatic opening
+  // of the picker (after a Connect click loaded the wallet runtime) must wait
+  // for this: opened earlier, it lands on the instance the detection re-mount
+  // then throws away, and the visitor sees the menu flash shut.
+  const [settled, setSettled] = useState(false);
   const hasTriggeredRemountRef = useRef(false);
   const remountTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -64,6 +69,7 @@ export default function ConnectWallet({
         // Delay to give MeshJS time to process wallets, but only remount once
         remountTimeoutRef.current = setTimeout(() => {
           setWalletDetectionKey((prev) => prev + 1);
+          setSettled(true);
           remountTimeoutRef.current = null;
         }, 300);
       }
@@ -71,6 +77,15 @@ export default function ConnectWallet({
     pollingInterval: 100,
     maxPollingTime: 10000,
   });
+
+  // No extension injected yet: there will be no re-mount unless one appears
+  // late, so treat the component as settled after a short grace period.
+  useEffect(() => {
+    const cardano = (window as { cardano?: object }).cardano ?? {};
+    if (Object.keys(cardano).length > 0) return;
+    const timer = setTimeout(() => setSettled(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -86,6 +101,7 @@ export default function ConnectWallet({
       key={walletDetectionKey}
       variant={variant}
       connectAnchor={connectAnchor}
+      autoOpenReady={settled}
     />
   );
 }
@@ -94,9 +110,11 @@ export default function ConnectWallet({
 function ConnectWalletInner({
   variant,
   connectAnchor,
+  autoOpenReady,
 }: {
   variant: ConnectWalletVariant;
   connectAnchor: string;
+  autoOpenReady: boolean;
 }) {
   const wallets = useWalletList();
   const networkId = useNetwork();
@@ -110,6 +128,7 @@ function ConnectWalletInner({
       assets={assets}
       variant={variant}
       connectAnchor={connectAnchor}
+      autoOpenReady={autoOpenReady}
     />
   );
 }
@@ -121,12 +140,14 @@ function ConnectWalletContent({
   assets,
   variant,
   connectAnchor,
+  autoOpenReady,
 }: {
   wallets: ReturnType<typeof useWalletList>;
   networkId: ReturnType<typeof useNetwork>;
   assets: ReturnType<typeof useAssets>;
   variant: ConnectWalletVariant;
   connectAnchor: string;
+  autoOpenReady: boolean;
 }) {
   const setNetwork = useSiteStore((state) => state.setNetwork);
   const pastUtxosEnabled = useUserStore((state) => state.pastUtxosEnabled);
@@ -233,14 +254,14 @@ function ConnectWalletContent({
 
   // The visitor clicked "Connect wallet" in the light public shell, which only
   // loaded the wallet runtime. Finish what they asked for: open the picker
-  // once detection has settled, exactly once.
+  // once detection has settled (see `settled` above), exactly once.
   const consumeOpenConnect = useWalletRuntime((s) => s.consumeOpenConnect);
   useEffect(() => {
-    if (!detectingWallets && consumeOpenConnect(connectAnchor)) {
+    if (autoOpenReady && !detectingWallets && consumeOpenConnect(connectAnchor)) {
       preloadUtxosSdk();
       setDropdownOpen(true);
     }
-  }, [detectingWallets, consumeOpenConnect, connectAnchor]);
+  }, [autoOpenReady, detectingWallets, consumeOpenConnect, connectAnchor]);
 
   // Initialize MeshJS persistence on mount
   useEffect(() => {
