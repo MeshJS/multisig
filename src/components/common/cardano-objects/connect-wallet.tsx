@@ -24,6 +24,8 @@ import { useWalletContext, WalletState } from "@/hooks/useWalletContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useWalletDetection } from "@/hooks/useWalletDetection";
+import { DEFAULT_CONNECT_ANCHOR, useWalletRuntime } from "@/lib/wallet-runtime";
+import { preloadUtxosSdk } from "@/lib/utxos-sdk-lazy";
 
 /**
  * Where the connector may render the large "Get Started with UTXOS" call to
@@ -36,11 +38,19 @@ export type ConnectWalletVariant = "hero" | "compact";
 // Main component - uses walletDetectionKey to force remount of useWalletList
 export default function ConnectWallet({
   variant = "hero",
+  connectAnchor = DEFAULT_CONNECT_ANCHOR,
 }: {
   variant?: ConnectWalletVariant;
+  /** See ConnectWalletSlot: which click this connector answers. */
+  connectAnchor?: string;
 } = {}) {
   // Force re-mount key for useWalletList when wallets are detected
   const [walletDetectionKey, setWalletDetectionKey] = useState(0);
+  // Whether the inner component has stopped re-mounting. An automatic opening
+  // of the picker (after a Connect click loaded the wallet runtime) must wait
+  // for this: opened earlier, it lands on the instance the detection re-mount
+  // then throws away, and the visitor sees the menu flash shut.
+  const [settled, setSettled] = useState(false);
   const hasTriggeredRemountRef = useRef(false);
   const remountTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -59,6 +69,7 @@ export default function ConnectWallet({
         // Delay to give MeshJS time to process wallets, but only remount once
         remountTimeoutRef.current = setTimeout(() => {
           setWalletDetectionKey((prev) => prev + 1);
+          setSettled(true);
           remountTimeoutRef.current = null;
         }, 300);
       }
@@ -66,6 +77,15 @@ export default function ConnectWallet({
     pollingInterval: 100,
     maxPollingTime: 10000,
   });
+
+  // No extension injected yet: there will be no re-mount unless one appears
+  // late, so treat the component as settled after a short grace period.
+  useEffect(() => {
+    const cardano = (window as { cardano?: object }).cardano ?? {};
+    if (Object.keys(cardano).length > 0) return;
+    const timer = setTimeout(() => setSettled(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -76,11 +96,26 @@ export default function ConnectWallet({
     };
   }, []);
 
-  return <ConnectWalletInner key={walletDetectionKey} variant={variant} />;
+  return (
+    <ConnectWalletInner
+      key={walletDetectionKey}
+      variant={variant}
+      connectAnchor={connectAnchor}
+      autoOpenReady={settled}
+    />
+  );
 }
 
 // Internal component that uses useWalletList - will remount when key changes
-function ConnectWalletInner({ variant }: { variant: ConnectWalletVariant }) {
+function ConnectWalletInner({
+  variant,
+  connectAnchor,
+  autoOpenReady,
+}: {
+  variant: ConnectWalletVariant;
+  connectAnchor: string;
+  autoOpenReady: boolean;
+}) {
   const wallets = useWalletList();
   const networkId = useNetwork();
   const assets = useAssets();
@@ -92,6 +127,8 @@ function ConnectWalletInner({ variant }: { variant: ConnectWalletVariant }) {
       networkId={networkId}
       assets={assets}
       variant={variant}
+      connectAnchor={connectAnchor}
+      autoOpenReady={autoOpenReady}
     />
   );
 }
@@ -102,11 +139,15 @@ function ConnectWalletContent({
   networkId,
   assets,
   variant,
+  connectAnchor,
+  autoOpenReady,
 }: {
   wallets: ReturnType<typeof useWalletList>;
   networkId: ReturnType<typeof useNetwork>;
   assets: ReturnType<typeof useAssets>;
   variant: ConnectWalletVariant;
+  connectAnchor: string;
+  autoOpenReady: boolean;
 }) {
   const setNetwork = useSiteStore((state) => state.setNetwork);
   const pastUtxosEnabled = useUserStore((state) => state.pastUtxosEnabled);
@@ -197,6 +238,9 @@ function ConnectWalletContent({
     if (open && checkIfSheetOpen()) {
       return; // Don't open if Sheet is open
     }
+    // The menu offers UTXOS; start its download now so a click on it can
+    // still open the sign-in popup within the browser's allowance.
+    if (open) preloadUtxosSdk();
     setDropdownOpen(open);
   }, [checkIfSheetOpen]);
 
@@ -207,6 +251,17 @@ function ConnectWalletContent({
       setDetectingWallets(false);
     }
   }, [wallets]);
+
+  // The visitor clicked "Connect wallet" in the light public shell, which only
+  // loaded the wallet runtime. Finish what they asked for: open the picker
+  // once detection has settled (see `settled` above), exactly once.
+  const consumeOpenConnect = useWalletRuntime((s) => s.consumeOpenConnect);
+  useEffect(() => {
+    if (autoOpenReady && !detectingWallets && consumeOpenConnect(connectAnchor)) {
+      preloadUtxosSdk();
+      setDropdownOpen(true);
+    }
+  }, [autoOpenReady, detectingWallets, consumeOpenConnect, connectAnchor]);
 
   // Initialize MeshJS persistence on mount
   useEffect(() => {
@@ -570,7 +625,7 @@ function ConnectWalletContent({
 
   const handleUtxosEnable = async () => {
     try {
-      await enableUtxos();
+      await enableUtxos({ userGesture: true });
     } catch (error) {
       console.error("[UTXOS] Failed to enable wallet:", error);
     }
@@ -724,7 +779,14 @@ function ConnectWalletContent({
     wallets.length === 0 &&
     !isAnyWalletConnected;
 
-  if (noWalletDetected && variant === "hero") {
+  // The hero's no-wallet view leads with the UTXOS button: fetch its SDK while
+  // the visitor reads, so the click can open the sign-in popup straight away.
+  const leadsWithUtxos = noWalletDetected && variant === "hero";
+  useEffect(() => {
+    if (leadsWithUtxos) preloadUtxosSdk();
+  }, [leadsWithUtxos]);
+
+  if (leadsWithUtxos) {
     return (
       <div className="flex flex-col items-center gap-2">
         <Button

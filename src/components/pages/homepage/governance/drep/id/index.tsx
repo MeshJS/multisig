@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import SectionTitle from "@/components/ui/section-title";
-import { getProvider } from "@/utils/get-provider";
+import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
 import Metadata from "./metadata";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,7 +12,7 @@ import usePublicNetwork from "@/hooks/usePublicNetwork";
 import RowLabelInfo from "@/components/common/row-label-info";
 import { extractJsonLdValue } from "@/utils/jsonLdParser";
 import { Button } from "@/components/ui/button";
-import DelegateButton from "./delegateButton";
+import DelegateButton from "./delegate-slot";
 import VoteHistory from "./voteHistory";
 
 export default function DrepDetailPage() {

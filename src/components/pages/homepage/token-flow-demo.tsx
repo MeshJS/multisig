@@ -7,7 +7,7 @@ import type { AddressLabeler, AddressPartyType } from "@/types/token-flow";
 import type { TxInfo } from "@/types/transaction";
 import TokenFlowTimeline from "@/components/common/token-flow/timeline";
 import { Reveal } from "@/components/ui/reveal";
-import { getProvider } from "@/utils/get-provider";
+import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import type { TimelineTxRef } from "@/utils/token-flow";
 
 /**

@@ -14,6 +14,20 @@ import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
 // WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts
 import { useUserStore } from "@/lib/zustand/user";
+import { mapWithConcurrency } from "@/utils/concurrency";
+import { createBlockfrostThrottle } from "@/utils/blockfrost-throttle";
+
+type BlockfrostThrottle = ReturnType<typeof createBlockfrostThrottle>;
+
+/** Blockfrost's page size for list endpoints. */
+const BLOCKFROST_PAGE_SIZE = 100;
+/**
+ * Lookups in flight per wallet refresh. The throttle caps throughput
+ * separately, at 5 requests/s: about what the old serial loop made, and half
+ * of Blockfrost's sustained limit. Concurrency only has to keep the throttle
+ * busy across slow round trips.
+ */
+const BLOCKFROST_CONCURRENCY = 4;
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -70,34 +84,46 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getTransactionsOnChain() {
+  async function getTransactionsOnChain(throttle: BlockfrostThrottle) {
     try {
       if (appWallet) {
         const maxPage = 4;
         const _transactions: OnChainTransaction[] = [];
         const blockchainProvider = getProvider(network);
 
+        // List pages first (newest first); stop at the first short page.
+        const listed: TxInfo[] = [];
         for (let i = 1; i <= maxPage; i++) {
           const transactions: TxInfo[] = await blockchainProvider.get(
             `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
           );
-
-          if (transactions.length === 0) {
-            break;
-          }
-
-          for (const tx of transactions) {
-            const txData = await blockchainProvider.get(
-              `/txs/${tx.tx_hash}/utxos`,
-            );
-            _transactions.push({
-              hash: tx.tx_hash,
-              tx: tx,
-              inputs: txData.inputs,
-              outputs: txData.outputs,
-            });
-          }
+          listed.push(...transactions);
+          if (transactions.length < BLOCKFROST_PAGE_SIZE) break;
         }
+
+        // Then the per-transaction UTxO lookups, several at a time rather than
+        // one round trip after another (up to 400 of them for a busy wallet).
+        // Order is preserved, so the list stays newest first.
+        // A lookup that still fails after backoff costs only its own detail:
+        // the transaction stays in the list with no inputs/outputs, instead of
+        // one error emptying the whole history.
+        const details = await mapWithConcurrency(
+          listed,
+          BLOCKFROST_CONCURRENCY,
+          (tx) =>
+            throttle.get(blockchainProvider, `/txs/${tx.tx_hash}/utxos`).catch(
+              () => null,
+            ),
+        );
+        listed.forEach((tx, index) => {
+          const txData = details[index];
+          _transactions.push({
+            hash: tx.tx_hash,
+            tx: tx,
+            inputs: txData?.inputs ?? [],
+            outputs: txData?.outputs ?? [],
+          });
+        });
 
         if (_transactions.length > 0) {
           setWalletTransactions(appWallet?.id, _transactions);
@@ -114,7 +140,7 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getWalletAssets() {
+  async function getWalletAssets(throttle: BlockfrostThrottle) {
     try {
       const blockchainProvider = getProvider(network);
       const assets = await blockchainProvider.get(
@@ -127,10 +153,23 @@ export default function WalletDataLoaderWrapper({
             unit: asset.unit,
             quantity: asset.quantity,
           });
-          if (asset.unit === "lovelace") continue;
-          const assetInfo = await blockchainProvider.get(
-            `/assets/${asset.unit}`,
-          );
+        }
+        // Metadata per native asset, fetched concurrently instead of serially.
+        const tokens = (assets.amount as { unit: string }[]).filter(
+          (asset) => asset.unit !== "lovelace",
+        );
+        // A failed metadata lookup falls back to the unit, like a token with
+        // no registered metadata, rather than dropping every asset.
+        const infos = await mapWithConcurrency(
+          tokens,
+          BLOCKFROST_CONCURRENCY,
+          (asset) =>
+            throttle.get(blockchainProvider, `/assets/${asset.unit}`).catch(
+              () => null,
+            ),
+        );
+        for (const [index, asset] of tokens.entries()) {
+          const assetInfo = infos[index];
           setWalletAssetMetadata(
             asset.unit,
             assetInfo?.metadata?.name ||
@@ -224,11 +263,20 @@ export default function WalletDataLoaderWrapper({
 
     fetchingTransactions.current = true;
     setLoading(true);
-    await fetchUtxos();
-    await getTransactionsOnChain();
-    await getWalletAssets();
-    await getDRepInfo();
-    await fetchProxyData(); // Fetch proxy data
+    // Independent sources — run them together. Each catches its own errors
+    // (fetchUtxos aside, which allSettled absorbs), so one slow or failing
+    // source no longer holds the others back.
+    // One throttle per refresh, shared by both fan-outs, so together they stay
+    // under Blockfrost's per-client rate and leave room for the calls a
+    // transaction build makes meanwhile.
+    const throttle = createBlockfrostThrottle({ minIntervalMs: 200 });
+    await Promise.allSettled([
+      fetchUtxos(),
+      getTransactionsOnChain(throttle),
+      getWalletAssets(throttle),
+      getDRepInfo(),
+      fetchProxyData(),
+    ]);
     void ctx.transaction.getPendingTransactions.invalidate();
     void ctx.transaction.getAllTransactions.invalidate();
     // Also refresh proxy data

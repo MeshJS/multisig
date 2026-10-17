@@ -68,6 +68,11 @@ export const api = createTRPCNext<AppRouter>({
       queryClientConfig: {
         defaultOptions: {
           queries: {
+            // staleTime stays at the default 0 on purpose. A global value
+            // also applies to imperative `utils.*.fetch()` calls, and some of
+            // those are checks that must see current data — e.g. the
+            // fail-closed proxy audit run right before signing. Set staleTime
+            // per query where serving cached data is known to be safe.
             retry: (failureCount, error) => {
               // Don't retry on authorization errors (403/401)
               if (error && typeof error === "object") {

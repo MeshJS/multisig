@@ -1,5 +1,12 @@
 import { PageHomepage } from "@/components/pages/homepage";
-import PageWallets from "@/components/pages/homepage/wallets";
+import dynamic from "next/dynamic";
+import Loading from "@/components/common/overall-layout/loading";
+
+// The signed-in dashboard needs the wallet stack; a signed-out visitor never
+// sees it, so it is not part of the homepage bundle.
+const PageWallets = dynamic(() => import("@/components/pages/homepage/wallets"), {
+  loading: () => <Loading />,
+});
 import useUser from "@/hooks/useUser";
 
 export const getServerSideProps = () => ({ props: {} });
