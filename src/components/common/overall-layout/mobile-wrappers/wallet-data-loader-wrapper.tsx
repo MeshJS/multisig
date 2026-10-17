@@ -15,41 +15,19 @@ import { useProxyActions } from "@/lib/zustand/proxy";
 // WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts
 import { useUserStore } from "@/lib/zustand/user";
 import { mapWithConcurrency } from "@/utils/concurrency";
+import { createBlockfrostThrottle } from "@/utils/blockfrost-throttle";
+
+type BlockfrostThrottle = ReturnType<typeof createBlockfrostThrottle>;
 
 /** Blockfrost's page size for list endpoints. */
 const BLOCKFROST_PAGE_SIZE = 100;
 /**
- * Lookups in flight per wallet refresh. The browser uses the site's public
- * Blockfrost key, shared by every visitor (burst 500, 10 requests/s
- * sustained), so this stays modest: 4 parallel lookups already turn minutes of
- * serial round trips into seconds.
+ * Lookups in flight per wallet refresh. The throttle caps throughput
+ * separately, at 5 requests/s: about what the old serial loop made, and half
+ * of Blockfrost's sustained limit. Concurrency only has to keep the throttle
+ * busy across slow round trips.
  */
 const BLOCKFROST_CONCURRENCY = 4;
-
-/** Mesh's providers reject with a JSON string carrying the HTTP status. */
-function isRateLimited(error: unknown): boolean {
-  return typeof error === "string" && /"status":\s*429/.test(error);
-}
-
-/**
- * GET with a short backoff on 429, so a burst that trips the shared key's
- * rate limit slows down instead of failing the refresh.
- */
-async function getWithBackoff(
-  provider: { get: (path: string) => Promise<any> }, // eslint-disable-line @typescript-eslint/no-explicit-any
-  path: string,
-): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
-  const delays = [500, 1500, 4000];
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await provider.get(path);
-    } catch (error) {
-      const delay = delays[attempt];
-      if (!isRateLimited(error) || delay === undefined) throw error;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-}
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -106,7 +84,7 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getTransactionsOnChain() {
+  async function getTransactionsOnChain(throttle: BlockfrostThrottle) {
     try {
       if (appWallet) {
         const maxPage = 4;
@@ -133,7 +111,7 @@ export default function WalletDataLoaderWrapper({
           listed,
           BLOCKFROST_CONCURRENCY,
           (tx) =>
-            getWithBackoff(blockchainProvider, `/txs/${tx.tx_hash}/utxos`).catch(
+            throttle.get(blockchainProvider, `/txs/${tx.tx_hash}/utxos`).catch(
               () => null,
             ),
         );
@@ -162,7 +140,7 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getWalletAssets() {
+  async function getWalletAssets(throttle: BlockfrostThrottle) {
     try {
       const blockchainProvider = getProvider(network);
       const assets = await blockchainProvider.get(
@@ -186,7 +164,7 @@ export default function WalletDataLoaderWrapper({
           tokens,
           BLOCKFROST_CONCURRENCY,
           (asset) =>
-            getWithBackoff(blockchainProvider, `/assets/${asset.unit}`).catch(
+            throttle.get(blockchainProvider, `/assets/${asset.unit}`).catch(
               () => null,
             ),
         );
@@ -288,10 +266,14 @@ export default function WalletDataLoaderWrapper({
     // Independent sources — run them together. Each catches its own errors
     // (fetchUtxos aside, which allSettled absorbs), so one slow or failing
     // source no longer holds the others back.
+    // One throttle per refresh, shared by both fan-outs, so together they stay
+    // under Blockfrost's per-client rate and leave room for the calls a
+    // transaction build makes meanwhile.
+    const throttle = createBlockfrostThrottle({ minIntervalMs: 200 });
     await Promise.allSettled([
       fetchUtxos(),
-      getTransactionsOnChain(),
-      getWalletAssets(),
+      getTransactionsOnChain(throttle),
+      getWalletAssets(throttle),
       getDRepInfo(),
       fetchProxyData(),
     ]);
