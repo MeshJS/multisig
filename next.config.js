@@ -66,7 +66,10 @@ const config = {
     // Same lazy UTXOS stand-in as the webpack alias below, for `next dev`.
     resolveAlias: {
       "@utxos/sdk": { browser: "./src/lib/utxos-sdk-lazy.ts" },
-      "@utxos/sdk-real": { browser: UTXOS_SDK_REAL },
+      // Turbopack only accepts project-relative paths here.
+      "@utxos/sdk-real": {
+        browser: "./" + path.relative(import.meta.dirname, UTXOS_SDK_REAL),
+      },
     },
   },
   
