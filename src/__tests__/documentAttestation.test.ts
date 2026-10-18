@@ -278,3 +278,22 @@ describe("the chain", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("an untrusted key id", () => {
+  it("is unknown when it names a property every object inherits", () => {
+    // `publicKeysById` is a plain object built from request JSON, so a lookup
+    // by "constructor" must not find Object.prototype's function and report a
+    // bad signature — the key is simply not one the caller recognises.
+    for (const keyId of ["constructor", "toString", "__proto__"]) {
+      const [record] = chain(1);
+      const result = verifyAttestationChain(
+        [{ ...record!, publicKeyId: keyId }],
+        KEYS,
+      );
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        `sequence 1: signed by unknown key "${keyId}".`,
+      ]);
+    }
+  });
+});
