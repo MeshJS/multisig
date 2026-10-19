@@ -322,7 +322,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ## Month 8 — November 2026
 
-**Focus:** Proxy voting, testing, backlog.
+**Focus:** Proxy voting, connected-wallet onboarding and resource access, responsive layouts, testing, backlog.
 
 **Quirin**
 
@@ -335,6 +335,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
+| **Connected-wallet onboarding, resource access & responsive layouts** — keep the landing page available after sign-in; add persistent Learn & Help navigation, standalone MCP documentation, discoverable bot/developer guides, and contextual, reopenable onboarding. Fix Overview AI activity/Contacts placement, Assets card width, profile bot grant controls, and task board crowding; extend responsive checks to tablet widths and populated states. Scope and acceptance criteria: [feature note](vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md). | |
 | Backlog cleanup, dependency/security updates | |
 | Monthly report | |
 
@@ -342,7 +343,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ## Month 9 — December 2026
 
-**Focus:** Document Sign-Off checkpoints, vesting, growth.
+**Focus:** Document Sign-Off checkpoints, vesting, Midnight payout-metadata research, social videos, growth.
 
 **Quirin**
 
@@ -356,6 +357,8 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 | Task | Issues |
 |------|--------|
 | User profiles and contacts — the `Contact` model and profile-image storage already exist; this is the UI and the social layer on top, not a from-scratch build | |
+| **Research bulk payment metadata & Midnight integration** — investigate metadata for current task-board bulk payouts, including Midnight use cases, proof consumers, and a suitable integration approach. Proof of completion: a plan file explaining the proposed metadata and how it would work with Midnight, with feasibility, limitations, and implementation steps. [Scope](vault/features/Bulk%20Payment%20Metadata%20%26%20Midnight%20Research.md). | |
+| **Social video creation** — create at least **10 videos**, mixing Mesh Multisig feature demos, onboarding tutorials, and promotional clips, using Remotion in a separate repository. Proof of completion: finished video exports and links to the Remotion source. [Scope](vault/features/Social%20Video%20Creation.md). | |
 
 ---
 
