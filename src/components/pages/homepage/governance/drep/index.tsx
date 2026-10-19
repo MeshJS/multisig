@@ -3,6 +3,7 @@ import SectionTitle from "@/components/ui/section-title";
 import Pagination from "@/components/common/overall-layout/pagination";
 import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
+import { fetchDrepProfile } from "@/lib/governance/drep-profile";
 import Link from "next/link";
 import usePublicNetwork from "@/hooks/usePublicNetwork";
 import DelegateButton from "./id/delegate-slot";
@@ -26,73 +27,70 @@ export default function DrepOverviewPage() {
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
 
   useEffect(() => {
+    // Paging or a network switch starts a new load; responses for the old one
+    // must not overwrite it when they arrive late.
+    let stale = false;
+    // Set inside the try below: a missing Blockfrost key must end the spinner,
+    // not throw out of the effect.
+    let blockchainProvider: ReturnType<typeof getProvider>;
+
     async function loadDrepList() {
       setLoading(true);
-      const blockchainProvider = getProvider(network);
-  
       try {
+        blockchainProvider = getProvider(network);
         const response = await blockchainProvider.get(
           `/governance/dreps/?count=${pageSize}&page=${currentPage}&order=${order}`,
         );
-  
-        if (response) {
-          const initialList = response.map((drep: BlockfrostDrepInfo) => ({
-            details: { ...drep },
-            metadata: null,
-          }));
-  
-          setDrepList(initialList);
+        if (stale) return;
+
+        if (Array.isArray(response)) {
+          setDrepList(
+            response.map((drep: BlockfrostDrepInfo) => ({
+              details: { ...drep },
+              metadata: null,
+            })),
+          );
+          // Rows render from the list straight away; each fills in its record
+          // and metadata as they arrive.
           response.forEach((drep: BlockfrostDrepInfo) =>
             fetchDrepDetails(drep.drep_id),
           );
-  
           setIsLastPage(response.length < pageSize);
         } else {
           console.error("Unexpected API response format:", response);
         }
       } catch (error) {
-        console.error("Error loading DREP list:", error);
+        if (!stale) console.error("Error loading DREP list:", error);
       } finally {
-        setLoading(false);
+        if (!stale) setLoading(false);
       }
     }
-  
-    loadDrepList();
-  }, [currentPage, pageSize, order, network]);
 
-  // Fetch DRep details
-  const fetchDrepDetails = async (drepId: string) => {
-    const blockchainProvider = getProvider(network);
-    try {
-      const details: BlockfrostDrepInfo = await blockchainProvider.get(
-        `/governance/dreps/${drepId}`,
-      );
-      
-      let metadata: BlockfrostDrepMetadata | null = null;
+    async function fetchDrepDetails(drepId: string) {
       try {
-        metadata = await blockchainProvider.get(
-          `/governance/dreps/${drepId}/metadata/`,
+        const { details, metadata } = await fetchDrepProfile(
+          blockchainProvider,
+          drepId,
         );
-      } catch (err: any) {
-        // 404 is expected if metadata doesn't exist - silently ignore
-        const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
-        if (!is404) {
-          console.warn(`Failed to fetch metadata for DRep ${drepId}:`, err);
+        // No record: keep the list's own entry rather than blank the row.
+        if (stale || !details) return;
+        setDrepList((prevList) =>
+          prevList.map((drep) =>
+            drep.details.drep_id === drepId ? { details, metadata } : drep,
+          ),
+        );
+      } catch (error) {
+        if (!stale) {
+          console.error(`Failed to fetch details for DREP ${drepId}:`, error);
         }
       }
-
-      setDrepList((prevList) =>
-        prevList.map((drep) =>
-          drep.details.drep_id === drepId ? { details, metadata: metadata || null } : drep,
-        ),
-      );
-    } catch (error: any) {
-      const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
-      if (!is404) {
-        console.error(`Failed to fetch details for DREP ${drepId}:`, error);
-      }
     }
-  };
+
+    loadDrepList();
+    return () => {
+      stale = true;
+    };
+  }, [currentPage, pageSize, order, network]);
 
   const aggregate = useMemo(() => {
     let active = 0;
