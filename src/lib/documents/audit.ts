@@ -33,7 +33,9 @@ import {
 } from "./attestation";
 import { normalizeContentHash } from "./payload";
 import {
+  PROOF_LIMITS,
   buildProofPackage,
+  proofShapeProblem,
   verifyProofPackage,
   type CheckSignatureFn,
   type ProofPackage,
@@ -584,7 +586,7 @@ export async function verifyAuditPackage(
 /** Caps for a package arriving at a public endpoint. Real documents sit far below. */
 export const AUDIT_LIMITS = {
   versions: 500,
-  reviewsPerVersion: 200,
+  reviewsPerVersion: PROOF_LIMITS.reviews,
   chain: 500,
   events: 20_000,
 } as const;
@@ -596,52 +598,8 @@ const isInt = (v: unknown): v is number => Number.isInteger(v);
 const isNullableString = (v: unknown) => v === null || isString(v);
 
 function proofProblem(proof: unknown, where: string): string | null {
-  if (!isObject(proof)) return `${where}: proof is not an object`;
-  const { document, version, policy, reviews } = proof;
-  if (
-    !isObject(document) ||
-    !isString(document.id) ||
-    !isString(document.walletId)
-  ) {
-    return `${where}: proof.document is malformed`;
-  }
-  if (
-    !isObject(version) ||
-    !isString(version.id) ||
-    !isInt(version.versionNumber) ||
-    !isString(version.contentHash)
-  ) {
-    return `${where}: proof.version is malformed`;
-  }
-  if (
-    !isObject(policy) ||
-    !isInt(policy.requiredSigners) ||
-    !isString(policy.walletPolicyHash) ||
-    !Array.isArray(policy.signersAddresses) ||
-    !policy.signersAddresses.every(isString)
-  ) {
-    return `${where}: proof.policy is malformed`;
-  }
-  if (
-    !Array.isArray(reviews) ||
-    reviews.length > AUDIT_LIMITS.reviewsPerVersion
-  ) {
-    return `${where}: proof.reviews is missing or too long`;
-  }
-  for (const r of reviews) {
-    if (
-      !isObject(r) ||
-      !isString(r.signerAddress) ||
-      !isString(r.payload) ||
-      !isString(r.signature) ||
-      !isString(r.signatureKey) ||
-      !isString(r.signedAt) ||
-      !isString(r.action)
-    ) {
-      return `${where}: a review is malformed`;
-    }
-  }
-  return null;
+  const problem = proofShapeProblem(proof);
+  return problem === null ? null : `${where}: ${problem}`;
 }
 
 /**

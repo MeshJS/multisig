@@ -107,6 +107,10 @@ export const VERIFICATION_INSTRUCTIONS = [
  * far more useful answer to a counterparty than a flat rejection — and
  * {@link verifyProofPackage} already records an unknown format as a
  * verification error.
+ *
+ * It does judge every field the verifier reads. `verifyProof` is public, so a
+ * package whose `version.contentHash` is a number or whose `reviews` is null
+ * has to come back as a 400 that says so, not as a TypeError and a 500.
  */
 export function proofPackageProblem(value: unknown): string | null {
   if (!value || typeof value !== "object") {
@@ -115,6 +119,75 @@ export function proofPackageProblem(value: unknown): string | null {
   const pkg = value as Partial<ProofPackage>;
   if (!pkg.version || !pkg.policy) {
     return "That JSON is not a Document Sign-Off proof package — it carries no version or policy.";
+  }
+  const problem = proofShapeProblem(value);
+  return problem === null
+    ? null
+    : `That proof package is malformed: ${problem}.`;
+}
+
+/**
+ * Caps for a proof arriving at a public endpoint. Each review costs a CIP-8
+ * check, so the count is bounded; real wallets sit far below it.
+ */
+export const PROOF_LIMITS = { reviews: 200 } as const;
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+const isString = (v: unknown): v is string => typeof v === "string";
+const isInt = (v: unknown): v is number => Number.isInteger(v);
+/** Absent and null both mean "none" for the optional review fields. */
+const isOptionalString = (v: unknown) => v == null || isString(v);
+
+/**
+ * The structural half of {@link proofPackageProblem}: every field
+ * {@link verifyProofPackage} dereferences, with the type it assumes. Shared
+ * with the audit-package check, which embeds one proof per version.
+ */
+export function proofShapeProblem(proof: unknown): string | null {
+  if (!isObject(proof)) return "proof is not an object";
+  const { document, version, policy, reviews } = proof;
+  if (
+    !isObject(document) ||
+    !isString(document.id) ||
+    !isString(document.walletId)
+  ) {
+    return "proof.document is malformed";
+  }
+  if (
+    !isObject(version) ||
+    !isString(version.id) ||
+    !isInt(version.versionNumber) ||
+    !isString(version.contentHash)
+  ) {
+    return "proof.version is malformed";
+  }
+  if (
+    !isObject(policy) ||
+    !isInt(policy.requiredSigners) ||
+    !isString(policy.walletPolicyHash) ||
+    !Array.isArray(policy.signersAddresses) ||
+    !policy.signersAddresses.every(isString)
+  ) {
+    return "proof.policy is malformed";
+  }
+  if (!Array.isArray(reviews) || reviews.length > PROOF_LIMITS.reviews) {
+    return "proof.reviews is missing or too long";
+  }
+  for (const r of reviews) {
+    if (
+      !isObject(r) ||
+      !isString(r.signerAddress) ||
+      !isString(r.payload) ||
+      !isString(r.signature) ||
+      !isString(r.signatureKey) ||
+      !isString(r.signedAt) ||
+      !isString(r.action) ||
+      !isOptionalString(r.partyId) ||
+      !isOptionalString(r.comment)
+    ) {
+      return "a review is malformed";
+    }
   }
   return null;
 }
@@ -295,6 +368,12 @@ async function verifyReview(
     verdict.errors.push("payload is not valid JSON");
     return verdict;
   }
+  // `"null"` and `"42"` are valid, canonical JSON too; everything below reads
+  // fields off the payload, so anything but an object stops here.
+  if (!isObject(payload)) {
+    verdict.errors.push("payload is not a JSON object");
+    return verdict;
+  }
 
   // The stored string must itself be canonical — otherwise two different
   // strings could carry the same JSON and only one of them is what was signed.
@@ -312,7 +391,11 @@ async function verifyReview(
     ["versionNumber", payload.versionNumber, pkg.version.versionNumber],
     [
       "contentHash",
-      normalizeContentHash(payload.contentHash),
+      // The signed bytes are attacker-supplied: a numeric contentHash must
+      // fail the binding, not throw out of the verifier.
+      typeof payload.contentHash === "string"
+        ? normalizeContentHash(payload.contentHash)
+        : payload.contentHash,
       normalizeContentHash(pkg.version.contentHash),
     ],
     ["walletId", payload.walletId, pkg.document.walletId],
