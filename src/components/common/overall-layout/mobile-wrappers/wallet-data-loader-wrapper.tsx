@@ -1,7 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
@@ -16,6 +16,10 @@ import { useProxyActions } from "@/lib/zustand/proxy";
 import { useUserStore } from "@/lib/zustand/user";
 import { mapWithConcurrency } from "@/utils/concurrency";
 import { createBlockfrostThrottle } from "@/utils/blockfrost-throttle";
+import {
+  type RefreshContext,
+  walletRefreshCoordinator,
+} from "@/lib/wallet-refresh";
 
 type BlockfrostThrottle = ReturnType<typeof createBlockfrostThrottle>;
 
@@ -42,7 +46,6 @@ export default function WalletDataLoaderWrapper({
   const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
 
-  const prevWalletIdRef = useRef<string | null>(null);
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
@@ -53,7 +56,6 @@ export default function WalletDataLoaderWrapper({
   const setWalletTransactions = useWalletsStore(
     (state) => state.setWalletTransactions,
   );
-  const fetchingTransactions = useRef(false);
 
   const walletLastUpdated = useWalletsStore((state) => state.walletLastUpdated);
   const setWalletLastUpdated = useWalletsStore(
@@ -84,7 +86,10 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getTransactionsOnChain(throttle: BlockfrostThrottle) {
+  async function getTransactionsOnChain(
+    throttle: BlockfrostThrottle,
+    refresh: RefreshContext,
+  ) {
     try {
       if (appWallet) {
         const maxPage = 4;
@@ -94,6 +99,7 @@ export default function WalletDataLoaderWrapper({
         // List pages first (newest first); stop at the first short page.
         const listed: TxInfo[] = [];
         for (let i = 1; i <= maxPage; i++) {
+          if (refresh.isStale()) return;
           const transactions: TxInfo[] = await blockchainProvider.get(
             `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
           );
@@ -111,10 +117,18 @@ export default function WalletDataLoaderWrapper({
           listed,
           BLOCKFROST_CONCURRENCY,
           (tx) =>
-            throttle.get(blockchainProvider, `/txs/${tx.tx_hash}/utxos`).catch(
-              () => null,
-            ),
+            // The user moved to another wallet: stop spending rate budget on
+            // this one. What was fetched is discarded below.
+            refresh.isStale()
+              ? Promise.resolve(null)
+              : throttle
+                  .get(blockchainProvider, `/txs/${tx.tx_hash}/utxos`)
+                  .catch(() => null),
         );
+        // A history cut short by a wallet switch would replace the cached one
+        // with transactions missing their inputs and outputs. Keep the cache;
+        // switching back to this wallet loads it again.
+        if (refresh.isStale()) return;
         listed.forEach((tx, index) => {
           const txData = details[index];
           _transactions.push({
@@ -133,14 +147,17 @@ export default function WalletDataLoaderWrapper({
         setWalletLastUpdated(appWallet?.id, Date.now());
       }
     } catch (error) {
-      if (appWallet) {
+      if (appWallet && !refresh.isStale()) {
         setWalletTransactions(appWallet?.id, []);
         setWalletLastUpdated(appWallet?.id, Date.now());
       }
     }
   }
 
-  async function getWalletAssets(throttle: BlockfrostThrottle) {
+  async function getWalletAssets(
+    throttle: BlockfrostThrottle,
+    refresh: RefreshContext,
+  ) {
     try {
       const blockchainProvider = getProvider(network);
       const assets = await blockchainProvider.get(
@@ -164,10 +181,17 @@ export default function WalletDataLoaderWrapper({
           tokens,
           BLOCKFROST_CONCURRENCY,
           (asset) =>
-            throttle.get(blockchainProvider, `/assets/${asset.unit}`).catch(
-              () => null,
-            ),
+            refresh.isStale()
+              ? Promise.resolve(null)
+              : throttle
+                  .get(blockchainProvider, `/assets/${asset.unit}`)
+                  .catch(() => null),
         );
+        // `walletAssets` is not keyed by wallet: written now, it would show
+        // the previous wallet's assets on the one the user switched to. The
+        // metadata is keyed by unit, but lookups skipped above would replace
+        // known names with the bare unit.
+        if (refresh.isStale()) return;
         for (const [index, asset] of tokens.entries()) {
           const assetInfo = infos[index];
           setWalletAssetMetadata(
@@ -193,6 +217,7 @@ export default function WalletDataLoaderWrapper({
         setWalletAssets([]);
       }
     } catch (error) {
+      if (refresh.isStale()) return;
       setWalletAssets([]);
       setWalletAssetMetadata("", "", 0, "", "", "");
     }
@@ -206,11 +231,11 @@ export default function WalletDataLoaderWrapper({
     return getDRepIds(dRepId);
   }
 
-  async function getDRepInfo() {
+  async function getDRepInfo(refresh: RefreshContext) {
     try {
       const drepids = dRepIds();
       if (!drepids) {
-        setDrepInfo(undefined);
+        if (!refresh.isStale()) setDrepInfo(undefined);
         return;
       }
 
@@ -219,6 +244,8 @@ export default function WalletDataLoaderWrapper({
         `/governance/dreps/${drepids.cip105}`,
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
+      // `drepInfo` is not keyed by wallet either; see getWalletAssets.
+      if (refresh.isStale()) return;
       setDrepInfo(drepInfo);
     } catch (err: any) {
       // DRep not found (404) is expected if DRep hasn't been registered yet
@@ -227,6 +254,7 @@ export default function WalletDataLoaderWrapper({
       if (!is404) {
         console.error(`Error fetching DRep info:`, err);
       }
+      if (refresh.isStale()) return;
       setDrepInfo(undefined);
     }
   }
@@ -258,11 +286,8 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function refreshWallet() {
-    if (fetchingTransactions.current) return;
-
-    fetchingTransactions.current = true;
-    setLoading(true);
+  /** Load one wallet's chain data into the store. */
+  async function loadWallet(refresh: RefreshContext) {
     // Independent sources — run them together. Each catches its own errors
     // (fetchUtxos aside, which allSettled absorbs), so one slow or failing
     // source no longer holds the others back.
@@ -272,31 +297,53 @@ export default function WalletDataLoaderWrapper({
     const throttle = createBlockfrostThrottle({ minIntervalMs: 200 });
     await Promise.allSettled([
       fetchUtxos(),
-      getTransactionsOnChain(throttle),
-      getWalletAssets(throttle),
-      getDRepInfo(),
+      getTransactionsOnChain(throttle, refresh),
+      getWalletAssets(throttle, refresh),
+      getDRepInfo(refresh),
       fetchProxyData(),
     ]);
-    void ctx.transaction.getPendingTransactions.invalidate();
-    void ctx.transaction.getAllTransactions.invalidate();
-    // Also refresh proxy data
-    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
-    setRandomState();
-    setLoading(false);
-    fetchingTransactions.current = false;
-    
+  }
+
+  async function refreshWallet() {
+    setLoading(true);
+    try {
+      // Shared across both mounted controls: a refresh already running for
+      // this wallet is joined, not repeated (see src/lib/wallet-refresh.ts).
+      // With no wallet open there is no chain data to load, only queries.
+      if (appWallet) {
+        await walletRefreshCoordinator.run(appWallet.id, loadWallet);
+      }
+      void ctx.transaction.getPendingTransactions.invalidate();
+      void ctx.transaction.getAllTransactions.invalidate();
+      // Also refresh proxy data
+      void ctx.proxy.getProxiesByUserOrWallet.invalidate();
+      setRandomState();
+    } finally {
+      setLoading(false);
+    }
+
     // Call the optional callback after action completes
     if (onAction) {
       onAction();
     }
   }
 
+  const appWalletId = appWallet?.id;
   useEffect(() => {
-    if (appWallet && prevWalletIdRef.current !== appWallet.id) {
-      refreshWallet();
-      prevWalletIdRef.current = appWallet.id;
+    if (!appWalletId) return;
+    // Load on a wallet switch, not on every mount: the mobile menu's copy of
+    // this control mounts each time the menu opens. If a refresh is already
+    // running, join it so this copy's spinner reflects it.
+    if (
+      walletRefreshCoordinator.showWallet(appWalletId) ||
+      walletRefreshCoordinator.isRunning(appWalletId)
+    ) {
+      void refreshWallet();
     }
-  }, [appWallet]);
+    // Keyed on the id: appWallet is rebuilt whenever its UTxOs change, which
+    // the refresh itself does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appWalletId]);
 
   // Session check and authorization modal are now handled in layout.tsx
   // This prevents duplicate authorization prompts
