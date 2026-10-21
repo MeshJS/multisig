@@ -103,10 +103,9 @@ function SignableCard({
         const discordId = discordIds?.[signerAddress];
         if (!discordId) return;
 
-        await sendDiscordMessage(
-          [discordId],
-          `**REMINDER:** Your signature is needed for a Datum in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/signing`,
-        );
+        if (!appWallet) return;
+
+        await sendDiscordMessage(appWallet.id, "datumReminder", [discordId]);
 
         toast({
           title: "Reminder Sent",
