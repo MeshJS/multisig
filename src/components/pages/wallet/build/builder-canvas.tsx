@@ -68,6 +68,7 @@ export type BuilderCanvasProps = {
     typeof draftToTokenFlow
   >[1]["scriptResolutions"];
   collateralUtxo?: Parameters<typeof draftToTokenFlow>[1]["collateralUtxo"];
+  riskFindings?: Parameters<typeof draftToTokenFlow>[1]["riskFindings"];
   /** The multisig's address when it is NOT the source (palette "Multisig" button). */
   multisigAddress?: string;
   className?: string;
@@ -126,6 +127,7 @@ export default function BuilderCanvas({
   built,
   scriptResolutions,
   collateralUtxo,
+  riskFindings,
   multisigAddress,
   className,
 }: BuilderCanvasProps) {
@@ -148,6 +150,7 @@ export default function BuilderCanvas({
         built,
         scriptResolutions,
         collateralUtxo,
+        riskFindings,
       }),
     [
       draft,
@@ -158,6 +161,7 @@ export default function BuilderCanvas({
       built,
       scriptResolutions,
       collateralUtxo,
+      riskFindings,
     ],
   );
   // connectablePorts: empty card sides keep a dot as the drag-to-connect

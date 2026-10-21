@@ -1,0 +1,222 @@
+import { test, expect, type Page } from "@playwright/test";
+import path from "node:path";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import { MeshTxBuilder } from "@meshsdk/core";
+import { resolveTxHash } from "@meshsdk/core-cst";
+import type { DraftBuildResult } from "../../src/lib/tx-draft/build-draft-tx";
+import { assessTransactionRisks } from "../../src/lib/tx-risk/transaction";
+import {
+  address,
+  funding,
+  output,
+  transaction,
+  TOKEN,
+  HUGE_QUANTITY,
+} from "../../src/__tests__/fixtures/tx-risk";
+
+const require = createRequire(import.meta.url);
+const root = process.cwd();
+const artifacts = path.join(root, "ci-artifacts/risk-components");
+
+test.beforeAll(async () => {
+  fs.mkdirSync(artifacts, { recursive: true });
+  execFileSync(
+    process.execPath,
+    [
+      "node_modules/tailwindcss/lib/cli.js",
+      "-i",
+      "src/styles/globals.css",
+      "-o",
+      path.join(artifacts, "styles.css"),
+    ],
+    { cwd: root, stdio: "pipe" },
+  );
+  const bundled = require("next/dist/compiled/webpack/webpack");
+  bundled.init?.();
+  await new Promise<void>((resolve, reject) => {
+    const compiler = bundled.webpack({
+      mode: "development",
+      devtool: false,
+      entry: path.join(root, "e2e/risk-components/harness.tsx"),
+      output: { path: artifacts, filename: "harness.js" },
+      resolve: {
+        extensions: [".tsx", ".ts", ".js"],
+        alias: {
+          "@": path.join(root, "src"),
+          "@meshsdk/core-cst$": path.join(
+            root,
+            "e2e/risk-components/codec-stub.ts",
+          ),
+        },
+      },
+      module: {
+        rules: [
+          {
+            test: /\.tsx?$/,
+            exclude: /node_modules/,
+            use: path.join(root, "e2e/risk-components/ts-loader.cjs"),
+          },
+        ],
+      },
+    });
+    compiler.run(
+      (
+        error: Error | undefined,
+        stats: { hasErrors(): boolean; toString(): string },
+      ) => {
+        compiler.close(() => {});
+        if (error || stats.hasErrors())
+          reject(error ?? new Error(stats.toString()));
+        else resolve();
+      },
+    );
+  });
+});
+
+function fixture(
+  kind: "known" | "unknown" | "key" = "known",
+  network = 0,
+): DraftBuildResult {
+  const fund = {
+    ...funding,
+    output: { ...funding.output, address: address("key", network) },
+  };
+  const destination = address(kind, network);
+  const unsignedTx = transaction({
+    outputs: [output(destination, "5000000", true)],
+  });
+  return {
+    unsignedTx,
+    txHash: resolveTxHash(unsignedTx),
+    fee: "200000",
+    sizeBytes: unsignedTx.length / 2,
+    inputCount: 1,
+    outputCount: 1,
+    body: new MeshTxBuilder().meshTxBuilderBody,
+    riskAssessment: assessTransactionRisks(
+      unsignedTx,
+      { network },
+      { utxos: [fund] },
+    ),
+    outputReview: [
+      {
+        id: "first",
+        address: destination,
+        requestedLovelace: "5000000",
+        actualLovelace: "5000000",
+        assets: [
+          { unit: "lovelace", quantity: "5000000" },
+          { unit: TOKEN, quantity: HUGE_QUANTITY },
+        ],
+      },
+    ],
+  };
+}
+async function mount(page: Page, result = fixture()) {
+  await page.setContent('<html><body><div id="root"></div></body></html>');
+  await page.evaluate((data) => {
+    window.riskFixture = JSON.parse(data) as DraftBuildResult;
+  }, JSON.stringify(result));
+  const css = path.join(artifacts, "styles.css");
+  await page.addStyleTag({ path: css });
+  await page.addStyleTag({
+    content:
+      ":root { --font-geist-sans: Arial; } *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }",
+  });
+  await page.addScriptTag({ path: path.join(artifacts, "harness.js") });
+  await expect(page.getByTestId("tx-builder-copy-cbor")).toBeVisible();
+}
+const calls = (page: Page) => page.evaluate(() => window.riskCalls);
+
+test("danger acknowledgment gates signing, cancellation does nothing, and export needs a fresh decision", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.getByRole("button", { name: "Build and sign fixture" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByTestId("tx-builder-review-continue")).toBeDisabled();
+  await expect(dialog).toContainText(TOKEN);
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await expect(dialog).toContainText(HUGE_QUANTITY);
+  await dialog.getByRole("button", { name: "Cancel and edit" }).click();
+  expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "Continue to export" }).click();
+  expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 1 });
+  await page.getByRole("button", { name: "Build and sign fixture" }).click();
+  await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+  await dialog.getByRole("checkbox").focus();
+  await page.keyboard.press("Space");
+  await dialog.getByRole("button", { name: "Continue to signing" }).click();
+  expect(await calls(page)).toEqual({ sign: 1, submit: 1, export: 1 });
+});
+
+test("an invalidated draft or account cannot use its open review", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await page.getByRole("checkbox").check();
+  await page.evaluate(() => window.invalidateRiskReview());
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await expect(page.getByRole("checkbox")).not.toBeChecked();
+});
+
+test("incomplete review blocks even after checking acknowledgment", async ({
+  page,
+}) => {
+  const result = fixture();
+  result.riskAssessment!.status = "incomplete";
+  await mount(page, result);
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await page.getByRole("checkbox").check();
+  await expect(page.getByTestId("tx-builder-review-continue")).toBeDisabled();
+  await expect(page.getByRole("alert")).toContainText("Unable to verify");
+  expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+});
+
+test("unknown scripts get review without a danger checkbox; ordinary payments stay concise", async ({
+  page,
+}) => {
+  await mount(page, fixture("unknown"));
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "rules have not been verified",
+  );
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue to export" }).click();
+  expect((await calls(page)).export).toBe(1);
+  await mount(page, fixture("key"));
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect((await calls(page)).export).toBe(1);
+});
+
+test("mainnet warning and full token values remain accessible on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page, fixture("known", 1));
+  await page.getByTestId("tx-builder-copy-cbor").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "Mainnet: real ADA and tokens are at risk.",
+  );
+  await expect(dialog).toContainText(TOKEN);
+  await page.screenshot({
+    path: path.join(artifacts, "mainnet-mobile.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+});

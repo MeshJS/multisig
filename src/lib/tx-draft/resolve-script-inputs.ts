@@ -26,8 +26,8 @@ export type ScriptInputResolution = {
   redeemerCbor?: string;
   issues: DraftIssue[];
 };
-export const utxoRefKey = (ref: DraftUtxoRef) =>
-  `${ref.txHash.toLowerCase()}#${ref.outputIndex}`;
+import { utxoRefKey } from "./utxo-ref";
+export { utxoRefKey } from "./utxo-ref";
 
 /** No cached chain snapshots are draft intent. Always fetch again for preparation. */
 export async function resolveScriptInput(

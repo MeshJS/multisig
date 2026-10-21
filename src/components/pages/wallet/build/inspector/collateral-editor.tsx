@@ -127,7 +127,9 @@ export default function CollateralEditor({
           <p>Owner address: {state.selected.utxo.output.address}</p>
           <p>
             Selected: {baseToDisplay(state.selected.lovelace, 6)} ADA. Without a
-            collateral return, this entire amount is at risk.
+            collateral return, this entire amount is at risk. Collateral is
+            consumed only if an included transaction fails script execution; a
+            rejected local build does not consume it.
           </p>
           <p>
             The owner must sign the completed transaction. Final exposure and

@@ -1,4 +1,5 @@
 import type { DraftIssue } from "@/lib/tx-draft/validate";
+import type { RiskFinding } from "@/lib/tx-risk/types";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { Wallet } from "@/types/wallet";
 import type { SourcePickerProps } from "../source-picker";
@@ -16,9 +17,11 @@ export default function Inspector({
   appWallet,
   issues,
   source,
+  riskFindings,
 }: {
   appWallet: Wallet;
   issues: DraftIssue[];
+  riskFindings: RiskFinding[];
   /** Source picker state + UTxO source facts, owned by the page. */
   source: TxInspectorSourceProps & { picker: SourcePickerProps };
 }) {
@@ -40,6 +43,9 @@ export default function Inspector({
           key={selectedOutput.id}
           appWallet={appWallet}
           output={selectedOutput}
+          riskFindings={riskFindings.filter(
+            (finding) => finding.outputId === selectedOutput.id,
+          )}
           scriptAssets={source.scriptInputs.resolutions.flatMap((result) =>
             result.issues.length === 0
               ? (result.utxo?.output.amount ?? [])
@@ -54,6 +60,9 @@ export default function Inspector({
           appWallet={appWallet}
           issues={issues.filter((issue) => issue.outputId === undefined)}
           source={source}
+          riskFindings={riskFindings.filter(
+            (finding) => finding.action === "spend-script",
+          )}
         />
       )}
     </div>

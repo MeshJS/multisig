@@ -11,8 +11,10 @@ import {
 import { hasMultisigOnlyActions } from "./mutations";
 import { validatePlutusDraft } from "./validate-plutus";
 import { validatePlutusData } from "./plutus-data";
+import type { RiskCode } from "@/lib/tx-risk/types";
 
 export type DraftIssueCode =
+  | RiskCode
   | "required-signers-invalid"
   | "output-datum-invalid"
   | "script-input-ref-invalid"

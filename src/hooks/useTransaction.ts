@@ -194,6 +194,9 @@ export default function useTransaction() {
         return;
       }
 
+      // The audit is asynchronous; an account/draft switch while it runs must
+      // not open a signing prompt for bytes whose review has been invalidated.
+      assertCurrent();
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
       assertCurrent();
       const mergeResult = mergeSignerWitnesses(

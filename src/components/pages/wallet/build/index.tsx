@@ -67,10 +67,19 @@ import {
   type DraftBuildResult,
 } from "@/lib/tx-draft/build-draft-tx";
 import { createOutputProvenance } from "@/lib/tx-draft/outputs";
-import OutputReviewList from "./output-review-list";
-import PlutusReview from "./plutus-review";
-import RequiredSigners from "./required-signers";
-import { baseToDisplay } from "@/lib/tx-draft/decimal";
+import TransactionReviewDialog from "./transaction-review-dialog";
+import {
+  assessDraftOutputRisks,
+  assessResolvedInput,
+  riskFindingsToDraftIssues,
+} from "@/lib/tx-risk/assessment";
+import { resolveTransactionRisks } from "@/lib/tx-risk/transaction";
+import {
+  reviewBuiltTransaction,
+  type ReviewAction,
+  type ReviewDecision,
+} from "@/lib/tx-risk/review";
+import type { RiskContext } from "@/lib/tx-risk/types";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { validateDraft, validateSource } from "@/lib/tx-draft/validate";
@@ -176,7 +185,13 @@ export default function PageBuild() {
   /** Outcome of the last test build; cleared whenever the draft changes. */
   const [buildResult, setBuildResult] = useState<BuildResultState | null>(null);
   const buildResultRevision = useRef(0);
-  const [datumReview, setDatumReview] = useState<DraftBuildResult | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [transactionReview, setTransactionReview] = useState<{
+    result: DraftBuildResult;
+    action: ReviewAction;
+    id: number;
+  } | null>(null);
+  const reviewRequestId = useRef(0);
   const buildEnvironment = useRef({
     network,
     activeWallet,
@@ -184,6 +199,8 @@ export default function PageBuild() {
     walletName,
     walletType,
     walletId: appWallet?.id,
+    walletAddress: appWallet?.address,
+    walletScript: appWallet?.scriptCbor,
   });
   buildEnvironment.current = {
     network,
@@ -192,10 +209,12 @@ export default function PageBuild() {
     walletName,
     walletType,
     walletId: appWallet?.id,
+    walletAddress: appWallet?.address,
+    walletScript: appWallet?.scriptCbor,
   };
-  const finishDatumReview = useRef<((accepted: boolean) => void) | undefined>(
-    undefined,
-  );
+  const finishTransactionReview = useRef<
+    ((decision: ReviewDecision) => void) | undefined
+  >(undefined);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [ambiguousChangeDraftId, setAmbiguousChangeDraftId] =
     useState<string>();
@@ -235,9 +254,9 @@ export default function PageBuild() {
   useEffect(() => {
     buildResultRevision.current += 1;
     setBuildResult(null);
-    finishDatumReview.current?.(false);
-    finishDatumReview.current = undefined;
-    setDatumReview(null);
+    finishTransactionReview.current?.({ accepted: false, acknowledged: false });
+    finishTransactionReview.current = undefined;
+    setTransactionReview(null);
   }, [
     draft,
     network,
@@ -246,12 +265,17 @@ export default function PageBuild() {
     walletName,
     walletType,
     appWallet?.id,
+    appWallet?.address,
+    appWallet?.scriptCbor,
   ]);
 
   useEffect(
     () => () => {
       buildResultRevision.current += 1;
-      finishDatumReview.current?.(false);
+      finishTransactionReview.current?.({
+        accepted: false,
+        acknowledged: false,
+      });
     },
     [],
   );
@@ -465,6 +489,43 @@ export default function PageBuild() {
   );
   const { resolvePoolName } = usePoolNames(delegationPoolIds);
 
+  const riskContext = useMemo<RiskContext>(() => {
+    if (!isMultisigSource || !appWallet) return { network };
+    let cbor = appWallet.scriptCbor ?? "";
+    try {
+      cbor = resolveExpectedPaymentScriptCbor(appWallet, network) ?? cbor;
+    } catch {
+      /* Final assessment reports invalid wallet identity. */
+    }
+    return {
+      network,
+      walletNativeScript: { address: appWallet.address, cbor },
+    };
+  }, [appWallet, isMultisigSource, network]);
+  const riskFindings = useMemo(
+    () => [
+      ...assessDraftOutputRisks(draft, riskContext).findings,
+      ...scriptInputs.resolutions.flatMap((resolution) => {
+        const input = draft.scriptInputs.find(
+          (i) => i.id === resolution.inputId,
+        );
+        if (!input || !resolution.utxo || resolution.issues.length) return [];
+        try {
+          const finding = assessResolvedInput(
+            resolution.utxo,
+            riskContext,
+            input.script,
+            input.id,
+          );
+          return finding ? [finding] : [];
+        } catch {
+          return [];
+        } // Existing resolver/validation owns blocking errors.
+      }),
+    ],
+    [draft, riskContext, scriptInputs.resolutions],
+  );
+
   const issues = useMemo(
     () =>
       [
@@ -479,6 +540,7 @@ export default function PageBuild() {
         }),
         ...scriptInputs.issues,
         ...collateral.issues,
+        ...riskFindingsToDraftIssues(riskFindings),
       ].filter(
         (issue, index, all) =>
           all.findIndex(
@@ -499,6 +561,7 @@ export default function PageBuild() {
       connectedAddress,
       scriptInputs.issues,
       collateral.issues,
+      riskFindings,
     ],
   );
   const errors = issues.filter((issue) => issue.level === "error");
@@ -713,7 +776,10 @@ export default function PageBuild() {
       userAddress === current.userAddress &&
       walletName === current.walletName &&
       walletType === current.walletType &&
-      appWallet?.id === current.walletId
+      appWallet?.id === current.walletId &&
+      appWallet?.address === current.walletAddress &&
+      appWallet?.scriptCbor === current.walletScript &&
+      network === useSiteStore.getState().network
     );
   }
 
@@ -734,6 +800,7 @@ export default function PageBuild() {
         metadataMessage: buildDraft.metadata || undefined,
         complete: (builder) => completeTxWithFreshCostModels(builder, network),
         isCurrent: () => isBuildCurrent(revision),
+        risk: { context: riskContext, provider: getProvider(network) },
         plutus: activeWallet
           ? { wallet: activeWallet, network, provider: getProvider(network) }
           : undefined,
@@ -742,28 +809,64 @@ export default function PageBuild() {
     return { txBuilder, result };
   }
 
-  async function reviewBeforeSigning(
+  async function reviewBeforeAction(
     result: DraftBuildResult,
     revision: number,
+    action: ReviewAction,
   ): Promise<boolean> {
-    if (!isBuildCurrent(revision)) return false;
-    if (
-      !result.plutusReview &&
-      !result.body.requiredSignatures.length &&
-      !draft.outputs.some((output) => output.inlineDatum !== undefined)
-    )
-      return true;
-    const accepted = await new Promise<boolean>((resolve) => {
-      finishDatumReview.current = resolve;
-      setDatumReview(result);
+    return reviewBuiltTransaction(result, {
+      network,
+      isCurrent: () => isBuildCurrent(revision),
+      refresh: (hex) =>
+        resolveTransactionRisks(hex, riskContext, getProvider(network), () =>
+          isBuildCurrent(revision),
+        ),
+      confirm: (reviewed) =>
+        new Promise<ReviewDecision>((resolve) => {
+          finishTransactionReview.current?.({
+            accepted: false,
+            acknowledged: false,
+          });
+          finishTransactionReview.current = resolve;
+          setTransactionReview({
+            result: reviewed,
+            action,
+            id: ++reviewRequestId.current,
+          });
+        }),
     });
-    return accepted && isBuildCurrent(revision);
   }
 
-  function closeDatumReview(accepted: boolean) {
-    finishDatumReview.current?.(accepted);
-    finishDatumReview.current = undefined;
-    setDatumReview(null);
+  function closeTransactionReview(id: number, decision: ReviewDecision) {
+    if (id !== reviewRequestId.current) return;
+    finishTransactionReview.current?.(decision);
+    finishTransactionReview.current = undefined;
+    setTransactionReview(null);
+  }
+
+  async function exportBuild(result: DraftBuildResult, revision: number) {
+    setExporting(true);
+    try {
+      if (
+        !(await reviewBeforeAction(result, revision, "export")) ||
+        !isBuildCurrent(revision)
+      )
+        return;
+      await navigator.clipboard.writeText(result.unsignedTx);
+      if (isBuildCurrent(revision))
+        toast({
+          title: "Unsigned transaction copied",
+          description: "The reviewed transaction CBOR is on your clipboard.",
+        });
+    } catch (error) {
+      toast({
+        title: "Couldn't export transaction",
+        description: getFriendlyError(error),
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   /**
@@ -784,6 +887,7 @@ export default function PageBuild() {
       setBuildResult({
         status: "ok",
         result,
+        revision,
         description: draft.description,
       });
     } catch (error) {
@@ -809,7 +913,7 @@ export default function PageBuild() {
     setSigning(true);
     try {
       const { result } = await buildCurrentDraft(draft, revision);
-      if (!(await reviewBeforeSigning(result, revision))) return;
+      if (!(await reviewBeforeAction(result, revision, "sign"))) return;
       const { txHash } = await signAndSubmit(result.unsignedTx, () =>
         isBuildCurrent(revision),
       );
@@ -898,7 +1002,10 @@ export default function PageBuild() {
         txBuilder,
         completed: result,
         isCurrent: () => isBuildCurrent(revision),
-        beforeSign: () => reviewBeforeSigning(result, revision),
+        beforeSign: (hex) =>
+          hex === result.unsignedTx
+            ? reviewBeforeAction(result, revision, "sign")
+            : Promise.resolve(false),
         txJsonExtras: (body) => ({
           builderOutputs: createOutputProvenance(buildDraft, body.outputs),
         }),
@@ -1005,7 +1112,7 @@ export default function PageBuild() {
 
   if (appWallet === undefined) return <WalletDetailSkeleton />;
 
-  const busy = building || testing || signing;
+  const busy = building || testing || signing || exporting;
   const hasPendingRationaleEdits = draft.votes.some(
     (vote) => vote.rationaleEdit !== undefined,
   );
@@ -1136,6 +1243,11 @@ export default function PageBuild() {
         <BuildResultPanel
           result={buildResult}
           hasPendingRationaleEdits={hasPendingRationaleEdits}
+          busy={busy}
+          onCopy={async () => {
+            if (buildResult.status === "ok")
+              await exportBuild(buildResult.result, buildResult.revision);
+          }}
           onDismiss={() => setBuildResult(null)}
         />
       )}
@@ -1200,6 +1312,7 @@ export default function PageBuild() {
             addVoteDisabledReason={addVoteDisabledReason}
             scriptResolutions={scriptInputs.resolutions}
             collateralUtxo={collateral.selected?.utxo}
+            riskFindings={riskFindings}
             built={
               buildResult?.status === "ok" ? buildResult.result.body : null
             }
@@ -1210,6 +1323,7 @@ export default function PageBuild() {
           <Inspector
             appWallet={appWallet}
             issues={visibleIssues}
+            riskFindings={riskFindings}
             source={{
               scriptInputs,
               collateral,
@@ -1255,51 +1369,17 @@ export default function PageBuild() {
         existingProposalIds={voteProposalIds}
         drepRegistered={drepInfo?.active === true ? true : undefined}
       />
-      <Dialog
-        open={datumReview !== null}
-        onOpenChange={(open) => {
-          if (!open) closeDatumReview(false);
-        }}
-      >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {datumReview?.plutusReview
-                ? "Review evaluated transaction"
-                : datumReview?.body.requiredSignatures.length
-                  ? "Review transaction"
-                  : "Review output datums"}
-            </DialogTitle>
-            <DialogDescription>
-              Check the final output amounts, minimum ADA adjustments and
-              required signatures before signing.
-            </DialogDescription>
-          </DialogHeader>
-          {datumReview && (
-            <>
-              <OutputReviewList outputs={datumReview.outputReview ?? []} />
-              <RequiredSigners
-                keys={datumReview.body.requiredSignatures}
-                unsigned
-              />
-              {datumReview.plutusReview && (
-                <PlutusReview review={datumReview.plutusReview} />
-              )}
-              <p className="text-sm">
-                Network fee: {baseToDisplay(datumReview.fee, 6)} ADA
-              </p>
-            </>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => closeDatumReview(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => closeDatumReview(true)}>
-              Continue to signing
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {transactionReview && (
+        <TransactionReviewDialog
+          key={transactionReview.id}
+          result={transactionReview.result}
+          action={transactionReview.action}
+          network={network}
+          onDecision={(decision) =>
+            closeTransactionReview(transactionReview.id, decision)
+          }
+        />
+      )}
       <LoadPendingDialog
         open={loadDialogOpen}
         onOpenChange={setLoadDialogOpen}

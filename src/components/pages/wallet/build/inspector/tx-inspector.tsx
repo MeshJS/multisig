@@ -36,6 +36,7 @@ import type { DraftScriptInputsState } from "@/hooks/useDraftScriptInputs";
 import type { DraftCollateralState } from "@/hooks/useDraftCollateral";
 import CollateralEditor from "./collateral-editor";
 import RequiredSigners from "../required-signers";
+import type { RiskFinding } from "@/lib/tx-risk/types";
 
 const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Yes: "text-green-500 dark:text-green-400",
@@ -62,9 +63,11 @@ export default function TxInspector({
   appWallet,
   issues,
   source,
+  riskFindings,
 }: {
   appWallet: Wallet;
   issues: DraftIssue[];
+  riskFindings: RiskFinding[];
   source: TxInspectorSourceProps & { picker: SourcePickerProps };
 }) {
   const network = useSiteStore((state) => state.network);
@@ -298,7 +301,11 @@ export default function TxInspector({
         </CollapsibleContent>
       </Collapsible>
 
-      <ScriptInputsEditor state={source.scriptInputs} issues={issues} />
+      <ScriptInputsEditor
+        state={source.scriptInputs}
+        issues={issues}
+        riskFindings={riskFindings}
+      />
       <CollateralEditor state={source.collateral} />
       <IssueList issues={issues} />
     </div>

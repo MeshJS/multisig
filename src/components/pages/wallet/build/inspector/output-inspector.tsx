@@ -16,6 +16,9 @@ import {
 import useAddressLabels from "@/hooks/useAddressLabels";
 import { baseToDisplay, displayToBase } from "@/lib/tx-draft/decimal";
 import type { DraftIssue } from "@/lib/tx-draft/validate";
+import type { RiskFinding } from "@/lib/tx-risk/types";
+import { useSiteStore } from "@/lib/zustand/site";
+import RiskSummary from "../risk-summary";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { AssetQuantity } from "@/types/token-flow";
@@ -77,14 +80,17 @@ export default function OutputInspector({
   appWallet,
   output,
   issues,
+  riskFindings,
   scriptAssets = [],
 }: {
   appWallet: Wallet;
   output: DraftOutput;
   issues: DraftIssue[];
+  riskFindings: RiskFinding[];
   scriptAssets?: AssetQuantity[];
 }) {
   const { labelAddress } = useAddressLabels(appWallet);
+  const network = useSiteStore((state) => state.network);
   const walletAssets = useWalletsStore((state) => state.walletAssets);
   const walletAssetMetadata = useWalletsStore(
     (state) => state.walletAssetMetadata,
@@ -281,6 +287,7 @@ export default function OutputInspector({
         )}
       </div>
 
+      <RiskSummary findings={riskFindings} network={network} />
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <CollapsibleTrigger
           className="flex w-full items-center justify-between rounded border px-2.5 py-2 text-xs font-medium"
@@ -326,7 +333,12 @@ export default function OutputInspector({
           )}
         </CollapsibleContent>
       </Collapsible>
-      <IssueList issues={issues} />
+      <IssueList
+        issues={issues.filter(
+          (issue) =>
+            !riskFindings.some((finding) => finding.code === issue.code),
+        )}
+      />
     </div>
   );
 }

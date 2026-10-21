@@ -20,6 +20,13 @@ export default function OutputReviewList({
             </span>
             <span>{baseToDisplay(output.actualLovelace, 6)} ADA</span>
           </div>
+          {output.assets
+            ?.filter((asset) => asset.unit !== "lovelace")
+            .map((asset) => (
+              <p key={asset.unit} className="break-all">
+                {asset.quantity} base units · {asset.unit}
+              </p>
+            ))}
           {output.actualLovelace !== output.requestedLovelace && (
             <p className="mt-1 text-muted-foreground">
               Adjusted from {baseToDisplay(output.requestedLovelace, 6)} ADA to

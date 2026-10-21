@@ -218,11 +218,16 @@ describe("finalized transaction review before signing", () => {
     expect(mockSubmit).not.toHaveBeenCalled();
   });
 
-  test.each(["review", "wallet", "readiness"])(
+  test.each(["review", "proxy audit", "wallet", "readiness"])(
     "a draft/account change during %s prevents proposal persistence",
     async (stage) => {
       let current = true;
       const txBuilder = builder();
+      if (stage === "proxy audit")
+        mockPreSignAudit.mockImplementation(async () => {
+          current = false;
+          return { error: null };
+        });
       if (stage === "wallet")
         mockSign.mockImplementation(async () => {
           current = false;
@@ -248,7 +253,8 @@ describe("finalized transaction review before signing", () => {
         }),
       ).rejects.toThrow(/superseded/);
       expect(mockCreate).not.toHaveBeenCalled();
-      if (stage === "review") expect(mockSign).not.toHaveBeenCalled();
+      if (stage === "review" || stage === "proxy audit")
+        expect(mockSign).not.toHaveBeenCalled();
     },
   );
 

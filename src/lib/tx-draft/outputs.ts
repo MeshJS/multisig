@@ -59,6 +59,7 @@ export type OutputReview = {
   requestedLovelace: string;
   actualLovelace: string;
   inlineDatum?: string;
+  assets?: Output["amount"];
 };
 
 /** Compare draft intent with the completed outputs, including SDK ADA top-ups. */
@@ -101,6 +102,7 @@ export function reviewDraftOutputs(
       requestedLovelace,
       actualLovelace,
       inlineDatum: datum?.valid ? datum.cbor : undefined,
+      assets: actual.amount.map((asset) => ({ ...asset })),
     };
   });
 }

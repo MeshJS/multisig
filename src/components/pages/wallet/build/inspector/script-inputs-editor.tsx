@@ -23,15 +23,22 @@ import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { DraftScriptInput } from "@/types/tx-draft";
 import IssueList from "./issue-list";
 import PlutusDataEditor from "./plutus-data-editor";
+import RiskSummary from "../risk-summary";
+import type { RiskFinding } from "@/lib/tx-risk/types";
+import { useSiteStore } from "@/lib/zustand/site";
 
 export default function ScriptInputsEditor({
   state,
   issues,
+  riskFindings,
 }: {
   state: DraftScriptInputsState;
   issues: DraftIssue[];
+  riskFindings: RiskFinding[];
 }) {
   const draft = useTxBuilderStore((s) => s.draft);
+  const network = useSiteStore((s) => s.network);
+  const select = useTxBuilderStore((s) => s.select);
   const selection = useTxBuilderStore((s) => s.selection);
   const add = useTxBuilderStore((s) => s.addScriptInput);
   const update = useTxBuilderStore((s) => s.updateScriptInput);
@@ -52,6 +59,13 @@ export default function ScriptInputsEditor({
   }, [selection]);
   return (
     <div ref={root}>
+      <RiskSummary
+        findings={riskFindings}
+        network={network}
+        onSelect={(finding) =>
+          select({ kind: "tx", inputId: finding.inputId, field: "utxoRef" })
+        }
+      />
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           data-testid="tx-builder-script-advanced"

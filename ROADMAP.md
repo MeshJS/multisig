@@ -309,8 +309,8 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
-| Output datum controls — let users attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction | |
-| Plutus script-spend and redeemer controls — let users configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221 | |
+| [Output datum controls](vault/features/Plutus%20Transaction%20Controls.md) — let users attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction | |
+| [Plutus script-spend and redeemer controls](vault/features/Plutus%20Transaction%20Controls.md) — let users configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Includes the [script-risk guardrails plan](docs/transaction-script-risk-guardrails-plan.md). Automatic collateral creation, reservation, and collateral-return management remain in #221 | |
 
 ---
 

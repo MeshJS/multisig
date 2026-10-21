@@ -66,6 +66,7 @@ export function draftToTokenFlow(
     built?: DraftBuildOverlay | null;
     scriptResolutions?: ScriptInputResolution[];
     collateralUtxo?: UTxO;
+    riskFindings?: import("@/lib/tx-risk/types").RiskFinding[];
   },
 ): TokenFlow {
   const graph = new FlowGraphBuilder(opts.labelAddress);
@@ -257,6 +258,13 @@ export function draftToTokenFlow(
         : "Set recipient",
       partyType: label?.type ?? "unknown",
       inlineDatum: output.inlineDatum !== undefined,
+      details: opts.riskFindings
+        ?.filter((finding) => finding.outputId === output.id)
+        .map((finding) =>
+          finding.requiresAcknowledgment
+            ? "Warning: anyone can spend"
+            : "Script spending rules unverified",
+        ),
     });
     graph.addEdge(
       txNodeId,

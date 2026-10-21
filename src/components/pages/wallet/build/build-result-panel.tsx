@@ -1,15 +1,20 @@
 import { AlertTriangle, CheckCircle2, Copy, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import { getFirstAndLast, lovelaceToAda } from "@/utils/strings";
 import OutputReviewList from "./output-review-list";
 import PlutusReview from "./plutus-review";
 import RequiredSigners from "./required-signers";
+import RiskSummary from "./risk-summary";
 
 export type BuildResultState =
-  | { status: "ok"; result: DraftBuildResult; description: string }
+  | {
+      status: "ok";
+      result: DraftBuildResult;
+      description: string;
+      revision: number;
+    }
   | { status: "error"; message: string };
 
 interface BuildResultPanelProps {
@@ -17,6 +22,8 @@ interface BuildResultPanelProps {
   /** Votes with unsaved rationale edits build with their old anchor. */
   hasPendingRationaleEdits: boolean;
   onDismiss: () => void;
+  onCopy: () => Promise<void>;
+  busy: boolean;
 }
 
 function Stat({
@@ -46,9 +53,9 @@ export default function BuildResultPanel({
   result,
   hasPendingRationaleEdits,
   onDismiss,
+  onCopy,
+  busy,
 }: BuildResultPanelProps) {
-  const { toast } = useToast();
-
   if (result.status === "error") {
     return (
       <div
@@ -84,30 +91,11 @@ export default function BuildResultPanel({
 
   const { result: built } = result;
 
-  async function copyCbor() {
-    try {
-      await navigator.clipboard.writeText(built.unsignedTx);
-      toast({
-        title: "Unsigned transaction copied",
-        description: "The transaction CBOR is on your clipboard.",
-        duration: 4000,
-      });
-    } catch (error) {
-      console.error("copy build CBOR", error);
-      toast({
-        title: "Couldn't copy",
-        description: "Your browser blocked clipboard access.",
-        duration: 6000,
-        variant: "destructive",
-      });
-    }
-  }
-
   return (
     <div
       data-testid="tx-builder-build-result"
       data-status="ok"
-      className="flex items-start justify-between gap-3 rounded-md border border-green-500/50 bg-green-500/10 px-3 py-2 text-sm"
+      className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm"
     >
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex items-center gap-2">
@@ -140,9 +128,23 @@ export default function BuildResultPanel({
             </span>
           </Stat>
         </div>
-        {built.outputReview?.some(
-          (output) => output.inlineDatum !== undefined,
-        ) && <OutputReviewList outputs={built.outputReview} />}
+        <p className="text-xs text-muted-foreground">
+          Successful construction does not verify contract safety.
+        </p>
+        <RiskSummary
+          findings={built.riskAssessment?.findings ?? []}
+          network={built.riskAssessment?.networkId ?? 0}
+        />
+        {(!built.riskAssessment ||
+          built.riskAssessment.status !== "complete") && (
+          <p role="alert" className="text-destructive">
+            Risk review is incomplete. Rebuild or retry review before signing or
+            exporting.
+          </p>
+        )}
+        {built.outputReview && (
+          <OutputReviewList outputs={built.outputReview} />
+        )}
         {hasPendingRationaleEdits && (
           <p className="text-xs text-muted-foreground">
             Edited vote rationales are uploaded when you propose; this build
@@ -156,7 +158,8 @@ export default function BuildResultPanel({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void copyCbor()}
+          onClick={() => void onCopy()}
+          disabled={busy}
           data-testid="tx-builder-copy-cbor"
         >
           <Copy className="mr-2 h-3.5 w-3.5" />

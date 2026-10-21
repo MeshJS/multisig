@@ -1,6 +1,6 @@
 import type { PlutusBuildReview } from "@/lib/tx-draft/build-draft-tx";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
-import { utxoRefKey } from "@/lib/tx-draft/resolve-script-inputs";
+import { utxoRefKey } from "@/lib/tx-draft/utxo-ref";
 
 /** Shared by unsigned export and the final signing review; never collapsed. */
 export default function PlutusReview({
@@ -15,6 +15,10 @@ export default function PlutusReview({
       data-testid="plutus-build-review"
     >
       <p className="font-medium">Evaluated script inputs</p>
+      <p>
+        Execution was evaluated for this transaction. This does not verify the
+        contract's safety or the intended outcome.
+      </p>
       {review.inputs.map(({ intent, utxo, datumCbor, redeemerCbor }) => {
         const ref = utxoRefKey(utxo.input);
         const budget = review.budgets.find(
@@ -49,8 +53,8 @@ export default function PlutusReview({
           {baseToDisplay(collateral.maximumExposureLovelace, 6)} ADA
         </p>
         <p>
-          The full selected amount is exposed if script execution fails. There
-          is no collateral return.
+          The full selected amount is exposed if an included transaction fails
+          script execution. There is no collateral return.
         </p>
         <p>
           Required minimum for this fee:{" "}
@@ -58,6 +62,9 @@ export default function PlutusReview({
         </p>
         <p className="break-all font-mono text-xs">
           {utxoRefKey(collateral.utxo.input)}
+        </p>
+        <p className="break-all text-xs">
+          Collateral owner address: {collateral.utxo.output.address}
         </p>
         <p className="break-all text-xs">
           Required collateral payment key: {collateral.ownerKeyHash}

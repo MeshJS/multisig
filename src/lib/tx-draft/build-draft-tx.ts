@@ -20,6 +20,8 @@ import { reviewCompletedCollateral } from "./collateral";
 import { PLUTUS_BUILD_UNSUPPORTED } from "./validate-plutus";
 import { hasScriptSpendDraftData } from "./mutations";
 import { requiredSignerKeyHashes } from "@/utils/transactionReadiness";
+import type { RiskAssessment, RiskContext } from "@/lib/tx-risk/types";
+import type { ScriptInputProvider } from "./resolve-script-inputs";
 
 export type PlutusBuildReview = {
   inputs: PreparedPlutusDraft["inputs"];
@@ -43,6 +45,8 @@ export type DraftBuildResult = {
   /** Intended outputs after SDK balancing/minimum-ADA adjustments. */
   outputReview?: OutputReview[];
   plutusReview?: PlutusBuildReview;
+  /** Opt-in browser review; headless review integration is a separate phase. */
+  riskAssessment?: RiskAssessment;
 };
 
 export type BuildDraftTxOptions = {
@@ -51,6 +55,7 @@ export type BuildDraftTxOptions = {
   /** Connected-wallet capability; deliberately absent from headless callers. */
   plutus?: PlutusBuildOptions;
   isCurrent?: () => boolean;
+  risk?: { context: RiskContext; provider: ScriptInputProvider };
   /**
    * Finalizes the builder (fee, balancing, change) and returns the unsigned
    * tx hex. Injected so callers pick the production `complete` (with fresh
@@ -155,6 +160,16 @@ export async function buildDraftTx(
       plutusReview = { inputs: prepared.inputs, budgets, collateral };
     }
     const body = structuredClone(txBuilder.meshTxBuilderBody);
+    const riskAssessment = opts.risk
+      ? await (
+          await import("@/lib/tx-risk/transaction")
+        ).resolveTransactionRisks(
+          unsignedTx,
+          opts.risk.context,
+          opts.risk.provider,
+          isCurrent,
+        )
+      : undefined;
     assertCurrent();
     return {
       unsignedTx,
@@ -166,6 +181,7 @@ export async function buildDraftTx(
       outputCount: body.outputs.length,
       outputReview: reviewDraftOutputs(draft, body.outputs),
       plutusReview,
+      ...(riskAssessment ? { riskAssessment } : {}),
     };
   } finally {
     txBuilder.evaluator = evaluator;
