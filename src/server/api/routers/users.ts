@@ -12,15 +12,54 @@ const requireSessionAddress = (ctx: AuthCtx) => {
   return address;
 };
 
+/**
+ * Every address the caller has proven they control: the NextAuth user, the
+ * primary wallet, and every wallet nonce-verified in this browser's session.
+ * Empty for an anonymous caller.
+ */
+const callerAddresses = (ctx: AuthCtx): Set<string> => {
+  const addresses = new Set<string>(ctx.sessionWallets ?? []);
+  if (ctx.session?.user?.id) addresses.add(ctx.session.user.id);
+  if (ctx.sessionAddress) addresses.add(ctx.sessionAddress);
+  return addresses;
+};
+
+/**
+ * The columns anyone may read for any address. Address and stake address are
+ * on-chain; the DRep key hash is too once the user registers as a DRep, and
+ * is derived from the same wallet keys either way. Columns that are not (the
+ * linked Discord account, the Nostr key, and any column added later) stay
+ * private until they are deliberately added here, because pairing a Cardano
+ * address with an off-chain identity is exactly what a public lookup must not
+ * hand out.
+ */
+const PUBLIC_USER_SELECT = {
+  id: true,
+  address: true,
+  stakeAddress: true,
+  drepKeyHash: true,
+} as const;
+
 export const userRouter = createTRPCRouter({
+  // Public because the app reads it on connect, before the wallet session
+  // cookie exists. The full row goes only to the address's own session;
+  // everyone else gets the public columns, with the private ones blanked so
+  // the response keeps one shape for the client.
   getUserByAddress: publicProcedure
     .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
-      return await ctx.db.user.findUnique({
-        where: {
-          address: input.address,
-        },
+      if (callerAddresses(ctx).has(input.address)) {
+        return ctx.db.user.findUnique({
+          where: { address: input.address },
+        });
+      }
+
+      const user = await ctx.db.user.findUnique({
+        where: { address: input.address },
+        select: PUBLIC_USER_SELECT,
       });
+      if (!user) return null;
+      return { ...user, discordId: "", nostrKey: null };
     }),
 
   // Onboarding upsert. Authenticated only — the session address must match
@@ -169,9 +208,19 @@ export const userRouter = createTRPCRouter({
       );
     }),
 
+  // The caller's own linked Discord account (profile page, user menu, the
+  // "link Discord" prompt on the signers card). Any other address answers
+  // null, the same as "not linked": being signed in proves who you are, not
+  // a right to look up who someone else is on Discord. (getDiscordIds, the
+  // co-signer lookup, is still open to any session; scoping it to wallets
+  // the caller shares is a separate change.)
   getUserDiscordId: protectedProcedure
     .input(z.object({ address: z.string().min(1, "address required") }))
     .query(async ({ ctx, input }) => {
+      if (!callerAddresses(ctx).has(input.address)) {
+        return null;
+      }
+
       const user = await ctx.db.user.findUnique({
         where: {
           address: input.address,
