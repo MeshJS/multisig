@@ -4,7 +4,9 @@ import { RISK_ASSESSMENT_VERSION } from "./types";
 export type ReviewDecision = { accepted: boolean; acknowledged: boolean };
 export type ReviewAction = "sign" | "export";
 
-export function reviewNeedsAcknowledgment(result: DraftBuildResult): boolean {
+export type RiskReview = Pick<DraftBuildResult, "txHash" | "riskAssessment">;
+
+export function reviewNeedsAcknowledgment(result: RiskReview): boolean {
   return (
     result.riskAssessment?.findings.some((f) => f.requiresAcknowledgment) ??
     false
@@ -12,10 +14,7 @@ export function reviewNeedsAcknowledgment(result: DraftBuildResult): boolean {
 }
 
 /** Presentation check; the action guard additionally binds the hash to the CBOR. */
-export function reviewIsComplete(
-  result: DraftBuildResult,
-  network: number,
-): boolean {
+export function reviewIsComplete(result: RiskReview, network: number): boolean {
   const risk = result.riskAssessment;
   return (
     !!risk &&

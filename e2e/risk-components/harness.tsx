@@ -8,13 +8,77 @@ import {
 } from "@/lib/tx-risk/review";
 import TransactionReviewDialog from "@/components/pages/wallet/build/transaction-review-dialog";
 import BuildResultPanel from "@/components/pages/wallet/build/build-result-panel";
+import usePendingTransactionReview from "@/hooks/usePendingTransactionReview";
+import {
+  PendingRiskDialog,
+  PendingRiskSummary,
+} from "@/components/pages/wallet/transactions/pending-risk-review";
 
 declare global {
   interface Window {
     riskFixture: DraftBuildResult;
     invalidateRiskReview: () => void;
     riskCalls: { sign: number; submit: number; export: number };
+    pendingMode?: boolean;
+    changePendingContext: (kind: string) => void;
   }
+}
+function PendingHarness() {
+  const [identity, setIdentity] = useState("first-signer");
+  const [signer, setSigner] = useState({});
+  const [network, setNetwork] = useState(
+    window.riskFixture.riskAssessment!.networkId,
+  );
+  const [hex, setHex] = useState(window.riskFixture.unsignedTx);
+  const [busy, setBusy] = useState(false);
+  const review = usePendingTransactionReview({
+    txHex: hex,
+    context: { network },
+    identity,
+    signer,
+    enabled: true,
+    provider: { fetchUTxOs: async () => [], fetchAddressUTxOs: async () => [] },
+  });
+  window.changePendingContext = (kind) => {
+    if (kind === "account") setIdentity((value) => value + "-changed");
+    if (kind === "wallet") setSigner({});
+    if (kind === "network") setNetwork((value) => (value === 1 ? 0 : 1));
+    if (kind === "replacement") {
+      window.riskFixture.riskAssessment!.txHash = "ab".repeat(32);
+      setHex("replacement");
+    }
+    if (kind === "witness") setHex((value) => value + "witness");
+  };
+  async function sign() {
+    setBusy(true);
+    const captured = review.capture();
+    if ((await captured.review()) && captured.isCurrent()) {
+      window.riskCalls.sign++;
+      window.riskCalls.submit++;
+    }
+    setBusy(false);
+  }
+  return (
+    <main className="p-4">
+      <PendingRiskSummary
+        assessment={review.assessment}
+        network={network}
+        loading={review.loading}
+        retry={review.retry}
+      />
+      <button disabled={busy} onClick={() => void sign()}>
+        Approve pending transaction
+      </button>
+      {review.dialog && (
+        <PendingRiskDialog
+          key={review.dialog.id}
+          assessment={review.dialog.assessment}
+          network={network}
+          onDecision={review.decide}
+        />
+      )}
+    </main>
+  );
 }
 
 function Harness() {
@@ -88,4 +152,6 @@ function Harness() {
   );
 }
 window.riskCalls = { sign: 0, submit: 0, export: 0 };
-createRoot(document.getElementById("root")!).render(<Harness />);
+createRoot(document.getElementById("root")!).render(
+  window.pendingMode ? <PendingHarness /> : <Harness />,
+);

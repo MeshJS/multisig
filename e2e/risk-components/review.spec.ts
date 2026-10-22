@@ -44,6 +44,10 @@ test.beforeAll(async () => {
       resolve: {
         extensions: [".tsx", ".ts", ".js"],
         alias: {
+          "@/lib/tx-risk/transaction$": path.join(
+            root,
+            "e2e/risk-components/pending-resolver-stub.ts",
+          ),
           "@": path.join(root, "src"),
           "@meshsdk/core-cst$": path.join(
             root,
@@ -114,11 +118,14 @@ function fixture(
     ],
   };
 }
-async function mount(page: Page, result = fixture()) {
+async function mount(page: Page, result = fixture(), pending = false) {
   await page.setContent('<html><body><div id="root"></div></body></html>');
   await page.evaluate((data) => {
     window.riskFixture = JSON.parse(data) as DraftBuildResult;
   }, JSON.stringify(result));
+  await page.evaluate((mode) => {
+    window.pendingMode = mode;
+  }, pending);
   const css = path.join(artifacts, "styles.css");
   await page.addStyleTag({ path: css });
   await page.addStyleTag({
@@ -126,7 +133,9 @@ async function mount(page: Page, result = fixture()) {
       ":root { --font-geist-sans: Arial; } *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }",
   });
   await page.addScriptTag({ path: path.join(artifacts, "harness.js") });
-  await expect(page.getByTestId("tx-builder-copy-cbor")).toBeVisible();
+  await expect(
+    page.getByTestId(pending ? "pending-risk-review" : "tx-builder-copy-cbor"),
+  ).toBeVisible();
 }
 const calls = (page: Page) => page.evaluate(() => window.riskCalls);
 
@@ -157,6 +166,120 @@ test("danger acknowledgment gates signing, cancellation does nothing, and export
   await page.keyboard.press("Space");
   await dialog.getByRole("button", { name: "Continue to signing" }).click();
   expect(await calls(page)).toEqual({ sign: 1, submit: 1, export: 1 });
+});
+
+test("pending signers independently acknowledge visible funding-only warnings", async ({
+  page,
+}) => {
+  await mount(page, fixture(), true);
+  await expect(page.getByTestId("pending-risk-review")).toContainText(
+    HUGE_QUANTITY,
+  );
+  const approve = page.getByRole("button", {
+    name: "Approve pending transaction",
+  });
+  await approve.click();
+  await expect(
+    page.getByRole("button", { name: "Continue to signing" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect((await calls(page)).sign).toBe(0);
+  await approve.click();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Continue to signing" }).click();
+  await expect.poll(async () => (await calls(page)).sign).toBe(1);
+  await page.evaluate(() => window.changePendingContext("account"));
+  await approve.click();
+  await expect(page.getByRole("checkbox")).not.toBeChecked();
+  await page.keyboard.press("Escape");
+  expect((await calls(page)).sign).toBe(1);
+});
+
+for (const kind of ["account", "wallet", "network", "replacement"]) {
+  test(`pending ${kind} changes cancel acceptance before signing`, async ({
+    page,
+  }) => {
+    await mount(page, fixture(), true);
+    await page
+      .getByRole("button", { name: "Approve pending transaction" })
+      .click();
+    await page.getByRole("checkbox").check();
+    await page.evaluate((change) => window.changePendingContext(change), kind);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+  });
+}
+
+test("pending witness additions keep an open review; retry recovers missing chain facts", async ({
+  page,
+}) => {
+  await mount(page, fixture(), true);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await page.getByRole("checkbox").check();
+  await page.evaluate(() => window.changePendingContext("witness"));
+  await expect(page.getByRole("checkbox")).toBeChecked();
+  await page.getByRole("button", { name: "Continue to signing" }).click();
+  await expect.poll(async () => (await calls(page)).sign).toBe(1);
+  const incomplete = fixture();
+  incomplete.riskAssessment!.status = "incomplete";
+  await mount(page, incomplete, true);
+  await expect(page.getByRole("alert")).toContainText("Unable to verify");
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  expect((await calls(page)).sign).toBe(0);
+  await expect(
+    page.getByRole("button", { name: "Approve pending transaction" }),
+  ).toBeEnabled();
+  await page.evaluate(() => {
+    window.riskFixture.riskAssessment!.status = "complete";
+  });
+  await page.getByRole("button", { name: "Retry review" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(page.getByRole("checkbox")).not.toBeChecked();
+});
+
+test("pending unknown rules stay usable and mainnet acknowledgment works on mobile with a keyboard", async ({
+  page,
+}) => {
+  await mount(page, fixture("unknown"), true);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "rules have not been verified",
+  );
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue to signing" }).click();
+  await expect.poll(async () => (await calls(page)).sign).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page, fixture("known", 1), true);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "Mainnet: real ADA and tokens are at risk.",
+  );
+  await expect(dialog).toContainText(HUGE_QUANTITY);
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("checkbox").focus();
+  await page.keyboard.press("Space");
+  await page.screenshot({
+    path: path.join(artifacts, "pending-mainnet-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Continue to signing" }).click();
+  await expect.poll(async () => (await calls(page)).sign).toBe(1);
 });
 
 test("an invalidated draft or account cannot use its open review", async ({

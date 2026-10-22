@@ -1,6 +1,6 @@
 # Transaction script risk guardrails implementation plan
 
-Status: Phases 0–3 implemented. Builder warnings and signing/export review are connected. Phases 4–6 remain planned; pending co-signer and MCP review are not yet integrated.
+Status: Phases 0–5 implemented. Builder, pending co-signer and MCP review use shared CBOR-derived risk facts. Phase 6 full-app/preprod acceptance and release validation remain outstanding.
 
 Prepared: 2026-10-21
 
@@ -132,28 +132,49 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
 
 **Depends on:** Phases 1 and 3. **Deliverable:** all pending transactions receive the same review before signing.
 
-- [ ] Integrate a visible risk summary beside `CollateralReview` in `transaction-card.tsx`, outside collapsed transaction details. Include transactions created through API, import, legacy UI or MCP, not only the canvas builder.
-- [ ] Assess `transaction.txCbor` independently. Descriptions and `txJson` may enrich labels but cannot decide which warnings apply. A mismatch must not hide an output or reduce displayed exposure.
-- [ ] Gate the `signTx` path before `activeWallet.signTx`, including re-signing to supply a collateral-owner witness and the final co-signer who may trigger automatic submission.
-- [ ] Require each signer to acknowledge known-dangerous outputs for the current body and account. Replacement transactions reset review; another signer's approval is not evidence of safety.
-- [ ] Preserve current collateral owner/witness verification, network checks and proxy auditing. Reuse current collateral-return accounting for imported transactions rather than asserting that every pending transaction has no return.
-- [ ] Cover decoding/loading errors with a retry state. Unknown contract rules still allow deliberate signing; unavailable mandatory transaction or collateral facts do not masquerade as verified review.
+- [x] Integrate a visible risk summary beside `CollateralReview` in `transaction-card.tsx`, outside collapsed transaction details. Include transactions created through API, import, legacy UI or MCP, not only the canvas builder.
+- [x] Assess `transaction.txCbor` independently. Descriptions and `txJson` may enrich labels but cannot decide which warnings apply. A mismatch must not hide an output or reduce displayed exposure.
+- [x] Gate the `signTx` path before `activeWallet.signTx`, including re-signing to supply a collateral-owner witness and the final co-signer who may trigger automatic submission.
+- [x] Require each signer to acknowledge known-dangerous outputs for the current body and account. Replacement transactions reset review; another signer's approval is not evidence of safety.
+- [x] Preserve current collateral owner/witness verification, network checks and proxy auditing. Reuse current collateral-return accounting for imported transactions rather than asserting that every pending transaction has no return.
+- [x] Cover decoding/loading errors with a retry state. Unknown contract rules still allow deliberate signing; unavailable mandatory transaction or collateral facts do not masquerade as verified review.
 
 **Acceptance:** imported funding-only CBOR triggers the same warning without editor provenance; a second signer sees it independently; replacement/account changes invalidate acceptance; ordinary native multisig self-payments remain correctly identified.
+
+### Phase 4 implementation notes
+
+- Pending cards assess stored CBOR independently of proposal origin, editor compatibility, descriptions and JSON. Their output list and token-flow output destinations/amounts now use decoded outputs, preserving duplicate outputs and exact token base units. Missing or malformed JSON no longer prevents CBOR review.
+- The visible summary sits beside collateral review, outside collapsed details. Loading and incomplete assessments remain explicit, preserve outgoing warnings and offer retry. Collateral presentation includes recorded return amount/destination, owner and maximum exposure; readiness and owner-witness checks remain in place.
+- Every signing attempt refreshes mandatory spending-input and collateral facts, then requests an independent decision for script risks. Known anyone-can-spend outputs require an unchecked acknowledgment; unknown rules remain usable. Facts are refreshed again after confirmation; changed facts require a new review attempt.
+- Review is bound to the body hash, assessment version, selected network, wallet/script context, account, connected wallet instance and pending row. Replacement/context changes or unmounting cancel outstanding decisions. Witness additions alone do not change that identity. No acknowledgment is persisted or inherited from another signer.
+- The existing proxy audit still runs before the wallet prompt. Currentness is checked after the audit, review, wallet signature and readiness lookup, before any automatic submission. Collateral-owner re-signing and the final co-signer use the same gate.
+- Verification on 2026-10-22: 226 Jest tests passed across 12 suites (the 224-test regression run plus two additional pending-card cases), including real-CBOR pending guard tests and the production pending-card signing path with mocked external boundaries. All 12 isolated browser tests passed, covering pending independent signers, cancellation, account/wallet/network/replacement invalidation, witness-only updates, retries, unknown rules and mobile/keyboard acknowledgment, alongside the existing builder checks. These are not authenticated full-app or on-chain acceptance tests.
+- TypeScript and changed-file formatting checks passed. Lint remains blocked by the existing `next lint`/Next version mismatch. The browser suite used an installed Chromium executable via `PLAYWRIGHT_CHROMIUM_EXECUTABLE` because the default Playwright headless-shell binary was absent.
+- Phase 4 was authorized on 2026-10-22. MCP parity, deployment and controlled preprod testing remain outside this implementation.
 
 ## Phase 5 — Consistent MCP and shared review cards
 
 **Depends on:** Phases 1 and 4. **Deliverable:** warnings survive alternate review surfaces.
 
-- [ ] Populate structured findings and readable warnings through `src/lib/tx-review/pipeline.ts`, `preview.ts`, `propose.ts`, `review.ts` and `summary.ts`. Preserve existing summary consumers with additive fields where possible.
-- [ ] Analyze completed CBOR for preview/propose, and stored CBOR for pending review. The current pending summary uses `txJson`; reconcile displayed risk-relevant outputs with CBOR so the card cannot show one destination while warning about another.
-- [ ] Render warnings and affected values consistently in text, PNG (`card.ts`) and HTML (`src/lib/mcp/apps/review-card.ts`). Ensure long addresses, multiple warnings and token lists remain legible without silently truncating critical facts.
-- [ ] Keep existing headless Plutus restrictions: MCP need not construct script spends to send funds to a script address or review a pending script transaction.
-- [ ] Retain preview-token binding and existing authorization. Reassess after proposal rebuilds; do not carry a preview acknowledgment onto materially changed risk facts. If risk-relevant outputs/context change, require a fresh preview rather than treating ordinary input reselection warnings as sufficient.
-- [ ] MCP proposal confirmation creates an unsigned pending transaction; it does not acknowledge risk for future wallet signers. Display warnings before confirmation, then independently enforce each human's signing review in Phase 4.
-- [ ] Preserve lazy loading of Mesh/WASM and renderer dependencies in MCP tools, as required by repository instructions.
+- [x] Populate structured findings and readable warnings through `src/lib/tx-review/pipeline.ts`, `preview.ts`, `propose.ts`, `review.ts` and `summary.ts`. Preserve existing summary consumers with additive fields where possible.
+- [x] Analyze completed CBOR for preview/propose, and stored CBOR for pending review. The current pending summary uses `txJson`; reconcile displayed risk-relevant outputs with CBOR so the card cannot show one destination while warning about another.
+- [x] Render warnings and affected values consistently in text, PNG (`card.ts`) and HTML (`src/lib/mcp/apps/review-card.ts`). Ensure long addresses, multiple warnings and token lists remain legible without silently truncating critical facts.
+- [x] Keep existing headless Plutus restrictions: MCP need not construct script spends to send funds to a script address or review a pending script transaction.
+- [x] Retain preview-token binding and existing authorization. Reassess after proposal rebuilds; do not carry a preview acknowledgment onto materially changed risk facts. If risk-relevant outputs/context change, require a fresh preview rather than treating ordinary input reselection warnings as sufficient.
+- [x] MCP proposal confirmation creates an unsigned pending transaction; it does not acknowledge risk for future wallet signers. Display warnings before confirmation, then independently enforce each human's signing review in Phase 4.
+- [x] Preserve lazy loading of Mesh/WASM and renderer dependencies in MCP tools, as required by repository instructions.
 
 **Acceptance:** one fixture yields equivalent findings in builder review, pending UI, MCP text, HTML and PNG; altered/missing `txJson` cannot suppress CBOR-derived warnings. No new signing/broadcast capability is added to MCP.
+
+### Phase 5 implementation notes
+
+- MCP preview and proposal builds assess completed CBOR against the authorized free-UTxO handler's fresh chain facts. Pending review and idempotent proposal replay resolve live spending/collateral facts independently. Missing mandatory facts retain outgoing warnings in an incomplete pending review; incomplete builds cannot mint a preview token or create a proposal.
+- Summaries add `riskAssessment` and preserve the existing `warnings` array. Output destinations, ledger indexes, exact asset quantities, fee, input references and body hash come from CBOR. Stored JSON cannot supply a trusted change address or hide self-payments; unrelated action metadata remains outside this script-risk assessment's scope. Input totals without independently supplied amounts are explicitly unresolved.
+- Draft tokens carry a signed risk fingerprint covering assessment version, network, native wallet context, payment outputs, other non-wallet outputs, input risks and collateral. Ordinary native input reselection and verified wallet change may vary; changed exposure or context returns `REVIEW_CHANGED` and requires a fresh preview. Tokens from before this integration also require a fresh preview. No signer acknowledgment is stored or inherited.
+- Text and inline HTML show full affected addresses, exact token units/quantities, output identities, mainnet wording and collateral owner/return/exposure details. Image delivery attaches a summary PNG plus bounded warning-detail pages; every page is returned, with a pointer on the summary and in text. The inline view uses selectable structured text for assessed transactions even when PNGs accompany the tool result.
+- Legacy wallet payment-script selection now matches the authoritative server-derived address instead of assuming the browser-derived encoding matches it. The classifier still validates the selected script/address pair. Existing signer/bot access, zero initial signatures, headless Plutus restrictions and lazy MCP handler/renderer imports remain unchanged.
+- Verification on 2026-10-22: 227 tests passed across 18 focused Jest suites, plus two real PNG-rendering tests in the ESM suite. All 13 browser tests passed, including the production MCP inline view on mobile, full warning values, escaped labels, image-mode parity and unsigned confirmation, alongside builder/pending regression checks. TypeScript, changed-file formatting and diff checks passed. Lint still fails on the existing `next lint`/Next version mismatch. The new integration tests use real serialized CBOR with mocked builder/chain/persistence boundaries; these checks do not establish full authenticated-wallet or on-chain acceptance.
+- Phase 5 was authorized on 2026-10-22. Deployment and controlled preprod transactions remain phase 6 work.
 
 ## Phase 6 — Regression coverage, documentation and release
 
@@ -191,4 +212,4 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
 3. Phase 4 pending co-signer integration before enabling the complete browser flow.
 4. Phase 5 MCP/card parity, followed by Phase 6 release validation and documentation.
 
-Keep behavior switches, if needed for staged development, explicit and consistent across creation and signing surfaces. The maintainer authorized phases 0–3 and the related vault documentation on 2026-10-21. Phases 4–6, deployment and on-chain test transactions remain future work.
+Keep behavior switches, if needed for staged development, explicit and consistent across creation and signing surfaces. The maintainer authorized phases 0–3 and the related vault documentation on 2026-10-21, and phases 4–5 on 2026-10-22. Phase 6, deployment and on-chain test transactions remain future work.

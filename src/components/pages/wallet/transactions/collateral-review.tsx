@@ -8,6 +8,7 @@ import {
   transactionReadiness,
 } from "@/utils/transactionReadiness";
 import { getProvider } from "@/utils/get-provider";
+import { Button } from "@/components/ui/button";
 
 /** Always visible on pending cards, independent of collapsed transaction details. */
 export default function CollateralReview({
@@ -23,6 +24,7 @@ export default function CollateralReview({
     ready: boolean;
   }) => void;
 }) {
+  const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
     txHex: string;
     network: number;
@@ -40,6 +42,7 @@ export default function CollateralReview({
   useEffect(() => {
     if (!configured) return;
     let cancelled = false;
+    setResult(undefined);
     void Promise.resolve()
       .then(() =>
         transactionReadiness(txHex, true, getProvider(network), network),
@@ -66,7 +69,7 @@ export default function CollateralReview({
     return () => {
       cancelled = true;
     };
-  }, [txHex, network, configured, onReadiness]);
+  }, [txHex, network, configured, onReadiness, attempt]);
   if (!configured) return null;
   const current =
     result?.txHex === txHex && result.network === network ? result : undefined;
@@ -91,9 +94,15 @@ export default function CollateralReview({
       ))}
       {!current && <p>Verifying the recorded transaction requirements…</p>}
       {current?.error && (
-        <p role="alert" className="text-destructive">
+        <div role="alert" className="text-destructive">
           {current.error}
-        </p>
+          <Button
+            variant="outline"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            Retry collateral review
+          </Button>
+        </div>
       )}
       {status?.collateral.map((candidate) => (
         <div key={utxoRefKey(candidate.utxo.input)}>
@@ -104,13 +113,24 @@ export default function CollateralReview({
         </div>
       ))}
       {!!status?.collateral.length && exposure !== undefined && (
-        <p>
-          Maximum exposure from this transaction:{" "}
-          {baseToDisplay(exposure.toString(), 6)} ADA
-          {!body.collateral_return() &&
-            " (entire selected amount; no collateral return)"}
-          .
-        </p>
+        <>
+          <p>
+            Recorded collateral return: {baseToDisplay(returned.toString(), 6)}{" "}
+            ADA
+            {body.collateral_return() && (
+              <> to {body.collateral_return()!.address().to_bech32()}</>
+            )}
+            .
+          </p>
+          <p>
+            Maximum exposure from this transaction:{" "}
+            {baseToDisplay(exposure.toString(), 6)} ADA
+            {!body.collateral_return() &&
+              " (entire selected amount; no collateral return)"}
+            . Exposure applies if an included transaction fails script
+            execution.
+          </p>
+        </>
       )}
       {!!status?.missingKeyHashes.length && (
         <p role="alert" className="text-destructive">

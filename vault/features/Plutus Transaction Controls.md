@@ -5,7 +5,7 @@ state: in-progress
 owner: Andre
 milestone: 2026-10
 issues: []
-updated: 2026-10-21
+updated: 2026-10-22
 ---
 
 # Plutus Transaction Controls
@@ -59,11 +59,14 @@ records the existing datum, script-input and collateral implementation and its
 remaining browser/preprod acceptance work.
 
 The [script-risk plan](../../docs/transaction-script-risk-guardrails-plan.md)
-tracks the added guardrails. Phases 0–3 implement the review contract, serialized
-fixtures, shared assessment, contextual builder warnings and per-action review
-before builder signing or unsigned export. Pending co-signer and MCP integration
-remain phases 4–5, with full-app/preprod acceptance in phase 6; this feature is not
-marked delivered.
+tracks the added guardrails. Phases 0–5 implement the review contract, serialized
+fixtures, shared assessment, contextual builder warnings, per-action review
+before builder signing or unsigned export, and independent pending co-signer
+review from CBOR. Each signer acknowledges known anyone-can-spend outputs; pending
+replacement/account changes invalidate review. MCP text, inline HTML and paginated
+PNG review now share CBOR-derived findings, with risk-bound preview tokens and fresh
+review when proposal exposure changes. Full-app/preprod acceptance remains phase 6;
+this feature is not marked delivered.
 
 Code: `src/lib/tx-draft/`, `src/lib/tx-risk/`,
 `src/components/pages/wallet/build/`. Fixtures/tests: `src/__tests__/txRisk.test.ts`

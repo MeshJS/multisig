@@ -1,6 +1,6 @@
 # Script-risk assessment contract
 
-This module implements the assessment and review policy for phases 0–3 of the
+This module implements the assessment and review policy for phases 0–5 of the
 [guardrails plan](../../../docs/transaction-script-risk-guardrails-plan.md), under
 the vault ID [Plutus Transaction Controls](../../../vault/features/Plutus%20Transaction%20Controls.md).
 The maintainer's October roadmap tasks and the agreed risk-policy table are the
@@ -62,15 +62,15 @@ No evaluation result is inferred from stored CBOR or script recognition. Existin
 script resolution, datum/redeemer validation, evaluation, authorization, proxy
 audits and `transactionReadiness` remain authoritative for their own checks.
 The builder binds each decision to current transaction/context identity through
-`reviewBuiltTransaction`; phase 4 must independently review pending transactions
-for each co-signer.
+`reviewBuiltTransaction`; pending review independently applies the same completeness
+and acknowledgment policy for each co-signer through `reviewPendingTransaction`.
 
 ## Supported review contract
 
 - Supported sources: multisig proposal, connected-wallet signing, other-address
   unsigned export, replacement editing and pending review (including API/MCP/import
-  origins). Builder proposal, connected signing, replacement and unsigned-copy
-  integration is implemented. Pending/co-signer and MCP integration remain planned.
+  origins). Builder proposal, connected signing, replacement, unsigned-copy,
+  pending/co-signer and MCP integration is implemented.
 - Shelley base, enterprise and pointer payment addresses are inspected. Reward,
   Byron and malformed address forms produce an explicit unsupported/incomplete
   result rather than a guessed payment credential. Mainnet is network 1; the
@@ -147,3 +147,52 @@ Tests: `txRiskReview.test.ts` covers real-codec action policy/build integration;
 `useTransactionReview.test.ts` covers signing hook ordering and invalidation;
 `e2e/risk-components.config.ts` runs isolated production-component browser tests
 with mocked external actions. This is not authenticated-wallet or on-chain evidence.
+
+## Pending co-signer integration (phase 4)
+
+`usePendingTransactionReview` resolves stored CBOR when a pending card is displayed
+and again on every signing attempt. The card uses the assessment's decoded output
+amounts/destinations for its output list and token-flow outputs; stored JSON and
+editor compatibility do not authorize or suppress script warnings.
+
+`reviewPendingTransaction` checks the actual body hash, network, version and
+completeness before requesting a decision. Known anyone-can-spend outputs require
+explicit acknowledgment from this signer. Live facts are refreshed after the
+dialog; changed facts require a new attempt. The hook cancels decisions when the
+pending row/body, account, connected wallet, selected network or native-script
+context changes. Witness-only additions retain body identity. Acceptance is never
+stored on a transaction or reused for another signing attempt.
+
+The pending card retains proxy auditing and payment/collateral witness verification.
+Currentness is checked after asynchronous audit, review, wallet and readiness calls
+before automatic submission. Readiness still decides whether additional witnesses
+are needed. Imported collateral returns retain selected-minus-returned exposure;
+return amount/destination and owners are visible. Decode/provider failures retain
+warnings, offer retry and cannot authorize signing.
+
+Tests: `pendingRiskReview.test.ts` uses serialized fixtures and live-provider mocks;
+`pendingTransactionCard.test.ts` exercises the production card signing path and
+misleading/missing JSON with mocked external boundaries. The isolated Playwright
+harness also mounts the production hook, summary and dialog with fixture assessments
+at the codec/provider boundary. Full-app and preprod acceptance remain phase 6.
+
+## MCP integration (phase 5)
+
+`src/lib/tx-review/` assesses completed preview/proposal CBOR with the authorized
+free-UTxO handler's fresh facts. Pending review and proposal replay use the live
+resolver. The summary adds `riskAssessment`; `messages.ts` projects full addresses,
+exact quantities/units, output indexes and collateral facts into readable warnings
+shared by text, HTML and PNG pages. Incomplete pending review remains explicit;
+incomplete builds cannot mint a preview token or create a pending transaction.
+
+`tx-review/risk.ts` binds the preview to a versioned risk fingerprint in the signed
+draft token. Rebuilds may reselect ordinary native inputs and change returning to
+the verified wallet. Changes to payment outputs, other script outputs, input risks,
+collateral or wallet/network context require a fresh preview. Old tokens without
+the fingerprint also require a new preview. Confirmation only creates an unsigned
+pending transaction; each wallet signer still performs phase 4 review independently.
+
+Pending output/fee/input-reference/body-hash presentation comes from CBOR, never
+`txJson`. Missing labels remain optional; missing mandatory facts remain incomplete.
+The PNG renderer emits all bounded warning pages instead of clipping risk details.
+MCP tool imports remain lazy; no headless signing or script-spend capability was added.

@@ -13,6 +13,8 @@ import {
 } from "@/utils/token-flow/certificates";
 import { splitTrailingChange } from "@/utils/token-flow/change";
 import { getFirstAndLast } from "@/utils/strings";
+import type { RiskAssessment } from "@/lib/tx-risk/types";
+import { riskAssessmentWarnings } from "@/lib/tx-risk/messages";
 
 /**
  * The review summary: one plain object describing a transaction the way a
@@ -34,6 +36,7 @@ export type ReviewAmount = {
 };
 
 export type ReviewRecipient = {
+  outputIndex?: number;
   address: string;
   /** Resolved label ("Alice", "Signer 2", "This wallet"), or "" when unknown. */
   label: string;
@@ -58,7 +61,12 @@ export type ReviewAction = {
 
 export type TxReviewSummary = {
   kind: "preview" | "pending";
-  wallet: { id: string; name: string; address: string; network: "mainnet" | "preprod" };
+  wallet: {
+    id: string;
+    name: string;
+    address: string;
+    network: "mainnet" | "preprod";
+  };
   threshold: { required: number; total: number; type: string };
   signatures: {
     signed: { address: string; label: string }[];
@@ -80,6 +88,7 @@ export type TxReviewSummary = {
   transactionId?: string;
   sizeBytes?: number;
   warnings: string[];
+  riskAssessment?: RiskAssessment;
   /** ISO timestamp of when this summary was produced. */
   generatedAt: string;
 };
@@ -109,6 +118,7 @@ export type SummarizeOptions = {
   transactionId?: string;
   sizeBytes?: number;
   warnings?: string[];
+  riskAssessment?: RiskAssessment;
   now?: Date;
 };
 
@@ -191,16 +201,25 @@ export function summarizeMeshBody(
     (output: any) => typeof output?.address === "string",
   );
   const changeAddress =
-    typeof body?.changeAddress === "string" ? body.changeAddress : opts.wallet.address;
+    typeof body?.changeAddress === "string"
+      ? body.changeAddress
+      : opts.wallet.address;
   const hasActions = ["certificates", "votes", "withdrawals"].some(
     (key) => Array.isArray(body?.[key]) && body[key].length > 0,
   );
   const paymentCount = opts.paymentCount ?? (hasActions ? 0 : undefined);
-  const { payments, change } = splitTrailingChange(outputs, changeAddress, paymentCount);
+  const { payments, change } = splitTrailingChange(
+    outputs,
+    changeAddress,
+    paymentCount,
+  );
 
   const recipients: ReviewRecipient[] = payments.map((output: any) => {
     const { label, type } = opts.labelAddress(output.address);
     return {
+      ...(output.outputIndex !== undefined
+        ? { outputIndex: output.outputIndex }
+        : {}),
       address: output.address,
       label,
       partyType: type,
@@ -209,7 +228,9 @@ export function summarizeMeshBody(
   });
 
   const changeAmounts = sumAssets(
-    change.map((output: any) => (Array.isArray(output.amount) ? output.amount : [])),
+    change.map((output: any) =>
+      Array.isArray(output.amount) ? output.amount : [],
+    ),
   ).map(format);
 
   // Inputs: the builder body carries amounts for inputs it selected itself.
@@ -225,7 +246,8 @@ export function summarizeMeshBody(
   const feeRaw = typeof body?.fee === "string" ? body.fee : undefined;
   let fee: ReviewAmount | null = null;
   try {
-    if (feeRaw && BigInt(feeRaw) > 0n) fee = format({ unit: "lovelace", quantity: feeRaw });
+    if (feeRaw && BigInt(feeRaw) > 0n)
+      fee = format({ unit: "lovelace", quantity: feeRaw });
   } catch {
     fee = null;
   }
@@ -233,7 +255,9 @@ export function summarizeMeshBody(
   // Certificates and votes as badges, with deposits implied by cert kinds.
   const actions: ReviewAction[] = [];
   let deposit = 0n;
-  for (const cert of Array.isArray(body?.certificates) ? body.certificates : []) {
+  for (const cert of Array.isArray(body?.certificates)
+    ? body.certificates
+    : []) {
     const badge = meshCertificateToBadge(cert);
     const certType = cert?.certType?.type;
     const poolId = cert?.certType?.poolId;
@@ -260,7 +284,9 @@ export function summarizeMeshBody(
         ? `${govActionId.txHash}#${govActionId.txIndex}`
         : undefined;
     const anchorUrl = vote?.vote?.votingProcedure?.anchor?.anchorUrl;
-    const pendingText = proposalId ? opts.pendingRationales?.get(proposalId) : undefined;
+    const pendingText = proposalId
+      ? opts.pendingRationales?.get(proposalId)
+      : undefined;
     actions.push({
       kind: "vote",
       label: badge.label,
@@ -270,13 +296,22 @@ export function summarizeMeshBody(
         typeof anchorUrl === "string" && anchorUrl
           ? { status: "anchored", url: anchorUrl }
           : pendingText
-            ? { status: "will-publish-on-confirm", excerpt: excerpt(pendingText) }
+            ? {
+                status: "will-publish-on-confirm",
+                excerpt: excerpt(pendingText),
+              }
             : { status: "none" },
     });
   }
 
-  const signed = opts.signedAddresses.map((address) => ({ address, label: labelOf(address) }));
-  const rejected = opts.rejectedAddresses.map((address) => ({ address, label: labelOf(address) }));
+  const signed = opts.signedAddresses.map((address) => ({
+    address,
+    label: labelOf(address),
+  }));
+  const rejected = opts.rejectedAddresses.map((address) => ({
+    address,
+    label: labelOf(address),
+  }));
 
   return {
     kind: opts.kind,
@@ -310,7 +345,13 @@ export function summarizeMeshBody(
     txHash: opts.txHash,
     ...(opts.transactionId ? { transactionId: opts.transactionId } : {}),
     ...(opts.sizeBytes !== undefined ? { sizeBytes: opts.sizeBytes } : {}),
-    warnings: opts.warnings ?? [],
+    warnings: [
+      ...(opts.warnings ?? []),
+      ...(opts.riskAssessment
+        ? riskAssessmentWarnings(opts.riskAssessment)
+        : []),
+    ],
+    ...(opts.riskAssessment ? { riskAssessment: opts.riskAssessment } : {}),
     generatedAt: (opts.now ?? new Date()).toISOString(),
   };
 }
@@ -322,7 +363,8 @@ function readMetadataMessage(body: any): string {
     metadata instanceof Map
       ? metadata.get("674")
       : Array.isArray(metadata)
-        ? metadata.find((m: any) => String(m?.tag ?? m?.label) === "674")?.metadata
+        ? metadata.find((m: any) => String(m?.tag ?? m?.label) === "674")
+            ?.metadata
         : metadata?.["674"];
   const msg = entry?.msg ?? entry?.metadata?.msg;
   if (Array.isArray(msg)) return msg.join("");
@@ -338,13 +380,19 @@ function excerpt(text: string, max = 140): string {
  * Structured-content hint that a card image accompanies the result, for a
  * model that reads `structuredContent` rather than the content list.
  */
-export const REVIEW_CARD_HINT = { attached: true, mimeType: "image/png" } as const;
+export const REVIEW_CARD_HINT = {
+  attached: true,
+  mimeType: "image/png",
+} as const;
 
 /**
  * The html-mode counterpart: no image block; a client with the inline card
  * view draws the card from `structuredContent.summary`.
  */
-export const REVIEW_CARD_INLINE_HINT = { attached: false, inline: true } as const;
+export const REVIEW_CARD_INLINE_HINT = {
+  attached: false,
+  inline: true,
+} as const;
 
 /** How the card was delivered; decides the text opener and the hint. */
 export type CardDelivery = "html" | "image";
@@ -362,7 +410,13 @@ export function summaryToText(
   summary: TxReviewSummary,
   opts: { card?: CardDelivery } = {},
 ): string {
-  const lines: string[] = [opts.card === "image" ? CARD_ATTACHED_LINE : CARD_INLINE_LINE];
+  const lines: string[] = [
+    opts.card === "image" ? CARD_ATTACHED_LINE : CARD_INLINE_LINE,
+  ];
+  if (opts.card === "image" && summary.warnings.length)
+    lines.push(
+      "Read every attached risk-detail image page; they contain the complete affected addresses and amounts.",
+    );
   const state =
     summary.kind === "preview"
       ? "UNSIGNED PREVIEW — nothing has been saved, signed or broadcast."
@@ -376,7 +430,9 @@ export function summaryToText(
       const who = recipient.label
         ? `${recipient.label} (${getFirstAndLast(recipient.address, 12, 6)})`
         : getFirstAndLast(recipient.address, 16, 8);
-      lines.push(`  - ${who}: ${recipient.amounts.map((a) => a.display).join(" + ")}`);
+      lines.push(
+        `  - ${who}: ${recipient.amounts.map((a) => a.display).join(" + ")}`,
+      );
     }
   }
   if (summary.actions.length > 0) {
@@ -398,13 +454,19 @@ export function summaryToText(
   if (summary.fee) facts.push(`fee ${summary.fee.display}`);
   if (summary.deposit) facts.push(`deposit ${summary.deposit.display}`);
   if (summary.change.length > 0) {
-    facts.push(`change back to the wallet ${summary.change.map((a) => a.display).join(" + ")}`);
+    facts.push(
+      `change back to the wallet ${summary.change.map((a) => a.display).join(" + ")}`,
+    );
   }
-  facts.push(`${summary.inputs.count} input${summary.inputs.count === 1 ? "" : "s"}`);
+  facts.push(
+    `${summary.inputs.count} input${summary.inputs.count === 1 ? "" : "s"}`,
+  );
   lines.push(`Totals: ${facts.join(", ")}.`);
-  if (summary.metadataMessage) lines.push(`On-chain message: "${summary.metadataMessage}"`);
+  if (summary.metadataMessage)
+    lines.push(`On-chain message: "${summary.metadataMessage}"`);
   lines.push(`Tx hash: ${summary.txHash}`);
-  if (summary.transactionId) lines.push(`Transaction id: ${summary.transactionId}`);
+  if (summary.transactionId)
+    lines.push(`Transaction id: ${summary.transactionId}`);
   for (const warning of summary.warnings) lines.push(`Warning: ${warning}`);
   if (summary.kind === "preview") {
     lines.push(
