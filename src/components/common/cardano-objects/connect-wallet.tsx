@@ -16,6 +16,7 @@ import React from "react";
 import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider } from "@/utils/get-provider";
+import { fetchUserAssetMetadata } from "@/utils/user-asset-metadata";
 import { Asset } from "@meshsdk/core";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useUTXOS from "@/hooks/useUTXOS";
@@ -414,21 +415,20 @@ function ConnectWalletContent({
         const provider = getProvider(networkId);
         setUserAssets(assets);
 
-        for (const asset of assets) {
-          if (asset.unit === "lovelace") continue;
-          try {
-            const assetInfo = await provider.get(`/assets/${asset.unit}`);
-            setUserAssetMetadata(
-              asset.unit,
-              assetInfo?.metadata?.name ||
-                assetInfo?.onchain_metadata?.name ||
-                asset.unit,
-              assetInfo?.metadata?.decimals || 0,
-            );
-          } catch (error) {
-            // Continue if asset metadata fetch fails
-          }
-        }
+        // Read at call time rather than subscribing: names already in the
+        // store are skipped, and this effect should not re-run as they arrive.
+        // Results are written even if the effect has re-run since: a name is
+        // keyed by unit, not by the asset list that asked for it.
+        await fetchUserAssetMetadata(
+          provider,
+          assets.map((asset) => asset.unit),
+          useUserStore.getState().userAssetMetadata,
+          {
+            network: networkId,
+            onEntry: (entry) =>
+              setUserAssetMetadata(entry.unit, entry.assetName, entry.decimals),
+          },
+        );
       } catch {
         // Continue if asset processing fails
       }
@@ -551,23 +551,18 @@ function ConnectWalletContent({
               unit: asset.unit,
               quantity: asset.quantity,
             });
-            if (asset.unit === "lovelace") continue;
-            try {
-              const assetInfo = await provider.get(`/assets/${asset.unit}`);
-              if (isMounted) {
-                setUserAssetMetadata(
-                  asset.unit,
-                  assetInfo?.metadata?.name ||
-                    assetInfo?.onchain_metadata?.name ||
-                    asset.unit,
-                  assetInfo?.metadata?.decimals || 0,
-                );
-              }
-            } catch (assetError) {
-              // Skip individual asset metadata errors to avoid blocking
-              console.warn(`[UTXOS] Failed to fetch metadata for asset ${asset.unit}:`, assetError);
-            }
           }
+          // A failed lookup is skipped, not fatal: that token shows its unit.
+          await fetchUserAssetMetadata(
+            provider,
+            userAssets.map((asset) => asset.unit),
+            useUserStore.getState().userAssetMetadata,
+            {
+              network,
+              onEntry: (entry) =>
+                setUserAssetMetadata(entry.unit, entry.assetName, entry.decimals),
+            },
+          );
           if (isMounted) {
             setUserAssets(userAssets);
           }
