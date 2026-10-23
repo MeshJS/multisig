@@ -196,3 +196,14 @@ Pending output/fee/input-reference/body-hash presentation comes from CBOR, never
 `txJson`. Missing labels remain optional; missing mandatory facts remain incomplete.
 The PNG renderer emits all bounded warning pages instead of clipping risk details.
 MCP tool imports remain lazy; no headless signing or script-spend capability was added.
+
+## Phase 6 acceptance
+
+The [release evidence record](../../../docs/transaction-script-risk-release.md)
+maps the acceptance matrix to tests and records actual results separately from
+preprod/release gates. The [user guide](../../../docs/transaction-script-risk-review.md)
+describes the builder, pending and MCP flows. Full-app scenarios live in
+`e2e/tests/transaction-risk-guardrails.spec.ts`; the real-chain exercise in
+`transaction-risk-preprod.spec.ts` requires explicit opt-in and records partial
+progress for recovery. Isolated browser tests also verify named dialogs, labelled
+acknowledgments, keyboard focus trapping and focus return on cancellation.

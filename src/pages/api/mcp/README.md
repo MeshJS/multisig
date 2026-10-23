@@ -132,6 +132,10 @@ creates an unsigned pending transaction; it never acknowledges risk for a wallet
 signer. Each signer reviews and acknowledges known anyone-can-spend outputs in the
 app before signing. No headless Plutus spending or signing capability is added.
 
+See the [script-risk review guide](../../../../docs/transaction-script-risk-review.md)
+for user-facing behavior and the [phase 6 release record](../../../../docs/transaction-script-risk-release.md)
+for regression evidence and remaining preprod/rollout gates.
+
 ### Task payouts
 
 The project task board (`/wallets/[wallet]/tasks`) stores payment recipients per task, in

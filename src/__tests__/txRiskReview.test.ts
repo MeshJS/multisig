@@ -18,6 +18,7 @@ import {
   transaction,
 } from "./fixtures/tx-risk";
 import { createMockProvider } from "./tx-builders/mockProvider";
+import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 
 function built(destination = address("known")): DraftBuildResult {
   const unsignedTx = transaction({ outputs: [output(destination)] });
@@ -227,4 +228,79 @@ test("canvas warning indicators stay attached to duplicate recipient IDs", () =>
     expect(
       flow.nodes.find((node) => node.id === `draftout:${id}`),
     ).toMatchObject({ details: ["Warning: anyone can spend"] });
+});
+
+describe("store edits invalidate an outstanding real-CBOR review", () => {
+  test.each([
+    "address",
+    "amount",
+    "datum",
+    "redeemer",
+    "collateral",
+    "source",
+    "account",
+    "network",
+    "replacement",
+  ])("%s cannot reuse acceptance", async (change) => {
+    const store = useTxBuilderStore;
+    store.getState().resetDraft("risk-wallet");
+    store.getState().syncEnvironment({ network: 0, account: "signer-a" });
+    const id = store.getState().addOutput({
+      address: address("known"),
+      assets: [{ unit: "lovelace", quantity: "5000000" }],
+    });
+    const inputId = store.getState().addScriptInput();
+    const captured = store.getState().draft;
+    const result = built();
+    const action = jest.fn();
+    const accepted = await reviewBuiltTransaction(result, {
+      network: 0,
+      isCurrent: () => store.getState().draft === captured,
+      refresh: async () => result.riskAssessment!,
+      confirm: async () => {
+        const state = store.getState();
+        switch (change) {
+          case "address":
+            state.updateOutput(id, { address: address("key") });
+            break;
+          case "amount":
+            state.setOutputAsset(id, "lovelace", "6000000");
+            break;
+          case "datum":
+            state.setOutputDatum(id, { format: "CBOR", text: "01" });
+            break;
+          case "redeemer":
+            state.updateScriptInput(inputId, {
+              redeemer: { format: "CBOR", text: "02" },
+            });
+            break;
+          case "collateral":
+            state.setCollateral({
+              utxoRef: { txHash: "cc".repeat(32), outputIndex: 0 },
+            });
+            break;
+          case "source":
+            state.setSource({ kind: "connected" });
+            break;
+          case "account":
+            state.syncEnvironment({ network: 0, account: "signer-b" });
+            break;
+          case "network":
+            state.syncEnvironment({ network: 1, account: "signer-a" });
+            break;
+          case "replacement":
+            state.loadDraft({
+              walletId: "risk-wallet",
+              editingTxId: "replacement",
+              draft: captured,
+            });
+            break;
+        }
+        return { accepted: true, acknowledged: true };
+      },
+    });
+    if (accepted) action();
+    expect(accepted).toBe(false);
+    expect(action).not.toHaveBeenCalled();
+  });
 });

@@ -192,6 +192,7 @@ export default function PageBuild() {
     id: number;
   } | null>(null);
   const reviewRequestId = useRef(0);
+  const reviewOpener = useRef<Element | null>(null);
   const buildEnvironment = useRef({
     network,
     activeWallet,
@@ -845,6 +846,7 @@ export default function PageBuild() {
   }
 
   async function exportBuild(result: DraftBuildResult, revision: number) {
+    reviewOpener.current = document.activeElement;
     setExporting(true);
     try {
       if (
@@ -907,6 +909,7 @@ export default function PageBuild() {
    * can fire off several transactions from their own wallet.
    */
   async function buildAndSign() {
+    reviewOpener.current = document.activeElement;
     if (!appWallet || draft.source.kind !== "connected" || !canBuildSource())
       return;
     const revision = buildResultRevision.current;
@@ -970,6 +973,7 @@ export default function PageBuild() {
     transactionId: string;
     knownSignedCount: number;
   }) {
+    reviewOpener.current = document.activeElement;
     if (!appWallet?.scriptCbor || !isMultisigSource || errors.length > 0)
       return;
     const revision = buildResultRevision.current;
@@ -1371,6 +1375,7 @@ export default function PageBuild() {
       />
       {transactionReview && (
         <TransactionReviewDialog
+          returnFocus={reviewOpener.current}
           key={transactionReview.id}
           result={transactionReview.result}
           action={transactionReview.action}

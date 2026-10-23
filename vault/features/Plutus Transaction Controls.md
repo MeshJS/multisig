@@ -5,7 +5,7 @@ state: in-progress
 owner: Andre
 milestone: 2026-10
 issues: []
-updated: 2026-10-22
+updated: 2026-10-23
 ---
 
 # Plutus Transaction Controls
@@ -65,8 +65,13 @@ before builder signing or unsigned export, and independent pending co-signer
 review from CBOR. Each signer acknowledges known anyone-can-spend outputs; pending
 replacement/account changes invalidate review. MCP text, inline HTML and paginated
 PNG review now share CBOR-derived findings, with risk-bound preview tokens and fresh
-review when proposal exposure changes. Full-app/preprod acceptance remains phase 6;
-this feature is not marked delivered.
+review when proposal exposure changes. Phase 6 adds regression coverage, pending
+CBOR freshness and focus-restoration fixes, documentation, and full-app/preprod
+acceptance runners. Controlled preprod funding, redeemer replacement, independent
+co-signing and recovery passed on 2026-10-23; collateral remained unspent.
+Actual validation and rollout status are tracked in the
+[release evidence record](../../docs/transaction-script-risk-release.md);
+this feature is not marked delivered while release gates remain open.
 
 Code: `src/lib/tx-draft/`, `src/lib/tx-risk/`,
 `src/components/pages/wallet/build/`. Fixtures/tests: `src/__tests__/txRisk.test.ts`

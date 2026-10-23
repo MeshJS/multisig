@@ -16,6 +16,7 @@ test("builder keeps separate datum editors for outputs to the same address", asy
     timeout: 60_000,
   });
 
+  const outputCards: string[] = [];
   for (const data of ["01", "02"]) {
     await page.getByTestId("tx-builder-add-recipient").click();
     await page.getByTestId("tx-builder-output-address").fill(recipient);
@@ -30,11 +31,19 @@ test("builder keeps separate datum editors for outputs to the same address", asy
     await expect(
       page.getByText("Valid data · 1 byte", { exact: true }),
     ).toBeVisible();
+    // React Flow may reorder DOM nodes when selection changes. Use stable draft
+    // IDs to test duplicate destinations, not their current DOM order.
+    const ids = await page
+      .locator('[data-testid^="tx-flow-node-draftout:"]')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-testid")!),
+      );
+    outputCards.push(ids.find((id) => !outputCards.includes(id))!);
   }
   const cards = page.locator('[data-testid^="tx-flow-node-draftout:"]');
   await expect(cards).toHaveCount(2);
   await expect(page.getByTestId("tx-builder-test-build")).toBeEnabled();
-  await cards.nth(0).click();
+  await page.getByTestId(outputCards[0]!).click();
   await expect(page.getByLabel("Inline datum", { exact: true })).toHaveValue(
     "01",
   );
@@ -63,7 +72,7 @@ test("builder keeps separate datum editors for outputs to the same address", asy
   );
   await expect(page.getByTestId("tx-builder-test-build")).toBeDisabled();
 
-  await cards.nth(1).click();
+  await page.getByTestId(outputCards[1]!).click();
   await expect(page.getByLabel("Inline datum", { exact: true })).toHaveValue(
     "02",
   );

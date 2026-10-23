@@ -8,7 +8,7 @@ import { csl } from "@meshsdk/core-csl";
 import superjson from "superjson";
 import { test, expect } from "../fixtures/authFixture";
 import { getWallet, loadContext } from "../helpers/contextLoader";
-import { mockWalletUtxos } from "../helpers/phase3Mocks";
+import { mockTxFlowReads, mockWalletUtxos } from "../helpers/phase3Mocks";
 
 test("configure and revalidate an explicit Plutus input while incomplete builds stay disabled", async ({
   page,
@@ -128,10 +128,16 @@ test("evaluate, export and reload pending Plutus intent; edits invalidate the re
   ).to_hex();
   await authenticateAs(page, 0);
   await mockWalletUtxos(page);
+  await mockTxFlowReads(page, wallet.walletAddress, { lovelace: "600000000" });
   await page.route(`**/txs/${hash}/utxos`, (route) =>
     route.fulfill({ json: { hash, inputs: [], outputs: [input] } }),
   );
   for (const output of [input, collateral]) {
+    await page.route(`**/txs/${output.tx_hash}/utxos`, (route) =>
+      route.fulfill({
+        json: { hash: output.tx_hash, inputs: [], outputs: [output] },
+      }),
+    );
     await page.route(`**/addresses/${output.address}/utxos*`, (route) =>
       route.fulfill({
         json:
@@ -241,19 +247,38 @@ test("evaluate, export and reload pending Plutus intent; edits invalidate the re
     csl.Transaction.from_hex(evaluated.at(-1)!).witness_set().vkeys()?.len() ??
       0,
   ).toBe(0);
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  // The Docker app uses HTTP on a non-localhost hostname, so Chromium does not
+  // expose the secure-context Clipboard API. Observe that boundary explicitly.
+  await page.evaluate(() => {
+    let copied = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied = text;
+        },
+        readText: async () => copied,
+      },
+    });
+  });
   await page.getByTestId("tx-builder-copy-cbor").click();
+  const review = page.getByRole("dialog", {
+    name: "Review transaction",
+    exact: true,
+  });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText("does not verify");
+  await review.getByRole("button", { name: "Continue to export" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     evaluated.at(-1),
   );
   // Proposing rebuilds and opens final review. Cancelling must never invoke the wallet.
   await page.getByTestId("tx-builder-build").click();
-  const review = page.getByRole("dialog", {
-    name: "Review evaluated transaction",
-  });
   await expect(review).toBeVisible();
   await expect(review).toContainText("Required collateral payment key");
-  await review.getByRole("button", { name: "Cancel", exact: true }).click();
+  await review
+    .getByRole("button", { name: "Cancel and edit", exact: true })
+    .click();
   expect(
     await page.evaluate(
       () =>

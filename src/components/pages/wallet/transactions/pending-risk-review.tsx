@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { RiskAssessment } from "@/lib/tx-risk/types";
 import type { ReviewDecision } from "@/lib/tx-risk/review-policy";
 import { Button } from "@/components/ui/button";
@@ -55,12 +55,19 @@ export function PendingRiskDialog({
   assessment,
   network,
   onDecision,
+  returnFocus,
 }: {
   assessment: RiskAssessment;
   network: number;
   onDecision: (decision: ReviewDecision) => void;
+  returnFocus?: Element | null;
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
+  // This async dialog has no Radix DialogTrigger to restore focus to.
+  const opener = useRef(
+    returnFocus ??
+      (typeof document === "undefined" ? null : document.activeElement),
+  );
   const needsAcknowledgment = assessment.findings.some(
     (finding) => finding.requiresAcknowledgment,
   );
@@ -75,6 +82,15 @@ export function PendingRiskDialog({
       <DialogContent
         className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
         data-testid="pending-risk-dialog"
+        onCloseAutoFocus={(event) => {
+          if (
+            opener.current instanceof HTMLElement &&
+            opener.current.isConnected
+          ) {
+            event.preventDefault();
+            opener.current.focus();
+          }
+        }}
       >
         <DialogHeader>
           <DialogTitle>Review transaction before signing</DialogTitle>

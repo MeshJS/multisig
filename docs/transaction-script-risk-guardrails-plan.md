@@ -1,6 +1,6 @@
 # Transaction script risk guardrails implementation plan
 
-Status: Phases 0–5 implemented. Builder, pending co-signer and MCP review use shared CBOR-derived risk facts. Phase 6 full-app/preprod acceptance and release validation remain outstanding.
+Status: Phases 0–5 implemented. Phase 6 regression tests, documentation and acceptance runners are implemented; full-app/preprod execution and rollout status are tracked in the [release evidence record](transaction-script-risk-release.md). Do not infer chain acceptance from offline or mocked-browser results.
 
 Prepared: 2026-10-21
 
@@ -196,14 +196,45 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
 | Provider/evaluator failure                                                | No success/safety implication; required verification failures block the affected action.                      |
 | Mobile, keyboard and screen-reader use                                    | Warnings remain discoverable, acknowledgments labelled and cancel/focus behavior usable.                      |
 
-- [ ] Extend focused Jest coverage around draft outputs, Plutus inputs, collateral, builder/store invalidation and transaction review. Add pure classifier tests and integration tests with real serialized fixtures; avoid testing only mocked risk results.
-- [ ] Extend the existing builder Playwright fixtures and add pending/co-signer tests with wallet-sign/submit call assertions. Use mocked chain data for mainnet cases.
-- [ ] Run focused suites, `npm run typecheck`, relevant browser tests and repository-required checks; run broader regressions for the shared signing/review changes. Check formatting of changed files. Record any baseline tool/configuration failures explicitly rather than treating a skipped check as passing.
-- [ ] Update the preprod guide to explain the shared address, loss of multisig protection after funding, each tester's own output reference, and expected UI warnings. Update builder/pending and MCP documentation where behavior changed.
-- [ ] Run the existing offline fixture, then a controlled preprod funding/spending/replacement/co-signing exercise with small disposable test ADA. Record actual transaction hashes and distinguish offline results from chain acceptance. Do not test loss scenarios with valuable assets.
+- [x] Extend focused Jest coverage around draft outputs, Plutus inputs, collateral, builder/store invalidation and transaction review. Add pure classifier tests and integration tests with real serialized fixtures; avoid testing only mocked risk results.
+- [x] Extend the existing builder Playwright fixtures and add pending/co-signer tests with wallet-sign/submit call assertions. Use mocked chain data for mainnet cases.
+- [x] Run focused suites, `npm run typecheck`, relevant browser tests and repository-required checks; run broader regressions for the shared signing/review changes. Check formatting of changed files. Record any baseline tool/configuration failures explicitly rather than treating a skipped check as passing.
+- [x] Update the preprod guide to explain the shared address, loss of multisig protection after funding, each tester's own output reference, and expected UI warnings. Update builder/pending and MCP documentation where behavior changed.
+- [x] Run the existing offline fixture, then a controlled preprod funding/spending/replacement/co-signing exercise with small disposable test ADA. Record actual transaction hashes and distinguish offline results from chain acceptance. Do not test loss scenarios with valuable assets.
 - [ ] Release browser creation and co-signing coverage together; do not declare the guardrails complete while pending signers lack them. Include MCP parity before claiming coverage across all review surfaces.
 
 **Acceptance:** the matrix passes with recorded evidence; docs match visible behavior; warnings do not imply general contract auditing. No new database or protocol migration is needed for the proposed first release.
+
+### Phase 6 implementation notes
+
+- Added store-backed review invalidation tests for recipient, amount, datum,
+  redeemer, collateral, source, account, network and replacement edits, using real
+  serialized transaction assessment. Pending-cache regression tests ensure changed
+  CBOR reaches the card even when the stored hash and signer list do not change.
+- Accessibility regression tests exposed missing focus restoration in both async
+  dialogs. Callers now capture the invoking control before asynchronous work and
+  restore it on cancellation; accessible names, checkbox labels and focus trapping
+  are also checked in Chromium.
+- Full-app coverage uses the existing authenticated fixtures for all three builder
+  sources and imported pending review by independent signers. Chain responses are
+  synthetic and wallet signing rejects after acknowledgment. Existing Plutus
+  browser tests now exercise the shared export/signing dialog and fresh chain reads.
+- A separate opt-in `transaction-risk-preprod.spec.ts` automates the controlled
+  5 test ADA funding, 2 test ADA collateral, replacement and co-signing exercise.
+  It records partial progress and actual hashes for recovery after interruption;
+  it is skipped in normal regression runs. The controlled exercise passed on
+  2026-10-23: 5 test ADA funded, redeemer `01` proposal replaced by `02`, second
+  signer independently reviewed, and recovery confirmed on chain. The 2 test ADA
+  collateral remained unspent. Retries reused the original funding output.
+- Live testing exposed a CIP-30 fixture returning Mesh objects instead of CBOR;
+  corrected serialization has two real-codec regression tests. All eight full-app
+  scenarios passed again after that correction. Full Jest regression passed
+  1,948 tests, the additional wallet-fixture suite passed two, and isolated
+  Chromium passed 15. TypeScript, formatting and production build passed; lint
+  retains its documented baseline configuration failure.
+- See [release evidence](transaction-script-risk-release.md) for exact check
+  results, baseline failures and remaining rollout gates. Builder, pending and MCP
+  must ship together. No new schema/protocol migration or mainnet test transfer.
 
 ## Suggested implementation sequence
 
@@ -212,4 +243,4 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
 3. Phase 4 pending co-signer integration before enabling the complete browser flow.
 4. Phase 5 MCP/card parity, followed by Phase 6 release validation and documentation.
 
-Keep behavior switches, if needed for staged development, explicit and consistent across creation and signing surfaces. The maintainer authorized phases 0–3 and the related vault documentation on 2026-10-21, and phases 4–5 on 2026-10-22. Phase 6, deployment and on-chain test transactions remain future work.
+Keep behavior switches, if needed for staged development, explicit and consistent across creation and signing surfaces. The maintainer authorized phases 0–3 and the related vault documentation on 2026-10-21, phases 4–5 on 2026-10-22, and phase 6 on 2026-10-23. Release status and actual chain acceptance are recorded separately in the release evidence record.

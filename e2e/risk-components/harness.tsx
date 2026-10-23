@@ -24,6 +24,7 @@ declare global {
   }
 }
 function PendingHarness() {
+  const opener = useRef<Element | null>(null);
   const [identity, setIdentity] = useState("first-signer");
   const [signer, setSigner] = useState({});
   const [network, setNetwork] = useState(
@@ -50,6 +51,7 @@ function PendingHarness() {
     if (kind === "witness") setHex((value) => value + "witness");
   };
   async function sign() {
+    opener.current = document.activeElement;
     setBusy(true);
     const captured = review.capture();
     if ((await captured.review()) && captured.isCurrent()) {
@@ -71,6 +73,7 @@ function PendingHarness() {
       </button>
       {review.dialog && (
         <PendingRiskDialog
+          returnFocus={opener.current}
           key={review.dialog.id}
           assessment={review.dialog.assessment}
           network={network}
@@ -82,6 +85,7 @@ function PendingHarness() {
 }
 
 function Harness() {
+  const opener = useRef<Element | null>(null);
   const result = window.riskFixture;
   const revision = useRef(0);
   const finish = useRef<((d: ReviewDecision) => void) | undefined>(undefined);
@@ -98,6 +102,7 @@ function Harness() {
     setReview(undefined);
   };
   async function act(action: ReviewAction) {
+    opener.current = document.activeElement;
     setBusy(true);
     const started = revision.current;
     const accepted = await reviewBuiltTransaction(result, {
@@ -138,6 +143,7 @@ function Harness() {
       />
       {review && (
         <TransactionReviewDialog
+          returnFocus={opener.current}
           key={review.id}
           result={review.result}
           action={review.action}

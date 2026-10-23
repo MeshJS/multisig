@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import {
   reviewIsComplete,
@@ -27,13 +27,20 @@ export default function TransactionReviewDialog({
   network,
   action,
   onDecision,
+  returnFocus,
 }: {
   result: DraftBuildResult;
   network: number;
   action: ReviewAction;
   onDecision: (decision: ReviewDecision) => void;
+  returnFocus?: Element | null;
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
+  // This async dialog has no Radix DialogTrigger to restore focus to.
+  const opener = useRef(
+    returnFocus ??
+      (typeof document === "undefined" ? null : document.activeElement),
+  );
   const risk = result.riskAssessment;
   const needsAcknowledgment = reviewNeedsAcknowledgment(result);
   const complete = reviewIsComplete(result, network);
@@ -48,6 +55,15 @@ export default function TransactionReviewDialog({
       <DialogContent
         className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
         data-testid="tx-builder-risk-review"
+        onCloseAutoFocus={(event) => {
+          if (
+            opener.current instanceof HTMLElement &&
+            opener.current.isConnected
+          ) {
+            event.preventDefault();
+            opener.current.focus();
+          }
+        }}
       >
         <DialogHeader>
           <DialogTitle>Review transaction</DialogTitle>

@@ -139,6 +139,40 @@ async function mount(page: Page, result = fixture(), pending = false) {
 }
 const calls = (page: Page) => page.evaluate(() => window.riskCalls);
 
+for (const pending of [false, true]) {
+  test(`${pending ? "pending" : "builder"} review has an accessible name, traps focus and restores the invoking control`, async ({
+    page,
+  }) => {
+    await mount(page, fixture(), pending);
+    const opener = pending
+      ? page.getByRole("button", { name: "Approve pending transaction" })
+      : page.getByTestId("tx-builder-copy-cbor");
+    await opener.click();
+    const dialog = page.getByRole("dialog", {
+      name: pending
+        ? "Review transaction before signing"
+        : "Review transaction",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    const acknowledgment = dialog.getByRole("checkbox", {
+      name: /I understand anyone can spend/,
+    });
+    await expect(acknowledgment).not.toBeChecked();
+    await acknowledgment.focus();
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Tab");
+      expect(
+        await dialog.evaluate((el) => el.contains(document.activeElement)),
+      ).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+  });
+}
+
 test("danger acknowledgment gates signing, cancellation does nothing, and export needs a fresh decision", async ({
   page,
 }) => {

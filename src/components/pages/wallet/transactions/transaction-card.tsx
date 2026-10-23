@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
 import { checkSignature, generateNonce } from "@meshsdk/core";
@@ -515,7 +515,10 @@ export default function TransactionCard({
     }
   }
 
+  const reviewOpener = useRef<Element | null>(null);
   async function signTx() {
+    reviewOpener.current =
+      typeof document === "undefined" ? null : document.activeElement;
     if (!isAnyWalletConnected) {
       throw new Error("Wallet not connected. Please connect a wallet first.");
     }
@@ -1420,6 +1423,7 @@ export default function TransactionCard({
       )}
       {pendingRisk.dialog && (
         <PendingRiskDialog
+          returnFocus={reviewOpener.current}
           key={pendingRisk.dialog.id}
           assessment={pendingRisk.dialog.assessment}
           network={network}
