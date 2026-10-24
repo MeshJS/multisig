@@ -43,17 +43,33 @@ export default function DialogReportWrapper({
 
   async function handleReport() {
     setLoading(true);
-    await axios.post("/api/github/create-issue", { title, body, type });
+    try {
+      await axios.post("/api/github/create-issue", { title, body, type });
+    } catch (error) {
+      // Keep the dialog open with the text intact so the report isn't lost;
+      // the server says why (missing field, rate limit, not authorized).
+      const message = axios.isAxiosError(error)
+        ? (error.response?.data as { error?: string } | undefined)?.error
+        : undefined;
+      toast({
+        title: "Ticket not created",
+        description: message ?? "Something went wrong. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    } finally {
+      setLoading(false);
+    }
     setSent(true);
     toast({
       title: "Ticket created",
       description: "Your report has been submitted.",
       duration: 5000,
     });
-    setLoading(false);
     resetForm();
     setOpen(false);
-    
+
     // Call the optional callback after action completes
     if (onAction) {
       onAction();
@@ -131,7 +147,7 @@ export default function DialogReportWrapper({
             <Button
               className="px-3 py-2"
               onClick={() => handleReport()}
-              disabled={loading}
+              disabled={loading || !title.trim() || !body.trim()}
             >
               Create Ticket
             </Button>
