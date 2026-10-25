@@ -1,8 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-// import { put } from "@vercel/blob";
-import fs from "fs";
-import { env } from "@/env";
-import formidable, { Fields, Files, File } from "formidable";
 
 export const config = {
   api: {
@@ -10,79 +6,23 @@ export const config = {
   },
 };
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse,
-) {
+/**
+ * POST /api/vercel-storage/image/put — not in service.
+ *
+ * Vercel Blob storage is not configured and nothing in the app calls this
+ * route (image uploads go to /api/pinata-storage/image/put). It used to parse
+ * the whole multipart upload — streamed to an OS temp file that was never
+ * deleted, up to formidable's 200 MB default, with no authentication — and only
+ * then answer 501. It now answers 501 without reading the body, so an
+ * unauthenticated caller cannot fill the server's disk through it.
+ *
+ * If Blob storage is ever enabled, rebuild this on the pinata handler's model:
+ * authenticate first, then parse in memory with a size cap.
+ */
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
-
-  try {
-    const form = formidable({ multiples: false });
-    const parseForm = (): Promise<{ fields: Fields; files: Files }> =>
-      new Promise((resolve, reject) => {
-        form.parse(req, (err, fields, files) => {
-          if (err) {
-            return reject(
-              new Error(
-                err instanceof Error ? err.message : "Form parsing error",
-              ),
-            );
-          }
-          resolve({ fields, files });
-        });
-      });
-
-    const { fields, files } = await parseForm();
-
-    if (!files.file || !files.file[0]) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    const file: File = Array.isArray(files.file) ? files.file[0] : files.file;
-    const fileStream = fs.createReadStream(file.filepath);
-
-    // Validate and retrieve form fields
-    const rawShortHash = Array.isArray(fields.shortHash)
-      ? fields.shortHash[0]
-      : fields.shortHash;
-      
-    if (!rawShortHash || typeof rawShortHash !== "string") {
-      return res.status(400).json({ error: "shortHash is required" });
-    }
-    const shortHash = rawShortHash;
-
-    const rawFilename = Array.isArray(fields.filename)
-      ? fields.filename[0]
-      : fields.filename;
-    if (!rawFilename || typeof rawFilename !== "string") {
-      return res.status(400).json({ error: "filename is required" });
-    }
-    const filename = rawFilename;
-
-    // Build the storage path as: img/[shortHash]/filename
-    const storagePath = `img/${shortHash}/${filename}`;
-
-    const contentType =
-      typeof file.mimetype === "string"
-        ? file.mimetype
-        : "application/octet-stream";
-
-    // Vercel blob storage is not currently configured
-    return res.status(501).json({ error: "Vercel blob storage not configured" });
-    
-    // const response = await put(storagePath, fileStream, {
-    //   access: "public",
-    //   token: env.BLOB_READ_WRITE_TOKEN,
-    //   contentType,
-    // });
-
-    // return res.status(200).json({ url: response.url });
-  } catch (err) {
-    console.error("File upload error:", err);
-    return res
-      .status(500)
-      .json({ error: "Internal Server Error", details: err });
-  }
+  return res.status(501).json({ error: "Vercel blob storage not configured" });
 }
