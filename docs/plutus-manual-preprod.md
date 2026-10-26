@@ -57,7 +57,7 @@ Funding the output does not execute the validator and does not require script-in
 1. Open a fresh multisig draft and add an ordinary **2 ADA** output to your own preprod wallet address. Change returns to the multisig source.
 2. Select the transaction and open **Advanced → Script inputs → Add script input**.
 3. Enter the confirmed funding transaction hash/output index, choose **V2**, and paste the script CBOR above.
-4. Choose the on-chain **inline datum** source. Use **CBOR hex** redeemer `01`.
+4. Choose the on-chain **inline datum** source. Use **CBOR hex** redeemer `01`.Please 
 5. Verify the resolved input address and value match **your own** funded script
    output. Expect an input availability warning: anyone may spend it before your
    transaction confirms. Recovering to your key address must not display a new

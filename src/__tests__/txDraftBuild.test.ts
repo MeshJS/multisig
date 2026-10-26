@@ -30,8 +30,18 @@ import type { BuildDraftTxOptions } from "@/lib/tx-draft/build-draft-tx";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import { createOutputProvenance } from "@/lib/tx-draft/outputs";
+import { reconstructPendingTransaction } from "@/lib/tx-draft/reconstruct-pending";
 import { mergeSignerWitnesses } from "@/utils/txSignUtils";
 import { invalidateDraftContext } from "@/lib/tx-draft/mutations";
+import {
+  hasVerifiedPaymentWitness,
+  transactionReadiness,
+} from "@/utils/transactionReadiness";
+import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
+import {
+  collectSigKeyHashes,
+  decodeNativeScriptFromCsl,
+} from "@/utils/nativeScriptUtils";
 
 const WALLET_ADDRESS = realTestAddresses.address1;
 const RECIPIENT = realTestAddresses.address2;
@@ -230,7 +240,8 @@ const freshModels = {
   PlutusV3: models[2],
 };
 const plutusCbor = "49480100002221200101";
-const owner = csl.PrivateKey.generate_ed25519().to_public().hash();
+const ownerKey = csl.PrivateKey.generate_ed25519();
+const owner = ownerKey.to_public().hash();
 const keyAddress = csl.EnterpriseAddress.new(
   0,
   csl.Credential.from_keyhash(owner),
@@ -243,14 +254,15 @@ function plutusFixture(
   version: DraftScriptInput["script"]["version"] = "V2",
   provided = false,
   nativeFunding = false,
+  nativeScript?: csl.NativeScript,
 ) {
   const scriptAddress = resolvePlutusScriptAddress(
     { code: plutusCbor, version },
     0,
   );
-  const native = csl.NativeScript.new_script_pubkey(
-    csl.ScriptPubkey.new(owner),
-  );
+  const native =
+    nativeScript ??
+    csl.NativeScript.new_script_pubkey(csl.ScriptPubkey.new(owner));
   const fundingAddress = nativeFunding
     ? csl.EnterpriseAddress.new(
         0,
@@ -404,6 +416,373 @@ describe("evaluated Plutus draft builds", () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  describe("G1: script-funded multisig participation (gap-plan phase 1)", () => {
+    const secondKey = csl.PrivateKey.generate_ed25519();
+    const secondHash = secondKey.to_public().hash();
+    const secondAddress = csl.EnterpriseAddress.new(
+      0,
+      csl.Credential.from_keyhash(secondHash),
+    )
+      .to_address()
+      .to_bech32();
+    const children = csl.NativeScripts.new();
+    for (const key of [owner, secondHash])
+      children.add(
+        csl.NativeScript.new_script_pubkey(csl.ScriptPubkey.new(key)),
+      );
+    const twoOfTwo = csl.NativeScript.new_script_all(
+      csl.ScriptAll.new(children),
+    );
+    let automatic: Awaited<ReturnType<typeof buildDraftTx>>;
+    let manual: Awaited<ReturnType<typeof buildDraftTx>>;
+    let automaticHasSecondWitness: boolean;
+
+    // This wallet owns no spending/collateral inputs. It signs only when its key
+    // is requested by a native script or explicit required signer in actual CBOR.
+    function requestedWalletSign(hex: string, key = secondKey) {
+      const tx = csl.Transaction.from_hex(hex);
+      const requested = new Set<string>();
+      const required = tx.body().required_signers();
+      for (let i = 0; i < (required?.len() ?? 0); i++)
+        requested.add(required!.get(i).to_hex());
+      const scripts = tx.witness_set().native_scripts();
+      for (let i = 0; i < (scripts?.len() ?? 0); i++)
+        for (const key of collectSigKeyHashes(
+          decodeNativeScriptFromCsl(scripts!.get(i)),
+        ))
+          requested.add(key);
+      const witnesses = csl.TransactionWitnessSet.new();
+      if (requested.has(key.to_public().hash().to_hex())) {
+        const vkeys = csl.Vkeywitnesses.new();
+        vkeys.add(
+          csl.Vkeywitness.new(
+            csl.Vkey.new(key.to_public()),
+            key.sign(Buffer.from(resolveTxHash(hex), "hex")),
+          ),
+        );
+        witnesses.set_vkeys(vkeys);
+      }
+      return mergeSignerWitnesses(hex, witnesses.to_hex()).txHex;
+    }
+
+    beforeEach(async () => {
+      const build = async (mode: "auto" | "manual") => {
+        const f = plutusFixture("V2", false, true, twoOfTwo);
+        f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+        if (mode === "manual")
+          f.draft.utxoSelection = { mode, utxos: [f.funding] };
+        const result = await f.build();
+        expect(result.plutusReview?.inputs).toHaveLength(2);
+        expect(result.body.requiredSignatures).toContain(owner.to_hex());
+        expect(f.wallet.signTx).not.toHaveBeenCalled();
+        return result;
+      };
+      // Build/setup failures must fail normally, outside the expected assertion.
+      automatic = await build("auto");
+      manual = await build("manual");
+      automaticHasSecondWitness = hasVerifiedPaymentWitness(
+        requestedWalletSign(automatic.unsignedTx),
+        secondAddress,
+      );
+    });
+
+    test("the second wallet can sign when a multisig funding input is selected", () => {
+      expect(
+        hasVerifiedPaymentWitness(
+          requestedWalletSign(manual.unsignedTx),
+          secondAddress,
+        ),
+      ).toBe(true);
+    });
+
+    test("G1: automatic script-funded proposals request the second member's signature", () => {
+      expect(automaticHasSecondWitness).toBe(true);
+    });
+
+    test("independent co-signing requires both policy witnesses and preserves the body", async () => {
+      const f = plutusFixture("V2", false, true, twoOfTwo);
+      const ownerSigned = requestedWalletSign(automatic.unsignedTx, ownerKey);
+      expect(hasVerifiedPaymentWitness(ownerSigned, keyAddress)).toBe(true);
+      expect(
+        (await transactionReadiness(ownerSigned, true, f.provider, 0)).ready,
+      ).toBe(false);
+      const secondOnly = requestedWalletSign(automatic.unsignedTx);
+      expect(
+        (await transactionReadiness(secondOnly, true, f.provider, 0))
+          .missingKeyHashes,
+      ).toContain(owner.to_hex());
+      const bothSigned = requestedWalletSign(ownerSigned);
+      expect(hasVerifiedPaymentWitness(bothSigned, keyAddress)).toBe(true);
+      expect(hasVerifiedPaymentWitness(bothSigned, secondAddress)).toBe(true);
+      expect(
+        (await transactionReadiness(bothSigned, true, f.provider, 0)).ready,
+      ).toBe(true);
+      expect(resolveTxHash(bothSigned)).toBe(automatic.txHash);
+      expect(
+        csl.Transaction.from_hex(bothSigned)
+          .witness_set()
+          .redeemers()!
+          .to_hex(),
+      ).toBe(
+        csl.Transaction.from_hex(automatic.unsignedTx)
+          .witness_set()
+          .redeemers()!
+          .to_hex(),
+      );
+    });
+
+    test.each(["any", "all", "atLeast", "hierarchical"] as const)(
+      "%s native policy keeps its original threshold",
+      async (kind) => {
+        const third = csl.NativeScript.new_script_pubkey(
+          csl.ScriptPubkey.new(
+            csl.PrivateKey.generate_ed25519().to_public().hash(),
+          ),
+        );
+        const alternatives = csl.NativeScripts.new();
+        alternatives.add(children.get(1));
+        alternatives.add(third);
+        const hierarchy = csl.NativeScripts.new();
+        hierarchy.add(children.get(0));
+        hierarchy.add(
+          csl.NativeScript.new_script_any(csl.ScriptAny.new(alternatives)),
+        );
+        const native =
+          kind === "any"
+            ? csl.NativeScript.new_script_any(csl.ScriptAny.new(children))
+            : kind === "atLeast"
+              ? csl.NativeScript.new_script_n_of_k(
+                  csl.ScriptNOfK.new(1, children),
+                )
+              : kind === "hierarchical"
+                ? csl.NativeScript.new_script_all(csl.ScriptAll.new(hierarchy))
+                : twoOfTwo;
+        const f = plutusFixture("V2", false, true, native);
+        f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+        const result = await f.build();
+        expect(result.body.requiredSignatures).toEqual([owner.to_hex()]);
+        expect(
+          csl.Transaction.from_hex(result.unsignedTx)
+            .witness_set()
+            .native_scripts()!
+            .get(0)
+            .to_hex(),
+        ).toBe(native.to_hex());
+        const first = requestedWalletSign(result.unsignedTx, ownerKey);
+        expect(
+          (await transactionReadiness(first, true, f.provider, 0)).ready,
+        ).toBe(kind === "any" || kind === "atLeast");
+        expect(
+          (
+            await transactionReadiness(
+              requestedWalletSign(first),
+              true,
+              f.provider,
+              0,
+            )
+          ).ready,
+        ).toBe(true);
+      },
+    );
+  });
+
+  test.each(["auto", "manual"] as const)(
+    "%s retains token funding, exact picks, change and imported required keys",
+    async (mode) => {
+      const f = plutusFixture("V2", false, true);
+      f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+      const token = "e".repeat(56) + "01";
+      f.funding.output.amount.push({ unit: token, quantity: "7" });
+      const extra = {
+        ...f.funding,
+        input: { ...f.funding.input, outputIndex: 1 },
+      };
+      f.context.availableUtxos.push(extra);
+      if (mode === "manual")
+        f.draft.utxoSelection = { mode, utxos: [extra, f.funding] };
+      f.draft.requiredSigners = ["d".repeat(56), owner.to_hex()];
+      const result = await f.build();
+      const funding = result.body.inputs.filter(
+        (i) => i.type === "SimpleScript",
+      );
+      // Ledger input order is canonical; the exact manually chosen set is retained.
+      expect(funding.map((i) => i.txIn.txIndex)).toEqual(
+        mode === "manual" ? [0, 1] : [0],
+      );
+      expect(result.inputCount).toBe(mode === "manual" ? 4 : 3);
+      const change = result.body.outputs.filter(
+        (o) => o.address === f.context.walletAddress,
+      );
+      expect(
+        change.flatMap((o) => o.amount).filter((a) => a.unit === token),
+      ).toEqual([{ unit: token, quantity: mode === "manual" ? "14" : "7" }]);
+      const changeAda = change
+        .flatMap((o) => o.amount)
+        .filter((a) => a.unit === "lovelace")
+        .reduce((sum, a) => sum + BigInt(a.quantity), 0n);
+      expect(changeAda + BigInt(result.fee)).toBe(
+        mode === "manual" ? 36_000_000n : 24_000_000n,
+      );
+      expect(new Set(result.body.requiredSignatures)).toEqual(
+        new Set([owner.to_hex(), "d".repeat(56)]),
+      );
+    },
+  );
+
+  test.each(["auto", "manual"] as const)(
+    "%s rejects unavailable wallet funding before completion or signing",
+    async (mode) => {
+      const f = plutusFixture("V2", false, true);
+      f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+      if (mode === "manual")
+        f.draft.utxoSelection = { mode, utxos: [f.funding] };
+      // Other wallet funds, explicit spends and collateral cannot substitute for it.
+      f.context.availableUtxos = [
+        ...f.scripts,
+        f.collateral,
+        { ...f.funding, output: { ...f.funding.output, address: keyAddress } },
+      ];
+      await expect(f.build()).rejects.toThrow(/available, unblocked/);
+      expect(f.complete).not.toHaveBeenCalled();
+      expect(f.wallet.signTx).not.toHaveBeenCalled();
+    },
+  );
+
+  test("empty manual selection asks for a wallet input instead of adding one", async () => {
+    const f = plutusFixture("V2", false, true);
+    f.draft.utxoSelection = { mode: "manual", utxos: [] };
+    await expect(f.build()).rejects.toThrow(/Select at least one/);
+    expect(f.complete).not.toHaveBeenCalled();
+    expect(f.wallet.signTx).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])(
+    "pending locks retain the edited transaction exception: editing=%s",
+    async (editing) => {
+      const f = plutusFixture("V2", false, true);
+      const blocked = deriveBlockedUtxoRefs(
+        [
+          {
+            id: "pending",
+            txJson: JSON.stringify({
+              inputs: [
+                { txIn: { txHash: f.funding.input.txHash, txIndex: 0 } },
+              ],
+            }),
+          },
+        ],
+        editing ? "pending" : undefined,
+      );
+      f.context.availableUtxos = f.context.availableUtxos.filter(
+        (u) =>
+          !blocked.some(
+            (ref) =>
+              ref.hash === u.input.txHash && ref.index === u.input.outputIndex,
+          ),
+      );
+      if (editing)
+        expect(
+          (await f.build()).body.inputs.some((i) => i.type === "SimpleScript"),
+        ).toBe(true);
+      else await expect(f.build()).rejects.toThrow(/available, unblocked/);
+    },
+  );
+
+  test.each(["pubkey", "wrong-script", "wrong-network"])(
+    "rejects %s multisig context before completion",
+    async (kind) => {
+      const f = plutusFixture("V2", false, true);
+      if (kind === "pubkey") f.context.inputs = { kind: "pubkey" };
+      if (kind === "wrong-script")
+        f.context.inputs = {
+          kind: "script",
+          scriptCbor: csl.NativeScript.new_script_pubkey(
+            csl.ScriptPubkey.new(
+              csl.PrivateKey.generate_ed25519().to_public().hash(),
+            ),
+          ).to_hex(),
+        };
+      if (kind === "wrong-network")
+        f.context.walletAddress = csl.EnterpriseAddress.new(
+          1,
+          csl.Credential.from_scripthash(
+            csl.NativeScript.from_hex(
+              (f.context.inputs as { scriptCbor: string }).scriptCbor,
+            ).hash(),
+          ),
+        )
+          .to_address()
+          .to_bech32();
+      await expect(f.build()).rejects.toThrow(/native script/);
+      expect(f.complete).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["input", "script"])(
+    "completion cannot drop the intended multisig %s",
+    async (kind) => {
+      const f = plutusFixture("V2", false, true);
+      f.options.complete = async (builder) => {
+        const tx = Transaction.fromCbor(TxCBOR(await f.complete(builder)));
+        const body = tx.body();
+        const witnesses = tx.witnessSet();
+        if (kind === "script") {
+          const scripts = witnesses.nativeScripts()!;
+          scripts.setValues([]);
+          witnesses.setNativeScripts(scripts);
+          tx.setWitnessSet(witnesses);
+        } else {
+          const inputs = body.inputs();
+          inputs.setValues(
+            inputs
+              .values()
+              .filter(
+                (input) => input.transactionId() !== f.funding.input.txHash,
+              ),
+          );
+          body.setInputs(inputs);
+          tx.setBody(body);
+        }
+        const changed = tx.toCbor();
+        // Prove the fault injection changed serialized bytes, not just a cached object.
+        const decoded = csl.Transaction.from_hex(changed);
+        if (kind === "script")
+          expect(decoded.witness_set().native_scripts()?.len() ?? 0).toBe(0);
+        else expect(decoded.body().inputs().len()).toBe(2);
+        return changed;
+      };
+      await expect(f.build()).rejects.toThrow(/dropped the multisig/);
+      expect(f.wallet.signTx).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["auto", "manual"] as const)(
+    "V1 %s funding respects inline-datum restrictions",
+    async (mode) => {
+      const f = plutusFixture("V1", true, true);
+      const inline = {
+        ...f.funding,
+        input: { ...f.funding.input, outputIndex: 1 },
+        output: { ...f.funding.output, plutusData: "01" },
+      };
+      f.context.availableUtxos.unshift(inline);
+      if (mode === "manual") {
+        f.draft.utxoSelection = { mode, utxos: [inline] };
+        await expect(f.build()).rejects.toThrow(
+          /V1 cannot be combined with inline datums/,
+        );
+        expect(f.complete).not.toHaveBeenCalled();
+      } else {
+        const result = await f.build();
+        expect(
+          result.body.inputs
+            .filter((i) => i.type === "SimpleScript")
+            .map((i) => i.txIn.txIndex),
+        ).toEqual([0]);
+      }
+    },
+  );
+
   test.each([
     ["V1", true],
     ["V2", true],
@@ -466,9 +845,54 @@ describe("evaluated Plutus draft builds", () => {
       const stored = JSON.parse(pending.txJson);
       // Stored input order need not match either draft or ledger order.
       stored.inputs.reverse();
-      const { draft, inputRefs, warnings } = txJsonToDraft(stored, {
-        walletAddress: f.context.walletAddress,
-      });
+      // CBOR witnesses win even when stale JSON changes the redeemer or hides
+      // the entire script spend, collateral and extra signer requirement.
+      stored.inputs = [];
+      stored.collaterals = [];
+      stored.requiredSignatures = [];
+      const reconstructed = reconstructPendingTransaction(
+        { ...pending, txJson: JSON.stringify(stored) },
+        {
+          network: 0,
+          walletNativeScript: {
+            address: f.context.walletAddress,
+            cbor:
+              f.context.inputs.kind === "script"
+                ? f.context.inputs.scriptCbor
+                : "",
+          },
+        },
+        f.live,
+      );
+      if (!reconstructed.compatible)
+        throw new Error(reconstructed.reasons.join("; "));
+      const { draft, inputRefs, warnings } = reconstructed.reconstruction;
+      const withoutJson = reconstructPendingTransaction(
+        { ...pending, txJson: "{" },
+        {
+          network: 0,
+          walletNativeScript: {
+            address: f.context.walletAddress,
+            cbor:
+              f.context.inputs.kind === "script"
+                ? f.context.inputs.scriptCbor
+                : "",
+          },
+        },
+        f.live,
+      );
+      expect(withoutJson.compatible).toBe(true);
+      if (withoutJson.compatible) {
+        expect(withoutJson.reconstruction.draft.scriptInputs).toEqual(
+          draft.scriptInputs,
+        );
+        expect(withoutJson.reconstruction.draft.outputs).toHaveLength(
+          built.body.outputs.length,
+        );
+        expect(withoutJson.reconstruction.warnings).toEqual([
+          "change-not-detected",
+        ]);
+      }
       expect(warnings).toEqual([]);
       expect(draft.outputs.map((output) => output.id)).toEqual([
         "payment",
@@ -719,12 +1143,17 @@ describe("evaluated Plutus draft builds", () => {
     },
   );
 
-  test("V3 inline data and script-only funding need no ordinary funding input", async () => {
-    const f = plutusFixture("V3");
-    f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
-    const result = await f.build();
-    expect(result.inputCount).toBe(2);
-  });
+  test.each(["connected", "address"] as const)(
+    "%s V3 script-only funding needs no ordinary funding input",
+    async (kind) => {
+      const f = plutusFixture("V3");
+      f.draft.source =
+        kind === "address" ? { kind, address: keyAddress } : { kind };
+      f.scripts.forEach((u) => (u.output.amount[0]!.quantity = "10000000"));
+      const result = await f.build();
+      expect(result.inputCount).toBe(2);
+    },
+  );
 
   test("V1 rejects inline data before completion", async () => {
     const f = plutusFixture("V1");

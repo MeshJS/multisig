@@ -43,6 +43,9 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/** Shape validation for normalized Mesh intent. Pending rows must first pass
+ * resolvePendingTransaction/reconstructPendingTransaction: JSON alone cannot
+ * establish editability or recover legacy imports. */
 export function isDraftCompatible(body: unknown): TxJsonCompat {
   const reasons: string[] = [];
   if (typeof body !== "object" || body === null) {

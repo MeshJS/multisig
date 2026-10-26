@@ -40,13 +40,19 @@ export function draftFundingTotals(
   ]);
 }
 
-/** Keep manual picks exactly; automatic selection covers only the remaining value. */
+/** Keep manual refs exactly; multisig Plutus spends must also exercise the native policy. */
 export function selectDraftFunding(
   draft: TxDraft,
   available: UTxO[],
   scripts: UTxO[] = [],
+  walletInput?: { address: string; allowInlineDatum: boolean },
 ): UTxO[] {
-  const candidates = ordinaryFundingUtxos(draft, available);
+  const candidates = ordinaryFundingUtxos(draft, available).filter(
+    (utxo) =>
+      !walletInput ||
+      (utxo.output.address === walletInput.address &&
+        (walletInput.allowInlineDatum || !utxo.output.plutusData)),
+  );
   if (draft.utxoSelection.mode === "manual") {
     const selected = draft.utxoSelection.utxos;
     if (ordinaryFundingUtxos(draft, selected).length !== selected.length) {
@@ -54,8 +60,28 @@ export function selectDraftFunding(
         "Funding inputs overlap script inputs, collateral, or each other.",
       );
     }
+    if (walletInput) {
+      const availableByRef = new Map(
+        candidates.map((utxo) => [utxoRefKey(utxo.input), utxo]),
+      );
+      if (
+        !selected.length ||
+        selected.some((utxo) => !availableByRef.has(utxoRefKey(utxo.input)))
+      )
+        throw new Error(
+          "Select at least one available, unblocked multisig wallet input. Every manual funding input must belong to this wallet and be compatible with the script language.",
+        );
+      // Keep the exact chosen refs and order, using current available output data.
+      return selected.map((utxo) =>
+        availableByRef.get(utxoRefKey(utxo.input))!,
+      );
+    }
     return selected;
   }
+  if (walletInput && !candidates.length)
+    throw new Error(
+      "This multisig Plutus transaction needs an available, unblocked wallet input to enforce its approval policy. Fund the multisig wallet or free an input reserved by another pending transaction. Plutus V1 also requires funding without inline datums.",
+    );
   const required = requiredAssetTotals(draft);
   if (draft.votes.length || draft.certificates.length) {
     const deposits =
@@ -75,5 +101,10 @@ export function selectDraftFunding(
     const deficit = amount - (scriptFunds.get(unit) ?? 0n);
     if (deficit > 0n) remainder.set(unit, deficit.toString());
   }
-  return remainder.size ? keepRelevant(remainder, candidates, "0") : [];
+  const selected = remainder.size
+    ? keepRelevant(remainder, candidates, "0")
+    : [];
+  // Value sufficiency alone must not remove the multisig's signing role.
+  if (walletInput && !selected.length) return [candidates[0]!];
+  return selected;
 }

@@ -80,7 +80,8 @@ import {
   type ReviewDecision,
 } from "@/lib/tx-risk/review";
 import type { RiskContext } from "@/lib/tx-risk/types";
-import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
+import { resolvePendingTransaction } from "@/lib/tx-draft/reconstruct-pending";
+import usePendingEditorContext from "@/hooks/usePendingEditorContext";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { validateDraft, validateSource } from "@/lib/tx-draft/validate";
 import type { DraftSource, TxDraft } from "@/types/tx-draft";
@@ -92,7 +93,6 @@ import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
 import { getFriendlyError } from "@/utils/errors";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import { getProvider } from "@/utils/get-provider";
-import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import AddStakeDialog from "./add-stake-dialog";
 import AddVoteDialog from "./add-vote-dialog";
@@ -590,18 +590,54 @@ export default function PageBuild() {
     );
   }
 
-  /** Hydrates the builder from a pending transaction row. */
-  function loadPendingTx(transaction: Transaction) {
+  const editorContext = usePendingEditorContext();
+  const editorProvider = useMemo(() => getProvider(network), [network]);
+  const pendingLoadSequence = useRef(0);
+  useEffect(
+    () => () => {
+      pendingLoadSequence.current++;
+    },
+    [],
+  );
+  const currentEditor = useRef({
+    appWallet,
+    editorContext,
+    draft,
+    pendingTransactions,
+  });
+  currentEditor.current = {
+    appWallet,
+    editorContext,
+    draft,
+    pendingTransactions,
+  };
+
+  /** Every entry point rechecks the original bytes before hydrating the draft. */
+  async function loadPendingTx(transaction: Transaction) {
     if (!appWallet) return;
-    let body: unknown = null;
-    try {
-      body = JSON.parse(transaction.txJson);
-    } catch {
-      body = null;
-    }
-    const compat = body
-      ? isDraftCompatible(body)
-      : { compatible: false, reasons: ["Unreadable transaction"] };
+    const sequence = ++pendingLoadSequence.current;
+    const snapshot = currentEditor.current;
+    const compat = await resolvePendingTransaction(
+      transaction,
+      editorContext,
+      editorProvider,
+    );
+    const currentRow = currentEditor.current.pendingTransactions?.find(
+      (row) => row.id === transaction.id,
+    );
+    if (
+      sequence !== pendingLoadSequence.current ||
+      currentEditor.current.appWallet?.id !== snapshot.appWallet?.id ||
+      JSON.stringify(currentEditor.current.editorContext) !==
+        JSON.stringify(snapshot.editorContext) ||
+      // Account initialization may invalidate cached draft context without
+      // changing any intent. Only changed content should cancel this read.
+      JSON.stringify(currentEditor.current.draft) !==
+        JSON.stringify(snapshot.draft) ||
+      currentRow?.txCbor !== transaction.txCbor ||
+      currentRow?.txJson !== transaction.txJson
+    )
+      return;
     if (!compat.compatible) {
       toast({
         title: "Can't edit this transaction",
@@ -613,15 +649,7 @@ export default function PageBuild() {
       return;
     }
 
-    const {
-      draft: loaded,
-      inputRefs,
-      warnings,
-    } = txJsonToDraft(body, {
-      walletAddress: appWallet.address,
-      description: transaction.description,
-      metadataMessage: extractTxMetadataMessage(transaction.txCbor),
-    });
+    const { draft: loaded, inputRefs, warnings } = compat.reconstruction;
     setAmbiguousChangeDraftId(
       warnings.includes("change-not-detected") ? loaded.id : undefined,
     );
@@ -633,7 +661,7 @@ export default function PageBuild() {
       pendingTransactions ?? [],
       transaction.id,
     );
-    const spendable = utxos.filter(
+    const spendable = (compat.walletUtxos ?? utxos).filter(
       (utxo) =>
         !blocked.some(
           (ref) =>
@@ -668,6 +696,10 @@ export default function PageBuild() {
       });
     }
 
+    if (compat.walletUtxos)
+      useWalletsStore
+        .getState()
+        .setWalletsUtxos(appWallet.id, compat.walletUtxos);
     loadDraft({
       walletId: appWallet.id,
       draft: hydrated,
@@ -702,6 +734,11 @@ export default function PageBuild() {
     if (
       !router.isReady ||
       !appWallet ||
+      storeWalletId !== appWallet.id ||
+      // Wallet/environment effects above can synchronously reset the store.
+      // Wait for that render before capturing a draft for asynchronous loading.
+      useTxBuilderStore.getState().draft !== draft ||
+      multisigWalletLoading ||
       !pendingTransactions ||
       !utxosReady ||
       !urlTxId
@@ -722,7 +759,17 @@ export default function PageBuild() {
     }
     requestLoadPendingTx(transaction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, appWallet, pendingTransactions, urlTxId, editingTxId]);
+  }, [
+    router.isReady,
+    appWallet,
+    storeWalletId,
+    draft,
+    multisigWalletLoading,
+    pendingTransactions,
+    utxosReady,
+    urlTxId,
+    editingTxId,
+  ]);
 
   /**
    * Builder context shared by the test build, the proposal and the
@@ -1391,6 +1438,8 @@ export default function PageBuild() {
         pendingTransactions={pendingTransactions ?? []}
         requiredCount={requiredCount}
         onSelect={requestLoadPendingTx}
+        context={editorContext}
+        provider={editorProvider}
       />
       <SwitchSourceDialog
         open={pendingSource !== null}

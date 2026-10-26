@@ -1,5 +1,5 @@
 import { csl } from "@meshsdk/core-csl";
-import type { UTxO } from "@meshsdk/core";
+import { DEFAULT_V2_COST_MODEL_LIST, type UTxO } from "@meshsdk/core";
 import type { DraftUtxoRef } from "@/types/tx-draft";
 import { ALWAYS_TRUE_V2 } from "@/lib/tx-risk/classify";
 
@@ -140,4 +140,52 @@ export function transaction(
       opts.network === 1 ? csl.NetworkId.mainnet() : csl.NetworkId.testnet(),
     );
   return csl.Transaction.new(body, csl.TransactionWitnessSet.new()).to_hex();
+}
+
+/** Serialized review fixture, not execution/chain acceptance. Budgets are recorded
+ * synthetic values; the real script-data hash binds redeemer changes to the body. */
+export function contractReviewTransaction(
+  datumCbor = "d8799f01ff",
+  redeemerCbor = "d8799f02ff",
+) {
+  const recipient = output(address("key"), "4800000");
+  recipient.set_plutus_data(csl.PlutusData.from_hex(datumCbor));
+  const tx = csl.Transaction.from_hex(
+    transaction({
+      outputs: [recipient],
+      spending: [scriptInput.input],
+      collateral: [collateral.input],
+    }),
+  );
+  const witnesses = tx.witness_set();
+  const scripts = csl.PlutusScripts.new();
+  scripts.add(
+    csl.PlutusScript.from_hex_with_version(
+      ALWAYS_TRUE_V2.cbor,
+      csl.Language.new_plutus_v2(),
+    ),
+  );
+  witnesses.set_plutus_scripts(scripts);
+  const redeemers = csl.Redeemers.new();
+  redeemers.add(
+    csl.Redeemer.new(
+      csl.RedeemerTag.new_spend(),
+      csl.BigNum.from_str("0"),
+      csl.PlutusData.from_hex(redeemerCbor),
+      csl.ExUnits.new(
+        csl.BigNum.from_str("10000"),
+        csl.BigNum.from_str("1000000"),
+      ),
+    ),
+  );
+  witnesses.set_redeemers(redeemers);
+  const costs = csl.Costmdls.new();
+  const model = csl.CostModel.new();
+  DEFAULT_V2_COST_MODEL_LIST.forEach((value, index) =>
+    model.set(index, csl.Int.new_i32(value)),
+  );
+  costs.insert(csl.Language.new_plutus_v2(), model);
+  const body = tx.body();
+  body.set_script_data_hash(csl.hash_script_data(redeemers, costs));
+  return csl.Transaction.new(body, witnesses).to_hex();
 }

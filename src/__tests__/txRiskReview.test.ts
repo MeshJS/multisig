@@ -5,7 +5,10 @@ import {
   type DraftBuildResult,
 } from "@/lib/tx-draft/build-draft-tx";
 import { addOutput, createDraft } from "@/lib/tx-draft/mutations";
-import { assessTransactionRisks } from "@/lib/tx-risk/transaction";
+import {
+  assessTransactionRisks,
+  resolveTransactionRisks,
+} from "@/lib/tx-risk/transaction";
 import { reviewBuiltTransaction } from "@/lib/tx-risk/review";
 import { draftToTokenFlow } from "@/utils/token-flow/from-draft";
 import { assessDraftOutputRisks } from "@/lib/tx-risk/assessment";
@@ -19,6 +22,7 @@ import {
 } from "./fixtures/tx-risk";
 import { createMockProvider } from "./tx-builders/mockProvider";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
+import { knownPlutusGap } from "./fixtures/known-plutus-gap";
 
 function built(destination = address("known")): DraftBuildResult {
   const unsignedTx = transaction({ outputs: [output(destination)] });
@@ -45,6 +49,58 @@ function built(destination = address("known")): DraftBuildResult {
 }
 
 describe("builder action risk gate", () => {
+  describe.each(["spent input", "provider unavailable"])(
+    "G4: %s during confirmation",
+    (failure) => {
+      let action: jest.Mock;
+      let refresh: jest.Mock;
+      let accepted: boolean;
+      beforeEach(async () => {
+        const result = built();
+        const provider = {
+          fetchUTxOs: jest.fn(async () => [funding]),
+          fetchAddressUTxOs: jest.fn(async () => [funding]),
+        };
+        refresh = jest.fn(() =>
+          resolveTransactionRisks(result.unsignedTx, ctx, provider),
+        );
+        expect((await refresh()).status).toBe("complete");
+        refresh.mockClear();
+        action = jest.fn();
+        accepted = await reviewBuiltTransaction(result, {
+          network: 0,
+          isCurrent: () => true,
+          refresh,
+          confirm: async () => {
+            if (failure === "spent input")
+              provider.fetchAddressUTxOs.mockResolvedValue([]);
+            else
+              provider.fetchUTxOs.mockRejectedValue(
+                new Error("provider offline"),
+              );
+            return { accepted: true, acknowledged: true };
+          },
+        });
+        if (accepted) action();
+        // Prove the changed provider state actually yields an incomplete review.
+        expect(
+          (await resolveTransactionRisks(result.unsignedTx, ctx, provider))
+            .status,
+        ).toBe("incomplete");
+      });
+
+      knownPlutusGap(
+        "G4: refuses the action after mandatory chain facts become unavailable",
+        () => {
+          // Convert to test() in phase 4; setup and resolver assertions remain normal failures.
+          expect({ accepted, actions: action.mock.calls.length }).toEqual({
+            accepted: false,
+            actions: 0,
+          });
+        },
+      );
+    },
+  );
   test.each([
     "multisig proposal",
     "connected signing",

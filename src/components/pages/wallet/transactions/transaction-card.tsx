@@ -78,7 +78,8 @@ import {
 } from "@/components/ui/collapsible";
 import TokenFlowSection from "@/components/common/token-flow/token-flow-section";
 import useProposalTitles from "@/hooks/useProposalTitles";
-import { isDraftCompatible } from "@/lib/tx-draft/from-tx-json";
+import usePendingEditor from "@/hooks/usePendingEditor";
+import usePendingEditorContext from "@/hooks/usePendingEditorContext";
 import PayoutTasksBadge from "@/components/pages/wallet/tasks/payout-tasks-badge";
 import { getProvider } from "@/utils/get-provider";
 import { runPreSignProxyAudit } from "@/utils/preSignProxyAudit";
@@ -255,16 +256,6 @@ export default function TransactionCard({
     }
   }, [transaction.txJson]);
   const router = useRouter();
-  // Whether this pending tx can round-trip into the visual builder (simple
-  // sends, DRep votes and staking certificates — withdrawals, mints etc.
-  // have no draft representation).
-  const editCompat = useMemo(
-    () =>
-      txJson
-        ? isDraftCompatible(txJson)
-        : { compatible: false, reasons: ["Unreadable transaction"] },
-    [txJson],
-  );
   // Proposal titles for the Votes section, so signers can see what
   // governance action each vote targets.
   const voteProposalIds = useMemo(() => {
@@ -305,7 +296,14 @@ export default function TransactionCard({
       return true;
     }
   }, [transaction.txCbor]);
-  const blockchainProvider = getProvider(network);
+  const blockchainProvider = useMemo(() => getProvider(network), [network]);
+  const editorContext = usePendingEditorContext();
+  const editor = usePendingEditor(
+    transaction,
+    editorContext,
+    blockchainProvider,
+    transaction.state === 0,
+  );
   const riskContext = useMemo<RiskContext>(() => {
     if (!appWallet) return { network };
     let cbor = appWallet.scriptCbor ?? "";
@@ -948,19 +946,26 @@ export default function TransactionCard({
                 <DropdownMenuSeparator />
                 {transaction.state === 0 && (
                   <DropdownMenuItem
-                    disabled={!editCompat.compatible}
+                    disabled={editor.loading}
                     data-testid={`edit-in-builder-${transaction.id}`}
-                    onClick={() =>
+                    onClick={(event) => {
+                      if (!editor.result?.compatible) {
+                        event.preventDefault();
+                        editor.retry();
+                        return;
+                      }
                       void router.push(
                         `/wallets/${walletId}/build?tx=${transaction.id}`,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <div className="flex flex-col">
                       <span>Edit in Builder</span>
-                      {!editCompat.compatible && (
+                      {!editor.result?.compatible && (
                         <span className="text-xs text-muted-foreground">
-                          {editCompat.reasons[0]}
+                          {editor.loading
+                            ? "Checking original transaction and chain inputs…"
+                            : `${editor.result?.reasons[0]} Select to retry.`}
                         </span>
                       )}
                     </div>

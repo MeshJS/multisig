@@ -49,6 +49,7 @@ function PendingHarness() {
       setHex("replacement");
     }
     if (kind === "witness") setHex((value) => value + "witness");
+    if (kind === "fixture") setHex(window.riskFixture.unsignedTx);
   };
   async function sign() {
     opener.current = document.activeElement;

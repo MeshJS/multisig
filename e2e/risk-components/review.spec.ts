@@ -14,6 +14,9 @@ import {
   transaction,
   TOKEN,
   HUGE_QUANTITY,
+  contractReviewTransaction,
+  scriptInput,
+  collateral,
 } from "../../src/__tests__/fixtures/tx-risk";
 
 const require = createRequire(import.meta.url);
@@ -138,6 +141,103 @@ async function mount(page: Page, result = fixture(), pending = false) {
   ).toBeVisible();
 }
 const calls = (page: Page) => page.evaluate(() => window.riskCalls);
+
+function contractFixture(datum?: string, redeemer?: string): DraftBuildResult {
+  const unsignedTx = contractReviewTransaction(datum, redeemer);
+  return {
+    ...fixture(),
+    unsignedTx,
+    txHash: resolveTxHash(unsignedTx),
+    riskAssessment: assessTransactionRisks(
+      unsignedTx,
+      { network: 0 },
+      { utxos: [scriptInput, collateral] },
+    ),
+  };
+}
+
+for (const field of ["datum", "redeemer", "budget"] as const) {
+  test(`G3: pending co-signer can inspect ${field} after contract replacement`, async ({
+    page,
+  }) => {
+    const original = contractFixture();
+    const replacement = contractFixture("d8799f03ff", "d8799f04ff");
+    expect(original.riskAssessment!.status).toBe("complete");
+    expect(replacement.riskAssessment!.status).toBe("complete");
+    expect(replacement.txHash).not.toBe(original.txHash);
+    expect(
+      replacement.riskAssessment!.outputs.map((o) => [o.address, o.assets]),
+    ).toEqual(
+      original.riskAssessment!.outputs.map((o) => [o.address, o.assets]),
+    );
+    await mount(page, original, true);
+    await page
+      .getByRole("button", { name: "Approve pending transaction" })
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.evaluate((data) => {
+      window.riskFixture = JSON.parse(data) as DraftBuildResult;
+      window.changePendingContext("fixture");
+    }, JSON.stringify(replacement));
+    await page
+      .getByRole("button", { name: "Approve pending transaction" })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Collateral owner");
+    expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+    // Mark only the missing-detail assertion as expected to fail. Setup, decoding,
+    // mounting and replacement must succeed normally. Remove in phase 3.
+    test.fail(
+      process.env.PLUTUS_GAP_ASSERT_DESIRED !== "1",
+      "G3: pending review currently omits contract arguments and recorded budgets",
+    );
+    const detail =
+      field === "datum"
+        ? "Datum CBOR: d8799f03ff"
+        : field === "redeemer"
+          ? "Redeemer CBOR: d8799f04ff"
+          : "10000 memory";
+    await expect(dialog).toContainText(detail, { timeout: 1000 });
+  });
+}
+
+for (const action of ["sign", "export"] as const) {
+  test(`G4: spent input while builder review is open prevents ${action}`, async ({
+    page,
+  }) => {
+    await mount(page);
+    const opener =
+      action === "sign"
+        ? page.getByRole("button", { name: "Build and sign fixture" })
+        : page.getByTestId("tx-builder-copy-cbor");
+    await opener.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("checkbox").check();
+    await page.evaluate(() => {
+      // Change the provider-boundary result, not the already displayed clone.
+      window.riskFixture.riskAssessment = {
+        ...window.riskFixture.riskAssessment!,
+        status: "incomplete",
+        errors: [
+          {
+            code: "input-unresolved",
+            message: "Input spent while review was open",
+          },
+        ],
+      };
+    });
+    await dialog.getByTestId("tx-builder-review-continue").click();
+    await expect(opener).toBeEnabled();
+    test.fail(
+      process.env.PLUTUS_GAP_ASSERT_DESIRED !== "1",
+      "G4: builder currently refreshes only before confirmation",
+    );
+    expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+  });
+}
 
 for (const pending of [false, true]) {
   test(`${pending ? "pending" : "builder"} review has an accessible name, traps focus and restores the invoking control`, async ({

@@ -159,7 +159,7 @@ describe("isDraftCompatible", () => {
     });
   });
 
-  test("accepts the importTransaction shape (missing array keys)", () => {
+  test("accepts typed Mesh inputs with optional array keys absent", () => {
     const body = {
       inputs: [{ type: "PubKey", txIn: { txHash: TX_HASH, txIndex: 0 } }],
       outputs: [output(RECIPIENT, [{ unit: "lovelace", quantity: "1000000" }])],

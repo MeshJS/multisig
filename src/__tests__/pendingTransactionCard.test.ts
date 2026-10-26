@@ -28,6 +28,10 @@ let mockCurrent = true;
 let mockSignClick: (() => Promise<void>) | undefined;
 
 jest.mock("next/router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("@/hooks/useMultisigWallet", () => ({
+  __esModule: true,
+  default: () => ({ multisigWallet: undefined, isLoading: false }),
+}));
 jest.mock("@/hooks/useMeshWallet", () => ({
   __esModule: true,
   default: () => ({ wallet: {}, connected: true }),

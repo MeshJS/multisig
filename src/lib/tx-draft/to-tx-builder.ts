@@ -12,6 +12,7 @@ import { validatePlutusData } from "./plutus-data";
 import { selectDraftFunding } from "./funding";
 import { isPreparedPlutus, type PreparedPlutusDraft } from "./prepare-plutus";
 import { applyCollateral } from "./collateral";
+import { verifiedWalletScriptHash } from "@/lib/tx-risk/classify";
 
 /**
  * How the source's inputs are witnessed: the multisig spends script inputs
@@ -27,7 +28,7 @@ export type ApplyDraftContext = {
   inputs: ApplyDraftInputs;
   /** The source address: owner of the inputs and the change target. */
   walletAddress: string;
-  /** Spendable UTxOs (pending-blocked ones excluded); used in auto mode. */
+  /** Spendable UTxOs (pending-blocked ones excluded); also validates multisig Plutus manual picks. */
   availableUtxos: UTxO[];
   /** Wallet DRep id (CIP-129/105); required when the draft has votes. */
   drepId?: string;
@@ -139,6 +140,26 @@ export function applyDraftToTxBuilder(
     throw new Error("Vote delegation certificate has no DRep id");
   }
 
+  let walletInput: { address: string; allowInlineDatum: boolean } | undefined;
+  if (ctx.preparedPlutus && draft.source.kind === "multisig") {
+    if (ctx.inputs.kind !== "script")
+      throw new Error(
+        "Multisig Plutus transactions require the wallet's native script.",
+      );
+    verifiedWalletScriptHash({
+      network: ctx.preparedPlutus.network,
+      walletNativeScript: {
+        address: ctx.walletAddress,
+        cbor: ctx.inputs.scriptCbor,
+      },
+    });
+    walletInput = {
+      address: ctx.walletAddress,
+      allowInlineDatum: !ctx.preparedPlutus.inputs.some(
+        (input) => input.intent.script.version === "V1",
+      ),
+    };
+  }
   const selectedUtxos = selectDraftFunding(
     {
       ...draft,
@@ -149,6 +170,7 @@ export function applyDraftToTxBuilder(
     },
     ctx.availableUtxos,
     ctx.preparedPlutus?.inputs.map((input) => input.utxo),
+    walletInput,
   );
   if (selectedUtxos.length === 0 && !ctx.preparedPlutus?.inputs.length) {
     throw new Error("Insufficient funds: no UTxOs selected");

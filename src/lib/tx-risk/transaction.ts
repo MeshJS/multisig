@@ -26,7 +26,7 @@ export type ResolvedRiskFacts = {
   }[];
 };
 
-function decodeTransaction(txHex: string) {
+export function decodeTransaction(txHex: string) {
   if (!/^(?:[0-9a-fA-F]{2})+$/.test(txHex))
     throw new Error("Invalid transaction hex.");
   // CSL accepts a valid transaction followed by trailing bytes. Reject them
@@ -38,7 +38,7 @@ function decodeTransaction(txHex: string) {
   return csl.Transaction.from_hex(txHex);
 }
 
-function refs(inputs: csl.TransactionInputs | undefined): DraftUtxoRef[] {
+export function refs(inputs: csl.TransactionInputs | undefined): DraftUtxoRef[] {
   return Array.from({ length: inputs?.len() ?? 0 }, (_, i) => {
     const input = inputs!.get(i);
     return {
@@ -48,7 +48,7 @@ function refs(inputs: csl.TransactionInputs | undefined): DraftUtxoRef[] {
   });
 }
 
-function assetsFromValue(value: csl.Value): AssetQuantity[] {
+export function assetsFromValue(value: csl.Value): AssetQuantity[] {
   const assets = [{ unit: "lovelace", quantity: value.coin().to_str() }];
   const multiasset = value.multiasset();
   const policies = multiasset?.keys();

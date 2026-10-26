@@ -1,4 +1,5 @@
 import { csl } from "@meshsdk/core-csl";
+import { resolveTxHash } from "@meshsdk/core-cst";
 import { resolveTransactionRisks } from "@/lib/tx-risk/transaction";
 import { reviewPendingTransaction } from "@/lib/tx-risk/pending-review";
 import {
@@ -9,6 +10,8 @@ import {
   output,
   transaction,
   HUGE_QUANTITY,
+  contractReviewTransaction,
+  scriptInput,
 } from "./fixtures/tx-risk";
 
 function setup(hex = transaction()) {
@@ -33,6 +36,40 @@ function setup(hex = transaction()) {
 }
 
 describe("independent pending transaction review", () => {
+  test.each(["datum", "redeemer"])(
+    "G3 fixture: changing only %s preserves payments but changes the signed body",
+    async (field) => {
+      const original = contractReviewTransaction();
+      const changed = contractReviewTransaction(
+        field === "datum" ? "d8799f03ff" : undefined,
+        field === "redeemer" ? "d8799f04ff" : undefined,
+      );
+      const decoded = csl.Transaction.from_hex(changed);
+      expect(decoded.body().outputs().get(0).plutus_data()!.to_hex()).toBe(
+        field === "datum" ? "d8799f03ff" : "d8799f01ff",
+      );
+      const redeemer = decoded.witness_set().redeemers()!.get(0);
+      expect(redeemer.data().to_hex()).toBe(
+        field === "redeemer" ? "d8799f04ff" : "d8799f02ff",
+      );
+      expect(redeemer.ex_units().mem().to_str()).toBe("10000");
+      expect(redeemer.ex_units().steps().to_str()).toBe("1000000");
+      expect(resolveTxHash(changed)).not.toBe(resolveTxHash(original));
+      const provider = {
+        fetchUTxOs: async () => [scriptInput, collateral],
+        fetchAddressUTxOs: async () => [scriptInput, collateral],
+      };
+      const before = await resolveTransactionRisks(original, ctx, provider);
+      const after = await resolveTransactionRisks(changed, ctx, provider);
+      expect(before.status).toBe("complete");
+      expect(after.status).toBe("complete");
+      expect(
+        after.outputs.map(({ address, assets }) => ({ address, assets })),
+      ).toEqual(
+        before.outputs.map(({ address, assets }) => ({ address, assets })),
+      );
+    },
+  );
   test("funding-only imported bytes preserve duplicate output and exact token exposure", async () => {
     const { hex, options, confirm } = setup(
       transaction({

@@ -20,6 +20,7 @@ export type PlutusBuildOptions = {
 };
 export type PreparedPlutusDraft = {
   draft: TxDraft;
+  network: number;
   inputs: {
     intent: DraftScriptInput;
     utxo: UTxO;
@@ -84,7 +85,13 @@ export async function prepareDraftPlutus(
       redeemerCbor: result.redeemerCbor,
     };
   });
-  const prepared = { draft, inputs, collateral, protocol };
+  const prepared = {
+    draft,
+    network: options.network,
+    inputs,
+    collateral,
+    protocol,
+  };
   preparations.add(prepared);
   return prepared;
 }

@@ -1,5 +1,6 @@
 import type { MeshTxBuilder } from "@meshsdk/core";
 import { resolveTxHash } from "@meshsdk/core-cst";
+import { csl } from "@meshsdk/core-csl";
 
 import type { TxDraft } from "@/types/tx-draft";
 import { applyMetadataMessage } from "./metadata";
@@ -113,9 +114,47 @@ export async function buildDraftTx(
       ...ctx,
       preparedPlutus: prepared,
     });
+    // Plutus inputs flush the preceding native funding inputs into the body.
+    // Capture the intended refs before completion can balance or mutate it.
+    const walletInputs =
+      prepared && draft.source.kind === "multisig"
+        ? txBuilder.meshTxBuilderBody.inputs
+            .filter((input) => input.type === "SimpleScript")
+            .map(
+              (input) =>
+                `${input.txIn.txHash.toLowerCase()}#${input.txIn.txIndex}`,
+            )
+        : undefined;
     applyMetadataMessage(txBuilder, "674", opts.metadataMessage);
     const unsignedTx = await opts.complete(txBuilder);
     assertCurrent();
+    if (walletInputs) {
+      const tx = csl.Transaction.from_hex(unsignedTx);
+      const spends = tx.body().inputs();
+      const emittedRefs = new Set(
+        Array.from({ length: spends.len() }, (_, i) => {
+          const input = spends.get(i);
+          return `${input.transaction_id().to_hex()}#${input.index()}`;
+        }),
+      );
+      const nativeScripts = tx.witness_set().native_scripts();
+      const expectedHash =
+        ctx.inputs.kind === "script"
+          ? csl.NativeScript.from_hex(ctx.inputs.scriptCbor).hash().to_hex()
+          : undefined;
+      const hasWalletScript = Array.from(
+        { length: nativeScripts?.len() ?? 0 },
+        (_, i) => nativeScripts!.get(i).hash().to_hex(),
+      ).includes(expectedHash!);
+      if (
+        !walletInputs.length ||
+        walletInputs.some((ref) => !emittedRefs.has(ref)) ||
+        !hasWalletScript
+      )
+        throw new Error(
+          "Completed transaction dropped the multisig wallet input or native approval script. Rebuild and review again.",
+        );
+    }
     const emittedSigners = new Set(requiredSignerKeyHashes(unsignedTx));
     if (
       (draft.requiredSigners ?? []).some(
