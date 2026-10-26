@@ -2,6 +2,15 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { checkRateLimit, getClientIP } from "@/lib/security/rateLimit";
 import { validateOrigin, validateUrlParameter } from "@/lib/security/validation";
 import { isAllowedDomain, ALLOWED_HOSTNAMES } from "@/lib/security/domains";
+import { cappedFetch, CappedFetchError, isImageContentType } from "@/lib/security/cappedFetch";
+
+// This endpoint exists to show dApp og:images and favicons. Passing through
+// anything else (an HTML page, a script) would serve another site's content
+// as our origin, so only images are relayed, and only up to a size an image
+// on a card plausibly needs (the live ones are 1-130 KB).
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const PROXY_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Only allow GET requests
@@ -54,24 +63,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Domain not allowed" });
   }
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    const response = await fetch(validatedSrc, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0" } });
-    clearTimeout(timeout);
+    const { contentType, body } = await cappedFetch(validatedSrc, {
+      maxBytes: MAX_IMAGE_BYTES,
+      timeoutMs: 10000,
+      overflow: "reject",
+      acceptContentType: isImageContentType,
+      headers: { "user-agent": "Mozilla/5.0" },
+    });
 
-    if (!response.ok) {
-      return res.status(502).json({ error: `Failed to fetch (${response.status})` });
-    }
-
-    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     res.setHeader("Content-Type", contentType);
+    // The bytes come from another site but are served from our origin. An SVG
+    // opened directly (not via <img>) is a document and would run its scripts
+    // as us; the sandbox CSP gives it an opaque origin with scripts off, while
+    // <img> rendering, the only use the dApp cards make of it, is unaffected.
+    res.setHeader("Content-Security-Policy", PROXY_CSP);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     // Optimize cache headers for CDN/edge caching
     res.setHeader("Cache-Control", "public, s-maxage=3600, max-age=3600, stale-while-revalidate=7200");
-    const arrayBuffer = await response.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch {
+    res.send(body);
+  } catch (error) {
+    // An upstream that misses the deadline is a gateway timeout, not a fault
+    // of ours; reporting it as 500 made a slow dApp site look like our outage.
+    if (error instanceof Error && error.name === "AbortError") {
+      return res.status(504).json({ error: "Upstream timed out" });
+    }
+    if (error instanceof CappedFetchError) {
+      return res.status(502).json({ error: error.message });
+    }
     res.status(500).json({ error: "Proxy fetch failed" });
   }
 }
-
-
