@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { MeshTxBuilder } from "@meshsdk/core";
+import { csl } from "@meshsdk/core-csl";
 import { resolveTxHash } from "@meshsdk/core-cst";
 import type { DraftBuildResult } from "../../src/lib/tx-draft/build-draft-tx";
 import { assessTransactionRisks } from "../../src/lib/tx-risk/transaction";
@@ -156,6 +157,176 @@ function contractFixture(datum?: string, redeemer?: string): DraftBuildResult {
   };
 }
 
+test("datum-only key outputs open review without a risk acknowledgment", async ({
+  page,
+}) => {
+  const result = fixture("key");
+  result.unsignedTx = transaction({
+    outputs: [output(address("key"), "5000000", false, true)],
+  });
+  result.txHash = resolveTxHash(result.unsignedTx);
+  result.riskAssessment = assessTransactionRisks(
+    result.unsignedTx,
+    { network: 0 },
+    {
+      utxos: [
+        { ...funding, output: { ...funding.output, address: address("key") } },
+      ],
+    },
+  );
+  expect(result.riskAssessment.findings).toEqual([]);
+  await mount(page, result, true);
+  await expect(page.getByTestId("pending-risk-review")).toContainText(
+    "Datum CBOR: 01",
+  );
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Datum CBOR: 01");
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Continue to signing" }).click();
+  await expect.poll(async () => (await calls(page)).sign).toBe(1);
+});
+
+test("long contract data fits mobile, exposes exact decoded integers and copies with a named keyboard control", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const datum = csl.PlutusData.new_bytes(
+    new Uint8Array(2048).fill(42),
+  ).to_hex();
+  const integer = csl.PlutusData.new_integer(
+    csl.BigInt.from_str(HUGE_QUANTITY),
+  ).to_hex();
+  await mount(page, contractFixture(datum, integer), true);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          document.body.dataset.copied = text;
+        },
+      },
+    });
+  });
+  const opener = page.getByRole("button", {
+    name: "Approve pending transaction",
+  });
+  await opener.click();
+  const dialog = page.getByRole("dialog");
+  const copy = dialog.getByRole("button", {
+    name: "Copy Output 1 (index 0) Datum CBOR",
+    exact: true,
+  });
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => document.body.dataset.copied))
+    .toBe(datum);
+  await expect(dialog).toContainText("Copied.");
+  await dialog.getByText("Decoded redeemer data", { exact: true }).click();
+  await expect(dialog).toContainText(HUGE_QUANTITY);
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: path.join(artifacts, "pending-contract-mobile.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+  expect((await calls(page)).sign).toBe(0);
+});
+
+test("contract witness changes cancel an open review even when the body hash is unchanged", async ({
+  page,
+}) => {
+  const original = contractFixture();
+  const tx = csl.Transaction.from_hex(original.unsignedTx);
+  const witnesses = csl.TransactionWitnessSet.new();
+  witnesses.set_redeemers(tx.witness_set().redeemers()!);
+  const changed = {
+    ...original,
+    unsignedTx: csl.Transaction.new(tx.body(), witnesses).to_hex(),
+  };
+  changed.riskAssessment = assessTransactionRisks(
+    changed.unsignedTx,
+    { network: 0 },
+    { utxos: [scriptInput, collateral] },
+  );
+  expect(resolveTxHash(changed.unsignedTx)).toBe(original.txHash);
+  expect(changed.riskAssessment.status).toBe("incomplete");
+  await mount(page, original, true);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.evaluate((data) => {
+    window.riskFixture = JSON.parse(data);
+    window.changePendingContext("fixture");
+  }, JSON.stringify(changed));
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toContainText(
+    "hash-matching Plutus script",
+  );
+  expect((await calls(page)).sign).toBe(0);
+  await page.evaluate((data) => {
+    window.riskFixture = JSON.parse(data);
+    window.changePendingContext("fixture");
+  }, JSON.stringify(original));
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Redeemer CBOR: d8799f02ff",
+  );
+  await page.keyboard.press("Escape");
+});
+
+test("missing input datum blocks the pending wallet action and retry loads the resolved details", async ({
+  page,
+}) => {
+  const resolved = contractFixture();
+  const missing = {
+    ...resolved,
+    riskAssessment: assessTransactionRisks(
+      resolved.unsignedTx,
+      { network: 0 },
+      {
+        utxos: [
+          {
+            ...scriptInput,
+            output: { ...scriptInput.output, plutusData: undefined },
+          },
+          collateral,
+        ],
+      },
+    ),
+  };
+  await mount(page, missing, true);
+  await expect(page.getByRole("alert")).toContainText("missing its datum");
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Approve pending transaction" }),
+  ).toBeEnabled();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect((await calls(page)).sign).toBe(0);
+  await page.evaluate((data) => {
+    window.riskFixture = JSON.parse(data);
+  }, JSON.stringify(resolved));
+  await page.getByRole("button", { name: "Retry review" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Approve pending transaction" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("On-chain inline datum");
+  await page.keyboard.press("Escape");
+});
+
 for (const field of ["datum", "redeemer", "budget"] as const) {
   test(`G3: pending co-signer can inspect ${field} after contract replacement`, async ({
     page,
@@ -187,12 +358,6 @@ for (const field of ["datum", "redeemer", "budget"] as const) {
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Collateral owner");
     expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
-    // Mark only the missing-detail assertion as expected to fail. Setup, decoding,
-    // mounting and replacement must succeed normally. Remove in phase 3.
-    test.fail(
-      process.env.PLUTUS_GAP_ASSERT_DESIRED !== "1",
-      "G3: pending review currently omits contract arguments and recorded budgets",
-    );
     const detail =
       field === "datum"
         ? "Datum CBOR: d8799f03ff"
@@ -231,11 +396,28 @@ for (const action of ["sign", "export"] as const) {
     });
     await dialog.getByTestId("tx-builder-review-continue").click();
     await expect(opener).toBeEnabled();
-    test.fail(
-      process.env.PLUTUS_GAP_ASSERT_DESIRED !== "1",
-      "G4: builder currently refreshes only before confirmation",
-    );
     expect(await calls(page)).toEqual({ sign: 0, submit: 0, export: 0 });
+    await expect(
+      page.getByRole("alert").filter({ hasText: "facts changed" }),
+    ).toBeVisible();
+    // Restoring provider availability cannot reuse the previous acknowledgment.
+    await page.evaluate(() => {
+      window.riskFixture.riskAssessment!.status = "complete";
+      window.riskFixture.riskAssessment!.errors = [];
+    });
+    await opener.click();
+    await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+    await expect(
+      dialog.getByTestId("tx-builder-review-continue"),
+    ).toBeDisabled();
+    await dialog.getByRole("checkbox").check();
+    await dialog.getByTestId("tx-builder-review-continue").click();
+    await expect(opener).toBeEnabled();
+    expect(await calls(page)).toEqual(
+      action === "export"
+        ? { sign: 0, submit: 0, export: 1 }
+        : { sign: 1, submit: 1, export: 0 },
+    );
   });
 }
 

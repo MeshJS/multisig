@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import RiskSummary from "../build/risk-summary";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
+import ContractDetailsReview from "./contract-details-review";
 
 export function PendingRiskSummary({
   assessment,
@@ -28,13 +29,16 @@ export function PendingRiskSummary({
     <div className="m-4 space-y-2 text-sm" data-testid="pending-risk-review">
       <p className="font-medium">Transaction script review</p>
       <RiskSummary findings={assessment.findings} network={network} />
+      <ContractDetailsReview details={assessment.contractDetails} />
       {loading ? (
         <p role="status">Verifying transaction inputs and collateral…</p>
       ) : assessment.status === "incomplete" ? (
         <div role="alert">
           <p>Unable to verify this transaction. Retry before signing.</p>
           {assessment.errors.map((error, index) => (
-            <p key={index}>{error.message}</p>
+            <p key={index} className="break-all">
+              {error.message}
+            </p>
           ))}
           <Button variant="outline" onClick={retry}>
             Retry review
@@ -71,6 +75,8 @@ export function PendingRiskDialog({
   const needsAcknowledgment = assessment.findings.some(
     (finding) => finding.requiresAcknowledgment,
   );
+  const complete =
+    assessment.status === "complete" && assessment.errors.length === 0;
   const cancel = () => onDecision({ accepted: false, acknowledged: false });
   return (
     <Dialog
@@ -101,6 +107,13 @@ export function PendingRiskDialog({
         </DialogHeader>
         <p>{network === 1 ? "Mainnet" : "Testnet"}</p>
         <RiskSummary findings={assessment.findings} network={network} />
+        <ContractDetailsReview details={assessment.contractDetails} />
+        {!complete && (
+          <p role="alert">
+            Unable to verify this transaction. Cancel and retry review before
+            signing.
+          </p>
+        )}
         {assessment.collateral && (
           <div className="space-y-1 break-all text-xs">
             {assessment.collateral.owners.map((owner) => (
@@ -146,9 +159,9 @@ export function PendingRiskDialog({
             Cancel
           </Button>
           <Button
-            disabled={needsAcknowledgment && !acknowledged}
+            disabled={!complete || (needsAcknowledgment && !acknowledged)}
             onClick={() => {
-              if (!needsAcknowledgment || acknowledged)
+              if (complete && (!needsAcknowledgment || acknowledged))
                 onDecision({ accepted: true, acknowledged });
             }}
           >

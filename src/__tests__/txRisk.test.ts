@@ -314,7 +314,12 @@ describe("completed CBOR assessment", () => {
       { utxos: [scriptInput] },
     );
     expect(result).toMatchObject({
-      status: "complete",
+      // This classification-only fixture has no script/redeemer witnesses.
+      // Its warning remains informational, but signing now needs those details.
+      status: "incomplete",
+      errors: expect.arrayContaining([
+        expect.objectContaining({ code: "contract-detail-unresolved" }),
+      ]),
       findings: [
         {
           action: "spend-script",

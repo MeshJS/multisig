@@ -4,6 +4,16 @@ This fixture uses the [Hydra project's published Plutus V2 always-true validator
 
 ## Fixture values
 
+This walkthrough uses the historical V2 inline fixture. The
+[five-case acceptance matrix](plutus-acceptance-matrix.md) records separate V1
+supplied-datum, V2 inline/supplied-datum and V3 inline/supplied-datum evidence.
+The [fixture manifest](../e2e/fixtures/plutus-acceptance.json) contains each
+validator's source, bytes, hash and address; do not relabel the V2 script as V1/V3.
+V1 with inline data remains unsupported. For supplied-datum cases, the dedicated
+`addFixtureFunding` test helper creates a hash-datum output; the normal output
+editor remains inline-only. Select **Supply datum matching hash** when spending it
+and enter the datum CBOR from the manifest's acceptance flow (`01`).
+
 | Field                                | Value                                                             |
 | ------------------------------------ | ----------------------------------------------------------------- |
 | Network                              | Preprod                                                           |
@@ -84,7 +94,14 @@ An owner/account switch or spent collateral should produce a correction state, n
 node scripts/plutus-manual-fixture.mjs
 ```
 
-The verifier uses the installed Mesh SDK and its real offline evaluator, synthetic input/collateral references, and bundled cost models. Both `01` and `02` executed successfully with 1,100 memory units and 160,100 steps. It derives the address, checks unsigned serialization and the required signer, and prints the fixture values. It does not access wallet secrets, sign, make network requests, or submit anything. Its synthetic transaction hashes must never be used in the wallet.
+The verifier uses the installed Mesh SDK and its real offline evaluator, synthetic
+input/collateral references, and bundled cost models. It now executes all five
+language/datum cases with both `01` and `02`: V1/V2 use 1,100 memory and 160,100
+steps; V3 uses 500 memory and 64,100 steps. It checks script identity, supplied datum
+witnesses, unsigned serialization and required keys. It does not access wallet
+secrets, sign, make network requests, or submit anything. Its synthetic transaction
+hashes must never be used in the wallet. `node scripts/plutus-acceptance-validators.mjs`
+separately verifies reproducible V1/V3 compilation against the recorded manifest.
 
 Offline execution is not preprod acceptance: record the actual funding and spending transaction hashes after the manual flow succeeds.
 

@@ -23,9 +23,12 @@ export default function usePendingTransactionReview(options: {
     () => assessTransactionRisks(txHex, context),
     [txHex, contextKey],
   );
-  // Witness additions alone do not change the transaction being approved.
+  // Payment-key witness additions alone do not change the transaction being approved.
   const key = JSON.stringify([
     initial.txHash ?? txHex,
+    // Payment-key signatures may be added without cancelling review. Contract
+    // witnesses (including changed/missing redeemers) must invalidate it.
+    JSON.stringify(initial.contractDetails),
     contextKey,
     identity,
     enabled,

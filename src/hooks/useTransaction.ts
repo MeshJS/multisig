@@ -168,9 +168,6 @@ export default function useTransaction() {
           ? data.txJsonExtras(body)
           : data.txJsonExtras;
 
-      if (data.beforeSign && !(await data.beforeSign(unsignedTx))) return false;
-      assertCurrent();
-
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
       }
@@ -196,6 +193,10 @@ export default function useTransaction() {
 
       // The audit is asynchronous; an account/draft switch while it runs must
       // not open a signing prompt for bytes whose review has been invalidated.
+      assertCurrent();
+      // Review (including its final chain refresh) follows the asynchronous audit
+      // so no audit delay separates the freshness check from the wallet prompt.
+      if (data.beforeSign && !(await data.beforeSign(unsignedTx))) return false;
       assertCurrent();
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
       assertCurrent();

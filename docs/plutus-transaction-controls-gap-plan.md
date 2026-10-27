@@ -1,6 +1,6 @@
 # Plutus transaction controls: review gap remediation plan
 
-Status: Phases 0-2 complete. G1 and G2 are fixed; Phases 3-6 remain planned.
+Status: Phases 0-5 complete. G1-G4 are fixed and G5 has confirmed acceptance evidence; Phase 6 release checks remain planned.
 
 Prepared: 2026-10-26 (Africa/Johannesburg)  
 Reviewed branch: `feat/plutus-transaction-controls` at `4a04ded1`
@@ -246,34 +246,91 @@ Primary paths: `src/lib/tx-risk/transaction.ts`,
 `src/components/pages/wallet/transactions/pending-risk-review.tsx`,
 `transaction-card.tsx`, and the existing builder review components.
 
-- [ ] Define a read-only contract-detail model separate from editor compatibility.
+- [x] Define a read-only contract-detail model separate from editor compatibility.
       A transaction that cannot be edited must still expose its reviewable details.
-- [ ] Decode each output's datum with its output index, including distinct outputs
+- [x] Decode each output's datum with its output index, including distinct outputs
       at the same address. Distinguish inline data, datum hashes and absent data.
-- [ ] For each Plutus spend, show the input reference, script hash and language,
+- [x] For each Plutus spend, show the input reference, script hash and language,
       datum source/value or hash, redeemer CBOR, and recorded execution budget.
       Associate spending redeemers with ledger-ordered input references, never stored
       JSON or editor order. Resolve reference scripts and hash datums when required;
       report unresolved details explicitly rather than displaying an empty success.
-- [ ] Label pending budgets as recorded in the transaction. Do not claim a pending
+- [x] Label pending budgets as recorded in the transaction. Do not claim a pending
       transaction was freshly evaluated unless a separate evaluation actually ran.
       Decode and display exact data without claiming to interpret contract intent.
-- [ ] Present these details in the pending card and signing review. Reuse builder
+- [x] Present these details in the pending card and signing review. Reuse builder
       presentation where practical, retain exact CBOR with copy controls, and make
       long values usable on mobile and with keyboard navigation.
-- [ ] Ensure datum-only transactions can trigger the appropriate detail review
+- [x] Ensure datum-only transactions can trigger the appropriate detail review
       even if there are no script-risk findings. Preserve existing acknowledgment,
       collateral and required-key displays, and invalidate details on replacement.
-- [ ] Define required facts for supported Plutus-spend review. Their absence must
+- [x] Define required facts for supported Plutus-spend review. Their absence must
       block the action with a retry/correction state; missing optional labels must not.
       Keep unrelated transaction types working under their existing review policy.
-- [ ] Test independent proposer/co-signer views, changed datum/redeemer with equal
+- [x] Test independent proposer/co-signer views, changed datum/redeemer with equal
       payment amounts, reordered inputs, duplicate recipient addresses, supplied vs
       inline datums, large integers, missing JSON and missing provider facts.
 
 **Exit criteria:** A co-signer can inspect the exact contract arguments and recorded
 budgets they are approving, including after replacement, without trusting the
 proposer's stored JSON or opening the transaction editor.
+
+**Completed 2026-10-26:** `contract-details.ts` adds a read-only model to the
+shared transaction assessment. It decodes every output's inline datum, datum hash
+or absence of data with its zero-based ledger index, including collateral return.
+Spending redeemers are associated with ledger-sorted input references. The review
+retains script hash/language, source, exact datum/redeemer CBOR, decoded data and
+recorded memory/step budgets. Decoded JSON remains text so large integer values
+are not rounded by JavaScript. No stored transaction JSON or editor compatibility
+decision is involved.
+
+Required facts for an identified Plutus spend are a unique live input on the
+selected network, a hash-matching script/language from transaction witnesses or
+live spending/reference inputs, exactly one correctly indexed spending redeemer,
+and its recorded budget. Inline datums are decoded and checked against any
+reported hash; hash datums must match a datum witness in the transaction. Fetching
+an external datum cannot substitute for a missing witness. Missing, ambiguous,
+malformed, spent or mismatched required facts make review incomplete and block
+signing with retry/correction guidance. Output-only datum hashes need no external
+value lookup. Optional labels and unrelated native/staking/governance review
+policies remain unchanged; this model does not infer Plutus from an arbitrary
+script address alone or add minting/governance redeemer inspection.
+
+Both the pending card and each signing dialog show the independent details.
+Datum-only transactions now require a review decision even with no risk findings.
+Existing danger acknowledgment, collateral and required-key information remain.
+The shared `contract-data-value.tsx` presentation adds named copy controls and
+bounded, keyboard-scrollable values to pending and builder views. Pending budgets
+are explicitly recorded values; no fresh evaluation or contract-intent claim is
+made. Replacement and contract-witness changes invalidate an open review, even if
+the body hash is unchanged, while payment-key witness additions retain it. The
+existing final pending refresh also compares the new detail model.
+
+Evidence: `contractDetails.test.ts` covers ledger ordering, duplicate recipients,
+large integers, V1/V2/V3 supplied datums, reference scripts, missing facts,
+datum-only decisions and changed facts during confirmation. The five existing
+language/datum build round trips now compare independent co-signer details with
+the actual proposer arguments and evaluated budgets. Browser regressions exercise
+the production hook/dialog with real-codec assessments supplied at the resolver
+boundary, including replacement, missing-datum retry, mobile layout, exact copy,
+keyboard navigation and focus restoration. G3's three expected-failure markers
+are removed. This is serialization, SDK-build and component-browser evidence;
+Phase 5's live acceptance matrix and Phase 6's human screen-reader check remain
+pending. No transaction was signed by a live wallet or broadcast.
+
+Validation on the Phase 3 working tree:
+
+- Five focused Jest suites: 143 ordinary tests passed.
+- Full Jest run: 1,925 CJS and 99 ESM cases accepted, including the two remaining
+  G4 expected failures; two existing environment-gated tests remain skipped.
+- Risk-component Playwright suite: 24 cases accepted (22 ordinary passes and two
+  remaining G4 expected failures), using installed Chrome. Mobile screenshot
+  inspected at `ci-artifacts/risk-components/pending-contract-mobile.png`.
+- TypeScript and the final production build passed. The build retains the
+  existing dependency WebAssembly `async/await` target warnings from
+  `whisky-js-browser` and `whisky-evaluator`.
+- Scoped Prettier and `git diff --check` passed. The existing `next lint` command
+  remains unavailable; no lint pass is claimed.
 
 ## Phase 4: Revalidate after builder confirmation
 
@@ -284,19 +341,19 @@ Primary paths: `src/lib/tx-risk/review.ts`, `pending-review.ts`,
 `src/components/pages/wallet/build/index.tsx`, `src/hooks/useTransaction.ts`,
 and `useSignAndSubmit.ts`.
 
-- [ ] Refresh mandatory transaction facts after the user confirms the builder
+- [x] Refresh mandatory transaction facts after the user confirms the builder
       dialog and before calling a wallet or copying unsigned CBOR. Reuse the pending
       review policy where practical so the two paths do not drift.
-- [ ] Compare the fresh assessment against what the user reviewed, including
+- [x] Compare the fresh assessment against what the user reviewed, including
       contract details added in Phase 3. Bind acceptance to the original CBOR, network,
       draft revision, funding source, account and wallet identity.
-- [ ] On changed or incomplete facts, refuse the action and show the updated
+- [x] On changed or incomplete facts, refuse the action and show the updated
       review or a clear retry/rebuild state. Require a new decision and acknowledgment;
       do not reuse the previous checkbox state or silently rebuild the transaction.
-- [ ] Preserve freshness checks after asynchronous proxy auditing and wallet
+- [x] Preserve freshness checks after asynchronous proxy auditing and wallet
       operations, and retain readiness checks before submission. Be explicit that
       chain checks establish availability at a point in time, not a UTxO reservation.
-- [ ] Test spending-input and collateral consumption during the dialog, provider
+- [x] Test spending-input and collateral consumption during the dialog, provider
       failure, account/network/source changes during refresh, cancellation, unsigned
       export, replacement, connected signing, and unchanged-facts success. Assert zero
       wallet/clipboard calls when the final refresh fails.
@@ -304,6 +361,51 @@ and `useSignAndSubmit.ts`.
 **Exit criteria:** The reproduced stale-input case is refused; successful actions
 use the exact reviewed bytes after a successful final refresh. Pending review
 retains the same behavior.
+
+**Completed 2026-10-27:** Builder and pending signing now share
+`revalidate-review.ts` for their final uncached chain assessment. After confirmation,
+the builder resolves the original CBOR again and compares the complete assessment,
+including contract datum/redeemer data and recorded budgets. Changed or incomplete
+facts throw actionable retry/rebuild guidance before any wallet or clipboard call.
+Provider exceptions also fail closed. Each retry opens a new decision with an
+unchecked acknowledgment; no transaction is silently rebuilt and no acceptance is
+retained. Ordinary key transfers keep their concise flow while also revalidating.
+
+The existing builder currentness callback binds draft revision/source, exact site
+network, account, signer instance and wallet identity/script. It is checked around
+the final refresh alongside the original CBOR and displayed assessment binding.
+Multisig proposal/replacement review now follows the asynchronous proxy audit so
+the audit cannot delay the final chain check. Existing currentness checks after
+wallet operations and readiness checks before submission remain intact. The dialog
+explicitly states that availability checks do not reserve spending inputs or
+collateral. No authorization, witness merging or replacement concurrency rule changed.
+
+Evidence: `txRiskReview.test.ts` exercises real-codec/provider-boundary input and
+collateral consumption, provider failures, contract-detail changes, cancellation,
+unchanged bytes and draft/source/account/network/wallet/replacement changes during
+both confirmation and final refresh. `useTransactionReview.test.ts` connects that
+guard to proposal, replacement and connected-signing hooks, plus the unsigned-export
+action boundary. Failed final checks produce zero wallet/clipboard/persistence calls;
+successful checks use the exact reviewed bytes without recompletion. Browser G4
+regressions now pass normally for signing/export and prove retry requires a new
+acknowledgment. Pending review retains its final-refresh refusal tests. These are
+deterministic fixtures and component-browser checks, not live chain acceptance.
+
+Validation on the Phase 4 working tree:
+
+- Full Jest run: 1,958 CJS and 99 ESM tests passed, with two existing
+  environment-gated tests skipped. No G4 expected-failure markers remain.
+- Final four focused Jest suites: 101 tests passed, including the two explicit
+  wallet-identity invalidation cases added after the full run.
+- Risk-component Playwright suite: all 24 tests passed using installed Chrome.
+  This includes both former G4 expected failures and unchanged pending/MCP cases.
+- TypeScript and production build passed. The build retains the existing
+  dependency WebAssembly `async/await` target warnings from `whisky-js-browser`
+  and `whisky-evaluator`.
+- Scoped Prettier and repository-wide `git diff --check` passed. `npm.cmd run lint`
+  still fails because this Next version does not provide the configured
+  `next lint` command; no lint pass is claimed.
+- Live language/datum acceptance and release gates remain Phase 5/6 work.
 
 ## Phase 5: Complete the advertised language/datum acceptance matrix
 
@@ -320,31 +422,58 @@ specs, [manual preprod guide](plutus-manual-preprod.md), and release evidence.
 | V3              | Inline datum                             | Offline execution, full-app flow, confirmed preprod spend |
 | V3              | Supplied datum matching an on-chain hash | Offline execution, full-app flow, confirmed preprod spend |
 
-- [ ] Use actual language-compatible validators and retain their source/provenance,
+- [x] Use actual language-compatible validators and retain their source/provenance,
       script bytes and hashes. Relabelling the existing V2 fixture does not establish
       V1 or V3 execution support. Keep V1-plus-inline combinations explicitly rejected.
-- [ ] Create hash-datum funding outputs through a dedicated fixture helper; the
+- [x] Create hash-datum funding outputs through a dedicated fixture helper; the
       user-facing output controls remain inline-only unless separately scoped.
-- [ ] Exercise each row through funding, script/datum resolution, evaluation,
+- [x] Exercise each row through funding, script/datum resolution, evaluation,
       proposer review, owner signing, independent co-signing and confirmation. Record
       the resulting outputs and whether the recorded collateral remained unspent.
-- [ ] Cover script-value-sufficient multisig funding, pending import/edit, redeemer
+- [x] Cover script-value-sufficient multisig funding, pending import/edit, redeemer
       replacement with old signatures discarded, and independent contract-detail
       review across the integration suite. Run stale-fact refusal scenarios with
       controlled boundary mocks rather than creating unnecessary conflicting spends.
-- [ ] Keep live runners opt-in, preprod-only and limited to disposable test ADA.
+- [x] Keep live runners opt-in, preprod-only and limited to disposable test ADA.
       Record partial progress and recovery references before retries; recover previous
       fixture outputs instead of blindly funding new ones. Reuse existing runner
       coordination to avoid concurrent use of shared wallets.
-- [ ] For each case retain commit/build, wallet threshold, language/script hash,
+- [x] For each case retain commit/build, wallet threshold, language/script hash,
       funding reference, datum/redeemer bytes, evaluated budgets, proposed/replacement
       hashes, verified witnesses, confirmation hash and collateral outcome.
-- [ ] If a combination fails, fix it and rerun, or explicitly narrow the advertised
+- [x] If a combination fails, fix it and rerun, or explicitly narrow the advertised
       support and document the limitation. Do not mark unexecuted rows as accepted.
 
 **Exit criteria:** All five advertised combinations have evidence from the final
 implementation. Mocked serialization and offline execution are recorded separately
 from chain confirmation.
+
+**Completed 2026-10-27:** All five combinations passed real offline execution,
+full-application mocked-boundary coverage and confirmed preprod acceptance on the
+final Phase 4 production build. The
+[acceptance matrix](plutus-acceptance-matrix.md) and
+[public chain evidence](evidence/plutus-acceptance-2026-10-27.json) retain the exact
+validators, build identity, funding references, original/replacement bodies' hashes,
+arguments, budgets, verified signer hashes, outputs and collateral outcomes.
+V1/V3 have reproducible repository-authored validators; V2 retains the published
+Hydra fixture. V1 inline remains rejected and hash-output funding is fixture-only.
+
+The serial, opt-in live runner preserves recovery state before persistence and
+uses the existing `ci-preprod-wallets` coordination. Interrupted cases reused their
+recorded funding/proposals. Address-index lag and slow shared-address resolution
+required runner timing and funding-input checks; application guards refused stale
+inputs before signing. A rejected, unsigned and unsubmitted funding draft was
+archived and replaced only after checking its chain and signature state. No runtime
+guard was weakened and no application runtime code changed in Phase 5.
+
+Validation: ten real offline executions (two redeemers per case), six full-app
+mocked-boundary tests, and all five live flows passed. Full Jest passed 1,966 CJS
+and 99 ESM tests, with two environment-gated tests skipped. TypeScript, scoped
+Prettier and `git diff --check` passed. The independent exporter reverified every
+confirmed script spend and all five unspent collateral outputs. The existing
+`next lint` command remains unavailable; no lint pass is claimed. Production build
+`_ERs2AE5JUWr5p0ZuStjU` is the successful Phase 4 build, reused unchanged for live
+acceptance. Human accessibility and deployment-specific gates remain Phase 6.
 
 ## Phase 6: Integrate, reconcile documentation and complete release checks
 

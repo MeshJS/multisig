@@ -3,6 +3,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { MeshTxBuilder } from "@meshsdk/core";
 import useTransaction from "@/hooks/useTransaction";
 import useSignAndSubmit from "@/hooks/useSignAndSubmit";
+import { resolveTxHash } from "@meshsdk/core-cst";
+import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
+import { reviewBuiltTransaction } from "@/lib/tx-risk/review";
+import { resolveTransactionRisks } from "@/lib/tx-risk/transaction";
+import {
+  collateral,
+  ctx,
+  scriptInput,
+  contractReviewTransaction,
+} from "./fixtures/tx-risk";
 
 const mockSign = jest.fn().mockResolvedValue("wallet-witnesses");
 const mockCreate = jest.fn().mockResolvedValue({});
@@ -90,7 +100,9 @@ describe("finalized transaction review before signing", () => {
   });
 
   test("a failed proxy auth-token audit refuses the transaction before the wallet signs", async () => {
-    mockPreSignAudit.mockResolvedValue({ error: "token would leave the wallet" });
+    mockPreSignAudit.mockResolvedValue({
+      error: "token would leave the wallet",
+    });
     await hook().newTransaction({ txBuilder: builder() });
     expect(mockPreSignAudit).toHaveBeenCalledWith({
       walletId: "wallet",
@@ -99,6 +111,92 @@ describe("finalized transaction review before signing", () => {
     expect(mockSign).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
   });
+
+  describe.each(["proposal", "replacement", "connected", "export"])(
+    "%s action boundary",
+    (action) => {
+      test.each([
+        "unchanged",
+        "spent input",
+        "spent collateral",
+        "provider failure",
+      ])("final refresh: %s", async (outcome) => {
+        const txBuilder = builder();
+        txBuilder.meshTxBuilderBody.requiredSignatures = [];
+        const unsignedTx = contractReviewTransaction();
+        const result = {
+          unsignedTx,
+          txHash: resolveTxHash(unsignedTx),
+          body: txBuilder.meshTxBuilderBody,
+        } as DraftBuildResult;
+        const provider = {
+          fetchUTxOs: jest.fn(async () => [scriptInput, collateral]),
+          fetchAddressUTxOs: jest.fn(async () => [scriptInput, collateral]),
+        };
+        const clipboard = jest.fn();
+        const refresh = jest.fn((hex: string) =>
+          resolveTransactionRisks(hex, ctx, provider),
+        );
+        const review = () =>
+          reviewBuiltTransaction(result, {
+            network: 0,
+            isCurrent: () => true,
+            refresh,
+            confirm: async () => {
+              if (action === "proposal" || action === "replacement")
+                expect(mockPreSignAudit).toHaveBeenCalledTimes(1);
+              if (outcome === "spent input")
+                provider.fetchAddressUTxOs.mockResolvedValue([collateral]);
+              if (outcome === "spent collateral")
+                provider.fetchAddressUTxOs.mockResolvedValue([scriptInput]);
+              if (outcome === "provider failure")
+                provider.fetchUTxOs.mockRejectedValue(new Error("offline"));
+              return { accepted: true, acknowledged: true };
+            },
+          });
+        const actions = hook();
+        const run = async () => {
+          if (action === "connected" || action === "export") {
+            if (await review()) {
+              if (action === "export") clipboard(unsignedTx);
+              else {
+                mockReadiness.mockResolvedValue({ ready: true });
+                await actions.signAndSubmit(unsignedTx);
+              }
+            }
+          } else {
+            await actions.newTransaction({
+              txBuilder,
+              completed: result,
+              beforeSign: review,
+              replaces:
+                action === "replacement"
+                  ? { transactionId: "old", knownSignedCount: 1 }
+                  : undefined,
+            });
+          }
+        };
+        if (outcome === "unchanged") {
+          await run();
+          if (action === "export")
+            expect(clipboard).toHaveBeenCalledWith(unsignedTx);
+          else
+            expect(mockSign).toHaveBeenCalledWith(
+              unsignedTx,
+              ...(action === "connected" ? [] : [true]),
+            );
+        } else {
+          await expect(run()).rejects.toThrow(/facts changed/);
+          expect(mockSign).not.toHaveBeenCalled();
+          expect(mockSubmit).not.toHaveBeenCalled();
+          expect(mockCreate).not.toHaveBeenCalled();
+          expect(clipboard).not.toHaveBeenCalled();
+        }
+        expect(refresh.mock.calls).toEqual([[unsignedTx], [unsignedTx]]);
+        expect(mockComplete).not.toHaveBeenCalled();
+      });
+    },
+  );
 
   test("a missing authorized payment witness cannot mark the proposer signed", async () => {
     mockPaymentWitness.mockReturnValue(false);
@@ -267,15 +365,24 @@ describe("finalized transaction review before signing", () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  test("an account change during direct signing cannot submit", async () => {
-    let current = true;
-    mockSign.mockImplementation(async () => {
-      current = false;
-      return "wallet-witnesses";
-    });
-    await expect(
-      hook().signAndSubmit("evaluated-bytes", () => current),
-    ).rejects.toThrow(/superseded/);
-    expect(mockSubmit).not.toHaveBeenCalled();
-  });
+  test.each(["wallet", "readiness"])(
+    "an account change during direct %s cannot submit",
+    async (stage) => {
+      let current = true;
+      if (stage === "wallet")
+        mockSign.mockImplementation(async () => {
+          current = false;
+          return "wallet-witnesses";
+        });
+      if (stage === "readiness")
+        mockReadiness.mockImplementation(async () => {
+          current = false;
+          return { ready: true };
+        });
+      await expect(
+        hook().signAndSubmit("evaluated-bytes", () => current),
+      ).rejects.toThrow(/superseded/);
+      expect(mockSubmit).not.toHaveBeenCalled();
+    },
+  );
 });

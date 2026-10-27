@@ -1,7 +1,9 @@
 import { resolveTxHash } from "@meshsdk/core-cst";
 import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
 import type { RiskAssessment } from "./types";
+import { revalidateReview } from "./revalidate-review";
 import {
+  hasContractDetails,
   reviewIsComplete,
   reviewNeedsAcknowledgment,
   type ReviewDecision,
@@ -32,6 +34,7 @@ export async function reviewBuiltTransaction(
   const needsReview =
     !reviewIsComplete(reviewed, options.network) ||
     reviewed.riskAssessment.findings.length > 0 ||
+    hasContractDetails(reviewed.riskAssessment.contractDetails) ||
     !!reviewed.plutusReview ||
     reviewed.body.requiredSignatures.length > 0 ||
     reviewed.outputReview?.some((o) => o.inlineDatum !== undefined);
@@ -39,13 +42,22 @@ export async function reviewBuiltTransaction(
   const decision = needsReview
     ? await options.confirm(reviewed)
     : { accepted: true, acknowledged: false };
-  return (
-    decision.accepted &&
+  const decisionIsCurrent = () =>
     isCurrent() &&
     result.unsignedTx === originalHex &&
-    binding ===
-      JSON.stringify([reviewed.unsignedTx, reviewed.riskAssessment]) &&
+    binding === JSON.stringify([reviewed.unsignedTx, reviewed.riskAssessment]);
+  if (!(
+    decision.accepted &&
+    decisionIsCurrent() &&
     reviewIsComplete(reviewed, options.network) &&
     (!reviewNeedsAcknowledgment(reviewed) || decision.acknowledged)
-  );
+  ))
+    return false;
+  return revalidateReview({
+    txHash: result.txHash,
+    network: options.network,
+    binding: JSON.stringify(reviewed.riskAssessment),
+    isCurrent: decisionIsCurrent,
+    refresh: () => options.refresh(originalHex),
+  });
 }

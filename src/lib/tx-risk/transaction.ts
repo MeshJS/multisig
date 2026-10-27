@@ -15,6 +15,7 @@ import {
 } from "./assessment";
 import { networkId, paymentCredential } from "./classify";
 import type { RiskAssessment, RiskContext } from "./types";
+import { readContractDetails } from "./contract-details";
 
 export type ResolvedRiskFacts = {
   /** Trusted chain results for exactly referenced inputs; never proposer-supplied JSON. */
@@ -38,7 +39,9 @@ export function decodeTransaction(txHex: string) {
   return csl.Transaction.from_hex(txHex);
 }
 
-export function refs(inputs: csl.TransactionInputs | undefined): DraftUtxoRef[] {
+export function refs(
+  inputs: csl.TransactionInputs | undefined,
+): DraftUtxoRef[] {
   return Array.from({ length: inputs?.len() ?? 0 }, (_, i) => {
     const input = inputs!.get(i);
     return {
@@ -286,6 +289,17 @@ export function assessTransactionRisks(
           : "Cannot verify collateral exposure.",
     });
   }
+  try {
+    const contract = readContractDetails(tx, facts.utxos ?? [], ctx.network);
+    result.contractDetails = contract.details;
+    result.errors.push(...contract.errors);
+  } catch {
+    result.errors.push({
+      code: "contract-detail-unresolved",
+      message:
+        "Cannot decode contract details. Retry review or ask for a corrected transaction.",
+    });
+  }
   result.status = result.errors.length ? "incomplete" : "complete";
   return result;
 }
@@ -320,10 +334,11 @@ export async function resolveTransactionRisks(
     return assessTransactionRisks(txHex, ctx);
   }
   const uniqueRefs = new Map(
-    [...refs(body.inputs()), ...refs(body.collateral())].map((ref) => [
-      utxoRefKey(ref),
-      ref,
-    ]),
+    [
+      ...refs(body.inputs()),
+      ...refs(body.collateral()),
+      ...refs(body.reference_inputs()),
+    ].map((ref) => [utxoRefKey(ref), ref]),
   );
   for (const [key, ref] of uniqueRefs) {
     if (!isCurrent()) return stale();

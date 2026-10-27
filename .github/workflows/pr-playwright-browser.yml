@@ -7,6 +7,11 @@ on:
       - preprod
   workflow_dispatch:
     inputs:
+      plutus_matrix:
+        description: "Run the five disposable-preprod Plutus acceptance cases instead of ring transfers"
+        required: false
+        default: false
+        type: boolean
       transfer_lovelace:
         description: "Lovelace amount for ring transfer legs"
         required: false
@@ -25,7 +30,7 @@ jobs:
   playwright-browser:
     if: github.repository == 'MeshJS/multisig'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.plutus_matrix && 150 || 60 }}
     env:
       CI_JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
       CI_MNEMONIC_1: ${{ secrets.CI_MNEMONIC_1 }}
@@ -91,10 +96,35 @@ jobs:
             run --rm bootstrap-runner
 
       - name: Run Playwright ring transfer tests
+        if: ${{ !inputs.plutus_matrix }}
         shell: bash
         run: |
           docker compose -f docker-compose.playwright.yml --profile playwright \
             run --rm --no-deps playwright-runner
+
+      - name: Run Plutus acceptance matrix under the shared wallet lease
+        if: ${{ inputs.plutus_matrix }}
+        shell: bash
+        run: |
+          docker compose -f docker-compose.playwright.yml --profile playwright \
+            run --rm --no-deps \
+            -e RUN_PLUTUS_MATRIX=1 \
+            -e PREPROD_WALLET_COORDINATION=ci-preprod-wallets \
+            -e PREPROD_MATRIX_STATE_DIR=/artifacts/plutus-matrix-state \
+            -e PREPROD_BUILD_ID="$GITHUB_SHA" \
+            -e GITHUB_SHA="$GITHUB_SHA" \
+            playwright-runner npx playwright test -c e2e/playwright.config.ts \
+            e2e/tests/plutus-acceptance-matrix.spec.ts --workers=1 --retries=0
+
+      - name: Preserve Plutus acceptance and recovery records
+        if: ${{ always() && inputs.plutus_matrix }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: plutus-matrix-evidence
+          path: |
+            ci-artifacts/plutus-matrix-state/
+            ci-artifacts/ci-wallet-context.json
+          if-no-files-found: warn
 
       - name: Dump container logs on failure
         if: failure()

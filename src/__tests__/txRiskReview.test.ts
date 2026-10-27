@@ -19,10 +19,12 @@ import {
   native,
   output,
   transaction,
+  collateral,
+  scriptInput,
+  contractReviewTransaction,
 } from "./fixtures/tx-risk";
 import { createMockProvider } from "./tx-builders/mockProvider";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
-import { knownPlutusGap } from "./fixtures/known-plutus-gap";
 
 function built(destination = address("known")): DraftBuildResult {
   const unsignedTx = transaction({ outputs: [output(destination)] });
@@ -49,7 +51,7 @@ function built(destination = address("known")): DraftBuildResult {
 }
 
 describe("builder action risk gate", () => {
-  describe.each(["spent input", "provider unavailable"])(
+  describe.each(["spent input", "spent collateral", "provider unavailable"])(
     "G4: %s during confirmation",
     (failure) => {
       let action: jest.Mock;
@@ -57,9 +59,11 @@ describe("builder action risk gate", () => {
       let accepted: boolean;
       beforeEach(async () => {
         const result = built();
+        result.unsignedTx = contractReviewTransaction();
+        result.txHash = resolveTxHash(result.unsignedTx);
         const provider = {
-          fetchUTxOs: jest.fn(async () => [funding]),
-          fetchAddressUTxOs: jest.fn(async () => [funding]),
+          fetchUTxOs: jest.fn(async () => [scriptInput, collateral]),
+          fetchAddressUTxOs: jest.fn(async () => [scriptInput, collateral]),
         };
         refresh = jest.fn(() =>
           resolveTransactionRisks(result.unsignedTx, ctx, provider),
@@ -67,21 +71,28 @@ describe("builder action risk gate", () => {
         expect((await refresh()).status).toBe("complete");
         refresh.mockClear();
         action = jest.fn();
-        accepted = await reviewBuiltTransaction(result, {
-          network: 0,
-          isCurrent: () => true,
-          refresh,
-          confirm: async () => {
-            if (failure === "spent input")
-              provider.fetchAddressUTxOs.mockResolvedValue([]);
-            else
-              provider.fetchUTxOs.mockRejectedValue(
-                new Error("provider offline"),
-              );
-            return { accepted: true, acknowledged: true };
-          },
-        });
-        if (accepted) action();
+        accepted = false;
+        const attempt = async () => {
+          accepted = await reviewBuiltTransaction(result, {
+            network: 0,
+            isCurrent: () => true,
+            refresh,
+            confirm: async () => {
+              if (failure === "spent input")
+                provider.fetchAddressUTxOs.mockResolvedValue([collateral]);
+              else if (failure === "spent collateral")
+                provider.fetchAddressUTxOs.mockResolvedValue([scriptInput]);
+              else
+                provider.fetchUTxOs.mockRejectedValue(
+                  new Error("provider offline"),
+                );
+              return { accepted: true, acknowledged: true };
+            },
+          });
+          if (accepted) action();
+        };
+        await expect(attempt()).rejects.toThrow(/facts changed/);
+        expect(refresh).toHaveBeenCalledTimes(2);
         // Prove the changed provider state actually yields an incomplete review.
         expect(
           (await resolveTransactionRisks(result.unsignedTx, ctx, provider))
@@ -89,18 +100,94 @@ describe("builder action risk gate", () => {
         ).toBe("incomplete");
       });
 
-      knownPlutusGap(
-        "G4: refuses the action after mandatory chain facts become unavailable",
-        () => {
-          // Convert to test() in phase 4; setup and resolver assertions remain normal failures.
-          expect({ accepted, actions: action.mock.calls.length }).toEqual({
-            accepted: false,
-            actions: 0,
-          });
-        },
-      );
+      test("G4: refuses the action after mandatory chain facts become unavailable", () => {
+        expect({ accepted, actions: action.mock.calls.length }).toEqual({
+          accepted: false,
+          actions: 0,
+        });
+      });
     },
   );
+  test("an unexpected final provider rejection fails closed with retry guidance", async () => {
+    const result = built();
+    const refresh = jest
+      .fn()
+      .mockResolvedValueOnce(result.riskAssessment)
+      .mockRejectedValueOnce(new Error("offline"));
+    await expect(
+      reviewBuiltTransaction(result, {
+        network: 0,
+        isCurrent: () => true,
+        refresh,
+        confirm: async () => ({ accepted: true, acknowledged: true }),
+      }),
+    ).rejects.toThrow(/Retry review/);
+  });
+
+  test.each(["datum", "redeemer", "budget"])(
+    "final refresh binds contract %s even when findings and payments are unchanged",
+    async (field) => {
+      const result = built();
+      result.unsignedTx = contractReviewTransaction();
+      result.txHash = resolveTxHash(result.unsignedTx);
+      const initial = assessTransactionRisks(result.unsignedTx, ctx, {
+        utxos: [scriptInput, collateral],
+      });
+      const latest = structuredClone(initial);
+      const spend = latest.contractDetails!.spends[0]!;
+      if (field === "datum" && spend.datum?.kind === "inline")
+        spend.datum.data.cbor = "02";
+      if (field === "redeemer") spend.redeemer!.cbor = "02";
+      if (field === "budget") spend.budget!.memory = "999";
+      expect(latest.findings).toEqual(initial.findings);
+      expect(latest.outputs).toEqual(initial.outputs);
+      const refresh = jest
+        .fn()
+        .mockResolvedValueOnce(initial)
+        .mockResolvedValueOnce(latest);
+      await expect(
+        reviewBuiltTransaction(result, {
+          network: 0,
+          isCurrent: () => true,
+          refresh,
+          confirm: async () => ({ accepted: true, acknowledged: true }),
+        }),
+      ).rejects.toThrow(/facts changed/);
+    },
+  );
+
+  test("unchanged facts refresh the exact reviewed bytes twice", async () => {
+    const result = built();
+    const refresh = jest.fn(async () =>
+      structuredClone(result.riskAssessment!),
+    );
+    expect(
+      await reviewBuiltTransaction(result, {
+        network: 0,
+        isCurrent: () => true,
+        refresh,
+        confirm: async () => ({ accepted: true, acknowledged: true }),
+      }),
+    ).toBe(true);
+    expect(refresh.mock.calls).toEqual([
+      [result.unsignedTx],
+      [result.unsignedTx],
+    ]);
+  });
+
+  test("cancellation never performs the final refresh", async () => {
+    const result = built();
+    const refresh = jest.fn(async () => result.riskAssessment!);
+    expect(
+      await reviewBuiltTransaction(result, {
+        network: 0,
+        isCurrent: () => true,
+        refresh,
+        confirm: async () => ({ accepted: false, acknowledged: false }),
+      }),
+    ).toBe(false);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
   test.each([
     "multisig proposal",
     "connected signing",
@@ -287,33 +374,31 @@ test("canvas warning indicators stay attached to duplicate recipient IDs", () =>
 });
 
 describe("store edits invalidate an outstanding real-CBOR review", () => {
-  test.each([
-    "address",
-    "amount",
-    "datum",
-    "redeemer",
-    "collateral",
-    "source",
-    "account",
-    "network",
-    "replacement",
-  ])("%s cannot reuse acceptance", async (change) => {
-    const store = useTxBuilderStore;
-    store.getState().resetDraft("risk-wallet");
-    store.getState().syncEnvironment({ network: 0, account: "signer-a" });
-    const id = store.getState().addOutput({
-      address: address("known"),
-      assets: [{ unit: "lovelace", quantity: "5000000" }],
-    });
-    const inputId = store.getState().addScriptInput();
-    const captured = store.getState().draft;
-    const result = built();
-    const action = jest.fn();
-    const accepted = await reviewBuiltTransaction(result, {
-      network: 0,
-      isCurrent: () => store.getState().draft === captured,
-      refresh: async () => result.riskAssessment!,
-      confirm: async () => {
+  describe.each(["confirmation", "final refresh"])("during %s", (stage) => {
+    test.each([
+      "address",
+      "amount",
+      "datum",
+      "redeemer",
+      "collateral",
+      "source",
+      "account",
+      "wallet",
+      "network",
+      "replacement",
+    ])("%s cannot reuse acceptance", async (change) => {
+      const store = useTxBuilderStore;
+      store.getState().resetDraft("risk-wallet");
+      store.getState().syncEnvironment({ network: 0, account: "signer-a" });
+      const id = store.getState().addOutput({
+        address: address("known"),
+        assets: [{ unit: "lovelace", quantity: "5000000" }],
+      });
+      const inputId = store.getState().addScriptInput();
+      const captured = store.getState().draft;
+      const result = built();
+      const action = jest.fn();
+      const invalidate = () => {
         const state = store.getState();
         switch (change) {
           case "address":
@@ -341,6 +426,9 @@ describe("store edits invalidate an outstanding real-CBOR review", () => {
           case "account":
             state.syncEnvironment({ network: 0, account: "signer-b" });
             break;
+          case "wallet":
+            state.resetDraft("other-wallet");
+            break;
           case "network":
             state.syncEnvironment({ network: 1, account: "signer-a" });
             break;
@@ -352,11 +440,23 @@ describe("store edits invalidate an outstanding real-CBOR review", () => {
             });
             break;
         }
-        return { accepted: true, acknowledged: true };
-      },
+      };
+      let refreshes = 0;
+      const accepted = await reviewBuiltTransaction(result, {
+        network: 0,
+        isCurrent: () => store.getState().draft === captured,
+        refresh: async () => {
+          if (++refreshes === 2 && stage === "final refresh") invalidate();
+          return result.riskAssessment!;
+        },
+        confirm: async () => {
+          if (stage === "confirmation") invalidate();
+          return { accepted: true, acknowledged: true };
+        },
+      });
+      if (accepted) action();
+      expect(accepted).toBe(false);
+      expect(action).not.toHaveBeenCalled();
     });
-    if (accepted) action();
-    expect(accepted).toBe(false);
-    expect(action).not.toHaveBeenCalled();
   });
 });

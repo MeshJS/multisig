@@ -1,8 +1,10 @@
 import { resolveTxHash } from "@meshsdk/core-cst";
 import type { RiskAssessment } from "./types";
+import { revalidateReview } from "./revalidate-review";
 import {
   reviewIsComplete,
   reviewNeedsAcknowledgment,
+  hasContractDetails,
   type ReviewDecision,
 } from "./review-policy";
 
@@ -27,9 +29,12 @@ export async function reviewPendingTransaction(
   };
   if (!reviewIsComplete(review, options.network)) return false;
   const binding = JSON.stringify(risk);
-  const decision = risk.findings.length
-    ? await options.confirm(risk)
-    : { accepted: true, acknowledged: false };
+  const decision =
+    risk.findings.length ||
+    hasContractDetails(risk.contractDetails) ||
+    risk.contractDetails?.requiredSigners.length
+      ? await options.confirm(risk)
+      : { accepted: true, acknowledged: false };
   if (
     !decision.accepted ||
     !options.isCurrent() ||
@@ -38,14 +43,11 @@ export async function reviewPendingTransaction(
     return false;
   // A dialog can stay open while an input is spent or provider facts change.
   // Refresh again; any changed facts require a new attempt and decision.
-  const latest = await options.refresh();
-  if (!options.isCurrent()) return false;
-  if (binding !== JSON.stringify(latest))
-    throw new Error(
-      "Transaction risk facts changed. Review the updated transaction and retry signing.",
-    );
-  return reviewIsComplete(
-    { ...review, riskAssessment: latest },
-    options.network,
-  );
+  return revalidateReview({
+    txHash: review.txHash,
+    network: options.network,
+    binding,
+    isCurrent: () => options.isCurrent() && binding === JSON.stringify(risk),
+    refresh: options.refresh,
+  });
 }

@@ -97,6 +97,7 @@ function Harness() {
   }>();
   const request = useRef(0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
   window.invalidateRiskReview = () => {
     revision.current++;
     finish.current?.({ accepted: false, acknowledged: false });
@@ -105,28 +106,35 @@ function Harness() {
   async function act(action: ReviewAction) {
     opener.current = document.activeElement;
     setBusy(true);
+    setError(undefined);
     const started = revision.current;
-    const accepted = await reviewBuiltTransaction(result, {
-      network: result.riskAssessment!.networkId,
-      isCurrent: () => started === revision.current,
-      refresh: async () => structuredClone(result.riskAssessment!),
-      confirm: (reviewed) =>
-        new Promise((resolve) => {
-          finish.current = resolve;
-          setReview({ result: reviewed, action, id: ++request.current });
-        }),
-    });
-    if (accepted) {
-      if (action === "export") window.riskCalls.export++;
-      else {
-        window.riskCalls.sign++;
-        window.riskCalls.submit++;
+    try {
+      const accepted = await reviewBuiltTransaction(result, {
+        network: result.riskAssessment!.networkId,
+        isCurrent: () => started === revision.current,
+        refresh: async () => structuredClone(result.riskAssessment!),
+        confirm: (reviewed) =>
+          new Promise((resolve) => {
+            finish.current = resolve;
+            setReview({ result: reviewed, action, id: ++request.current });
+          }),
+      });
+      if (accepted) {
+        if (action === "export") window.riskCalls.export++;
+        else {
+          window.riskCalls.sign++;
+          window.riskCalls.submit++;
+        }
       }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
   return (
     <main className="p-4">
+      {error && <p role="alert">{error}</p>}
       <button disabled={busy} onClick={() => void act("sign")}>
         Build and sign fixture
       </button>

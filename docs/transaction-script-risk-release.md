@@ -9,6 +9,11 @@ mocked boundaries, and actual preprod confirmation. None substitutes for another
 Controlled preprod acceptance passed. Promotion remains pending the human
 accessibility spot check and deployment-specific rollout gates below.
 
+The results below preserve the 2026-10-23 V2-inline exercise. The subsequent
+[2026-10-27 language/datum matrix](plutus-acceptance-matrix.md) tracks Phase 5 of
+the gap-remediation plan on the build containing Phases 1-4. Its offline,
+full-application and preprod results are recorded separately for all five cases.
+
 ## Acceptance matrix and reproducible checks
 
 | Scenario                                                                     | Evidence source                                                                                                     |

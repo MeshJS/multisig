@@ -1,6 +1,7 @@
 import type { OutputReview } from "@/lib/tx-draft/outputs";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import { getFirstAndLast } from "@/utils/strings";
+import ContractDataValue from "./contract-data-value";
 
 export default function OutputReviewList({
   outputs,
@@ -38,9 +39,11 @@ export default function OutputReviewList({
               <summary className="cursor-pointer">
                 Inline datum · {output.inlineDatum.length / 2} bytes
               </summary>
-              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">
-                {output.inlineDatum}
-              </pre>
+              <ContractDataValue
+                label="Datum CBOR"
+                value={output.inlineDatum}
+                identity={`Output ${index + 1}`}
+              />
             </details>
           )}
         </li>

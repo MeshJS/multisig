@@ -25,6 +25,13 @@ review. The anyone-can-spend checkbox starts unchecked on each attempt. Cancel
 returns to editing without a wallet signature or export. Draft, source, account
 and network changes invalidate the review. There is no global dismissal.
 
+After confirmation, the builder checks chain facts again before opening your wallet
+or copying unsigned CBOR. If an input or collateral was spent, facts changed, or
+the provider is unavailable, the action stops with retry/rebuild guidance. Retry
+review when the provider recovers, or rebuild with available inputs. Each attempt
+requires a new decision and any required acknowledgment. Availability checks do not
+reserve spending inputs or collateral.
+
 ## Pending co-signing
 
 The visible script review applies to imported, API, legacy and MCP proposals too,

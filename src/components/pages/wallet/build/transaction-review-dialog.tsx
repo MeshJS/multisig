@@ -72,6 +72,10 @@ export default function TransactionReviewDialog({
             collateral before {action === "export" ? "exporting" : "signing"}.
           </DialogDescription>
         </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Chain facts are checked again after confirmation. This checks current
+          availability; it does not reserve spending inputs or collateral.
+        </p>
         <p className="text-sm font-medium">
           {network === 1 ? "Mainnet" : "Testnet"}
         </p>

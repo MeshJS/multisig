@@ -132,15 +132,21 @@ opts in and attaches the completed assessment; other consumers retain their curr
 behavior until their planned integration. Output review includes every native asset.
 
 `reviewBuiltTransaction` validates the CBOR hash and refreshes chain facts for every
-action. It binds the decision to exact bytes and assessment, including version and
-network. The caller supplies draft/environment currentness checks and the dialog;
+action, both before the dialog and after confirmation. `revalidate-review.ts` is
+shared with pending signing and compares the full assessment, including contract
+details and budgets. Changed/incomplete facts stop the action with retry/rebuild
+guidance; the next attempt needs a new decision and acknowledgment. These checks
+establish point-in-time availability, not a reservation of inputs or collateral.
+It binds the decision to exact bytes and assessment, including version and network.
+The caller supplies draft/environment currentness checks and the dialog;
 no acceptance is persisted or reused across actions. `review-policy.ts` exposes
 presentation-only completeness/acknowledgment helpers without loading codecs.
 
 The builder's freshness callback includes draft identity/revision, source, wallet
 identity/script, network and connected signer/account. Proposal/replacement signing
-uses the existing `beforeSign` hook, with another freshness check after the proxy
-audit. Connected signing retains its existing readiness/currentness checks. Copy
+uses the existing `beforeSign` hook after the proxy audit, with currentness checks
+after both asynchronous operations. Connected signing retains its existing
+readiness/currentness checks. Copy
 passes through the same review before accessing the clipboard.
 
 Tests: `txRiskReview.test.ts` covers real-codec action policy/build integration;

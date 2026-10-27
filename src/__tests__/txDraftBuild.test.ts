@@ -31,6 +31,7 @@ import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import { createOutputProvenance } from "@/lib/tx-draft/outputs";
 import { reconstructPendingTransaction } from "@/lib/tx-draft/reconstruct-pending";
+import { assessTransactionRisks } from "@/lib/tx-risk/transaction";
 import { mergeSignerWitnesses } from "@/utils/txSignUtils";
 import { invalidateDraftContext } from "@/lib/tx-draft/mutations";
 import {
@@ -819,6 +820,44 @@ describe("evaluated Plutus draft builds", () => {
       );
       witnesses.set_vkeys(vkeys);
       const signed = mergeSignerWitnesses(built.unsignedTx, witnesses.to_hex());
+      // The co-signer reconstructs the same contract arguments independently
+      // from signed CBOR and chain facts, with no proposer/editor JSON.
+      const proposerDetails = assessTransactionRisks(
+        built.unsignedTx,
+        { network: 0 },
+        { utxos: f.live },
+      );
+      const cosignerDetails = assessTransactionRisks(
+        signed.txHex,
+        { network: 0 },
+        { utxos: f.live },
+      );
+      expect(cosignerDetails.status).toBe("complete");
+      expect(cosignerDetails.contractDetails).toEqual(
+        proposerDetails.contractDetails,
+      );
+      for (const input of built.plutusReview!.inputs) {
+        const spend = cosignerDetails.contractDetails!.spends.find(
+          (s) =>
+            s.inputRef.txHash === input.utxo.input.txHash &&
+            s.inputRef.outputIndex === input.utxo.input.outputIndex,
+        )!;
+        expect(spend.language).toBe(version);
+        expect(spend.redeemer!.cbor).toBe(input.redeemerCbor);
+        expect(spend.datum!.kind).toBe(provided ? "hash" : "inline");
+        expect(spend.datum!.kind !== "none" && spend.datum!.data!.cbor).toBe(
+          input.datumCbor,
+        );
+        const budget = built.plutusReview!.budgets.find(
+          (b) =>
+            b.inputRef.txHash === spend.inputRef.txHash &&
+            b.inputRef.outputIndex === spend.inputRef.outputIndex,
+        )!;
+        expect(spend.budget).toEqual({
+          memory: String(budget.mem),
+          steps: String(budget.steps),
+        });
+      }
       expect(resolveTxHash(signed.txHex)).toBe(built.txHash);
       const unsigned = csl.Transaction.from_hex(built.unsignedTx);
       const merged = csl.Transaction.from_hex(signed.txHex);

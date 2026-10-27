@@ -1,5 +1,6 @@
 import type { AssetQuantity } from "@/types/token-flow";
 import type { DraftUtxoRef } from "@/types/tx-draft";
+import type { ContractDetails } from "./contract-details";
 
 export const RISK_ASSESSMENT_VERSION = 1 as const;
 
@@ -68,6 +69,7 @@ export type RiskError = RiskLocation & {
     | "input-unresolved"
     | "input-unverified"
     | "collateral-unverified"
+    | "contract-detail-unresolved"
     | "assessment-superseded";
   message: string;
 };
@@ -105,4 +107,5 @@ export type RiskAssessment = {
   findings: RiskFinding[];
   errors: RiskError[];
   collateral?: CollateralRisk;
+  contractDetails?: ContractDetails;
 };

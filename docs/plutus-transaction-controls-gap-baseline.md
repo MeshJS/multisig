@@ -22,6 +22,19 @@ two Jest cases (G4) and five browser cases (G3/G4). The historical Phase 0 count
 below are unchanged; see the [Phase 2 record](plutus-transaction-controls-gap-plan.md#phase-2-restore-safe-editing-of-imported-pending-transactions)
 for the new boundary and validation evidence.
 
+**Phase 3 update (2026-10-26):** G3 is fixed through independent CBOR/chain contract
+details in pending cards and signing dialogs. Its three browser cases are now
+ordinary passing regressions. The remaining expected failures are two Jest and
+two browser cases, all G4. Historical counts below remain unchanged; see the
+[Phase 3 record](plutus-transaction-controls-gap-plan.md#phase-3-give-pending-co-signers-independent-contract-details)
+for the required-fact boundary and validation evidence.
+
+**Phase 4 update (2026-10-27):** G4 is fixed through the shared final chain refresh
+after builder confirmation. All gap regressions now use ordinary passing assertions;
+no expected-failure markers remain in the G1-G4 cases. Historical Phase 0 counts
+below remain unchanged. See the [Phase 4 record](plutus-transaction-controls-gap-plan.md#phase-4-revalidate-after-builder-confirmation)
+for signing/export refusal, context invalidation and retry evidence.
+
 ## Regression inventory
 
 | Gap | Production boundary exercised                                                                   | Reproduction and passing control                                                                                                                                                                                                                                                                                     | Expected-failure cases |
@@ -93,6 +106,10 @@ not substitute for fresh evaluation.
 This table describes evidence found in the repository and rerun in Phase 0. It
 does not mark Phase 5 complete. Historical results come from the
 [2026-10-23 release record](transaction-script-risk-release.md).
+
+This remains the historical Phase 0 snapshot. The subsequent
+[2026-10-27 Phase 5 matrix](plutus-acceptance-matrix.md) records real offline,
+full-app and confirmed preprod evidence for all five combinations after remediation.
 
 | Combination                       | Serialization/reconstruction with mocked evaluation                | Real offline script execution                                         | Full-app browser with mocked boundaries                                                                               | Confirmed preprod                                       |
 | --------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |

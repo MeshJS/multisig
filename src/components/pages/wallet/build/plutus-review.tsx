@@ -1,6 +1,7 @@
 import type { PlutusBuildReview } from "@/lib/tx-draft/build-draft-tx";
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 import { utxoRefKey } from "@/lib/tx-draft/utxo-ref";
+import ContractDataValue from "./contract-data-value";
 
 /** Shared by unsigned export and the final signing review; never collapsed. */
 export default function PlutusReview({
@@ -42,8 +43,16 @@ export default function PlutusReview({
             <p>
               Execution budget: {budget?.mem} memory · {budget?.steps} steps
             </p>
-            <p className="break-all text-xs">Datum CBOR: {datumCbor}</p>
-            <p className="break-all text-xs">Redeemer CBOR: {redeemerCbor}</p>
+            <ContractDataValue
+              label="Datum CBOR"
+              value={datumCbor}
+              identity={`Input ${ref}`}
+            />
+            <ContractDataValue
+              label="Redeemer CBOR"
+              value={redeemerCbor}
+              identity={`Input ${ref}`}
+            />
           </div>
         );
       })}
