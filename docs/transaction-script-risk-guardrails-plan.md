@@ -1,6 +1,6 @@
 # Transaction script risk guardrails implementation plan
 
-Status: Phases 0–5 implemented. Phase 6 regression tests, documentation and acceptance runners are implemented; full-app/preprod execution and rollout status are tracked in the [release evidence record](transaction-script-risk-release.md). Do not infer chain acceptance from offline or mocked-browser results.
+Status: Phases 0–6 complete under the revised scope. Regression, full-app and controlled preprod checks passed, with the historical V2-inline run and subsequent five-case matrix recorded separately in the [release evidence record](transaction-script-risk-release.md). The [gap-remediation plan](plutus-transaction-controls-gap-plan.md) records the integrated fixes and local release checks. The maintainer removed human accessibility and deployment/rollback completion gates on 2026-10-27; they were not performed. Do not infer chain acceptance from offline or mocked-browser results.
 
 Prepared: 2026-10-21
 
@@ -201,7 +201,7 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
 - [x] Run focused suites, `npm run typecheck`, relevant browser tests and repository-required checks; run broader regressions for the shared signing/review changes. Check formatting of changed files. Record any baseline tool/configuration failures explicitly rather than treating a skipped check as passing.
 - [x] Update the preprod guide to explain the shared address, loss of multisig protection after funding, each tester's own output reference, and expected UI warnings. Update builder/pending and MCP documentation where behavior changed.
 - [x] Run the existing offline fixture, then a controlled preprod funding/spending/replacement/co-signing exercise with small disposable test ADA. Record actual transaction hashes and distinguish offline results from chain acceptance. Do not test loss scenarios with valuable assets.
-- [ ] Release browser creation and co-signing coverage together; do not declare the guardrails complete while pending signers lack them. Include MCP parity before claiming coverage across all review surfaces.
+- [x] Integrate browser creation, pending co-signing and MCP coverage together. Local checks verify all three surfaces; deployment evidence is outside the revised completion scope.
 
 **Acceptance:** the matrix passes with recorded evidence; docs match visible behavior; warnings do not imply general contract auditing. No new database or protocol migration is needed for the proposed first release.
 
@@ -233,7 +233,7 @@ Recommended first release uses explicit acknowledgment for known anyone-can-spen
   Chromium passed 15. TypeScript, formatting and production build passed; lint
   retains its documented baseline configuration failure.
 - See [release evidence](transaction-script-risk-release.md) for exact check
-  results, baseline failures and remaining rollout gates. Builder, pending and MCP
+  results, baseline failures and the waived external checks. Builder, pending and MCP
   must ship together. No new schema/protocol migration or mainnet test transfer.
 
 ## Suggested implementation sequence

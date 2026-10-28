@@ -74,7 +74,9 @@ node scripts/plutus-acceptance-evidence.mjs <state-directory> <report.json>
 
 The exporter reads `CI_BLOCKFROST_PREPROD_API_KEY`; it never signs or submits.
 Local raw recovery records remain in `ci-artifacts/phase5-matrix-state/`.
-Human accessibility and deployment-specific release checks remain Phase 6 work.
+Phase 6 local integration is complete. The maintainer removed human accessibility
+and deployment-specific checks from the completion scope on 2026-10-27; see the
+[release record](transaction-script-risk-release.md) for the waived checks.
 
 ## Application checks
 

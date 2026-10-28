@@ -124,6 +124,14 @@ JSON labels or change-address claims cannot hide an output or change its amounts
 Unknown script rules remain usable. Missing mandatory facts produce an explicit
 incomplete pending review and prevent a new preview token/proposal.
 
+The shared assessment also exposes `riskAssessment.contractDetails` for pending
+CBOR: output datum kinds/values/hashes, ledger-associated Plutus spends, script
+identity, exact datum/redeemer data and recorded budgets. Decoded JSON is text to
+preserve large integers. These are read-only details, not fresh evaluation or
+expanded headless creation support. The app's pending card/signing dialog presents
+these details; the MCP text/HTML/PNG warning projection remains the script-risk
+summary. Missing mandatory contract facts also make pending review incomplete.
+
 The token's risk fingerprint permits ordinary native input reselection and verified
 wallet change, but changed payment outputs, other script outputs, input risks,
 collateral or wallet/network context require a fresh preview (`REVIEW_CHANGED`).
@@ -134,7 +142,8 @@ app before signing. No headless Plutus spending or signing capability is added.
 
 See the [script-risk review guide](../../../../docs/transaction-script-risk-review.md)
 for user-facing behavior and the [phase 6 release record](../../../../docs/transaction-script-risk-release.md)
-for regression evidence and remaining preprod/rollout gates.
+for regression evidence, the confirmed five-case preprod matrix and the
+maintainer's removal of human accessibility/deployment completion gates.
 
 ### Task payouts
 

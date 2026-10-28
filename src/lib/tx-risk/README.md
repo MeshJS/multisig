@@ -1,7 +1,8 @@
 # Script-risk assessment contract
 
-This module implements the assessment and review policy for phases 0–5 of the
-[guardrails plan](../../../docs/transaction-script-risk-guardrails-plan.md), under
+This module implements the assessment and review policy from the
+[guardrails plan](../../../docs/transaction-script-risk-guardrails-plan.md) and
+[gap-remediation plan](../../../docs/plutus-transaction-controls-gap-plan.md), under
 the vault ID [Plutus Transaction Controls](../../../vault/features/Plutus%20Transaction%20Controls.md).
 The maintainer's October roadmap tasks and the agreed risk-policy table are the
 local scope. No numbered upstream PRD or GitHub issue was supplied. #221 remains
@@ -166,7 +167,8 @@ completeness before requesting a decision. Known anyone-can-spend outputs requir
 explicit acknowledgment from this signer. Live facts are refreshed after the
 dialog; changed facts require a new attempt. The hook cancels decisions when the
 pending row/body, account, connected wallet, selected network or native-script
-context changes. Witness-only additions retain body identity. Acceptance is never
+context changes. Payment-key witness additions retain review identity; changes to
+contract witnesses invalidate review even when the body hash is unchanged. Acceptance is never
 stored on a transaction or reused for another signing attempt.
 
 The pending card retains proxy auditing and payment/collateral witness verification.
@@ -180,7 +182,34 @@ Tests: `pendingRiskReview.test.ts` uses serialized fixtures and live-provider mo
 `pendingTransactionCard.test.ts` exercises the production card signing path and
 misleading/missing JSON with mocked external boundaries. The isolated Playwright
 harness also mounts the production hook, summary and dialog with fixture assessments
-at the codec/provider boundary. Full-app and preprod acceptance remain phase 6.
+at the codec/provider boundary. Full-app and five-case preprod results are recorded
+in the [acceptance matrix](../../../docs/plutus-acceptance-matrix.md).
+
+## Contract details and import boundaries (gap-remediation phases 2–4)
+
+`contract-details.ts` supplies the read-only `contractDetails` assessment field,
+independent of editable-draft compatibility or stored JSON. It records output datum
+kind/value/hash by ledger output index (including collateral return), required keys,
+and each Plutus spend's input reference, script hash/language/source, datum, redeemer
+and recorded memory/step budget. Redeemers follow ledger input ordering. Decoded
+JSON remains text to preserve integers above JavaScript's safe range. Exact CBOR
+and named copy controls are presented by the shared contract-data components.
+
+An identified Plutus spend requires a unique live input, a hash-matching script and
+language from witnesses or resolved live reference/spending inputs, exactly one
+indexed spending redeemer and its recorded budget. Inline data is decoded and
+checked against a reported hash. A hash datum must match an actual transaction
+datum witness; an external lookup cannot repair a missing witness. Required-fact
+errors make the assessment incomplete and block signing. Output-only datum hashes
+need no external value lookup. Optional labels do not determine completeness.
+
+Datum-only details can require review even without risk findings. The contract
+witness identity excludes payment-key signatures. `revalidate-review.ts` compares
+the full refreshed assessment, including these details, after confirmation in both
+builder and pending paths. This review does not evaluate a pending transaction or
+interpret contract intent; budgets are explicitly recorded values. It does not add
+minting/governance redeemer inspection or broaden editor support for reference
+scripts and collateral returns. See the [draft boundary](../tx-draft/README.md).
 
 ## MCP integration (phase 5)
 
@@ -207,7 +236,7 @@ MCP tool imports remain lazy; no headless signing or script-spend capability was
 
 The [release evidence record](../../../docs/transaction-script-risk-release.md)
 maps the acceptance matrix to tests and records actual results separately from
-preprod/release gates. The [user guide](../../../docs/transaction-script-risk-review.md)
+preprod evidence and waived external checks. The [user guide](../../../docs/transaction-script-risk-review.md)
 describes the builder, pending and MCP flows. Full-app scenarios live in
 `e2e/tests/transaction-risk-guardrails.spec.ts`; the real-chain exercise in
 `transaction-risk-preprod.spec.ts` requires explicit opt-in and records partial

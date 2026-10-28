@@ -1,6 +1,6 @@
 # Plutus transaction controls: review gap remediation plan
 
-Status: Phases 0-5 complete. G1-G4 are fixed and G5 has confirmed acceptance evidence; Phase 6 release checks remain planned.
+Status: Phases 0-6 complete under the revised scope. G1-G4 are fixed and G5 has confirmed acceptance evidence. The maintainer removed the human accessibility and deployment/rollback checks as completion gates on 2026-10-27; those checks were not performed. See the [release record](transaction-script-risk-release.md).
 
 Prepared: 2026-10-26 (Africa/Johannesburg)  
 Reviewed branch: `feat/plutus-transaction-controls` at `4a04ded1`
@@ -314,9 +314,11 @@ the actual proposer arguments and evaluated budgets. Browser regressions exercis
 the production hook/dialog with real-codec assessments supplied at the resolver
 boundary, including replacement, missing-datum retry, mobile layout, exact copy,
 keyboard navigation and focus restoration. G3's three expected-failure markers
-are removed. This is serialization, SDK-build and component-browser evidence;
-Phase 5's live acceptance matrix and Phase 6's human screen-reader check remain
-pending. No transaction was signed by a live wallet or broadcast.
+are removed. This is serialization, SDK-build and component-browser evidence.
+At this phase, live acceptance and the human screen-reader check were still pending.
+Phase 5 later completed live acceptance; the maintainer removed the human check
+from Phase 6 on 2026-10-27. No transaction was signed by a live wallet or broadcast
+during Phase 3.
 
 Validation on the Phase 3 working tree:
 
@@ -473,29 +475,48 @@ Prettier and `git diff --check` passed. The independent exporter reverified ever
 confirmed script spend and all five unspent collateral outputs. The existing
 `next lint` command remains unavailable; no lint pass is claimed. Production build
 `_ERs2AE5JUWr5p0ZuStjU` is the successful Phase 4 build, reused unchanged for live
-acceptance. Human accessibility and deployment-specific gates remain Phase 6.
+acceptance. The human accessibility and deployment-specific gates originally
+assigned to Phase 6 were subsequently removed by the maintainer on 2026-10-27.
 
 ## Phase 6: Integrate, reconcile documentation and complete release checks
 
 **Depends on:** Phases 1-5. **Addresses:** Completion of G1-G5.
 
-- [ ] Run relevant focused tests with each implementation phase, then the full
+- [x] Run relevant focused tests with each implementation phase, then the full
       repository test suite, TypeScript, production build and affected browser suites.
       Include ordinary transfers, native-script policies, proxy workflows, staking,
       governance, witness merging, pending replacement and MCP review regressions.
-- [ ] Reconcile the existing plans' status text with actual evidence. The controls
+- [x] Reconcile the existing plans' status text with actual evidence. The controls
       plan still describes acceptance as pending, while the release record contains a
       successful V2 inline run. Preserve that historical result and add the new matrix
       without treating it as proof for other language/datum combinations.
-- [ ] Update the feature note, user review guide and module documentation with
+- [x] Update the feature note, user review guide and module documentation with
       multisig funding prerequisites, import compatibility, contract-detail review,
       freshness behavior and confirmed support limits. Update API/MCP documentation
       only where a contract or displayed review payload changes.
-- [ ] Complete the existing human mobile/screen-reader check, including long datum
-      and redeemer values, named copy controls, focus restoration and retry states.
-- [ ] Record the release build, deployment-specific smoke results and rollback
-      build using the existing release gates. Deliver builder and pending review
-      changes together; do not disable one signing guard to work around a failure.
+
+**Local integration, 2026-10-27:** The feature note, original controls/guardrail
+plans, user review guide and draft/risk module documentation now describe the
+implemented boundaries and link to the five-case acceptance matrix. Historical
+V2-inline evidence remains distinct. MCP documentation reflects the additive
+read-only contract-detail assessment; no REST operation or headless capability
+changes. The [release record](transaction-script-risk-release.md) records the local
+candidate build and check results. The maintainer subsequently removed the human
+mobile/screen-reader session and deployment target/smoke/rollback evidence from
+the required scope on 2026-10-27. These checks are waived, not passed. Phase 6 is
+complete under this revised scope; no production deployment is claimed. Builder,
+pending and MCP remain integrated, and all signing guards remain enabled.
+
+Validation: full coverage run passed 1,966 CJS and 99 ESM tests, with two existing
+environment-gated tests skipped. TypeScript and production build passed; the build
+retains the existing async-WASM target warnings. All 24 component-browser cases
+passed. All 15 selected full-app scenarios have passing results: 12 passed in the
+initial run, then all four guardrail cases passed after completing the fixture's
+missing cost-model/evaluation mocks. The initial three funding-only failures were
+network-dependent test boundaries; no application guard changed. Ten offline
+executions and validator reproducibility passed. Formatting and whitespace checks
+passed. Both configured lint and direct ESLint retain documented baseline failures;
+neither is counted as a pass. Candidate build: `EBCdY3V0c372PankaTFnX`.
 
 Suggested checks during implementation:
 
@@ -513,9 +534,9 @@ because the installed Next version does not provide `next lint`; report its actu
 status and use a verified working lint invocation if available. Do not count the
 broken command as passing.
 
-**Exit criteria:** Every gap is covered by implementation and evidence, all required
-checks have an explicit result, and release documentation names any remaining
-deployment gates. Mark the feature delivered only after those gates are complete.
+**Exit criteria:** Every gap is covered by implementation and evidence, all retained
+checks have an explicit result, and documentation records the completed scope,
+baseline tooling failures and waived checks accurately.
 
 ## Delivery order and definition of done
 
@@ -532,4 +553,4 @@ The work is complete when:
 - Each pending signer can inspect the actual datums, redeemers and recorded budgets.
 - Builder signing/export rejects changed or unavailable facts after confirmation.
 - Every advertised language/datum combination has confirmed acceptance evidence,
-  and the documented release gates are satisfied.
+  and the retained Phase 6 integration and documentation checks are complete.

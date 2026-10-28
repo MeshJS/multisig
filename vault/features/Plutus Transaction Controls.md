@@ -1,11 +1,11 @@
 ---
 type: feature
 area: Wallets & Discovery
-state: in-progress
+state: delivered
 owner: Andre
 milestone: 2026-10
 issues: []
-updated: 2026-10-23
+updated: 2026-10-27
 ---
 
 # Plutus Transaction Controls
@@ -56,7 +56,8 @@ transaction's collateral return for risk review does not add return management.
 
 The [transaction-controls plan](../../docs/plutus-transaction-controls-plan.md)
 records the existing datum, script-input and collateral implementation and its
-remaining browser/preprod acceptance work.
+completed browser/preprod acceptance. Its Phase 7 evidence is consolidated with
+the [gap-remediation plan](../../docs/plutus-transaction-controls-gap-plan.md).
 
 The [script-risk plan](../../docs/transaction-script-risk-guardrails-plan.md)
 tracks the added guardrails. Phases 0–5 implement the review contract, serialized
@@ -71,7 +72,36 @@ acceptance runners. Controlled preprod funding, redeemer replacement, independen
 co-signing and recovery passed on 2026-10-23; collateral remained unspent.
 Actual validation and rollout status are tracked in the
 [release evidence record](../../docs/transaction-script-risk-release.md);
-this feature is not marked delivered while release gates remain open.
+the feature is delivered under the revised scope recorded below, without a claim
+that production deployment was performed.
+
+Gap-remediation Phases 0–5 are complete. Multisig Plutus proposals retain an
+available native wallet input even when script value covers the payment and fee;
+manual funding must include one. Imports are reconstructed from CBOR and verified
+chain facts, including legacy rows without input types. Unsupported semantics are
+refused explicitly, ambiguous self/change outputs are preserved, required keys
+survive rebuilding, and replacement discards prior signatures.
+
+Each co-signer sees independently decoded output datums and spending script
+hash/language, datum source/value, redeemer and recorded execution budgets. Review
+is independent of editor compatibility. Missing mandatory facts block signing;
+contract-witness changes invalidate review. Both builder and pending actions refresh
+chain facts after confirmation before signing/export. These checks do not reserve
+inputs or collateral.
+
+The [2026-10-27 matrix](../../docs/plutus-acceptance-matrix.md) records separate
+offline execution, full-app mocked-boundary tests and confirmed preprod spends for
+V1 supplied hash datums, V2 inline/supplied hash datums and V3 inline/supplied hash
+datums. V1 inline remains rejected; output editing is inline-only. The existing
+signer-supplied collateral policy remains, with no automatic collateral service or
+general reference-script, required-signers or headless Plutus editor.
+
+Gap-remediation Phase 6 local checks and documentation reconciliation are complete.
+On 2026-10-27 the maintainer removed the human mobile/screen-reader check and the
+deployment target/smoke/rollback evidence requirement as completion gates. These
+checks are waived, not performed. The feature is marked `delivered` under the
+revised scope; automated browser results do not establish human accessibility or
+production deployment results.
 
 Code: `src/lib/tx-draft/`, `src/lib/tx-risk/`,
 `src/components/pages/wallet/build/`. Fixtures/tests: `src/__tests__/txRisk.test.ts`

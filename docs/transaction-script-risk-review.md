@@ -32,6 +32,42 @@ review when the provider recovers, or rebuild with available inputs. Each attemp
 requires a new decision and any required acknowledgment. Availability checks do not
 reserve spending inputs or collateral.
 
+## Funding and supported controls
+
+A multisig Plutus proposal needs at least one available input controlled by that
+wallet's native script, even when the script inputs cover the entire payment and
+fee. Automatic selection retains one; manual selection must include an eligible
+wallet input. If none is available, fund the multisig wallet or wait for its pending
+inputs to become available, then rebuild. Collateral and explicit script spends
+cannot serve as that wallet input. The wallet's threshold policy still applies;
+collateral ownership alone does not authorize the proposal.
+
+The supported spending combinations are V1 with a supplied datum matching the
+on-chain hash, and V2/V3 with either an on-chain inline datum or a supplied matching
+datum. All five have separate [confirmed preprod evidence](plutus-acceptance-matrix.md).
+V1 with inline data is rejected. Outputs can be edited with inline datums only.
+Supply an already-parameterized script and one existing eligible ADA-only collateral
+UTxO from the connected signer. Automatic collateral creation, reservation and
+return management are not available. Acceptance of these fixtures does not establish
+support for every contract or wallet extension.
+
+## Editing an imported proposal
+
+The pending picker, card's edit action and builder link check the original CBOR,
+wallet script and current chain facts together. Ordinary ADA/token transfers and
+the supported Plutus shapes can be recovered even when old imported JSON lacks
+input types or is missing/stale. Missing provider facts require a retry. Unsupported
+fields, such as minting, withdrawals, validity windows, reference scripts/inputs,
+output datum hashes or collateral-return controls, produce specific reasons why
+editing is unavailable. Existing supported native staking and DRep ballots remain
+editable when their identities match the builder's wallet context.
+
+Without trustworthy builder output provenance, every output is retained, including
+possible change and self-payments. Read the correction notice and check the output
+list before rebuilding. Imported required keys remain required. Replacing a
+partially signed proposal discards its old signatures and requires fresh signing.
+An editing limitation does not hide the original transaction's review details.
+
 ## Pending co-signing
 
 The visible script review applies to imported, API, legacy and MCP proposals too,
@@ -39,6 +75,22 @@ even when the editor cannot reconstruct them. Descriptions and JSON cannot hide
 destinations or reduce the amounts decoded from CBOR. Every signer reviews
 independently, including collateral-owner re-signing, a one-approval wallet and
 the final co-signer who can trigger submission. A replacement needs fresh review.
+
+The card and signing dialog show each output's datum by its zero-based ledger
+index, so two outputs to the same address stay distinct. For each Plutus spend,
+inspect the input reference, script hash and language, datum source and exact data,
+redeemer CBOR, and memory/step budget. Pending budgets are **recorded in the
+transaction**, not freshly evaluated by review. Decoded data describes the bytes;
+it does not explain the contract's intent. Named copy controls retain exact CBOR,
+and long values can be scrolled with the keyboard. Large integers remain exact.
+
+Datum-only transactions also receive detail review. Missing script, datum witness,
+redeemer, budget or required live-input facts block signing with retry/correction
+guidance. An output datum hash alone does not require fetching its value. Changes
+to contract witnesses invalidate review even if payment amounts and the body hash
+stay the same; adding payment-key signatures alone can retain the open review.
+Pending signing refreshes chain facts again after confirmation, just as the builder
+does. Collateral and required-key checks still apply before submission.
 
 Input warnings describe availability when recovering an always-true output.
 They do not imply the recovered funds are exposed at a key-controlled destination.

@@ -7,7 +7,12 @@ import {
   mockTxFlowReads,
   mockWalletUtxos,
 } from "../helpers/phase3Mocks";
-import { resolvePlutusScriptAddress } from "@meshsdk/core";
+import {
+  DEFAULT_V1_COST_MODEL_LIST,
+  DEFAULT_V2_COST_MODEL_LIST,
+  DEFAULT_V3_COST_MODEL_LIST,
+  resolvePlutusScriptAddress,
+} from "@meshsdk/core";
 import { csl } from "@meshsdk/core-csl";
 
 const scriptAddress = resolvePlutusScriptAddress(
@@ -73,6 +78,26 @@ async function observeActions(page: Page) {
 async function mockChain(page: Page, source: string) {
   await mockWalletUtxos(page);
   await mockTxFlowReads(page, source, { lovelace: "600000000" });
+  // getTxBuilder fetches cost models even for funding-only native/key transfers.
+  // Keep this regression independent of live Blockfrost availability.
+  await page.route("**/epochs/latest/parameters", (route) =>
+    route.fulfill({
+      json: {
+        cost_models_raw: {
+          PlutusV1: DEFAULT_V1_COST_MODEL_LIST,
+          PlutusV2: DEFAULT_V2_COST_MODEL_LIST,
+          PlutusV3: DEFAULT_V3_COST_MODEL_LIST,
+        },
+      },
+    }),
+  );
+  await page.route("**/utils/txs/evaluate/utxos", (route) => {
+    const { cbor: hex } = route.request().postDataJSON() as { cbor: string };
+    const tx = csl.Transaction.from_hex(hex);
+    // These transactions fund a script but do not execute one.
+    expect(tx.witness_set().redeemers()?.len() ?? 0).toBe(0);
+    return route.fulfill({ json: { result: { EvaluationResult: {} } } });
+  });
 }
 
 for (const source of ["multisig", "connected", "address"] as const) {

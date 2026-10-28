@@ -1,6 +1,6 @@
 # Plutus Transaction Controls Implementation Plan
 
-Status: Phases 1–6 implemented. Browser verification, upstream PRD reconciliation, and controlled preprod acceptance remain pending; Phase 7 remains planned.
+Status: Implementation and Phase 7 acceptance are complete under the revised scope. Regression, browser and five-case preprod evidence is recorded in the [gap-remediation plan](plutus-transaction-controls-gap-plan.md) and [acceptance matrix](plutus-acceptance-matrix.md). The maintainer removed human accessibility and deployment/rollback completion gates on 2026-10-27; the [release record](transaction-script-risk-release.md) distinguishes waived checks from performed validation. The feature note is the agreed scope; no numbered PRD has been assigned.
 
 Owner: Andre  
 Suggested branch: `feat/plutus-transaction-controls`  
@@ -12,35 +12,35 @@ Extend the existing transaction builder so users can attach validated inline dat
 
 Use the agreed interface:
 
-| Location | Controls |
-| --- | --- |
-| Selected output → Advanced → Inline datum | Enable, edit, validate, preview, and remove that output's datum. |
-| Transaction → Advanced → Script inputs | Add and configure each Plutus input by its UTxO reference. |
-| Transaction → Advanced → Collateral | Choose one eligible ADA-only UTxO supplied by the connected signer; show its owner and amount at risk. |
+| Location                                  | Controls                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Selected output → Advanced → Inline datum | Enable, edit, validate, preview, and remove that output's datum.                                       |
+| Transaction → Advanced → Script inputs    | Add and configure each Plutus input by its UTxO reference.                                             |
+| Transaction → Advanced → Collateral       | Choose one eligible ADA-only UTxO supplied by the connected signer; show its owner and amount at risk. |
 
 Advanced starts collapsed for an unconfigured draft. Configured sections retain visible summaries, and output cards display a datum badge. Blocking errors, collateral exposure, and missing collateral-owner signatures remain visible in review regardless of collapsed sections.
 
 Automatic collateral creation, reservation, and collateral-return management remain in **#221**. Also exclude new minting, Plutus staking/voting controls, a contract IDE, automatic contract parameter application, and a general reference-script management interface. Preserve existing supported staking and voting behavior.
 
-This document is an implementation plan based on the supplied scope and repository inspection. It does not replace a vault PRD. No feature-specific PRD was identified in the inspected repository notes; Phase 0 reconciles the plan with the upstream PRD before implementation.
+This document began as an implementation plan based on supplied scope and repository inspection. The maintainer reconciled the scope with the October roadmap on 2026-10-21, recorded in [Plutus Transaction Controls](../vault/features/Plutus%20Transaction%20Controls.md). No numbered PRD has been assigned; cite that feature note and the gap-remediation plan until one exists. Phase implementation notes below retain their historical check results; later acceptance supersedes their then-pending browser/preprod status.
 
 ## Existing code to reuse
 
 Paths below are relative to the repository root.
 
-| Area | Existing code | Planned reuse |
-| --- | --- | --- |
-| Editable intent | `src/types/tx-draft.ts`, `src/lib/tx-draft/mutations.ts`, `src/lib/zustand/tx-builder.ts` | Extend the draft and pure mutation functions; keep Zustand as their thin UI wrapper. |
-| Validation | `src/lib/tx-draft/validate.ts`, builder `problems-panel.tsx` and inspector `issue-list.tsx` | Add field-specific issue codes and input references to the existing issue model. |
-| Inspector UI | `src/components/pages/wallet/build/inspector/output-inspector.tsx`, `tx-inspector.tsx` | Add contextual Advanced sections using existing form controls and Radix Collapsible components. |
-| Canvas | `src/components/pages/wallet/build/builder-canvas.tsx`, `src/utils/token-flow/from-draft.ts` | Extend the current projection, selection, and badges without creating a second canvas. |
-| Building | `src/lib/tx-draft/to-tx-builder.ts`, `build-draft-tx.ts` | Apply the new intent through the existing build pipeline. |
-| Provider and evaluation | `src/utils/get-tx-builder.ts`, `src/lib/completeTxWithFreshCostModels.ts` | Reuse the configured fetcher/evaluator, network selection, and current cost-model handling. |
-| Plutus patterns | `src/lib/proxy/txBuilders.ts` | Reuse established per-input Mesh call ordering; extract small shared helpers only when both callers benefit. |
-| Wallet and UTxOs | `src/hooks/useActiveWallet.ts`, `useAddressUtxos.ts`, `useAvailableUtxos.ts`, `src/lib/server/proxyUtxos.ts` | Reuse wallet access and chain resolution patterns; separate generic collateral checks from proxy-specific policy. |
-| Pending editing | `src/lib/tx-draft/from-tx-json.ts`, builder `load-pending-dialog.tsx`, `replace-confirm-dialog.tsx` | Extend compatibility and loading deliberately; preserve the existing replacement/signature-reset flow. |
-| Signing | `src/hooks/useTransaction.ts`, `useSignAndSubmit.ts`, `src/utils/txSignUtils.ts`, `txScriptRecovery.ts` | Extend witness retention and submission readiness centrally. |
-| Tests | `src/__tests__/txDraft*.test.ts`, `txBuilderStore.test.ts`, `completeTxWithFreshCostModels.test.ts`, `src/__tests__/tx-builders/` | Extend established fixtures, real builder tests, and provider injection. |
+| Area                    | Existing code                                                                                                                     | Planned reuse                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Editable intent         | `src/types/tx-draft.ts`, `src/lib/tx-draft/mutations.ts`, `src/lib/zustand/tx-builder.ts`                                         | Extend the draft and pure mutation functions; keep Zustand as their thin UI wrapper.                              |
+| Validation              | `src/lib/tx-draft/validate.ts`, builder `problems-panel.tsx` and inspector `issue-list.tsx`                                       | Add field-specific issue codes and input references to the existing issue model.                                  |
+| Inspector UI            | `src/components/pages/wallet/build/inspector/output-inspector.tsx`, `tx-inspector.tsx`                                            | Add contextual Advanced sections using existing form controls and Radix Collapsible components.                   |
+| Canvas                  | `src/components/pages/wallet/build/builder-canvas.tsx`, `src/utils/token-flow/from-draft.ts`                                      | Extend the current projection, selection, and badges without creating a second canvas.                            |
+| Building                | `src/lib/tx-draft/to-tx-builder.ts`, `build-draft-tx.ts`                                                                          | Apply the new intent through the existing build pipeline.                                                         |
+| Provider and evaluation | `src/utils/get-tx-builder.ts`, `src/lib/completeTxWithFreshCostModels.ts`                                                         | Reuse the configured fetcher/evaluator, network selection, and current cost-model handling.                       |
+| Plutus patterns         | `src/lib/proxy/txBuilders.ts`                                                                                                     | Reuse established per-input Mesh call ordering; extract small shared helpers only when both callers benefit.      |
+| Wallet and UTxOs        | `src/hooks/useActiveWallet.ts`, `useAddressUtxos.ts`, `useAvailableUtxos.ts`, `src/lib/server/proxyUtxos.ts`                      | Reuse wallet access and chain resolution patterns; separate generic collateral checks from proxy-specific policy. |
+| Pending editing         | `src/lib/tx-draft/from-tx-json.ts`, builder `load-pending-dialog.tsx`, `replace-confirm-dialog.tsx`                               | Extend compatibility and loading deliberately; preserve the existing replacement/signature-reset flow.            |
+| Signing                 | `src/hooks/useTransaction.ts`, `useSignAndSubmit.ts`, `src/utils/txSignUtils.ts`, `txScriptRecovery.ts`                           | Extend witness retention and submission readiness centrally.                                                      |
+| Tests                   | `src/__tests__/txDraft*.test.ts`, `txBuilderStore.test.ts`, `completeTxWithFreshCostModels.test.ts`, `src/__tests__/tx-builders/` | Extend established fixtures, real builder tests, and provider injection.                                          |
 
 Prefer installed Mesh packages (`@meshsdk/core`, `core-cst`, `core-csl`, provider/react integrations), Zod, Zustand, React Query, existing UI primitives, Jest, and Playwright. No new runtime dependency or SDK upgrade is planned. Verify exact APIs against the installed packages and lockfile before using examples from newer documentation.
 
@@ -64,16 +64,22 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Outcome:** a bounded, testable feature contract before changing runtime code.
 
-- [ ] Read the upstream PRD and linked concept/entity notes when available; record the PRD ID and reconcile differences. Implementing PRs should cite that ID, as required by `.agents/README.md`.
-- [ ] Verify installed Mesh data codecs, supported script versions, evaluator behavior, transaction-body shapes, and signer APIs. Record supported language/feature combinations rather than assuming every version supports every datum mode.
-- [ ] Default to supplied, already-parameterized script CBOR plus an explicit Plutus version. Defer reference-script selection unless the PRD requires it.
-- [ ] Support datum sources explicitly: inline datum from the resolved input, or a supplied datum whose hash matches the resolved input's datum hash. Confirm any supported datum-less behavior per language; never invent a missing datum.
-- [ ] Use CBOR hex as the lossless baseline for data entry/storage. Add structured Plutus JSON using existing codecs only if integer precision is preserved; reject unsafe numeric values instead of rounding them. Keep arbitrary JSON and Plutus data distinct.
-- [ ] Record the supported behavior for each current funding mode: multisig proposal, connected-wallet sign/submit, and address-source unsigned export. Script spends require a connected collateral supplier even when exporting unsigned transactions. Unsupported combinations must explain why they are blocked.
-- [ ] Confirm how proposer authorization and collateral ownership interact. Preserve existing wallet membership rules; do not grant proposal/signing authorization merely because a wallet supplies collateral.
-- [ ] Define the current-month collateral policy: one existing ADA-only key-controlled UTxO, no split transaction, reservation, or return management. Verify emitted collateral fields and the exposure they imply.
+- [x] Reconcile the supplied scope with the feature note and roadmap. No numbered PRD was supplied; cite the feature note and gap plan rather than inventing an ID.
+- [x] Verify installed Mesh data codecs, supported script versions, evaluator behavior, transaction-body shapes, and signer APIs. Record supported language/feature combinations rather than assuming every version supports every datum mode.
+- [x] Default to supplied, already-parameterized script CBOR plus an explicit Plutus version. Defer reference-script selection unless the PRD requires it.
+- [x] Support datum sources explicitly: inline datum from the resolved input, or a supplied datum whose hash matches the resolved input's datum hash. Confirm any supported datum-less behavior per language; never invent a missing datum.
+- [x] Use CBOR hex as the lossless baseline for data entry/storage. Add structured Plutus JSON using existing codecs only if integer precision is preserved; reject unsafe numeric values instead of rounding them. Keep arbitrary JSON and Plutus data distinct.
+- [x] Record the supported behavior for each current funding mode: multisig proposal, connected-wallet sign/submit, and address-source unsigned export. Script spends require a connected collateral supplier even when exporting unsigned transactions. Unsupported combinations must explain why they are blocked.
+- [x] Confirm how proposer authorization and collateral ownership interact. Preserve existing wallet membership rules; do not grant proposal/signing authorization merely because a wallet supplies collateral.
+- [x] Define the current-month collateral policy: one existing ADA-only key-controlled UTxO, no split transaction, reservation, or return management. Verify emitted collateral fields and the exposure they imply.
 
 **Acceptance:** documented decisions, representative fixtures, and a PRD reference or explicitly recorded missing-spec dependency. No claims of universal arbitrary-contract support: contracts needing controls outside this scope should produce a clear limitation or evaluation error.
+
+**Reconciled 2026-10-27:** Implemented decisions are described in the phase notes,
+the [draft module contract](../src/lib/tx-draft/README.md) and the five-case acceptance
+matrix. Datum-less spending is not an advertised builder mode. The feature note
+records the agreed scope and missing numbered PRD; historical references below to
+pending PRD reconciliation describe the state at those earlier implementation steps.
 
 ## Phase 1 — Extend draft intent and shared data validation
 
@@ -228,24 +234,39 @@ Mesh already supplies datum/redeemer encoding and transaction-builder methods, i
 
 **Depends on:** Phases 2–6.
 
-- [ ] Extend relevant existing Jest suites instead of duplicating their harnesses. Add targeted fixtures for Plutus data, signing requirements, real serialization, and compatibility regressions.
-- [ ] Add Playwright coverage using the existing browser setup: configure a datum, configure a script input, select collateral, fix validation errors, build/review, and reload an editable pending transaction. Include keyboard interaction and the responsive builder layout.
-- [ ] Exercise normal transfers, token sends, native-script funding, existing staking/voting, source switching, pending replacement, and shared headless callers as regressions.
-- [ ] Run focused tests during implementation, then `npm run typecheck`, relevant browser tests, and `npm run test:ci` before completion. Use the repository's working ESLint invocation; inspect the existing `next lint` script's compatibility with the installed Next version rather than assuming it runs.
-- [ ] Run a controlled preprod acceptance transaction for each advertised datum-source/language combination using known fixtures. Confirm evaluation, owner signing, co-signing, and resulting chain outputs; retain a small reproducible record. Do not use mainnet for acceptance testing.
-- [ ] Update builder documentation and the feature/roadmap references with actual supported modes and limitations. Cite the upstream PRD in implementation PRs. Update API/MCP documentation only if their existing contracts change.
+- [x] Extend relevant existing Jest suites instead of duplicating their harnesses. Add targeted fixtures for Plutus data, signing requirements, real serialization, and compatibility regressions.
+- [x] Add Playwright coverage using the existing browser setup: configure a datum, configure a script input, select collateral, fix validation errors, build/review, and reload an editable pending transaction. Include keyboard interaction and the responsive builder layout.
+- [x] Exercise normal transfers, token sends, native-script funding, existing staking/voting, source switching, pending replacement, and shared headless callers as regressions.
+- [x] Run focused tests during implementation, then `npm run typecheck`, relevant browser tests, and `npm run test:ci` before completion. Check the installed lint invocation and record failures explicitly: both `next lint` and direct ESLint retain baseline configuration failures; no lint pass is claimed.
+- [x] Run a controlled preprod acceptance transaction for each advertised datum-source/language combination using known fixtures. Confirm evaluation, owner signing, co-signing, and resulting chain outputs; retain a small reproducible record. Do not use mainnet for acceptance testing.
+- [x] Update builder documentation and the feature/roadmap references with actual supported modes and limitations. Cite the feature note until a numbered PRD exists. Update API/MCP documentation only if their existing contracts change.
+
+### Integrated acceptance status (2026-10-27)
+
+The [gap plan](plutus-transaction-controls-gap-plan.md) closes the multisig-input,
+legacy import, independent contract-detail review and post-confirmation freshness
+gaps. Its Phase 5 [matrix](plutus-acceptance-matrix.md) confirms all five advertised
+language/datum combinations separately. The 2026-10-23 V2-inline run remains
+historical evidence and is not used as proof for V1/V3 or supplied datums.
+See the [user guide](transaction-script-risk-review.md),
+[draft module](../src/lib/tx-draft/README.md) and
+[release record](transaction-script-risk-release.md) for current behavior,
+actual local check results and the maintainer's 2026-10-27 removal of the human
+accessibility and deployment/rollback gates. Delivery is complete under the revised
+scope; the waived checks were not performed and no production deployment is claimed.
+The lint baseline is recorded explicitly rather than counted as passing.
 
 **Acceptance:** all advertised scenarios pass, no silent field loss or signature loss remains, and deferred #221 functionality is clearly distinguished from manual collateral selection.
 
 ## Suggested delivery sequence
 
-| Delivery | Included phases | Review focus |
-| --- | --- | --- |
-| 1. Contract and draft foundation | 0–1 | Scope, supported formats, stable associations, reusable validation. |
-| 2. Output datums | 2 | Independent usable slice, CBOR correctness, safe pending reload. |
-| 3. Script inputs and collateral foundation | 3–4 | Chain validation, ownership, witnesses, shared signing behavior. Keep unfinished submission controls unavailable. |
-| 4. Evaluated script spends | 5–6 | End-to-end building, review, pending editing, and co-signing. |
-| 5. Acceptance and delivery | 7 | Regression evidence, preprod results, documentation. |
+| Delivery                                   | Included phases | Review focus                                                                                                      |
+| ------------------------------------------ | --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1. Contract and draft foundation           | 0–1             | Scope, supported formats, stable associations, reusable validation.                                               |
+| 2. Output datums                           | 2               | Independent usable slice, CBOR correctness, safe pending reload.                                                  |
+| 3. Script inputs and collateral foundation | 3–4             | Chain validation, ownership, witnesses, shared signing behavior. Keep unfinished submission controls unavailable. |
+| 4. Evaluated script spends                 | 5–6             | End-to-end building, review, pending editing, and co-signing.                                                     |
+| 5. Acceptance and delivery                 | 7               | Regression evidence, preprod results, documentation.                                                              |
 
 Tests and acceptance checks belong with each delivery; Phase 7 integrates the complete flow. This is a dependency sequence, not a calendar estimate. SDK compatibility, witness handling, and reliable pending reconstruction are the main uncertainties to resolve early.
 

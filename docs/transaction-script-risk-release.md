@@ -2,17 +2,96 @@
 
 Feature: [Plutus Transaction Controls](../vault/features/Plutus%20Transaction%20Controls.md).
 Scope: [phase 6 plan](transaction-script-risk-guardrails-plan.md#phase-6--regression-coverage-documentation-and-release).
-Validation date: 2026-10-23 (Africa/Johannesburg).
+Validation dates: 2026-10-23 (historical guardrails) and 2026-10-27
+(gap-remediation integration), Africa/Johannesburg.
 
 This record distinguishes automated regression results, full-app behavior with
 mocked boundaries, and actual preprod confirmation. None substitutes for another.
-Controlled preprod acceptance passed. Promotion remains pending the human
-accessibility spot check and deployment-specific rollout gates below.
+Controlled preprod acceptance and Phase 6 local checks passed. On 2026-10-27 the
+maintainer removed the human accessibility and deployment/rollback checks as
+completion gates. Phase 6 is complete under that revised scope; the removed checks
+were not performed and no production deployment is claimed.
 
 The results below preserve the 2026-10-23 V2-inline exercise. The subsequent
 [2026-10-27 language/datum matrix](plutus-acceptance-matrix.md) tracks Phase 5 of
 the gap-remediation plan on the build containing Phases 1-4. Its offline,
 full-application and preprod results are recorded separately for all five cases.
+
+## Gap-remediation Phase 6: local release candidate (2026-10-27)
+
+Scope: [gap plan Phase 6](plutus-transaction-controls-gap-plan.md#phase-6-integrate-reconcile-documentation-and-complete-release-checks).
+The maintainer initially requested local checks only, then removed the two external
+gates from the required scope on 2026-10-27. This patch reconciles documentation
+and completes the funding-only browser fixture's cost-model/evaluation mocks; application runtime,
+API operations, database schema and transaction guards are unchanged.
+
+| Candidate identity                                  | Value                                                                                                          |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Source commit                                       | `6765dc71287a260752dbdfe4a4628953677472eb` plus this documentation/test-fixture patch                          |
+| Local production build ID                           | `EBCdY3V0c372PankaTFnX`                                                                                        |
+| Local application URL                               | `http://localhost:3106`                                                                                        |
+| Prior five-case chain-accepted build                | `_ERs2AE5JUWr5p0ZuStjU`; see the [matrix](plutus-acceptance-matrix.md) for its source identity                 |
+| Deployment target / deployed build / rollback build | Not recorded; requirement waived on 2026-10-27. Local builds are not verified deployment or rollback artifacts |
+
+Local logs are retained under ignored `ci-artifacts/gap-phase6/`. The checks use
+the installed dependencies and the existing test fixtures; no new live transaction
+was signed or submitted during this phase. The original 2026-10-23 results below
+remain historical evidence, not results from this new build. The five confirmed
+2026-10-27 spends remain evidence for their recorded acceptance build; rebuilding
+does not create a new chain confirmation.
+
+| Check                                                         | Result                                                                                                                 |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `npm.cmd run test:ci`                                         | Passed: 1,966 CJS + 99 ESM tests; two existing environment-gated tests skipped                                         |
+| `npm.cmd run typecheck -- --incremental false`                | Passed                                                                                                                 |
+| `npm.cmd run build`                                           | Passed; existing `whisky-js-browser` / `whisky-evaluator` async-WASM target warnings remain                            |
+| Risk-component Playwright suite, installed Chrome             | 24 passed; includes pending contract data, mobile/keyboard/copy/focus, retry/freshness and MCP views                   |
+| Authenticated full-app Playwright, local production candidate | 15 distinct scenarios passed across the initial run and corrected guardrail rerun; details below                       |
+| `node scripts/plutus-acceptance-validators.mjs`               | Passed; V1/V3 bytes reproduce the fixture manifest                                                                     |
+| `node scripts/plutus-manual-fixture.mjs`                      | Passed; ten real offline executions, two redeemers for each of five cases                                              |
+| `npm.cmd run lint`                                            | Baseline failure: Next 16 treats `lint` as a nonexistent project directory                                             |
+| Direct `npx.cmd eslint src/lib/tx-risk/review.ts`             | Baseline failure: circular React-plugin JSON in the existing compatibility configuration; no working lint pass claimed |
+| Changed-file Prettier / `git diff --check`                    | Passed; all 59 relative Markdown file links in changed/new documentation also resolve                                  |
+
+The full repository suite includes ordinary ADA/token transfers, native policy
+variants, proxy auditing, staking/governance, original-body witness merging,
+replacement concurrency/signature reset and MCP review. Component tests remain
+deterministic browser evidence, not a human assistive-technology session.
+Full-app selection includes `transaction-risk-guardrails.spec.ts` and
+`builder-{output-datum,script-inputs,collateral,imported-pending}.spec.ts`, with
+mocked chain/evaluation and wallet-action boundaries. The opt-in live runners
+remain excluded from these release regression checks.
+
+The initial full-app run passed 12 cases and failed three funding-only cases before
+review because their cost-model request still reached live Blockfrost. A diagnostic
+rerun exposed the same missing mock for the builder's evaluation request. The
+fixture now supplies cost models and an empty evaluation result only after asserting
+the actual CBOR contains no redeemers: these transfers fund a script without
+executing it. All four guardrail cases then passed in 36.7 seconds against the same
+production build (`guardrails-final.log`); the other eleven cases passed in
+`full-app.log`. Initial and diagnostic failure logs/traces are preserved. TypeScript
+was rerun after the fixture fix. No runtime change or rebuild was needed. Temporary
+validation services were stopped after the checks.
+
+Documentation now describes native multisig funding prerequisites, CBOR-based import
+reconstruction, independent contract details, final freshness checks and support
+limits in the feature note, user guide and draft/risk module contracts. The MCP
+README documents the additive shared `riskAssessment.contractDetails` payload and
+its existing warning presentation; no REST operation or headless capability changed.
+
+### Scope revision (2026-10-27)
+
+At the maintainer's request, the human mobile/screen-reader session and the
+deployment smoke/rollback evidence requirement are removed from this plan. Both
+are recorded as **waived, not performed**, rather than successful checks. Existing
+automated accessibility coverage and local browser results remain valid within
+their recorded scope; they do not establish human screen-reader or deployed-wallet
+integration results.
+
+Phase 6 is complete under the revised scope. Builder, pending and MCP remain
+integrated, with all signing guards enabled. No schema migration is required;
+existing pending CBOR remains intact and is independently reviewed on retry.
+No production deployment was performed here.
 
 ## Acceptance matrix and reproducible checks
 
@@ -48,7 +127,7 @@ Full-app tests use the existing [Docker/authenticated wallet fixtures](../e2e/RU
 Rebuild the app from this checkout, bootstrap, then select only these specs:
 
 ```powershell
-docker compose -f docker-compose.playwright.yml --env-file .env.playwright --profile playwright run --rm --no-deps playwright-runner npx playwright test -c e2e/playwright.config.ts e2e/tests/transaction-risk-guardrails.spec.ts e2e/tests/builder-output-datum.spec.ts e2e/tests/builder-script-inputs.spec.ts e2e/tests/builder-collateral.spec.ts --workers=1
+docker compose -f docker-compose.playwright.yml --env-file .env.playwright --profile playwright run --rm --no-deps playwright-runner npx playwright test -c e2e/playwright.config.ts e2e/tests/transaction-risk-guardrails.spec.ts e2e/tests/builder-output-datum.spec.ts e2e/tests/builder-script-inputs.spec.ts e2e/tests/builder-collateral.spec.ts e2e/tests/builder-imported-pending.spec.ts --workers=1
 ```
 
 These full-app guardrail tests use real serialization and application code with
@@ -56,7 +135,7 @@ synthetic chain reads and a rejecting CIP-30 signing boundary. They assert no
 signing before acknowledgment and no submission. They do not provide chain
 acceptance. The existing unfiltered E2E suite includes real ring transfers.
 
-## Execution results
+## Historical execution results (2026-10-23)
 
 Results are recorded here after validation; local logs are in ignored
 `ci-artifacts/phase6-*` and browser artifacts in `ci-artifacts/risk-components/`.
@@ -143,17 +222,14 @@ All testers share the script address; select only the tester's recorded output.
 | Replacement body hash with redeemer `02`; old signatures discarded  | `f9832ddb34a44f8bef817d5a36fff4b2844a6de1d1f013cf46e96ab9cb3f693f`; new row with only the owner's fresh signature           |
 | Both signers independently review; collateral owner witness present | Passed for funding and recovery; second signer prompted only after review; successful ledger validation                     |
 | Confirmed spending hash and recovered amount                        | `f9832ddb34a44f8bef817d5a36fff4b2844a6de1d1f013cf46e96ab9cb3f693f`; 2 ADA to signer, change to multisig; collateral unspent |
-| Human mobile/screen-reader spot check                               | Pending                                                                                                                     |
-| Release target, build ID, smoke results and rollback build          | Pending                                                                                                                     |
+| Human mobile/screen-reader spot check                               | Waived by maintainer on 2026-10-27; not performed                                                                           |
+| Release target, build ID, smoke results and rollback build          | Requirement waived by maintainer on 2026-10-27; no deployment evidence recorded                                             |
 
 Ship builder creation/export, pending co-signing and MCP parity in the **same
-application release**. No database/protocol migration is needed. Before promoting,
-record the exact build and complete the above exercise, then smoke-test builder,
-pending and MCP from that build. If a mandatory review can be bypassed or values
-disagree between surfaces, stop promotion and retain the previous release. Roll
-back the application as one unit; do not disable only the pending signing guard.
+application release**. No database/protocol migration is needed. Keep the signing
+guards enabled across all surfaces; do not disable only the pending signing guard.
 Existing pending CBOR remains intact and receives independent review on retry.
 
 The tested application bundles builder, pending and MCP coverage together.
 No production target or rollback build was supplied, and no production deployment
-was performed. Keep the feature in progress until those release gates are recorded.
+was performed. These are no longer completion gates under the maintainer's revised scope.
