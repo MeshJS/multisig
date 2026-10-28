@@ -4,7 +4,7 @@ import {
   serializeNativeScript,
 } from "@meshsdk/core";
 import { csl, deserializeNativeScript } from "@meshsdk/core-csl";
-import { resolveTxHash } from "@meshsdk/core-cst";
+import { resolveTxHash, Transaction, TxCBOR, NativeScript as CstNativeScript, CborSet, HexBlob, VkeyWitness } from "@meshsdk/core-cst";
 import type {
   MultisigSubmissionWallet,
   ScriptRecoveryWallet,
@@ -112,30 +112,12 @@ function dedupeScriptSetByHash(scriptCbors: string[]): string[] {
 }
 
 function setNativeScriptWitnesses(txHex: string, scriptCbors: string[]): string {
-  const tx = csl.Transaction.from_hex(txHex);
-  const txBodyClone = csl.TransactionBody.from_bytes(tx.body().to_bytes());
-  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
-    tx.witness_set().to_bytes(),
-  );
-
-  const nativeScripts = csl.NativeScripts.new();
-  const uniqueScripts = dedupeScriptSetByHash(scriptCbors);
-  for (const scriptCbor of uniqueScripts) {
-    const canonicalScript = deserializeNativeScript(scriptCbor);
-    nativeScripts.add(canonicalScript);
-  }
-  witnessSetClone.set_native_scripts(nativeScripts);
-
-  const rebuiltTx = csl.Transaction.new(
-    txBodyClone,
-    witnessSetClone,
-    tx.auxiliary_data(),
-  );
-  if (!tx.is_valid()) {
-    rebuiltTx.set_is_valid(false);
-  }
-
-  return rebuiltTx.to_hex();
+  const tx = Transaction.fromCbor(TxCBOR(txHex));
+  const witnesses = tx.witnessSet();
+  const scripts = dedupeScriptSetByHash(scriptCbors).map((hex) => CstNativeScript.fromCbor(HexBlob(deserializeNativeScript(hex).to_hex())));
+  witnesses.setNativeScripts(CborSet.fromCore(scripts.map((script) => script.toCore()), CstNativeScript.fromCore));
+  tx.setWitnessSet(witnesses);
+  return tx.toCbor();
 }
 
 export function extractMissingScriptHashFromError(error: unknown): string | undefined {
@@ -210,34 +192,13 @@ function removeVKeyWitnessesByPublicKey(
   txHex: string,
   publicKeysToRemove: Set<string>,
 ): string {
-  const tx = csl.Transaction.from_hex(txHex);
-  const witnessSet = tx.witness_set();
+  const tx = Transaction.fromCbor(TxCBOR(txHex));
+  const witnessSet = tx.witnessSet();
   const existingVkeys = witnessSet.vkeys();
-  if (!existingVkeys || existingVkeys.len() === 0) return txHex;
-
-  const filteredVkeys = csl.Vkeywitnesses.new();
-  for (let i = 0; i < existingVkeys.len(); i++) {
-    const w = existingVkeys.get(i);
-    const pubKeyHex = bytesToHex(w.vkey().public_key().as_bytes()).toLowerCase();
-    if (!publicKeysToRemove.has(pubKeyHex)) {
-      filteredVkeys.add(w);
-    }
-  }
-
-  const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
-    witnessSet.to_bytes(),
-  );
-  witnessSetClone.set_vkeys(filteredVkeys);
-
-  const rebuiltTx = csl.Transaction.new(
-    csl.TransactionBody.from_bytes(tx.body().to_bytes()),
-    witnessSetClone,
-    tx.auxiliary_data(),
-  );
-  if (!tx.is_valid()) {
-    rebuiltTx.set_is_valid(false);
-  }
-  return rebuiltTx.to_hex();
+  if (!existingVkeys) return txHex;
+  witnessSet.setVkeys(CborSet.fromCore([...existingVkeys.values()].map((witness) => witness.toCore()).filter(([pub]) => !publicKeysToRemove.has(String(pub).toLowerCase())), VkeyWitness.fromCore));
+  tx.setWitnessSet(witnessSet);
+  return tx.toCbor();
 }
 
 function buildStaleInputError(error: unknown): Error {

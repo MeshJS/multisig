@@ -21,8 +21,9 @@
  *    `structuredContent.summary` — the same sections and strings as the PNG
  *    (`src/lib/tx-review/card.ts`) — so it reflows to the frame's width and
  *    takes the host's theme. No raster to fit, so no sizing trouble.
- *  - `image`: the tool result carries the PNG, which is shown as a data: URL
- *    and scaled to fit the host's height cap.
+ *  - `image`: the tool result carries PNG pages. For assessed transactions the
+ *    inline view still renders the structured card so risk facts stay selectable;
+ *    legacy results without an assessment show the image scaled to the host cap.
  *
  * What the view does:
  *  - handshake: `ui/initialize` → `ui/notifications/initialized`
@@ -130,7 +131,7 @@ export const REVIEW_CARD_HTML = `<!DOCTYPE html>
   .card .stat { display: flex; flex-direction: column; gap: 2px; min-width: 96px; }
   .card .ok, .card .cert { color: var(--ok); }
   .card .err { color: var(--err); }
-  .card .warn { color: var(--warn); }
+  .card .warn { color: var(--warn); white-space: pre-wrap; overflow-wrap: anywhere; }
   .card .vote { color: var(--info); }
   .card .hash { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .card .banner { padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-ink); font-weight: var(--semibold); }
@@ -494,7 +495,10 @@ export const REVIEW_CARD_HTML = `<!DOCTYPE html>
     state.draftToken = sc.draftToken || null;
 
     var markup = "";
-    if (image) {
+    if (summary.riskAssessment && summary.wallet) {
+      // Structured risk facts remain selectable and readable even with PNG pages attached.
+      markup += cardMarkup(summary);
+    } else if (image) {
       var mime = image.mimeType || "image/png";
       var dims = mime === "image/png" ? pngSize(image.data) : null;
       markup += '<img class="card" alt="Transaction review card"' +
@@ -511,7 +515,7 @@ export const REVIEW_CARD_HTML = `<!DOCTYPE html>
       markup += '<div class="facts">Unsigned preview. Nothing has been saved, signed or broadcast.' +
         (expires ? ' This preview can be confirmed until <b>' + esc(expires.toLocaleTimeString()) + "</b>." : "") + "</div>";
       markup += '<div class="row"><button class="primary" id="confirm">Confirm and create for signers</button>' +
-        '<span class="hint">Creates the pending transaction exactly as shown. Signers still sign in the app.</span></div>';
+        '<span class="hint">Creates an unsigned pending transaction. Each signer independently reviews and acknowledges script risks in the app.</span></div>';
       markup += '<div id="status"></div>';
     } else {
       var id = sc.transactionId;

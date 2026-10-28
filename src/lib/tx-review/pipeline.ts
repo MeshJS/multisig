@@ -6,11 +6,21 @@ import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostMode
 import { fetchDrepStatus } from "@/lib/governance/drep-status";
 import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
 import { utxoFunds } from "@/lib/tx-draft/assets";
-import { buildDraftTx, type DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
+import {
+  buildDraftTx,
+  type DraftBuildResult,
+} from "@/lib/tx-draft/build-draft-tx";
 import { validateDraft, type DraftIssue } from "@/lib/tx-draft/validate";
 import type { TxDraft } from "@/types/tx-draft";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
+import {
+  assessTransactionRisks,
+  resolveTransactionRisks,
+} from "@/lib/tx-risk/transaction";
+import type { RiskAssessment, RiskContext } from "@/lib/tx-risk/types";
+import type { ScriptInputProvider } from "@/lib/tx-draft/resolve-script-inputs";
+import { bodyWithLedgerFacts, walletRiskContext } from "./risk";
 
 import { loadContacts, createServerAddressLabeler } from "./labels";
 import {
@@ -20,13 +30,18 @@ import {
   type ResolvedAssetMetadata,
 } from "./metadata";
 import { renderReviewPng } from "./render-png";
+import { warningPages } from "./card";
 import { collectSpecUnits, type TxSpec } from "./spec";
 import {
   summarizeMeshBody,
   type SummarizeOptions,
   type TxReviewSummary,
 } from "./summary";
-import { TxReviewError, toApplyDraftContext, type ReviewWalletContext } from "./context";
+import {
+  TxReviewError,
+  toApplyDraftContext,
+  type ReviewWalletContext,
+} from "./context";
 
 /**
  * The steps preview and propose share, in the order they must happen:
@@ -37,11 +52,13 @@ import { TxReviewError, toApplyDraftContext, type ReviewWalletContext } from "./
  */
 
 export type ReviewDeps = {
+  /** Optional chain boundary for pending review tests. */
+  riskProvider?: ScriptInputProvider;
   db: PrismaClient;
   /** `multisig_list_free_utxos`'s v1 handler, run in-process for the caller. */
   fetchFreeUtxos: (walletId: string) => Promise<V1Result>;
   /** Injectable for tests; defaults to the real renderer. */
-  renderPng?: (summary: TxReviewSummary) => Promise<Buffer>;
+  renderPng?: typeof renderReviewPng;
   /**
    * Skip the PNG card entirely (no `images` in the result). The web app's
    * task-payout dialog renders the summary as React and runs under the tRPC
@@ -71,10 +88,15 @@ export async function loadSpecAssetMetadata(
   spec: TxSpec,
   network: 0 | 1,
 ): Promise<ResolvedAssetMetadata> {
-  const units = collectSpecUnits({ walletId: spec.walletId, outputs: spec.outputs.map((o) => ({
-    address: o.address,
-    assets: o.assets.filter((a) => a.unit !== "lovelace").map((a) => ({ unit: a.unit, quantity: a.quantity })),
-  })) });
+  const units = collectSpecUnits({
+    walletId: spec.walletId,
+    outputs: spec.outputs.map((o) => ({
+      address: o.address,
+      assets: o.assets
+        .filter((a) => a.unit !== "lovelace")
+        .map((a) => ({ unit: a.unit, quantity: a.quantity })),
+    })),
+  });
   return resolveAssetMetadata(getProvider(network), units, network);
 }
 
@@ -150,7 +172,10 @@ export async function loadDrepRegistered(
 ): Promise<boolean | undefined> {
   if (spec.votes.length === 0 || !ctx.drep) return undefined;
   try {
-    const status = await fetchDrepStatus(getProvider(ctx.network), ctx.drep.dRepId);
+    const status = await fetchDrepStatus(
+      getProvider(ctx.network),
+      ctx.drep.dRepId,
+    );
     return status.active;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -200,10 +225,23 @@ export async function buildUnsigned(
   try {
     // Always a fresh builder: MeshTxBuilder is stateful and single-use.
     const txBuilder = await getTxBuilder(ctx.network);
-    return await buildDraftTx(txBuilder, draft, toApplyDraftContext(ctx, availableUtxos), {
-      metadataMessage: draft.metadata || undefined,
-      complete: (builder) => completeTxWithFreshCostModels(builder, ctx.network),
-    });
+    const built = await buildDraftTx(
+      txBuilder,
+      draft,
+      toApplyDraftContext(ctx, availableUtxos),
+      {
+        metadataMessage: draft.metadata || undefined,
+        complete: (builder) =>
+          completeTxWithFreshCostModels(builder, ctx.network),
+      },
+    );
+    // These UTxOs came from the authorized free-UTxO handler's live chain lookup.
+    built.riskAssessment = assessTransactionRisks(
+      built.unsignedTx,
+      walletRiskContext(ctx),
+      { utxos: availableUtxos },
+    );
+    return built;
   } catch (error) {
     if (error instanceof TxReviewError) throw error;
     const message = error instanceof Error ? error.message : String(error);
@@ -228,7 +266,8 @@ export type SummaryInputs = Pick<
   | "transactionId"
   | "sizeBytes"
   | "warnings"
->;
+  | "riskAssessment"
+> & { txHex?: string };
 
 /** Resolve labels, names and titles, then summarize one builder body. */
 export async function summarizeForWallet(
@@ -246,7 +285,19 @@ export async function summarizeForWallet(
   assets: ResolvedAssetMetadata | undefined,
   inputs: SummaryInputs,
 ): Promise<TxReviewSummary> {
-  const provider = getProvider(wallet.network);
+  if (inputs.txHex && inputs.riskAssessment)
+    body = bodyWithLedgerFacts(
+      body,
+      inputs.txHex,
+      inputs.riskAssessment,
+      wallet.address,
+    );
+  let provider: ReturnType<typeof getProvider> | undefined;
+  try {
+    provider = getProvider(wallet.network);
+  } catch {
+    /* Optional labels cannot hide ledger risk facts. */
+  }
 
   const outputUnits = new Set<string>();
   for (const output of Array.isArray(body?.outputs) ? body.outputs : []) {
@@ -254,17 +305,27 @@ export async function summarizeForWallet(
       if (asset?.unit && asset.unit !== "lovelace") outputUnits.add(asset.unit);
     }
   }
-  const missingUnits = [...outputUnits].filter((unit) => !assets?.metadata[unit]);
+  const missingUnits = [...outputUnits].filter(
+    (unit) => !assets?.metadata[unit],
+  );
   const extra =
-    missingUnits.length > 0
+    missingUnits.length > 0 && provider
       ? await resolveAssetMetadata(provider, missingUnits, wallet.network)
       : undefined;
-  const assetMetadata = { ...(assets?.metadata ?? {}), ...(extra?.metadata ?? {}) };
+  const assetMetadata = {
+    ...(assets?.metadata ?? {}),
+    ...(extra?.metadata ?? {}),
+  };
 
   const poolIds: string[] = [];
-  for (const cert of Array.isArray(body?.certificates) ? body.certificates : []) {
+  for (const cert of Array.isArray(body?.certificates)
+    ? body.certificates
+    : []) {
     const poolId = cert?.certType?.poolId;
-    if (cert?.certType?.type === "DelegateStake" && typeof poolId === "string") {
+    if (
+      cert?.certType?.type === "DelegateStake" &&
+      typeof poolId === "string"
+    ) {
       poolIds.push(poolId);
     }
   }
@@ -278,8 +339,10 @@ export async function summarizeForWallet(
 
   const [contacts, resolvePoolName, resolveProposalTitle] = await Promise.all([
     loadContacts(deps.db, wallet.id),
-    poolIds.length > 0 ? resolvePoolNames(provider, poolIds) : Promise.resolve(undefined),
-    proposalIds.length > 0
+    poolIds.length > 0 && provider
+      ? resolvePoolNames(provider, poolIds)
+      : Promise.resolve(undefined),
+    proposalIds.length > 0 && provider
       ? resolveProposalTitles(deps.db, provider, wallet.id, proposalIds)
       : Promise.resolve(undefined),
   ]);
@@ -305,12 +368,72 @@ export async function summarizeForWallet(
   });
 }
 
+/** Pending review uses live chain facts, including on replay of a proposal token. */
+export async function summarizePendingForWallet(
+  deps: Pick<ReviewDeps, "db" | "riskProvider">,
+  body: any,
+  txHex: string,
+  wallet: Parameters<typeof summarizeForWallet>[2],
+  context: RiskContext,
+  inputs: SummaryInputs,
+): Promise<TxReviewSummary> {
+  let riskAssessment: RiskAssessment;
+  try {
+    riskAssessment = await resolveTransactionRisks(
+      txHex,
+      context,
+      deps.riskProvider ?? getProvider(wallet.network),
+    );
+  } catch {
+    riskAssessment = assessTransactionRisks(txHex, context);
+    riskAssessment.status = "incomplete";
+    riskAssessment.errors.push({
+      code: "input-unresolved",
+      message: "Unable to load required chain facts. Retry before signing.",
+    });
+  }
+  return summarizeForWallet(
+    deps,
+    bodyWithLedgerFacts(body, txHex, riskAssessment, wallet.address),
+    wallet,
+    undefined,
+    {
+      ...inputs,
+      txHash: riskAssessment.txHash ?? "",
+      riskAssessment,
+      // Pending JSON cannot label an arbitrary destination as change or hide self-payments.
+      paymentCount: riskAssessment.outputs.filter(
+        (output) => !output.outputRole,
+      ).length,
+    },
+  );
+}
+
 export async function renderCard(
   deps: Pick<ReviewDeps, "renderPng">,
   summary: TxReviewSummary,
-): Promise<{ data: string; mimeType: "image/png" }> {
-  const png = await (deps.renderPng ?? renderReviewPng)(summary);
-  return { data: png.toString("base64"), mimeType: "image/png" };
+): Promise<{ data: string; mimeType: "image/png" }[]> {
+  const render = deps.renderPng ?? renderReviewPng;
+  const pages = warningPages(summary.warnings);
+  const png = await render(
+    pages.length
+      ? {
+          ...summary,
+          warnings: [
+            `Review all ${pages.length} attached risk-detail page(s) before confirming or signing.`,
+          ],
+        }
+      : summary,
+  );
+  const images = [
+    { data: png.toString("base64"), mimeType: "image/png" as const },
+  ];
+  for (const page of pages)
+    images.push({
+      data: (await render(summary, page)).toString("base64"),
+      mimeType: "image/png",
+    });
+  return images;
 }
 
 export function walletSummaryShape(ctx: ReviewWalletContext) {

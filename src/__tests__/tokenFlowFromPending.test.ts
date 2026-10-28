@@ -19,6 +19,84 @@ function edge(flow: TokenFlow, kind: string): FlowEdge | undefined {
 }
 
 describe("pendingTxToTokenFlow", () => {
+  test("Plutus spends keep datum/redeemer context while collateral stays out of funding", () => {
+    const txJson = {
+      inputs: [
+        {
+          type: "Script",
+          txIn: { txHash: "script", txIndex: 0 },
+          scriptTxIn: {
+            scriptSource: { type: "Provided", script: { version: "V3" } },
+            datumSource: { type: "Inline" },
+            redeemer: { data: "01" },
+          },
+        },
+      ],
+      collaterals: [{ txIn: { txHash: "backing", txIndex: 1 } }],
+      outputs: [0, 1].map(() => ({
+        address: SELF,
+        amount: [{ unit: "lovelace", quantity: "2000000" }],
+        datum: { type: "Inline", data: "01" },
+      })),
+      changeAddress: SELF,
+    };
+    const flow = pendingTxToTokenFlow(txJson, {
+      labelAddress,
+      txId: "plutus",
+      resolvedInputs: new Map([
+        [
+          "script#0",
+          {
+            address: OTHER,
+            amount: [{ unit: "lovelace", quantity: "9000000" }],
+          },
+        ],
+        [
+          "backing#1",
+          {
+            address: SELF,
+            amount: [{ unit: "lovelace", quantity: "3000000" }],
+          },
+        ],
+      ]),
+    });
+    expect(
+      flow.nodes.find((n) => n.kind === "address" && n.role === "script"),
+    ).toMatchObject({
+      label: "Plutus V3 input",
+      details: ["Inline datum", "Redeemer attached"],
+    });
+    expect(edge(flow, "input")!.assets).toEqual([
+      { unit: "lovelace", quantity: "9000000" },
+    ]);
+    expect(edge(flow, "collateral")!.assets).toEqual([
+      { unit: "lovelace", quantity: "3000000" },
+    ]);
+    const datumOutputs = flow.edges.filter(
+      (e) => e.kind === "output" && e.label?.startsWith("Output #"),
+    );
+    expect(datumOutputs).toHaveLength(2);
+    expect(new Set(datumOutputs.map((e) => e.target)).size).toBe(2);
+    expect(datumOutputs.every((e) => e.note !== "change")).toBe(true);
+    expect(
+      flow.nodes.every((n) =>
+        flow.edges.some((e) => e.source === n.id || e.target === n.id),
+      ),
+    ).toBe(true);
+    const unresolved = pendingTxToTokenFlow(txJson, {
+      labelAddress,
+      txId: "plutus",
+    });
+    expect(edge(unresolved, "input")).toMatchObject({
+      assets: [],
+      label: "Script spend",
+    });
+    expect(edge(unresolved, "collateral")).toMatchObject({
+      assets: [],
+      label: "Collateral at risk",
+    });
+  });
+
   test("outputs plus fully-specified inputs", () => {
     const txJson = {
       inputs: [

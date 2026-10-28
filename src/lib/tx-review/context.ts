@@ -3,8 +3,14 @@ import type { UTxO } from "@meshsdk/core";
 
 import type { McpCaller } from "@/lib/mcp/auth";
 import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
-import { deriveDrepVoteContext, type DrepVoteContext } from "@/lib/governance/drep-context";
-import { deriveStakeCertContext, type StakeCertContext } from "@/lib/staking/stake-context";
+import {
+  deriveDrepVoteContext,
+  type DrepVoteContext,
+} from "@/lib/governance/drep-context";
+import {
+  deriveStakeCertContext,
+  type StakeCertContext,
+} from "@/lib/staking/stake-context";
 import { getRequiredSignerCount } from "@/lib/notifications/center";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import type { DbWalletWithLegacy, Wallet } from "@/types/wallet";
@@ -31,6 +37,8 @@ export type TxReviewErrorCode =
   | "STAKE_LOOKUP_FAILED"
   | "DREP_LOOKUP_FAILED"
   | "BUILD_FAILED"
+  | "REVIEW_INCOMPLETE"
+  | "REVIEW_CHANGED"
   | "PIN_FAILED"
   | "TOKEN_INVALID"
   | "TOKEN_EXPIRED"
@@ -85,7 +93,11 @@ export function networkFromAddress(address: string): 0 | 1 {
   // `addr_test1`/`stake_test1` = testnet (see addTransaction.ts).
   if (/^(addr_test1|stake_test1)/.test(address)) return 0;
   if (/^(addr1|stake1)/.test(address)) return 1;
-  throw new TxReviewError(400, "INVALID_ADDRESS", "Caller address is not a Cardano address");
+  throw new TxReviewError(
+    400,
+    "INVALID_ADDRESS",
+    "Caller address is not a Cardano address",
+  );
 }
 
 /**
@@ -114,7 +126,11 @@ export async function loadReviewWalletContext(
   }
   if (!walletRow.signersAddresses.includes(caller.subject)) {
     // Same answer as v1WalletAuth for a non-signer: known wallet, not yours.
-    throw new TxReviewError(403, "NOT_SIGNER", "Not authorized for this wallet");
+    throw new TxReviewError(
+      403,
+      "NOT_SIGNER",
+      "Not authorized for this wallet",
+    );
   }
 
   const network = networkFromAddress(caller.subject);
@@ -138,7 +154,14 @@ export async function loadReviewWalletContext(
   // stored scriptCbor can be a differently encoded variant that the node
   // rejects (MissingScriptWitnessesUTXOW).
   const scriptCbor =
-    resolveExpectedPaymentScriptCbor(appWallet, network) ?? appWallet.scriptCbor;
+    resolveExpectedPaymentScriptCbor(
+      {
+        ...appWallet,
+        address: walletAddress,
+        scriptCbor: walletRow.scriptCbor ?? appWallet.scriptCbor,
+      },
+      network,
+    ) ?? appWallet.scriptCbor;
   if (!scriptCbor) {
     throw new TxReviewError(
       400,

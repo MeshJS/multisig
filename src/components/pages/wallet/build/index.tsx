@@ -56,15 +56,35 @@ import {
   sourcePrimaryAction,
   withSourceLabel,
 } from "@/lib/tx-draft/source";
-import { utxoFunds } from "@/lib/tx-draft/assets";
-import { buildDraftTx } from "@/lib/tx-draft/build-draft-tx";
-import { isDraftCompatible, txJsonToDraft } from "@/lib/tx-draft/from-tx-json";
 import {
-  applyDraftToTxBuilder,
-  type ApplyDraftContext,
-} from "@/lib/tx-draft/to-tx-builder";
+  draftFundingTotals,
+  ordinaryFundingUtxos,
+} from "@/lib/tx-draft/funding";
+import { useDraftScriptInputs } from "@/hooks/useDraftScriptInputs";
+import { useDraftCollateral } from "@/hooks/useDraftCollateral";
+import {
+  buildDraftTx,
+  type DraftBuildResult,
+} from "@/lib/tx-draft/build-draft-tx";
+import { createOutputProvenance } from "@/lib/tx-draft/outputs";
+import TransactionReviewDialog from "./transaction-review-dialog";
+import {
+  assessDraftOutputRisks,
+  assessResolvedInput,
+  riskFindingsToDraftIssues,
+} from "@/lib/tx-risk/assessment";
+import { resolveTransactionRisks } from "@/lib/tx-risk/transaction";
+import {
+  reviewBuiltTransaction,
+  type ReviewAction,
+  type ReviewDecision,
+} from "@/lib/tx-risk/review";
+import type { RiskContext } from "@/lib/tx-risk/types";
+import { resolvePendingTransaction } from "@/lib/tx-draft/reconstruct-pending";
+import usePendingEditorContext from "@/hooks/usePendingEditorContext";
+import type { ApplyDraftContext } from "@/lib/tx-draft/to-tx-builder";
 import { validateDraft, validateSource } from "@/lib/tx-draft/validate";
-import type { DraftSource } from "@/types/tx-draft";
+import type { DraftSource, TxDraft } from "@/types/tx-draft";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import { useWalletsStore } from "@/lib/zustand/wallets";
@@ -72,7 +92,7 @@ import { api } from "@/utils/api";
 import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
 import { getFriendlyError } from "@/utils/errors";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { extractTxMetadataMessage } from "@/utils/txCborMetadata";
+import { getProvider } from "@/utils/get-provider";
 import { resolveExpectedPaymentScriptCbor } from "@/utils/txSignUtils";
 import AddStakeDialog from "./add-stake-dialog";
 import AddVoteDialog from "./add-vote-dialog";
@@ -118,7 +138,8 @@ export default function PageBuild() {
   const walletsUtxos = useWalletsStore((state) => state.walletsUtxos);
   const { labelAddress } = useAddressLabels(appWallet);
   const { newTransaction } = useTransaction();
-  const { activeWallet, userAddress, walletName } = useActiveWallet();
+  const { activeWallet, userAddress, walletName, walletType } =
+    useActiveWallet();
   const { signAndSubmit } = useSignAndSubmit();
   const { multisigWallet, isLoading: multisigWalletLoading } =
     useMultisigWallet();
@@ -134,7 +155,25 @@ export default function PageBuild() {
   const editingTxId = useTxBuilderStore((state) => state.editingTxId);
   const cancelEditing = useTxBuilderStore((state) => state.cancelEditing);
   const setSource = useTxBuilderStore((state) => state.setSource);
+  const syncEnvironment = useTxBuilderStore((state) => state.syncEnvironment);
   const touched = useTxBuilderStore((state) => state.touched);
+  const collateral = useDraftCollateral(
+    draft,
+    activeWallet,
+    network,
+    JSON.stringify([appWallet?.id, walletType, walletName, userAddress]),
+  );
+  const scriptInputs = useDraftScriptInputs(
+    draft,
+    network,
+    JSON.stringify([
+      appWallet?.id,
+      walletType,
+      walletName,
+      userAddress,
+      !!activeWallet,
+    ]),
+  );
 
   const [building, setBuilding] = useState(false);
   /** A test build (no signing/proposing) is in flight. */
@@ -144,10 +183,42 @@ export default function PageBuild() {
   /** Source switch awaiting confirmation (it would drop certs/votes). */
   const [pendingSource, setPendingSource] = useState<DraftSource | null>(null);
   /** Outcome of the last test build; cleared whenever the draft changes. */
-  const [buildResult, setBuildResult] = useState<BuildResultState | null>(
-    null,
-  );
+  const [buildResult, setBuildResult] = useState<BuildResultState | null>(null);
+  const buildResultRevision = useRef(0);
+  const [exporting, setExporting] = useState(false);
+  const [transactionReview, setTransactionReview] = useState<{
+    result: DraftBuildResult;
+    action: ReviewAction;
+    id: number;
+  } | null>(null);
+  const reviewRequestId = useRef(0);
+  const reviewOpener = useRef<Element | null>(null);
+  const buildEnvironment = useRef({
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    walletId: appWallet?.id,
+    walletAddress: appWallet?.address,
+    walletScript: appWallet?.scriptCbor,
+  });
+  buildEnvironment.current = {
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    walletId: appWallet?.id,
+    walletAddress: appWallet?.address,
+    walletScript: appWallet?.scriptCbor,
+  };
+  const finishTransactionReview = useRef<
+    ((decision: ReviewDecision) => void) | undefined
+  >(undefined);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [ambiguousChangeDraftId, setAmbiguousChangeDraftId] =
+    useState<string>();
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [stakeDialogOpen, setStakeDialogOpen] = useState(false);
   const [voteDialogOpen, setVoteDialogOpen] = useState(false);
@@ -162,11 +233,53 @@ export default function PageBuild() {
     if (appWallet && storeWalletId !== appWallet.id) resetDraft(appWallet.id);
   }, [appWallet, storeWalletId, resetDraft]);
 
+  useEffect(() => {
+    syncEnvironment({
+      network,
+      account:
+        activeWallet && userAddress
+          ? `${walletType}:${walletName ?? ""}:${userAddress}`
+          : undefined,
+    });
+  }, [
+    network,
+    activeWallet,
+    userAddress,
+    walletType,
+    walletName,
+    syncEnvironment,
+  ]);
+
   // The store replaces the draft object on every mutation, so any edit makes
   // a previous test build stale — drop it rather than show outdated numbers.
   useEffect(() => {
+    buildResultRevision.current += 1;
     setBuildResult(null);
-  }, [draft]);
+    finishTransactionReview.current?.({ accepted: false, acknowledged: false });
+    finishTransactionReview.current = undefined;
+    setTransactionReview(null);
+  }, [
+    draft,
+    network,
+    activeWallet,
+    userAddress,
+    walletName,
+    walletType,
+    appWallet?.id,
+    appWallet?.address,
+    appWallet?.scriptCbor,
+  ]);
+
+  useEffect(
+    () => () => {
+      buildResultRevision.current += 1;
+      finishTransactionReview.current?.({
+        accepted: false,
+        acknowledged: false,
+      });
+    },
+    [],
+  );
 
   const utxos = useMemo(
     () => (appWallet ? (walletsUtxos[appWallet.id] ?? []) : []),
@@ -213,8 +326,12 @@ export default function PageBuild() {
     { enabled: sourceReady },
   );
   const availableUtxos = useMemo(
-    () => (isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? [])),
-    [isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
+    () =>
+      ordinaryFundingUtxos(
+        draft,
+        isMultisigSource ? multisigAvailableUtxos : (sourceUtxos.data ?? []),
+      ),
+    [draft, isMultisigSource, multisigAvailableUtxos, sourceUtxos.data],
   );
 
   const { data: pendingTransactions } =
@@ -252,8 +369,7 @@ export default function PageBuild() {
     () =>
       (appWallet?.signersAddresses ?? []).map((address, index) => ({
         address,
-        label:
-          appWallet?.signersDescriptions?.[index] || `Signer ${index + 1}`,
+        label: appWallet?.signersDescriptions?.[index] || `Signer ${index + 1}`,
       })),
     [appWallet],
   );
@@ -262,19 +378,28 @@ export default function PageBuild() {
   // spendable in auto mode. Undefined while UTxOs are still loading so the
   // check doesn't produce a false "insufficient funds".
   const selectedFunds = useMemo(() => {
+    if (scriptInputs.loading) return undefined;
+    const resolved = scriptInputs.resolutions.flatMap((result) =>
+      result.utxo && result.issues.length === 0 ? [result.utxo] : [],
+    );
     if (draft.utxoSelection.mode === "manual") {
-      return utxoFunds(draft.utxoSelection.utxos);
+      return draftFundingTotals(draft, draft.utxoSelection.utxos, resolved);
     }
     if (isMultisigSource) {
-      return multisigAvailableUtxos.length > 0
-        ? utxoFunds(multisigAvailableUtxos)
+      return utxosReady
+        ? draftFundingTotals(draft, multisigAvailableUtxos, resolved)
         : undefined;
     }
     // A fetched empty list is a real "no funds"; undefined only while the
     // lookup hasn't succeeded (not started, loading, or errored).
-    return sourceUtxos.data ? utxoFunds(sourceUtxos.data) : undefined;
+    return sourceUtxos.data
+      ? draftFundingTotals(draft, sourceUtxos.data, resolved)
+      : undefined;
   }, [
-    draft.utxoSelection,
+    draft,
+    utxosReady,
+    scriptInputs.loading,
+    scriptInputs.resolutions,
     isMultisigSource,
     multisigAvailableUtxos,
     sourceUtxos.data,
@@ -365,16 +490,68 @@ export default function PageBuild() {
   );
   const { resolvePoolName } = usePoolNames(delegationPoolIds);
 
+  const riskContext = useMemo<RiskContext>(() => {
+    if (!isMultisigSource || !appWallet) return { network };
+    let cbor = appWallet.scriptCbor ?? "";
+    try {
+      cbor = resolveExpectedPaymentScriptCbor(appWallet, network) ?? cbor;
+    } catch {
+      /* Final assessment reports invalid wallet identity. */
+    }
+    return {
+      network,
+      walletNativeScript: { address: appWallet.address, cbor },
+    };
+  }, [appWallet, isMultisigSource, network]);
+  const riskFindings = useMemo(
+    () => [
+      ...assessDraftOutputRisks(draft, riskContext).findings,
+      ...scriptInputs.resolutions.flatMap((resolution) => {
+        const input = draft.scriptInputs.find(
+          (i) => i.id === resolution.inputId,
+        );
+        if (!input || !resolution.utxo || resolution.issues.length) return [];
+        try {
+          const finding = assessResolvedInput(
+            resolution.utxo,
+            riskContext,
+            input.script,
+            input.id,
+          );
+          return finding ? [finding] : [];
+        } catch {
+          return [];
+        } // Existing resolver/validation owns blocking errors.
+      }),
+    ],
+    [draft, riskContext, scriptInputs.resolutions],
+  );
+
   const issues = useMemo(
     () =>
-      validateDraft(draft, {
-        network,
-        selectedFunds,
-        hasDrepContext,
-        hasStakeContext,
-        multisigAddress: appWallet?.address,
-        connectedAddress,
-      }),
+      [
+        ...validateDraft(draft, {
+          allowPlutus: true,
+          network,
+          selectedFunds,
+          hasDrepContext,
+          hasStakeContext,
+          multisigAddress: appWallet?.address,
+          connectedAddress,
+        }),
+        ...scriptInputs.issues,
+        ...collateral.issues,
+        ...riskFindingsToDraftIssues(riskFindings),
+      ].filter(
+        (issue, index, all) =>
+          all.findIndex(
+            (other) =>
+              other.code === issue.code &&
+              other.inputId === issue.inputId &&
+              other.outputId === issue.outputId &&
+              other.field === issue.field,
+          ) === index,
+      ),
     [
       draft,
       network,
@@ -383,6 +560,9 @@ export default function PageBuild() {
       hasStakeContext,
       appWallet?.address,
       connectedAddress,
+      scriptInputs.issues,
+      collateral.issues,
+      riskFindings,
     ],
   );
   const errors = issues.filter((issue) => issue.level === "error");
@@ -410,18 +590,54 @@ export default function PageBuild() {
     );
   }
 
-  /** Hydrates the builder from a pending transaction row. */
-  function loadPendingTx(transaction: Transaction) {
+  const editorContext = usePendingEditorContext();
+  const editorProvider = useMemo(() => getProvider(network), [network]);
+  const pendingLoadSequence = useRef(0);
+  useEffect(
+    () => () => {
+      pendingLoadSequence.current++;
+    },
+    [],
+  );
+  const currentEditor = useRef({
+    appWallet,
+    editorContext,
+    draft,
+    pendingTransactions,
+  });
+  currentEditor.current = {
+    appWallet,
+    editorContext,
+    draft,
+    pendingTransactions,
+  };
+
+  /** Every entry point rechecks the original bytes before hydrating the draft. */
+  async function loadPendingTx(transaction: Transaction) {
     if (!appWallet) return;
-    let body: unknown = null;
-    try {
-      body = JSON.parse(transaction.txJson);
-    } catch {
-      body = null;
-    }
-    const compat = body
-      ? isDraftCompatible(body)
-      : { compatible: false, reasons: ["Unreadable transaction"] };
+    const sequence = ++pendingLoadSequence.current;
+    const snapshot = currentEditor.current;
+    const compat = await resolvePendingTransaction(
+      transaction,
+      editorContext,
+      editorProvider,
+    );
+    const currentRow = currentEditor.current.pendingTransactions?.find(
+      (row) => row.id === transaction.id,
+    );
+    if (
+      sequence !== pendingLoadSequence.current ||
+      currentEditor.current.appWallet?.id !== snapshot.appWallet?.id ||
+      JSON.stringify(currentEditor.current.editorContext) !==
+        JSON.stringify(snapshot.editorContext) ||
+      // Account initialization may invalidate cached draft context without
+      // changing any intent. Only changed content should cancel this read.
+      JSON.stringify(currentEditor.current.draft) !==
+        JSON.stringify(snapshot.draft) ||
+      currentRow?.txCbor !== transaction.txCbor ||
+      currentRow?.txJson !== transaction.txJson
+    )
+      return;
     if (!compat.compatible) {
       toast({
         title: "Can't edit this transaction",
@@ -433,11 +649,10 @@ export default function PageBuild() {
       return;
     }
 
-    const { draft: loaded, inputRefs } = txJsonToDraft(body, {
-      walletAddress: appWallet.address,
-      description: transaction.description,
-      metadataMessage: extractTxMetadataMessage(transaction.txCbor),
-    });
+    const { draft: loaded, inputRefs, warnings } = compat.reconstruction;
+    setAmbiguousChangeDraftId(
+      warnings.includes("change-not-detected") ? loaded.id : undefined,
+    );
 
     // Restore the original inputs as manual picks when they're all still
     // spendable (ignoring the locks held by the tx being edited itself);
@@ -446,7 +661,7 @@ export default function PageBuild() {
       pendingTransactions ?? [],
       transaction.id,
     );
-    const spendable = utxos.filter(
+    const spendable = (compat.walletUtxos ?? utxos).filter(
       (utxo) =>
         !blocked.some(
           (ref) =>
@@ -472,7 +687,7 @@ export default function PageBuild() {
           },
         }
       : loaded;
-    if (!allInputsFound && utxosReady) {
+    if (inputRefs.length > 0 && !allInputsFound && utxosReady) {
       toast({
         title: "Inputs will be re-selected",
         description:
@@ -481,6 +696,10 @@ export default function PageBuild() {
       });
     }
 
+    if (compat.walletUtxos)
+      useWalletsStore
+        .getState()
+        .setWalletsUtxos(appWallet.id, compat.walletUtxos);
     loadDraft({
       walletId: appWallet.id,
       draft: hydrated,
@@ -494,6 +713,8 @@ export default function PageBuild() {
     setLoadDialogOpen(false);
     const draftIsDirty =
       (draft.outputs.length > 0 ||
+        draft.scriptInputs.length > 0 ||
+        (draft.requiredSigners?.length ?? 0) > 0 ||
         draft.votes.length > 0 ||
         draft.certificates.length > 0) &&
       editingTxId !== transaction.id;
@@ -513,6 +734,11 @@ export default function PageBuild() {
     if (
       !router.isReady ||
       !appWallet ||
+      storeWalletId !== appWallet.id ||
+      // Wallet/environment effects above can synchronously reset the store.
+      // Wait for that render before capturing a draft for asynchronous loading.
+      useTxBuilderStore.getState().draft !== draft ||
+      multisigWalletLoading ||
       !pendingTransactions ||
       !utxosReady ||
       !urlTxId
@@ -533,7 +759,17 @@ export default function PageBuild() {
     }
     requestLoadPendingTx(transaction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, appWallet, pendingTransactions, urlTxId, editingTxId]);
+  }, [
+    router.isReady,
+    appWallet,
+    storeWalletId,
+    draft,
+    multisigWalletLoading,
+    pendingTransactions,
+    utxosReady,
+    urlTxId,
+    editingTxId,
+  ]);
 
   /**
    * Builder context shared by the test build, the proposal and the
@@ -578,6 +814,110 @@ export default function PageBuild() {
     return !isMultisigSource || !!appWallet.scriptCbor;
   }
 
+  function isBuildCurrent(revision: number) {
+    const current = buildEnvironment.current;
+    return (
+      revision === buildResultRevision.current &&
+      draft === useTxBuilderStore.getState().draft &&
+      network === current.network &&
+      activeWallet === current.activeWallet &&
+      userAddress === current.userAddress &&
+      walletName === current.walletName &&
+      walletType === current.walletType &&
+      appWallet?.id === current.walletId &&
+      appWallet?.address === current.walletAddress &&
+      appWallet?.scriptCbor === current.walletScript &&
+      network === useSiteStore.getState().network
+    );
+  }
+
+  async function buildCurrentDraft(buildDraft: TxDraft, revision: number) {
+    if (!appWallet || !isBuildCurrent(revision))
+      throw new Error("Build superseded. Rebuild the current draft.");
+    const txBuilder = await getTxBuilder(
+      network,
+      false,
+      buildDraft.scriptInputs.length > 0 ||
+        buildDraft.outputs.some((output) => output.inlineDatum !== undefined),
+    );
+    const result = await buildDraftTx(
+      txBuilder,
+      buildDraft,
+      draftBuildContext(appWallet),
+      {
+        metadataMessage: buildDraft.metadata || undefined,
+        complete: (builder) => completeTxWithFreshCostModels(builder, network),
+        isCurrent: () => isBuildCurrent(revision),
+        risk: { context: riskContext, provider: getProvider(network) },
+        plutus: activeWallet
+          ? { wallet: activeWallet, network, provider: getProvider(network) }
+          : undefined,
+      },
+    );
+    return { txBuilder, result };
+  }
+
+  async function reviewBeforeAction(
+    result: DraftBuildResult,
+    revision: number,
+    action: ReviewAction,
+  ): Promise<boolean> {
+    return reviewBuiltTransaction(result, {
+      network,
+      isCurrent: () => isBuildCurrent(revision),
+      refresh: (hex) =>
+        resolveTransactionRisks(hex, riskContext, getProvider(network), () =>
+          isBuildCurrent(revision),
+        ),
+      confirm: (reviewed) =>
+        new Promise<ReviewDecision>((resolve) => {
+          finishTransactionReview.current?.({
+            accepted: false,
+            acknowledged: false,
+          });
+          finishTransactionReview.current = resolve;
+          setTransactionReview({
+            result: reviewed,
+            action,
+            id: ++reviewRequestId.current,
+          });
+        }),
+    });
+  }
+
+  function closeTransactionReview(id: number, decision: ReviewDecision) {
+    if (id !== reviewRequestId.current) return;
+    finishTransactionReview.current?.(decision);
+    finishTransactionReview.current = undefined;
+    setTransactionReview(null);
+  }
+
+  async function exportBuild(result: DraftBuildResult, revision: number) {
+    reviewOpener.current = document.activeElement;
+    setExporting(true);
+    try {
+      if (
+        !(await reviewBeforeAction(result, revision, "export")) ||
+        !isBuildCurrent(revision)
+      )
+        return;
+      await navigator.clipboard.writeText(result.unsignedTx);
+      if (isBuildCurrent(revision))
+        toast({
+          title: "Unsigned transaction copied",
+          description: "The reviewed transaction CBOR is on your clipboard.",
+        });
+    } catch (error) {
+      toast({
+        title: "Couldn't export transaction",
+        description: getFriendlyError(error),
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   /**
    * Builds the draft exactly as the proposal would (fee, balancing, change,
    * metadata) but stops before signing: nothing is uploaded, signed or
@@ -587,28 +927,23 @@ export default function PageBuild() {
    */
   async function testBuild() {
     if (!appWallet || !canBuildSource()) return;
+    const revision = buildResultRevision.current;
+    const isCurrent = () => isBuildCurrent(revision);
     setTesting(true);
     try {
-      // Always a fresh builder: MeshTxBuilder is stateful and a completed
-      // builder can't be built again.
-      const txBuilder = await getTxBuilder(network);
-      const result = await buildDraftTx(
-        txBuilder,
-        draft,
-        draftBuildContext(appWallet),
-        {
-          metadataMessage: draft.metadata || undefined,
-          complete: (builder) => completeTxWithFreshCostModels(builder, network),
-        },
-      );
+      const { result } = await buildCurrentDraft(draft, revision);
+      if (!isCurrent()) return;
       setBuildResult({
         status: "ok",
         result,
+        revision,
         description: draft.description,
       });
     } catch (error) {
       console.error("testBuild", error);
-      setBuildResult({ status: "error", message: getFriendlyError(error) });
+      if (isCurrent()) {
+        setBuildResult({ status: "error", message: getFriendlyError(error) });
+      }
     } finally {
       setTesting(false);
     }
@@ -621,21 +956,17 @@ export default function PageBuild() {
    * can fire off several transactions from their own wallet.
    */
   async function buildAndSign() {
+    reviewOpener.current = document.activeElement;
     if (!appWallet || draft.source.kind !== "connected" || !canBuildSource())
       return;
+    const revision = buildResultRevision.current;
     setSigning(true);
     try {
-      const txBuilder = await getTxBuilder(network);
-      const result = await buildDraftTx(
-        txBuilder,
-        draft,
-        draftBuildContext(appWallet),
-        {
-          metadataMessage: draft.metadata || undefined,
-          complete: (builder) => completeTxWithFreshCostModels(builder, network),
-        },
+      const { result } = await buildCurrentDraft(draft, revision);
+      if (!(await reviewBeforeAction(result, revision, "sign"))) return;
+      const { txHash } = await signAndSubmit(result.unsignedTx, () =>
+        isBuildCurrent(revision),
       );
-      const { txHash } = await signAndSubmit(result.unsignedTx);
       toast({
         title: "Transaction submitted",
         description: (
@@ -651,6 +982,7 @@ export default function PageBuild() {
         ),
         duration: 12000,
       });
+      if (!isBuildCurrent(revision)) return;
       const source = draft.source;
       resetDraft(appWallet.id);
       setSource(source);
@@ -688,8 +1020,10 @@ export default function PageBuild() {
     transactionId: string;
     knownSignedCount: number;
   }) {
+    reviewOpener.current = document.activeElement;
     if (!appWallet?.scriptCbor || !isMultisigSource || errors.length > 0)
       return;
+    const revision = buildResultRevision.current;
     setBuilding(true);
     try {
       // Resolve rationale edits into a LOCAL draft: edited rationales are
@@ -711,24 +1045,28 @@ export default function PageBuild() {
         buildDraft = withVoteAnchor(buildDraft, vote.id, anchor);
       }
 
-      const txBuilder = await getTxBuilder(network);
-      applyDraftToTxBuilder(
-        txBuilder,
+      const { txBuilder, result } = await buildCurrentDraft(
         buildDraft,
-        draftBuildContext(appWallet),
+        revision,
       );
-      await newTransaction({
+      const created = await newTransaction({
         txBuilder,
+        completed: result,
+        isCurrent: () => isBuildCurrent(revision),
+        beforeSign: (hex) =>
+          hex === result.unsignedTx
+            ? reviewBeforeAction(result, revision, "sign")
+            : Promise.resolve(false),
+        txJsonExtras: (body) => ({
+          builderOutputs: createOutputProvenance(buildDraft, body.outputs),
+        }),
         description: draft.description || undefined,
-        metadataValue:
-          draft.metadata.length > 0
-            ? { label: "674", value: draft.metadata }
-            : undefined,
         replaces,
         toastMessage: replaces
           ? "The pending transaction has been replaced — signers have been notified"
           : undefined,
       });
+      if (created === false) return;
       // Best-effort ballot sync: the pending card resolves rationale text
       // from ballot rows first, so point the matching row (found via the
       // vote's OLD anchor, else the proposal id) at the new anchor + text.
@@ -768,6 +1106,7 @@ export default function PageBuild() {
           });
         }
       }
+      if (!isBuildCurrent(revision)) return;
       setReplaceConfirmOpen(false);
       resetDraft(appWallet.id);
       void router.push(`/wallets/${appWallet.id}/transactions`);
@@ -824,7 +1163,7 @@ export default function PageBuild() {
 
   if (appWallet === undefined) return <WalletDetailSkeleton />;
 
-  const busy = building || testing || signing;
+  const busy = building || testing || signing || exporting;
   const hasPendingRationaleEdits = draft.votes.some(
     (vote) => vote.rationaleEdit !== undefined,
   );
@@ -941,10 +1280,25 @@ export default function PageBuild() {
           </Button>
         </div>
       )}
+      {ambiguousChangeDraftId === draft.id && (
+        <p
+          role="status"
+          className="rounded border border-warning/50 bg-warning/10 p-3 text-sm"
+        >
+          This transaction has no verified record of its intended outputs. All
+          outputs were retained; review any self-payments and remove unwanted
+          change outputs before rebuilding.
+        </p>
+      )}
       {buildResult && (
         <BuildResultPanel
           result={buildResult}
           hasPendingRationaleEdits={hasPendingRationaleEdits}
+          busy={busy}
+          onCopy={async () => {
+            if (buildResult.status === "ok")
+              await exportBuild(buildResult.result, buildResult.revision);
+          }}
           onDismiss={() => setBuildResult(null)}
         />
       )}
@@ -975,9 +1329,8 @@ export default function PageBuild() {
               </>
             ) : (
               <>
-                The transaction you were editing no longer exists &mdash; it
-                was submitted or deleted. Building will create a new
-                transaction.
+                The transaction you were editing no longer exists &mdash; it was
+                submitted or deleted. Building will create a new transaction.
               </>
             )}
           </span>
@@ -1008,6 +1361,9 @@ export default function PageBuild() {
             addStakeDisabledReason={addStakeDisabledReason}
             onAddVote={() => setVoteDialogOpen(true)}
             addVoteDisabledReason={addVoteDisabledReason}
+            scriptResolutions={scriptInputs.resolutions}
+            collateralUtxo={collateral.selected?.utxo}
+            riskFindings={riskFindings}
             built={
               buildResult?.status === "ok" ? buildResult.result.body : null
             }
@@ -1018,7 +1374,10 @@ export default function PageBuild() {
           <Inspector
             appWallet={appWallet}
             issues={visibleIssues}
+            riskFindings={riskFindings}
             source={{
+              scriptInputs,
+              collateral,
               sourceAddress,
               sourceName: isMultisigSource
                 ? "Multisig"
@@ -1061,12 +1420,26 @@ export default function PageBuild() {
         existingProposalIds={voteProposalIds}
         drepRegistered={drepInfo?.active === true ? true : undefined}
       />
+      {transactionReview && (
+        <TransactionReviewDialog
+          returnFocus={reviewOpener.current}
+          key={transactionReview.id}
+          result={transactionReview.result}
+          action={transactionReview.action}
+          network={network}
+          onDecision={(decision) =>
+            closeTransactionReview(transactionReview.id, decision)
+          }
+        />
+      )}
       <LoadPendingDialog
         open={loadDialogOpen}
         onOpenChange={setLoadDialogOpen}
         pendingTransactions={pendingTransactions ?? []}
         requiredCount={requiredCount}
         onSelect={requestLoadPendingTx}
+        context={editorContext}
+        provider={editorProvider}
       />
       <SwitchSourceDialog
         open={pendingSource !== null}

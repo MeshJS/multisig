@@ -36,6 +36,87 @@ function utxo(index: number, quantity: string): UTxO {
 }
 
 describe("draftToTokenFlow", () => {
+  test("script and collateral cards survive resolution/build and open their own controls", () => {
+    const draft = createDraft("plutus");
+    const scriptUtxo = utxo(0, "9000000");
+    scriptUtxo.output.address = OTHER;
+    const collateral = utxo(1, "3000000");
+    draft.scriptInputs = [
+      {
+        id: "spend",
+        utxoRef: scriptUtxo.input,
+        script: { version: "V3", cbor: "00" },
+        datumSource: { kind: "inline" },
+        redeemer: { format: "CBOR", text: "01" },
+      },
+    ];
+    draft.collateral = { utxoRef: collateral.input };
+    const unresolved = draftToTokenFlow(draft, OPTS);
+    expect(
+      unresolved.edges.find((e) => e.source === "draftscript:spend"),
+    ).toMatchObject({ assets: [], note: "unresolved amount" });
+    const resolved = draftToTokenFlow(draft, {
+      ...OPTS,
+      scriptResolutions: [{ inputId: "spend", utxo: scriptUtxo, issues: [] }],
+      collateralUtxo: collateral,
+    });
+    expect(
+      resolved.edges.find((e) => e.source === "draftscript:spend"),
+    ).toMatchObject({
+      assets: scriptUtxo.output.amount,
+      label: "Script spend",
+    });
+    expect(resolved.edges.find((e) => e.kind === "collateral")).toMatchObject({
+      assets: collateral.output.amount,
+    });
+    expect(
+      resolved.edges.filter((e) => e.kind === "input").flatMap((e) => e.assets),
+    ).toEqual(scriptUtxo.output.amount);
+    const built = draftToTokenFlow(draft, {
+      ...OPTS,
+      built: {
+        inputs: [
+          {
+            type: "Script",
+            txIn: {
+              txHash: scriptUtxo.input.txHash,
+              txIndex: 0,
+              ...scriptUtxo.output,
+            },
+          },
+        ],
+        outputs: [],
+        changeAddress: SELF,
+        fee: "200000",
+      } as any,
+    });
+    expect(built.edges.filter((e) => e.kind === "input")).toHaveLength(1);
+    expect(built.edges.find((e) => e.kind === "input")!.id).toBe(
+      resolved.edges.find((e) => e.source === "draftscript:spend")!.id,
+    );
+    for (const id of [
+      "draftscript:spend",
+      resolved.edges.find((e) => e.source === "draftscript:spend")!.id,
+    ]) {
+      expect(flowIdToDraftEntity(draft, id)).toEqual({
+        kind: "tx",
+        inputId: "spend",
+        field: "utxoRef",
+      });
+    }
+    expect(flowIdToDraftEntity(draft, "draftcollateral:plutus")).toEqual({
+      kind: "tx",
+      field: "collateral",
+    });
+    const stale = draftToTokenFlow(draft, {
+      ...OPTS,
+      scriptResolutions: [{ inputId: "spend", utxo: collateral, issues: [] }],
+    });
+    expect(
+      stale.edges.find((e) => e.source === "draftscript:spend")!.assets,
+    ).toEqual([]);
+  });
+
   test("empty auto-mode draft renders tx card, auto input and change edge", () => {
     const flow = draftToTokenFlow(createDraft("d1"), OPTS);
 
@@ -65,21 +146,25 @@ describe("draftToTokenFlow", () => {
 
     const flow = draftToTokenFlow(draft, OPTS);
 
-    expect(flow.edges.find((e) => e.id.endsWith(":output:out-1"))).toMatchObject(
-      {
-        source: "txd:d1",
-        target: `addr:${OTHER}`,
-        assets: [{ unit: "lovelace", quantity: "2000000" }],
-      },
-    );
+    expect(
+      flow.edges.find((e) => e.id.endsWith(":output:out-1")),
+    ).toMatchObject({
+      source: "txd:d1",
+      target: "draftout:out-1",
+      assets: [{ unit: "lovelace", quantity: "2000000" }],
+    });
     expect(flow.nodes.find((n) => n.id === "draftout:out-2")).toMatchObject({
       kind: "address",
       label: "Set recipient",
       partyType: "unknown",
     });
-    expect(flow.edges.find((e) => e.id.endsWith(":output:out-2"))).toMatchObject(
-      { target: "draftout:out-2", assets: [], note: "no amount" },
-    );
+    expect(
+      flow.edges.find((e) => e.id.endsWith(":output:out-2")),
+    ).toMatchObject({
+      target: "draftout:out-2",
+      assets: [],
+      note: "no amount",
+    });
   });
 
   test("two outputs to the same address stay separate edges", () => {
@@ -95,7 +180,9 @@ describe("draftToTokenFlow", () => {
     }));
 
     const flow = draftToTokenFlow(draft, OPTS);
-    const toOther = outputEdges(flow).filter((e) => e.target === `addr:${OTHER}`);
+    const toOther = outputEdges(flow).filter((e) =>
+      e.target.startsWith("draftout:"),
+    );
     expect(toOther).toHaveLength(2);
     expect(toOther.map((e) => e.assets[0]!.quantity).sort()).toEqual([
       "1000000",
@@ -138,11 +225,11 @@ describe("flowIdToDraftEntity", () => {
 
   test("maps node ids, stripping layout instance suffixes", () => {
     expect(flowIdToDraftEntity(draft, "txd:d1")).toEqual({ kind: "tx" });
-    expect(flowIdToDraftEntity(draft, `addr:${OTHER}`)).toEqual({
+    expect(flowIdToDraftEntity(draft, "draftout:out-1")).toEqual({
       kind: "output",
       outputId: "out-1",
     });
-    expect(flowIdToDraftEntity(draft, `addr:${OTHER}@out`)).toEqual({
+    expect(flowIdToDraftEntity(draft, "draftout:out-1@out")).toEqual({
       kind: "output",
       outputId: "out-1",
     });
@@ -212,9 +299,7 @@ describe("draftToTokenFlow votes", () => {
     expect(flow.edges.find((e) => e.kind === "input")).toMatchObject({
       note: "auto selection",
     });
-    expect(
-      outputEdges(flow).find((e) => e.note === "change"),
-    ).toBeDefined();
+    expect(outputEdges(flow).find((e) => e.note === "change")).toBeDefined();
   });
 });
 

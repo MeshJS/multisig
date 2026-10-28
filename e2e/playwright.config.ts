@@ -26,6 +26,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.APP_URL ?? "http://localhost:3000",
     headless: true,
+    launchOptions: {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
+    },
     screenshot: "only-on-failure",
     video: "retain-on-failure",
     trace: "retain-on-failure",

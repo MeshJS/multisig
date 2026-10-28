@@ -1,5 +1,13 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Landmark, User, Users, FileCode2, Coins, Wallet } from "lucide-react";
+import {
+  Landmark,
+  User,
+  Users,
+  FileCode2,
+  Coins,
+  Wallet,
+  Shield,
+} from "lucide-react";
 
 import type { AddressFlowNode, AddressPartyType } from "@/types/token-flow";
 import { getFirstAndLast } from "@/utils/strings";
@@ -68,7 +76,12 @@ export default function AddressNode({ id, data }: NodeProps) {
     testIdSuffix?: string;
   };
   const style = PARTY_STYLES[node.partyType] ?? PARTY_STYLES.unknown;
-  const Icon = style.icon;
+  const Icon =
+    node.role === "collateral"
+      ? Shield
+      : node.role === "script"
+        ? FileCode2
+        : style.icon;
   return (
     <div
       // React Flow node id, not node.id: split instances (@in/@out) must
@@ -76,10 +89,13 @@ export default function AddressNode({ id, data }: NodeProps) {
       data-testid={`tx-flow-node-${id}${testIdSuffix}`}
       // Every attached edge gets its own connector; the card stretches so
       // the taller port stack keeps its dots evenly spaced.
-      style={{ minHeight: portStackHeight(Math.max(inPortCount, outPortCount)) }}
+      style={{
+        minHeight: portStackHeight(Math.max(inPortCount, outPortCount)),
+      }}
       className={cn(
         "flex w-[220px] flex-col justify-center rounded-lg border bg-card px-3 py-2 shadow-sm",
         style.border,
+        node.role === "collateral" && "border-dashed border-amber-500/60",
       )}
     >
       {Array.from({ length: inPortCount }, (_, i) => (
@@ -92,7 +108,14 @@ export default function AddressNode({ id, data }: NodeProps) {
           className="!bg-muted-foreground"
         />
       ))}
-      <div className={cn("flex items-center gap-1.5 text-xs font-medium", style.text)}>
+      <div
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-medium",
+          node.role === "collateral"
+            ? "text-amber-600 dark:text-amber-400"
+            : style.text,
+        )}
+      >
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.label || style.fallbackLabel}</span>
         {changeHint && (
@@ -106,6 +129,20 @@ export default function AddressNode({ id, data }: NodeProps) {
           {getFirstAndLast(node.address, 12, 6)}
         </div>
       )}
+      {node.inlineDatum && (
+        <span className="mt-1 w-fit rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
+          Inline datum
+        </span>
+      )}
+      {node.details?.map((detail, index) => (
+        <div
+          key={index}
+          title={detail}
+          className="mt-0.5 truncate text-[10px] text-muted-foreground"
+        >
+          {detail}
+        </div>
+      ))}
       {Array.from({ length: outPortCount }, (_, i) => (
         <Handle
           key={valuePortOut(i)}

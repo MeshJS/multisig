@@ -1,7 +1,15 @@
 import type { McpToolResult, ToolContext } from "@/lib/mcp/tools";
 
-import { loadReviewWalletContext, type ReviewWalletContext, TxReviewError } from "./context";
-import { DRAFT_TOKEN_TTL_SECONDS, type DraftOrigin, mintDraftToken } from "./draft-token";
+import {
+  loadReviewWalletContext,
+  type ReviewWalletContext,
+  TxReviewError,
+} from "./context";
+import {
+  DRAFT_TOKEN_TTL_SECONDS,
+  type DraftOrigin,
+  mintDraftToken,
+} from "./draft-token";
 import type { ResolvedAssetMetadata } from "./metadata";
 import {
   buildUnsigned,
@@ -19,8 +27,19 @@ import {
   walletSummaryShape,
   type ReviewDeps,
 } from "./pipeline";
-import { hasSpecErrors, normalizeTxSpec, specToDraft, type TxSpec, type TxSpecInput } from "./spec";
-import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
+import {
+  hasSpecErrors,
+  normalizeTxSpec,
+  specToDraft,
+  type TxSpec,
+  type TxSpecInput,
+} from "./spec";
+import {
+  REVIEW_CARD_HINT,
+  REVIEW_CARD_INLINE_HINT,
+  summaryToText,
+} from "./summary";
+import { requireBuiltRisk, riskReviewBinding, walletRiskContext } from "./risk";
 
 /**
  * `transaction_preview`: build the unsigned transaction and show it.
@@ -35,7 +54,11 @@ export async function runTransactionPreview(
   deps: ReviewDeps,
 ): Promise<McpToolResult> {
   try {
-    const wallet = await loadReviewWalletContext(deps.db, input.walletId, ctx.caller);
+    const wallet = await loadReviewWalletContext(
+      deps.db,
+      input.walletId,
+      ctx.caller,
+    );
 
     // Units first: the display→base conversion needs each token's decimals.
     const probe = normalizeTxSpec(input, { decimalsFor: () => 0 });
@@ -58,7 +81,9 @@ export async function runTransactionPreview(
     return await runSpecPreview(requested, ctx, deps, {
       wallet,
       assets,
-      specWarnings: specIssues.filter((i) => i.level === "warning").map((i) => i.message),
+      specWarnings: specIssues
+        .filter((i) => i.level === "warning")
+        .map((i) => i.message),
     });
   } catch (error) {
     if (error instanceof TxReviewError) return error.toResult();
@@ -96,8 +121,10 @@ export async function runSpecPreview(
   opts: SpecPreviewOptions = {},
 ): Promise<McpToolResult> {
   const wallet =
-    opts.wallet ?? (await loadReviewWalletContext(deps.db, requested.walletId, ctx.caller));
-  const assets = opts.assets ?? (await loadSpecAssetMetadata(requested, wallet.network));
+    opts.wallet ??
+    (await loadReviewWalletContext(deps.db, requested.walletId, ctx.caller));
+  const assets =
+    opts.assets ?? (await loadSpecAssetMetadata(requested, wallet.network));
 
   const availableUtxos = await loadSpendableUtxos(deps, wallet.walletRow.id);
   // Both on-chain registration probes at once; each is skipped when the
@@ -120,24 +147,33 @@ export async function runSpecPreview(
   );
 
   const built = await buildUnsigned(draft, wallet, availableUtxos);
+  const riskAssessment = requireBuiltRisk(built, wallet.network);
 
   const warnings = [
     ...(opts.specWarnings ?? []),
     ...(registration.added ? [STAKE_REGISTRATION_ADDED_WARNING] : []),
     ...issueMessages(draftWarnings),
   ];
-  const summary = await summarizeForWallet(deps, built.body, walletSummaryShape(wallet), assets, {
-    kind: "preview",
-    signedAddresses: [],
-    rejectedAddresses: [],
-    description: spec.description,
-    metadataMessage: spec.metadataMessage,
-    pendingRationales: pendingRationalesOf(spec),
-    paymentCount: spec.outputs.length,
-    txHash: built.txHash,
-    sizeBytes: built.sizeBytes,
-    warnings,
-  });
+  const summary = await summarizeForWallet(
+    deps,
+    built.body,
+    walletSummaryShape(wallet),
+    assets,
+    {
+      txHex: built.unsignedTx,
+      kind: "preview",
+      signedAddresses: [],
+      rejectedAddresses: [],
+      description: spec.description,
+      metadataMessage: spec.metadataMessage,
+      pendingRationales: pendingRationalesOf(spec),
+      paymentCount: spec.outputs.length,
+      txHash: built.txHash,
+      sizeBytes: built.sizeBytes,
+      warnings,
+      riskAssessment,
+    },
+  );
 
   // The token records how the card reached the human, so propose (which takes
   // only the token) answers in the same mode.
@@ -148,6 +184,11 @@ export async function runSpecPreview(
     clientId: ctx.caller.clientName,
     spec,
     previewTxHash: built.txHash,
+    riskBinding: riskReviewBinding(
+      riskAssessment,
+      walletRiskContext(wallet),
+      spec.outputs.length,
+    ),
     origin: opts.origin,
     card: image ? "image" : "html",
   });
@@ -161,7 +202,7 @@ export async function runSpecPreview(
       txHash: built.txHash,
       fee: built.fee,
       summary,
-      warnings,
+      warnings: summary.warnings,
       reviewCard: image ? REVIEW_CARD_HINT : REVIEW_CARD_INLINE_HINT,
       persisted: false,
       signed: false,
@@ -169,7 +210,7 @@ export async function runSpecPreview(
       ...(opts.extraBody ?? {}),
     },
     text: summaryToText(summary, { card: image ? "image" : "html" }),
-    ...(image ? { images: [image] } : {}),
+    ...(image ? { images: image } : {}),
     audit: { walletId: wallet.walletRow.id, previewTxHash: built.txHash },
   };
 }
