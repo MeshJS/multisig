@@ -17,24 +17,34 @@ async function fetchUtxoRefs(args: {
   walletId: string;
   token: string;
   botAddress: string;
-  fresh?: boolean;
+  consumedUtxoRefs: Set<string>;
 }): Promise<{ txHash: string; outputIndex: number }[]> {
   const { ctx, walletId, token, botAddress } = args;
-  const freshParam = args.fresh ? "&fresh=true" : "";
-  const response = await requestJson<ScriptUtxo[] | { error?: string }>({
-    url: `${ctx.apiBaseUrl}/api/v1/freeUtxos?walletId=${encodeURIComponent(walletId)}&address=${encodeURIComponent(botAddress)}${freshParam}`,
-    method: "GET",
-    token,
-  });
-  if (response.status !== 200 || !Array.isArray(response.data)) {
-    throw new Error(
-      `freeUtxos preflight failed (${response.status}): ${stringifyRedacted(response.data)}`,
+  // A fresh request bypasses the app cache, but successive provider responses
+  // can still disagree while a block is being indexed. Never reuse inputs that
+  // a previous certificate phase already confirmed as consumed.
+  for (let attempt = 0; attempt < 48; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 5000));
+    }
+    const response = await requestJson<ScriptUtxo[] | { error?: string }>({
+      url: `${ctx.apiBaseUrl}/api/v1/freeUtxos?walletId=${encodeURIComponent(walletId)}&address=${encodeURIComponent(botAddress)}&fresh=true`,
+      method: "GET",
+      token,
+    });
+    if (response.status !== 200 || !Array.isArray(response.data)) {
+      throw new Error(
+        `freeUtxos preflight failed (${response.status}): ${stringifyRedacted(response.data)}`,
+      );
+    }
+    const available = response.data.filter(
+      (u) => !args.consumedUtxoRefs.has(`${u.input.txHash}:${u.input.outputIndex}`),
     );
+    if (available.length > 0) {
+      return available.map((u) => ({ txHash: u.input.txHash, outputIndex: u.input.outputIndex }));
+    }
   }
-  if (response.data.length === 0) {
-    throw new Error("No free UTxOs available in wallet for certificate transaction");
-  }
-  return response.data.map((u) => ({ txHash: u.input.txHash, outputIndex: u.input.outputIndex }));
+  throw new Error("No unconsumed free UTxOs available in wallet for certificate transaction after 48 attempts");
 }
 
 /**
@@ -50,6 +60,7 @@ async function pollUntilUtxosConsumed(args: {
   token: string;
   botAddress: string;
   spentUtxoRefs: { txHash: string; outputIndex: number }[];
+  consumedUtxoRefs: Set<string>;
   maxRetries?: number;
   retryDelayMs?: number;
 }): Promise<{ attempts: number }> {
@@ -74,6 +85,7 @@ async function pollUntilUtxosConsumed(args: {
       spentKeys.has(`${u.input.txHash}:${u.input.outputIndex}`),
     );
     if (!hasOverlap) {
+      for (const key of spentKeys) args.consumedUtxoRefs.add(key);
       return { attempts: attempt + 1 };
     }
   }
@@ -164,6 +176,7 @@ function createCertPhaseSteps(args: {
   action: string;
   label: string;
   runtime: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] };
+  consumedUtxoRefs: Set<string>;
   requireBroadcastSuccess: boolean;
   buildExtraBody?: (ctx: CIBootstrapContext) => Promise<Record<string, unknown>> | Record<string, unknown>;
   /** When true, each signing step uses the stake-cert flow (payment + stake witnesses). */
@@ -189,7 +202,7 @@ function createCertPhaseSteps(args: {
           walletId: wallet.walletId,
           token,
           botAddress: bot.paymentAddress,
-          fresh: true,
+          consumedUtxoRefs: args.consumedUtxoRefs,
         });
 
         const extraBody = args.buildExtraBody ? await args.buildExtraBody(ctx) : {};
@@ -340,6 +353,7 @@ function createCertPhaseSteps(args: {
           token,
           botAddress: bot.paymentAddress,
           spentUtxoRefs: spentRefs,
+          consumedUtxoRefs: args.consumedUtxoRefs,
         });
         return {
           message: `${label} inputs confirmed on-chain after ${attempts} poll attempt${attempts === 1 ? "" : "s"}`,
@@ -361,7 +375,7 @@ function createCertPhaseSteps(args: {
  * with DRepNotRegistered or similar errors, the credential is confirmed clean
  * and the step succeeds silently.
  */
-function createDRepHygieneStep(walletType: CIWalletType): RouteStep {
+function createDRepHygieneStep(walletType: CIWalletType, consumedUtxoRefs: Set<string>): RouteStep {
   return {
     id: `v1.botDRepCertificate.${walletType}.hygiene`,
     description: `Ensure ${walletType} DRep is deregistered before test`,
@@ -397,7 +411,7 @@ function createDRepHygieneStep(walletType: CIWalletType): RouteStep {
         walletId: wallet.walletId,
         token,
         botAddress: bot.paymentAddress,
-        fresh: true,
+        consumedUtxoRefs,
       });
 
       const proposeResp = await requestJson<{ id?: string; error?: string }>({
@@ -474,6 +488,7 @@ function createDRepHygieneStep(walletType: CIWalletType): RouteStep {
         token,
         botAddress: bot.paymentAddress,
         spentUtxoRefs: utxoRefs,
+        consumedUtxoRefs,
       });
       return {
         message: `Hygiene DRep retire confirmed on-chain after ${attempts} poll attempt${attempts === 1 ? "" : "s"}`,
@@ -500,6 +515,8 @@ function createDRepHygieneStep(walletType: CIWalletType): RouteStep {
  * Requires CI_DREP_ANCHOR_URL to be set.
  */
 export function createScenarioDRepCertificates(): Scenario {
+  const legacyConsumedUtxoRefs = new Set<string>();
+  const sdkConsumedUtxoRefs = new Set<string>();
   const legacyReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
   const legacyRetire: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
   const sdkReg: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
@@ -533,7 +550,7 @@ export function createScenarioDRepCertificates(): Scenario {
         id: "drep-certificates.legacy",
         description: "DRep certificate lifecycle (legacy)",
         steps: [
-          createDRepHygieneStep("legacy"),
+          createDRepHygieneStep("legacy", legacyConsumedUtxoRefs),
           ...createCertPhaseSteps({
             idPrefix: "v1.botDRepCertificate.legacy.register",
             walletType: "legacy",
@@ -541,6 +558,7 @@ export function createScenarioDRepCertificates(): Scenario {
             action: "register",
             label: "DRep registration (legacy)",
             runtime: legacyReg,
+            consumedUtxoRefs: legacyConsumedUtxoRefs,
             requireBroadcastSuccess: true,
             buildExtraBody: () => buildDRepRegBody(),
           }),
@@ -551,6 +569,7 @@ export function createScenarioDRepCertificates(): Scenario {
             action: "retire",
             label: "DRep retirement (legacy)",
             runtime: legacyRetire,
+            consumedUtxoRefs: legacyConsumedUtxoRefs,
             requireBroadcastSuccess: true,
           }),
         ],
@@ -559,7 +578,7 @@ export function createScenarioDRepCertificates(): Scenario {
         id: "drep-certificates.sdk",
         description: "DRep certificate lifecycle (SDK)",
         steps: [
-          createDRepHygieneStep("sdk"),
+          createDRepHygieneStep("sdk", sdkConsumedUtxoRefs),
           ...createCertPhaseSteps({
             idPrefix: "v1.botDRepCertificate.sdk.register",
             walletType: "sdk",
@@ -567,6 +586,7 @@ export function createScenarioDRepCertificates(): Scenario {
             action: "register",
             label: "DRep registration (sdk)",
             runtime: sdkReg,
+            consumedUtxoRefs: sdkConsumedUtxoRefs,
             requireBroadcastSuccess: true,
             buildExtraBody: () => buildDRepRegBody(),
           }),
@@ -577,6 +597,7 @@ export function createScenarioDRepCertificates(): Scenario {
             action: "retire",
             label: "DRep retirement (sdk)",
             runtime: sdkRetire,
+            consumedUtxoRefs: sdkConsumedUtxoRefs,
             requireBroadcastSuccess: true,
           }),
         ],
@@ -604,6 +625,7 @@ export function createScenarioDRepCertificates(): Scenario {
  * Requires ctx.stakePoolIdHex to be set (CI_STAKE_POOL_ID_HEX).
  */
 export function createScenarioStakeCertificates(): Scenario {
+  const consumedUtxoRefs = new Set<string>();
   const registerAndDelegateRuntime: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
   const deregisterRuntime: { transactionId?: string; spentUtxoRefs?: { txHash: string; outputIndex: number }[] } = {};
 
@@ -650,7 +672,7 @@ export function createScenarioStakeCertificates(): Scenario {
           const wallet = ctx.wallets.find((w) => w.type === "sdk");
           if (!wallet) throw new Error('SDK wallet not found in CI context');
 
-          const utxoRefs = await fetchUtxoRefs({ ctx, walletId: wallet.walletId, token, botAddress: bot.paymentAddress, fresh: true });
+          const utxoRefs = await fetchUtxoRefs({ ctx, walletId: wallet.walletId, token, botAddress: bot.paymentAddress, consumedUtxoRefs });
 
           const proposeResp = await requestJson<{ id?: string; error?: string }>({
             url: `${ctx.apiBaseUrl}/api/v1/botStakeCertificate`,
@@ -699,7 +721,7 @@ export function createScenarioStakeCertificates(): Scenario {
           }
 
           // Broadcast succeeded — wait for on-chain confirmation.
-          const { attempts } = await pollUntilUtxosConsumed({ ctx, walletId: wallet.walletId, token, botAddress: bot.paymentAddress, spentUtxoRefs: utxoRefs });
+          const { attempts } = await pollUntilUtxosConsumed({ ctx, walletId: wallet.walletId, token, botAddress: bot.paymentAddress, spentUtxoRefs: utxoRefs, consumedUtxoRefs });
           return {
             message: `Hygiene deregister confirmed on-chain after ${attempts} poll attempt${attempts === 1 ? "" : "s"}`,
             artifacts: { stakeAddress, txId, attempts },
@@ -718,6 +740,7 @@ export function createScenarioStakeCertificates(): Scenario {
         action: "register_and_delegate",
         label: "Stake register-and-delegate (sdk)",
         runtime: registerAndDelegateRuntime,
+        consumedUtxoRefs,
         requireBroadcastSuccess: true,
         useStakeCertFlow: true,
         buildExtraBody: (ctx) => {
@@ -736,6 +759,7 @@ export function createScenarioStakeCertificates(): Scenario {
         action: "deregister",
         label: "Stake deregistration (sdk)",
         runtime: deregisterRuntime,
+        consumedUtxoRefs,
         requireBroadcastSuccess: true,
         useStakeCertFlow: true,
       }),
