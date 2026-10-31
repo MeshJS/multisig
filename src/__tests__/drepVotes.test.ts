@@ -10,9 +10,11 @@ jest.mock("@/lib/security/requestGuards", () => ({
 }));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
+let resetProposalTitleCache: () => void;
 
 beforeAll(async () => {
   ({ default: handler } = await import("../pages/api/governance/drepVotes"));
+  ({ resetProposalTitleCache } = await import("@/lib/governance/koios"));
 });
 
 const DREP_ID = "drep1ygqgayvx8yzsaj9hprja3l6jy3v4px9z3u8uvecuvm3f92ce7mckx";
@@ -57,6 +59,8 @@ function votesRequest(query: Record<string, unknown> = {}): NextApiRequest {
 beforeEach(() => {
   jest.clearAllMocks();
   applyRateLimitMock.mockReturnValue(true);
+  // The title sweep is cached per server instance; each case starts cold.
+  resetProposalTitleCache();
 });
 
 describe("drepVotes API", () => {
@@ -193,6 +197,137 @@ describe("drepVotes API", () => {
     };
     expect(body.votes).toHaveLength(1);
     expect(body.votes[0]).toMatchObject({ proposalTitle: null, proposalType: null });
+  });
+
+  it("starts the title sweep without waiting for the votes", async () => {
+    // Hold the votes response open; the title request must already be out.
+    let releaseVotes!: (rows: unknown[]) => void;
+    global.fetch = jest.fn((input: unknown) => {
+      const url = String(input);
+      if (url.includes("/drep_votes")) {
+        return new Promise((resolve) => {
+          releaseVotes = (rows) =>
+            resolve({ ok: true, status: 200, json: async () => rows });
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => [
+          { proposal_id: "gov_action1aaa", proposal_type: "InfoAction", title: "T" },
+        ],
+      });
+    }) as never;
+    const res = createMockResponse();
+
+    const done = handler(votesRequest(), res);
+    await new Promise((resolve) => setImmediate(resolve));
+    const urls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("/drep_votes"))).toBe(true);
+    expect(urls.some((u) => u.includes("/proposal_list"))).toBe(true);
+
+    releaseVotes([koiosVote()]);
+    await done;
+    const body = (res.json as jest.Mock).mock.calls[0]?.[0] as {
+      votes: Array<Record<string, unknown>>;
+    };
+    expect(body.votes[0]).toMatchObject({ proposalTitle: "T" });
+  });
+
+  it("reuses the title sweep across requests for different DReps", async () => {
+    mockKoios({
+      "/drep_votes": [koiosVote()],
+      "/proposal_list": [
+        { proposal_id: "gov_action1aaa", proposal_type: "InfoAction", title: "T" },
+      ],
+    });
+
+    await handler(votesRequest(), createMockResponse());
+    const res = createMockResponse();
+    await handler(
+      votesRequest({ drepId: "drep1yvh7vvcr5hz2j87uhpwsw3f7p69szxufg0gsmyc5lx9umnq0lqsla" }),
+      res,
+    );
+
+    const urls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
+    expect(urls.filter((u) => u.includes("/drep_votes"))).toHaveLength(2);
+    expect(urls.filter((u) => u.includes("/proposal_list"))).toHaveLength(1);
+    const body = (res.json as jest.Mock).mock.calls[0]?.[0] as {
+      votes: Array<Record<string, unknown>>;
+    };
+    expect(body.votes[0]).toMatchObject({ proposalTitle: "T" });
+  });
+
+  it("re-sweeps titles for a vote on a proposal the cached snapshot lacks", async () => {
+    const clock = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      let titleSweeps = 0;
+      mockKoios({
+        "/drep_votes": [koiosVote({ proposal_id: "gov_action1new" })],
+        "/proposal_list": () =>
+          titleSweeps++ === 0
+            ? []
+            : [{ proposal_id: "gov_action1new", proposal_type: "InfoAction", title: "New" }],
+      });
+
+      // Cold: the snapshot taken for this request is seconds old, so a miss
+      // doesn't trigger a second sweep.
+      await handler(votesRequest(), createMockResponse());
+      expect(titleSweeps).toBe(1);
+
+      // A minute later the same miss is worth one fresher sweep.
+      clock.mockReturnValue(1_060_000);
+      const res = createMockResponse();
+      await handler(votesRequest(), res);
+      expect(titleSweeps).toBe(2);
+      const body = (res.json as jest.Mock).mock.calls[0]?.[0] as {
+        votes: Array<Record<string, unknown>>;
+      };
+      expect(body.votes[0]).toMatchObject({ proposalTitle: "New" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("does not re-sweep for a known proposal that simply has no title", async () => {
+    const clock = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      mockKoios({
+        "/drep_votes": [koiosVote()],
+        "/proposal_list": [
+          { proposal_id: "gov_action1aaa", proposal_type: "InfoAction", title: null },
+        ],
+      });
+      await handler(votesRequest(), createMockResponse());
+      clock.mockReturnValue(1_060_000);
+      await handler(votesRequest(), createMockResponse());
+
+      const urls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
+      expect(urls.filter((u) => u.includes("/proposal_list"))).toHaveLength(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("answers 502 without an unhandled rejection when votes and titles both fail", async () => {
+    const unhandled = jest.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      global.fetch = jest.fn(async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({}),
+      })) as never;
+      const res = createMockResponse();
+
+      await handler(votesRequest(), res);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(res.status).toHaveBeenCalledWith(502);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 
   it("returns 502 when Koios is unreachable", async () => {
