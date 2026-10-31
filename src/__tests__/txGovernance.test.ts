@@ -10,9 +10,11 @@ jest.mock("@/lib/security/requestGuards", () => ({
 }));
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void | NextApiResponse>;
+let resetProposalTitleCache: () => void;
 
 beforeAll(async () => {
   ({ default: handler } = await import("../pages/api/governance/txGovernance"));
+  ({ resetProposalTitleCache } = await import("@/lib/governance/koios"));
 });
 
 const VOTE_TX = "ab".repeat(32);
@@ -54,6 +56,8 @@ function govRequest(body: Record<string, unknown> = {}): NextApiRequest {
 beforeEach(() => {
   jest.clearAllMocks();
   applyRateLimitMock.mockReturnValue(true);
+  // The title sweep is cached per server instance; each case starts cold.
+  resetProposalTitleCache();
 });
 
 describe("txGovernance API", () => {
@@ -248,6 +252,96 @@ describe("txGovernance API", () => {
       voteKind: "No",
       proposalTitle: null,
     });
+  });
+
+  it("reuses the title sweep across timeline requests", async () => {
+    const voteRow = {
+      tx_hash: VOTE_TX,
+      certificates: [],
+      voting_procedures: [
+        {
+          vote: "no",
+          voter: DREP_ID,
+          voter_role: "DRep",
+          proposal_index: 3,
+          proposal_tx_hash: PROPOSAL_TX,
+        },
+      ],
+    };
+    mockKoios({
+      "/tx_info": [voteRow],
+      "/proposal_list": [
+        {
+          proposal_id: "gov_action1aaa",
+          proposal_type: "InfoAction",
+          title: "Cached title",
+          proposal_tx_hash: PROPOSAL_TX,
+          proposal_index: 3,
+        },
+      ],
+    });
+
+    await handler(govRequest({ txHashes: [VOTE_TX] }), createMockResponse());
+    const res = createMockResponse();
+    await handler(govRequest({ txHashes: [VOTE_TX] }), res);
+
+    const urls = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]));
+    expect(urls.filter((u) => u.includes("/tx_info"))).toHaveLength(2);
+    expect(urls.filter((u) => u.includes("/proposal_list"))).toHaveLength(1);
+    const body = (res.json as jest.Mock).mock.calls[0]?.[0] as {
+      items: Array<Record<string, any>>;
+    };
+    expect(body.items[0]!.votes[0].proposalTitle).toBe("Cached title");
+  });
+
+  it("re-sweeps titles for a vote on a proposal the cached snapshot lacks", async () => {
+    const clock = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      let titleSweeps = 0;
+      mockKoios({
+        "/tx_info": [
+          {
+            tx_hash: VOTE_TX,
+            certificates: [],
+            voting_procedures: [
+              {
+                vote: "yes",
+                voter: DREP_ID,
+                voter_role: "DRep",
+                proposal_index: 0,
+                proposal_tx_hash: PROPOSAL_TX,
+              },
+            ],
+          },
+        ],
+        "/proposal_list": () =>
+          titleSweeps++ === 0
+            ? []
+            : [
+                {
+                  proposal_id: "gov_action1new",
+                  proposal_type: "InfoAction",
+                  title: "New",
+                  proposal_tx_hash: PROPOSAL_TX,
+                  proposal_index: 0,
+                },
+              ],
+      });
+
+      await handler(govRequest({ txHashes: [VOTE_TX] }), createMockResponse());
+      expect(titleSweeps).toBe(1);
+
+      clock.mockReturnValue(1_060_000);
+      const res = createMockResponse();
+      await handler(govRequest({ txHashes: [VOTE_TX] }), res);
+      expect(titleSweeps).toBe(2);
+      const body = (res.json as jest.Mock).mock.calls[0]?.[0] as {
+        items: Array<Record<string, any>>;
+      };
+      expect(body.items[0]!.votes[0].proposalTitle).toBe("New");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("returns 502 when Koios is unreachable", async () => {
