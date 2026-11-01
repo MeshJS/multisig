@@ -729,7 +729,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy DRep vote transaction",
           description:
-            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex>. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex> (64-character hex txHash, certIndex 0-65535); each governance action may appear only once per request, at most 256 votes. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -742,10 +742,15 @@ This API uses **Bearer Token** authentication (JWT).
                     proxyId: { type: "string" },
                     votes: {
                       type: "array",
+                      minItems: 1,
+                      maxItems: 256,
                       items: {
                         type: "object",
                         properties: {
-                          proposalId: { type: "string" },
+                          proposalId: {
+                            type: "string",
+                            pattern: "^[0-9a-fA-F]{64}#[0-9]{1,5}$",
+                          },
                           voteKind: { type: "string", enum: ["Yes", "No", "Abstain"] },
                           metadata: {},
                         },
