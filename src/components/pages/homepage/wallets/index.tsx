@@ -29,8 +29,32 @@ import { ImportTransferDialog } from "./import-transfer-dialog";
 import BotManagementCard from "@/components/pages/user/BotManagementCard";
 
 
+/**
+ * Shown to a connected wallet that has not signed the session nonce yet. The
+ * wallet list is only served to a session for the address, so without this
+ * the page would claim the user has no wallets at all.
+ */
+function AuthorizeToSeeWallets() {
+  const requestReauth = useUserStore((state) => state.requestReauth);
+  return (
+    <div className="col-span-full rounded-lg border border-dashed p-6 text-center">
+      <p className="text-sm text-muted-foreground">
+        Authorize your connected wallet to see the multisig wallets it signs
+        for.
+      </p>
+      <Button className="mt-4" onClick={() => requestReauth()}>
+        Authorize wallet
+      </Button>
+    </div>
+  );
+}
+
 export default function PageWallets() {
-  const { wallets, isLoading: isLoadingWallets } = useUserWallets();
+  const {
+    wallets,
+    isLoading: isLoadingWallets,
+    needsAuthorization,
+  } = useUserWallets();
   const [showArchived, setShowArchived] = useState(false);
   const userAddress = useUserStore((state) => state.userAddress);
   const address = userAddress ?? "";
@@ -43,18 +67,17 @@ export default function PageWallets() {
       refetchOnWindowFocus: false,
     },
   );
+  // Both wallet-creation lists are protectedProcedures: without a session for
+  // this address they can only answer 401/403.
   const isAuthorized = walletSession?.authorized ?? false;
-  const sessionWallets = walletSession?.wallets ?? [];
-  // If there's no wallet-session constraint, public read queries can run without authorization
-  const canQueryPublicWalletData = sessionWallets.length === 0 || isAuthorized;
 
   const { data: newPendingWallets, isLoading: isLoadingNewWallets } = api.wallet.getUserNewWallets.useQuery(
     { address },
     {
       // Only enable query when user is authorized (prevents 403 errors)
-      enabled: address.length > 0 && canQueryPublicWalletData,
+      enabled: address.length > 0 && isAuthorized,
       retry: (failureCount, error) => {
-        // Don't retry on authorization errors (403)
+        // Don't retry on authorization errors (401/403)
         if (error && typeof error === "object") {
           const err = error as {
             code?: string;
@@ -65,8 +88,11 @@ export default function PageWallets() {
           const errorMessage = err.message || err.shape?.message || "";
           const isAuthError =
             err.code === "FORBIDDEN" ||
+            err.code === "UNAUTHORIZED" ||
             err.data?.code === "FORBIDDEN" ||
+            err.data?.code === "UNAUTHORIZED" ||
             err.data?.httpStatus === 403 ||
+            err.data?.httpStatus === 401 ||
             err.shape?.code === "FORBIDDEN" ||
             errorMessage.includes("Address mismatch");
           if (isAuthError) return false;
@@ -81,9 +107,9 @@ export default function PageWallets() {
       { address },
       {
         // Only enable query when user is authorized (prevents 403 errors)
-        enabled: address.length > 0 && canQueryPublicWalletData,
+        enabled: address.length > 0 && isAuthorized,
         retry: (failureCount, error) => {
-          // Don't retry on authorization errors (403)
+          // Don't retry on authorization errors (401/403)
           if (error && typeof error === "object") {
             const err = error as {
               code?: string;
@@ -94,8 +120,11 @@ export default function PageWallets() {
             const errorMessage = err.message || err.shape?.message || "";
             const isAuthError =
               err.code === "FORBIDDEN" ||
+              err.code === "UNAUTHORIZED" ||
               err.data?.code === "FORBIDDEN" ||
+              err.data?.code === "UNAUTHORIZED" ||
               err.data?.httpStatus === 403 ||
+              err.data?.httpStatus === 401 ||
               err.shape?.code === "FORBIDDEN" ||
               errorMessage.includes("Address mismatch");
             if (isAuthError) return false;
@@ -147,9 +176,13 @@ export default function PageWallets() {
               <WalletCardSkeleton />
             </>
           )}
-          {!isLoadingWallets && address.length > 0 && (!wallets || wallets.length === 0) && (
-            <EmptyWalletsState />
+          {!isLoadingWallets && needsAuthorization && (
+            <AuthorizeToSeeWallets />
           )}
+          {!isLoadingWallets &&
+            !needsAuthorization &&
+            address.length > 0 &&
+            (!wallets || wallets.length === 0) && <EmptyWalletsState />}
           {!isLoadingWallets && wallets &&
             wallets
               .filter((wallet) => showArchived || !wallet.isArchived)
