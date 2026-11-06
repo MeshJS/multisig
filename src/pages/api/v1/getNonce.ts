@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { db } from "@/server/db";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
+import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 
 export default async function handler(
   req: NextApiRequest,
@@ -22,11 +23,15 @@ export default async function handler(
 
   if (req.method === "GET") {
     try {
-      const { address } = req.query;
-      if (typeof address !== "string") {
-        console.error("[getNonce] Invalid address param:", address);
+      const { address: rawAddress } = req.query;
+      if (typeof rawAddress !== "string") {
+        console.error("[getNonce] Invalid address param:", rawAddress);
         return res.status(400).json({ error: "Invalid address" });
       }
+      // Store the nonce under the bech32 form. authSigner and wallet-session
+      // both normalize hex CIP-30 addresses before looking the nonce up, so a
+      // nonce keyed by the raw hex would never be found.
+      const address = normalizeAddressToBech32(rawAddress);
 
       // Log whether the address has a corresponding user, but don't block nonce issuance.
       // This allows first-time wallet connections to authorize via nonce signing.
