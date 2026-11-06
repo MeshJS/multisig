@@ -10,7 +10,7 @@ const addCorsHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
 const checkSignatureMock: jest.Mock = jest.fn();
 const nonceFindFirstMock: jest.Mock = jest.fn();
-const nonceDeleteMock: jest.Mock = jest.fn();
+const nonceDeleteManyMock: jest.Mock = jest.fn();
 const getWalletSessionFromReqMock: jest.Mock = jest.fn();
 const setWalletSessionCookieMock = jest.fn();
 
@@ -25,7 +25,7 @@ jest.mock("@/server/db", () => ({
   db: {
     nonce: {
       findFirst: nonceFindFirstMock,
-      delete: nonceDeleteMock,
+      deleteMany: nonceDeleteManyMock,
     },
   },
 }));
@@ -68,7 +68,7 @@ beforeEach(() => {
   corsMock.mockResolvedValue(undefined);
   getWalletSessionFromReqMock.mockReturnValue(null);
   (nonceFindFirstMock as any).mockResolvedValue({ id: "nonce-id", value: "deadbeef" });
-  (nonceDeleteMock as any).mockResolvedValue({});
+  (nonceDeleteManyMock as any).mockResolvedValue({ count: 1 });
   (checkSignatureMock as any).mockResolvedValue(true);
 });
 
@@ -100,7 +100,7 @@ describe("wallet-session API error handling", () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.status).not.toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: "Invalid signature" });
-    expect(nonceDeleteMock).not.toHaveBeenCalled();
+    expect(nonceDeleteManyMock).not.toHaveBeenCalled();
   });
 
   it("returns 401 when checkSignature returns false", async () => {
@@ -122,8 +122,21 @@ describe("wallet-session API error handling", () => {
       wallets: [ADDRESS],
       primaryWallet: ADDRESS,
     });
-    expect(nonceDeleteMock).toHaveBeenCalledWith({ where: { id: "nonce-id" } });
+    expect(nonceDeleteManyMock).toHaveBeenCalledWith({
+      where: { id: "nonce-id", value: "deadbeef" },
+    });
     expect(setWalletSessionCookieMock).toHaveBeenCalled();
+  });
+
+  it("returns 401 and sets no session when the nonce was already spent or rotated", async () => {
+    // A replay racing the original request, or getNonce rotating the value
+    // between our read and our delete: the verified nonce is no longer there.
+    (nonceDeleteManyMock as any).mockResolvedValue({ count: 0 });
+    const res = createMockResponse();
+    await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(setWalletSessionCookieMock).not.toHaveBeenCalled();
   });
 
   it("returns 500 only for genuine server faults (e.g. DB error)", async () => {
