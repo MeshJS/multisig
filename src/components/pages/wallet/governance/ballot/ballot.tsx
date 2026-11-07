@@ -30,6 +30,12 @@ import {
 } from "@/components/ui/dialog";
 import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import {
+  isProxyModeBlocked,
+  proxyModeBlockedMessage,
+  resolveProxyMode,
+} from "@/lib/proxy/proxyMode";
+import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
 import { CheckCircle2, XCircle, MinusCircle, Loader2, Trash2, Plus, FileText, Vote as VoteIcon, Link2, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -191,12 +197,12 @@ export default function BallotCard({
   const [loading, setLoading] = useState(false);
 
   // Proxy state
-  const { isProxyEnabled, selectedProxyId } = useProxy();
+  const { selectedProxyId } = useProxy();
   const { wallet } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
 
   // Get proxies for proxy mode
-  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: proxies, isError: proxiesLoadFailed } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
       walletId: appWallet?.id || undefined,
       userAddress: userAddress || undefined,
@@ -204,8 +210,16 @@ export default function BallotCard({
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
-  // Check if we have valid proxy data
-  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+  // A selected proxy that hasn't loaded or isn't this wallet's blocks the
+  // ballot vote instead of falling back to a direct DRep vote.
+  const proxyMode = resolveProxyMode({
+    selectedProxyId,
+    proxies,
+    loadFailed: proxiesLoadFailed,
+  });
+  const hasValidProxy = proxyMode.kind === "proxy";
+  const proxyBlocked = isProxyModeBlocked(proxyMode);
+  const proxyBlockedMessage = proxyModeBlockedMessage(proxyMode);
 
   // CreateBallot mutation
   const createBallot = api.ballot.create.useMutation();
@@ -287,11 +301,13 @@ export default function BallotCard({
       });
       return;
     }
-    if (!hasValidProxy || !selectedProxyId || !proxies) {
+    if (proxyMode.kind !== "proxy") {
       toast({
-        title: "Proxy not configured",
-        description: "Please select a proxy to continue.",
-        duration: 2000,
+        ...(proxyBlockedMessage ?? {
+          title: "Proxy not configured",
+          description: "Please select a proxy to continue.",
+        }),
+        duration: 5000,
         variant: "destructive",
       });
       return;
@@ -299,8 +315,7 @@ export default function BallotCard({
 
     setLoading(true);
     try {
-      const proxy = proxies.find((p: any) => p.id === selectedProxyId);
-      if (!proxy) throw new Error("Proxy not found");
+      const proxy = proxyMode.proxy;
       if (!wallet) throw new Error("No connected wallet");
 
       const meshTxBuilder = await getTxBuilder(network);
@@ -402,6 +417,10 @@ export default function BallotCard({
 
   // Ballot vote submission logic
   async function handleSubmitVote() {
+    if (proxyBlockedMessage) {
+      toast({ ...proxyBlockedMessage, duration: 5000, variant: "destructive" });
+      return;
+    }
     if (!selectedBallot || !Array.isArray(selectedBallot.items) || selectedBallot.items.length === 0) {
       toast({
         title: "No proposals in ballot",
@@ -864,16 +883,7 @@ export default function BallotCard({
               </div>
 
               {/* Proxy Warning */}
-              {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
-                <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
-                    Proxy Mode Active - Select a proxy to continue
-                  </p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                    Go to the Proxy Control panel above and select a proxy to enable ballot voting.
-                  </p>
-                </div>
-              )}
+              <ProxyModeNotice mode={proxyMode} className="mt-3" />
 
               {/* Action Buttons */}
               <div className="flex gap-3 mt-4">
@@ -881,7 +891,7 @@ export default function BallotCard({
                   variant="default"
                   className="flex-1 px-4 py-2.5 bg-gray-600 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white font-medium"
                   onClick={hasValidProxy ? handleSubmitProxyVote : handleSubmitVote}
-                  disabled={loading || !selectedBallot.items || selectedBallot.items.length === 0 || !utxos || utxos.length === 0}
+                  disabled={loading || proxyBlocked || !selectedBallot.items || selectedBallot.items.length === 0 || !utxos || utxos.length === 0}
                 >
                   {loading ? (
                     <>
