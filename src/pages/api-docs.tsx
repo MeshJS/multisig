@@ -1,3 +1,4 @@
+import Link from "next/link";
 // src/pages/api-docs.tsx
 import dynamic from "next/dynamic";
 import Head from "next/head";
@@ -356,6 +357,14 @@ export default function ApiDocs() {
             Build on Mesh Multisig with a typed REST API. List wallets, read
             pending transactions, and add or sign transactions from your own
             services and bots — the same endpoints the app itself uses.
+          </p>
+          <p className="mt-4 text-sm">
+            <Link href="/docs/mcp" className="underline underline-offset-4">
+              Set up an AI client with MCP
+            </Link>{" · "}
+            <Link href="/about#developers-and-bots" className="underline underline-offset-4">
+              Developers &amp; Bots
+            </Link>
           </p>
           <ul className="mt-4 space-y-1.5 text-sm text-muted-foreground">
             <li>

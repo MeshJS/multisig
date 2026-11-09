@@ -24,6 +24,8 @@ import { create } from "zustand";
  */
 export const LIGHT_ROUTES: ReadonlySet<string> = new Set([
   "/",
+  "/about",
+  "/docs/mcp",
   "/features",
   "/roadmap",
   "/roadmap/graph",

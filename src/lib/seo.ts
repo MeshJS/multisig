@@ -90,6 +90,12 @@ export const routeSeo: Record<string, RouteSeo> = {
   "/": {
     description: DEFAULT_DESCRIPTION,
   },
+  "/about": { title: "About", description: DEFAULT_DESCRIPTION },
+  "/docs/mcp": {
+    title: "MCP setup guide",
+    description:
+      "Connect an AI client to Mesh Multisig, choose permissions, and manage wallet access. Agents cannot sign or broadcast transactions.",
+  },
   "/features": {
     title: "Features",
     image: OG_CARD.features,
@@ -241,6 +247,8 @@ export type SitemapRoute = {
 
 /** Static, indexable routes emitted into /sitemap.xml. */
 export const INDEXABLE_ROUTES: SitemapRoute[] = [
+  { path: "/about", changefreq: "monthly", priority: 0.8 },
+  { path: "/docs/mcp", changefreq: "monthly", priority: 0.7 },
   { path: "/", changefreq: "weekly", priority: 1.0 },
   { path: "/features", changefreq: "monthly", priority: 0.8 },
   { path: "/roadmap", changefreq: "monthly", priority: 0.6 },

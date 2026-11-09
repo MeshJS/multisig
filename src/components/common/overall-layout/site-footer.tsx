@@ -3,6 +3,7 @@ import { isLightHref } from "@/lib/wallet-runtime";
 import Logo from "@/components/common/overall-layout/logo";
 
 const productLinks = [
+  { label: "About", href: "/about" },
   { label: "Features", href: "/features" },
   { label: "Governance", href: "/governance" },
   { label: "DRep Explorer", href: "/governance/drep" },
@@ -14,10 +15,11 @@ const productLinks = [
 ];
 
 const developerLinks = [
+  { label: "MCP setup", href: "/docs/mcp", external: false },
   { label: "API docs", href: "/api-docs", external: false },
   {
     label: "Developers & Bots",
-    href: "/#developers-and-bots",
+    href: "/about#developers-and-bots",
     external: false,
   },
   { label: "Download skill", href: "/api/skill", external: true },
