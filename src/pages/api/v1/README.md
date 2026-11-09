@@ -459,7 +459,8 @@ Endpoints:
 - **Query Parameters**:
   - `url`: URL to extract metadata from
 - **Response**: Metadata object with title, description, image, siteName, and url
-- **Error Handling**: 400 (validation), 500 (server)
+- **Rate limit**: 20 requests per minute per IP
+- **Error Handling**: 400 (validation), 405 (method), 429 (rate limit), 502 (upstream error or redirect), 504 (upstream timeout)
 
 ## API Architecture
 

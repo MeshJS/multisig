@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { env } from "@/env";
 import { assertSafeHost } from "@/lib/security/ssrf";
+import { applyRateLimit } from "@/lib/security/requestGuards";
+import { readMetaTags, readTitle } from "@/lib/html/metaTags";
 
 const DEFAULT_ALLOWED_HOSTS = [
   "github.com",
@@ -17,6 +19,17 @@ const DEFAULT_ALLOWED_HOSTS = [
 
 const MAX_BYTES = 1024 * 1024;
 const FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * Every request here costs an outbound fetch of up to 1 MiB, and the endpoint
+ * needs no authentication, so it is the cheapest way to make this server do
+ * work on someone else's behalf. Link previews are an occasional, human-paced
+ * lookup; 20 a minute per IP is generous for that.
+ */
+const OG_RATE_LIMIT_PER_MINUTE = 20;
+
+/** Upstream failures we report as 502, with a message safe to show callers. */
+class UpstreamError extends Error {}
 
 function loadAllowedHosts(): { hosts: Set<string>; wildcard: boolean } {
   const raw = env.OG_ALLOWED_HOSTS?.trim();
@@ -44,10 +57,10 @@ async function fetchCapped(target: string): Promise<string> {
       headers: { "user-agent": "MeshMultisigOGFetcher/1.0" },
     });
     if (response.status >= 300 && response.status < 400) {
-      throw new Error("Blocked: redirect not followed");
+      throw new UpstreamError("Upstream redirected; redirects are not followed");
     }
     if (!response.ok) {
-      throw new Error(`Upstream ${response.status}`);
+      throw new UpstreamError(`Upstream returned ${response.status}`);
     }
     const reader = response.body?.getReader();
     if (!reader) {
@@ -75,6 +88,20 @@ async function fetchCapped(target: string): Promise<string> {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  if (
+    !applyRateLimit(req, res, {
+      keySuffix: "v1/og",
+      maxRequests: OG_RATE_LIMIT_PER_MINUTE,
+    })
+  ) {
+    return;
+  }
+
   const { url } = req.query;
   if (typeof url !== "string") {
     res.status(400).json({ error: "Missing url" });
@@ -116,33 +143,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
+  let html: string;
   try {
-    const html = await fetchCapped(parsed.toString());
-
-    const extract = (property: string, nameFallback?: string) => {
-      const ogRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]+content=["']([^"']+)["']`, "i");
-      const ogMatch = ogRegex.exec(html);
-      if (ogMatch?.[1]) return ogMatch[1];
-      if (nameFallback) {
-        const nameRegex = new RegExp(`<meta[^>]+name=["']${nameFallback}["'][^>]+content=["']([^"']+)["']`, "i");
-        const nameMatch = nameRegex.exec(html);
-        if (nameMatch?.[1]) return nameMatch[1];
-      }
-      return undefined;
-    };
-
-    const title = extract("og:title", "title") ?? (() => {
-      const titleRegex = /<title>([^<]+)<\/title>/i;
-      const titleMatch = titleRegex.exec(html);
-      return titleMatch?.[1];
-    })();
-    const description = extract("og:description", "description");
-    const image = extract("og:image");
-    const siteName = extract("og:site_name");
-
-    res.status(200).json({ title, description, image, siteName, url });
+    html = await fetchCapped(parsed.toString());
   } catch (e: unknown) {
-    const errorMessage = e instanceof Error ? e.message : "Failed to fetch OG";
-    res.status(500).json({ error: errorMessage });
+    // A slow, failing or redirecting upstream is not a fault of ours: report
+    // it as a gateway error, and never echo a raw internal error message.
+    if (e instanceof Error && e.name === "AbortError") {
+      res.status(504).json({ error: "Upstream timed out" });
+      return;
+    }
+    if (e instanceof UpstreamError) {
+      res.status(502).json({ error: e.message });
+      return;
+    }
+    console.error("og: fetch failed:", e);
+    res.status(502).json({ error: "Could not fetch the page" });
+    return;
   }
+
+  const meta = readMetaTags(html);
+  const title =
+    meta.get("property:og:title") ?? meta.get("name:title") ?? readTitle(html);
+  const description =
+    meta.get("property:og:description") ?? meta.get("name:description");
+  const image = meta.get("property:og:image");
+  const siteName = meta.get("property:og:site_name");
+
+  res.status(200).json({ title, description, image, siteName, url });
 }
