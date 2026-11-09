@@ -70,6 +70,7 @@ import {
 } from "@/lib/documents/proof";
 import { diffVersions } from "@/lib/documents/diff";
 import {
+  AUDIT_LIMITS,
   auditPackageProblem,
   buildAuditPackage,
   verifyAuditPackage,
@@ -883,10 +884,25 @@ export const documentRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: problem });
       }
       const pkg = input.proof as ProofPackage;
-      return verifyProofPackage(pkg, {
-        expectedContentHash: input.expectedContentHash,
-        checkSignature,
-      });
+      // The shape check covers every field the verifier reads; this catches
+      // what it cannot, such as a signed payload too deeply nested to
+      // canonicalize, so the answer is still a 400 and never a 500.
+      try {
+        return await verifyProofPackage(pkg, {
+          expectedContentHash: input.expectedContentHash,
+          checkSignature,
+        });
+      } catch (error) {
+        // Logged so a real verifier bug does not hide behind the 400.
+        console.warn(
+          "[document.verifyProof] verifier threw:",
+          error instanceof Error ? error.message : String(error),
+        );
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "That proof package could not be verified — it is malformed.",
+        });
+      }
     }),
 
   /**
@@ -930,23 +946,47 @@ export const documentRouter = createTRPCRouter({
   verifyAttestationChain: publicProcedure
     .input(
       z.object({
-        chain: z.array(
-          z.object({
-            payload: z.unknown(),
-            signature: z.string(),
-            publicKeyId: z.string(),
-          }),
-        ),
+        // Bounded like the chain inside an audit package: every record costs
+        // an Ed25519 verify, and this endpoint needs no account.
+        chain: z
+          .array(
+            z.object({
+              // An object, not z.unknown(): a null payload used to reach the
+              // verifier and throw. Checked rather than parsed, so the object
+              // reaches the verifier exactly as sent — a payload carrying an
+              // extra field must fail its signature, not be trimmed back into
+              // one that verifies.
+              payload: z.custom<object>(
+                (v) => !!v && typeof v === "object" && !Array.isArray(v),
+                "payload must be an object",
+              ),
+              signature: z.string(),
+              publicKeyId: z.string(),
+            }),
+          )
+          .max(AUDIT_LIMITS.chain),
         /** Omit to check against the keys this deployment publishes. */
         publicKeys: z.record(z.string(), z.string()).optional(),
       }),
     )
-    .mutation(({ input }) =>
-      verifyAttestationChain(
-        input.chain as AttestationRecord[],
-        input.publicKeys ?? getAttestationPublicKeys(),
-      ),
-    ),
+    .mutation(({ input }) => {
+      try {
+        return verifyAttestationChain(
+          input.chain as unknown as AttestationRecord[],
+          input.publicKeys ?? getAttestationPublicKeys(),
+        );
+      } catch (error) {
+        console.warn(
+          "[document.verifyAttestationChain] verifier threw:",
+          error instanceof Error ? error.message : String(error),
+        );
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "That attestation chain could not be verified — it is malformed.",
+        });
+      }
+    }),
 
   /**
    * The draft body, if there is one. Returns null rather than throwing when a

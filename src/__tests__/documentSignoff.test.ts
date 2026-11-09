@@ -20,6 +20,7 @@ import {
 } from "@/lib/documents/payload";
 import {
   PROOF_FORMAT,
+  PROOF_LIMITS,
   VERIFICATION_INSTRUCTIONS,
   parseProofPackage,
   proofPackageProblem,
@@ -442,5 +443,85 @@ describe("parseProofPackage", () => {
     }
     // An array is an object, so it has to fail on the missing fields instead.
     expect(proofPackageProblem([])).toMatch(/no version or policy/i);
+  });
+});
+
+/**
+ * `verifyProof` is a public endpoint, so the gate has to stop every package the
+ * verifier would otherwise throw on — a wrong type in any field it reads must
+ * be named as a problem, never surface as a TypeError and a 500.
+ */
+describe("proofPackageProblem on fields of the wrong type", () => {
+  const valid = () => makeProof([makeReview(SIGNER_A)]);
+
+  it("passes a well-formed package, with or without the optional review fields", () => {
+    expect(proofPackageProblem(valid())).toBeNull();
+    const withParty = valid();
+    withParty.reviews[0] = { ...withParty.reviews[0]!, partyId: "p1", comment: "ok" };
+    expect(proofPackageProblem(withParty)).toBeNull();
+  });
+
+  it("says in a sentence what is wrong, for the paste box on /verify", () => {
+    const pkg = valid() as unknown as Record<string, any>;
+    pkg.reviews = null;
+    expect(proofPackageProblem(pkg)).toBe(
+      "That proof package is malformed: proof.reviews is missing or too long.",
+    );
+  });
+
+  it.each<[string, (p: Record<string, any>) => void, RegExp]>([
+    ["version is a string", (p) => (p.version = "v1"), /proof\.version/],
+    ["contentHash is a number", (p) => (p.version.contentHash = 5), /proof\.version/],
+    ["versionNumber is a string", (p) => (p.version.versionNumber = "1"), /proof\.version/],
+    ["document is missing", (p) => delete p.document, /proof\.document/],
+    ["policy is a string", (p) => (p.policy = "2-of-3"), /proof\.policy/],
+    ["requiredSigners is a string", (p) => (p.policy.requiredSigners = "2"), /proof\.policy/],
+    ["a signer address is a number", (p) => (p.policy.signersAddresses = [1]), /proof\.policy/],
+    ["reviews is null", (p) => (p.reviews = null), /proof\.reviews/],
+    ["a review is null", (p) => (p.reviews = [null]), /review is malformed/],
+    ["a review payload is an object", (p) => (p.reviews[0].payload = {}), /review is malformed/],
+    ["a review comment is an object", (p) => (p.reviews[0].comment = { toString: 1 }), /review is malformed/],
+  ])("names the problem when %s", (_, mutate, problem) => {
+    const pkg = valid() as unknown as Record<string, any>;
+    mutate(pkg);
+    expect(proofPackageProblem(pkg)).toMatch(problem);
+  });
+
+  it("refuses more reviews than any wallet could produce", () => {
+    // Each review costs a CIP-8 check on the server; the cap bounds that work.
+    const review = makeReview(SIGNER_A);
+    const padded = makeProof(
+      Array.from({ length: PROOF_LIMITS.reviews + 1 }, () => review),
+    );
+    expect(proofPackageProblem(padded)).toMatch(/too long/);
+  });
+});
+
+describe("verifyProofPackage on a signed payload of the wrong shape", () => {
+  // The payload string is what the signer signed, so it is attacker-chosen
+  // too. Valid, canonical JSON that is not a sign-off payload has to be an
+  // invalid review, not an exception.
+  it.each(["null", "42", "[]", '"approve"'])(
+    "reports %s as not a JSON object",
+    async (payload) => {
+      const review = { ...makeReview(SIGNER_A), payload };
+      const result = await verifyProofPackage(makeProof([review], 1), {
+        checkSignature: acceptAll,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reviews[0]!.errors).toContain("payload is not a JSON object");
+    },
+  );
+
+  it("fails the binding when the signed contentHash is not a string", async () => {
+    const good = makeReview(SIGNER_A);
+    const tampered = { ...JSON.parse(good.payload), contentHash: 5 };
+    const review = { ...good, payload: canonicalize(tampered) };
+    const result = await verifyProofPackage(makeProof([review], 1), {
+      checkSignature: acceptAll,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reviews[0]!.payloadBindsToVersion).toBe(false);
+    expect(result.reviews[0]!.errors.join(" ")).toMatch(/payload\.contentHash/);
   });
 });
