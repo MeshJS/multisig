@@ -25,10 +25,9 @@ import {
   buildProxyVoteTx,
   deriveProxyScripts,
   proxyStakeCredentialFromAddress,
-  type ProxyVoteInput,
 } from "@/lib/server/proxyTxBuilders";
 import { auditBuiltProxyTx } from "@/lib/server/proxyAuthTokenAudit";
-import { parseProposalId } from "@/lib/governance";
+import { validateProxyVotes } from "@/lib/proxy/voteInput";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 type MeshTxBuilderWithBody = Awaited<ReturnType<typeof getTxBuilder>> & {
@@ -49,43 +48,6 @@ function parseParamUtxo(value: string): UtxoRef | null {
     return null;
   }
   return null;
-}
-
-function validateVotes(votes: unknown): ProxyVoteInput[] | { error: string } {
-  if (!Array.isArray(votes) || votes.length === 0) {
-    return { error: "votes must be a non-empty array" };
-  }
-
-  const normalized: ProxyVoteInput[] = [];
-  for (const vote of votes) {
-    const candidate = vote as Partial<ProxyVoteInput>;
-    const proposalId =
-      typeof candidate.proposalId === "string" ? candidate.proposalId.trim() : "";
-    if (!proposalId) {
-      return { error: "Each vote requires proposalId" };
-    }
-    try {
-      parseProposalId(proposalId);
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : "Invalid proposalId",
-      };
-    }
-    if (
-      candidate.voteKind !== "Yes" &&
-      candidate.voteKind !== "No" &&
-      candidate.voteKind !== "Abstain"
-    ) {
-      return { error: "voteKind must be Yes, No, or Abstain" };
-    }
-    normalized.push({
-      proposalId,
-      voteKind: candidate.voteKind,
-      metadata: candidate.metadata,
-    });
-  }
-
-  return normalized;
 }
 
 export default async function handler(
@@ -140,7 +102,7 @@ export default async function handler(
     return res.status(400).json({ error: "walletId, address, and proxyId are required" });
   }
 
-  const votes = validateVotes(body.votes);
+  const votes = validateProxyVotes(body.votes);
   if ("error" in votes) {
     return res.status(400).json({ error: votes.error });
   }

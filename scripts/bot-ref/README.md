@@ -233,7 +233,7 @@ Use `GET /api/v1/freeUtxos?walletId=...&address=...&fresh=true` to select wallet
 - `POST /api/v1/proxySpend`: sends proxy-held assets to `outputs[]`. If `proxyUtxoRefs` is omitted, the server selects proxy-address UTxOs sufficient for the requested outputs plus fee buffer.
 - `POST /api/v1/proxyDRepCertificate`: `action` is `register`, `update`, or `deregister`. `register` and `update` require both `anchorUrl` and `anchorJson`; the server computes the anchor hash from `anchorJson`.
 - `GET /api/v1/proxyDRepInfo`: returns `{ active, dRepId }` for the proxy script DRep credential.
-- `POST /api/v1/proxyVote`: votes as the proxy DRep. Each vote uses `proposalId` in `<txHash>#<certIndex>` form and `voteKind` of `Yes`, `No`, or `Abstain`.
+- `POST /api/v1/proxyVote`: votes as the proxy DRep. Each vote uses `proposalId` in `<txHash>#<certIndex>` form (64-character hex hash) and `voteKind` of `Yes`, `No`, or `Abstain`. Up to 256 votes per request, each governance action at most once; the server stores ids in canonical form (lowercase hash, plain index). Malformed or repeated ids are rejected with 400 before any chain lookup.
 
 ### Cleanup
 
