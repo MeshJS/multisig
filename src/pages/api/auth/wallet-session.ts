@@ -5,6 +5,7 @@ import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import {
+  clearWalletSessionCookie,
   getWalletSessionFromReq,
   setWalletSessionCookie,
   type WalletSessionPayload,
@@ -16,6 +17,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Logout: drop the session cookie so the next connect must re-authorize.
+  if (req.method === "DELETE") {
+    clearWalletSessionCookie(res);
+    return res.status(200).json({ ok: true });
   }
 
   if (req.method !== "POST") {

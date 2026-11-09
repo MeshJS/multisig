@@ -1,3 +1,14 @@
+import type { RiskAssessment } from "@/lib/tx-risk/types";
+const riskFixture = (txHash = "beef"): RiskAssessment => ({
+  version: 1,
+  scope: "transaction",
+  status: "complete",
+  networkId: 0,
+  txHash,
+  outputs: [],
+  findings: [],
+  errors: [],
+});
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { PrismaClient } from "@prisma/client";
 
@@ -18,8 +29,10 @@ const loadReviewWalletContextMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpendableUtxosMock = jest.fn<(...args: any[]) => Promise<any>>();
 const loadSpecAssetMetadataMock = jest.fn<(...args: any[]) => Promise<any>>();
 const validateOrThrowMock = jest.fn<(...args: any[]) => any>();
-const loadStakeAccountActiveMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
-const loadDrepRegisteredMock = jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
+const loadStakeAccountActiveMock =
+  jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
+const loadDrepRegisteredMock =
+  jest.fn<(...args: any[]) => Promise<boolean | undefined>>();
 const buildUnsignedMock = jest.fn<(...args: any[]) => Promise<any>>();
 const summarizeForWalletMock = jest.fn<(...args: any[]) => Promise<any>>();
 const renderCardMock = jest.fn<(...args: any[]) => Promise<any>>();
@@ -27,7 +40,11 @@ const auditMock = jest.fn<(...args: any[]) => Promise<void>>();
 
 jest.mock("@/lib/tx-review/context", () => {
   const actual = jest.requireActual("@/lib/tx-review/context") as object;
-  return { __esModule: true, ...actual, loadReviewWalletContext: loadReviewWalletContextMock };
+  return {
+    __esModule: true,
+    ...actual,
+    loadReviewWalletContext: loadReviewWalletContextMock,
+  };
 });
 
 jest.mock("@/lib/tx-review/pipeline", () => {
@@ -42,11 +59,15 @@ jest.mock("@/lib/tx-review/pipeline", () => {
     loadDrepRegistered: loadDrepRegisteredMock,
     buildUnsigned: buildUnsignedMock,
     summarizeForWallet: summarizeForWalletMock,
+    summarizePendingForWallet: summarizeForWalletMock,
     renderCard: renderCardMock,
   };
 });
 
-jest.mock("@/lib/observability/audit", () => ({ __esModule: true, audit: auditMock }));
+jest.mock("@/lib/observability/audit", () => ({
+  __esModule: true,
+  audit: auditMock,
+}));
 
 const SUBJECT = "addr_test1qpsubject";
 const CLIENT = "https://claude.ai/x";
@@ -83,7 +104,12 @@ const walletCtx = {
 
 const builtBody = {
   inputs: [{ txIn: { txHash: "1".repeat(64), txIndex: 0 } }],
-  outputs: [{ address: "addr_test1qprecipient", amount: [{ unit: "lovelace", quantity: "5000000" }] }],
+  outputs: [
+    {
+      address: "addr_test1qprecipient",
+      amount: [{ unit: "lovelace", quantity: "5000000" }],
+    },
+  ],
   changeAddress: "addr_test1qpwallet",
   fee: "170000",
   certificates: [],
@@ -92,7 +118,12 @@ const builtBody = {
 
 const fakeSummary: TxReviewSummary = {
   kind: "pending",
-  wallet: { id: "wallet-1", name: "Treasury", address: "addr_test1qpwallet", network: "preprod" },
+  wallet: {
+    id: "wallet-1",
+    name: "Treasury",
+    address: "addr_test1qpwallet",
+    network: "preprod",
+  },
   threshold: { required: 2, total: 2, type: "atLeast" },
   signatures: { signed: [], rejected: [], remaining: 2 },
   description: "Pay",
@@ -113,7 +144,12 @@ function spec(overrides: Partial<TxSpec> = {}): TxSpec {
   return {
     v: 1,
     walletId: "wallet-1",
-    outputs: [{ address: "addr_test1qprecipient", assets: [{ unit: "lovelace", quantity: "5000000" }] }],
+    outputs: [
+      {
+        address: "addr_test1qprecipient",
+        assets: [{ unit: "lovelace", quantity: "5000000" }],
+      },
+    ],
     certificates: [],
     votes: [],
     description: "Pay",
@@ -142,17 +178,23 @@ function makeDb(pending: { id: string; txJson: string }[] = []) {
 }
 
 function deps(extra: Record<string, unknown> = {}) {
-  const createPending = jest.fn<(...args: any[]) => Promise<any>>().mockResolvedValue({
-    id: "tx-new",
-    signedAddresses: [],
-    rejectedAddresses: [],
-  });
-  const pin = jest.fn<(filename: string, json: string) => Promise<{ url: string }>>().mockResolvedValue({
-    url: "ipfs://cid",
-  });
+  const createPending = jest
+    .fn<(...args: any[]) => Promise<any>>()
+    .mockResolvedValue({
+      id: "tx-new",
+      signedAddresses: [],
+      rejectedAddresses: [],
+    });
+  const pin = jest
+    .fn<(filename: string, json: string) => Promise<{ url: string }>>()
+    .mockResolvedValue({
+      url: "ipfs://cid",
+    });
   return {
     db: makeDb(),
-    fetchFreeUtxos: jest.fn<() => Promise<any>>().mockResolvedValue({ status: 200, body: [] }),
+    fetchFreeUtxos: jest
+      .fn<() => Promise<any>>()
+      .mockResolvedValue({ status: 200, body: [] }),
     createPending,
     pin,
     hashAnchor: () => "ff".repeat(32),
@@ -162,13 +204,25 @@ function deps(extra: Record<string, unknown> = {}) {
 
 // Minted as an image-mode preview unless told otherwise: propose follows the
 // mode recorded in the token, and most of these tests look at the PNG path.
-function token(overrides: Partial<TxSpec> = {}, previewTxHash = "beef", card: "html" | "image" = "image") {
+function token(
+  overrides: Partial<TxSpec> = {},
+  previewTxHash = "beef",
+  card: "html" | "image" = "image",
+) {
+  const { riskReviewBinding, walletRiskContext } = jest.requireActual(
+    "@/lib/tx-review/risk",
+  ) as typeof import("@/lib/tx-review/risk");
   return mintDraftToken({
     subject: SUBJECT,
     walletId: "wallet-1",
     clientId: CLIENT,
     spec: spec(overrides),
     previewTxHash,
+    riskBinding: riskReviewBinding(
+      riskFixture(),
+      walletRiskContext(walletCtx as any),
+      spec(overrides).outputs.length,
+    ),
     card,
   }).token;
 }
@@ -179,7 +233,10 @@ beforeEach(async () => {
   ({ runTransactionPropose } = await import("@/lib/tx-review/propose"));
   loadReviewWalletContextMock.mockResolvedValue(walletCtx);
   loadSpendableUtxosMock.mockResolvedValue([]);
-  loadSpecAssetMetadataMock.mockResolvedValue({ metadata: {}, decimalsFor: () => undefined });
+  loadSpecAssetMetadataMock.mockResolvedValue({
+    metadata: {},
+    decimalsFor: () => undefined,
+  });
   validateOrThrowMock.mockReturnValue([]);
   loadStakeAccountActiveMock.mockResolvedValue(undefined);
   loadDrepRegisteredMock.mockResolvedValue(undefined);
@@ -187,13 +244,14 @@ beforeEach(async () => {
     unsignedTx: "84a4",
     body: builtBody,
     txHash: "beef",
+    riskAssessment: riskFixture("beef"),
     fee: "170000",
     sizeBytes: 2,
     inputCount: 1,
     outputCount: 2,
   });
   summarizeForWalletMock.mockResolvedValue(fakeSummary);
-  renderCardMock.mockResolvedValue({ data: "AAAA", mimeType: "image/png" });
+  renderCardMock.mockResolvedValue([{ data: "AAAA", mimeType: "image/png" }]);
   auditMock.mockResolvedValue(undefined);
 });
 
@@ -238,10 +296,17 @@ describe("transaction_propose", () => {
     });
     expect(String(body.link)).toMatch(/\/wallets\/wallet-1\/transactions$/);
     expect(result.images).toEqual([{ data: "AAAA", mimeType: "image/png" }]);
-    expect(result.audit).toMatchObject({ walletId: "wallet-1", transactionId: "tx-new", txHash: "beef" });
+    expect(result.audit).toMatchObject({
+      walletId: "wallet-1",
+      transactionId: "tx-new",
+      txHash: "beef",
+    });
     expect(auditMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ action: "transaction.create", resourceId: "tx-new" }),
+      expect.objectContaining({
+        action: "transaction.create",
+        resourceId: "tx-new",
+      }),
     );
     // The summary is built for a pending transaction with nobody signed.
     expect(summarizeForWalletMock).toHaveBeenCalledWith(
@@ -249,13 +314,42 @@ describe("transaction_propose", () => {
       builtBody,
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ kind: "pending", signedAddresses: [], transactionId: "tx-new", paymentCount: 1 }),
+      expect.objectContaining({
+        kind: "pending",
+        signedAddresses: [],
+        transactionId: "tx-new",
+        paymentCount: 1,
+      }),
     );
+  });
+
+  it("requires a fresh preview for a token without risk binding", async () => {
+    const d = deps();
+    const oldToken = mintDraftToken({
+      subject: SUBJECT,
+      walletId: "wallet-1",
+      clientId: CLIENT,
+      spec: spec(),
+      previewTxHash: "beef",
+    }).token;
+    const result = await runTransactionPropose(
+      { draftToken: oldToken },
+      ctx,
+      d,
+    );
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({ code: "REVIEW_CHANGED" });
+    expect(d.createPending).not.toHaveBeenCalled();
+    expect(d.pin).not.toHaveBeenCalled();
   });
 
   it("rejects anything but a valid draft token", async () => {
     const d = deps();
-    const bad = await runTransactionPropose({ draftToken: "not-a-token" }, ctx, d);
+    const bad = await runTransactionPropose(
+      { draftToken: "not-a-token" },
+      ctx,
+      d,
+    );
     expect(bad.status).toBe(401);
     expect((bad.body as { code: string }).code).toBe("TOKEN_INVALID");
 
@@ -276,16 +370,34 @@ describe("transaction_propose", () => {
     const t = token();
     const d = deps();
     const first = await runTransactionPropose({ draftToken: t }, ctx, d);
-    const draftId = (d.createPending.mock.calls[0]![1] as { txJson: { mcp: { draftId: string } } }).txJson.mcp.draftId;
+    const draftId = (
+      d.createPending.mock.calls[0]![1] as {
+        txJson: { mcp: { draftId: string } };
+      }
+    ).txJson.mcp.draftId;
 
     const replayDeps = deps({
-      db: makeDb([{ id: "tx-first", txJson: JSON.stringify({ ...builtBody, mcp: { draftId } }) }]),
+      db: makeDb([
+        {
+          id: "tx-first",
+          txJson: JSON.stringify({ ...builtBody, mcp: { draftId } }),
+        },
+      ]),
     });
-    const second = await runTransactionPropose({ draftToken: t }, ctx, replayDeps);
+    const second = await runTransactionPropose(
+      { draftToken: t },
+      ctx,
+      replayDeps,
+    );
 
-    expect((first.body as { transactionId: string }).transactionId).toBe("tx-new");
+    expect((first.body as { transactionId: string }).transactionId).toBe(
+      "tx-new",
+    );
     expect(second.status).toBe(200);
-    expect(second.body).toMatchObject({ transactionId: "tx-first", alreadyExisted: true });
+    expect(second.body).toMatchObject({
+      transactionId: "tx-first",
+      alreadyExisted: true,
+    });
     expect(replayDeps.createPending).not.toHaveBeenCalled();
     expect(replayDeps.pin).not.toHaveBeenCalled();
     expect(buildUnsignedMock).toHaveBeenCalledTimes(1);
@@ -297,7 +409,12 @@ describe("transaction_propose", () => {
     const t = token({
       outputs: [],
       votes: [
-        { govActionTxHash: PROPOSAL_HASH, govActionIndex: 0, voteKind: "Yes", rationale: "Because it is good." },
+        {
+          govActionTxHash: PROPOSAL_HASH,
+          govActionIndex: 0,
+          voteKind: "Yes",
+          rationale: "Because it is good.",
+        },
         { govActionTxHash: PROPOSAL_HASH, govActionIndex: 1, voteKind: "No" },
       ],
     });
@@ -305,6 +422,7 @@ describe("transaction_propose", () => {
       unsignedTx: "84a4",
       body: builtBody,
       txHash: "d00d",
+      riskAssessment: riskFixture("d00d"),
       fee: "1",
       sizeBytes: 2,
       inputCount: 1,
@@ -316,7 +434,9 @@ describe("transaction_propose", () => {
     expect(d.pin).toHaveBeenCalledTimes(1);
     const [filename, json] = d.pin.mock.calls[0]!;
     expect(filename).toMatch(/^rationale-c{16}-0\.jsonld$/);
-    expect(JSON.parse(json).body.rationaleStatement).toBe("Because it is good.");
+    expect(JSON.parse(json).body.rationaleStatement).toBe(
+      "Because it is good.",
+    );
     // Validation ran before pinning, on the anchor-less draft.
     const validateOrder = validateOrThrowMock.mock.invocationCallOrder[0]!;
     const pinOrder = d.pin.mock.invocationCallOrder[0]!;
@@ -340,34 +460,53 @@ describe("transaction_propose", () => {
       unsignedTx: "84a4",
       body: builtBody,
       txHash: "0ther",
+      riskAssessment: riskFixture("0ther"),
       fee: "1",
       sizeBytes: 2,
       inputCount: 1,
       outputCount: 1,
     });
-    const result = await runTransactionPropose({ draftToken: token() }, ctx, deps());
+    const result = await runTransactionPropose(
+      { draftToken: token() },
+      ctx,
+      deps(),
+    );
     expect(result.status).toBe(201);
-    expect(result.body).toMatchObject({ txHashChanged: true, txHashChangeReasons: ["utxo-set"] });
+    expect(result.body).toMatchObject({
+      txHashChanged: true,
+      txHashChangeReasons: ["utxo-set"],
+    });
     expect(summarizeForWalletMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
-        warnings: [expect.stringContaining("spendable UTxOs changed since the preview")],
+        warnings: [
+          expect.stringContaining("spendable UTxOs changed since the preview"),
+        ],
       }),
     );
   });
 
   it("surfaces a failed pin as an error and creates nothing", async () => {
     const d = deps({
-      pin: jest.fn<() => Promise<{ url: string }>>().mockRejectedValue(new Error("Pinata down")),
+      pin: jest
+        .fn<() => Promise<{ url: string }>>()
+        .mockRejectedValue(new Error("Pinata down")),
     });
     const result = await runTransactionPropose(
       {
         draftToken: token({
           outputs: [],
-          votes: [{ govActionTxHash: PROPOSAL_HASH, govActionIndex: 0, voteKind: "Yes", rationale: "r" }],
+          votes: [
+            {
+              govActionTxHash: PROPOSAL_HASH,
+              govActionIndex: 0,
+              voteKind: "Yes",
+              rationale: "r",
+            },
+          ],
         }),
       },
       ctx,
@@ -379,16 +518,28 @@ describe("transaction_propose", () => {
   });
 
   it("returns validation failures as a readable 400 without pinning or creating", async () => {
-    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    const { TxReviewError } = jest.requireActual(
+      "@/lib/tx-review/context",
+    ) as typeof import("@/lib/tx-review/context");
     validateOrThrowMock.mockImplementation(() => {
-      throw new TxReviewError(400, "INVALID_DRAFT", "Outputs require more ADA than the selected funds hold.", {
-        issues: [{ level: "error", code: "insufficient-funds", message: "x" }],
-      });
+      throw new TxReviewError(
+        400,
+        "INVALID_DRAFT",
+        "Outputs require more ADA than the selected funds hold.",
+        {
+          issues: [
+            { level: "error", code: "insufficient-funds", message: "x" },
+          ],
+        },
+      );
     });
     const d = deps();
     const result = await runTransactionPropose({ draftToken: token() }, ctx, d);
     expect(result.status).toBe(400);
-    expect(result.body).toMatchObject({ code: "INVALID_DRAFT", issues: [{ code: "insufficient-funds" }] });
+    expect(result.body).toMatchObject({
+      code: "INVALID_DRAFT",
+      issues: [{ code: "insufficient-funds" }],
+    });
     expect(d.createPending).not.toHaveBeenCalled();
     expect(d.pin).not.toHaveBeenCalled();
   });
@@ -397,7 +548,10 @@ describe("transaction_propose", () => {
     // Registered since the preview: the token's register+delegate would now
     // fail on chain, so the fresh state must reach validation (which refuses
     // it as cert-already-registered — a validate.ts unit test).
-    const stakeCtx = { ...walletCtx, stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" } };
+    const stakeCtx = {
+      ...walletCtx,
+      stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" },
+    };
     loadReviewWalletContextMock.mockResolvedValue(stakeCtx);
     loadStakeAccountActiveMock.mockResolvedValue(true);
     const d = deps();
@@ -406,7 +560,10 @@ describe("transaction_propose", () => {
       {
         draftToken: token({
           outputs: [],
-          certificates: [{ kind: "RegisterStake" }, { kind: "DelegateStake", poolId: "f".repeat(56) }],
+          certificates: [
+            { kind: "RegisterStake" },
+            { kind: "DelegateStake", poolId: "f".repeat(56) },
+          ],
         }),
       },
       ctx,
@@ -414,37 +571,70 @@ describe("transaction_propose", () => {
     );
 
     expect(loadStakeAccountActiveMock).toHaveBeenCalledTimes(1);
-    expect(validateOrThrowMock).toHaveBeenCalledWith(expect.anything(), stakeCtx, [], true, undefined);
+    expect(validateOrThrowMock).toHaveBeenCalledWith(
+      expect.anything(),
+      stakeCtx,
+      [],
+      true,
+      undefined,
+    );
     const validateOrder = validateOrThrowMock.mock.invocationCallOrder[0]!;
     const lookupOrder = loadStakeAccountActiveMock.mock.invocationCallOrder[0]!;
     expect(lookupOrder).toBeLessThan(validateOrder);
     // Nothing was added: the token already carried the registration.
     const [validatedDraft] = validateOrThrowMock.mock.calls[0]!;
-    expect(validatedDraft.certificates.map((c: { kind: string }) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
-    expect(result.body).toMatchObject({ txHashChanged: false, txHashChangeReasons: [] });
+    expect(
+      validatedDraft.certificates.map((c: { kind: string }) => c.kind),
+    ).toEqual(["RegisterStake", "DelegateStake"]);
+    expect(result.body).toMatchObject({
+      txHashChanged: false,
+      txHashChangeReasons: [],
+    });
   });
 
   it("re-checks the DRep registration at propose time and refuses a retired DRep's vote before pinning", async () => {
     // Retired since the preview: the fresh state reaches validation, which
     // refuses (vote-drep-unregistered — a validate.ts unit test); here the
     // stub does the refusing so the order and the side effects are checked.
-    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    const { TxReviewError } = jest.requireActual(
+      "@/lib/tx-review/context",
+    ) as typeof import("@/lib/tx-review/context");
     loadDrepRegisteredMock.mockResolvedValue(false);
-    validateOrThrowMock.mockImplementation((_draft, _ctx, _utxos, _stake, registered) => {
-      if (registered === false) {
-        throw new TxReviewError(400, "INVALID_DRAFT", "The transaction cannot be built: not registered as a DRep", {
-          issues: [{ level: "error", code: "vote-drep-unregistered", message: "not registered as a DRep" }],
-        });
-      }
-      return [];
-    });
+    validateOrThrowMock.mockImplementation(
+      (_draft, _ctx, _utxos, _stake, registered) => {
+        if (registered === false) {
+          throw new TxReviewError(
+            400,
+            "INVALID_DRAFT",
+            "The transaction cannot be built: not registered as a DRep",
+            {
+              issues: [
+                {
+                  level: "error",
+                  code: "vote-drep-unregistered",
+                  message: "not registered as a DRep",
+                },
+              ],
+            },
+          );
+        }
+        return [];
+      },
+    );
     const d = deps();
 
     const result = await runTransactionPropose(
       {
         draftToken: token({
           outputs: [],
-          votes: [{ govActionTxHash: PROPOSAL_HASH, govActionIndex: 0, voteKind: "Yes", rationale: "r" }],
+          votes: [
+            {
+              govActionTxHash: PROPOSAL_HASH,
+              govActionIndex: 0,
+              voteKind: "Yes",
+              rationale: "r",
+            },
+          ],
         }),
       },
       ctx,
@@ -453,10 +643,15 @@ describe("transaction_propose", () => {
 
     expect(loadDrepRegisteredMock).toHaveBeenCalledWith(
       walletCtx,
-      expect.objectContaining({ votes: [expect.objectContaining({ govActionIndex: 0 })] }),
+      expect.objectContaining({
+        votes: [expect.objectContaining({ govActionIndex: 0 })],
+      }),
     );
     expect(result.status).toBe(400);
-    expect(result.body).toMatchObject({ code: "INVALID_DRAFT", issues: [{ code: "vote-drep-unregistered" }] });
+    expect(result.body).toMatchObject({
+      code: "INVALID_DRAFT",
+      issues: [{ code: "vote-drep-unregistered" }],
+    });
     // Refused before the rationale went public and before anything was stored.
     expect(d.pin).not.toHaveBeenCalled();
     expect(d.createPending).not.toHaveBeenCalled();
@@ -464,7 +659,9 @@ describe("transaction_propose", () => {
   });
 
   it("adds a registration if the account was deregistered since the preview, and says so", async () => {
-    const { STAKE_REGISTRATION_ADDED_WARNING } = jest.requireActual("@/lib/tx-review/pipeline") as typeof import("@/lib/tx-review/pipeline");
+    const { STAKE_REGISTRATION_ADDED_WARNING } = jest.requireActual(
+      "@/lib/tx-review/pipeline",
+    ) as typeof import("@/lib/tx-review/pipeline");
     loadReviewWalletContextMock.mockResolvedValue({
       ...walletCtx,
       stake: { rewardAddress: "stake_test1uqx", stakeScriptCbor: "8202" },
@@ -474,6 +671,7 @@ describe("transaction_propose", () => {
       unsignedTx: "84a4",
       body: builtBody,
       txHash: "d00d",
+      riskAssessment: riskFixture("d00d"),
       fee: "1",
       sizeBytes: 2,
       inputCount: 1,
@@ -482,22 +680,35 @@ describe("transaction_propose", () => {
     const d = deps();
 
     const result = await runTransactionPropose(
-      { draftToken: token({ outputs: [], certificates: [{ kind: "DelegateStake", poolId: "f".repeat(56) }] }) },
+      {
+        draftToken: token({
+          outputs: [],
+          certificates: [{ kind: "DelegateStake", poolId: "f".repeat(56) }],
+        }),
+      },
       ctx,
       d,
     );
 
     expect(result.status).toBe(201);
     const [validatedDraft] = validateOrThrowMock.mock.calls[0]!;
-    expect(validatedDraft.certificates.map((c: { kind: string }) => c.kind)).toEqual(["RegisterStake", "DelegateStake"]);
-    expect(result.body).toMatchObject({ txHashChanged: true, txHashChangeReasons: ["stake-registration"] });
+    expect(
+      validatedDraft.certificates.map((c: { kind: string }) => c.kind),
+    ).toEqual(["RegisterStake", "DelegateStake"]);
+    expect(result.body).toMatchObject({
+      txHashChanged: true,
+      txHashChangeReasons: ["stake-registration"],
+    });
     expect(summarizeForWalletMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.anything(),
       expect.anything(),
       // Zero intended payments: the built body's only output is change.
-      expect.objectContaining({ warnings: [STAKE_REGISTRATION_ADDED_WARNING], paymentCount: 0 }),
+      expect.objectContaining({
+        warnings: [STAKE_REGISTRATION_ADDED_WARNING],
+        paymentCount: 0,
+      }),
     );
   });
 
@@ -505,35 +716,53 @@ describe("transaction_propose", () => {
     // The web app's task payout runs this same function: it adds a `tasks`
     // namespace, links tasks inside the insert transaction, and audits as
     // "app". None of that changes what the token binds.
-    const afterCreate = jest.fn<(...args: any[]) => Promise<void>>().mockResolvedValue(undefined);
+    const afterCreate = jest
+      .fn<(...args: any[]) => Promise<void>>()
+      .mockResolvedValue(undefined);
     const d = deps({
       via: "app",
       omitCard: true,
-      txJsonExtras: (claims: { jti: string }) => ({ tasks: { taskIds: ["t1"], draft: claims.jti } }),
+      txJsonExtras: (claims: { jti: string }) => ({
+        tasks: { taskIds: ["t1"], draft: claims.jti },
+      }),
       afterCreate,
     });
     const result = await runTransactionPropose({ draftToken: token() }, ctx, d);
 
     expect(result.status).toBe(201);
     const args = d.createPending.mock.calls[0]![1];
-    expect(args.txJson.tasks).toEqual({ taskIds: ["t1"], draft: args.txJson.mcp.draftId });
+    expect(args.txJson.tasks).toEqual({
+      taskIds: ["t1"],
+      draft: args.txJson.mcp.draftId,
+    });
     expect(args.txJson.multisig).toBeUndefined();
     // The persistence helper receives a hook bound to this token's claims.
     expect(typeof args.afterCreate).toBe("function");
-    await args.afterCreate({ tx: true }, { id: "tx-new", walletId: "wallet-1" });
+    await args.afterCreate(
+      { tx: true },
+      { id: "tx-new", walletId: "wallet-1" },
+    );
     expect(afterCreate).toHaveBeenCalledWith(
       { tx: true },
       { id: "tx-new" },
-      expect.objectContaining({ jti: args.txJson.mcp.draftId, walletId: "wallet-1" }),
+      expect.objectContaining({
+        jti: args.txJson.mcp.draftId,
+        walletId: "wallet-1",
+      }),
     );
     expect(auditMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ metadata: expect.objectContaining({ via: "app" }) }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ via: "app" }),
+      }),
     );
     // omitCard: no PNG rendered, no image block, the hint says so.
     expect(renderCardMock).not.toHaveBeenCalled();
     expect(result.images).toBeUndefined();
-    expect((result.body as Record<string, unknown>).reviewCard).toEqual({ attached: false, inline: true });
+    expect((result.body as Record<string, unknown>).reviewCard).toEqual({
+      attached: false,
+      inline: true,
+    });
     expect((result.body as Record<string, unknown>).summary).toBeDefined();
   });
 
@@ -548,16 +777,32 @@ describe("transaction_propose", () => {
     expect(result.status).toBe(201);
     expect(renderCardMock).not.toHaveBeenCalled();
     expect(result.images).toBeUndefined();
-    expect((result.body as Record<string, unknown>).reviewCard).toEqual({ attached: false, inline: true });
+    expect((result.body as Record<string, unknown>).reviewCard).toEqual({
+      attached: false,
+      inline: true,
+    });
     expect(result.text).toContain('call the tool again with card: "image"');
     expect(result.text).not.toContain("attached as an image");
 
     // The replay of an html token is html too.
-    const draftId = (d.createPending.mock.calls[0]![1] as { txJson: { mcp: { draftId: string } } }).txJson.mcp.draftId;
+    const draftId = (
+      d.createPending.mock.calls[0]![1] as {
+        txJson: { mcp: { draftId: string } };
+      }
+    ).txJson.mcp.draftId;
     const replayDeps = deps({
-      db: makeDb([{ id: "tx-first", txJson: JSON.stringify({ ...builtBody, mcp: { draftId } }) }]),
+      db: makeDb([
+        {
+          id: "tx-first",
+          txJson: JSON.stringify({ ...builtBody, mcp: { draftId } }),
+        },
+      ]),
     });
-    const replay = await runTransactionPropose({ draftToken: t }, ctx, replayDeps);
+    const replay = await runTransactionPropose(
+      { draftToken: t },
+      ctx,
+      replayDeps,
+    );
     expect(replay.status).toBe(200);
     expect(replay.images).toBeUndefined();
     expect(renderCardMock).not.toHaveBeenCalled();
@@ -569,7 +814,9 @@ describe("transaction_propose", () => {
     expect(d.createPending.mock.calls[0]![1].afterCreate).toBeUndefined();
     expect(auditMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ metadata: expect.objectContaining({ via: "mcp" }) }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ via: "mcp" }),
+      }),
     );
   });
 
@@ -577,11 +824,19 @@ describe("transaction_propose", () => {
     // The task hooks throw TxReviewError from inside the insert transaction
     // (tasks changed since the preview); the row is rolled back by the
     // helper, and here the error must become a 409 result, not a crash.
-    const { TxReviewError } = jest.requireActual("@/lib/tx-review/context") as typeof import("@/lib/tx-review/context");
+    const { TxReviewError } = jest.requireActual(
+      "@/lib/tx-review/context",
+    ) as typeof import("@/lib/tx-review/context");
     const d = deps({
-      createPending: jest.fn<() => Promise<never>>().mockRejectedValue(
-        new TxReviewError(409, "TASK_CHANGED", "A task changed. Preview again."),
-      ),
+      createPending: jest
+        .fn<() => Promise<never>>()
+        .mockRejectedValue(
+          new TxReviewError(
+            409,
+            "TASK_CHANGED",
+            "A task changed. Preview again.",
+          ),
+        ),
     });
     const result = await runTransactionPropose({ draftToken: token() }, ctx, d);
     expect(result.status).toBe(409);
@@ -594,9 +849,13 @@ describe("transaction_propose", () => {
 
   it("refuses a broadcast result from the persistence helper", async () => {
     // Cannot happen with an empty signer set, but the guard must hold.
-    const d = deps({ createPending: jest.fn<() => Promise<string>>().mockResolvedValue("submitted-hash") });
-    await expect(runTransactionPropose({ draftToken: token() }, ctx, d)).rejects.toThrow(
-      /Unexpected persistence result/,
-    );
+    const d = deps({
+      createPending: jest
+        .fn<() => Promise<string>>()
+        .mockResolvedValue("submitted-hash"),
+    });
+    await expect(
+      runTransactionPropose({ draftToken: token() }, ctx, d),
+    ).rejects.toThrow(/Unexpected persistence result/);
   });
 });

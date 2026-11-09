@@ -31,6 +31,12 @@ import SourcePicker, { type SourcePickerProps } from "../source-picker";
 import CertificateEditor from "./certificate-editor";
 import IssueList from "./issue-list";
 import VoteRationaleEditor from "./vote-rationale-editor";
+import ScriptInputsEditor from "./script-inputs-editor";
+import type { DraftScriptInputsState } from "@/hooks/useDraftScriptInputs";
+import type { DraftCollateralState } from "@/hooks/useDraftCollateral";
+import CollateralEditor from "./collateral-editor";
+import RequiredSigners from "../required-signers";
+import type { RiskFinding } from "@/lib/tx-risk/types";
 
 const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
   Yes: "text-green-500 dark:text-green-400",
@@ -40,6 +46,8 @@ const VOTE_KIND_COLORS: Record<DraftVoteKind, string> = {
 
 /** Source facts the inspector needs beyond the picker itself. */
 export type TxInspectorSourceProps = {
+  scriptInputs: DraftScriptInputsState;
+  collateral: DraftCollateralState;
   /** Resolved source address; "" while unknown. */
   sourceAddress: string;
   /** Short name for the UTxO toggle ("Connected wallet", "Source address"). */
@@ -55,9 +63,11 @@ export default function TxInspector({
   appWallet,
   issues,
   source,
+  riskFindings,
 }: {
   appWallet: Wallet;
   issues: DraftIssue[];
+  riskFindings: RiskFinding[];
   source: TxInspectorSourceProps & { picker: SourcePickerProps };
 }) {
   const network = useSiteStore((state) => state.network);
@@ -114,6 +124,7 @@ export default function TxInspector({
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-sm font-semibold">Transaction</h3>
+      <RequiredSigners keys={draft.requiredSigners} />
 
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs">Description (off-chain, for signers)</Label>
@@ -235,8 +246,7 @@ export default function TxInspector({
             })}
             <p className="text-[10px] text-muted-foreground">
               Changing a vote keeps its attached rationale unless cleared or
-              edited — editing uploads a new rationale document when you
-              build.
+              edited — editing uploads a new rationale document when you build.
             </p>
           </CollapsibleContent>
         </Collapsible>
@@ -291,6 +301,12 @@ export default function TxInspector({
         </CollapsibleContent>
       </Collapsible>
 
+      <ScriptInputsEditor
+        state={source.scriptInputs}
+        issues={issues}
+        riskFindings={riskFindings}
+      />
+      <CollateralEditor state={source.collateral} />
       <IssueList issues={issues} />
     </div>
   );

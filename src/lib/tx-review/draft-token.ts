@@ -61,6 +61,7 @@ export type DraftTokenClaims = {
   spec: TxSpec;
   /** Hash of the previewed unsigned transaction. */
   ph: string;
+  rh?: string;
   /** Present only for drafts derived from another record (task payouts). */
   origin?: DraftOrigin;
   /** Present only when the preview attached the PNG card. */
@@ -77,6 +78,7 @@ export type VerifiedDraftToken = {
   clientId: string | null;
   spec: TxSpec;
   previewTxHash: string;
+  riskBinding?: string;
   origin: DraftOrigin | null;
   card: ReviewCardMode;
   expiresAt: number;
@@ -101,6 +103,7 @@ export function mintDraftToken(args: {
   clientId: string | null;
   spec: TxSpec;
   previewTxHash: string;
+  riskBinding?: string;
   origin?: DraftOrigin;
   /** Omit (or pass "html") unless the preview attached the PNG card. */
   card?: ReviewCardMode;
@@ -114,6 +117,7 @@ export function mintDraftToken(args: {
       cid: args.clientId,
       spec: args.spec,
       ph: args.previewTxHash,
+      ...(args.riskBinding ? { rh: args.riskBinding } : {}),
       ...(args.origin ? { origin: args.origin } : {}),
       ...(args.card === "image" ? { card: "image" } : {}),
       jti,
@@ -137,16 +141,22 @@ export function mintDraftToken(args: {
 export function verifyDraftToken(
   token: string,
   caller: { subject: string; clientId: string | null },
-): { ok: true; claims: VerifiedDraftToken } | { ok: false; reason: DraftTokenFailure } {
+):
+  | { ok: true; claims: VerifiedDraftToken }
+  | { ok: false; reason: DraftTokenFailure } {
   let claims: DraftTokenClaims;
   try {
     claims = verify(token, secret()) as DraftTokenClaims;
   } catch (error) {
     const name = (error as { name?: string })?.name;
-    return { ok: false, reason: name === "TokenExpiredError" ? "expired" : "malformed" };
+    return {
+      ok: false,
+      reason: name === "TokenExpiredError" ? "expired" : "malformed",
+    };
   }
 
-  if (claims.typ !== DRAFT_TOKEN_TYPE) return { ok: false, reason: "wrong_type" };
+  if (claims.typ !== DRAFT_TOKEN_TYPE)
+    return { ok: false, reason: "wrong_type" };
   if (
     typeof claims.sub !== "string" ||
     typeof claims.wid !== "string" ||
@@ -164,6 +174,11 @@ export function verifyDraftToken(
   if (claims.card !== undefined && claims.card !== "image") {
     return { ok: false, reason: "malformed" };
   }
+  if (
+    claims.rh !== undefined &&
+    (typeof claims.rh !== "string" || !/^[0-9a-f]{64}$/.test(claims.rh))
+  )
+    return { ok: false, reason: "malformed" };
   if (claims.sub !== caller.subject) {
     return { ok: false, reason: "subject_mismatch" };
   }
@@ -180,6 +195,7 @@ export function verifyDraftToken(
       clientId: claims.cid ?? null,
       spec: claims.spec,
       previewTxHash: claims.ph,
+      riskBinding: claims.rh,
       origin: claims.origin ?? null,
       card: claims.card === "image" ? "image" : "html",
       expiresAt: claims.exp,

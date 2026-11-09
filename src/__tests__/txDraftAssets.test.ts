@@ -20,6 +20,7 @@ function draft(outputs: TxDraft["outputs"]): TxDraft {
     metadata: "",
     certificates: [],
     votes: [],
+    scriptInputs: [],
   };
 }
 

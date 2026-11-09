@@ -1,6 +1,6 @@
 import { deserializeAddress } from "@meshsdk/core";
 
-import type { TxDraft } from "@/types/tx-draft";
+import type { DraftUtxoRef, TxDraft } from "@/types/tx-draft";
 import { isValidDrepId } from "@/lib/tx-draft/drep";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import {
@@ -9,8 +9,26 @@ import {
   safeBigInt,
 } from "./assets";
 import { hasMultisigOnlyActions } from "./mutations";
+import { validatePlutusDraft } from "./validate-plutus";
+import { validatePlutusData } from "./plutus-data";
+import type { RiskCode } from "@/lib/tx-risk/types";
 
 export type DraftIssueCode =
+  | RiskCode
+  | "required-signers-invalid"
+  | "output-datum-invalid"
+  | "script-input-ref-invalid"
+  | "script-input-duplicate"
+  | "script-input-overlap"
+  | "script-input-unavailable"
+  | "script-input-network"
+  | "script-input-unresolved"
+  | "script-input-script-invalid"
+  | "script-input-datum-invalid"
+  | "script-input-redeemer-invalid"
+  | "collateral-ref-invalid"
+  | "collateral-unavailable"
+  | "plutus-build-unsupported"
   | "no-outputs"
   | "missing-address"
   | "invalid-address"
@@ -48,9 +66,21 @@ export type DraftIssue = {
   message: string;
   /** Anchors the issue to an output so the UI can select the offending card. */
   outputId?: string;
+  /** Script-input errors are shown in the transaction inspector. */
+  inputId?: string;
+  inputRef?: DraftUtxoRef;
+  field?:
+    | "inlineDatum"
+    | "utxoRef"
+    | "script"
+    | "datumSource"
+    | "redeemer"
+    | "collateral";
 };
 
 export type ValidateDraftContext = {
+  /** UI capability only; headless validation remains fail-closed. */
+  allowPlutus?: boolean;
   /** 1 = mainnet, otherwise testnet — matches the site store's network. */
   network: number;
   /**
@@ -202,7 +232,10 @@ export function validateDraft(
   draft: TxDraft,
   ctx: ValidateDraftContext,
 ): DraftIssue[] {
-  const issues: DraftIssue[] = [...validateSource(draft, ctx)];
+  const issues: DraftIssue[] = [
+    ...validateSource(draft, ctx),
+    ...validatePlutusDraft(draft, ctx.allowPlutus),
+  ];
 
   if (
     draft.outputs.length === 0 &&
@@ -372,7 +405,13 @@ export function validateDraft(
           outputId: output.id,
         });
       }
-      if (seenAddresses.has(output.address)) {
+      const datum =
+        output.inlineDatum && validatePlutusData(output.inlineDatum);
+      const recipientKey = JSON.stringify([
+        output.address,
+        datum?.valid ? datum.cbor : (output.inlineDatum ?? null),
+      ]);
+      if (seenAddresses.has(recipientKey)) {
         issues.push({
           level: "warning",
           code: "duplicate-output",
@@ -380,7 +419,7 @@ export function validateDraft(
           outputId: output.id,
         });
       }
-      seenAddresses.add(output.address);
+      seenAddresses.add(recipientKey);
     }
 
     const hasAmount = output.assets.some((asset) => {

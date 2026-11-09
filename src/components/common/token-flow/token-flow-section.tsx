@@ -11,10 +11,7 @@ import useProposalTitles from "@/hooks/useProposalTitles";
 import { useResolvedInputs, useTxFlowData } from "@/hooks/useTxFlowData";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import type { Wallet } from "@/types/wallet";
-import {
-  onChainTxToTokenFlow,
-  pendingTxToTokenFlow,
-} from "@/utils/token-flow";
+import { onChainTxToTokenFlow, pendingTxToTokenFlow } from "@/utils/token-flow";
 import TokenFlowViz from "./index";
 
 export type TokenFlowSource =
@@ -47,10 +44,17 @@ export function TokenFlowContent({
   );
 
   const unresolvedRefs = useMemo(() => {
-    if (source.type !== "pending" || !Array.isArray(source.txJson?.inputs))
-      return [];
-    return source.txJson.inputs
-      .filter((input: any) => input?.txIn && !(input.txIn.address && input.txIn.amount))
+    if (source.type !== "pending") return [];
+    return [
+      ...(Array.isArray(source.txJson?.inputs) ? source.txJson.inputs : []),
+      ...(Array.isArray(source.txJson?.collaterals)
+        ? source.txJson.collaterals
+        : []),
+    ]
+      .filter(
+        (input: any) =>
+          input?.txIn && !(input.txIn.address && input.txIn.amount),
+      )
       .map((input: any) => ({
         txHash: input.txIn.txHash as string,
         txIndex: input.txIn.txIndex as number,
@@ -97,7 +101,13 @@ export function TokenFlowContent({
       labelAddress,
       description: source.description ?? undefined,
     });
-  }, [source, labelAddress, resolvedInputs, resolveProposalTitle, onChainQuery.data]);
+  }, [
+    source,
+    labelAddress,
+    resolvedInputs,
+    resolveProposalTitle,
+    onChainQuery.data,
+  ]);
 
   const txKey = source.type === "onchain" ? source.txHash : source.txId;
 

@@ -1,4 +1,5 @@
 import { LogOut } from "lucide-react";
+import { clearClientWalletState } from "@/lib/auth/clearClientWalletState";
 import { useWallet } from "@meshsdk/react";
 import { useRouter } from "next/router";
 import { useUserStore } from "@/lib/zustand/user";
@@ -39,6 +40,8 @@ export default function LogoutWrapper({ mode, onAction }: LogoutWrapperProps) {
     }
     
     setPastWallet(undefined);
+    setPastUtxosEnabled(false);
+    clearClientWalletState();
     router.push("/");
     setTimeout(() => {
       router.reload();

@@ -31,7 +31,7 @@ import {
 } from "@/components/common/token-flow/layout";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { AddressLabeler } from "@/types/token-flow";
-import type { BuilderSelection, TxDraft } from "@/types/tx-draft";
+import type { BuilderSelection } from "@/types/tx-draft";
 import {
   draftToTokenFlow,
   flowIdToDraftEntity,
@@ -64,6 +64,11 @@ export type BuilderCanvasProps = {
    * clears it on any draft edit.
    */
   built?: DraftBuildOverlay | null;
+  scriptResolutions?: Parameters<
+    typeof draftToTokenFlow
+  >[1]["scriptResolutions"];
+  collateralUtxo?: Parameters<typeof draftToTokenFlow>[1]["collateralUtxo"];
+  riskFindings?: Parameters<typeof draftToTokenFlow>[1]["riskFindings"];
   /** The multisig's address when it is NOT the source (palette "Multisig" button). */
   multisigAddress?: string;
   className?: string;
@@ -71,21 +76,14 @@ export type BuilderCanvasProps = {
 
 /**
  * Position overrides are keyed by draft ENTITY, not React Flow node id, so a
- * dragged placeholder keeps its spot when setting its address renames the
- * node from `draftout:<id>` to `addr:<bech32>` (possibly with a layout
- * `@in`/`@out` instance suffix).
+ * recipient keeps its spot across address edits and duplicate addresses.
  */
-function positionKeyForNode(draft: TxDraft, nodeId: string): string {
+function positionKeyForNode(nodeId: string): string {
   const suffixMatch = /@(in|out)$/.exec(nodeId);
   const baseId = suffixMatch ? nodeId.slice(0, suffixMatch.index) : nodeId;
   if (baseId.startsWith("txd:")) return "tx";
   if (baseId.startsWith("draftout:")) {
     return `out:${baseId.slice("draftout:".length)}`;
-  }
-  if (baseId.startsWith("addr:") && suffixMatch?.[1] !== "in") {
-    const address = baseId.slice("addr:".length);
-    const output = draft.outputs.find((o) => o.address === address);
-    if (output) return `out:${output.id}`;
   }
   // Input-side and change-only nodes: keyed by their full React Flow id.
   return nodeId;
@@ -94,7 +92,15 @@ function positionKeyForNode(draft: TxDraft, nodeId: string): string {
 function sameSelection(a: BuilderSelection, b: BuilderSelection): boolean {
   if (a === null || b === null) return a === b;
   if (a.kind !== b.kind) return false;
-  return a.kind === "tx" || a.outputId === (b as { outputId: string }).outputId;
+  if (a.kind === "tx" && b.kind === "tx") {
+    return (
+      a.inputId === b.inputId &&
+      (a.field === "collateral") === (b.field === "collateral")
+    );
+  }
+  return (
+    a.kind === "output" && b.kind === "output" && a.outputId === b.outputId
+  );
 }
 
 /**
@@ -119,6 +125,9 @@ export default function BuilderCanvas({
   onAddVote,
   addVoteDisabledReason,
   built,
+  scriptResolutions,
+  collateralUtxo,
+  riskFindings,
   multisigAddress,
   className,
 }: BuilderCanvasProps) {
@@ -139,6 +148,9 @@ export default function BuilderCanvas({
         resolveProposalTitle,
         resolvePoolName,
         built,
+        scriptResolutions,
+        collateralUtxo,
+        riskFindings,
       }),
     [
       draft,
@@ -147,6 +159,9 @@ export default function BuilderCanvas({
       resolveProposalTitle,
       resolvePoolName,
       built,
+      scriptResolutions,
+      collateralUtxo,
+      riskFindings,
     ],
   );
   // connectablePorts: empty card sides keep a dot as the drag-to-connect
@@ -166,10 +181,13 @@ export default function BuilderCanvas({
         const highlighted =
           selection !== null &&
           sameSelection(entity, selection) &&
-          (selection.kind !== "tx" || node.data.node.kind === "transaction");
+          (selection.kind !== "tx" ||
+            selection.inputId ||
+            selection.field === "collateral" ||
+            node.data.node.kind === "transaction");
         return {
           ...node,
-          position: positions[positionKeyForNode(draft, node.id)] ?? node.position,
+          position: positions[positionKeyForNode(node.id)] ?? node.position,
           className: highlighted
             ? "rounded-lg ring-2 ring-primary/70"
             : undefined,
@@ -201,7 +219,7 @@ export default function BuilderCanvas({
 
   const onNodeDragStop = useCallback(
     (_event: unknown, node: Node) =>
-      setPosition(positionKeyForNode(draft, node.id), node.position),
+      setPosition(positionKeyForNode(node.id), node.position),
     [draft, setPosition],
   );
 
@@ -248,14 +266,16 @@ export default function BuilderCanvas({
           return;
         }
         const suffixMatch = /@(in|out)$/.exec(target);
-        const baseId = suffixMatch ? target.slice(0, suffixMatch.index) : target;
+        const baseId = suffixMatch
+          ? target.slice(0, suffixMatch.index)
+          : target;
         if (baseId.startsWith("addr:")) {
           addOutput({ address: baseId.slice("addr:".length) });
         }
         return;
       }
       if (isTxNode(target)) {
-        select({ kind: "tx" });
+        select(flowIdToDraftEntity(draft, source));
       }
     },
     [draft, isTxNode, select, addOutput],
@@ -307,7 +327,7 @@ export default function BuilderCanvas({
         zoomOnPinch
         panOnDrag
         proOptions={{ hideAttribution: false }}
-        className="!bg-muted/20 rounded-lg border border-border/50"
+        className="rounded-lg border border-border/50 !bg-muted/20"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <BuilderPalette

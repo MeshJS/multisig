@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { deserializeAddress } from "@meshsdk/core";
 
 import type { AddressLabeler } from "@/types/token-flow";
 import type { Wallet } from "@/types/wallet";
@@ -28,18 +29,16 @@ export default function useAddressLabels(appWallet?: Wallet): {
 
   const labelAddress = useMemo<AddressLabeler>(() => {
     return (address: string) => {
-      if (!appWallet) return { label: "", type: "unknown" };
-
-      if (address === appWallet.address) {
+      if (address === appWallet?.address) {
         return { label: "Self (Multisig)", type: "self" };
       }
 
-      const signerIndex = appWallet.signersAddresses?.findIndex(
+      const signerIndex = appWallet?.signersAddresses?.findIndex(
         (addr) => addr === address,
       );
       if (signerIndex !== undefined && signerIndex >= 0) {
         const signerDescription =
-          appWallet.signersDescriptions?.[signerIndex] ||
+          appWallet?.signersDescriptions?.[signerIndex] ||
           `Signer ${signerIndex + 1}`;
         return { label: signerDescription, type: "signer" };
       }
@@ -47,6 +46,14 @@ export default function useAddressLabels(appWallet?: Wallet): {
       const contactName = contactMap.get(address);
       if (contactName) {
         return { label: contactName, type: "contact" };
+      }
+
+      try {
+        if (deserializeAddress(address).scriptHash) {
+          return { label: "Script address", type: "script" };
+        }
+      } catch {
+        // Incomplete draft addresses keep the ordinary unresolved appearance.
       }
 
       return { label: "", type: "unknown" };

@@ -5,8 +5,18 @@ import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import type { DbWalletWithLegacy } from "@/types/wallet";
 
 import { networkFromAddress, TxReviewError } from "./context";
-import { renderCard, summarizeForWallet, type ReviewDeps } from "./pipeline";
-import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
+import {
+  renderCard,
+  summarizePendingForWallet,
+  type ReviewDeps,
+} from "./pipeline";
+import { buildWallet } from "@/utils/common";
+import { resolveExpectedPaymentScriptCbor } from "@/utils/txScriptRecovery";
+import {
+  REVIEW_CARD_HINT,
+  REVIEW_CARD_INLINE_HINT,
+  summaryToText,
+} from "./summary";
 
 /**
  * `multisig_review_pending_transaction`: the review card for a transaction
@@ -17,10 +27,13 @@ import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summ
  * The wallet row is read afterwards purely for names and the threshold.
  */
 /**
- * What the pending-transaction review needs: no UTxO source, since it builds
- * nothing — the transaction already exists.
+ * It builds nothing, but resolves spending inputs and collateral from live chain
+ * data independently of proposer-supplied JSON and free-UTxO reservations.
  */
-export type PendingReviewDeps = Pick<ReviewDeps, "db" | "renderPng" | "omitCard"> & {
+export type PendingReviewDeps = Pick<
+  ReviewDeps,
+  "db" | "renderPng" | "omitCard" | "riskProvider"
+> & {
   /** `multisig_list_pending_transactions`'s v1 handler, run in-process for the caller. */
   fetchPendingTransactions: (walletId: string) => Promise<V1Result>;
 };
@@ -35,7 +48,9 @@ export async function runPendingTransactionReview(
     if (listed.status >= 400) {
       return listed;
     }
-    const rows = Array.isArray(listed.body) ? (listed.body as PendingRow[]) : [];
+    const rows = Array.isArray(listed.body)
+      ? (listed.body as PendingRow[])
+      : [];
     const row = rows.find((r) => r?.id === input.transactionId);
     if (!row) {
       throw new TxReviewError(
@@ -45,23 +60,39 @@ export async function runPendingTransactionReview(
       );
     }
 
-    const walletRow = await deps.db.wallet.findUnique({ where: { id: input.walletId } });
-    if (!walletRow) throw new TxReviewError(404, "NOT_FOUND", "Wallet not found");
+    const walletRow = await deps.db.wallet.findUnique({
+      where: { id: input.walletId },
+    });
+    if (!walletRow)
+      throw new TxReviewError(404, "NOT_FOUND", "Wallet not found");
 
     const body = safeParse(row.txJson);
     const network = networkFromAddress(ctx.caller.subject);
-    let address: string;
+    let address = "";
+    let scriptCbor = "";
     try {
-      address = resolveWalletScriptAddress(walletRow as DbWalletWithLegacy, ctx.caller.subject);
+      address = resolveWalletScriptAddress(
+        walletRow as DbWalletWithLegacy,
+        ctx.caller.subject,
+      );
+      const appWallet = buildWallet(walletRow as DbWalletWithLegacy, network);
+      scriptCbor =
+        resolveExpectedPaymentScriptCbor(
+          {
+            ...appWallet,
+            address,
+            scriptCbor: walletRow.scriptCbor ?? appWallet.scriptCbor,
+          },
+          network,
+        ) ?? "";
     } catch {
-      address = typeof body?.changeAddress === "string" ? body.changeAddress : "";
+      // Invalid wallet identity remains incomplete; metadata cannot supply trust.
     }
 
-    const txHash = row.txHash ?? (await bodyHashOf(row.txCbor)) ?? "";
-
-    const summary = await summarizeForWallet(
+    const summary = await summarizePendingForWallet(
       deps,
       body,
+      row.txCbor,
       {
         id: walletRow.id,
         name: walletRow.name,
@@ -75,18 +106,22 @@ export async function runPendingTransactionReview(
           type: walletRow.type,
         },
       },
-      undefined,
+      { network, walletNativeScript: { address, cbor: scriptCbor } },
       {
         kind: "pending",
         signedAddresses: row.signedAddresses ?? [],
         rejectedAddresses: row.rejectedAddresses ?? [],
         description: row.description,
-        txHash,
+        txHash: "",
         transactionId: row.id,
-        sizeBytes: typeof row.txCbor === "string" ? Math.ceil(row.txCbor.length / 2) : undefined,
+        sizeBytes:
+          typeof row.txCbor === "string"
+            ? Math.ceil(row.txCbor.length / 2)
+            : undefined,
         warnings: [],
       },
     );
+    const txHash = summary.txHash;
     const image = deps.omitCard ? undefined : await renderCard(deps, summary);
 
     return {
@@ -99,7 +134,7 @@ export async function runPendingTransactionReview(
         createdAt: row.createdAt ?? null,
       },
       text: summaryToText(summary, { card: image ? "image" : "html" }),
-      ...(image ? { images: [image] } : {}),
+      ...(image ? { images: image } : {}),
       audit: { walletId: input.walletId, transactionId: row.id },
     };
   } catch (error) {
@@ -124,15 +159,5 @@ function safeParse(txJson: string): any {
     return JSON.parse(txJson);
   } catch {
     return {};
-  }
-}
-
-async function bodyHashOf(txCbor: unknown): Promise<string | undefined> {
-  if (typeof txCbor !== "string" || !txCbor) return undefined;
-  try {
-    const { resolveTxHash } = await import("@meshsdk/core-cst");
-    return resolveTxHash(txCbor).toLowerCase();
-  } catch {
-    return undefined;
   }
 }

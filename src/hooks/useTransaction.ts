@@ -14,6 +14,11 @@ import {
 import { completeTxWithFreshCostModels } from "@/lib/completeTxWithFreshCostModels";
 import { applyMetadataMessage } from "@/lib/tx-draft/metadata";
 import { getProvider } from "@/utils/get-provider";
+import type { DraftBuildResult } from "@/lib/tx-draft/build-draft-tx";
+import {
+  hasVerifiedPaymentWitness,
+  transactionReadiness,
+} from "@/utils/transactionReadiness";
 import { runPreSignProxyAudit } from "@/utils/preSignProxyAudit";
 
 export default function useTransaction() {
@@ -28,12 +33,20 @@ export default function useTransaction() {
     api.transaction.createTransaction.useMutation({
       onMutate: async (newTransaction) => {
         // Cancel any outgoing refetches
-        await ctx.transaction.getPendingTransactions.cancel({ walletId: newTransaction.walletId });
-        await ctx.transaction.getAllTransactions.cancel({ walletId: newTransaction.walletId });
+        await ctx.transaction.getPendingTransactions.cancel({
+          walletId: newTransaction.walletId,
+        });
+        await ctx.transaction.getAllTransactions.cancel({
+          walletId: newTransaction.walletId,
+        });
 
         // Snapshot the previous value
-        const previousPending = ctx.transaction.getPendingTransactions.getData({ walletId: newTransaction.walletId });
-        const previousAll = ctx.transaction.getAllTransactions.getData({ walletId: newTransaction.walletId });
+        const previousPending = ctx.transaction.getPendingTransactions.getData({
+          walletId: newTransaction.walletId,
+        });
+        const previousAll = ctx.transaction.getAllTransactions.getData({
+          walletId: newTransaction.walletId,
+        });
 
         // Optimistically update pending transactions
         ctx.transaction.getPendingTransactions.setData(
@@ -42,7 +55,9 @@ export default function useTransaction() {
             if (!old) return old;
             // A replace atomically deletes the edited pending tx server-side.
             const withoutReplaced = newTransaction.replaces
-              ? old.filter((tx) => tx.id !== newTransaction.replaces!.transactionId)
+              ? old.filter(
+                  (tx) => tx.id !== newTransaction.replaces!.transactionId,
+                )
               : old;
             const optimisticTx = {
               id: `temp-${Date.now()}`,
@@ -58,7 +73,7 @@ export default function useTransaction() {
               updatedAt: new Date(),
             };
             return [optimisticTx, ...withoutReplaced];
-          }
+          },
         );
 
         return { previousPending, previousAll };
@@ -68,21 +83,25 @@ export default function useTransaction() {
         if (context?.previousPending) {
           ctx.transaction.getPendingTransactions.setData(
             { walletId: newTransaction.walletId },
-            context.previousPending
+            context.previousPending,
           );
         }
         if (context?.previousAll) {
           ctx.transaction.getAllTransactions.setData(
             { walletId: newTransaction.walletId },
-            context.previousAll
+            context.previousAll,
           );
         }
         console.error("createTransaction", err);
       },
       onSuccess: async (data, variables) => {
         // Invalidate to refetch with real data
-        void ctx.transaction.getPendingTransactions.invalidate({ walletId: variables.walletId });
-        void ctx.transaction.getAllTransactions.invalidate({ walletId: variables.walletId });
+        void ctx.transaction.getPendingTransactions.invalidate({
+          walletId: variables.walletId,
+        });
+        void ctx.transaction.getAllTransactions.invalidate({
+          walletId: variables.walletId,
+        });
       },
     });
 
@@ -106,10 +125,30 @@ export default function useTransaction() {
        * live only in a Plutus redeemer, so server-side scans (deadline
        * reminders, email context) can still see what the tx votes on.
        */
-      txJsonExtras?: Record<string, unknown>;
+      txJsonExtras?:
+        | Record<string, unknown>
+        | ((
+            body: MeshTxBuilder["meshTxBuilderBody"],
+          ) => Record<string, unknown>);
+      /** Review the finalized transaction before asking the wallet to sign it. */
+      beforeSign?: (unsignedTx: string) => Promise<boolean>;
+      /** Already evaluated/reviewable bytes; never complete or mutate them again. */
+      completed?: Pick<DraftBuildResult, "unsignedTx" | "body">;
+      isCurrent?: () => boolean;
     }) => {
       if (!appWallet) throw new Error("No wallet");
       if (!userAddress) throw new Error("No user address");
+      const assertCurrent = () => {
+        if (data.isCurrent && !data.isCurrent())
+          throw new Error(
+            "Transaction superseded by a draft or account change. Rebuild and review it again.",
+          );
+      };
+      assertCurrent();
+      if (data.completed && data.metadataValue)
+        throw new Error(
+          "Metadata must be applied before completing and reviewing the transaction.",
+        );
 
       if (data.metadataValue) {
         applyMetadataMessage(
@@ -119,7 +158,15 @@ export default function useTransaction() {
         );
       }
 
-      const unsignedTx = await completeTxWithFreshCostModels(data.txBuilder, network);
+      const unsignedTx =
+        data.completed?.unsignedTx ??
+        (await completeTxWithFreshCostModels(data.txBuilder, network));
+      const body = data.completed?.body ?? data.txBuilder.meshTxBuilderBody;
+      assertCurrent();
+      const extras =
+        typeof data.txJsonExtras === "function"
+          ? data.txJsonExtras(body)
+          : data.txJsonExtras;
 
       if (!activeWallet) {
         throw new Error("No wallet available for signing transaction");
@@ -144,8 +191,19 @@ export default function useTransaction() {
         return;
       }
 
+      // The audit is asynchronous; an account/draft switch while it runs must
+      // not open a signing prompt for bytes whose review has been invalidated.
+      assertCurrent();
+      // Review (including its final chain refresh) follows the asynchronous audit
+      // so no audit delay separates the freshness check from the wallet prompt.
+      if (data.beforeSign && !(await data.beforeSign(unsignedTx))) return false;
+      assertCurrent();
       const signerWitnessPayload = await activeWallet.signTx(unsignedTx, true);
-      const mergeResult = mergeSignerWitnesses(unsignedTx, signerWitnessPayload);
+      assertCurrent();
+      const mergeResult = mergeSignerWitnesses(
+        unsignedTx,
+        signerWitnessPayload,
+      );
       if (mergeResult.invalidVkeyPubKeysHex.length > 0) {
         setLoading(false);
         console.error(
@@ -162,6 +220,11 @@ export default function useTransaction() {
         return;
       }
       let signedTx = filterWitnessesToScripts(mergeResult.txHex);
+      if (!hasVerifiedPaymentWitness(signedTx, userAddress)) {
+        throw new Error(
+          "The wallet did not sign with your authorized payment key. Reconnect the correct account and retry.",
+        );
+      }
 
       const signedAddresses = [];
       signedAddresses.push(userAddress);
@@ -170,7 +233,14 @@ export default function useTransaction() {
 
       //Todo refactor to as util with Signable.
 
-      const submitTx = shouldSubmitMultisigTx(appWallet, signedAddresses.length);
+      const readiness = await transactionReadiness(
+        signedTx,
+        shouldSubmitMultisigTx(appWallet, signedAddresses.length),
+        getProvider(network),
+        network,
+      );
+      const submitTx = readiness.ready;
+      assertCurrent();
 
       if (submitTx) {
         const blockchainProvider = getProvider(network);
@@ -186,11 +256,7 @@ export default function useTransaction() {
 
       await createTransaction({
         walletId: appWallet.id,
-        txJson: JSON.stringify(
-          data.txJsonExtras
-            ? { ...data.txBuilder.meshTxBuilderBody, ...data.txJsonExtras }
-            : data.txBuilder.meshTxBuilderBody,
-        ),
+        txJson: JSON.stringify(extras ? { ...body, ...extras } : body),
         txCbor: signedTx,
         signedAddresses: signedAddresses,
         state: submitTx ? 1 : 0,
@@ -207,7 +273,16 @@ export default function useTransaction() {
         duration: 10000,
       });
     },
-    [appWallet, userAddress, activeWallet, createTransaction, setLoading, toast, network, ctx],
+    [
+      appWallet,
+      userAddress,
+      activeWallet,
+      createTransaction,
+      setLoading,
+      toast,
+      network,
+      ctx,
+    ],
   );
 
   return { newTransaction };

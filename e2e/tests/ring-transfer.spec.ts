@@ -466,22 +466,33 @@ test.describe("ring transfer", () => {
         page.locator(`[data-testid="sign-button-${transactionId}"]`),
       ).toBeVisible();
 
-      // Sign — this will call signTx(), reach the 2-of-3 threshold, submit on-chain,
-      // and set broadcastDone=true which renders the tx-broadcast-success indicator.
-      const updateTransactionResponsePromise = page.waitForResponse(
-        (response) =>
-          response.url().includes("/api/trpc/transaction.updateTransaction") &&
-          response.request().method() === "POST",
-        { timeout: 90_000 },
-      );
+      // A different wallet's script address requires an independent review by
+      // this signer before the wallet is asked to sign.
       await page.click(`[data-testid="sign-button-${transactionId}"]`);
-
-      // Wait for the broadcast success indicator (appears when submitTxWithScriptRecovery succeeds)
-      await page.waitForSelector('[data-testid="tx-broadcast-success"]', {
-        timeout: 90_000,
+      const reviewDialog = page.getByTestId("pending-risk-dialog");
+      await expect(reviewDialog).toBeVisible({ timeout: 90_000 });
+      await expect(reviewDialog).toContainText(dstWallet.walletAddress);
+      // These are multisig payments, not anyone-can-spend outputs.
+      await expect(reviewDialog.getByRole("checkbox")).toHaveCount(0);
+      const continueSigning = reviewDialog.getByRole("button", {
+        name: "Continue to signing",
       });
+      await expect(continueSigning).toBeEnabled();
 
-      const updateTransactionResponse = await updateTransactionResponsePromise;
+      // Register the response wait before continuing, and await both together
+      // so a timeout cannot leave an unhandled response-wait rejection.
+      const [updateTransactionResponse] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.url().includes("/api/trpc/transaction.updateTransaction") &&
+            response.request().method() === "POST",
+          { timeout: 90_000 },
+        ),
+        continueSigning.click(),
+        page.waitForSelector('[data-testid="tx-broadcast-success"]', {
+          timeout: 90_000,
+        }),
+      ]);
       expect(
         updateTransactionResponse.ok(),
         `updateTransaction failed ${updateTransactionResponse.status()}: ${await updateTransactionResponse.text().catch(() => "")}`,

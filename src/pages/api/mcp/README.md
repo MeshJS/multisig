@@ -15,34 +15,34 @@ and no resumability, so `GET` and `DELETE` (the 2025-era session verbs) answer `
 
 `createMcpHandler` builds a fresh `McpServer` and a fresh single-use transport from the
 factory on **every request**. Nothing may be hoisted to module scope: a reused transport
-throws on the *second* request while the first still looks healthy — which is why
+throws on the _second_ request while the first still looks healthy — which is why
 `src/__tests__/mcpRoute.test.ts` asserts two sequential POSTs explicitly.
 
 ## Tool surface
 
-| Tool | Scope | Wraps |
-|---|---|---|
-| `multisig_whoami` | `wallets:read` | — (request context) |
-| `multisig_list_wallets` | `wallets:read` | `walletIds.ts` |
-| `multisig_list_pending_transactions` | `wallets:read` | `pendingTransactions.ts` |
-| `multisig_list_free_utxos` | `wallets:read` | `freeUtxos.ts` |
-| `multisig_list_proxies` | `wallets:read` | `proxies.ts` |
-| `multisig_proxy_drep_info` | `wallets:read` | `proxyDRepInfo.ts` |
-| `multisig_lookup_wallet` | `wallets:read` | `lookupMultisigWallet.ts` (plus `resolveScript.ts` when called with `scriptHash` / `address`) |
-| `governance_list_active_proposals` | `governance:read` | `governanceActiveProposals.ts` |
-| `governance_list_ballots` | `governance:read` | `botBallots.ts` |
-| `governance_vote_history` | `governance:read` | `drepInfo.ts` → `governance/drepVotes.ts` |
-| `governance_open_proposals` | `governance:read` | `governanceActiveProposals.ts` × vote history |
-| `ballot_upsert` | `ballots:write` | `botBallotsUpsert.ts` |
-| `ballot_publish_rationale` | `ballots:write` | `ballotRationaleAnchor.ts` |
-| `document_list` | `documents:read` | `documents.ts` |
-| `document_get` | `documents:read` | `documentDetail.ts` |
-| `transaction_preview` | `transactions:write` | `src/lib/tx-review/preview.ts` (uses `freeUtxos.ts` for inputs) |
-| `transaction_propose` | `transactions:write` | `src/lib/tx-review/propose.ts` (uses `freeUtxos.ts` for inputs) |
-| `multisig_review_pending_transaction` | `wallets:read` | `pendingTransactions.ts` → `src/lib/tx-review/review.ts` |
-| `task_list` | `wallets:read` | `tasks.ts` |
-| `task_upsert` | `tasks:write` | `taskUpsert.ts` |
-| `task_prepare_payout` | `transactions:write` | `src/lib/task-payout/preview.ts` → `src/lib/tx-review/preview.ts` (`runSpecPreview`) |
+| Tool                                  | Scope                | Wraps                                                                                         |
+| ------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------- |
+| `multisig_whoami`                     | `wallets:read`       | — (request context)                                                                           |
+| `multisig_list_wallets`               | `wallets:read`       | `walletIds.ts`                                                                                |
+| `multisig_list_pending_transactions`  | `wallets:read`       | `pendingTransactions.ts`                                                                      |
+| `multisig_list_free_utxos`            | `wallets:read`       | `freeUtxos.ts`                                                                                |
+| `multisig_list_proxies`               | `wallets:read`       | `proxies.ts`                                                                                  |
+| `multisig_proxy_drep_info`            | `wallets:read`       | `proxyDRepInfo.ts`                                                                            |
+| `multisig_lookup_wallet`              | `wallets:read`       | `lookupMultisigWallet.ts` (plus `resolveScript.ts` when called with `scriptHash` / `address`) |
+| `governance_list_active_proposals`    | `governance:read`    | `governanceActiveProposals.ts`                                                                |
+| `governance_list_ballots`             | `governance:read`    | `botBallots.ts`                                                                               |
+| `governance_vote_history`             | `governance:read`    | `drepInfo.ts` → `governance/drepVotes.ts`                                                     |
+| `governance_open_proposals`           | `governance:read`    | `governanceActiveProposals.ts` × vote history                                                 |
+| `ballot_upsert`                       | `ballots:write`      | `botBallotsUpsert.ts`                                                                         |
+| `ballot_publish_rationale`            | `ballots:write`      | `ballotRationaleAnchor.ts`                                                                    |
+| `document_list`                       | `documents:read`     | `documents.ts`                                                                                |
+| `document_get`                        | `documents:read`     | `documentDetail.ts`                                                                           |
+| `transaction_preview`                 | `transactions:write` | `src/lib/tx-review/preview.ts` (uses `freeUtxos.ts` for inputs)                               |
+| `transaction_propose`                 | `transactions:write` | `src/lib/tx-review/propose.ts` (uses `freeUtxos.ts` for inputs)                               |
+| `multisig_review_pending_transaction` | `wallets:read`       | `pendingTransactions.ts` → `src/lib/tx-review/review.ts`                                      |
+| `task_list`                           | `wallets:read`       | `tasks.ts`                                                                                    |
+| `task_upsert`                         | `tasks:write`        | `taskUpsert.ts`                                                                               |
+| `task_prepare_payout`                 | `transactions:write` | `src/lib/task-payout/preview.ts` → `src/lib/tx-review/preview.ts` (`runSpecPreview`)          |
 
 **Nothing here can sign, spend or broadcast.** That is a deliberate boundary. Tool results
 carry user-authored strings — wallet names, transaction descriptions, ballot rationales —
@@ -79,7 +79,7 @@ sign in the app. The design is built around the human seeing exactly what gets c
    DRep cannot vote, so the draft is a 400 whose message says so and tells the user to
    register in the app first. Both probes are repeated at propose time.
 2. The agent shows the card and asks the user to confirm.
-3. **`transaction_propose`** accepts *only* the draft token. It rebuilds from the spec
+3. **`transaction_propose`** accepts _only_ the draft token. It rebuilds from the spec
    inside the token, creates the pending transaction with `signedAddresses: []`, notifies
    every signer (the proposer included — they have not signed), and returns the final
    card, delivered the way the preview was: the token records whether the preview
@@ -90,7 +90,7 @@ sign in the app. The design is built around the human seeing exactly what gets c
 
 The draft token is a JWT (`typ: "mcp_draft"`, 15 minutes) signed with `JWT_SECRET`,
 bound to the acting address, the OAuth client, the wallet, the normalized spec in base
-units, the previewed tx hash and the card mode (`src/lib/tx-review/draft-token.ts`). It verifies as
+units, the previewed tx hash, script-risk fingerprint and card mode (`src/lib/tx-review/draft-token.ts`). It verifies as
 neither an access token nor a v1 bearer. Replaying a token returns the transaction the
 first call created (the draft id is stored under a top-level `mcp` key in `txJson`), so a
 retried confirmation never spends the same UTxOs twice.
@@ -115,6 +115,35 @@ Properties worth not regressing:
 
 `multisig_review_pending_transaction` renders the same card for any pending transaction,
 however it was created — the in-chat review for transactions proposed from the app.
+
+Script-risk review uses completed CBOR for preview/propose and stored CBOR plus
+fresh chain facts for pending review and proposal replay. The summary's additive
+`riskAssessment` field carries the shared findings; `warnings` includes every
+affected output, full address, exact token unit/quantity and collateral exposure.
+JSON labels or change-address claims cannot hide an output or change its amounts.
+Unknown script rules remain usable. Missing mandatory facts produce an explicit
+incomplete pending review and prevent a new preview token/proposal.
+
+The shared assessment also exposes `riskAssessment.contractDetails` for pending
+CBOR: output datum kinds/values/hashes, ledger-associated Plutus spends, script
+identity, exact datum/redeemer data and recorded budgets. Decoded JSON is text to
+preserve large integers. These are read-only details, not fresh evaluation or
+expanded headless creation support. The app's pending card/signing dialog presents
+these details; the MCP text/HTML/PNG warning projection remains the script-risk
+summary. Missing mandatory contract facts also make pending review incomplete.
+
+The token's risk fingerprint permits ordinary native input reselection and verified
+wallet change, but changed payment outputs, other script outputs, input risks,
+collateral or wallet/network context require a fresh preview (`REVIEW_CHANGED`).
+Tokens minted before risk binding also require a new preview. Confirmation only
+creates an unsigned pending transaction; it never acknowledges risk for a wallet
+signer. Each signer reviews and acknowledges known anyone-can-spend outputs in the
+app before signing. No headless Plutus spending or signing capability is added.
+
+See the [script-risk review guide](../../../../docs/transaction-script-risk-review.md)
+for user-facing behavior and the [phase 6 release record](../../../../docs/transaction-script-risk-release.md)
+for regression evidence, the confirmed five-case preprod matrix and the
+maintainer's removal of human accessibility/deployment completion gates.
 
 ### Task payouts
 
@@ -192,7 +221,9 @@ card. In the default `card: "html"` mode there is no image block and the view **
 the card itself** from `structuredContent.summary` (`cardMarkup()`: the same sections
 and strings as the PNG's `card.ts`), so it reflows to whatever width the host gives it
 and takes the host's theme — no raster to fit, hence none of the sizing trouble below.
-With `card: "image"` it shows the PNG from the image block instead. For a preview it
+With `card: "image"`, assessed transactions still use the selectable structured view;
+PNG summary and warning-detail pages are also attached for clients that display images.
+Legacy results without an assessment show the PNG instead. For a preview it
 offers a **Confirm** button: the click sends `tools/call transaction_propose
 { draftToken }` through the host — so the human confirms on the card itself, under the
 same token binding as a typed confirmation — then shows the final card, an "Open in the
@@ -241,6 +272,9 @@ The PNG (`card: "image"` only) is rasterized with the `ImageResponse` that ships
 Next (`next/og`) in the Node runtime: no new dependency, no system fonts. `next.config.js` adds its WASM and
 font files to the `/api/mcp` output file trace, because they are loaded through
 `import.meta.url` and tracing cannot see them.
+Warnings are rendered on additional bounded pages with the transaction hash and page
+number. All pages are returned; the summary image and text instruct the user to read
+them. This preserves full addresses and token quantities without clipping long reviews.
 
 ## How tools reach the API
 
@@ -274,7 +308,7 @@ scope. Clients request exactly the challenge's `scope` — Claude Code uses it r
 in practice, however well documented. Withholding a scope is the user's decision on the
 consent screen, where each one is a separate checkbox.
 
-These are intentionally *not* the `BOT_SCOPES` strings from `src/lib/auth/botKey.ts`.
+These are intentionally _not_ the `BOT_SCOPES` strings from `src/lib/auth/botKey.ts`.
 When a bot key authenticates, `mcpScopesForBot` projects one onto the other so a bot never
 gains MCP reach it lacks over REST — notably, `multisig:sign` maps to nothing.
 
@@ -323,28 +357,28 @@ claude mcp add --transport http mesh-multisig https://multisig.meshjs.dev/api/mc
 
 ## Layout
 
-| File | Role |
-|---|---|
-| `src/pages/api/mcp/index.ts` | The route: guards, auth, bridge, handler |
-| `src/lib/mcp/bridge.ts` | Node `req`/`res` ↔ web `Request`/`Response` |
-| `src/lib/mcp/server.ts` | Per-request `McpServer` factory, result mapping (text + image blocks), audit |
-| `src/lib/mcp/tools.ts` | Tool registry — the source of truth for the surface |
-| `src/lib/mcp/schemas.ts` | Hand-written JSON Schemas for tool inputs |
-| `src/lib/mcp/invokeV1.ts` | In-process v1 handler invocation |
-| `src/lib/mcp/auth.ts` | Caller resolution + internal token minting |
-| `src/lib/mcp/scopes.ts` | Scope vocabulary |
-| `src/lib/tx-review/spec.ts` | Tool input → canonical spec (base units) → `TxDraft` |
-| `src/lib/tx-review/context.ts` | Wallet, script, DRep and staking context, signer authorization |
-| `src/lib/tx-review/pipeline.ts` | UTxOs → validate → build → summarize → card, shared by preview and propose |
-| `src/lib/tx-review/summary.ts` | The one summary model behind text, JSON and PNG |
-| `src/lib/tx-review/card.ts`, `render-png.ts` | Card layout tree and `next/og` rasterization |
-| `src/lib/tx-review/draft-token.ts` | The preview → confirm binding |
-| `src/lib/tx-review/preview.ts`, `propose.ts`, `review.ts` | The three tool bodies |
-| `src/lib/mcp/apps/review-card.ts` | The inline review-card view (MCP App resource + bridge) |
-| `src/lib/task-payout/spec.ts`, `load.ts` | Task rows → canonical payout spec; recipients hash |
-| `src/lib/task-payout/preview.ts`, `hooks.ts` | `task_prepare_payout` body; the task link hooks `transaction_propose` and the app share |
-| `src/lib/task-payout/recipients.ts`, `serialize.ts` | Display-unit recipients → base-unit rows; the task shape and tRPC→HTTP error map the `tasks.ts` / `taskUpsert.ts` v1 handlers share |
-| `src/lib/task-payout/deps.ts`, `sync.ts` | Pipeline deps from a tRPC session; Paid/Cancelled link sync |
+| File                                                      | Role                                                                                                                                |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pages/api/mcp/index.ts`                              | The route: guards, auth, bridge, handler                                                                                            |
+| `src/lib/mcp/bridge.ts`                                   | Node `req`/`res` ↔ web `Request`/`Response`                                                                                         |
+| `src/lib/mcp/server.ts`                                   | Per-request `McpServer` factory, result mapping (text + image blocks), audit                                                        |
+| `src/lib/mcp/tools.ts`                                    | Tool registry — the source of truth for the surface                                                                                 |
+| `src/lib/mcp/schemas.ts`                                  | Hand-written JSON Schemas for tool inputs                                                                                           |
+| `src/lib/mcp/invokeV1.ts`                                 | In-process v1 handler invocation                                                                                                    |
+| `src/lib/mcp/auth.ts`                                     | Caller resolution + internal token minting                                                                                          |
+| `src/lib/mcp/scopes.ts`                                   | Scope vocabulary                                                                                                                    |
+| `src/lib/tx-review/spec.ts`                               | Tool input → canonical spec (base units) → `TxDraft`                                                                                |
+| `src/lib/tx-review/context.ts`                            | Wallet, script, DRep and staking context, signer authorization                                                                      |
+| `src/lib/tx-review/pipeline.ts`                           | UTxOs → validate → build → summarize → card, shared by preview and propose                                                          |
+| `src/lib/tx-review/summary.ts`                            | The one summary model behind text, JSON and PNG                                                                                     |
+| `src/lib/tx-review/card.ts`, `render-png.ts`              | Card layout tree and `next/og` rasterization                                                                                        |
+| `src/lib/tx-review/draft-token.ts`                        | The preview → confirm binding                                                                                                       |
+| `src/lib/tx-review/preview.ts`, `propose.ts`, `review.ts` | The three tool bodies                                                                                                               |
+| `src/lib/mcp/apps/review-card.ts`                         | The inline review-card view (MCP App resource + bridge)                                                                             |
+| `src/lib/task-payout/spec.ts`, `load.ts`                  | Task rows → canonical payout spec; recipients hash                                                                                  |
+| `src/lib/task-payout/preview.ts`, `hooks.ts`              | `task_prepare_payout` body; the task link hooks `transaction_propose` and the app share                                             |
+| `src/lib/task-payout/recipients.ts`, `serialize.ts`       | Display-unit recipients → base-unit rows; the task shape and tRPC→HTTP error map the `tasks.ts` / `taskUpsert.ts` v1 handlers share |
+| `src/lib/task-payout/deps.ts`, `sync.ts`                  | Pipeline deps from a tRPC session; Paid/Cancelled link sync                                                                         |
 
 Tool inputs are hand-written JSON Schema rather than generated from
 `src/utils/swagger.ts`: that file is a hand-maintained literal with `apis: []` that has

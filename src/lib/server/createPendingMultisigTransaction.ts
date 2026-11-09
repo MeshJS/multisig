@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, Transaction } from "@prisma/client";
 import { getProvider } from "@/utils/get-provider";
+import { transactionReadiness } from "@/utils/transactionReadiness";
 import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 
 export type WalletSubmitShape = {
@@ -73,7 +74,8 @@ export async function createPendingMultisigTransaction(
   const requiredSigners = getRequiredSignerCount(wallet);
   if ((reqSigners === 1 || wtype === "any") && initialSignedAddresses.length >= requiredSigners) {
     const blockchainProvider = getProvider(network);
-    return await blockchainProvider.submitTx(txCbor);
+    if ((await transactionReadiness(txCbor, true, blockchainProvider, network)).ready)
+      return await blockchainProvider.submitTx(txCbor);
   }
 
   const data = {

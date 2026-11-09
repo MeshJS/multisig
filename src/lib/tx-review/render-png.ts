@@ -1,4 +1,4 @@
-import { reviewCardTree } from "./card";
+import { reviewCardTree, type WarningPage } from "./card";
 import type { TxReviewSummary } from "./summary";
 
 /**
@@ -14,8 +14,11 @@ import type { TxReviewSummary } from "./summary";
  * rendering test lives in the ESM project for that reason, and every other
  * test mocks this module.
  */
-export async function renderReviewPng(summary: TxReviewSummary): Promise<Buffer> {
-  const { element, width, height } = reviewCardTree(summary);
+export async function renderReviewPng(
+  summary: TxReviewSummary,
+  warningPage?: WarningPage,
+): Promise<Buffer> {
+  const { element, width, height } = reviewCardTree(summary, warningPage);
   const { ImageResponse } = await import("next/og");
   // satori accepts a plain {type, props} tree; the React element type is only
   // nominal here.

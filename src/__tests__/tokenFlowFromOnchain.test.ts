@@ -64,6 +64,68 @@ function edge(flow: TokenFlow, kind: string): FlowEdge | undefined {
 }
 
 describe("onChainTxToTokenFlow", () => {
+  test("failed scripts show only collateral loss and return, never uneffected actions", () => {
+    const flow = onChainTxToTokenFlow(
+      {
+        info: baseInfo({
+          valid_contract: false,
+          redeemer_count: 1,
+          deposit: "2000000",
+          asset_mint_or_burn_count: 1,
+        }),
+        utxos: {
+          hash: "abc123",
+          inputs: [
+            input(OTHER, [{ unit: "lovelace", quantity: "9000000" }]),
+            input(SELF, [{ unit: "lovelace", quantity: "3000000" }], {
+              collateral: true,
+            }),
+          ],
+          outputs: [
+            output(OTHER, [{ unit: "lovelace", quantity: "7000000" }]),
+            output(SELF, [{ unit: "lovelace", quantity: "2000000" }], true),
+          ],
+        },
+        withdrawals: [{ address: STAKE, amount: "1000000" }],
+        stakes: [{ cert_index: 0, address: STAKE, registration: true }],
+      },
+      { labelAddress },
+    );
+    expect(flow.edges.map((e) => e.kind)).toEqual(["input", "output", "fee"]);
+    expect(edge(flow, "input")!.label).toBe("Collateral consumed");
+    expect(edge(flow, "output")!.label).toBe("Collateral return");
+    expect(edge(flow, "fee")!.assets).toEqual([
+      { unit: "lovelace", quantity: "1000000" },
+    ]);
+    expect(flow.nodes.find((n) => n.kind === "transaction")).toMatchObject({
+      badges: [{ kind: "script", label: "Script failed" }],
+      deposit: undefined,
+    });
+    expect(flow.nodes.filter((n) => n.kind === "protocol")).toHaveLength(1);
+  });
+
+  test("inline datum outputs at the same address remain distinct", () => {
+    const flow = onChainTxToTokenFlow(
+      {
+        info: baseInfo(),
+        utxos: {
+          hash: "abc123",
+          inputs: [],
+          outputs: [0, 1].map((index) => ({
+            ...output(OTHER, [{ unit: "lovelace", quantity: "2000000" }]),
+            output_index: index,
+            inline_datum: "01",
+          })),
+        },
+      },
+      { labelAddress },
+    );
+    expect(flow.edges.filter((e) => e.kind === "output")).toHaveLength(2);
+    expect(
+      flow.nodes.filter((n) => n.kind === "address" && n.inlineDatum),
+    ).toHaveLength(2);
+  });
+
   test("simple payment: input, outputs, fee edges", () => {
     const data: TxFlowData = {
       info: baseInfo(),
@@ -97,7 +159,10 @@ describe("onChainTxToTokenFlow", () => {
       assets: [{ unit: "lovelace", quantity: "200000" }],
     });
     const selfNode = flow.nodes.find((n) => n.id === `addr:${SELF}`);
-    expect(selfNode).toMatchObject({ label: "Self (Multisig)", partyType: "self" });
+    expect(selfNode).toMatchObject({
+      label: "Self (Multisig)",
+      partyType: "self",
+    });
   });
 
   test("emits one edge per input UTxO from the same address", () => {
@@ -168,10 +233,17 @@ describe("onChainTxToTokenFlow", () => {
     };
     const flow = onChainTxToTokenFlow(data, { labelAddress });
     const inputEdge = edge(flow, "input");
-    expect(inputEdge!.assets).toEqual([{ unit: "lovelace", quantity: "5000000" }]);
+    expect(inputEdge!.assets).toEqual([
+      { unit: "lovelace", quantity: "5000000" },
+    ]);
     const outputEdges = flow.edges.filter((e) => e.kind === "output");
     expect(outputEdges).toHaveLength(1);
     expect(outputEdges[0]!.target).toBe(`addr:${OTHER}`);
+    expect(edge(flow, "collateral")!.label).toBe("Collateral kept");
+    expect(edge(flow, "reference")).toMatchObject({
+      label: "Read only",
+      assets: [],
+    });
   });
 
   test("withdrawal edge from stake address", () => {
@@ -263,13 +335,18 @@ describe("onChainTxToTokenFlow", () => {
       {
         info: baseInfo({ delegation_count: 1 }),
         utxos: { hash: "abc123", inputs: [], outputs: [] },
-        delegations: [{ index: 0, cert_index: 0, address: STAKE, pool_id: "pool1xyz" }],
+        delegations: [
+          { index: 0, cert_index: 0, address: STAKE, pool_id: "pool1xyz" },
+        ],
       },
       { labelAddress },
     );
     const txNode = flow.nodes.find((n) => n.kind === "transaction") as any;
     expect(txNode.badges).toEqual([
-      expect.objectContaining({ kind: "certificate", label: "Stake Delegation" }),
+      expect.objectContaining({
+        kind: "certificate",
+        label: "Stake Delegation",
+      }),
     ]);
   });
 

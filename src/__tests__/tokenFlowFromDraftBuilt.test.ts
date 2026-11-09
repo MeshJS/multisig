@@ -42,7 +42,9 @@ function sendDraft(): TxDraft {
 }
 
 /** Body shape `complete()` leaves: resolved inputs, fee, trailing change. */
-function builtBody(overrides: Partial<DraftBuildOverlay> = {}): DraftBuildOverlay {
+function builtBody(
+  overrides: Partial<DraftBuildOverlay> = {},
+): DraftBuildOverlay {
   return {
     inputs: [
       {
@@ -159,8 +161,10 @@ describe("draftToTokenFlow with a built overlay", () => {
       ],
     });
     // The payment edge is still the draft's own, discriminated by output id.
-    expect(outputEdges(flow).find((e) => e.id.endsWith(":output:out-1"))).toMatchObject({
-      target: `addr:${OTHER}`,
+    expect(
+      outputEdges(flow).find((e) => e.id.endsWith(":output:out-1")),
+    ).toMatchObject({
+      target: "draftout:out-1",
       assets: lovelace("2000000"),
     });
   });
@@ -193,7 +197,9 @@ describe("draftToTokenFlow with a built overlay", () => {
       }),
     });
 
-    expect(outputEdges(flow).find((e) => e.id.endsWith(":output:out-self"))).toMatchObject({
+    expect(
+      outputEdges(flow).find((e) => e.id.endsWith(":output:out-self")),
+    ).toMatchObject({
       assets: lovelace("3000000"),
     });
     expect(outputEdges(flow).find((e) => e.note === "change")).toMatchObject({
@@ -206,12 +212,18 @@ describe("draftToTokenFlow with a built overlay", () => {
     const plain = draftToTokenFlow(draft, OPTS);
     const built = draftToTokenFlow(draft, { ...OPTS, built: builtBody() });
 
-    const plainOutputIds = outputEdges(plain).map((e) => e.id).sort();
-    const builtOutputIds = outputEdges(built).map((e) => e.id).sort();
+    const plainOutputIds = outputEdges(plain)
+      .map((e) => e.id)
+      .sort();
+    const builtOutputIds = outputEdges(built)
+      .map((e) => e.id)
+      .sort();
     expect(builtOutputIds).toEqual(plainOutputIds);
     expect(built.nodes.find((n) => n.id === "txd:d1")).toBeDefined();
 
-    expect(flowIdToDraftEntity(draft, `txd:d1->addr:${OTHER}:output:out-1`)).toEqual({
+    expect(
+      flowIdToDraftEntity(draft, `txd:d1->addr:${OTHER}:output:out-1`),
+    ).toEqual({
       kind: "output",
       outputId: "out-1",
     });
@@ -228,10 +240,9 @@ describe("draftToTokenFlow with a built overlay", () => {
         built: builtBody({ fee }),
       });
       expect(flow.edges.find((e) => e.kind === "fee")).toBeUndefined();
-      expect(flow.nodes.find((n) => n.kind === "transaction")).not.toHaveProperty(
-        "fee",
-        expect.anything(),
-      );
+      expect(
+        flow.nodes.find((n) => n.kind === "transaction"),
+      ).not.toHaveProperty("fee", expect.anything());
     }
   });
 
@@ -270,28 +281,46 @@ describe("splitTrailingChange", () => {
 
   test("no change address or no trailing match means no change", () => {
     const outputs = [out(SELF), out(OTHER)];
-    expect(splitTrailingChange(outputs, "")).toEqual({ payments: outputs, change: [] });
-    expect(splitTrailingChange(outputs, SELF)).toEqual({ payments: outputs, change: [] });
+    expect(splitTrailingChange(outputs, "")).toEqual({
+      payments: outputs,
+      change: [],
+    });
+    expect(splitTrailingChange(outputs, SELF)).toEqual({
+      payments: outputs,
+      change: [],
+    });
     expect(splitTrailingChange([], SELF)).toEqual({ payments: [], change: [] });
   });
 
   test("a single self output is a payment only when the payment count is unknown", () => {
     const outputs = [out(SELF)];
-    expect(splitTrailingChange(outputs, SELF)).toEqual({ payments: outputs, change: [] });
+    expect(splitTrailingChange(outputs, SELF)).toEqual({
+      payments: outputs,
+      change: [],
+    });
     // Certificate-only transaction: zero intended payments, one change output.
-    expect(splitTrailingChange(outputs, SELF, 0)).toEqual({ payments: [], change: outputs });
+    expect(splitTrailingChange(outputs, SELF, 0)).toEqual({
+      payments: [],
+      change: outputs,
+    });
   });
 
   test("the payment count is the floor for the trailing scan", () => {
     const allSelf = [out(SELF), out(SELF)];
-    expect(splitTrailingChange(allSelf, SELF, 0)).toEqual({ payments: [], change: allSelf });
+    expect(splitTrailingChange(allSelf, SELF, 0)).toEqual({
+      payments: [],
+      change: allSelf,
+    });
     // An explicit self-payment ahead of change stays a payment.
     expect(splitTrailingChange(allSelf, SELF, 1)).toEqual({
       payments: [allSelf[0]],
       change: [allSelf[1]],
     });
     const mixed = [out(OTHER), out(SELF)];
-    expect(splitTrailingChange(mixed, SELF, 2)).toEqual({ payments: mixed, change: [] });
+    expect(splitTrailingChange(mixed, SELF, 2)).toEqual({
+      payments: mixed,
+      change: [],
+    });
     expect(splitTrailingChange(mixed, SELF, 0)).toEqual({
       payments: [mixed[0]],
       change: [mixed[1]],

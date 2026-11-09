@@ -6,6 +6,10 @@ import { getProvider } from "@/utils/get-provider";
 import StakingInfoCard, { StakingInfo } from "./stakingInfoCard";
 import PoolSelector from "./poolSelector";
 import useAppWallet from "@/hooks/useAppWallet";
+import { AUTO_ABSTAIN_DREP } from "@/lib/tx-draft/drep";
+import { NO_CONFIDENCE_DREP, isValidStakingDRep } from "@/utils/stakingCertificates";
+
+type DRepMode = "abstain" | "noConfidence" | "custom";
 
 export default function PageStaking() {
   const { multisigWallet } = useMultisigWallet();
@@ -18,6 +22,19 @@ export default function PageStaking() {
 
   const [stakingInfo, setStakingInfo] = useState<StakingInfo | null>(null);
   const [selectedPoolHex, setSelectedPoolHex] = useState<string | null>(null);
+
+  const [dRepMode, setDRepMode] = useState<DRepMode>("abstain");
+  const [customDRep, setCustomDRep] = useState("");
+
+  // Staking always pairs the pool with a DRep; undefined keeps the actions disabled.
+  const dRep: string | undefined =
+    dRepMode === "abstain"
+      ? AUTO_ABSTAIN_DREP
+      : dRepMode === "noConfidence"
+        ? NO_CONFIDENCE_DREP
+        : isValidStakingDRep(customDRep.trim())
+          ? customDRep.trim()
+          : undefined;
 
   const address = multisigWallet?.getStakeAddress();
 
@@ -32,6 +49,7 @@ export default function PageStaking() {
           balance: data.controlled_amount,
           rewards: data.rewards_sum,
           withdrawals: data.withdrawals_sum,
+          dRepId: data.drep_id ?? null,
         });
       })
       .catch((err) => {
@@ -74,10 +92,38 @@ export default function PageStaking() {
           </p>
         </div>
       )}
+      {!stakingInfo.dRepId && (
+      <div className="mt-4 p-4">
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Governance vote delegation (DRep) — required when staking:
+        </label>
+        <select
+          value={dRepMode}
+          onChange={(e) => setDRepMode(e.target.value as DRepMode)}
+          className="w-full rounded border px-3 py-2 text-sm"
+        >
+          <option value="abstain">Auto-Abstain</option>
+          <option value="noConfidence">No-Confidence</option>
+          <option value="custom">Choose a DRep (drep1...)</option>
+        </select>
+        {dRepMode === "custom" && (
+          <input
+            type="text"
+            value={customDRep}
+            onChange={(e) => setCustomDRep(e.target.value)}
+            placeholder="drep1..."
+            className="mt-2 w-full rounded border px-3 py-2 text-sm"
+          />
+        )}
+        {dRepMode === "custom" && !dRep && customDRep && (
+          <p className="mt-1 text-xs text-red-600">Not a valid DRep id.</p>
+        )}
+      </div>
+      )}
       <br/>
       {stakingInfo && appWallet && multisigWallet && selectedPoolHex && (
         <div className="mt-4 p-4">
-          <StakingActionCard stakingInfo={stakingInfo} appWallet={appWallet} mWallet={multisigWallet} network={network} poolHex={selectedPoolHex}/>
+          <StakingActionCard stakingInfo={stakingInfo} appWallet={appWallet} mWallet={multisigWallet} network={network} poolHex={selectedPoolHex} dRep={dRep}/>
         </div>
       )}
       <br/>

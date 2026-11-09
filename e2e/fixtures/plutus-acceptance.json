@@ -1,0 +1,57 @@
+{
+  "warning": "Anyone can spend these test validators. Disposable preprod ADA only.",
+  "languageContract": "https://plutus.cardano.intersectmbo.org/docs/working-with-scripts/ledger-language-version",
+  "validators": [
+    {
+      "version": "V1",
+      "source": "(program 1.0.0 (lam a (lam b (lam c (con unit ())))))",
+      "code": "4746010000222499",
+      "provenance": "Repository-authored UPLC; three arguments, returns unit; compiled with locked @harmoniclabs/uplc.",
+      "hash": "fc61e623d413aa67dc9367e8e48f5ab7f38093e871af6d9dd27b717e",
+      "address": "addr_test1wr7xre3r6sf65e7ujdn73ey0t2ml8qynapc67mva6fahzls0x2pp9"
+    },
+    {
+      "version": "V2",
+      "code": "49480100002221200101",
+      "source": "Published Hydra always-true V2 fixture",
+      "provenance": "https://hydra.family/head-protocol/unstable/docs/how-to/commit-script-utxo",
+      "hash": "3a888d65f16790950a72daee1f63aa05add6d268434107cfa5b67712",
+      "address": "addr_test1wqag3rt979nep9g2wtdwu8mr4gz6m4kjdpp5zp705km8wys6t2kla"
+    },
+    {
+      "version": "V3",
+      "source": "(program 1.1.0 (lam a (con unit ())))",
+      "code": "46450101002499",
+      "provenance": "Repository-authored UPLC; one context argument, returns unit; compiled with locked @harmoniclabs/uplc.",
+      "hash": "186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4",
+      "address": "addr_test1wqvxuvh64q9zdqgrjt76d42eclk5wgdxtnsun4808cwg0dqxy2mj0"
+    }
+  ],
+  "cases": [
+    {
+      "id": "v1-supplied",
+      "version": "V1",
+      "datumSource": "supplied"
+    },
+    {
+      "id": "v2-inline",
+      "version": "V2",
+      "datumSource": "inline"
+    },
+    {
+      "id": "v2-supplied",
+      "version": "V2",
+      "datumSource": "supplied"
+    },
+    {
+      "id": "v3-inline",
+      "version": "V3",
+      "datumSource": "inline"
+    },
+    {
+      "id": "v3-supplied",
+      "version": "V3",
+      "datumSource": "supplied"
+    }
+  ]
+}

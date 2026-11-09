@@ -10,7 +10,11 @@ import { withVoteAnchor } from "@/lib/tx-draft/mutations";
 import type { TxDraft } from "@/types/tx-draft";
 
 import { loadReviewWalletContext, TxReviewError } from "./context";
-import { describeDraftTokenFailure, verifyDraftToken, type VerifiedDraftToken } from "./draft-token";
+import {
+  describeDraftTokenFailure,
+  verifyDraftToken,
+  type VerifiedDraftToken,
+} from "./draft-token";
 import {
   buildUnsigned,
   ensureStakeRegistration,
@@ -22,12 +26,18 @@ import {
   renderCard,
   STAKE_REGISTRATION_ADDED_WARNING,
   summarizeForWallet,
+  summarizePendingForWallet,
   validateOrThrow,
   walletSummaryShape,
   type ReviewDeps,
 } from "./pipeline";
 import { specToDraft, type TxSpec } from "./spec";
-import { REVIEW_CARD_HINT, REVIEW_CARD_INLINE_HINT, summaryToText } from "./summary";
+import {
+  REVIEW_CARD_HINT,
+  REVIEW_CARD_INLINE_HINT,
+  summaryToText,
+} from "./summary";
+import { requireBuiltRisk, riskReviewBinding, walletRiskContext } from "./risk";
 
 /**
  * `transaction_propose`: turn a reviewed draft into a pending transaction.
@@ -103,15 +113,28 @@ export async function runTransactionPropose(
     });
     if (!verified.ok) {
       throw new TxReviewError(
-        verified.reason === "subject_mismatch" || verified.reason === "client_mismatch" ? 403 : 401,
+        verified.reason === "subject_mismatch" ||
+          verified.reason === "client_mismatch"
+          ? 403
+          : 401,
         verified.reason === "expired" ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
         describeDraftTokenFailure(verified.reason),
       );
     }
     const { claims } = verified;
+    if (!claims.riskBinding)
+      throw new TxReviewError(
+        409,
+        "REVIEW_CHANGED",
+        "This preview predates script-risk review. Run transaction_preview again and review the new card.",
+      );
     let spec = claims.spec;
 
-    const wallet = await loadReviewWalletContext(deps.db, claims.walletId, ctx.caller);
+    const wallet = await loadReviewWalletContext(
+      deps.db,
+      claims.walletId,
+      ctx.caller,
+    );
     const walletShape = walletSummaryShape(wallet);
     const link = `${issuerOrigin()}/wallets/${wallet.walletRow.id}/transactions`;
 
@@ -119,16 +142,25 @@ export async function runTransactionPropose(
     const existing = await findByDraftId(deps, wallet.walletRow.id, claims.jti);
     if (existing) {
       const body = safeParse(existing.txJson);
-      const summary = await summarizeForWallet(deps, body, walletShape, undefined, {
-        kind: "pending",
-        signedAddresses: existing.signedAddresses,
-        rejectedAddresses: existing.rejectedAddresses,
-        description: existing.description,
-        txHash: existing.txHash ?? claims.previewTxHash,
-        transactionId: existing.id,
-        warnings: [],
-      });
-      const image = wantsPng(deps, claims) ? await renderCard(deps, summary) : undefined;
+      const summary = await summarizePendingForWallet(
+        deps,
+        body,
+        existing.txCbor,
+        walletShape,
+        walletRiskContext(wallet),
+        {
+          kind: "pending",
+          signedAddresses: existing.signedAddresses,
+          rejectedAddresses: existing.rejectedAddresses,
+          description: existing.description,
+          txHash: existing.txHash ?? claims.previewTxHash,
+          transactionId: existing.id,
+          warnings: [],
+        },
+      );
+      const image = wantsPng(deps, claims)
+        ? await renderCard(deps, summary)
+        : undefined;
       return {
         status: 200,
         body: {
@@ -145,8 +177,13 @@ export async function runTransactionPropose(
           broadcast: false,
         },
         text: `This draft was already proposed as transaction ${existing.id}; nothing new was created.\n${summaryToText(summary, { card: image ? "image" : "html" })}\nSign it at ${link}`,
-        ...(image ? { images: [image] } : {}),
-        audit: { walletId: wallet.walletRow.id, transactionId: existing.id, draftId: claims.jti, replay: true },
+        ...(image ? { images: image } : {}),
+        audit: {
+          walletId: wallet.walletRow.id,
+          transactionId: existing.id,
+          draftId: claims.jti,
+          replay: true,
+        },
       };
     }
 
@@ -178,6 +215,21 @@ export async function runTransactionPropose(
     draft = anchored.draft;
 
     const built = await buildUnsigned(draft, wallet, availableUtxos);
+    const riskAssessment = requireBuiltRisk(built, wallet.network);
+    if (
+      riskReviewBinding(
+        riskAssessment,
+        walletRiskContext(wallet),
+        spec.outputs.length,
+      ) !== claims.riskBinding
+    ) {
+      throw new TxReviewError(
+        409,
+        "REVIEW_CHANGED",
+        "Transaction outputs or script-risk facts changed since preview. Run transaction_preview again and review the new card. Nothing was created.",
+        { riskAssessment },
+      );
+    }
 
     const provenance: McpTxJsonProvenance = {
       draftId: claims.jti,
@@ -192,7 +244,8 @@ export async function runTransactionPropose(
       ...(deps.txJsonExtras?.(claims) ?? {}),
     };
 
-    const createPending = deps.createPending ?? createPendingMultisigTransaction;
+    const createPending =
+      deps.createPending ?? createPendingMultisigTransaction;
     const afterCreate = deps.afterCreate;
     const created = await createPending(deps.db, {
       walletId: wallet.walletRow.id,
@@ -211,7 +264,12 @@ export async function runTransactionPropose(
         ? { afterCreate: (tx, row) => afterCreate(tx, { id: row.id }, claims) }
         : {}),
     });
-    if (typeof created === "string" || !created || typeof created !== "object" || !("id" in created)) {
+    if (
+      typeof created === "string" ||
+      !created ||
+      typeof created !== "object" ||
+      !("id" in created)
+    ) {
       // A string would be a submitted tx hash — a broadcast. It cannot
       // happen with an empty signer set, and it must never pass silently.
       throw new Error("Unexpected persistence result for an unsigned draft");
@@ -241,7 +299,8 @@ export async function runTransactionPropose(
     if (txHashChanged) {
       if (anchored.pinned > 0) txHashChangeReasons.push("rationale-anchors");
       if (registration.added) txHashChangeReasons.push("stake-registration");
-      if (txHashChangeReasons.length === 0) txHashChangeReasons.push("utxo-set");
+      if (txHashChangeReasons.length === 0)
+        txHashChangeReasons.push("utxo-set");
     }
 
     const warnings = [
@@ -254,19 +313,29 @@ export async function runTransactionPropose(
         : []),
     ];
 
-    const summary = await summarizeForWallet(deps, built.body, walletShape, assets, {
-      kind: "pending",
-      signedAddresses: [],
-      rejectedAddresses: [],
-      description: spec.description,
-      metadataMessage: spec.metadataMessage,
-      paymentCount: spec.outputs.length,
-      txHash: built.txHash,
-      transactionId: created.id,
-      sizeBytes: built.sizeBytes,
-      warnings,
-    });
-    const image = wantsPng(deps, claims) ? await renderCard(deps, summary) : undefined;
+    const summary = await summarizeForWallet(
+      deps,
+      built.body,
+      walletShape,
+      assets,
+      {
+        txHex: built.unsignedTx,
+        kind: "pending",
+        signedAddresses: [],
+        rejectedAddresses: [],
+        description: spec.description,
+        metadataMessage: spec.metadataMessage,
+        paymentCount: spec.outputs.length,
+        txHash: built.txHash,
+        transactionId: created.id,
+        sizeBytes: built.sizeBytes,
+        warnings,
+        riskAssessment,
+      },
+    );
+    const image = wantsPng(deps, claims)
+      ? await renderCard(deps, summary)
+      : undefined;
 
     return {
       status: 201,
@@ -288,7 +357,7 @@ export async function runTransactionPropose(
         broadcast: false,
       },
       text: `Created pending transaction ${created.id}. It has no signatures yet; the wallet's signers have been notified and can sign it at ${link}\n${summaryToText(summary, { card: image ? "image" : "html" })}`,
-      ...(image ? { images: [image] } : {}),
+      ...(image ? { images: image } : {}),
       audit: {
         walletId: wallet.walletRow.id,
         transactionId: created.id,
@@ -304,6 +373,7 @@ export async function runTransactionPropose(
 
 type PendingRow = {
   id: string;
+  txCbor: string;
   txJson: string;
   txHash: string | null;
   description: string | null;
@@ -320,6 +390,7 @@ async function findByDraftId(
     where: { walletId, state: 0 },
     select: {
       id: true,
+      txCbor: true,
       txJson: true,
       txHash: true,
       description: true,
@@ -355,8 +426,7 @@ async function anchorRationales(
     if (!text) continue;
     try {
       const hashAnchor =
-        deps.hashAnchor ??
-        (await import("@meshsdk/core")).hashDrepAnchor;
+        deps.hashAnchor ?? (await import("@meshsdk/core")).hashDrepAnchor;
       const anchor = buildRationaleAnchor(
         { summary: text.slice(0, 300), rationaleStatement: text },
         (doc) => hashAnchor(doc),

@@ -32,6 +32,42 @@ function columnOf(result: ReturnType<typeof layoutTokenFlow>, id: string): numbe
 }
 
 describe("layoutTokenFlow", () => {
+  test("collateral uses static dashed connections with valid ports in single and timeline layouts", () => {
+    const flow = singleTxFlow();
+    flow.nodes.push({
+      id: "collateral:one",
+      kind: "address",
+      address: A,
+      partyType: "signer",
+      role: "collateral",
+      details: ["Only consumed if scripts fail"],
+    });
+    flow.edges.push({
+      id: "backing",
+      source: "collateral:one",
+      target: "tx:one",
+      kind: "collateral",
+      assets: [{ unit: "lovelace", quantity: "3000000" }],
+      label: "Collateral at risk",
+    });
+    for (const opts of [undefined, { txOrder: ["tx:one"] }]) {
+      const result = layoutTokenFlow(flow, opts);
+      const backing = result.edges.find((e) => e.id === "backing")!;
+      const source = result.nodes.find((n) => n.id === backing.source)!;
+      const target = result.nodes.find((n) => n.id === backing.target)!;
+      expect(backing.animated).toBe(false);
+      expect(backing.style?.strokeDasharray).toBe("6 4");
+      expect(source.position.x).toBeLessThan(target.position.x);
+      expect(source.data.outPortCount).toBe(1);
+      expect(target.data.inPortCount).toBe(2);
+      expect(
+        result.edges
+          .filter((e) => e.target === target.id)
+          .map((e) => e.targetHandle),
+      ).toEqual(expect.arrayContaining(["in-0", "in-1"]));
+    }
+  });
+
   test("single tx: inputs col 0, tx col 1, outputs col 2", () => {
     const result = layoutTokenFlow(singleTxFlow());
     expect(columnOf(result, `addr:${A}`)).toBe(0);

@@ -1,5 +1,9 @@
 import { csl } from "@meshsdk/core-csl";
 import {
+  verifiedWitnessKeyHashes,
+  requiredSignerKeyHashes,
+} from "./transactionReadiness";
+import {
   resolveTxHash,
   addVKeyWitnessSetToTransaction,
   Transaction as CstTransaction,
@@ -25,7 +29,7 @@ function cstVkeyPubKeyHex(vkw: { toCore: () => unknown }): string {
   const core = vkw.toCore() as unknown;
   const pub = Array.isArray(core)
     ? (core[0] as string)
-    : ((core as { vkey: string }).vkey);
+    : (core as { vkey: string }).vkey;
   return String(pub).toLowerCase();
 }
 
@@ -79,7 +83,9 @@ function mergeUniqueWitnesses(
   return { mergedVkeys: targetVkeys, addedCount };
 }
 
-export function extractVkeyWitnesses(signedPayloadHex: string): csl.Vkeywitnesses {
+export function extractVkeyWitnesses(
+  signedPayloadHex: string,
+): csl.Vkeywitnesses {
   try {
     const signedTx = csl.Transaction.from_hex(signedPayloadHex);
     const txVkeys = signedTx.witness_set().vkeys();
@@ -128,7 +134,6 @@ export function addUniqueVkeyWitnessToTx(
   vkeyWitnesses: csl.Vkeywitnesses;
 } {
   const originalTx = csl.Transaction.from_hex(originalTxHex);
-  const txBodyClone = csl.TransactionBody.from_bytes(originalTx.body().to_bytes());
   const witnessSetClone = csl.TransactionWitnessSet.from_bytes(
     originalTx.witness_set().to_bytes(),
   );
@@ -146,19 +151,11 @@ export function addUniqueVkeyWitnessToTx(
     };
   }
 
-  witnessSetClone.set_vkeys(vkeyWitnesses);
-
-  const updatedTx = csl.Transaction.new(
-    txBodyClone,
-    witnessSetClone,
-    originalTx.auxiliary_data(),
-  );
-  if (!originalTx.is_valid()) {
-    updatedTx.set_is_valid(false);
-  }
+  const incomingSet = csl.TransactionWitnessSet.new();
+  incomingSet.set_vkeys(incoming);
 
   return {
-    txHex: updatedTx.to_hex(),
+    txHex: addVKeyWitnessSetToTransaction(originalTxHex, incomingSet.to_hex()),
     witnessAdded: true,
     vkeyWitnesses,
   };
@@ -175,7 +172,9 @@ export function mergeSignerWitnesses(
   const existingVkeys = originalTx.witness_set().vkeys();
   if (existingVkeys) {
     for (let i = 0; i < existingVkeys.len(); i++) {
-      existingKeyHashes.add(toKeyHashHex(existingVkeys.get(i).vkey().public_key()));
+      existingKeyHashes.add(
+        toKeyHashHex(existingVkeys.get(i).vkey().public_key()),
+      );
     }
   }
 
@@ -214,17 +213,20 @@ export function mergeSignerWitnesses(
   if (newVkeys.len() > 0) {
     const newWitnessSet = csl.TransactionWitnessSet.new();
     newWitnessSet.set_vkeys(newVkeys);
-    txHex = addVKeyWitnessSetToTransaction(originalTxHex, newWitnessSet.to_hex());
+    txHex = addVKeyWitnessSetToTransaction(
+      originalTxHex,
+      newWitnessSet.to_hex(),
+    );
   }
 
   return { txHex, invalidVkeyPubKeysHex };
 }
 
 /**
- * Removes VKey witnesses whose key hash is not required by any native script
- * in the transaction's witness set. This prevents `InvalidWitnessesUTXOW`
- * rejections from the Conway ledger when a wallet returns extraneous witnesses
- * during partial signing.
+ * Retains native-script and explicit required-signer witnesses, plus every
+ * verified witness (including collateral, ordinary key inputs and staking).
+ * Input addresses cannot be inferred from CBOR references alone; dropping a
+ * valid key merely because it is absent from native scripts loses signatures.
  *
  * If the transaction contains no native scripts (non-multisig), it is returned
  * unchanged.
@@ -239,6 +241,8 @@ export function filterWitnessesToScripts(txHex: string): string {
   }
 
   const allowedKeyHashes = new Set<string>();
+  for (const key of requiredSignerKeyHashes(txHex)) allowedKeyHashes.add(key);
+  for (const key of verifiedWitnessKeyHashes(txHex)) allowedKeyHashes.add(key);
   for (let i = 0; i < nativeScripts.len(); i++) {
     const decoded = decodeNativeScriptFromCsl(nativeScripts.get(i));
     for (const kh of collectSigKeyHashes(decoded)) {
@@ -255,8 +259,8 @@ export function filterWitnessesToScripts(txHex: string): string {
     return txHex;
   }
 
-  // Pub keys (by hex) whose key hash is required by a native script — keep only
-  // these. Analysis is read-only via core-csl; the rebuild below is core-cst.
+  // Retain required keys and all verified input/other witnesses. Analysis is
+  // read-only via core-csl; the rebuild below is core-cst.
   const allowedPubKeyHexes = new Set<string>();
   let removed = 0;
   for (let i = 0; i < existingVkeys.len(); i++) {

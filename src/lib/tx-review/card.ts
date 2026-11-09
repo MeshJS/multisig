@@ -18,12 +18,38 @@ export const CARD_WIDTH = 1200;
 export const CARD_MIN_HEIGHT = 420;
 export const CARD_MAX_HEIGHT = 2400;
 
+export type WarningPage = { lines: string[]; page: number; total: number };
+
+/** Fixed-width rows and bounded pages prevent risk facts being clipped by the canvas. */
+export function warningPages(warnings: string[]): WarningPage[] {
+  const lines = warnings.flatMap((warning) =>
+    ("Warning: " + warning + "\n").split("\n").flatMap((line) => {
+      const rows: string[] = [];
+      while (line.length > 82) {
+        const space = line.lastIndexOf(" ", 82);
+        const cut = space > 40 ? space : 82;
+        rows.push(line.slice(0, cut));
+        line = line.slice(cut).replace(/^ /, "");
+      }
+      return [...rows, line];
+    }),
+  );
+  const total = Math.ceil(lines.length / 60);
+  return Array.from({ length: total }, (_, index) => ({
+    lines: lines.slice(index * 60, (index + 1) * 60),
+    page: index + 1,
+    total,
+  }));
+}
+
 export const CARD_FOOTER_PREVIEW =
   "Nothing has been signed or broadcast. Signers approve in the Mesh Multisig app.";
 
 export type CardElement = {
   type: string;
-  props: Record<string, unknown> & { children?: CardElement | string | (CardElement | string)[] };
+  props: Record<string, unknown> & {
+    children?: CardElement | string | (CardElement | string)[];
+  };
 };
 
 const COLORS = {
@@ -45,18 +71,46 @@ const h = (
   props: Record<string, unknown>,
   ...children: (CardElement | string | null | undefined | false)[]
 ): CardElement => {
-  const kids = children.filter((c): c is CardElement | string => !!c || c === "");
-  return { type, props: { ...props, children: kids.length === 1 ? kids[0] : kids } };
+  const kids = children.filter(
+    (c): c is CardElement | string => !!c || c === "",
+  );
+  return {
+    type,
+    props: { ...props, children: kids.length === 1 ? kids[0] : kids },
+  };
 };
 
 // `flexShrink: 0` everywhere: the canvas height is an estimate, and if the
 // content ever exceeds it, yoga would otherwise squash the text-only boxes to
 // zero height (lines overlap, boxes lose their text) rather than overflow.
 // Overflowing the bottom edge is the honest failure; squashing is not.
-const row = (style: Record<string, unknown>, ...children: (CardElement | string | null | false)[]) =>
-  h("div", { style: { display: "flex", flexDirection: "row", flexShrink: 0, ...style } }, ...children);
-const col = (style: Record<string, unknown>, ...children: (CardElement | string | null | false)[]) =>
-  h("div", { style: { display: "flex", flexDirection: "column", flexShrink: 0, ...style } }, ...children);
+const row = (
+  style: Record<string, unknown>,
+  ...children: (CardElement | string | null | false)[]
+) =>
+  h(
+    "div",
+    {
+      style: { display: "flex", flexDirection: "row", flexShrink: 0, ...style },
+    },
+    ...children,
+  );
+const col = (
+  style: Record<string, unknown>,
+  ...children: (CardElement | string | null | false)[]
+) =>
+  h(
+    "div",
+    {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        ...style,
+      },
+    },
+    ...children,
+  );
 const text = (value: string, style: Record<string, unknown> = {}) =>
   h("div", { style: { display: "flex", flexShrink: 0, ...style } }, value);
 
@@ -99,7 +153,8 @@ export function estimateCardHeight(summary: TxReviewSummary): number {
   if (summary.actions.length > 0) {
     height += 58;
     for (const action of summary.actions) {
-      height += 58 + (action.rationale?.status === "will-publish-on-confirm" ? 34 : 0);
+      height +=
+        58 + (action.rationale?.status === "will-publish-on-confirm" ? 34 : 0);
     }
   }
   const stats = 3 + (summary.deposit ? 1 : 0) + (summary.sizeBytes ? 1 : 0);
@@ -112,11 +167,46 @@ export function estimateCardHeight(summary: TxReviewSummary): number {
   return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, height));
 }
 
-export function reviewCardTree(summary: TxReviewSummary): {
+export function reviewCardTree(
+  summary: TxReviewSummary,
+  warningPage?: WarningPage,
+): {
   element: CardElement;
   width: number;
   height: number;
 } {
+  if (warningPage)
+    return {
+      width: CARD_WIDTH,
+      height: Math.max(CARD_MIN_HEIGHT, 230 + warningPage.lines.length * 30),
+      element: col(
+        {
+          width: "100%",
+          height: "100%",
+          padding: "40px 56px",
+          background: COLORS.bg,
+          color: COLORS.text,
+          fontFamily: "Geist, sans-serif",
+        },
+        text(
+          `Transaction risk review - page ${warningPage.page} of ${warningPage.total}`,
+          { fontSize: 28, color: COLORS.amber, marginBottom: 16 },
+        ),
+        text(`Tx hash ${summary.txHash}`, { fontSize: 16, marginBottom: 18 }),
+        ...warningPage.lines.map((line) =>
+          text(line || " ", {
+            fontSize: 20,
+            height: 30,
+            lineHeight: "30px",
+            whiteSpace: "pre",
+          }),
+        ),
+        text(
+          "Proposal confirmation is not a signature or a signer's risk acknowledgment.",
+          { fontSize: 18, color: COLORS.amber, marginTop: 18 },
+        ),
+      ),
+    };
   const height = estimateCardHeight(summary);
   const isPreview = summary.kind === "preview";
   const signedCount = summary.signatures.signed.length;
@@ -125,7 +215,10 @@ export function reviewCardTree(summary: TxReviewSummary): {
     { justifyContent: "space-between", alignItems: "flex-start" },
     col(
       { gap: 8 },
-      text(summary.wallet.name || "Multisig wallet", { fontSize: 38, color: COLORS.text }),
+      text(summary.wallet.name || "Multisig wallet", {
+        fontSize: 38,
+        color: COLORS.text,
+      }),
       text(
         `${summary.wallet.network === "mainnet" ? "Mainnet" : "Preprod"} · ${summary.threshold.required} of ${summary.threshold.total} signatures required · ${getFirstAndLast(summary.wallet.address, 14, 8)}`,
         { fontSize: 20, color: COLORS.muted },
@@ -137,7 +230,9 @@ export function reviewCardTree(summary: TxReviewSummary): {
         ? pill("UNSIGNED PREVIEW", COLORS.amber, COLORS.amberInk)
         : pill(
             `PENDING · ${signedCount} OF ${summary.threshold.required} SIGNED`,
-            signedCount >= summary.threshold.required ? COLORS.green : COLORS.amber,
+            signedCount >= summary.threshold.required
+              ? COLORS.green
+              : COLORS.amber,
             COLORS.amberInk,
           ),
     ),
@@ -159,7 +254,9 @@ export function reviewCardTree(summary: TxReviewSummary): {
     summary.recipients.length > 0
       ? col(
           { marginTop: 28 },
-          sectionTitle(summary.recipients.length === 1 ? "Recipient" : "Recipients"),
+          sectionTitle(
+            summary.recipients.length === 1 ? "Recipient" : "Recipients",
+          ),
           ...summary.recipients.map((recipient) =>
             row(
               {
@@ -183,7 +280,10 @@ export function reviewCardTree(summary: TxReviewSummary): {
                 { alignItems: "flex-end", gap: 2 },
                 ...(recipient.amounts.length > 0
                   ? recipient.amounts.map((amount) =>
-                      text(amount.display, { fontSize: 28, color: COLORS.text }),
+                      text(amount.display, {
+                        fontSize: 28,
+                        color: COLORS.text,
+                      }),
                     )
                   : [text("no amount", { fontSize: 22, color: COLORS.red })]),
               ),
@@ -199,21 +299,35 @@ export function reviewCardTree(summary: TxReviewSummary): {
           sectionTitle("Actions"),
           ...summary.actions.map((action) =>
             col(
-              { padding: "10px 0", borderBottom: `1px solid ${COLORS.border}`, gap: 4 },
+              {
+                padding: "10px 0",
+                borderBottom: `1px solid ${COLORS.border}`,
+                gap: 4,
+              },
               row(
                 { gap: 14, alignItems: "baseline" },
                 text(action.label, {
                   fontSize: 26,
                   color: action.kind === "vote" ? COLORS.blue : COLORS.green,
                 }),
-                action.title ? text(action.title.slice(0, 80), { fontSize: 24, color: COLORS.text }) : null,
-                action.detail ? text(action.detail, { fontSize: 18, color: COLORS.faint }) : null,
+                action.title
+                  ? text(action.title.slice(0, 80), {
+                      fontSize: 24,
+                      color: COLORS.text,
+                    })
+                  : null,
+                action.detail
+                  ? text(action.detail, { fontSize: 18, color: COLORS.faint })
+                  : null,
               ),
               action.rationale?.status === "will-publish-on-confirm"
-                ? text(`Rationale (published to IPFS on confirm): "${action.rationale.excerpt}"`, {
-                    fontSize: 18,
-                    color: COLORS.muted,
-                  })
+                ? text(
+                    `Rationale (published to IPFS on confirm): "${action.rationale.excerpt}"`,
+                    {
+                      fontSize: 18,
+                      color: COLORS.muted,
+                    },
+                  )
                 : action.rationale?.status === "anchored"
                   ? text(`Rationale: ${action.rationale.url.slice(0, 90)}`, {
                       fontSize: 18,
@@ -228,7 +342,11 @@ export function reviewCardTree(summary: TxReviewSummary): {
   const stat = (label: string, value: string) =>
     col(
       { gap: 4, minWidth: 160 },
-      text(label.toUpperCase(), { fontSize: 15, letterSpacing: 2, color: COLORS.faint }),
+      text(label.toUpperCase(), {
+        fontSize: 15,
+        letterSpacing: 2,
+        color: COLORS.faint,
+      }),
       text(value, { fontSize: 24, color: COLORS.text }),
     );
 
@@ -246,13 +364,17 @@ export function reviewCardTree(summary: TxReviewSummary): {
     summary.deposit ? stat("Deposit", summary.deposit.display) : null,
     stat(
       "Change to this wallet",
-      summary.change.length > 0 ? summary.change.map((a) => a.display).join(" + ") : "none",
+      summary.change.length > 0
+        ? summary.change.map((a) => a.display).join(" + ")
+        : "none",
     ),
     stat(
       "Inputs",
       `${summary.inputs.count}${summary.inputs.unresolved > 0 ? ` (${summary.inputs.unresolved} unresolved)` : ""}`,
     ),
-    summary.sizeBytes ? stat("Size", `${(summary.sizeBytes / 1024).toFixed(1)} KB`) : null,
+    summary.sizeBytes
+      ? stat("Size", `${(summary.sizeBytes / 1024).toFixed(1)} KB`)
+      : null,
   );
 
   const metadata = summary.metadataMessage
@@ -272,10 +394,13 @@ export function reviewCardTree(summary: TxReviewSummary): {
             { fontSize: 20, color: COLORS.green },
           ),
           summary.signatures.rejected.length > 0
-            ? text(`Rejected: ${summary.signatures.rejected.map((s) => s.label).join(", ")}`, {
-                fontSize: 20,
-                color: COLORS.red,
-              })
+            ? text(
+                `Rejected: ${summary.signatures.rejected.map((s) => s.label).join(", ")}`,
+                {
+                  fontSize: 20,
+                  color: COLORS.red,
+                },
+              )
             : null,
         )
       : null;
@@ -318,12 +443,12 @@ export function reviewCardTree(summary: TxReviewSummary): {
     },
     header,
     description,
+    warnings,
     recipients,
     actions,
     totals,
     metadata,
     signatures,
-    warnings,
     footer,
   );
 

@@ -2,33 +2,52 @@ import { create } from "zustand";
 
 import type {
   BuilderSelection,
+  DraftCollateral,
   DraftOutput,
+  DraftPlutusData,
   DraftSource,
   DraftUtxoSelection,
   DraftVote,
   DraftVoteKind,
   TxDraft,
+  LoadableTxDraft,
 } from "@/types/tx-draft";
-import type { StakeActionInput } from "@/lib/tx-draft/mutations";
+import type {
+  ScriptInputPatch,
+  StakeActionInput,
+} from "@/lib/tx-draft/mutations";
 import {
   addOutput,
+  addScriptInput,
   addStakeAction,
   addVote,
   clearVoteAnchor,
   createDraft,
+  invalidateDraftContext,
+  normalizeDraft,
   removeCertificate,
   removeOutput,
+  removeScriptInput,
   removeVote,
   setDescription,
   setMetadata,
   setOutputAsset,
+  setOutputDatum,
+  setCollateral,
   setSource,
   setUtxoSelection,
   setVoteRationale,
   updateCertificatePool,
   updateOutput,
+  updateScriptInput,
   updateVoteKind,
 } from "@/lib/tx-draft/mutations";
+
+export type DraftEnvironment = {
+  network: number;
+  /** Connected wallet provider/account identity; absent when disconnected. */
+  account?: string;
+};
 
 /**
  * Shared state for the canvas transaction builder. The draft is the source of
@@ -44,6 +63,8 @@ import {
 interface TxBuilderState {
   walletId?: string;
   draft: TxDraft;
+  environment?: DraftEnvironment;
+  syncEnvironment: (environment: DraftEnvironment) => void;
   /**
    * Set when the draft was loaded from an existing pending transaction;
    * building then replaces that transaction instead of creating a new one.
@@ -66,6 +87,14 @@ interface TxBuilderState {
   ) => void;
   removeOutput: (outputId: string) => void;
   setOutputAsset: (outputId: string, unit: string, quantity: string) => void;
+  setOutputDatum: (
+    outputId: string,
+    datum: DraftPlutusData | undefined,
+  ) => void;
+  addScriptInput: (partial?: ScriptInputPatch) => string;
+  updateScriptInput: (inputId: string, patch: ScriptInputPatch) => void;
+  removeScriptInput: (inputId: string) => void;
+  setCollateral: (collateral: DraftCollateral | undefined) => void;
   setUtxoSelection: (selection: DraftUtxoSelection) => void;
   /**
    * Changes the funding source (see `setSource` in mutations). Ignored while
@@ -98,7 +127,7 @@ interface TxBuilderState {
   /** Replaces the draft wholesale, e.g. when loading a pending transaction. */
   loadDraft: (args: {
     walletId: string;
-    draft: TxDraft;
+    draft: LoadableTxDraft;
     editingTxId?: string;
   }) => void;
   /** Detaches the draft from the pending tx it was loaded from. */
@@ -120,6 +149,21 @@ function selectedOutputId(selection: BuilderSelection): string | undefined {
 export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   walletId: undefined,
   draft: createDraft(),
+  environment: undefined,
+  syncEnvironment: (environment) => {
+    const state = get();
+    if (
+      state.environment?.network === environment.network &&
+      state.environment?.account === environment.account
+    )
+      return;
+    set({
+      environment,
+      // No resolved script UTxOs or evaluator budgets live in editable intent.
+      // Retaining refs/text is safe; later phases must resolve them afresh.
+      draft: invalidateDraftContext(state.draft),
+    });
+  },
   editingTxId: undefined,
   selection: null,
   positions: {},
@@ -166,6 +210,29 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   },
   setUtxoSelection: (selection) =>
     set({ draft: setUtxoSelection(get().draft, selection) }),
+  setOutputDatum: (outputId, datum) => {
+    const state = get();
+    set({
+      draft: setOutputDatum(state.draft, outputId, datum),
+      touched: withTouched(state.touched, outputId),
+    });
+  },
+  addScriptInput: (partial) => {
+    const state = get();
+    const { draft, inputId } = addScriptInput(state.draft, partial);
+    set({
+      draft,
+      selection: { kind: "tx" },
+      touched: withTouched(state.touched, selectedOutputId(state.selection)),
+    });
+    return inputId;
+  },
+  updateScriptInput: (inputId, patch) =>
+    set({ draft: updateScriptInput(get().draft, inputId, patch) }),
+  removeScriptInput: (inputId) =>
+    set({ draft: removeScriptInput(get().draft, inputId) }),
+  setCollateral: (collateral) =>
+    set({ draft: setCollateral(get().draft, collateral) }),
   setSource: (source) => {
     const state = get();
     if (state.editingTxId) return;
@@ -233,7 +300,7 @@ export const useTxBuilderStore = create<TxBuilderState>()((set, get) => ({
   loadDraft: ({ walletId, draft, editingTxId }) =>
     set({
       walletId,
-      draft,
+      draft: normalizeDraft(draft),
       editingTxId,
       selection: null,
       positions: {},

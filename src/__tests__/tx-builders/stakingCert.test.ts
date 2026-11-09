@@ -13,6 +13,7 @@ type CertCall =
   | { type: "register"; address: string }
   | { type: "deregister"; address: string }
   | { type: "delegate"; address: string; poolHex: string }
+  | { type: "voteDelegation"; address: string; dRep: unknown }
   | { type: "withdrawal"; address: string; amount: string };
 
 function createCertBuilderMock() {
@@ -29,6 +30,10 @@ function createCertBuilderMock() {
     },
     delegateStakeCertificate: (address: string, poolHex: string) => {
       calls.push({ type: "delegate", address, poolHex });
+      return builder;
+    },
+    voteDelegationCertificate: (dRep: unknown, address: string) => {
+      calls.push({ type: "voteDelegation", address, dRep });
       return builder;
     },
     certificateScript: (_scriptCbor: string) => builder,
@@ -79,11 +84,12 @@ describe("buildStakingCertificateActions", () => {
       rewardAddress: REWARD_ADDRESS,
       stakingScript: STAKING_SCRIPT_CBOR,
       poolHex: POOL_HEX,
+      dRep: "Always Abstain",
     });
 
     actions.delegate.execute();
 
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({ type: "delegate", address: REWARD_ADDRESS, poolHex: POOL_HEX });
   });
 
@@ -94,11 +100,12 @@ describe("buildStakingCertificateActions", () => {
       rewardAddress: REWARD_ADDRESS,
       stakingScript: STAKING_SCRIPT_CBOR,
       poolHex: POOL_HEX,
+      dRep: "Always Abstain",
     });
 
     actions.register_and_delegate.execute();
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toMatchObject({ type: "register", address: REWARD_ADDRESS });
     expect(calls[1]).toMatchObject({ type: "delegate", address: REWARD_ADDRESS, poolHex: POOL_HEX });
   });
@@ -110,6 +117,7 @@ describe("buildStakingCertificateActions", () => {
       rewardAddress: REWARD_ADDRESS,
       stakingScript: STAKING_SCRIPT_CBOR,
       poolHex: "",
+      dRep: "Always Abstain",
     });
 
     expect(() => actions.delegate.execute()).not.toThrow();
@@ -157,11 +165,12 @@ describe("buildStakingActionConfigs", () => {
       stakingScript: STAKING_SCRIPT_CBOR,
       poolHex: POOL_HEX,
       rewards: "0",
+      dRep: "Always Abstain",
     });
 
     configs.registerAndDelegate.execute();
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toMatchObject({ type: "register", address: REWARD_ADDRESS });
     expect(calls[1]).toMatchObject({ type: "delegate", address: REWARD_ADDRESS, poolHex: POOL_HEX });
   });
@@ -182,5 +191,52 @@ describe("buildStakingActionConfigs", () => {
       expect(typeof config.successMessage).toBe("string");
       expect(config.successMessage.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("staking requires a DRep", () => {
+  const base = {
+    rewardAddress: REWARD_ADDRESS,
+    stakingScript: STAKING_SCRIPT_CBOR,
+    poolHex: POOL_HEX,
+  };
+
+  it("delegate throws without a DRep", () => {
+    const { builder } = createCertBuilderMock();
+    const actions = buildStakingCertificateActions({ txBuilder: builder as never, ...base });
+    expect(() => actions.delegate.execute()).toThrow(/requires a DRep/);
+    expect(() => actions.register_and_delegate.execute()).toThrow(/requires a DRep/);
+  });
+
+  it("delegate emits pool then vote delegation (abstain / no-confidence)", () => {
+    for (const [dRep, expected] of [
+      ["Always Abstain", { alwaysAbstain: null }],
+      ["Always No Confidence", { alwaysNoConfidence: null }],
+    ] as const) {
+      const { builder, calls } = createCertBuilderMock();
+      buildStakingCertificateActions({ txBuilder: builder as never, ...base, dRep }).delegate.execute();
+      expect(calls.map((c) => c.type)).toEqual(["delegate", "voteDelegation"]);
+      expect(calls[1]).toMatchObject({ dRep: expected });
+    }
+  });
+
+  it("register_and_delegate emits register, delegate, vote delegation", () => {
+    const { builder, calls } = createCertBuilderMock();
+    buildStakingCertificateActions({
+      txBuilder: builder as never,
+      ...base,
+      dRep: "Always Abstain",
+    }).register_and_delegate.execute();
+    expect(calls.map((c) => c.type)).toEqual(["register", "delegate", "voteDelegation"]);
+  });
+
+  it("skips the vote delegation when the stake credential already has a DRep", () => {
+    const { builder, calls } = createCertBuilderMock();
+    buildStakingCertificateActions({
+      txBuilder: builder as never,
+      ...base,
+      dRepAlreadyDelegated: true,
+    }).delegate.execute();
+    expect(calls.map((c) => c.type)).toEqual(["delegate"]);
   });
 });

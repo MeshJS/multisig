@@ -1,23 +1,18 @@
-import { keepRelevant, type MeshTxBuilder, type UTxO } from "@meshsdk/core";
+import type { MeshTxBuilder, UTxO } from "@meshsdk/core";
 
 import type { TxDraft } from "@/types/tx-draft";
 import { AUTO_ABSTAIN_DREP } from "./drep";
-import { materializeOutputAssets, requiredAssetTotals } from "./assets";
-
-/**
- * Lovelace floor for auto UTxO selection when the draft casts votes or
- * carries staking certificates: such drafts can have no output totals, so
- * `keepRelevant` would select nothing and the fee would be unfundable.
- * Mirrors the governance vote button's fixed 5 ADA buffer.
- */
-const ACTION_FEE_FLOOR_LOVELACE = 5_000_000n;
-
-/**
- * Extra headroom per RegisterStake certificate: the 2 ADA stake key deposit
- * is paid from the inputs at `complete()` but appears in no output, so auto
- * selection has to be told about it explicitly.
- */
-const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
+import { materializeOutputAssets } from "./assets";
+import { hasScriptSpendDraftData } from "./mutations";
+import {
+  PLUTUS_BUILD_UNSUPPORTED,
+  requiredSignersSchema,
+} from "./validate-plutus";
+import { validatePlutusData } from "./plutus-data";
+import { selectDraftFunding } from "./funding";
+import { isPreparedPlutus, type PreparedPlutusDraft } from "./prepare-plutus";
+import { applyCollateral } from "./collateral";
+import { verifiedWalletScriptHash } from "@/lib/tx-risk/classify";
 
 /**
  * How the source's inputs are witnessed: the multisig spends script inputs
@@ -25,14 +20,15 @@ const STAKE_KEY_DEPOSIT_LOVELACE = 2_000_000n;
  * spends plain pubkey inputs.
  */
 export type ApplyDraftInputs =
-  | { kind: "script"; scriptCbor: string }
-  | { kind: "pubkey" };
+  { kind: "script"; scriptCbor: string } | { kind: "pubkey" };
 
 export type ApplyDraftContext = {
+  /** Obtained only by the shared build pipeline's fresh chain resolver. */
+  preparedPlutus?: PreparedPlutusDraft;
   inputs: ApplyDraftInputs;
   /** The source address: owner of the inputs and the change target. */
   walletAddress: string;
-  /** Spendable UTxOs (pending-blocked ones excluded); used in auto mode. */
+  /** Spendable UTxOs (pending-blocked ones excluded); also validates multisig Plutus manual picks. */
   availableUtxos: UTxO[];
   /** Wallet DRep id (CIP-129/105); required when the draft has votes. */
   drepId?: string;
@@ -57,6 +53,54 @@ export function applyDraftToTxBuilder(
   draft: TxDraft,
   ctx: ApplyDraftContext,
 ): MeshTxBuilder {
+  const requiredSigners = requiredSignersSchema.parse(
+    draft.requiredSigners ?? [],
+  );
+  if (
+    (hasScriptSpendDraftData(draft) || ctx.preparedPlutus) &&
+    !isPreparedPlutus(draft, ctx.preparedPlutus)
+  ) {
+    throw new Error(PLUTUS_BUILD_UNSUPPORTED);
+  }
+  // Validate all datum edits before mutating the stateful builder.
+  const datums = draft.outputs.map((output) => {
+    if (output.inlineDatum === undefined) return undefined;
+    const result = validatePlutusData(output.inlineDatum);
+    if (!result.valid) throw new Error(`Output datum: ${result.error}`);
+    return result.cbor;
+  });
+  const preparedOutputs = draft.outputs.map((output, index) => {
+    const prepared: MeshTxBuilder["meshTxBuilderBody"]["outputs"][number] = {
+      address: output.address,
+      amount: [...materializeOutputAssets(output.assets)],
+      ...(datums[index] !== undefined
+        ? {
+            datum: {
+              type: "Inline" as const,
+              data: { type: "CBOR" as const, content: datums[index]! },
+            },
+          }
+        : {}),
+    };
+    if (prepared.datum) {
+      const minimum = txBuilder.calculateMinLovelaceForOutput(prepared);
+      const ada = prepared.amount.find((asset) => asset.unit === "lovelace");
+      if (!ada)
+        prepared.amount.push({
+          unit: "lovelace",
+          quantity: minimum.toString(),
+        });
+      else if (BigInt(ada.quantity) < minimum) {
+        // materializeOutputAssets can retain asset objects from the draft.
+        prepared.amount = prepared.amount.map((asset) =>
+          asset.unit === "lovelace"
+            ? { ...asset, quantity: minimum.toString() }
+            : asset,
+        );
+      }
+    }
+    return prepared;
+  });
   if (
     draft.outputs.length === 0 &&
     draft.votes.length === 0 &&
@@ -96,32 +140,51 @@ export function applyDraftToTxBuilder(
     throw new Error("Vote delegation certificate has no DRep id");
   }
 
-  let selectedUtxos: UTxO[];
-  if (draft.utxoSelection.mode === "manual") {
-    selectedUtxos = draft.utxoSelection.utxos;
-  } else {
-    const assetMap = new Map<string, string>();
-    for (const [unit, quantity] of requiredAssetTotals(draft)) {
-      assetMap.set(unit, quantity.toString());
-    }
-    if (draft.votes.length > 0 || draft.certificates.length > 0) {
-      const registerCount = draft.certificates.filter(
-        (cert) => cert.kind === "RegisterStake",
-      ).length;
-      const required =
-        BigInt(assetMap.get("lovelace") ?? "0") +
-        STAKE_KEY_DEPOSIT_LOVELACE * BigInt(registerCount);
-      const floored =
-        required < ACTION_FEE_FLOOR_LOVELACE
-          ? ACTION_FEE_FLOOR_LOVELACE
-          : required;
-      assetMap.set("lovelace", floored.toString());
-    }
-    selectedUtxos = keepRelevant(assetMap, ctx.availableUtxos);
+  let walletInput: { address: string; allowInlineDatum: boolean } | undefined;
+  if (ctx.preparedPlutus && draft.source.kind === "multisig") {
+    if (ctx.inputs.kind !== "script")
+      throw new Error(
+        "Multisig Plutus transactions require the wallet's native script.",
+      );
+    verifiedWalletScriptHash({
+      network: ctx.preparedPlutus.network,
+      walletNativeScript: {
+        address: ctx.walletAddress,
+        cbor: ctx.inputs.scriptCbor,
+      },
+    });
+    walletInput = {
+      address: ctx.walletAddress,
+      allowInlineDatum: !ctx.preparedPlutus.inputs.some(
+        (input) => input.intent.script.version === "V1",
+      ),
+    };
   }
-  if (selectedUtxos.length === 0) {
+  const selectedUtxos = selectDraftFunding(
+    {
+      ...draft,
+      outputs: draft.outputs.map((output, index) => ({
+        ...output,
+        assets: preparedOutputs[index]!.amount,
+      })),
+    },
+    ctx.availableUtxos,
+    ctx.preparedPlutus?.inputs.map((input) => input.utxo),
+    walletInput,
+  );
+  if (selectedUtxos.length === 0 && !ctx.preparedPlutus?.inputs.length) {
     throw new Error("Insufficient funds: no UTxOs selected");
   }
+
+  if (
+    ctx.preparedPlutus?.inputs.some(
+      (input) => input.intent.script.version === "V1",
+    ) &&
+    selectedUtxos.some((utxo) => !!utxo.output.plutusData)
+  )
+    throw new Error(
+      "Plutus V1 cannot be combined with inline datums on funding inputs.",
+    );
 
   for (const utxo of selectedUtxos) {
     txBuilder.txIn(
@@ -135,8 +198,43 @@ export function applyDraftToTxBuilder(
     }
   }
 
-  for (const output of draft.outputs) {
-    txBuilder.txOut(output.address, materializeOutputAssets(output.assets));
+  for (const [index, output] of draft.outputs.entries()) {
+    txBuilder.txOut(output.address, preparedOutputs[index]!.amount);
+    if (datums[index] !== undefined) {
+      txBuilder.txOutInlineDatumValue(datums[index]!, "CBOR");
+    }
+  }
+
+  for (const { intent, utxo, datumCbor, redeemerCbor } of ctx.preparedPlutus
+    ?.inputs ?? []) {
+    txBuilder
+      .spendingPlutusScript(intent.script.version)
+      .txIn(
+        utxo.input.txHash,
+        utxo.input.outputIndex,
+        utxo.output.amount,
+        utxo.output.address,
+        0,
+      )
+      .txInScript(intent.script.cbor);
+    if (intent.datumSource.kind === "inline")
+      txBuilder.txInInlineDatumPresent();
+    else txBuilder.txInDatumValue(datumCbor, "CBOR");
+    txBuilder.txInRedeemerValue(redeemerCbor, "CBOR");
+  }
+  if (ctx.preparedPlutus)
+    applyCollateral(txBuilder, ctx.preparedPlutus.collateral);
+  // Reloaded requirements already contain the collateral owner's key.
+  // Mesh appends requiredSignerHash calls without deduplicating the CBOR set.
+  const emittedSigners = new Set(
+    txBuilder.meshTxBuilderBody.requiredSignatures.map((key) =>
+      key.toLowerCase(),
+    ),
+  );
+  for (const key of requiredSigners.map((key) => key.toLowerCase())) {
+    if (emittedSigners.has(key)) continue;
+    txBuilder.requiredSignerHash(key);
+    emittedSigners.add(key);
   }
 
   // Certificates are re-emitted against the wallet's freshly derived reward
