@@ -14,6 +14,12 @@ import { api } from "@/utils/api";
 import { useBallot } from "@/hooks/useBallot";
 import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import {
+  isProxyModeBlocked,
+  proxyModeBlockedMessage,
+  resolveProxyMode,
+} from "@/lib/proxy/proxyMode";
+import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { useUserStore } from "@/lib/zustand/user";
 import {
@@ -25,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import type { BallotType } from "../ballot/ballot";
 import { useBallotModal } from "@/hooks/useBallotModal";
-import { Plus, Info, Lock, FileText, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
+import { Plus, Lock, FileText, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
 import { ProposalDetails } from "@/types/governance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getProposalStatus, parseProposalId } from "@/lib/governance";
@@ -110,7 +116,7 @@ export default function VoteButton({
   const { openModal, setCurrentProposal } = useBallotModal();
 
   // Proxy state
-  const { isProxyEnabled, selectedProxyId } = useProxy();
+  const { selectedProxyId } = useProxy();
   const { wallet } = useMeshWallet();
   const userAddress = useUserStore((state) => state.userAddress);
 
@@ -121,7 +127,7 @@ export default function VoteButton({
   }, [proposalDetails]);
 
   // Get proxies for proxy mode
-  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: proxies, isError: proxiesLoadFailed } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
       walletId: appWallet?.id || undefined,
       userAddress: userAddress || undefined,
@@ -129,27 +135,33 @@ export default function VoteButton({
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
-  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+  // A selected proxy that hasn't loaded or isn't this wallet's blocks voting
+  // instead of falling back to a direct DRep vote (see resolveProxyMode).
+  const proxyMode = resolveProxyMode({
+    selectedProxyId,
+    proxies,
+    loadFailed: proxiesLoadFailed,
+  });
+  const hasValidProxy = proxyMode.kind === "proxy";
+  const proxyBlocked = isProxyModeBlocked(proxyMode);
+  const proxyBlockedMessage = proxyModeBlockedMessage(proxyMode);
 
   async function voteProxy() {
     if (!voteKind) {
       setAlert("Select Yes, No, or Abstain before voting");
       return;
     }
-    if (!hasValidProxy) {
-      // Fall back to standard vote if no valid proxy
-      return vote();
+    if (proxyMode.kind !== "proxy") {
+      // Never fall back to a direct vote here: the user asked for a proxy vote.
+      if (proxyBlockedMessage) {
+        toast({ ...proxyBlockedMessage, variant: "destructive", duration: 5000 });
+      }
+      return;
     }
 
     setLoading(true);
     try {
-      // Get the selected proxy
-      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
-      if (!proxy) {
-        // Fall back to standard vote if proxy not found
-        return vote();
-      }
+      const proxy = proxyMode.proxy;
       if (!wallet) throw new Error("No connected wallet");
 
       // Create proxy contract instance
@@ -241,6 +253,10 @@ export default function VoteButton({
   async function vote() {
     if (!voteKind) {
       setAlert("Select Yes, No, or Abstain before voting");
+      return;
+    }
+    if (proxyBlockedMessage) {
+      toast({ ...proxyBlockedMessage, variant: "destructive", duration: 5000 });
       return;
     }
     if (drepInfo === undefined) {
@@ -447,25 +463,11 @@ export default function VoteButton({
             </ToggleGroupItem>
           </ToggleGroup>
 
-          {isProxyEnabled && proxies && proxies.length > 0 && !selectedProxyId && (
-            <div className="w-full p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-xs sm:text-sm text-yellow-800 dark:text-yellow-200 font-medium">
-                    Proxy Mode Active
-                  </p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                    Select a proxy in the Proxy Control panel above to enable voting.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          <ProxyModeNotice mode={proxyMode} />
 
           <Button
             onClick={hasValidProxy ? voteProxy : vote}
-            disabled={loading || utxos.length === 0}
+            disabled={loading || utxos.length === 0 || proxyBlocked}
             className="w-full"
           >
             {loading

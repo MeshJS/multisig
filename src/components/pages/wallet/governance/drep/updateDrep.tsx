@@ -14,7 +14,10 @@ import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useProxy } from "@/hooks/useProxy";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
+import { proxyModeBlockedMessage, resolveProxyMode } from "@/lib/proxy/proxyMode";
 import { api } from "@/utils/api";
+import { useToast } from "@/hooks/use-toast";
 import { getProvider } from "@/utils/get-provider";
 import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
@@ -33,14 +36,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   const loading = useSiteStore((state) => state.loading);
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
+  const { toast } = useToast();
   const { multisigWallet } = useMultisigWallet();
-  const { isProxyEnabled, selectedProxyId } = useProxy();
+  const { selectedProxyId } = useProxy();
 
   // UTxO selection state
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
 
   // Get proxies for proxy mode
-  const { data: proxies } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: proxies, isError: proxiesLoadFailed } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
       walletId: appWallet?.id || undefined,
       userAddress: userAddress || undefined,
@@ -48,8 +52,15 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
-  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+  // A selected proxy that hasn't loaded or isn't this wallet's blocks the
+  // action instead of falling back to the wallet's own DRep (see resolveProxyMode).
+  const proxyMode = resolveProxyMode({
+    selectedProxyId,
+    proxies,
+    loadFailed: proxiesLoadFailed,
+  });
+  const hasValidProxy = proxyMode.kind === "proxy";
+  const proxyBlockedMessage = proxyModeBlockedMessage(proxyMode);
 
   // Helper function to get multisig inputs (like in register component)
   const getMsInputs = useCallback(async (): Promise<{ utxos: UTxO[]; walletAddress: string }> => {
@@ -112,21 +123,16 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
     if (!activeWallet || !userAddress || !appWallet) {
       throw new Error("Wallet not connected");
     }
-    if (!hasValidProxy) {
-      // Fall back to standard update if no valid proxy
+    if (proxyMode.kind !== "proxy") {
+      // updateDrep() refuses a blocked mode itself; with no proxy selected
+      // this is the standard update the user asked for.
       return updateDrep();
     }
+    const proxy = proxyMode.proxy;
 
     setLoading(true);
 
     try {
-      // Get the selected proxy
-      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
-      if (!proxy) {
-        // Fall back to standard update if proxy not found
-        return updateDrep();
-      }
-
       // Create anchor metadata
       const { anchorUrl, anchorJson } = await createAnchor();
 
@@ -171,6 +177,10 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
   }
 
   async function updateDrep(): Promise<void> {
+    if (proxyBlockedMessage) {
+      toast({ ...proxyBlockedMessage, variant: "destructive", duration: 5000 });
+      throw new Error(proxyBlockedMessage.description);
+    }
     if (!activeWallet || !userAddress || !appWallet)
       throw new Error("Wallet not connected");
 
@@ -260,6 +270,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
           </h1>
         </div>
       )}
+      <ProxyModeNotice mode={proxyMode} className="mb-4" />
       {appWallet && (
         <DRepForm
           _imageUrl={""}
