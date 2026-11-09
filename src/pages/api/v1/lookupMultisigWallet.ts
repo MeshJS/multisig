@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getProvider } from "@/utils/get-provider";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit } from "@/lib/security/requestGuards";
-import { isProviderNotFoundError } from "@/lib/server/providerErrors";
+import { TTL_MS, getLabel1854Registrations } from "@/lib/server/label1854Index";
 
 export default async function handler(
   req: NextApiRequest,
@@ -49,27 +49,13 @@ export default async function handler(
     return res.status(400).json({ error: "Invalid network (expected 0 or 1)" });
   }
 
-  const provider = getProvider(networkId);
-
   try {
-    // Page through all label-1854 metadata (Blockfrost returns ascending,
-    // oldest first, 100 per page — a single unpaginated call silently
-    // misses registrations beyond the first page). MAX_PAGES bounds the
-    // provider fan-out; ascending order is preserved so consumers can
-    // treat the first match as the original registration.
-    const MAX_PAGES = 10;
-    const PAGE_SIZE = 100;
-    const response: unknown[] = [];
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const batch = await provider.get(
-        `/metadata/txs/labels/1854?page=${page}&count=${PAGE_SIZE}`,
-      );
-      if (!Array.isArray(batch)) {
-        throw new Error("Invalid response format from provider");
-      }
-      response.push(...batch);
-      if (batch.length < PAGE_SIZE) break;
-    }
+    // One shared, cached sweep of the whole label serves every lookup — see
+    // label1854Index.ts for why the filtering below can't be pushed upstream.
+    const { items: response, fetchedAt } = await getLabel1854Registrations(
+      networkId,
+      () => getProvider(networkId),
+    );
 
     const validItems = response.filter((item: any) => {
       const participants = item.json_metadata?.participants;
@@ -83,14 +69,18 @@ export default async function handler(
       );
     });
 
-    // Cache lookup results for 1 minute (blockchain metadata changes infrequently)
-    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    // Let browsers/CDNs keep the answer only for what is left of the server
+    // snapshot's TTL, so the two caches don't stack.
+    const maxAge = Math.max(
+      0,
+      Math.floor((TTL_MS - (Date.now() - fetchedAt)) / 1000),
+    );
+    res.setHeader(
+      "Cache-Control",
+      `public, max-age=${maxAge}, stale-while-revalidate=120`,
+    );
     res.status(200).json(matchedItems);
   } catch (error) {
-    if (isProviderNotFoundError(error)) {
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
-      return res.status(200).json([]);
-    }
     console.error("lookupWallet error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
