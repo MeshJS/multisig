@@ -39,7 +39,7 @@ export default function ReadyStep({ flow }: Props) {
 
       <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button asChild variant="outline" className="w-full sm:w-auto">
-          <Link href="/wallets">View All Wallets</Link>
+          <Link prefetch={false} href="/wallets">View All Wallets</Link>
         </Button>
         {walletId && (
           <Button asChild className="w-full sm:w-auto">

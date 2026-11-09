@@ -123,21 +123,58 @@ export async function fetchIpfsJson<T = unknown>(
     url = anchor;
   }
 
-  const { signal: timed, cleanup } = timeoutSignal(signal, FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: timed });
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const body = (await res.json()) as { error?: string };
-        if (body?.error) detail = `: ${body.error}`;
-      } catch {
-        // response body wasn't JSON; the status code alone will have to do
+  // The resolver is rate-limited per IP. A bulk caller (the DRep vote-history
+  // CSV export resolves every rationale) can hit that limit; waiting out
+  // Retry-After and asking again is cheaper than exporting empty cells.
+  for (let attempt = 0; ; attempt++) {
+    let waitMs: number;
+    const { signal: timed, cleanup } = timeoutSignal(signal, FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: timed });
+      if (isIpfs && res.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+        waitMs = retryAfterMs(res);
+        await res.body?.cancel().catch(() => undefined);
+      } else {
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body?.error) detail = `: ${body.error}`;
+          } catch {
+            // response body wasn't JSON; the status code alone will have to do
+          }
+          throw new Error(`Failed to fetch rationale (${res.status})${detail}`);
+        }
+        return (await res.json()) as T;
       }
-      throw new Error(`Failed to fetch rationale (${res.status})${detail}`);
+    } finally {
+      cleanup();
     }
-    return (await res.json()) as T;
-  } finally {
-    cleanup();
+    await abortableDelay(waitMs, signal);
   }
+}
+
+const MAX_RATE_LIMIT_RETRIES = 2;
+/** Never sleep longer than this, whatever Retry-After says. */
+const MAX_RETRY_WAIT_MS = 60_000;
+
+function retryAfterMs(res: Response): number {
+  const seconds = Number(res.headers.get("retry-after"));
+  const ms = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1000;
+  return Math.min(ms, MAX_RETRY_WAIT_MS);
+}
+
+function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

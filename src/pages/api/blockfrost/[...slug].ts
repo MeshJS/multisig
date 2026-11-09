@@ -9,7 +9,7 @@ interface NetworkConfig {
 
 function getNetworkConfig(network: string): NetworkConfig | null {
   switch (network) {
-    case "mainnet":
+    case "mainnet": {
       // Use server-side key if available, otherwise fall back to client-side key
       const mainnetKey =
         env.BLOCKFROST_API_KEY_MAINNET ??
@@ -19,7 +19,8 @@ function getNetworkConfig(network: string): NetworkConfig | null {
         key: mainnetKey,
         baseUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
       };
-    default: // preprod
+    }
+    case "preprod": {
       // Use server-side key if available, otherwise fall back to client-side key
       const preprodKey =
         env.BLOCKFROST_API_KEY_PREPROD ??
@@ -29,8 +30,22 @@ function getNetworkConfig(network: string): NetworkConfig | null {
         key: preprodKey,
         baseUrl: "https://cardano-preprod.blockfrost.io/api/v0",
       };
+    }
+    default:
+      return null;
   }
 }
+
+/** The networks this proxy serves. Anything else used to fall through to preprod. */
+const NETWORKS = new Set(["mainnet", "preprod"]);
+
+/**
+ * One path segment as Blockfrost uses them: bech32 addresses and ids, hex
+ * hashes, numbers, words like `latest`. Next.js hands us segments already
+ * percent-decoded, so without this check `..%2F..` or `%3F` in a segment
+ * would rewrite the upstream path or query string.
+ */
+const SEGMENT_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 function getQueryString(url: string | undefined): string {
   if (!url) return "";
@@ -40,6 +55,34 @@ function getQueryString(url: string | undefined): string {
 
 function isCBOREndpoint(endpointPath: string): boolean {
   return endpointPath === "tx/submit" || endpointPath === "utils/txs/evaluate";
+}
+
+/**
+ * The only Blockfrost endpoints the client (Mesh's BlockfrostProvider, used by
+ * the UTXOS wallet) ever POSTs to. Every other proxied call is a GET. Limiting
+ * POST to these keeps the proxy from being a general write channel on our
+ * Blockfrost project for whatever else Blockfrost accepts now or later.
+ */
+const POST_ENDPOINTS = new Set([
+  "tx/submit",
+  "utils/txs/evaluate",
+  "utils/txs/evaluate/utxos",
+]);
+
+/**
+ * Upper bound on a forwarded request body. A Cardano transaction is at most
+ * 16 KiB (32 KiB as hex); evaluate/utxos adds the extra UTxO set as JSON.
+ * 1 MiB leaves ample headroom for both. Body parsing is off for this route,
+ * so without this cap the handler buffered any body a caller sent, in full,
+ * before forwarding it.
+ */
+const MAX_PROXY_BODY_BYTES = 1024 * 1024;
+
+class BodyTooLargeError extends Error {
+  constructor() {
+    super("Request body exceeds the size limit");
+    this.name = "BodyTooLargeError";
+  }
 }
 
 function convertToBuffer(data: unknown): Buffer {
@@ -75,19 +118,51 @@ function convertToBuffer(data: unknown): Buffer {
   return Buffer.from(JSON.stringify(data), "utf-8");
 }
 
-async function getRawBody(req: NextApiRequest): Promise<Buffer> {
+/**
+ * Read the request body, giving up as soon as it passes `maxBytes` rather than
+ * after buffering all of it.
+ */
+async function getRawBody(
+  req: NextApiRequest,
+  maxBytes: number,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => {
+    let received = 0;
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    const onData = (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > maxBytes) {
+        cleanup();
+        // Stop pulling the rest off the socket; the 413 is sent with
+        // `Connection: close`, so the unread remainder is dropped with it.
+        req.pause();
+        reject(new BodyTooLargeError());
+        return;
+      }
       chunks.push(chunk);
-    });
-    req.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-    req.on("error", (error) => {
+    };
+    const onEnd = () => {
+      cleanup();
+      resolve(Buffer.concat(chunks, received));
+    };
+    const onError = (error: Error) => {
+      cleanup();
       reject(error);
-    });
+    };
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
   });
+}
+
+function sendBodyTooLarge(res: NextApiResponse) {
+  res.setHeader("Connection", "close");
+  return res.status(413).json({ error: "Request entity too large" });
 }
 
 // Disable body parsing for all requests - we'll handle it manually
@@ -108,6 +183,12 @@ export default async function handler(
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+  // Nothing that uses this proxy sends anything but GET and POST. Other
+  // methods used to be forwarded to Blockfrost verbatim with our project key.
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST, OPTIONS");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   try {
     const slug = req.query.slug as string[] | undefined;
@@ -116,19 +197,32 @@ export default async function handler(
     }
 
     const network = slug[0]!; // Safe because we checked slug.length > 0
-    const networkConfig = getNetworkConfig(network);
+    if (!NETWORKS.has(network)) {
+      return res.status(400).json({ error: "network must be mainnet or preprod" });
+    }
 
+    const segments = slug.slice(1);
+    if (!segments.every((segment) => SEGMENT_RE.test(segment))) {
+      return res.status(400).json({ error: "Invalid Blockfrost path" });
+    }
+
+    // Construct endpoint - detect CBOR endpoints early
+    const endpointPath = segments.join("/");
+    const queryString = getQueryString(req.url ?? "");
+    const endpoint = endpointPath + queryString;
+    const isCBOR = isCBOREndpoint(endpointPath);
+
+    if (req.method === "POST" && !POST_ENDPOINTS.has(endpointPath)) {
+      res.setHeader("Allow", "GET, OPTIONS");
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const networkConfig = getNetworkConfig(network);
     if (!networkConfig || !networkConfig.key) {
       return res.status(500).json({
         error: `Missing Blockfrost API key for network: ${network}`,
       });
     }
-
-    // Construct endpoint - detect CBOR endpoints early
-    const endpointPath = slug.slice(1).join("/") || "";
-    const queryString = getQueryString(req.url ?? "");
-    const endpoint = endpointPath + queryString;
-    const isCBOR = isCBOREndpoint(endpointPath);
 
     // Set headers
     const headers: Record<string, string> = {
@@ -144,15 +238,24 @@ export default async function handler(
     // Handle request body based on endpoint type
     let requestBody: BodyInit | undefined = undefined;
     
-    if (req.method !== "GET" && req.method !== "HEAD") {
+    if (req.method === "POST") {
+      // Refuse an oversized body up front when the client declares it.
+      const declared = Number(req.headers["content-length"]);
+      if (Number.isFinite(declared) && declared > MAX_PROXY_BODY_BYTES) {
+        return sendBodyTooLarge(res);
+      }
+
       if (isCBOR) {
         // For CBOR endpoints, read raw body and convert to buffer
         try {
-          const rawBody = await getRawBody(req);
+          const rawBody = await getRawBody(req, MAX_PROXY_BODY_BYTES);
           const buffer = convertToBuffer(rawBody);
           // Convert Buffer to Uint8Array for fetch API compatibility
           requestBody = new Uint8Array(buffer);
         } catch (error) {
+          if (error instanceof BodyTooLargeError) {
+            return sendBodyTooLarge(res);
+          }
           console.error("Error reading raw body for CBOR endpoint:", error);
           return res.status(400).json({
             error: "Failed to read request body for CBOR endpoint",
@@ -161,12 +264,15 @@ export default async function handler(
       } else {
         // For JSON endpoints, parse the body as text
         try {
-          const rawBody = await getRawBody(req);
+          const rawBody = await getRawBody(req, MAX_PROXY_BODY_BYTES);
           const bodyText = rawBody.toString("utf-8");
           if (bodyText) {
             requestBody = bodyText;
           }
         } catch (error) {
+          if (error instanceof BodyTooLargeError) {
+            return sendBodyTooLarge(res);
+          }
           console.error("Error reading body for JSON endpoint:", error);
           // Continue without body if reading fails
         }

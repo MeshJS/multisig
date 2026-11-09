@@ -5,6 +5,7 @@ import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import {
+  clearWalletSessionCookie,
   getWalletSessionFromReq,
   setWalletSessionCookie,
   type WalletSessionPayload,
@@ -16,6 +17,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   await cors(req, res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Logout: drop the session cookie so the next connect must re-authorize.
+  if (req.method === "DELETE") {
+    clearWalletSessionCookie(res);
+    return res.status(200).json({ ok: true });
   }
 
   if (req.method !== "POST") {
@@ -67,8 +74,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: "Invalid signature" });
     }
 
-    // Delete the nonce from the database after verification
-    await db.nonce.delete({ where: { id: nonceEntry.id } });
+    // Consume exactly the verified nonce in one statement, so a replayed
+    // signature racing the original gets a 401 instead of crashing the
+    // delete, and a nonce rotated by getNonce mid-request is not spent on a
+    // signature over its old value. Same rule as /api/v1/authSigner.
+    const consumed = await db.nonce.deleteMany({
+      where: { id: nonceEntry.id, value: nonce },
+    });
+    if (consumed.count !== 1) {
+      return res
+        .status(401)
+        .json({ error: "Nonce already used or replaced; request a new one" });
+    }
 
     // Merge with existing wallet session
     const existing = getWalletSessionFromReq(req) ?? { wallets: [] };

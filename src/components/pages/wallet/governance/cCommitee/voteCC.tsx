@@ -143,11 +143,13 @@ export default function VoteCC({
         txBuilder,
         description: "CC Vote",
       });
-      // send discord message
-      await sendDiscordMessage(
-        discordIds as [],
-        `**NEW MULTISIG TRANSACTION:** A new CC Vote was created for your wallet: ${appWallet.name}. Review it here: ${window.location.origin}/wallets/${appWallet.id}/transactions`,
-      );
+      // Best-effort notification: the vote transaction already exists, so a
+      // Discord failure must not keep the user on this page.
+      try {
+        await sendDiscordMessage(appWallet.id, "ccVote", discordIds);
+      } catch (discordError) {
+        console.error("Discord notification failed:", discordError);
+      }
       router.push(`/wallets/${appWallet.id}/transactions`);
     } catch (e) {
       console.error(e);

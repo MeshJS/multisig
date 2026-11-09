@@ -1,5 +1,7 @@
 // src/pages/api-docs.tsx
 import dynamic from "next/dynamic";
+import Head from "next/head";
+import "swagger-ui-react/swagger-ui.css";
 import React, { useEffect, useState, useRef } from "react";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { Key, Lightbulb, Copy, Check } from "lucide-react";
@@ -11,9 +13,13 @@ import { useGraphicsTier } from "@/hooks/useGraphicsTier";
 // to draw a globe on.
 const Globe = dynamic(() => import("./globe"), { ssr: false, loading: () => null });
 
-// Avoid SSR for Swagger UI
-// Note: swagger-ui CSS is imported globally from src/pages/_app.tsx because
-// Next.js Pages Router only allows global CSS imports from the custom App.
+// Avoid SSR for Swagger UI.
+//
+// Its stylesheet (~186 KB) and our overrides (~122 KB) load on this page only.
+// They used to be global imports in _app, which put 75% of the site's CSS on
+// every page. CSS from node_modules may be imported from any module; our
+// overrides are plain global CSS, which the Pages Router only allows in _app,
+// so they are served from public/ and linked in this page's <Head>.
 const SwaggerUI = dynamic(() => import("swagger-ui-react"), { ssr: false });
 
 export const getServerSideProps = () => ({ props: {} });
@@ -309,6 +315,9 @@ export default function ApiDocs() {
 
   return (
     <div style={{ minHeight: "100vh", position: "relative" }}>
+      <Head>
+        <link rel="stylesheet" href="/swagger-overrides.css" />
+      </Head>
       {gfx.webglGlobe && (
         <div
           className="globe-background-container"

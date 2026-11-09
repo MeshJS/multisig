@@ -1,0 +1,20 @@
+{
+  "_comment": "First-load JS budgets in KB gzipped, checked by scripts/check-bundle-budget.mjs. Measured 2026-10-16 after the load-performance work: shared 232 KB, light public routes 233-367 KB, wallet routes up to ~2.3 MB. Light routes (src/lib/wallet-runtime.ts) get tight per-page budgets so a page that starts importing the Cardano stack fails the check. Raise a number only in the PR that needs it, and say why.",
+  "sharedJsKb": 300,
+  "sharedCssKb": 40,
+  "pageJsKb": 2600,
+  "pages": {
+    "/": 350,
+    "/features": 350,
+    "/roadmap": 350,
+    "/roadmap/graph": 350,
+    "/governance": 350,
+    "/governance/drep": 350,
+    "/governance/drep/[id]": 350,
+    "/verify": 450,
+    "/blog": 350,
+    "/blog/[slug]": 350,
+    "/vault": 400,
+    "/bot-setup": 350
+  }
+}

@@ -13,6 +13,8 @@ import type { UTxO } from "@meshsdk/core";
 import router from "next/router";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
+import { proxyModeBlockedMessage, resolveProxyMode } from "@/lib/proxy/proxyMode";
+import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/utils/api";
@@ -40,11 +42,11 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   const setLoading = useSiteStore((state) => state.setLoading);
   const { newTransaction } = useTransaction();
   const { multisigWallet } = useMultisigWallet();
-  const { isProxyEnabled, selectedProxyId, setSelectedProxy } = useProxy();
+  const { selectedProxyId, setSelectedProxy } = useProxy();
   const { toast } = useToast();
 
   // Get proxies for the current wallet
-  const { data: proxies, isLoading: proxiesLoading } = api.proxy.getProxiesByUserOrWallet.useQuery(
+  const { data: proxies, isError: proxiesLoadFailed } = api.proxy.getProxiesByUserOrWallet.useQuery(
     { 
       walletId: appWallet?.id || undefined,
       userAddress: userAddress || undefined,
@@ -52,8 +54,15 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
     { enabled: !!(appWallet?.id || userAddress) }
   );
 
-  // Check if we have valid proxy data (proxy enabled, selected, proxies exist, and selected proxy is found)
-  const hasValidProxy = !!(isProxyEnabled && selectedProxyId && proxies && proxies.length > 0 && proxies.find((p: any) => p.id === selectedProxyId));
+  // A selected proxy that hasn't loaded or isn't this wallet's blocks
+  // registration instead of registering the wallet's own DRep by mistake.
+  const proxyMode = resolveProxyMode({
+    selectedProxyId,
+    proxies,
+    loadFailed: proxiesLoadFailed,
+  });
+  const hasValidProxy = proxyMode.kind === "proxy";
+  const proxyBlockedMessage = proxyModeBlockedMessage(proxyMode);
 
   const [manualUtxos, setManualUtxos] = useState<UTxO[]>([]);
   const [formState, setFormState] = useState({
@@ -121,6 +130,10 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   }
 
   async function registerDrep(): Promise<void> {
+    if (proxyBlockedMessage) {
+      toast({ ...proxyBlockedMessage, variant: "destructive", duration: 5000 });
+      throw new Error(proxyBlockedMessage.description);
+    }
     if (!activeWallet || !userAddress || !appWallet) {
       const errorMessage = "Wallet not connected. Please ensure your wallet is connected and try again.";
       toast({
@@ -243,10 +256,12 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
   }
 
   async function registerProxyDrep(): Promise<void> {
-    if (!hasValidProxy) {
-      // Fall back to standard registration if no valid proxy
+    if (proxyMode.kind !== "proxy") {
+      // registerDrep() refuses a blocked mode itself; with no proxy selected
+      // this is the standard registration the user asked for.
       return registerDrep();
     }
+    const proxy = proxyMode.proxy;
 
     if (!activeWallet || !userAddress || !appWallet) {
       const errorMessage = "Proxy registration requires a connected wallet signer.";
@@ -265,13 +280,6 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
 
       // Get multisig inputs
       const { utxos, walletAddress } = await getMsInputs();
-
-      // Get the selected proxy
-      const proxy = proxies?.find((p: any) => p.id === selectedProxyId);
-      if (!proxy) {
-        // Fall back to standard registration if proxy not found
-        return registerDrep();
-      }
 
       // Create proxy contract instance with the selected proxy
       const txBuilder = await getTxBuilder(network);
@@ -343,6 +351,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
           </h1>
         </div>
       )}
+      <ProxyModeNotice mode={proxyMode} className="mb-4" />
       {appWallet && (
         <DRepForm
           _imageUrl={""}

@@ -22,4 +22,10 @@ export const publicRoutes = [
   // can see what's available; per-tab actions (sign, submit) still gate
   // on a live wallet connection.
   "/wallets/import-wallet",
+  // Error pages must render as themselves for a signed-out visitor; without
+  // these, once the wallet runtime loads, the layout would swap a 404 for the
+  // landing page.
+  "/404",
+  "/500",
+  "/_error",
 ];

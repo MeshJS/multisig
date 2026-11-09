@@ -1,7 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
@@ -14,6 +14,24 @@ import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
 // WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts
 import { useUserStore } from "@/lib/zustand/user";
+import { mapWithConcurrency } from "@/utils/concurrency";
+import { createBlockfrostThrottle } from "@/utils/blockfrost-throttle";
+import {
+  type RefreshContext,
+  walletRefreshCoordinator,
+} from "@/lib/wallet-refresh";
+
+type BlockfrostThrottle = ReturnType<typeof createBlockfrostThrottle>;
+
+/** Blockfrost's page size for list endpoints. */
+const BLOCKFROST_PAGE_SIZE = 100;
+/**
+ * Lookups in flight per wallet refresh. The throttle caps throughput
+ * separately, at 5 requests/s: about what the old serial loop made, and half
+ * of Blockfrost's sustained limit. Concurrency only has to keep the throttle
+ * busy across slow round trips.
+ */
+const BLOCKFROST_CONCURRENCY = 4;
 
 interface WalletDataLoaderWrapperProps {
   mode: "button" | "menu-item";
@@ -28,7 +46,6 @@ export default function WalletDataLoaderWrapper({
   const { multisigWallet } = useMultisigWallet();
   const [loading, setLoading] = useState<boolean>(false);
 
-  const prevWalletIdRef = useRef<string | null>(null);
   const ctx = api.useUtils();
   const network = useSiteStore((state) => state.network);
   const setRandomState = useSiteStore((state) => state.setRandomState);
@@ -39,7 +56,6 @@ export default function WalletDataLoaderWrapper({
   const setWalletTransactions = useWalletsStore(
     (state) => state.setWalletTransactions,
   );
-  const fetchingTransactions = useRef(false);
 
   const walletLastUpdated = useWalletsStore((state) => state.walletLastUpdated);
   const setWalletLastUpdated = useWalletsStore(
@@ -70,34 +86,58 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function getTransactionsOnChain() {
+  async function getTransactionsOnChain(
+    throttle: BlockfrostThrottle,
+    refresh: RefreshContext,
+  ) {
     try {
       if (appWallet) {
         const maxPage = 4;
         const _transactions: OnChainTransaction[] = [];
         const blockchainProvider = getProvider(network);
 
+        // List pages first (newest first); stop at the first short page.
+        const listed: TxInfo[] = [];
         for (let i = 1; i <= maxPage; i++) {
+          if (refresh.isStale()) return;
           const transactions: TxInfo[] = await blockchainProvider.get(
             `/addresses/${appWallet.address}/transactions?page=${i}&order=desc`,
           );
-
-          if (transactions.length === 0) {
-            break;
-          }
-
-          for (const tx of transactions) {
-            const txData = await blockchainProvider.get(
-              `/txs/${tx.tx_hash}/utxos`,
-            );
-            _transactions.push({
-              hash: tx.tx_hash,
-              tx: tx,
-              inputs: txData.inputs,
-              outputs: txData.outputs,
-            });
-          }
+          listed.push(...transactions);
+          if (transactions.length < BLOCKFROST_PAGE_SIZE) break;
         }
+
+        // Then the per-transaction UTxO lookups, several at a time rather than
+        // one round trip after another (up to 400 of them for a busy wallet).
+        // Order is preserved, so the list stays newest first.
+        // A lookup that still fails after backoff costs only its own detail:
+        // the transaction stays in the list with no inputs/outputs, instead of
+        // one error emptying the whole history.
+        const details = await mapWithConcurrency(
+          listed,
+          BLOCKFROST_CONCURRENCY,
+          (tx) =>
+            // The user moved to another wallet: stop spending rate budget on
+            // this one. What was fetched is discarded below.
+            refresh.isStale()
+              ? Promise.resolve(null)
+              : throttle
+                  .get(blockchainProvider, `/txs/${tx.tx_hash}/utxos`)
+                  .catch(() => null),
+        );
+        // A history cut short by a wallet switch would replace the cached one
+        // with transactions missing their inputs and outputs. Keep the cache;
+        // switching back to this wallet loads it again.
+        if (refresh.isStale()) return;
+        listed.forEach((tx, index) => {
+          const txData = details[index];
+          _transactions.push({
+            hash: tx.tx_hash,
+            tx: tx,
+            inputs: txData?.inputs ?? [],
+            outputs: txData?.outputs ?? [],
+          });
+        });
 
         if (_transactions.length > 0) {
           setWalletTransactions(appWallet?.id, _transactions);
@@ -107,14 +147,17 @@ export default function WalletDataLoaderWrapper({
         setWalletLastUpdated(appWallet?.id, Date.now());
       }
     } catch (error) {
-      if (appWallet) {
+      if (appWallet && !refresh.isStale()) {
         setWalletTransactions(appWallet?.id, []);
         setWalletLastUpdated(appWallet?.id, Date.now());
       }
     }
   }
 
-  async function getWalletAssets() {
+  async function getWalletAssets(
+    throttle: BlockfrostThrottle,
+    refresh: RefreshContext,
+  ) {
     try {
       const blockchainProvider = getProvider(network);
       const assets = await blockchainProvider.get(
@@ -127,10 +170,30 @@ export default function WalletDataLoaderWrapper({
             unit: asset.unit,
             quantity: asset.quantity,
           });
-          if (asset.unit === "lovelace") continue;
-          const assetInfo = await blockchainProvider.get(
-            `/assets/${asset.unit}`,
-          );
+        }
+        // Metadata per native asset, fetched concurrently instead of serially.
+        const tokens = (assets.amount as { unit: string }[]).filter(
+          (asset) => asset.unit !== "lovelace",
+        );
+        // A failed metadata lookup falls back to the unit, like a token with
+        // no registered metadata, rather than dropping every asset.
+        const infos = await mapWithConcurrency(
+          tokens,
+          BLOCKFROST_CONCURRENCY,
+          (asset) =>
+            refresh.isStale()
+              ? Promise.resolve(null)
+              : throttle
+                  .get(blockchainProvider, `/assets/${asset.unit}`)
+                  .catch(() => null),
+        );
+        // `walletAssets` is not keyed by wallet: written now, it would show
+        // the previous wallet's assets on the one the user switched to. The
+        // metadata is keyed by unit, but lookups skipped above would replace
+        // known names with the bare unit.
+        if (refresh.isStale()) return;
+        for (const [index, asset] of tokens.entries()) {
+          const assetInfo = infos[index];
           setWalletAssetMetadata(
             asset.unit,
             assetInfo?.metadata?.name ||
@@ -154,6 +217,7 @@ export default function WalletDataLoaderWrapper({
         setWalletAssets([]);
       }
     } catch (error) {
+      if (refresh.isStale()) return;
       setWalletAssets([]);
       setWalletAssetMetadata("", "", 0, "", "", "");
     }
@@ -167,11 +231,11 @@ export default function WalletDataLoaderWrapper({
     return getDRepIds(dRepId);
   }
 
-  async function getDRepInfo() {
+  async function getDRepInfo(refresh: RefreshContext) {
     try {
       const drepids = dRepIds();
       if (!drepids) {
-        setDrepInfo(undefined);
+        if (!refresh.isStale()) setDrepInfo(undefined);
         return;
       }
 
@@ -180,6 +244,8 @@ export default function WalletDataLoaderWrapper({
         `/governance/dreps/${drepids.cip105}`,
       );
       if (!drepInfo) throw new Error(`No dRep for ID ${drepids.cip105} found.`);
+      // `drepInfo` is not keyed by wallet either; see getWalletAssets.
+      if (refresh.isStale()) return;
       setDrepInfo(drepInfo);
     } catch (err: any) {
       // DRep not found (404) is expected if DRep hasn't been registered yet
@@ -188,6 +254,7 @@ export default function WalletDataLoaderWrapper({
       if (!is404) {
         console.error(`Error fetching DRep info:`, err);
       }
+      if (refresh.isStale()) return;
       setDrepInfo(undefined);
     }
   }
@@ -219,36 +286,64 @@ export default function WalletDataLoaderWrapper({
     }
   }
 
-  async function refreshWallet() {
-    if (fetchingTransactions.current) return;
+  /** Load one wallet's chain data into the store. */
+  async function loadWallet(refresh: RefreshContext) {
+    // Independent sources — run them together. Each catches its own errors
+    // (fetchUtxos aside, which allSettled absorbs), so one slow or failing
+    // source no longer holds the others back.
+    // One throttle per refresh, shared by both fan-outs, so together they stay
+    // under Blockfrost's per-client rate and leave room for the calls a
+    // transaction build makes meanwhile.
+    const throttle = createBlockfrostThrottle({ minIntervalMs: 200 });
+    await Promise.allSettled([
+      fetchUtxos(),
+      getTransactionsOnChain(throttle, refresh),
+      getWalletAssets(throttle, refresh),
+      getDRepInfo(refresh),
+      fetchProxyData(),
+    ]);
+  }
 
-    fetchingTransactions.current = true;
+  async function refreshWallet() {
     setLoading(true);
-    await fetchUtxos();
-    await getTransactionsOnChain();
-    await getWalletAssets();
-    await getDRepInfo();
-    await fetchProxyData(); // Fetch proxy data
-    void ctx.transaction.getPendingTransactions.invalidate();
-    void ctx.transaction.getAllTransactions.invalidate();
-    // Also refresh proxy data
-    void ctx.proxy.getProxiesByUserOrWallet.invalidate();
-    setRandomState();
-    setLoading(false);
-    fetchingTransactions.current = false;
-    
+    try {
+      // Shared across both mounted controls: a refresh already running for
+      // this wallet is joined, not repeated (see src/lib/wallet-refresh.ts).
+      // With no wallet open there is no chain data to load, only queries.
+      if (appWallet) {
+        await walletRefreshCoordinator.run(appWallet.id, loadWallet);
+      }
+      void ctx.transaction.getPendingTransactions.invalidate();
+      void ctx.transaction.getAllTransactions.invalidate();
+      // Also refresh proxy data
+      void ctx.proxy.getProxiesByUserOrWallet.invalidate();
+      setRandomState();
+    } finally {
+      setLoading(false);
+    }
+
     // Call the optional callback after action completes
     if (onAction) {
       onAction();
     }
   }
 
+  const appWalletId = appWallet?.id;
   useEffect(() => {
-    if (appWallet && prevWalletIdRef.current !== appWallet.id) {
-      refreshWallet();
-      prevWalletIdRef.current = appWallet.id;
+    if (!appWalletId) return;
+    // Load on a wallet switch, not on every mount: the mobile menu's copy of
+    // this control mounts each time the menu opens. If a refresh is already
+    // running, join it so this copy's spinner reflects it.
+    if (
+      walletRefreshCoordinator.showWallet(appWalletId) ||
+      walletRefreshCoordinator.isRunning(appWalletId)
+    ) {
+      void refreshWallet();
     }
-  }, [appWallet]);
+    // Keyed on the id: appWallet is rebuilt whenever its UTxOs change, which
+    // the refresh itself does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appWalletId]);
 
   // Session check and authorization modal are now handled in layout.tsx
   // This prevents duplicate authorization prompts

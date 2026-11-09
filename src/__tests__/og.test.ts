@@ -50,11 +50,17 @@ function makeRes() {
   return { res, status, json };
 }
 
-function makeReq(url: string | undefined): NextApiRequest {
+// Each request comes from its own address unless a test says otherwise, so
+// the per-IP rate limit only bites in the test that is about it.
+let nextIp = 0;
+function makeReq(
+  url: string | undefined,
+  opts: { method?: string; ip?: string } = {},
+): NextApiRequest {
   return {
     query: url === undefined ? {} : { url },
-    method: "GET",
-    headers: {},
+    method: opts.method ?? "GET",
+    headers: { "x-forwarded-for": opts.ip ?? `test-client-${++nextIp}` },
   } as unknown as NextApiRequest;
 }
 
@@ -162,7 +168,7 @@ describe("og handler — SSRF defense", () => {
     const { default: handler } = await handlerPromise;
     const { res, status } = makeRes();
     await handler(makeReq("https://github.com/example"), res);
-    expect(status).toHaveBeenCalledWith(500);
+    expect(status).toHaveBeenCalledWith(502);
   });
 
   it("returns 200 with extracted OG metadata for an allowlisted public host", async () => {
@@ -189,3 +195,109 @@ describe("og handler — SSRF defense", () => {
     );
   });
 });
+
+describe("og handler — request bounds", () => {
+  it("answers anything but GET with 405 and fetches nothing", async () => {
+    const { default: handler } = await handlerPromise;
+    const { res, status } = makeRes();
+    await handler(makeReq("https://github.com/x", { method: "POST" }), res);
+    expect(status).toHaveBeenCalledWith(405);
+    expect(res.setHeader).toHaveBeenCalledWith("Allow", "GET");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits one address to 20 lookups a minute", async () => {
+    // Every request is an outbound fetch made on the caller's behalf, with no
+    // authentication in front of it.
+    const { default: handler } = await handlerPromise;
+    const ip = "203.0.113.77";
+    for (let i = 0; i < 20; i++) {
+      const { res, status } = makeRes();
+      await handler(makeReq(undefined, { ip }), res);
+      expect(status).toHaveBeenCalledWith(400);
+    }
+    const { res, status } = makeRes();
+    await handler(makeReq("https://github.com/x", { ip }), res);
+    expect(status).toHaveBeenCalledWith(429);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("og handler — upstream failures are gateway errors, not 500s", () => {
+  beforeEach(() => {
+    envState.OG_ALLOWED_HOSTS = "example.com";
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  it("reports an upstream error status as 502", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("nope", { status: 404 }));
+    const { default: handler } = await handlerPromise;
+    const { res, status, json } = makeRes();
+    await handler(makeReq("https://example.com/missing"), res);
+    expect(status).toHaveBeenCalledWith(502);
+    expect(json).toHaveBeenCalledWith({ error: "Upstream returned 404" });
+  });
+
+  it("reports an upstream that misses the deadline as 504", async () => {
+    const abort = new Error("This operation was aborted");
+    abort.name = "AbortError";
+    fetchMock.mockRejectedValueOnce(abort);
+    const { default: handler } = await handlerPromise;
+    const { res, status } = makeRes();
+    await handler(makeReq("https://example.com/slow"), res);
+    expect(status).toHaveBeenCalledWith(504);
+  });
+
+  it("does not echo a network error's message to the caller", async () => {
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      fetchMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED 10.1.2.3:443"));
+      const { default: handler } = await handlerPromise;
+      const { res, status, json } = makeRes();
+      await handler(makeReq("https://example.com/page"), res);
+      expect(status).toHaveBeenCalledWith(502);
+      expect(JSON.stringify(json.mock.calls)).not.toMatch(/ECONNREFUSED|10\.1\.2\.3/);
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+});
+
+describe("og handler — metadata extraction", () => {
+  beforeEach(() => {
+    envState.OG_ALLOWED_HOSTS = "example.com";
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  async function extract(html: string) {
+    fetchMock.mockResolvedValueOnce(new Response(html, { status: 200 }));
+    const { default: handler } = await handlerPromise;
+    const { res, status, json } = makeRes();
+    await handler(makeReq("https://example.com/page"), res);
+    expect(status).toHaveBeenCalledWith(200);
+    return json.mock.calls[0]![0] as Record<string, unknown>;
+  }
+
+  it("falls back to name= meta tags and then to <title>", async () => {
+    expect(
+      await extract(`<meta name="description" content="Plain"><title>Doc</title>`),
+    ).toEqual(expect.objectContaining({ title: "Doc", description: "Plain" }));
+  });
+
+  it("reads content written before property, as many sites do", async () => {
+    expect(
+      await extract(`<meta content="Reordered" property="og:title" />`),
+    ).toEqual(expect.objectContaining({ title: "Reordered" }));
+  });
+
+  it("answers within a second for 1 MiB of unterminated <meta openings", async () => {
+    // The old per-field regexes rescanned the rest of the page from every
+    // `<meta`, so this page held the event loop for minutes. (The other
+    // hostile shapes are covered in metaTags.test.ts.)
+    const html = ("<meta " + "a".repeat(50)).repeat(Math.floor((1024 * 1024) / 56)) + ">";
+    const started = Date.now();
+    await extract(html);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+

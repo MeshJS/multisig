@@ -350,7 +350,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build stake certificate transaction (SDK multisig)",
           description:
-            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex).",
+            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\" default, \"Always No Confidence\", or drep1...).",
           requestBody: {
             required: true,
             content: {
@@ -365,6 +365,7 @@ This API uses **Bearer Token** authentication (JWT).
                       enum: ["register", "deregister", "delegate", "register_and_delegate"],
                     },
                     poolId: { type: "string" },
+                    dRep: { type: "string" },
                     utxoRefs: {
                       type: "array",
                       items: {
@@ -729,7 +730,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1", "Bot"],
           summary: "Build a proxy DRep vote transaction",
           description:
-            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex>. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
+            "Builds a governance vote as the proxy DRep through the pending multisig flow with no initial signed addresses. proposalId must use <txHash>#<certIndex> (64-character hex txHash, certIndex 0-65535); each governance action may appear only once per request, at most 256 votes. Requires an auth-token UTxO. Bots need multisig:sign and cosigner access.",
           requestBody: {
             required: true,
             content: {
@@ -742,10 +743,15 @@ This API uses **Bearer Token** authentication (JWT).
                     proxyId: { type: "string" },
                     votes: {
                       type: "array",
+                      minItems: 1,
+                      maxItems: 256,
                       items: {
                         type: "object",
                         properties: {
-                          proposalId: { type: "string" },
+                          proposalId: {
+                            type: "string",
+                            pattern: "^[0-9a-fA-F]{64}#[0-9]{1,5}$",
+                          },
                           voteKind: { type: "string", enum: ["Yes", "No", "Abstain"] },
                           metadata: {},
                         },

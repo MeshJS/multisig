@@ -248,7 +248,14 @@ export function verifyAttestationChain(
       previousAt = attestedAt;
     }
 
-    const publicKey = publicKeysById[record.publicKeyId];
+    // Own keys only: an id of "constructor" must read as unknown, not as
+    // Object.prototype's function.
+    const publicKey = Object.prototype.hasOwnProperty.call(
+      publicKeysById,
+      record.publicKeyId,
+    )
+      ? publicKeysById[record.publicKeyId]
+      : undefined;
     if (!publicKey) {
       errors.push(`${at}: signed by unknown key "${record.publicKeyId}".`);
     } else if (!verifyAttestation(payload, record.signature, publicKey)) {

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { applyRateLimit } from "@/lib/security/requestGuards";
 import {
   KOIOS_BASES,
+  PROPOSAL_TITLES_MISS_MAX_AGE_MS,
   fetchProposalTitleRows,
   koiosGetAllPages,
   normalizeProposalType,
@@ -57,19 +58,40 @@ export default async function handler(
   }
 
   try {
-    const koiosVotes = await koiosGetAllPages<KoiosDrepVote>(
+    // The title sweep doesn't depend on the votes, so it runs alongside them
+    // instead of after them: a cold request costs the slower of the two Koios
+    // round trips, not their sum, and a warm one (the sweep is shared and
+    // cached in @/lib/governance/koios) costs only the votes. The catch is
+    // attached up front so a failed sweep can never become an unhandled
+    // rejection while the votes are still loading.
+    const votesPromise = koiosGetAllPages<KoiosDrepVote>(
       `${base}/drep_votes?_drep_id=${encodeURIComponent(drepId)}&order=block_time.desc`,
     );
+    const titlesPromise = fetchProposalTitleRows(base).catch((error) => {
+      // Titles are decoration — still return the votes without them.
+      console.warn("drepVotes: proposal title join failed:", error);
+      return [] as readonly KoiosProposalTitleRow[];
+    });
+    const koiosVotes = await votesPromise;
 
-    // Join proposal titles/types in one paginated sweep.
-    let titlesById = new Map<string, KoiosProposalTitleRow>();
-    if (koiosVotes.length > 0) {
+    let titlesById = new Map<string, KoiosProposalTitleRow>(
+      koiosVotes.length > 0
+        ? (await titlesPromise).map((t) => [t.proposal_id, t])
+        : [],
+    );
+    // A vote on a proposal the shared snapshot doesn't know (submitted since
+    // it was taken) gets one fresher sweep, unless the snapshot is already
+    // only seconds old. Otherwise its title would stay blank for the full TTL
+    // — and in the CDN for longer. A known proposal whose title is null (no
+    // or malformed anchor metadata) doesn't count: re-sweeping won't fix it.
+    if (koiosVotes.some((v) => !titlesById.has(v.proposal_id))) {
       try {
-        const titles = await fetchProposalTitleRows(base);
-        titlesById = new Map(titles.map((t) => [t.proposal_id, t]));
+        const fresher = await fetchProposalTitleRows(base, {
+          maxAgeMs: PROPOSAL_TITLES_MISS_MAX_AGE_MS,
+        });
+        titlesById = new Map(fresher.map((t) => [t.proposal_id, t]));
       } catch (error) {
-        // Titles are decoration — still return the votes without them.
-        console.warn("drepVotes: proposal title join failed:", error);
+        console.warn("drepVotes: proposal title refresh failed:", error);
       }
     }
 

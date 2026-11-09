@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import CardUI from "@/components/ui/card-content";
 import { Users, FileText, Coins } from "lucide-react";
-import { getProvider } from "@/utils/get-provider";
-import { useWallet } from "@meshsdk/react";
+import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
+import usePublicNetwork from "@/hooks/usePublicNetwork";
 import type { BlockfrostDrepInfo } from "@/types/governance";
 
 type Stats = {
@@ -33,27 +33,8 @@ function formatAda(n: number | null): string {
 }
 
 export default function GovernanceNetworkStats() {
-  const { wallet, connected } = useWallet();
-  const [network, setNetwork] = useState<number>(1);
+  const network = usePublicNetwork();
   const [stats, setStats] = useState<Stats>(INITIAL);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchNet = async () => {
-      if (connected && wallet) {
-        try {
-          const n = await wallet.getNetworkId();
-          if (!cancelled) setNetwork(n);
-        } catch {
-          /* default to mainnet */
-        }
-      }
-    };
-    void fetchNet();
-    return () => {
-      cancelled = true;
-    };
-  }, [connected, wallet]);
 
   useEffect(() => {
     let cancelled = false;

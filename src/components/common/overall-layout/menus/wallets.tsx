@@ -1,10 +1,8 @@
-import useUserWallets from "@/hooks/useUserWallets";
 import { Sparkle, Landmark, FolderCode } from "lucide-react";
 import MenuLink from "./menu-link";
 import { useRouter } from "next/router";
 
 export default function MenuWallets() {
-  const { wallets } = useUserWallets();
   const router = useRouter();
   const baseUrl = `/wallets/${router.query.wallet as string | undefined}/`;
   const isWalletPath = router.pathname.includes("/wallets/[wallet]");

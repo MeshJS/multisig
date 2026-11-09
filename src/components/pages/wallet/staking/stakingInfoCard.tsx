@@ -8,6 +8,8 @@ export interface StakingInfo {
   balance: string;
   rewards: string;
   withdrawals: string;
+  /** Current on-chain vote delegation of the stake credential, if any. */
+  dRepId?: string | null;
 }
 
 export default function StakingInfoCard({ stakingInfo }: { stakingInfo: StakingInfo }) {

@@ -71,7 +71,7 @@
     "@trpc/next": "^11.17.0",
     "@trpc/react-query": "^11.0.0-rc.446",
     "@trpc/server": "^11.0.0-rc.446",
-    "@utxos/sdk": "^0.0.78",
+    "@utxos/sdk": "^0.1.5",
     "@xyflow/react": "^12.11.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

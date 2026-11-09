@@ -1,4 +1,5 @@
 import { CircleUser } from "lucide-react";
+import { clearClientWalletState } from "@/lib/auth/clearClientWalletState";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ export default function UserDropDown() {
   const { toast } = useToast();
   const router = useRouter();
   const setPastWallet = useUserStore((state) => state.setPastWallet);
+  const setPastUtxosEnabled = useUserStore((state) => state.setPastUtxosEnabled);
   const userAddress = useUserStore((state) => state.userAddress);
 
   const unlinkDiscordMutation = api.user.unlinkDiscord.useMutation({
@@ -151,6 +153,8 @@ export default function UserDropDown() {
             }
             disconnect();
             setPastWallet(undefined);
+            setPastUtxosEnabled(false);
+            clearClientWalletState();
             router.push("/");
             setTimeout(() => {
               router.reload();

@@ -1,4 +1,4 @@
-import ConnectWallet from "@/components/common/cardano-objects/connect-wallet";
+import ConnectWalletSlot from "@/components/common/connect-wallet-slot";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Background } from "@/components/ui/background";
@@ -298,15 +298,15 @@ export function PageHomepage() {
             {user ? (
               <>
                 <Button size="lg" asChild>
-                  <Link href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
+                  <Link prefetch={false} href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild>
-                  <Link href="/wallets">Your Wallets</Link>
+                  <Link prefetch={false} href="/wallets">Your Wallets</Link>
                 </Button>
               </>
             ) : (
               <>
-                <ConnectWallet />
+                <ConnectWalletSlot anchor="hero" />
                 <Button size="lg" variant="outline" asChild>
                   <Link href="/features">Explore features</Link>
                 </Button>
@@ -630,7 +630,7 @@ export function PageHomepage() {
             >
               <div className="mt-4">
                 <Button asChild variant="outline">
-                  <Link href="/api-docs">
+                  <Link prefetch={false} href="/api-docs">
                     <Database className="mr-2 h-4 w-4" />
                     View API endpoints
                   </Link>
@@ -684,7 +684,7 @@ export function PageHomepage() {
               </p>
               <div className="mt-4">
                 <Button asChild variant="outline" size="sm">
-                  <Link href="/api-docs">
+                  <Link prefetch={false} href="/api-docs">
                     <Code className="mr-2 h-4 w-4" />
                     Interactive API docs
                   </Link>
@@ -885,7 +885,7 @@ export function PageHomepage() {
                   </h4>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Under{" "}
-                    <Link href="/user" className="underline underline-offset-2">
+                    <Link prefetch={false} href="/user" className="underline underline-offset-2">
                       your profile
                     </Link>{" "}
                     each connection lists its permissions.{" "}
@@ -947,10 +947,10 @@ export function PageHomepage() {
             <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
               {user ? (
                 <Button size="lg" asChild>
-                  <Link href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
+                  <Link prefetch={false} href="/wallets/new-wallet-flow/save">Create Multisig Wallet</Link>
                 </Button>
               ) : (
-                <ConnectWallet />
+                <ConnectWalletSlot anchor="cta" />
               )}
             </div>
           </div>

@@ -2,9 +2,11 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { applyRateLimit } from "@/lib/security/requestGuards";
 import {
   KOIOS_BASES,
+  PROPOSAL_TITLES_MISS_MAX_AGE_MS,
   fetchProposalTitleRows,
   koiosPost,
   normalizeVote,
+  type KoiosProposalTitleRow,
 } from "@/lib/governance/koios";
 import type {
   TxGovernanceItem,
@@ -149,13 +151,31 @@ export default async function handler(
     // Join proposal titles onto votes (decoration — best-effort).
     if (items.some((item) => item.votes.length > 0)) {
       try {
-        const titleRows = await fetchProposalTitleRows(base);
-        const titleByRef = new Map(
-          titleRows.map((row) => [
-            `${row.proposal_tx_hash.toLowerCase()}#${row.proposal_index}`,
-            row.title,
-          ]),
+        const indexTitles = (rows: readonly KoiosProposalTitleRow[]) =>
+          new Map(
+            rows.map((row) => [
+              `${row.proposal_tx_hash.toLowerCase()}#${row.proposal_index}`,
+              row.title,
+            ]),
+          );
+        let titleByRef = indexTitles(await fetchProposalTitleRows(base));
+        // A vote on a proposal the shared snapshot doesn't know yet gets one
+        // fresher sweep (see PROPOSAL_TITLES_MISS_MAX_AGE_MS).
+        const unknownProposal = items.some((item) =>
+          item.votes.some(
+            (vote) =>
+              !titleByRef.has(
+                `${vote.proposalTxHash.toLowerCase()}#${vote.proposalIndex}`,
+              ),
+          ),
         );
+        if (unknownProposal) {
+          titleByRef = indexTitles(
+            await fetchProposalTitleRows(base, {
+              maxAgeMs: PROPOSAL_TITLES_MISS_MAX_AGE_MS,
+            }),
+          );
+        }
         for (const item of items) {
           for (const vote of item.votes) {
             vote.proposalTitle =

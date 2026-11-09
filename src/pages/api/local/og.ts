@@ -2,6 +2,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { checkRateLimit, getClientIP } from "@/lib/security/rateLimit";
 import { validateOrigin, validateUrlParameter } from "@/lib/security/validation";
 import { isAllowedDomain, ALLOWED_HOSTNAMES } from "@/lib/security/domains";
+import { cappedFetch, CappedFetchError } from "@/lib/security/cappedFetch";
+
+const MAX_HTML_BYTES = 1024 * 1024;
 
 function extractMeta(html: string, property: string): string | null {
   const propRegex = new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
@@ -96,16 +99,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(validatedUrl, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0" } });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      return res.status(502).json({ error: `Failed to fetch target (${response.status})` });
-    }
-
-    const html = await response.text();
+    // OG and icon tags live in <head>, so the first MiB is plenty; a bigger
+    // page is read that far and no further rather than buffered whole.
+    const { body } = await cappedFetch(validatedUrl, {
+      maxBytes: MAX_HTML_BYTES,
+      timeoutMs: 8000,
+      overflow: "truncate",
+      headers: { "user-agent": "Mozilla/5.0" },
+    });
+    const html = body.toString("utf-8");
     const base = new URL(validatedUrl);
 
     const ogImageRaw = extractMeta(html, "og:image") ?? extractTwitterMeta(html, "image");
@@ -141,7 +143,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       image: proxiedImage,
       favicon: proxiedFavicon,
     });
-  } catch {
+  } catch (error) {
+    // An upstream that misses the deadline is a gateway timeout, not a fault
+    // of ours; reporting it as 500 made a slow dApp site look like our outage.
+    if (error instanceof Error && error.name === "AbortError") {
+      return res.status(504).json({ error: "Upstream timed out" });
+    }
+    if (error instanceof CappedFetchError) {
+      return res.status(502).json({ error: `Failed to fetch target: ${error.message}` });
+    }
     return res.status(500).json({ error: "Unable to fetch OpenGraph data" });
   }
 }

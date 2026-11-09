@@ -87,7 +87,7 @@ export const TRACKS: Track[] = [
         label: "MVP — build & ship",
         start: 4,
         span: 2,
-        status: "planned",
+        status: "done",
         owner: "Q·A",
         detail:
           "Finalize PRD-001 (still Draft), then a five-model schema, tRPC routes, CIP-8 enforcement, version-hash binding, Documents UI, six-state lifecycle and proof export. Ready = a pilot team runs all six user stories unaided.",
@@ -96,10 +96,10 @@ export const TRACKS: Track[] = [
         label: "v1 history",
         start: 6,
         span: 1,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "v1: revision history first-class, diff and rollback, richer audit export. Still off-chain.",
+          "v1: chained version attestations, diff between any two versions, rollback by re-publishing (append-only, approvals reset), and an offline-verifiable audit export of the whole document. Still off-chain.",
       },
       {
         label: "v2 anchor",
@@ -355,23 +355,58 @@ export const TRACKS: Track[] = [
   },
   {
     name: "Research",
-    sub: "FROST · PQC",
+    sub: "FROST · PQC · Midnight",
     items: [
       {
         label: "FROST & PQC — kickoff to go/no-go",
         start: 4,
         span: 3,
-        status: "planned",
+        status: "done",
         owner: "Q",
         detail:
-          "FROST threshold Schnorr for Cardano (#220), plus Lemour post-quantum multi-sig. Kickoff slipped from July — starting in August keeps runway for the October go/no-go. Deliverables: a trade-off note, a PoC if libraries allow, and a recommendation.",
+          "FROST threshold Schnorr for Cardano (#220) and Lemur post-quantum multi-sig, decided: a PoC verifies FROST(Ed25519) aggregates as ordinary Cardano vkey witnesses. No-go on replacing native scripts, conditional go on a FROST signer as one leaf inside a native script, no-go on PQ until the ledger can verify a PQ signature.",
+      },
+      {
+        label: "Midnight plan",
+        // December is column 8 in this May-based chart; ROADMAP.md calls it MRP Month 9.
+        start: 8,
+        span: 1,
+        status: "planned",
+        owner: "A",
+        detail:
+          "MRP Month 9 (December 2026): research metadata for existing task-board bulk payouts and how it could work with Midnight. Determine use cases, proof consumers, and the integration target during research. Deliver a plan file covering the metadata design, integration approach, feasibility, limitations, and implementation steps.",
+      },
+    ],
+  },
+  {
+    name: "Onboarding & resources",
+    sub: "Learn & Help · responsive layouts",
+    items: [
+      {
+        label: "Access & layout",
+        // November is column 7 in this May-based chart; ROADMAP.md calls it MRP Month 8.
+        start: 7,
+        span: 1,
+        status: "planned",
+        owner: "A",
+        detail:
+          "MRP Month 8 (November 2026): keep the landing page accessible after sign-in, add persistent desktop/mobile Learn & Help navigation and standalone MCP docs, expose bot and developer guides, repair homepage-section links, and add contextual onboarding that can be reopened. Fix Overview AI activity/Contacts placement, Assets card width, profile bot grant controls, and task board crowding. Verify access with and without a connected wallet and layouts at phone, tablet, and desktop widths with empty and populated states.",
       },
     ],
   },
   {
     name: "Growth & accounts",
-    sub: "Profiles · vesting",
+    sub: "Profiles · vesting · videos",
     items: [
+      {
+        label: "10+ videos",
+        start: 8,
+        span: 1,
+        status: "planned",
+        owner: "A",
+        detail:
+          "MRP Month 9 (December 2026): create at least 10 social videos mixing Mesh Multisig feature demos, onboarding tutorials, and promotional clips. Build with Remotion in a separate repository; completion evidence is finished video exports and links to the Remotion source.",
+      },
       {
         label: "Vesting",
         start: 9,

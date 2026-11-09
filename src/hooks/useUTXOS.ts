@@ -3,7 +3,17 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useUTXOSStore } from "@/lib/zustand/utxos";
 import { env } from "@/env";
 import { BlockfrostProvider } from "@meshsdk/provider";
-import { Web3Wallet, type EnableWeb3WalletOptions } from "@utxos/sdk";
+// Type-only: the SDK embeds the Spark/FROST WASM as base64 (~8 MB raw), so it
+// is loaded with import() when a user actually picks the UTXOS wallet, never
+// as part of the shared app bundle.
+import type { Web3Wallet, EnableWeb3WalletOptions } from "@utxos/sdk";
+import { isUtxosSdkLoaded, loadUtxosSdk } from "@/lib/utxos-sdk-lazy";
+
+/**
+ * How long after a click the browser still allows a popup. Chrome's transient
+ * user activation lasts about 5 s; stay under it.
+ */
+const GESTURE_WINDOW_MS = 4000;
 import { useToast } from "./use-toast";
 
 interface UseUTXOSReturn {
@@ -11,14 +21,20 @@ interface UseUTXOSReturn {
   isEnabled: boolean;
   isLoading: boolean;
   error: Error | null;
-  enable: () => Promise<void>;
+  /**
+   * Pass `userGesture: true` from a click handler. If the SDK still has to be
+   * downloaded and that takes longer than the browser's popup allowance, the
+   * sign-in window is not opened (it would be blocked); the user is asked to
+   * click again, which then opens it immediately.
+   */
+  enable: (options?: { userGesture?: boolean }) => Promise<void>;
   disable: () => Promise<void>;
 }
 
 export default function useUTXOS(): UseUTXOSReturn {
   const network = useSiteStore((state) => state.network);
   const { toast } = useToast();
-  
+
   // Get state from Zustand store
   const wallet = useUTXOSStore((state) => state.wallet);
   const isLoading = useUTXOSStore((state) => state.isLoading);
@@ -29,115 +45,167 @@ export default function useUTXOS(): UseUTXOSReturn {
   const setError = useUTXOSStore((state) => state.setError);
   const setNetworkId = useUTXOSStore((state) => state.setNetworkId);
   const clearWallet = useUTXOSStore((state) => state.clearWallet);
-  
+
   const isEnabled = wallet !== null;
 
-  const enable = useCallback(async () => {
-    // Check if wallet already exists and network matches
-    if (wallet && networkId === network) {
-      console.log("[useUTXOS] Wallet already enabled for current network");
-      return;
-    }
+  const enable = useCallback(
+    async (enableOptions?: { userGesture?: boolean }) => {
+      // Check if wallet already exists and network matches
+      if (wallet && networkId === network) {
+        console.log("[useUTXOS] Wallet already enabled for current network");
+        return;
+      }
 
-    // If network changed, clear existing wallet
-    if (wallet && networkId !== null && networkId !== network) {
-      console.log("[useUTXOS] Network changed, clearing existing wallet", {
-        oldNetwork: networkId,
-        newNetwork: network,
-      });
-      clearWallet();
-      toast({
-        title: "Network Changed",
-        description: "Please reconnect your UTXOS wallet for the new network.",
-        variant: "default",
-      });
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Get network name for API route
-      const networkName = network === 1 ? "mainnet" : "preprod";
-
-      // Initialize BlockfrostProvider with secure proxy route
-      const provider = new BlockfrostProvider(
-        `/api/blockfrost/${networkName}/`,
-      );
-
-      // Configure UTXOS wallet options
-      const projectId = env.NEXT_PUBLIC_UTXOS_PROJECT_ID;
-      if (!projectId) {
-        const errorMsg = "UTXOS Project ID is not configured. Please set NEXT_PUBLIC_UTXOS_PROJECT_ID in your environment variables.";
-        console.error("[useUTXOS] Missing project ID");
+      // If network changed, clear existing wallet
+      if (wallet && networkId !== null && networkId !== network) {
+        console.log("[useUTXOS] Network changed, clearing existing wallet", {
+          oldNetwork: networkId,
+          newNetwork: network,
+        });
+        clearWallet();
         toast({
-          title: "Configuration Error",
-          description: errorMsg,
+          title: "Network Changed",
+          description:
+            "Please reconnect your UTXOS wallet for the new network.",
+          variant: "default",
+        });
+      }
+
+      setLoading(true);
+      setError(null);
+
+      if (enableOptions?.userGesture && !isUtxosSdkLoaded()) {
+        const startedAt = Date.now();
+        try {
+          await loadUtxosSdk();
+        } catch (loadError) {
+          setLoading(false);
+          toast({
+            title: "Could not load the UTXOS wallet",
+            description: "Check your connection and try again.",
+            variant: "destructive",
+          });
+          console.error("[useUTXOS] SDK download failed:", loadError);
+          return;
+        }
+        if (Date.now() - startedAt > GESTURE_WINDOW_MS) {
+          setLoading(false);
+          toast({
+            title: "UTXOS wallet is ready",
+            description:
+              "Click connect again to sign in — browsers only open the sign-in window right after a click.",
+          });
+          return;
+        }
+      }
+
+      try {
+        // Get network name for API route
+        const networkName = network === 1 ? "mainnet" : "preprod";
+
+        // Initialize BlockfrostProvider with secure proxy route
+        const provider = new BlockfrostProvider(
+          `/api/blockfrost/${networkName}/`,
+        );
+
+        // Configure UTXOS wallet options
+        const projectId = env.NEXT_PUBLIC_UTXOS_PROJECT_ID;
+        if (!projectId) {
+          const errorMsg =
+            "UTXOS Project ID is not configured. Please set NEXT_PUBLIC_UTXOS_PROJECT_ID in your environment variables.";
+          console.error("[useUTXOS] Missing project ID");
+          toast({
+            title: "Configuration Error",
+            description: errorMsg,
+            variant: "destructive",
+          });
+          throw new Error(errorMsg);
+        }
+
+        const options: EnableWeb3WalletOptions = {
+          networkId: network as 0 | 1, // 0: preprod, 1: mainnet
+          projectId: projectId,
+          fetcher: provider,
+          submitter: provider,
+        };
+
+        console.log("[useUTXOS] Enabling wallet...");
+        // Enable the wallet
+        const { Web3Wallet } = await import("@utxos/sdk");
+        const enabledWallet = await Web3Wallet.enable(options);
+
+        // Verify wallet.cardano property exists (per UTXOS docs)
+        if (!enabledWallet) {
+          console.error("[useUTXOS] enabledWallet is null or undefined");
+          throw new Error("UTXOS wallet enabled but returned null/undefined");
+        }
+
+        if (!enabledWallet.cardano) {
+          console.error("[useUTXOS] enabledWallet.cardano is missing");
+          throw new Error(
+            "UTXOS wallet enabled but cardano interface not available",
+          );
+        }
+
+        // Verify wallet is working by checking for addresses
+        try {
+          const addresses = await enabledWallet.cardano.getUsedAddresses();
+          if (!addresses || addresses.length === 0) {
+            // Try unused addresses as fallback
+            const unusedAddresses =
+              await enabledWallet.cardano.getUnusedAddresses();
+            if (!unusedAddresses || unusedAddresses.length === 0) {
+              console.warn("[useUTXOS] Wallet enabled but no addresses found");
+            }
+          }
+        } catch (verifyError) {
+          console.warn(
+            "[useUTXOS] Could not verify wallet addresses:",
+            verifyError,
+          );
+          // Don't throw - wallet might still be valid, just not fully initialized yet
+        }
+
+        // Store wallet and network ID
+        setWallet(enabledWallet);
+        setNetworkId(network);
+        console.log("[useUTXOS] Wallet enabled successfully");
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err : new Error(String(err));
+
+        console.error(
+          "[useUTXOS] Failed to enable wallet:",
+          errorMessage.message,
+        );
+
+        setError(errorMessage);
+        clearWallet();
+
+        // Show user-facing error notification
+        toast({
+          title: "Failed to Connect UTXOS Wallet",
+          description:
+            errorMessage.message ||
+            "An unknown error occurred while connecting the wallet.",
           variant: "destructive",
         });
-        throw new Error(errorMsg);
+      } finally {
+        setLoading(false);
       }
-
-      const options: EnableWeb3WalletOptions = {
-        networkId: network as 0 | 1, // 0: preprod, 1: mainnet
-        projectId: projectId,
-        fetcher: provider,
-        submitter: provider,
-      };
-
-      console.log("[useUTXOS] Enabling wallet...");
-      // Enable the wallet
-      const enabledWallet = await Web3Wallet.enable(options);
-      
-      // Verify wallet.cardano property exists (per UTXOS docs)
-      if (!enabledWallet) {
-        console.error("[useUTXOS] enabledWallet is null or undefined");
-        throw new Error("UTXOS wallet enabled but returned null/undefined");
-      }
-
-      if (!enabledWallet.cardano) {
-        console.error("[useUTXOS] enabledWallet.cardano is missing");
-        throw new Error("UTXOS wallet enabled but cardano interface not available");
-      }
-
-      // Verify wallet is working by checking for addresses
-      try {
-        const addresses = await enabledWallet.cardano.getUsedAddresses();
-        if (!addresses || addresses.length === 0) {
-          // Try unused addresses as fallback
-          const unusedAddresses = await enabledWallet.cardano.getUnusedAddresses();
-          if (!unusedAddresses || unusedAddresses.length === 0) {
-            console.warn("[useUTXOS] Wallet enabled but no addresses found");
-          }
-        }
-      } catch (verifyError) {
-        console.warn("[useUTXOS] Could not verify wallet addresses:", verifyError);
-        // Don't throw - wallet might still be valid, just not fully initialized yet
-      }
-      
-      // Store wallet and network ID
-      setWallet(enabledWallet);
-      setNetworkId(network);
-      console.log("[useUTXOS] Wallet enabled successfully");
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err : new Error(String(err));
-      
-      console.error("[useUTXOS] Failed to enable wallet:", errorMessage.message);
-
-      setError(errorMessage);
-      clearWallet();
-      
-      // Show user-facing error notification
-      toast({
-        title: "Failed to Connect UTXOS Wallet",
-        description: errorMessage.message || "An unknown error occurred while connecting the wallet.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [network, wallet, networkId, setWallet, setLoading, setError, setNetworkId, clearWallet, toast]);
+    },
+    [
+      network,
+      wallet,
+      networkId,
+      setWallet,
+      setLoading,
+      setError,
+      setNetworkId,
+      clearWallet,
+      toast,
+    ],
+  );
 
   const disable = useCallback(async () => {
     try {
@@ -148,11 +216,13 @@ export default function useUTXOS(): UseUTXOSReturn {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error("[useUTXOS] Error disabling UTXOS wallet:", errorMessage);
-      
+
       // Show user-facing error notification
       toast({
         title: "Failed to Disconnect UTXOS Wallet",
-        description: errorMessage || "An unknown error occurred while disconnecting the wallet.",
+        description:
+          errorMessage ||
+          "An unknown error occurred while disconnecting the wallet.",
         variant: "destructive",
       });
     } finally {
