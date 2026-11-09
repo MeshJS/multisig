@@ -223,7 +223,14 @@ function walletDataFromPayload(
 }
 
 export const walletRouter = createTRPCRouter({
-  // Read operations stay public but validate signer membership by address param
+  // Lists every wallet that names `address` as a signer, so the caller must
+  // have proved control of that address (wallet session or NextAuth user).
+  //
+  // This used to skip the check when there was no session at all, which let
+  // anyone look up any address — signer addresses are public on-chain — and
+  // read back full wallet rows: names, descriptions, the signers' own labels
+  // and import bodies. getWallet already refuses anonymous callers; the list
+  // must not hand out more than the single-wallet read does.
   getUserWallets: publicProcedure
     .input(z.object({ address: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -233,9 +240,10 @@ export const walletRouter = createTRPCRouter({
         : ctx.sessionAddress
           ? [ctx.sessionAddress]
           : [];
-      // If user has an active session, validate that the requested address is authorized
-      // Throw error if address doesn't match (security: prevent unauthorized access)
-      if (addresses.length > 0 && !addresses.includes(input.address)) {
+      if (addresses.length === 0) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      if (!addresses.includes(input.address)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
       }
       // Query wallets where the user is a signer
