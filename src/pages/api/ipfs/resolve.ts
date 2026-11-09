@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { extractCidPath, ipfsGatewayBases } from "@/lib/ipfs";
+import { applyRateLimit } from "@/lib/security/requestGuards";
 
 /**
  * Resolve an IPFS reference (CID, `ipfs://…`, or any `…/ipfs/<cid>` URL) by
@@ -12,6 +13,47 @@ import { extractCidPath, ipfsGatewayBases } from "@/lib/ipfs";
 const PER_GATEWAY_TIMEOUT_MS = 6000;
 const MAX_BYTES = 2 * 1024 * 1024; // rationale/metadata JSON is tiny
 const MAX_REDIRECTS = 3;
+// Per-IP ceiling. Higher than the 60/min default because the DRep vote-history
+// CSV export resolves every rationale in a burst (fetchIpfsJson waits out a 429
+// and retries). Successful responses are CDN-cached for a day, so repeat views
+// mostly never reach this function.
+const RATE_LIMIT_PER_MINUTE = 120;
+
+/** The upstream body exceeded MAX_BYTES (declared or actually streamed). */
+class ContentTooLargeError extends Error {}
+
+/**
+ * Read a response body, giving up as soon as it passes `maxBytes`.
+ *
+ * WHY: the caller picks the CID, so it can point us at any multi-gigabyte file
+ * on IPFS. `arrayBuffer()` would buffer all of it in the function's memory
+ * before the size check ran. A declared Content-Length over the cap is
+ * rejected without reading; otherwise the stream is cancelled the moment the
+ * running total crosses the cap (Content-Length can be absent or lie).
+ */
+async function readCapped(upstream: Response, maxBytes: number): Promise<Buffer> {
+  const declared = Number(upstream.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await upstream.body?.cancel().catch(() => undefined);
+    throw new ContentTooLargeError();
+  }
+  if (!upstream.body) return Buffer.alloc(0);
+
+  const reader = upstream.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new ContentTooLargeError();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total);
+}
 
 /** Hostnames the proxy is allowed to talk to (gateway hosts + subdomain forms). */
 function allowedGatewayHosts(): Set<string> {
@@ -58,6 +100,8 @@ async function fetchGuarded(
       headers: { Accept: "application/json, */*", "user-agent": "Mozilla/5.0" },
     });
     if (res.status >= 300 && res.status < 400) {
+      // Release the connection: the redirect body is never read.
+      await res.body?.cancel().catch(() => undefined);
       const location = res.headers.get("location");
       if (!location) return null;
       let nextUrl: URL;
@@ -81,7 +125,16 @@ export default async function handler(
   res: NextApiResponse,
 ) {
   if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+  if (
+    !applyRateLimit(req, res, {
+      keySuffix: "ipfs/resolve",
+      maxRequests: RATE_LIMIT_PER_MINUTE,
+    })
+  ) {
+    return;
   }
 
   const raw = (req.query.url ?? req.query.cid ?? "") as string;
@@ -95,28 +148,42 @@ export default async function handler(
   for (const base of ipfsGatewayBases()) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PER_GATEWAY_TIMEOUT_MS);
+    // The timer stays armed through the body read (cleared in `finally`): a
+    // gateway that sends headers promptly and then trickles the body must not
+    // hold the request open past the per-gateway budget.
+    let buf: Buffer;
     try {
       const upstream = await fetchGuarded(base + cidPath, allowed, controller.signal);
-      clearTimeout(timeout);
-      if (!upstream || !upstream.ok) continue;
-
-      const buf = Buffer.from(await upstream.arrayBuffer());
-      if (buf.byteLength > MAX_BYTES) {
+      if (!upstream || !upstream.ok) {
+        await upstream?.body?.cancel().catch(() => undefined);
+        continue;
+      }
+      buf = await readCapped(upstream, MAX_BYTES);
+    } catch (error) {
+      // The same CID is the same bytes on every gateway, so another gateway
+      // would only return the same oversized file.
+      if (error instanceof ContentTooLargeError) {
         return res.status(413).json({ error: "IPFS content too large" });
       }
-      // The proxy only serves rationale/metadata JSON. Pin the content type and
-      // forbid MIME sniffing so a hostile gateway can't get HTML/JS executed.
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader(
-        "Cache-Control",
-        "public, s-maxage=86400, max-age=3600, stale-while-revalidate=604800",
-      );
-      return res.send(buf);
-    } catch {
+      continue; // timeout or network error: try the next gateway
+    } finally {
       clearTimeout(timeout);
-      // try the next gateway
     }
+
+    // The proxy only serves rationale/metadata JSON. Pin the content type and
+    // forbid MIME sniffing so a hostile gateway can't get HTML/JS executed.
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    // This response is CDN-cached for a day; the first caller's per-IP quota
+    // must not be replayed to everyone who gets the cached copy.
+    for (const name of ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]) {
+      res.removeHeader(name);
+    }
+    res.setHeader(
+      "Cache-Control",
+      "public, s-maxage=86400, max-age=3600, stale-while-revalidate=604800",
+    );
+    return res.send(buf);
   }
 
   return res
