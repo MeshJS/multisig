@@ -10,6 +10,27 @@ const MAX_PAGES = 10;
 // cheap and protects the upstream provider.
 const REFRESH_TTL_MS = 10 * 60 * 1000;
 
+// Both procedures are public, and refreshProposalTally interpolates the id
+// into a Blockfrost path called with the server key, then upserts a row keyed
+// by it. A free-form string let an anonymous caller steer that request to any
+// Blockfrost GET (`x/../../../health?#0`), and every distinct string that came
+// back 200 left a permanent ProposalTally row behind. Only the shape a real
+// governance action id has — a 64-hex tx hash and a small cert index — gets
+// through now, and only in its one canonical spelling (lowercase hex, no
+// leading zeros): Blockfrost resolves `ABC…#00` to the same proposal as
+// `abc…#0`, so each alias would otherwise be another row for the same tally.
+// The proposals list builds ids from Blockfrost's own lowercase tx_hash and a
+// numeric cert_index, so it always sends the canonical form.
+const proposalIdSchema = z
+  .string()
+  .regex(/^[0-9a-f]{64}#(0|[1-9]\d{0,3})$/, "Expected <txHash>#<certIndex>");
+// 0 = preprod, 1 = mainnet; getProvider() reads anything else as mainnet.
+const networkSchema = z.number().int().min(0).max(1);
+// The proposals list sends every id it has loaded, and "load more" only ever
+// grows that list. This is far above the number of governance actions either
+// network has, so it bounds the read without cutting off a real client.
+const MAX_TALLY_IDS = 1000;
+
 type TallyChoice = "yes" | "no" | "abstain";
 
 interface VoteItem {
@@ -53,8 +74,8 @@ export const governanceRouter = createTRPCRouter({
   getProposalTallies: publicProcedure
     .input(
       z.object({
-        network: z.number(),
-        proposalIds: z.array(z.string()),
+        network: networkSchema,
+        proposalIds: z.array(proposalIdSchema).max(MAX_TALLY_IDS),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -83,8 +104,8 @@ export const governanceRouter = createTRPCRouter({
   refreshProposalTally: publicProcedure
     .input(
       z.object({
-        network: z.number(),
-        proposalId: z.string(),
+        network: networkSchema,
+        proposalId: proposalIdSchema,
       }),
     )
     .mutation(async ({ ctx, input }): Promise<TallyResult> => {

@@ -35,6 +35,7 @@ export const ESM_TESTS = [
   'botBallotsUpsert',
   'botSetupGuide',
   'governanceActiveProposals',
+  'governanceTallies',
   'mcpConnections',
   'og',
   'pendingTransactions',
