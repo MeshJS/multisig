@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import SectionTitle from "@/components/ui/section-title";
 import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
 import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
+import { fetchDrepProfile } from "@/lib/governance/drep-profile";
 import Metadata from "./metadata";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader } from "lucide-react";
@@ -26,41 +27,33 @@ export default function DrepDetailPage() {
   const network = usePublicNetwork();
 
   useEffect(() => {
-    if (id) fetchDrepData(id as string);
-  }, [id, network]);
-
-  async function fetchDrepData(drepId: string) {
+    if (typeof id !== "string" || !id) return;
+    // A wallet connecting mid-load switches the network; without this the
+    // slower, older response could land last and show the wrong network's data.
+    let stale = false;
     setLoading(true);
-    try {
-      const blockchainProvider = getProvider(network);
-      const details = await blockchainProvider.get(
-        `/governance/dreps/${drepId}`,
-      );
-
-      let metadata: BlockfrostDrepMetadata | null = null;
-      try {
-        metadata = await blockchainProvider.get(
-          `/governance/dreps/${drepId}/metadata/`,
-        );
-      } catch (err: any) {
-        // 404 is expected if metadata doesn't exist - silently ignore
-        const is404 = err?.response?.status === 404 || err?.data?.status_code === 404;
-        if (!is404) {
-          console.warn("No metadata found for DRep %s:", drepId, err);
-        }
-      }
-
-      setDrepInfo(details || null);
-      setDrepMetadata(metadata || null);
-    } catch (error: any) {
-      const is404 = error?.response?.status === 404 || error?.data?.status_code === 404;
-      if (!is404) {
-        console.error("Failed to fetch DRep %s details:", drepId, error);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+    // Inside the chain, so a missing Blockfrost key ends in "unavailable"
+    // rather than throwing out of the effect and crashing the page.
+    Promise.resolve()
+      .then(() => fetchDrepProfile(getProvider(network), id))
+      .then(({ details, metadata }) => {
+        if (stale) return;
+        setDrepInfo(details);
+        setDrepMetadata(metadata);
+      })
+      .catch((error) => {
+        if (stale) return;
+        console.error("Failed to fetch DRep %s details:", id, error);
+        setDrepInfo(null);
+        setDrepMetadata(null);
+      })
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [id, network]);
 
   if (loading) {
     return (
