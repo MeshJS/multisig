@@ -358,10 +358,9 @@ export default function TransactionCard({
       const discordId = discordIds?.[signerAddress];
       if (!discordId) return;
 
-      await sendDiscordMessage(
-        [discordId],
-        `**REMINDER:** Your signature is needed for a transaction in ${appWallet?.name}. Review it here: ${window.location.origin}/wallets/${appWallet?.id}/transactions`,
-      );
+      if (!appWallet) return;
+
+      await sendDiscordMessage(appWallet.id, "transactionReminder", [discordId]);
 
       toast({
         title: "Reminder Sent",
