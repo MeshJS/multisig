@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { legacyResourceDestination } from "@/lib/resource-links";
+import { gettingStartedSections } from "@/data/getting-started";
 
 /** Mounted with the page so runtime handover also restores the target anchor. */
 export default function ResourceLinkCompatibility() {
@@ -8,7 +9,9 @@ export default function ResourceLinkCompatibility() {
   useEffect(() => {
     const migrateHash = () => {
       const destination = legacyResourceDestination(
-        window.location.pathname + window.location.search + window.location.hash,
+        window.location.pathname +
+          window.location.search +
+          window.location.hash,
       );
       if (destination) void router.replace(destination);
     };
@@ -23,16 +26,18 @@ export default function ResourceLinkCompatibility() {
       void router.replace(destination, undefined, { scroll: true });
       return;
     }
-    if (
-      router.pathname !== "/about" ||
-      !router.asPath.endsWith("#developers-and-bots")
-    )
-      return;
+    const sectionId = router.asPath.split("#")[1];
+    const isDeveloperSection =
+      router.pathname === "/about" && sectionId === "developers-and-bots";
+    const isGuideSection =
+      router.pathname === "/getting-started" &&
+      gettingStartedSections.some((section) => section.id === sectionId);
+    if (!sectionId || (!isDeveloperSection && !isGuideSection)) return;
 
     // The wallet layout can delay rendering its children while restoring auth.
     // Observe until the real section exists, not just until route completion.
     const scrollToSection = () => {
-      const section = document.getElementById("developers-and-bots");
+      const section = document.getElementById(sectionId);
       const main = document.getElementById("main-content");
       if (!section || !main) return false;
       main.scrollTop +=

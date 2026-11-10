@@ -410,7 +410,9 @@ export default function UserInfoPage() {
           )}
         </CardUI>
 
-        <BotManagementCard />
+        <div className="min-w-0 md:col-span-2">
+          <BotManagementCard />
+        </div>
 
         <McpConnectionsCard />
 

@@ -1,6 +1,6 @@
 # Connected-wallet onboarding, resource access & responsive layouts
 
-Status: Phases 1–2 implemented and navigation checks pass, including authenticated UI coverage with deterministic wallet reads. The public Getting Started guide was brought forward from Phase 3. Remaining Phase 3 work and Phases 4–6 are not implemented.
+Status: Phases 1-4 implemented and verified. Phases 5-6 are not implemented. Authenticated UI coverage uses deterministic wallet reads.
 
 Source: [feature note](../vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md) and the November 2026 entry in [ROADMAP.md](../ROADMAP.md). Owner in the feature note: Andre. Plan prepared 2026-11-09.
 
@@ -102,27 +102,47 @@ Exit criteria: every resource in the route table has a working visible path on d
 Dependencies: Phase 1; integrate with Phase 2 navigation.
 
 - [x] Add `/getting-started` with a short sequence: create or import a wallet; invite signers; review a first transaction. Present bots/AI automation and Documents as optional next steps. (Brought forward into Phase 2.)
-- [ ] Reuse guide content in a compact dashboard onboarding panel. Make the panel dismissible without blocking wallet actions; keep Getting Started available from Learn & Help after dismissal.
-- [ ] Store dismissal as a versioned, per-user browser preference, accessed after hydration and tolerant of unavailable storage. This proposal does not promise cross-device synchronization. Reset panel state on account changes so one user's dismissal does not hide another user's introduction.
-- [ ] Keep the public guide readable while signed out; gate action links through existing wallet/auth flows. Do not mark steps complete from a link click alone or require a real transaction to finish the guide.
-- [ ] Add contextual links in `homepage/wallets/EmptyWalletsState.tsx`, bot creation in `pages/user/BotManagementCard.tsx`, `pages/user/McpConnectionsCard.tsx`, and `pages/wallet/documents/`.
-- [ ] Link Documents to relevant document setup instructions and `/verify`; use stable guide sections where no separate setup route exists.
-- [ ] Make reopening deterministic: after dismissing, navigating away, and reloading, the guide still opens from Learn & Help. Provide an explicit way to show the compact panel again.
+- [x] Reuse guide content in a compact dashboard onboarding panel. Make the panel dismissible without blocking wallet actions; keep Getting Started available from Learn & Help after dismissal.
+- [x] Store dismissal as a versioned, per-user browser preference, accessed after hydration and tolerant of unavailable storage. This proposal does not promise cross-device synchronization. Reset panel state on account changes so one user's dismissal does not hide another user's introduction.
+- [x] Keep the public guide readable while signed out; gate action links through existing wallet/auth flows. Do not mark steps complete from a link click alone or require a real transaction to finish the guide.
+- [x] Add contextual links in `homepage/wallets/EmptyWalletsState.tsx`, bot creation in `pages/user/BotManagementCard.tsx`, `pages/user/McpConnectionsCard.tsx`, and `pages/wallet/documents/`.
+- [x] Link Documents to relevant document setup instructions and `/verify`; use stable guide sections where no separate setup route exists.
+- [x] Make reopening deterministic: after dismissing, navigating away, and reloading, the guide still opens from Learn & Help. Provide an explicit way to show the compact panel again.
 
 Exit criteria: a new user can find each core step, dismiss the panel, and reopen guidance; all four contextual entry points lead to useful instructions; existing users are not forced through a modal or setup wizard.
+
+### Phase 3 implementation and validation (2026-11-10)
+
+- The full Getting Started guide and compact dashboard panel share content from `src/data/getting-started.ts`. The panel appears on authorized wallet dashboards, can be dismissed without blocking actions, and keeps a visible Show control. No steps are marked complete by clicking links.
+- Dismissal is saved under a versioned, wallet-identity-specific browser key. Storage is read after hydration; account changes cannot reuse another identity's visible state. If storage is unavailable, dismissal/reopening still works for the current page lifetime.
+- Getting Started remains available through Learn & Help. Its Show guide on My wallets button restores the panel and returns to the dashboard. Guide section links scroll within the app content container, including after runtime restoration.
+- Added contextual links in the empty wallet dashboard, bot management and its claim dialog, and Documents. The existing Connected AI clients MCP guide link is retained and tested. Documents links both to its setup section and to public proof verification.
+- TypeScript, the production webpack build, bundle budgets, 24 focused unit tests, and 24 browser checks pass. The browser suites cover phone/desktop dismissal, reload persistence, reopening from Learn & Help, identity isolation, blocked storage, contextual links, signed-out guidance, and Phase 1-2 regressions.
+- Authenticated tests reuse the deterministic wallet-read fixture in `e2e/helpers/navigationWallet.ts` with the real app providers and session fixture. Run `onboarding.spec.ts` and `connected-resources.spec.ts` using the authenticated setup recorded under Phase 2; public checks use `e2e/public-resources.config.ts`. These checks do not sign or broadcast transactions.
+- ESLint remains blocked by the existing circular-structure error in repository configuration; the production build reports existing WebAssembly dependency warnings. No backend authorization, database schema, or transaction handlers changed.
 
 ## Phase 4 — Overview and profile bot grant layouts
 
 Dependencies: none for CSS changes; Phase 3 links should be included when validating profile layouts.
 
-- [ ] Normalize `wallet/info/index.tsx` to an intentional full-width stack. Remove or contain conflicting child spans so no implicit second column is created.
-- [ ] Audit conditional Overview cards, including migration, upgrade, proxy, backup, and notification cards. Where a child is shared elsewhere, change its layout API or wrapper without breaking other callers.
-- [ ] Keep AI client activity and Contacts full-width and consistently aligned with surrounding cards. Test expanded activity details, existing contacts, long identifiers, loading, and empty states.
-- [ ] Let bot management span the profile's available width. Stack wallet selector, role selector, and grant action when the card is narrow; use container-aware CSS or an equivalent intrinsic layout rather than viewport breakpoints alone.
-- [ ] Remove fixed-width pressure where necessary and allow long wallet names to wrap or truncate with an accessible full label. Check existing grant rows, revoke controls, role descriptions, errors, and open selector menus.
-- [ ] Preserve grant/revoke handlers, role semantics, disabled/loading states, and permission checks.
+- [x] Normalize `wallet/info/index.tsx` to an intentional full-width stack. Remove or contain conflicting child spans so no implicit second column is created.
+- [x] Audit conditional Overview cards, including migration, upgrade, proxy, backup, and notification cards. Where a child is shared elsewhere, change its layout API or wrapper without breaking other callers.
+- [x] Keep AI client activity and Contacts full-width and consistently aligned with surrounding cards. Test expanded activity details, existing contacts, long identifiers, loading, and empty states.
+- [x] Let bot management span the profile's available width. Stack wallet selector, role selector, and grant action when the card is narrow; use container-aware CSS or an equivalent intrinsic layout rather than viewport breakpoints alone.
+- [x] Remove fixed-width pressure where necessary and allow long wallet names to wrap or truncate with an accessible full label. Check existing grant rows, revoke controls, role descriptions, errors, and open selector menus.
+- [x] Preserve grant/revoke handlers, role semantics, disabled/loading states, and permission checks.
 
 Exit criteria: Overview has no unintended columns; AI activity and Contacts remain readable; bot grant controls fit their card and remain usable at every required width, including 768px and 820px with the sidebar visible.
+
+### Phase 4 implementation and validation (2026-11-10)
+
+- Overview now uses a full-width flex stack. Existing grid spans on shared cards have no effect in this parent, so migration (including its nested progress/step wrapper), transfer, registration, staking/governance upgrades, proxy, notification, backup, and archive cards cannot create implicit columns. Shared components retain their existing layout contracts elsewhere; conditional rendering and action handlers are unchanged.
+- AI activity details wrap long tool identifiers and badges, and the expansion button exposes its state. Contacts wrap long names/descriptions and their header actions; edit/delete buttons have accessible names.
+- Bot management spans both profile columns. Grant controls use intrinsic flex bases and wrapping based on available card width, without a fixed role column or viewport breakpoint. Existing grant rows and bot headers wrap; wallet choices wrap inside a trigger-width menu and the truncated trigger exposes the full name. Grant/revoke handlers, eligibility rules, and pending/disabled behavior are unchanged.
+- TypeScript, production webpack build, bundle budgets, four existing bot unit tests, and 19 focused browser checks pass: 14 empty/populated Overview/profile cases at 375, 412, 768, 820, 1024, 1280, and 1440px (900px height), two loading/eligibility/error cases, and three profile navigation/contextual-guide regressions.
+- Browser assertions verify full-width stacked card bounds, intermediate clipping ancestors, grant-control non-overlap, long identifiers, expanded activity, contacts, existing grants, portalled wallet/role menus, and eligible/ineligible cosigner options. Pending/error UI uses a fully intercepted grant mutation; no actual grant, revoke, signing, or broadcast is performed. These tests use deterministic UI reads and do not validate backend authorization or on-chain migration/upgrade workflows.
+- Representative phone, tablet, and desktop screenshots were captured under the ignored ci-artifacts/phase4-tests directory and visually inspected. The local fixture can show a proxy initialization error because it does not supply a live proxy contract; proxy workflow testing remains outside these layout checks.
+- Run e2e/tests/overview-profile-layout.spec.ts with the authenticated environment described under Phase 2. ESLint still fails before checking files with the existing circular configuration error; the build retains existing dependency WebAssembly warnings. The feature remains undelivered until Phases 5-6 are complete.
 
 ## Phase 5 — Task board density and Assets width
 

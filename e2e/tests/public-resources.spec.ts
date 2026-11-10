@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
 
+test("Getting Started sections work signed out without restoring a private dashboard", async ({ page }) => {
+  await page.goto("/getting-started#documents");
+  await expect(page.locator("#documents")).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Show guide on My wallets" })).toBeHidden();
+  await expect(page.getByRole("article").getByRole("link", { name: "Create a wallet", exact: true })).toHaveAttribute("href", "/wallets/new-wallet-flow/save");
+});
+
 for (const width of [375, 1280]) {
   test.describe(`public resources at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 } });

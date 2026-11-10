@@ -11,6 +11,12 @@ export default function EmptyWalletsState() {
         cardClassName=""
       >
         <div className="flex flex-col gap-4">
+          <Link
+            href="/getting-started#create-import"
+            className="text-sm underline underline-offset-4"
+          >
+            Learn how to create or import a wallet
+          </Link>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Multi-signature wallets provide enhanced security for teams, DAOs,

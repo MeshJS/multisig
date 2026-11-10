@@ -27,6 +27,7 @@ import WalletInviteCardSkeleton from "./WalletInviteCardSkeleton";
 import IPFSImage from "@/components/common/ipfs-image";
 import { ImportTransferDialog } from "./import-transfer-dialog";
 import BotManagementCard from "@/components/pages/user/BotManagementCard";
+import DashboardOnboarding from "@/components/common/onboarding/dashboard-onboarding";
 
 
 /**
@@ -167,6 +168,10 @@ export default function PageWallets() {
             </Button>
           )}
         </PageHeader>
+
+        {isAuthorized && address && (
+          <DashboardOnboarding key={address} address={address} />
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {isLoadingWallets && (
