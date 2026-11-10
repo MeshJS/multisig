@@ -1,6 +1,7 @@
 export const publicRoutes = [
   "/",
   "/about",
+  "/getting-started",
   "/docs/mcp",
   "/governance",
   "/governance/drep",

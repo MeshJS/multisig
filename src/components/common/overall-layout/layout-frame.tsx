@@ -6,6 +6,7 @@ import { Background } from "@/components/ui/background";
 import { useAppearanceStore } from "@/lib/zustand/appearance";
 import { useGraphicsTier } from "@/hooks/useGraphicsTier";
 import Logo from "@/components/common/overall-layout/logo";
+import LearnHelpDropdown from "./learn-help-dropdown";
 import SiteFooter from "@/components/common/overall-layout/site-footer";
 
 /**
@@ -104,7 +105,12 @@ export default function LayoutFrame({
           </div>
 
           {/* Right: Control buttons */}
-          <div className="ml-auto flex items-center gap-2">{headerRight}</div>
+          <div className="ml-auto flex items-center gap-2">
+            {!showSidebar && (
+              <div className="hidden md:block"><LearnHelpDropdown /></div>
+            )}
+            {headerRight}
+          </div>
         </div>
       </header>
 
@@ -113,7 +119,7 @@ export default function LayoutFrame({
         {showSidebar && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
             <div className="flex h-full max-h-[100dvh] flex-col">
-              <nav className="flex-1 overflow-y-auto pt-2">
+              <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto pt-2">
                 <div className="flex flex-col">{sidebar}</div>
               </nav>
               <div className="mt-auto p-4" />

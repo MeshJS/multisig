@@ -90,6 +90,7 @@ export const routeSeo: Record<string, RouteSeo> = {
   "/": {
     description: DEFAULT_DESCRIPTION,
   },
+  "/getting-started": { title: "Getting Started", description: "Create or import a shared Cardano wallet, invite signers, and review your first transaction." },
   "/about": { title: "About", description: DEFAULT_DESCRIPTION },
   "/docs/mcp": {
     title: "MCP setup guide",
@@ -247,6 +248,7 @@ export type SitemapRoute = {
 
 /** Static, indexable routes emitted into /sitemap.xml. */
 export const INDEXABLE_ROUTES: SitemapRoute[] = [
+  { path: "/getting-started", changefreq: "monthly", priority: 0.7 },
   { path: "/about", changefreq: "monthly", priority: 0.8 },
   { path: "/docs/mcp", changefreq: "monthly", priority: 0.7 },
   { path: "/", changefreq: "weekly", priority: 1.0 },

@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 // Public documentation checks need no chain bootstrap, wallet keys, or database fixtures.
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "public-resources.spec.ts",
+  testMatch: ["public-resources.spec.ts", "learn-help.spec.ts"],
   outputDir: "../ci-artifacts/resource-tests",
   timeout: 60_000,
   expect: { timeout: 15_000 },

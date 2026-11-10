@@ -6,6 +6,7 @@
   "pages": {
     "/": 350,
     "/about": 350,
+    "/getting-started": 350,
     "/docs/mcp": 350,
     "/features": 350,
     "/roadmap": 350,

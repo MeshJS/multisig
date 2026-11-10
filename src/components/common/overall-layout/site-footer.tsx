@@ -1,25 +1,29 @@
+import { resourceLinks } from "@/data/learn-help";
 import Link from "next/link";
 import { isLightHref } from "@/lib/wallet-runtime";
 import Logo from "@/components/common/overall-layout/logo";
 
 const productLinks = [
-  { label: "About", href: "/about" },
-  { label: "Features", href: "/features" },
+  resourceLinks.gettingStarted,
+  resourceLinks.verify,
+  resourceLinks.about,
+  resourceLinks.features,
   { label: "Governance", href: "/governance" },
   { label: "DRep Explorer", href: "/governance/drep" },
   { label: "Import a wallet", href: "/wallets/import-wallet" },
-  { label: "Roadmap", href: "/roadmap" },
-  { label: "Feature graph", href: "/roadmap/graph" },
-  { label: "Shielded sign-off", href: "/vault" },
-  { label: "Blog", href: "/blog" },
+  resourceLinks.roadmap,
+  resourceLinks.graph,
+  resourceLinks.demo,
+  resourceLinks.blog,
 ];
 
 const developerLinks = [
-  { label: "MCP setup", href: "/docs/mcp", external: false },
-  { label: "API docs", href: "/api-docs", external: false },
+  { ...resourceLinks.bots, external: false },
+  { ...resourceLinks.dapps, external: false },
+  { ...resourceLinks.mcp, external: false },
+  { ...resourceLinks.api, external: false },
   {
-    label: "Developers & Bots",
-    href: "/about#developers-and-bots",
+    ...resourceLinks.developers,
     external: false,
   },
   { label: "Download skill", href: "/api/skill", external: true },

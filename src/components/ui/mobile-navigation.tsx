@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -9,10 +9,8 @@ import {
   SheetTitle,
   SheetTrigger,
   SheetPortal,
-  SheetOverlay,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import Logo from "@/components/common/overall-layout/logo";
 import dynamic from "next/dynamic";
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 
@@ -31,14 +29,24 @@ interface MobileNavigationProps {
   isLoggedIn: boolean;
   walletId?: string;
   fallbackWalletName?: string | null;
-  onClearWallet?: () => void;
   stakingEnabled?: boolean;
   isWalletPath?: boolean;
 }
 
-export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbackWalletName, onClearWallet, stakingEnabled, isWalletPath }: MobileNavigationProps) {
+export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbackWalletName, stakingEnabled, isWalletPath }: MobileNavigationProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const close = () => setOpen(false);
+    router.events.on("routeChangeComplete", close);
+    router.events.on("hashChangeComplete", close);
+    return () => {
+      router.events.off("routeChangeComplete", close);
+      router.events.off("hashChangeComplete", close);
+    };
+  }, [router.events]);
 
   // Close any open dropdowns when sheet opens to prevent aria-hidden conflicts
   React.useEffect(() => {
@@ -121,8 +129,19 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
         </SheetTrigger>
         <SheetPortal>
         <SheetPrimitive.Content
+          ref={contentRef}
+          onOpenAutoFocus={(event) => {
+            // Radix's default autofocus skips anchors; this drawer is mostly links.
+            const firstLink = contentRef.current?.querySelector<HTMLElement>(
+              'a[href], button:not([disabled])',
+            );
+            if (firstLink) {
+              event.preventDefault();
+              firstLink.focus();
+            }
+          }}
           className={cn(
-            "fixed z-50 inset-y-0 left-0 w-[260px] sm:w-[280px] p-0",
+            "fixed z-50 inset-y-0 left-0 flex min-h-0 flex-col w-[260px] sm:w-[280px] p-0",
             "bg-muted/100 border-r border-gray-200/30 dark:border-white/[0.03]",
             "shadow-lg transition ease-in-out",
             "data-[state=closed]:duration-300 data-[state=open]:duration-500",
@@ -134,24 +153,7 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
             height: 'calc(100dvh - 56px - env(safe-area-inset-top))',
             paddingBottom: 'env(safe-area-inset-bottom)',
           }}
-          onOpenAutoFocus={(e) => {
-            // Blur any focused elements in the header to prevent aria-hidden conflicts
-            const header = document.querySelector('[data-header="main"]');
-            if (header) {
-              const focusedElement = header.querySelector(':focus');
-              if (focusedElement && focusedElement instanceof HTMLElement) {
-                focusedElement.blur();
-              }
-            }
-            // Focus the first focusable element in the sheet content
-            e.preventDefault();
-            if (e.currentTarget && e.currentTarget instanceof Element) {
-              const firstFocusable = e.currentTarget.querySelector('a, button, [tabindex]:not([tabindex="-1"])');
-              if (firstFocusable && firstFocusable instanceof HTMLElement) {
-                firstFocusable.focus();
-              }
-            }
-          }}
+          aria-describedby={undefined}
           onInteractOutside={(e) => {
             // Check if click was in header
             const header = document.querySelector('[data-header="main"]');
@@ -167,9 +169,9 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation Menu</SheetTitle>
           </SheetHeader>
-          <nav className="flex-1 overflow-y-auto py-3">
+          <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-3">
             <div className="space-y-1">
-              <div onClick={() => setOpen(false)} className="mobile-menu-wrapper">
+              <div onClick={(event) => { if ((event.target as Element).closest("a[href]")) setOpen(false); }} className="mobile-menu-wrapper">
                 {/* 1. Home Link - only when NOT logged in */}
                 {!isLoggedIn && (
                   <div className="px-2 lg:px-4">
@@ -194,9 +196,7 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
                 {/* 2. Wallet Selector - only when logged in */}
                 {isLoggedIn && (
                   <WalletSelector
-                    fallbackWalletName={fallbackWalletName}
-                    onClearWallet={onClearWallet}
-                  />
+                    fallbackWalletName={fallbackWalletName}                  />
                 )}
 
                 {/* 3. Wallet Menu - shown when wallet is selected */}

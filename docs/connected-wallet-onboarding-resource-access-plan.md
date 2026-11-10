@@ -1,6 +1,6 @@
 # Connected-wallet onboarding, resource access & responsive layouts
 
-Status: Phase 1 implemented; authenticated E2E verification remains pending. Phases 2–6 are not implemented.
+Status: Phases 1–2 implemented and navigation checks pass, including authenticated UI coverage with deterministic wallet reads. The public Getting Started guide was brought forward from Phase 3. Remaining Phase 3 work and Phases 4–6 are not implemented.
 
 Source: [feature note](../vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md) and the November 2026 entry in [ROADMAP.md](../ROADMAP.md). Owner in the feature note: Andre. Plan prepared 2026-11-09.
 
@@ -69,28 +69,39 @@ Exit criteria: `/about` and the complete MCP guide render in both connection sta
 - Production webpack build and bundle budgets pass. Both new routes are below their 350 KB gzipped first-load limit. The build reports existing dependency WebAssembly warnings.
 - Six public browser checks pass at 375px and 1280px against the production build: legacy fragment migration, query preservation, section positioning, ordinary root visits, native hash changes, reloads, and Back/Forward navigation.
 - Public checks run without chain fixtures: `node node_modules/@playwright/test/cli.js test --config=e2e/public-resources.config.ts`. Point `APP_URL` at a running production build; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if using a locally installed browser.
-- Authenticated coverage is added in `e2e/tests/connected-resources.spec.ts`, but was not run because this session has no configured CI bootstrap context/signers. Run it with the existing E2E configuration before declaring signed-in exit criteria verified.
+- Authenticated coverage was added in `e2e/tests/connected-resources.spec.ts`. It was initially pending environment setup and subsequently passed during Phase 2 validation (see below).
 - ESLint is blocked by the existing flat-config/compat circular-structure error. Development-server checks encountered dependency compilation errors (Turbopack alias resolution and webpack React Refresh); production browser checks pass.
 - The wallet runtime lifetime and authorization handlers are unchanged. The roadmap feature is not marked delivered.
 
 ## Phase 2 — Persistent Learn & Help navigation
 
-Dependencies: Phase 1; the Getting Started destination ships with Phase 3 before release.
+Dependencies: Phase 1. The public Getting Started guide was brought forward from Phase 3 so every menu destination works immediately.
 
-- [ ] Create shared resource metadata for the destinations in the route table, with consistent labels and grouping. Keep existing Governance navigation available.
-- [ ] Replace or expand Resources into Learn & Help in the desktop sidebar, public shell, and mobile navigation. Include a visible About entry and a distinct My wallets destination.
-- [ ] Ensure Learn & Help remains reachable on wallet detail pages, the empty wallet dashboard, and profile pages without opening a footer first.
-- [ ] Make the complete mobile resource list scrollable within the menu when needed; verify the final items are reachable on short screens.
-- [ ] Preserve active-link indication, accessible names, keyboard navigation, Escape dismissal, focus return, and menu closure after selecting a destination.
-- [ ] Reuse canonical targets in the footer and preserve the existing prefetch policy for routes that load the wallet runtime.
+- [x] Create shared resource metadata for the destinations in the route table, with consistent labels and grouping. Keep existing Governance navigation available.
+- [x] Replace or expand Resources into Learn & Help in the desktop sidebar, public shell, and mobile navigation. Include a visible About entry and a distinct My wallets destination.
+- [x] Ensure Learn & Help remains reachable on wallet detail pages, the empty wallet dashboard, and profile pages without opening a footer first.
+- [x] Make the complete mobile resource list scrollable within the menu when needed; verify the final items are reachable on short screens.
+- [x] Preserve active-link indication, accessible names, keyboard navigation, Escape dismissal, focus return, and menu closure after selecting a destination.
+- [x] Reuse canonical targets in the footer and preserve the existing prefetch policy for routes that load the wallet runtime.
 
 Exit criteria: every resource in the route table has a working visible path on desktop and mobile for signed-out users, signed-in users without multisig wallets, and signed-in users with a selected wallet. Do not release a link to an unfinished Getting Started page.
+
+### Phase 2 implementation and validation (2026-11-10)
+
+- `src/data/learn-help.ts` owns labels, canonical URLs, grouping, and active-resource matching. Desktop and mobile share the sidebar menu; the sidebar-free landing page has a keyboard-accessible desktop dropdown. Mobile navigation now remains available on the landing page too.
+- My wallets points to `/wallets`; Governance remains available. The footer reuses the resource catalogue. Heavy wallet routes retain disabled prefetching.
+- Mobile content now has a bounded, scrollable flex area. Opening the wallet selector no longer dismisses the drawer; selecting a link or finishing navigation closes it.
+- `/getting-started` is a public, lightweight page with create/import, signer invitation, transaction review, and optional automation/document guidance. It is registered for SEO, the sitemap, and bundle budgets. The dismissible dashboard panel and contextual prompts remain Phase 3 work.
+- TypeScript, the production webpack build, bundle budgets, 21 focused unit tests, and 18 production browser checks pass. Public browser coverage includes desktop navigation, all destination responses, active states, short-screen scrolling at 375px and 412px, keyboard navigation/dismissal/focus return, menu closure, and Phase 1 legacy-link regressions.
+- Seven authenticated browser tests pass: empty wallet lists, selected wallets, and profiles at 375px and 1280px, plus returning to a selected wallet through browser history with the same session and no new authorization request. These exercise the real authentication fixture and app providers with deterministic wallet-read responses; they do not test database signer authorization or transaction writes.
+- The saved bootstrap context was located at `ci-artifacts/ci-wallet-context.json`. Its wallet IDs are stale in the local database, so the navigation fixture supplies wallet records and asserts their actual heading rather than a generic Signers label. The run uses `.env.playwright`, overrides `CI_CONTEXT_PATH` to that file, points `APP_URL` to the local production server, and matches `CI_JWT_SECRET` to the local app's session secret. No secrets or environment files were changed.
+- ESLint still stops in the repository configuration with a circular-structure error before checking files.
 
 ## Phase 3 — Contextual, dismissible, reopenable onboarding
 
 Dependencies: Phase 1; integrate with Phase 2 navigation.
 
-- [ ] Add `/getting-started` with a short sequence: create or import a wallet; invite signers; review a first transaction. Present bots/AI automation and Documents as optional next steps.
+- [x] Add `/getting-started` with a short sequence: create or import a wallet; invite signers; review a first transaction. Present bots/AI automation and Documents as optional next steps. (Brought forward into Phase 2.)
 - [ ] Reuse guide content in a compact dashboard onboarding panel. Make the panel dismissible without blocking wallet actions; keep Getting Started available from Learn & Help after dismissal.
 - [ ] Store dismissal as a versioned, per-user browser preference, accessed after hydration and tolerant of unavailable storage. This proposal does not promise cross-device synchronization. Reset panel state on account changes so one user's dismissal does not hide another user's introduction.
 - [ ] Keep the public guide readable while signed out; gate action links through existing wallet/auth flows. Do not mark steps complete from a link click alone or require a real transaction to finish the guide.
