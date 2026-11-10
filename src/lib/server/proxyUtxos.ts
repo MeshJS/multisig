@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { UTxO } from "@meshsdk/core";
-import type { UtxoFetcher } from "@/lib/server/resolveUtxoRefsFromChain";
+import { parseUtxoRef, type UtxoFetcher } from "@/lib/server/resolveUtxoRefsFromChain";
 import { type UtxoRef, getLovelace, hasAsset, sameUtxoRef } from "@/lib/proxy/utxoUtils";
 
 export type { UtxoRef };
@@ -8,30 +8,17 @@ export { getLovelace, hasAsset, sameUtxoRef };
 
 const MIN_COLLATERAL_LOVELACE = BigInt(5_000_000);
 
-function normalizeUtxoRef(ref: UtxoRef | undefined): UtxoRef | null {
-  const txHash = typeof ref?.txHash === "string" ? ref.txHash.trim() : "";
-  const outputIndex =
-    typeof ref?.outputIndex === "number" && Number.isInteger(ref.outputIndex)
-      ? ref.outputIndex
-      : -1;
-
-  if (!txHash || outputIndex < 0) {
-    return null;
-  }
-
-  return { txHash, outputIndex };
-}
-
 export async function resolveSingleUtxoRefFromChain(args: {
   network: number;
   ref: UtxoRef | undefined;
   expectedAddress?: string;
   provider?: UtxoFetcher;
 }): Promise<{ utxo: UTxO } | { error: string; status: number }> {
-  const normalized = normalizeUtxoRef(args.ref);
+  // Same validation as the multi-ref resolver: the hash goes into a Blockfrost URL.
+  const normalized = parseUtxoRef(args.ref);
   if (!normalized) {
     return {
-      error: "Invalid UTxO ref: txHash and non-negative integer outputIndex required",
+      error: "Invalid UTxO ref: txHash must be 64 hex characters and outputIndex a non-negative integer",
       status: 400,
     };
   }
