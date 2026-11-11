@@ -4,7 +4,9 @@ import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { DataSignature } from "@meshsdk/core";
 import { checkSignature } from "@meshsdk/core-cst";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
+import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import {
+  addWalletToSession,
   clearWalletSessionCookie,
   getWalletSessionFromReq,
   setWalletSessionCookie,
@@ -27,6 +29,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  // Sign-in only: checkSignature parses caller-supplied COSE structures and
+  // every attempt costs DB round-trips, so bound both the rate and the body —
+  // the same limits as its sibling /api/v1/authSigner. A real sign-in is one
+  // POST per nonce. Logout (DELETE) and preflights above stay unthrottled.
+  if (!applyRateLimit(req, res, { keySuffix: "auth/wallet-session", maxRequests: 20 })) {
+    return;
+  }
+  if (!enforceBodySize(req, res, 64 * 1024)) {
+    return;
   }
 
   try {
@@ -87,13 +100,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .json({ error: "Nonce already used or replaced; request a new one" });
     }
 
-    // Merge with existing wallet session
-    const existing = getWalletSessionFromReq(req) ?? { wallets: [] };
-    const wallets = new Set(existing.wallets ?? []);
-    wallets.add(address);
-
+    // Merge with the existing wallet session, bounded so the cookie never
+    // outgrows what browsers accept (see MAX_SESSION_WALLETS).
+    const existing = getWalletSessionFromReq(req);
     const payload: WalletSessionPayload = {
-      wallets: Array.from(wallets),
+      wallets: addWalletToSession(existing?.wallets, address),
       // Always treat the most recently authorized address as primary so the
       // active wallet matches the last wallet that signed a nonce.
       primaryWallet: address,
