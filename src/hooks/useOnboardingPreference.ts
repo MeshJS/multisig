@@ -18,7 +18,7 @@ export default function useOnboardingPreference(address?: string | null) {
   return {
     ready,
     dismissed: ready ? choice.dismissed : false,
-    setDismissed(dismissed: boolean) {
+    setDismissed: (dismissed: boolean) => {
       if (!address || !ready) return;
       preferences.write(address, dismissed);
       setChoice({ address, dismissed });

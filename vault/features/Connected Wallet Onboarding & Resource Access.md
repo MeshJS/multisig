@@ -1,10 +1,10 @@
 ---
 type: feature
 area: Platform & UX
-state: planned
+state: in-progress
 owner: Andre
 milestone: 2026-11
-updated: 2026-10-19
+updated: 2026-11-11
 ---
 
 # Connected Wallet Onboarding & Resource Access
@@ -94,6 +94,14 @@ overflow checks alone miss overlap and content clipped by the app's scroll conta
 - Layout assertions check element bounds within cards and the visible content
   area, allowing only deliberate local scrolling. A passing document overflow
   check must not hide clipped or overlapping controls.
+
+## Implementation status
+
+Phases 1-5 and Phase 6 acceptance tooling are implemented. Final delivery remains
+open because verification with the original lint setup remains blocked. See the
+[implementation plan](../../docs/connected-wallet-onboarding-resource-access-plan.md)
+and [acceptance evidence](../../docs/connected-wallet-resource-acceptance.md) for
+reproduction commands, coverage, and remaining gates.
 
 ## Related
 

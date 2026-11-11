@@ -1,6 +1,6 @@
 # Connected-wallet onboarding, resource access & responsive layouts
 
-Status: Phases 1-4 implemented and verified. Phases 5-6 are not implemented. Authenticated UI coverage uses deterministic wallet reads.
+Status: Phases 1-5 implemented. Phase 6 acceptance tooling and checks implemented; final delivery remains blocked by lint tooling verification. Authenticated UI coverage uses deterministic wallet reads.
 
 Source: [feature note](../vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md) and the November 2026 entry in [ROADMAP.md](../ROADMAP.md). Owner in the feature note: Andre. Plan prepared 2026-11-09.
 
@@ -148,13 +148,23 @@ Exit criteria: Overview has no unintended columns; AI activity and Contacts rema
 
 Dependencies: none; use the same containment conventions established in Phase 4.
 
-- [ ] Replace the task board's unconditional `md:grid-cols-4` with a layout driven by available board width. Preferred approach: one, two, then four columns only when each has sufficient usable width, established with populated task cards.
-- [ ] If preserving four adjacent workflow columns requires horizontal scrolling instead, implement a deliberate board-local scroll region with a usable minimum column width and keyboard/touch access. Record the chosen behavior and its test exception; never rely on clipped page overflow.
-- [ ] Check long task titles, status columns, empty columns, selection checkboxes, action menus, payable task controls, payout summaries, and dialogs. Preserve board ordering and drag/drop behavior where supported; menus must remain an accessible way to perform existing actions.
-- [ ] Replace the Assets page's multi-column wrapper with a full-width card layout. Wrap action groups and handle long asset labels/quantities within the card.
-- [ ] Verify loading and empty states use the same width rules, so populated content does not introduce a layout jump or overflow.
+- [x] Replace the task board's unconditional `md:grid-cols-4` with a layout driven by available board width. Preferred approach: one, two, then four columns only when each has sufficient usable width, established with populated task cards.
+- [x] Not needed: the board uses a wrapping grid. If preserving four adjacent workflow columns requires horizontal scrolling instead, implement a deliberate board-local scroll region with a usable minimum column width and keyboard/touch access. Record the chosen behavior and its test exception; never rely on clipped page overflow.
+- [x] Check long task titles, status columns, empty columns, selection checkboxes, action menus, payable task controls, payout summaries, and dialogs. Preserve board ordering and drag/drop behavior where supported; menus must remain an accessible way to perform existing actions.
+- [x] Replace the Assets page's multi-column wrapper with a full-width card layout. Wrap action groups and handle long asset labels/quantities within the card.
+- [x] Verify loading and empty states use the same width rules, so populated content does not introduce a layout jump or overflow.
 
 Exit criteria: Tasks stays readable and operable at tablet widths with the sidebar present; Assets occupies the available content width and every action remains inside its card.
+
+### Phase 5 implementation and validation (2026-11-11)
+
+- The task board uses CSS container queries: one column below 34rem of board width, two from 34rem, and four from 68rem. These thresholds leave at least 16rem per column after gaps and account for the sidebar and card padding. No board-level horizontal scrolling is introduced; column order and existing drag/drop and menu handlers are preserved.
+- Task titles, descriptions, totals, payout badges, and selection-header controls fit their containers. Payout selection and review wrap long asset amounts and recipient labels. Explicit single-column dialog grids prevent long values from creating oversized implicit tracks; the existing recipient table retains its deliberate local scrolling.
+- Assets uses one full-width card within the standard max-width wallet content area. Actions, quantities, and tickers wrap, while truncated asset names retain their full title. Empty and pending-balance states use the same card width.
+- TypeScript, the production webpack build, bundle budgets, and 24 task-board/recipient/payout-state unit tests pass. The build retains existing WebAssembly dependency warnings. ESLint still stops before checking files because of the existing circular configuration error.
+- All 19 focused browser checks pass: empty and populated Tasks/Assets at 375, 412, 768, 820, 1024, 1280, 1440, and 1920px (900px height), plus drag/drop at 1280x1000 and loading-state checks at 820x900. The extra wide viewport exercises four columns; tablet layouts retain a readable single column with the sidebar visible.
+- Coverage includes long labels and amounts, empty columns, payable selection, paid-task controls, control non-overlap, intermediate clipping ancestors, asset actions, open task menus, menu moves, edit dialogs, payout selection and review summaries, and stable Assets width while balances load. The tests use real session/providers with deterministic wallet, task, and chain reads; moves and payout previews are intercepted. No database task changes, payout confirmations, signatures, or broadcasts are performed.
+- Representative phone/tablet/desktop screenshots are saved under the ignored ci-artifacts/phase5-final-tests directory and visually inspected. Run e2e/tests/tasks-assets-layout.spec.ts with the authenticated environment described under Phase 2. Phase 6 and the overall roadmap acceptance gate remain open.
 
 ## Phase 6 — Acceptance verification and delivery
 
@@ -178,17 +188,27 @@ Test Overview, Assets, profile bot grants, and Tasks at **375, 412, 768, 820, 10
 
 Populated fixtures must include expanded AI activity, existing contacts, long wallet/asset/task labels, existing bot grants, open wallet/role selectors, task selection, payable task controls, and open action menus. Prioritize Overview, bot grants, and Tasks, followed by Assets.
 
-- [ ] Extend `e2e/tests/responsive-smoke.spec.ts` or add focused navigation/onboarding/layout specs using the existing authentication fixture and deterministic UI data. Provide an explicit no-wallet account state rather than depending on bootstrap data accidentally being empty.
-- [ ] Keep tests off-chain: fixtures or mocked reads should populate the UI without signing or broadcasting transactions. Keep any test data isolated from real user data.
-- [ ] Check document overflow **and** bounds within cards and `#main-content`. Scroll controls into view before measuring and detect clipping by intermediate ancestors, not just the viewport edge.
-- [ ] Assert meaningful non-overlap between grant controls, task controls, and adjacent cards. Open menus/selectors and check they are reachable and unobscured; account for portalled overlays rather than incorrectly requiring them to fit inside the originating card.
-- [ ] For any deliberate local scrolling, assert that its container stays within the content area and that offscreen controls can be brought into view and used.
-- [ ] Capture representative before/after screenshots at phone, tablet, and desktop sizes; visually inspect them alongside boundary assertions.
-- [ ] Run `npm run typecheck`, relevant unit tests, and focused Playwright specs via `npm run test:e2e -- <spec paths>` with the repository's required E2E environment prepared. Run the existing responsive smoke suite as regression coverage.
-- [ ] Run the repository's applicable lint and build checks; verify lightweight public routes against `scripts/check-bundle-budget.mjs` using its documented invocation. If `npm run lint` is incompatible with the installed Next version, report that tooling issue and use the configured ESLint invocation rather than claiming a pass.
-- [ ] Update linked documentation where routes changed, attach validation evidence to implementation PRs, and mark the roadmap/feature complete only after all acceptance gates pass.
+- [x] Extend `e2e/tests/responsive-smoke.spec.ts` or add focused navigation/onboarding/layout specs using the existing authentication fixture and deterministic UI data. Provide an explicit no-wallet account state rather than depending on bootstrap data accidentally being empty.
+- [x] Keep tests off-chain: fixtures or mocked reads should populate the UI without signing or broadcasting transactions. Keep any test data isolated from real user data.
+- [x] Check document overflow **and** bounds within cards and `#main-content`. Scroll controls into view before measuring and detect clipping by intermediate ancestors, not just the viewport edge.
+- [x] Assert meaningful non-overlap between grant controls, task controls, and adjacent cards. Open menus/selectors and check they are reachable and unobscured; account for portalled overlays rather than incorrectly requiring them to fit inside the originating card.
+- [x] For any deliberate local scrolling, assert that its container stays within the content area and that offscreen controls can be brought into view and used.
+- [x] Capture representative before/after screenshots at phone, tablet, and desktop sizes; visually inspect them alongside boundary assertions.
+- [x] Run `npm run typecheck`, relevant unit tests, and focused Playwright specs via `npm run test:e2e -- <spec paths>` with the repository's required E2E environment prepared. Run the existing responsive smoke suite as regression coverage.
+- [x] Run the repository's applicable lint and build checks; verify lightweight public routes against `scripts/check-bundle-budget.mjs` using its documented invocation. If `npm run lint` is incompatible with the installed Next version, report that tooling issue and use the configured ESLint invocation rather than claiming a pass.
+- [ ] Final delivery gate: documentation and reproducible evidence are linked below, but the roadmap/feature must remain open until lint can be verified with the approved setup. No PR was created or published in this task.
 
 Exit criteria: all feature-note acceptance criteria have passing evidence; any environment-blocked checks are explicitly recorded and resolved before marking delivery complete.
+
+### Phase 6 acceptance work (2026-11-11)
+
+- Added a complete desktop/touch resource-journey matrix for signed-out, empty-wallet, and selected-wallet users. It follows every resource entry, checks Back/Forward and refresh, verifies a legacy fragment migration and return to the starting screen, preserves the session cookie, and fails on signing or reauthentication calls.
+- Updated the existing responsive smoke suite to use deterministic wallet reads instead of stale bootstrap database IDs. Its wallet-detail check asserts the actual fixture wallet heading to avoid passing against unrelated landing content.
+- Added keyboard focus/bounds checks for the task editor's deliberately scrollable recipient table. Layout screenshots now include controlled pre-fix CSS reconstructions and implemented layouts; reconstruction filenames explicitly distinguish these from historical deployment screenshots.
+- Added npm run test:resources -- --local and a [reproduction/evidence guide](connected-wallet-resource-acceptance.md). The runner executes both the public and authenticated resource/layout suites without on-chain writes.
+- The temporary lint configuration migration was reverted at the maintainer's request. The original `next lint` command and ESLint configuration are preserved. Lint remains blocked by the existing tooling incompatibility. The 224 diagnostics observed under the temporary configuration are historical findings, not a baseline result under the restored configuration. Any migration requires separate explanation and review.
+- Corrected the onboarding callback declaration to be safely destructured and changed the AI-activity profile link to client navigation. TypeScript, the production build, bundle budgets, and 77 focused unit tests pass. The build retains existing dependency WebAssembly warnings.
+- The combined runner passes all 77 browser checks (12 public, 65 authenticated-fixture checks); six representative screenshot cases also pass after capture stabilization. The local fixture isolates client IPs per case to avoid unrelated tests exhausting the same production rate-limit bucket. Final artifact locations are recorded in the evidence guide. The feature remains in progress because the plan explicitly requires resolving blocked checks before delivery; verification with the approved lint setup is outstanding.
 
 ## Suggested delivery sequence
 

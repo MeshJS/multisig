@@ -76,9 +76,9 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
       return (
         <div
           key={asset.unit}
-          className="flex w-full min-w-0 flex-row items-center justify-between gap-3"
+          className="flex w-full min-w-0 flex-row flex-wrap items-center justify-between gap-3"
         >
-          <div className="flex min-w-0 flex-1 flex-row items-center gap-3">
+          <div className="flex min-w-0 flex-[1_1_14rem] flex-row items-center gap-3">
             {imageSrc ? (
               <div
                 className={`relative flex h-[60px] w-[60px] flex-shrink-0 items-center justify-center overflow-hidden rounded-full`}
@@ -124,8 +124,8 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
               </div>
             </LinkCardanoscan>
           </div>
-          <div className="flex flex-shrink-0 flex-row items-baseline gap-1">
-            <p className="font-bold tabular-nums">
+          <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-1">
+            <p className="break-all font-bold tabular-nums">
               {numberWithCommas(quantity)}
             </p>
             {ticker && (
@@ -144,15 +144,15 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
 
   const adaAmount = useMemo(() => {
     return (
-      <div className="flex w-full flex-row items-center justify-between">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3">
         <div className="flex flex-row items-center gap-3">
           <div className="relative flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full">
             <Image src={"/assets/ada.png"} width={60} height={60} alt="ADA" />
           </div>
           <h3 className="text-lg font-bold">ADA</h3>
         </div>
-        <div className="flex flex-row gap-1">
-          <p className="font-bold">{balance}</p>
+        <div className="flex min-w-0 max-w-full flex-wrap gap-1">
+          <p className="break-all font-bold">{balance}</p>
           <p className="text-gray-400">₳</p>
         </div>
       </div>
@@ -160,7 +160,7 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
   }, [balance]);
 
   return (
-    <CardUI title="Assets" cardClassName="col">
+    <CardUI title="Assets" cardClassName="min-w-0">
       <div className="flex flex-col gap-4">
         {adaAmount}
         {nonAdaList}
@@ -169,7 +169,7 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
             Please deposit fund to this script address before continuing
           </p>
         )}
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <Link href={`/wallets/${appWallet.id}/transactions/deposit`}>
             <Button size="sm">Deposit Funds</Button>
           </Link>

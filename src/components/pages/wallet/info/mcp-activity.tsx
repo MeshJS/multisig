@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
 
@@ -117,9 +118,9 @@ export default function McpActivityCard({ appWallet }: { appWallet: Wallet }) {
 
           <p className="pt-1 text-xs text-muted-foreground">
             Manage or revoke these connections from{" "}
-            <a href="/user" className="underline underline-offset-2">
+            <Link href="/user" className="underline underline-offset-2">
               your profile
-            </a>
+            </Link>
             .
           </p>
         </div>

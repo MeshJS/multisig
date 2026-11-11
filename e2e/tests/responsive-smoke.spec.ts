@@ -10,8 +10,8 @@
 // no transaction creation, no chain writes. The new-transaction test mocks
 // the UTxO fetch so it stays deterministic and off-chain.
 
-import { test, expect } from "../fixtures/authFixture";
-import { loadContext, getWallet } from "../helpers/contextLoader";
+import { test, expect } from "../fixtures/resourceFixture";
+import { mockNavigationWallets, WALLET_NAME } from "../helpers/navigationWallet";
 import type { Page } from "@playwright/test";
 
 const VIEWPORTS = [
@@ -63,6 +63,7 @@ for (const viewport of VIEWPORTS) {
       authenticateAs,
     }) => {
       await authenticateAs(page, 0);
+      const wallet = await mockNavigationWallets(page);
       await page.goto("/wallets");
       await expect(
         page.getByRole("link", { name: "New Wallet" }),
@@ -74,12 +75,11 @@ for (const viewport of VIEWPORTS) {
       page,
       authenticateAs,
     }) => {
-      const ctx = loadContext();
-      const wallet = getWallet(ctx, "legacy");
       await authenticateAs(page, 0);
+      const wallet = await mockNavigationWallets(page);
       await page.goto(`/wallets/${wallet.walletId}`);
       await expect(
-        page.getByText("Signers", { exact: true }).first(),
+        page.getByRole("heading", { name: WALLET_NAME, exact: true }),
       ).toBeVisible({ timeout: 60_000 });
       await expectNoHorizontalOverflow(page, "wallet detail");
     });
@@ -88,9 +88,8 @@ for (const viewport of VIEWPORTS) {
       page,
       authenticateAs,
     }) => {
-      const ctx = loadContext();
-      const wallet = getWallet(ctx, "legacy");
       await authenticateAs(page, 0);
+      const wallet = await mockNavigationWallets(page);
       await page.goto(`/wallets/${wallet.walletId}/transactions`);
       const depositButton = page
         .getByRole("button", { name: "Deposit Funds" })
@@ -108,9 +107,8 @@ for (const viewport of VIEWPORTS) {
       page,
       authenticateAs,
     }) => {
-      const ctx = loadContext();
-      const wallet = getWallet(ctx, "legacy");
       await authenticateAs(page, 0);
+      const wallet = await mockNavigationWallets(page);
       await mockUtxos(page);
       await page.goto(`/wallets/${wallet.walletId}/transactions/new`);
       await page.waitForSelector(
@@ -136,9 +134,8 @@ for (const viewport of VIEWPORTS) {
       page,
       authenticateAs,
     }) => {
-      const ctx = loadContext();
-      const wallet = getWallet(ctx, "legacy");
       await authenticateAs(page, 0);
+      const wallet = await mockNavigationWallets(page);
       await mockUtxos(page);
       await page.goto(`/wallets/${wallet.walletId}/build`);
       await expect(page.getByTestId("tx-builder-canvas")).toBeVisible({

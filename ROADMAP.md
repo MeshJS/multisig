@@ -335,7 +335,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
-| **Connected-wallet onboarding, resource access & responsive layouts** — keep the landing page available after sign-in; add persistent Learn & Help navigation, standalone MCP documentation, discoverable bot/developer guides, and contextual, reopenable onboarding. Fix Overview AI activity/Contacts placement, Assets card width, profile bot grant controls, and task board crowding; extend responsive checks to tablet widths and populated states. Scope and acceptance criteria: [feature note](vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md). | |
+| **Connected-wallet onboarding, resource access & responsive layouts** — keep the landing page available after sign-in; add persistent Learn & Help navigation, standalone MCP documentation, discoverable bot/developer guides, and contextual, reopenable onboarding. Fix Overview AI activity/Contacts placement, Assets card width, profile bot grant controls, and task board crowding; extend responsive checks to tablet widths and populated states. Scope and acceptance criteria: [feature note](vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md). Implementation complete; [acceptance evidence](docs/connected-wallet-resource-acceptance.md), final lint gate open. | |
 | Backlog cleanup, dependency/security updates | |
 | Monthly report | |
 

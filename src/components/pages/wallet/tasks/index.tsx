@@ -188,6 +188,7 @@ export default function PageTasks() {
         <CardUI
           title="Board"
           description="Drag a card to move it, or use its menu."
+          cardClassName="min-w-0 [&>div:first-child]:flex-wrap [&>div:first-child>div]:min-w-0 [&>div:first-child>div]:max-w-full [&>div:first-child>div]:shrink"
           headerDom={
             <div className="flex flex-wrap items-center justify-end gap-3">
               {selectedTasks.length > 0 && (

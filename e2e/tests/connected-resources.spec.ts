@@ -2,7 +2,7 @@ import {
   WALLET_NAME,
   mockNavigationWallets,
 } from "../helpers/navigationWallet";
-import { test, expect } from "../fixtures/authFixture";
+import { test, expect } from "../fixtures/resourceFixture";
 import { learnHelpGroups } from "../../src/data/learn-help";
 
 for (const width of [375, 1280]) {

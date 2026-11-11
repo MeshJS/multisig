@@ -1,0 +1,24 @@
+/* Keep at least 16rem per column after gaps. Queries use the board's actual
+   width, so a tablet sidebar never forces four cramped columns. */
+.container {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@container (min-width: 34rem) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 68rem) {
+  .board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

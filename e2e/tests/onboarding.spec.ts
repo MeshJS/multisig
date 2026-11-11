@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures/authFixture";
+import { test, expect } from "../fixtures/resourceFixture";
 import { mockNavigationWallets } from "../helpers/navigationWallet";
 import { loadContext } from "../helpers/contextLoader";
 import { onboardingPreferenceKey } from "../../src/lib/onboarding-preference";
