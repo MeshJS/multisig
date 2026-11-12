@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
+import { assertWalletAccess } from "@/server/api/auth";
 
 const requireSessionAddress = (ctx: AuthCtx) => {
   const address = ctx.session?.user?.id ?? ctx.sessionAddress;
@@ -79,6 +80,27 @@ export const migrationRouter = createTRPCRouter({
         : [requireSessionAddress(ctx)];
       if (!addresses.includes(input.ownerAddress)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Address mismatch" });
+      }
+      // Proving control of an address says nothing about the wallet being
+      // migrated. Without this, any signed-in user could open a migration for
+      // someone else's wallet id — and because only one active migration is
+      // allowed per wallet, that blocks the real signers from migrating until
+      // the stranger cancels it.
+      // The initiator itself must belong to the wallet: assertWalletAccess
+      // would also accept any other address in a multi-wallet session, which
+      // would record the lock under an address that is not a signer.
+      const wallet = await ctx.db.wallet.findUnique({
+        where: { id: input.originalWalletId },
+      });
+      if (!wallet) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+      }
+      const initiatorBelongs =
+        wallet.ownerAddress === input.ownerAddress ||
+        (Array.isArray(wallet.signersAddresses) &&
+          wallet.signersAddresses.includes(input.ownerAddress));
+      if (!initiatorBelongs) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this wallet" });
       }
 
       // Check if there's already an active migration for this wallet
@@ -225,7 +247,12 @@ export const migrationRouter = createTRPCRouter({
   getMigrationByOriginalWallet: protectedProcedure
     .input(z.object({ originalWalletId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const sessionAddress = requireSessionAddress(ctx);
+      // Deliberately not owner-scoped: every signer must see a migration
+      // another signer started, so they don't start a second one. It is still
+      // wallet-scoped — the row carries the initiator's address and the
+      // migration plan, which are nobody else's business.
+      requireSessionAddress(ctx);
+      await assertWalletAccess(ctx, input.originalWalletId);
       return ctx.db.migration.findFirst({
         where: {
           originalWalletId: input.originalWalletId,
