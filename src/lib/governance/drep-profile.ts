@@ -2,6 +2,7 @@ import type {
   BlockfrostDrepInfo,
   BlockfrostDrepMetadata,
 } from "@/types/governance";
+import { isBlockfrostNotFound } from "@/utils/blockfrost-not-found";
 
 /** Anything with Blockfrost's raw `get(path)`: the light reader or Mesh's provider. */
 type DrepReader = {
@@ -66,33 +67,6 @@ export async function fetchDrepProfile(
   };
 }
 
-/**
- * Whether a Blockfrost read failed with 404.
- *
- * The light reader (`src/utils/blockfrost-get.ts`) rejects with a JSON
- * *string* — `{"data":…,"status":404}` — copying Mesh's BlockfrostProvider,
- * while other code paths reject with an object. Checking only
- * `err.response.status` (what the explorer pages did) never matches the
- * string, so every DRep without metadata was logged as an error.
- */
-export function isBlockfrostNotFound(error: unknown): boolean {
-  let value: unknown = error;
-  if (typeof value === "string") {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return false;
-    }
-  }
-  if (!value || typeof value !== "object") return false;
-  const e = value as {
-    status?: unknown;
-    response?: { status?: unknown };
-    data?: { status_code?: unknown };
-  };
-  return (
-    e.status === 404 ||
-    e.response?.status === 404 ||
-    e.data?.status_code === 404
-  );
-}
+// Lives in a shared util so the registration probes use the same check;
+// re-exported for existing importers of this module.
+export { isBlockfrostNotFound };

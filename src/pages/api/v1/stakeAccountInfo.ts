@@ -5,6 +5,19 @@ import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards"
 import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
 import { getProvider } from "@/utils/get-provider";
 
+/**
+ * A lowercase bech32 reward address (key or script credential): `stake1` /
+ * `stake_test1` plus 53 characters of the bech32 alphabet (29 bytes of header
+ * + credential, then the checksum). The checksum itself is Blockfrost's to
+ * check; the shape is what keeps the value inside the path segment.
+ *
+ * The value is spliced into Blockfrost's `/accounts/{stake}` path with the
+ * server's project key, so anything else — `../…`, `?…`, a payment address —
+ * must not reach the request: it either reads another endpoint or comes
+ * back as a Blockfrost 400 that this route would report as a 500.
+ */
+const REWARD_ADDRESS = /^(stake|stake_test)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{53}$/;
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   addCorsCacheBustingHeaders(res);
   if (!applyRateLimit(req, res, { keySuffix: "v1/stakeAccountInfo" })) return;
@@ -21,16 +34,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (isBotJwt(payload) && !applyBotRateLimit(req, res, payload.botId)) return;
 
   const { stakeAddress } = req.query;
-  if (typeof stakeAddress !== "string" || !stakeAddress.trim()) {
+  const parsed =
+    typeof stakeAddress === "string" ? REWARD_ADDRESS.exec(stakeAddress.trim()) : null;
+  if (!parsed) {
     return res.status(400).json({ error: "Missing or invalid stakeAddress parameter" });
   }
 
-  const network = stakeAddress.startsWith("stake_test") ? 0 : 1;
+  const network = parsed[1] === "stake_test" ? 0 : 1;
   const provider = getProvider(network);
 
   try {
     // Never-registered accounts (Blockfrost 404) come back as inactive.
-    const info = await fetchStakeAccountStatus(provider, stakeAddress);
+    const info = await fetchStakeAccountStatus(provider, parsed[0]);
     return res.status(200).json(info);
   } catch (e) {
     console.error("stakeAccountInfo error:", e);
