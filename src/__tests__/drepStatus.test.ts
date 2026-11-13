@@ -10,6 +10,16 @@ import { fetchDrepStatus } from "@/lib/governance/drep-status";
  * inactive.
  */
 
+/** What Mesh's BlockfrostProvider.get rejects with (parseHttpError). */
+const meshRejection = (status: number) =>
+  JSON.stringify({
+    data: { status_code: status, error: "x", message: "x" },
+    headers: { "content-type": "application/json" },
+    status,
+  });
+const MESH_404 = meshRejection(404);
+const MESH_500 = meshRejection(500);
+
 function provider(impl: (url: string) => Promise<unknown>) {
   return { get: jest.fn(impl) };
 }
@@ -43,6 +53,23 @@ describe("fetchDrepStatus", () => {
       throw new Error("Request failed with status 404");
     });
     await expect(fetchDrepStatus(byMessage, "drep1abc")).resolves.toEqual({ active: false });
+  });
+
+  it("treats Mesh's real 404 rejection — a JSON string, not an Error — as inactive", async () => {
+    // Before this case was handled, an MCP vote draft for a never-registered
+    // DRep failed as DREP_LOOKUP_FAILED instead of telling the user to
+    // register first.
+    const p = provider(async () => {
+      throw MESH_404;
+    });
+    await expect(fetchDrepStatus(p, "drep1abc")).resolves.toEqual({ active: false });
+  });
+
+  it("rethrows Mesh's string rejection for any other status", async () => {
+    const p = provider(async () => {
+      throw MESH_500;
+    });
+    await expect(fetchDrepStatus(p, "drep1abc")).rejects.toBe(MESH_500);
   });
 
   it("rethrows any other provider failure", async () => {

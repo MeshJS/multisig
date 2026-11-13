@@ -10,6 +10,16 @@ import { fetchStakeAccountStatus } from "@/lib/staking/stake-account-status";
  * surface rather than read as inactive.
  */
 
+/** What Mesh's BlockfrostProvider.get rejects with (parseHttpError). */
+const meshRejection = (status: number) =>
+  JSON.stringify({
+    data: { status_code: status, error: "x", message: "x" },
+    headers: { "content-type": "application/json" },
+    status,
+  });
+const MESH_404 = meshRejection(404);
+const MESH_500 = meshRejection(500);
+
 function provider(impl: (url: string) => Promise<unknown>) {
   return { get: jest.fn(impl) };
 }
@@ -67,10 +77,63 @@ describe("fetchStakeAccountStatus", () => {
     });
   });
 
+  it("treats Mesh's real 404 rejection — a JSON string, not an Error — as inactive", async () => {
+    // BlockfrostProvider.get rejects with parseHttpError's JSON.stringify of
+    // the axios response. Before this case was handled, every never-registered
+    // stake account surfaced as a lookup failure (a 500 from stakeAccountInfo,
+    // a 502 STAKE_LOOKUP_FAILED from the MCP draft pipeline).
+    const p = provider(async () => {
+      throw MESH_404;
+    });
+    await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).resolves.toEqual({
+      active: false,
+      poolId: null,
+    });
+  });
+
+  it("rethrows Mesh's string rejection for any other status", async () => {
+    const p = provider(async () => {
+      throw MESH_500;
+    });
+    await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).rejects.toBe(MESH_500);
+  });
+
   it("rethrows any other provider failure", async () => {
     const p = provider(async () => {
       throw Object.assign(new Error("Blockfrost 500"), { status: 500 });
     });
     await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).rejects.toThrow("Blockfrost 500");
+  });
+});
+
+describe("fetchStakeAccountStatus against Mesh's real BlockfrostProvider", () => {
+  // The mocks above copy a rejection shape; this pins it to the library, so a
+  // Mesh upgrade that changes how get() rejects shows up here first.
+  it("reads Blockfrost's 404 for an unseen account as inactive", async () => {
+    const http = await import("node:http");
+    const { BlockfrostProvider } = await import("@meshsdk/core");
+    const server = http.createServer((_req, res) => {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status_code: 404, error: "Not Found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    // axios honours HTTP(S)_PROXY even for 127.0.0.1; a proxied dev shell
+    // would otherwise send this request somewhere else.
+    const savedNoProxy = { upper: process.env.NO_PROXY, lower: process.env.no_proxy };
+    process.env.NO_PROXY = process.env.no_proxy = "127.0.0.1,localhost";
+    try {
+      const { port } = server.address() as { port: number };
+      const p = new BlockfrostProvider(`http://127.0.0.1:${port}`);
+      await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).resolves.toEqual({
+        active: false,
+        poolId: null,
+      });
+    } finally {
+      for (const [key, value] of [["NO_PROXY", savedNoProxy.upper], ["no_proxy", savedNoProxy.lower]] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

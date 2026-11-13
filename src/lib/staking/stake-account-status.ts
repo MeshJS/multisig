@@ -1,3 +1,5 @@
+import { isBlockfrostNotFound } from "@/utils/blockfrost-not-found";
+
 export type StakeAccountStatus = {
   /** Registered on chain right now (a registration not since undone). */
   active: boolean;
@@ -48,8 +50,10 @@ export async function fetchStakeAccountStatus(
 }
 
 function isNotFound(error: unknown): boolean {
+  // Mesh's BlockfrostProvider rejects with a JSON string, not an Error, so
+  // the string shape is the one production actually sees.
   return (
-    (error as { status?: number })?.status === 404 ||
+    isBlockfrostNotFound(error) ||
     (error instanceof Error && error.message.includes("404"))
   );
 }
