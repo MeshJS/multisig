@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  governanceDRepView,
   isProxyModeBlocked,
   proxyModeBlockedMessage,
   resolveProxyMode,
@@ -69,5 +70,61 @@ describe("isProxyModeBlocked / proxyModeBlockedMessage", () => {
     expect(proxyModeBlockedMessage(failed)?.description).toMatch(/clear the proxy selection/i);
     expect(proxyModeBlockedMessage(unavailable)?.description).toMatch(/pick one of this wallet's proxies/i);
     expect(proxyModeBlockedMessage(unavailable)?.description).toMatch(/clear the proxy selection/i);
+  });
+});
+
+describe("governanceDRepView", () => {
+  const walletDrepId = "drep1wallet";
+  const proxyDrepA = { proxyId: "proxy-a", drepId: "drep1proxyA" };
+
+  it("shows the wallet's own DRep when no proxy is selected", () => {
+    const mode = resolveProxyMode({ selectedProxyId: "", proxies: [proxyA] });
+    expect(governanceDRepView(mode, { walletDrepId, proxyDrep: proxyDrepA })).toEqual({
+      dRepId: walletDrepId,
+      isProxy: false,
+    });
+    expect(governanceDRepView(mode, { walletDrepId: undefined, proxyDrep: null })).toEqual({
+      dRepId: null,
+      isProxy: false,
+    });
+  });
+
+  it("shows the selected proxy's DRep once it has been derived for that proxy", () => {
+    const mode = resolveProxyMode({ selectedProxyId: "proxy-a", proxies: [proxyA, proxyB] });
+    expect(governanceDRepView(mode, { walletDrepId, proxyDrep: proxyDrepA })).toEqual({
+      dRepId: "drep1proxyA",
+      isProxy: true,
+    });
+  });
+
+  it("shows nothing, not the wallet's DRep, while the proxy DRep id is still being derived", () => {
+    // The old `proxyDrepId || walletDrepId` showed the wallet's votes under
+    // "Proxy DRep Voting Statistics" and as each proposal's "Your Vote".
+    const mode = resolveProxyMode({ selectedProxyId: "proxy-a", proxies: [proxyA] });
+    expect(governanceDRepView(mode, { walletDrepId, proxyDrep: null })).toEqual({
+      dRepId: null,
+      isProxy: true,
+    });
+  });
+
+  it("ignores a DRep id derived for the previously selected proxy", () => {
+    const mode = resolveProxyMode({ selectedProxyId: "proxy-b", proxies: [proxyA, proxyB] });
+    expect(governanceDRepView(mode, { walletDrepId, proxyDrep: proxyDrepA })).toEqual({
+      dRepId: null,
+      isProxy: true,
+    });
+  });
+
+  it("shows nothing while Proxy Mode is blocked (loading, error, unavailable)", () => {
+    for (const mode of [
+      resolveProxyMode({ selectedProxyId: "proxy-a", proxies: undefined }),
+      resolveProxyMode({ selectedProxyId: "proxy-a", proxies: undefined, loadFailed: true }),
+      resolveProxyMode({ selectedProxyId: "proxy-a", proxies: [proxyB] }),
+    ]) {
+      expect(governanceDRepView(mode, { walletDrepId, proxyDrep: proxyDrepA })).toEqual({
+        dRepId: null,
+        isProxy: true,
+      });
+    }
   });
 });

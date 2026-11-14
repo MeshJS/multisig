@@ -18,7 +18,20 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Clock, Calendar, Coins, Hash, FileText } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { useProxy } from "@/hooks/useProxy";
-import { useProxyData } from "@/lib/zustand/proxy";
+import { useUserStore } from "@/lib/zustand/user";
+import {
+  governanceDRepView,
+  resolveProxyMode,
+  type ProxyDRep,
+} from "@/lib/proxy/proxyMode";
+import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
+import {
+  EMPTY_DREP_VOTING_STATISTICS,
+  fetchDRepVoteRows,
+  summarizeDRepVotes,
+  type DRepVoteRecord,
+  type DRepVotingStatistics,
+} from "@/lib/governance/drep-votes";
 import { useBallotModal } from "@/hooks/useBallotModal";
 import { getProposalStatus as getProposalStatusValue, parseProposalId } from "@/lib/governance";
 import { GovernanceTypeChip } from "@/components/pages/wallet/governance/gov-type-chip";
@@ -34,21 +47,8 @@ import {
   type ProposalMetadataListItem,
 } from "@/lib/governance/proposalMetadata";
 
-type VoteRecord = {
-  tx_hash: string;
-  cert_index: number;
-  vote: "yes" | "no" | "abstain";
-  proposal_tx_hash: string;
-  proposal_cert_index: number;
-  proposal_id: string;
-};
-
-type VotingStatistics = {
-  total: number;
-  yes: number;
-  no: number;
-  abstain: number;
-};
+type VoteRecord = DRepVoteRecord;
+type VotingStatistics = DRepVotingStatistics;
 
 // Aggregate Yes/No/Abstain tally for a single proposal, counted from the
 // per-proposal votes endpoint. Blockfrost exposes no aggregate and no voting
@@ -98,8 +98,23 @@ const getProposalStatus = (details?: Partial<ProposalDetails> | null) => {
 export default function AllProposals({ appWallet, utxos, selectedBallotId, onSelectBallot }: { appWallet: Wallet; utxos: UTxO[]; selectedBallotId?: string; onSelectBallot?: (id: string) => void }) {
   const network = useSiteStore((state) => state.network);
   const { multisigWallet } = useMultisigWallet();
-  const { isProxyEnabled, selectedProxyId } = useProxy();
-  const { proxies } = useProxyData(appWallet?.id);
+  const { selectedProxyId } = useProxy();
+  const userAddress = useUserStore((state) => state.userAddress);
+  // The same query, with the same input, as each VoteButton below: the record
+  // shown here must be the credential those buttons would vote with.
+  const { data: proxies, isError: proxiesLoadFailed } =
+    api.proxy.getProxiesByUserOrWallet.useQuery(
+      {
+        walletId: appWallet?.id || undefined,
+        userAddress: userAddress || undefined,
+      },
+      { enabled: !!(appWallet?.id || userAddress) },
+    );
+  const proxyMode = resolveProxyMode({
+    selectedProxyId,
+    proxies,
+    loadFailed: proxiesLoadFailed,
+  });
   const [proposals, setProposals] = useState<ProposalMetadata[]>([]);
   const [nextPage, setNextPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -107,8 +122,8 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   const [votes, setVotes] = useState<Map<string, VoteRecord>>(new Map());
   const [loadingVotes, setLoadingVotes] = useState(false);
   const [expandedProposals, setExpandedProposals] = useState<Set<string>>(new Set());
-  const [votingStatistics, setVotingStatistics] = useState<VotingStatistics>({ total: 0, yes: 0, no: 0, abstain: 0 });
-  const [proxyDrepId, setProxyDrepId] = useState<string | null>(null);
+  const [votingStatistics, setVotingStatistics] = useState<VotingStatistics>(EMPTY_DREP_VOTING_STATISTICS);
+  const [proxyDrep, setProxyDrep] = useState<ProxyDRep | null>(null);
   const [proposalDetails, setProposalDetails] = useState<Map<string, ProposalDetails>>(new Map());
   const [proposalListStatuses, setProposalListStatuses] = useState<Map<string, ProposalListStatus>>(new Map());
   const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
@@ -122,49 +137,49 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   // otherwise fallback to appWallet (for legacy wallets without multisigWallet)
   const standardDrepId = multisigWallet ? multisigWallet.getDRepId() : appWallet?.dRepId;
   
-  // Get proxy DRep ID if proxy is enabled
+  // Derive the selected proxy's DRep id. Tagged with the proxy id so a result
+  // for a previously selected proxy is never shown under the current one.
+  const selectedProxy = proxyMode.kind === "proxy" ? proxyMode.proxy : null;
   useEffect(() => {
-    const fetchProxyDrepId = async () => {
-      const hasValidProxy = isProxyEnabled && selectedProxyId && proxies && proxies.length > 0;
-      const selectedProxy = hasValidProxy ? proxies.find(p => p.id === selectedProxyId) : null;
-      
-      if (hasValidProxy && selectedProxy && appWallet?.scriptCbor) {
-        // If proxy has drepId cached, use it
-        if (selectedProxy.drepId) {
-          setProxyDrepId(selectedProxy.drepId);
-          return;
-        }
-        
-        // Otherwise, calculate it from the proxy contract
-        try {
-          const txBuilder = await getTxBuilder(network);
-          const proxyContract = new MeshProxyContract(
-            {
-              mesh: txBuilder,
-              wallet: undefined,
-              networkId: network,
-            },
-            {
-              paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
-              proxyAddress: selectedProxy.proxyAddress,
-            },
-            appWallet.scriptCbor,
-          );
-          const drepId = proxyContract.getDrepId();
-          setProxyDrepId(drepId);
-        } catch (error) {
-          console.error("Error getting proxy DRep ID:", error);
-          setProxyDrepId(null);
-        }
-      } else {
-        setProxyDrepId(null);
+    if (!selectedProxy || !appWallet?.scriptCbor) {
+      setProxyDrep(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const txBuilder = await getTxBuilder(network);
+        const proxyContract = new MeshProxyContract(
+          {
+            mesh: txBuilder,
+            wallet: undefined,
+            networkId: network,
+          },
+          {
+            paramUtxo: JSON.parse(selectedProxy.paramUtxo || '{}'),
+            proxyAddress: selectedProxy.proxyAddress,
+          },
+          appWallet.scriptCbor,
+        );
+        const drepId = proxyContract.getDrepId();
+        if (!cancelled) setProxyDrep({ proxyId: selectedProxy.id, drepId });
+      } catch (error) {
+        console.error("Error getting proxy DRep ID:", error);
+        if (!cancelled) setProxyDrep(null);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    
-    fetchProxyDrepId();
-  }, [isProxyEnabled, selectedProxyId, proxies, appWallet?.scriptCbor, network]);
-  
-  const dRepId = proxyDrepId || standardDrepId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProxy?.id, selectedProxy?.paramUtxo, selectedProxy?.proxyAddress, appWallet?.scriptCbor, network]);
+
+  // With Proxy Mode on this is the proxy's DRep or nothing — never the
+  // wallet's own DRep under a "Proxy DRep" heading (see governanceDRepView).
+  const { dRepId, isProxy: showsProxyDRep } = governanceDRepView(proxyMode, {
+    walletDrepId: standardDrepId,
+    proxyDrep,
+  });
 
   const toggleProposal = (proposalId: string) => {
     setExpandedProposals(prev => {
@@ -270,94 +285,47 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
   }, [cachedTallies, proposalIds, network]);
 
 
-  // Fetch DRep voting history
+  // Fetch the shown DRep's voting history. The record is cleared first so the
+  // previous DRep's votes never sit under the new heading while this loads,
+  // and a fetch for a DRep that is no longer shown stops and is discarded.
   useEffect(() => {
-    async function fetchVotingHistory() {
-      if (!dRepId) {
-        setVotes(new Map());
-        setVotingStatistics({ total: 0, yes: 0, no: 0, abstain: 0 });
-        return;
-      }
-      
-      setLoadingVotes(true);
+    setVotes(new Map());
+    setVotingStatistics(EMPTY_DREP_VOTING_STATISTICS);
+    if (!dRepId) {
+      setLoadingVotes(false);
+      return;
+    }
+
+    let current = true;
+    const isCurrent = () => current;
+    setLoadingVotes(true);
+    void (async () => {
       try {
         const blockchainProvider = getProvider(network);
         // Convert CIP-129 DRep ID to CIP-105 format for API
         const { getDRepIds } = await import("@meshsdk/core-cst");
-        const drepIds = getDRepIds(dRepId);
-        const cip105DrepId = drepIds.cip105;
-        
-        // Fetch all pages of votes
-        let allVotes: any[] = [];
-        let page = 1;
-        let hasMore = true;
-        
-        while (hasMore) {
-          const votesData: any[] = await blockchainProvider.get(
-            `/governance/dreps/${cip105DrepId}/votes?count=100&page=${page}&order=asc`
-          );
-          
-          if (Array.isArray(votesData) && votesData.length > 0) {
-            allVotes = [...allVotes, ...votesData];
-            if (votesData.length < 100) {
-              hasMore = false;
-            } else {
-              page++;
-            }
-          } else {
-            hasMore = false;
-          }
-        }
-        
-        const votesMap = new Map<string, VoteRecord>();
-        const stats: VotingStatistics = { total: 0, yes: 0, no: 0, abstain: 0 };
-        
-        if (Array.isArray(allVotes)) {
-          allVotes.forEach((vote: any) => {
-            // Match votes to proposals using proposal_tx_hash and proposal_cert_index
-            const proposalKey = `${vote.proposal_tx_hash}#${vote.proposal_cert_index}`;
-            
-            // Normalize vote to lowercase
-            const voteValue = (vote.vote || "").toLowerCase() as "yes" | "no" | "abstain";
-            
-            // Store vote record
-            votesMap.set(proposalKey, {
-              tx_hash: vote.tx_hash,
-              cert_index: vote.cert_index,
-              vote: voteValue,
-              proposal_tx_hash: vote.proposal_tx_hash,
-              proposal_cert_index: vote.proposal_cert_index,
-              proposal_id: vote.proposal_id,
-            });
-            
-            // Update statistics
-            stats.total++;
-            if (voteValue === "yes") {
-              stats.yes++;
-            } else if (voteValue === "no") {
-              stats.no++;
-            } else if (voteValue === "abstain") {
-              stats.abstain++;
-            }
-          });
-        }
-        
+        const cip105DrepId = getDRepIds(dRepId).cip105;
+        const rows = await fetchDRepVoteRows(
+          (path) => blockchainProvider.get(path),
+          cip105DrepId,
+          isCurrent,
+        );
+        if (!rows || !isCurrent()) return;
+        const { votes: votesMap, statistics } = summarizeDRepVotes(rows);
         setVotes(votesMap);
-        setVotingStatistics(stats);
+        setVotingStatistics(statistics);
       } catch (error: any) {
-        // Handle 404 or other errors gracefully - voting history is optional
+        // Voting history is optional; 404 means the DRep has no votes yet.
         if (error?.status !== 404) {
           console.error("Error fetching voting history:", error);
         }
-        // Set empty map on error
-        setVotes(new Map());
-        setVotingStatistics({ total: 0, yes: 0, no: 0, abstain: 0 });
       } finally {
-        setLoadingVotes(false);
+        if (isCurrent()) setLoadingVotes(false);
       }
-    }
-    
-    fetchVotingHistory();
+    })();
+    return () => {
+      current = false;
+    };
   }, [dRepId, network]);
 
   const createLoadingMetadata = (proposal: ProposalListItem): ProposalMetadata => ({
@@ -508,11 +476,14 @@ export default function AllProposals({ appWallet, utxos, selectedBallotId, onSel
       description={`All proposals submitted by the community`}
     >
       <div className="flex flex-col gap-3 sm:gap-4">
+        {/* Proxy Mode is on but the proxy can't be used here: say so, instead
+            of showing no statistics without explanation. */}
+        <ProxyModeNotice mode={proxyMode} />
         {/* Voting Statistics */}
         {dRepId && (
           <div className="mb-2 p-4 bg-white dark:bg-[#0A0A0B] rounded-lg border border-gray-200 dark:border-gray-800">
             <h3 className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">
-              {isProxyEnabled ? "Proxy DRep" : "DRep"} Voting Statistics
+              {showsProxyDRep ? "Proxy DRep" : "DRep"} Voting Statistics
             </h3>
             {loadingVotes ? (
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
