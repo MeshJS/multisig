@@ -350,7 +350,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build stake certificate transaction (SDK multisig)",
           description:
-            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\" default, \"Always No Confidence\", or drep1...).",
+            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\", \"Always No Confidence\", or drep1...). Without dRep, delegate keeps an existing vote delegation and otherwise uses \"Always Abstain\"; register_and_delegate always uses \"Always Abstain\".",
           requestBody: {
             required: true,
             content: {
@@ -391,6 +391,7 @@ This API uses **Bearer Token** authentication (JWT).
             403: { description: "Forbidden or insufficient bot scope" },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
+            502: { description: "delegate without dRep: the current DRep delegation could not be read" },
           },
         },
       },
