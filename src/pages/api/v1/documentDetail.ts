@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { summariseDocument } from "@/lib/documents/summary";
@@ -10,6 +11,7 @@ import {
 import { isBotJwt, verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
+import { trpcErrorToHttp } from "@/lib/task-payout/serialize";
 
 /**
  * GET /api/v1/documentDetail?documentId=&address= — one document with its
@@ -94,6 +96,20 @@ export default async function handler(
       })),
     });
   } catch (error) {
+    // The router is the authorization gate, so its refusals arrive here as
+    // TRPCErrors: FORBIDDEN for a non-signer, NOT_FOUND for an unknown id,
+    // BAD_REQUEST for an empty one. They are answers, not server faults, and
+    // the MCP tool relays the status to the model — a 500 reads as "retry",
+    // a 403 as "this user cannot see that". createCaller wraps EVERY failure
+    // as a TRPCError, a Prisma fault included (INTERNAL_SERVER_ERROR, raw
+    // message), so only the mapped 4xx answers pass through; the rest is
+    // logged and answered generically below.
+    if (error instanceof TRPCError) {
+      const mapped = trpcErrorToHttp(error);
+      if (mapped.status < 500) {
+        return res.status(mapped.status).json(mapped.body);
+      }
+    }
     console.error("Error in documentDetail handler", {
       message: (error as Error)?.message,
       stack: (error as Error)?.stack,
