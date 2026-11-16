@@ -119,7 +119,7 @@ export default function LayoutFrame({
         {showSidebar && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
             <div className="flex h-full max-h-[100dvh] flex-col">
-              <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto pt-2">
+              <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2">
                 <div className="flex flex-col">{sidebar}</div>
               </nav>
               <div className="mt-auto p-4" />

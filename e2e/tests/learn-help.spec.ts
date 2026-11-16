@@ -16,6 +16,42 @@ const destinations = [
   ["Sign-off demo", "/vault"],
 ] as const;
 
+for (const width of [375, 1280]) {
+  test(`resource navigation resets content and restores history at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto("/getting-started");
+    const main = page.locator("#main-content");
+    const scrollTop = () => main.evaluate((el) => el.scrollTop);
+    const select = async (label: string) => {
+      if (width < 768) {
+        await page.getByRole("button", { name: "Open navigation menu" }).click();
+      }
+      await page.getByRole("navigation", { name: "Main navigation" })
+        .filter({ visible: true })
+        .getByRole("link", { name: label, exact: true }).click();
+    };
+
+    for (const label of ["Features", "About", "MCP setup", "Getting Started"]) {
+      await main.evaluate((el) => { el.scrollTop = 300; });
+      await expect.poll(scrollTop).toBe(300);
+      await select(label);
+      await expect.poll(scrollTop).toBe(0);
+    }
+
+    await main.evaluate((el) => { el.scrollTop = 350; });
+    await select("Developers & Bots");
+    await expect(page).toHaveURL(/\/about#developers-and-bots$/);
+    await expect(page.locator("#developers-and-bots")).toBeInViewport();
+    const anchorTop = await scrollTop();
+    expect(anchorTop).toBeGreaterThan(0);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/getting-started$/);
+    await expect.poll(scrollTop).toBe(350);
+    await page.goForward();
+    await expect.poll(scrollTop).toBe(anchorTop);
+  });
+}
+
 test("desktop sidebar exposes all resources and marks only the selected entry", async ({
   page,
 }) => {

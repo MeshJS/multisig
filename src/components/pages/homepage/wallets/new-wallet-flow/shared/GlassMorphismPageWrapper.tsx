@@ -23,7 +23,6 @@ export default function GlassMorphismPageWrapper({
   children, 
   className = '' 
 }: GlassMorphismPageWrapperProps) {
-  const [isDarkMode, setIsDarkMode] = React.useState(false);
   // three.js scene: only where the hardware tier says the device can afford it.
   // Everything else keeps the flat background — the glass body class below still
   // applies, so the page reads the same, just without the globe behind it.
@@ -34,25 +33,9 @@ export default function GlassMorphismPageWrapper({
     // Add glass class to body for this page only
     document.body.classList.add('add-wallet-glass-page');
     
-    const updateLocalTheme = () => {
-      const isDark = document.documentElement.classList.contains('dark');
-      setIsDarkMode(isDark);
-    };
-
-    // Initial check
-    updateLocalTheme();
-
-    // Listen for theme changes via MutationObserver
-    const observer = new MutationObserver(updateLocalTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-    
     return () => {
       // Clean up when leaving the page
       document.body.classList.remove('add-wallet-glass-page');
-      observer.disconnect();
     };
   }, []);
 
@@ -60,7 +43,7 @@ export default function GlassMorphismPageWrapper({
     <>
       {/* Globe background - centered, gated on the device's graphics tier */}
       {gfx.webglGlobe && (
-        <div className="globe-background" style={{
+        <div className="globe-background bg-background" style={{
           position: 'fixed',
           top: '50%',
           left: '50%',
@@ -68,7 +51,6 @@ export default function GlassMorphismPageWrapper({
           width: '100vw',
           height: '100vh',
           zIndex: -100,
-          background: isDarkMode ? '#121212' : '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center'
