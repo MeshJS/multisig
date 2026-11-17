@@ -1,16 +1,18 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
-import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
 import { env } from "@/env";
+import {
+  discordLinkNonceCookie,
+  mintDiscordLinkState,
+} from "@/lib/auth/discordLinkState";
 import { getWalletSessionFromReq } from "@/lib/auth/walletSession";
 
-const { sign } = jwt;
-
 // Mints a signed, short-lived OAuth state token and returns the Discord
-// authorize URL. The state is a JWT bound to the caller's session address
-// plus a random nonce; the callback (`/api/auth/discord/callback.ts`)
-// verifies it before binding a discord ID. Without this, the previous
-// `state = userAddress` shape was forgeable and CSRF-able.
+// authorize URL. The state names the caller's session address plus a random
+// nonce (see `src/lib/auth/discordLinkState.ts` for why it is its own token
+// family); the callback (`/api/auth/discord/callback.ts`) verifies it, and
+// that the same wallet session finishes the flow, before binding a discord ID.
+// Without this, the previous `state = userAddress` shape was forgeable and
+// CSRF-able.
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -37,12 +39,8 @@ export default async function handler(
       : "http://localhost:3000";
   const redirectUri = `${redirectBase}/api/auth/discord/callback`;
 
-  const nonce = randomBytes(16).toString("hex");
-  const state = sign(
-    { address: primary, nonce },
-    env.JWT_SECRET,
-    { expiresIn: "10m" },
-  );
+  const { state, nonce } = mintDiscordLinkState(primary);
+  res.setHeader("Set-Cookie", discordLinkNonceCookie(nonce));
 
   const url = new URL("https://discord.com/api/oauth2/authorize");
   url.searchParams.set("client_id", clientId);
