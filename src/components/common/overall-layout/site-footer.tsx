@@ -8,7 +8,7 @@ const productLinks = [
   resourceLinks.verify,
   resourceLinks.about,
   resourceLinks.features,
-  { label: "Governance", href: "/governance" },
+  resourceLinks.governance,
   { label: "DRep Explorer", href: "/governance/drep" },
   { label: "Import a wallet", href: "/wallets/import-wallet" },
   resourceLinks.roadmap,

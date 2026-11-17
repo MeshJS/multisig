@@ -1,37 +1,15 @@
+import { Wallet2 } from "lucide-react";
 import { useRouter } from "next/router";
 import MenuLink from "./menu-link";
-import { isResourceActive, learnHelpGroups } from "@/data/learn-help";
+
+/** Global application destinations; resources live in the header and footer. */
 export default function MenuWallets() {
   const router = useRouter();
   return (
-    <div className="grid items-start gap-3 px-2 font-medium lg:px-4">
+    <div className="grid items-start gap-1 px-2 font-medium lg:px-4">
       <MenuLink href="/wallets" active={router.pathname === "/wallets"}>
+        <Wallet2 className="h-5 w-5 shrink-0" aria-hidden="true" />
         My wallets
-      </MenuLink>
-      <section aria-label="Learn & Help">
-        <h2 className="px-3 py-2 text-sm font-semibold">Learn &amp; Help</h2>
-        {learnHelpGroups.map((group) => (
-          <div key={group.label} className="mb-3 space-y-1">
-            <h3 className="px-3 py-1 text-xs text-muted-foreground">
-              {group.label}
-            </h3>
-            {group.links.map((link) => (
-              <MenuLink
-                key={link.href}
-                href={link.href}
-                active={isResourceActive(link.href, router.asPath)}
-              >
-                {link.label}
-              </MenuLink>
-            ))}
-          </div>
-        ))}
-      </section>
-      <MenuLink
-        href="/governance"
-        active={router.pathname.startsWith("/governance")}
-      >
-        Governance
       </MenuLink>
     </div>
   );

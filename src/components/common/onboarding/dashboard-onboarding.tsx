@@ -30,7 +30,7 @@ export default function DashboardOnboarding({ address }: { address: string }) {
       <div id="dashboard-onboarding-content" hidden={dismissed}>
         <p className="mt-2 text-sm text-muted-foreground">
           Take these steps at your own pace. You can reopen this guide here or
-          from Learn &amp; Help.
+          from Help &amp; resources in the header.
         </p>
         <ol className="mt-4 grid gap-4 lg:grid-cols-3">
           {gettingStartedSections

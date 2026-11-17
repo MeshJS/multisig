@@ -2,9 +2,10 @@ import { test, expect } from "../fixtures/resourceFixture";
 import { mockNavigationWallets } from "../helpers/navigationWallet";
 import { loadContext } from "../helpers/contextLoader";
 import { onboardingPreferenceKey } from "../../src/lib/onboarding-preference";
+import { openHelpMenu } from "../helpers/resourceNavigation";
 
 for (const width of [375, 1280]) {
-  test(`dismiss, reload and reopen onboarding from Learn & Help at ${width}px`, async ({
+  test(`dismiss, reload and reopen onboarding from Help & resources at ${width}px`, async ({
     page,
     authenticateAs,
   }) => {
@@ -37,14 +38,9 @@ for (const width of [375, 1280]) {
     await expect(
       panel.getByRole("link", { name: "1. Create or import a wallet" }),
     ).toBeHidden();
-    if (width < 768)
-      await page.getByRole("button", { name: "Open navigation menu" }).click();
-    const nav =
-      width < 768
-        ? page.getByRole("dialog", { name: "Navigation Menu" })
-        : page.getByRole("navigation", { name: "Main navigation" });
-    await nav
-      .getByRole("link", { name: "Getting Started", exact: true })
+    const menu = await openHelpMenu(page);
+    await menu
+      .getByRole("menuitem", { name: "Getting Started", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Show guide on My wallets" })

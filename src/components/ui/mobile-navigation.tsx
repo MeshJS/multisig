@@ -209,7 +209,7 @@ export function MobileNavigation({ showWalletMenu, isLoggedIn, walletId, fallbac
                   </div>
                 )}
 
-                {/* 4. Resources Menu - always visible */}
+                {/* 4. Global application navigation - always visible */}
                 <div className="mt-4">
                   <MenuWallets />
                 </div>

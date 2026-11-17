@@ -29,9 +29,9 @@ export default function MenuWallet({ walletId, stakingEnabled }: MenuWalletProps
       <div className="grid items-start space-y-1">
         {/* Wallet Items */}
         <div className="mt-1 pt-1 space-y-1">
-          <div className="px-3 py-1 text-xs font-medium text-muted-foreground">
+          <h2 className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Wallet
-          </div>
+          </h2>
         <MenuLink
           href={`${baseUrl}`}
           className={

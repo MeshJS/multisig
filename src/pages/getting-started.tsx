@@ -10,7 +10,7 @@ export default function GettingStarted() {
         <h1 className="text-3xl font-bold">Getting Started</h1>
         <p className="mt-3 text-muted-foreground">
           Set up a shared Cardano wallet with your team. Read this guide before
-          connecting a wallet and return to it from Learn &amp; Help at any
+          connecting a wallet and return to it from Help &amp; resources at any
           time.
         </p>
       </div>

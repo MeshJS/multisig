@@ -1,11 +1,11 @@
 import { describe, expect, it } from "@jest/globals";
-import { isResourceActive, learnHelpGroups } from "@/data/learn-help";
+import { isResourceActive, resourceLinks } from "@/data/learn-help";
 import { publicRoutes } from "@/data/public-routes";
 import { isLightHref } from "@/lib/wallet-runtime";
 
 describe("Learn & Help destinations", () => {
   it("contains every required public destination exactly once", () => {
-    const links = learnHelpGroups.flatMap((group) => group.links);
+    const links = Object.values(resourceLinks);
     expect(links.map((link) => link.href).sort()).toEqual(
       [
         "/about",
@@ -17,6 +17,7 @@ describe("Learn & Help destinations", () => {
         "/api-docs",
         "/dapps",
         "/verify",
+        "/governance",
         "/blog",
         "/roadmap",
         "/roadmap/graph",

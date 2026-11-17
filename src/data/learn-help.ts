@@ -11,43 +11,35 @@ export const resourceLinks = {
   api: { label: "API Docs", href: "/api-docs" },
   dapps: { label: "DApps integration", href: "/dapps" },
   verify: { label: "Document verification", href: "/verify" },
+  governance: { label: "Governance overview", href: "/governance" },
   blog: { label: "Blog", href: "/blog" },
   roadmap: { label: "Roadmap", href: "/roadmap" },
   graph: { label: "Feature graph", href: "/roadmap/graph" },
   demo: { label: "Sign-off demo", href: "/vault" },
 } as const;
-type ResourceLink = (typeof resourceLinks)[keyof typeof resourceLinks];
+export type ResourceLink = (typeof resourceLinks)[keyof typeof resourceLinks];
 
-export const learnHelpGroups: ReadonlyArray<{
+/** Frequent help destinations. The footer retains the complete directory. */
+export const helpMenuGroups: ReadonlyArray<{
   label: string;
   links: readonly ResourceLink[];
 }> = [
   {
-    label: "Start here",
+    label: "Guides",
     links: [
-      resourceLinks.about,
       resourceLinks.gettingStarted,
-      resourceLinks.features,
+      resourceLinks.governance,
+      resourceLinks.verify,
     ],
   },
   {
-    label: "Integrate & automate",
+    label: "Integrations & automation",
     links: [
       resourceLinks.developers,
       resourceLinks.mcp,
       resourceLinks.bots,
       resourceLinks.api,
       resourceLinks.dapps,
-    ],
-  },
-  {
-    label: "Explore & verify",
-    links: [
-      resourceLinks.verify,
-      resourceLinks.blog,
-      resourceLinks.roadmap,
-      resourceLinks.graph,
-      resourceLinks.demo,
     ],
   },
 ];

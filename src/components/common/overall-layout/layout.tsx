@@ -622,7 +622,7 @@ export default function RootLayout({
         </>
       }
       mobileNav={
-        // Guidance stays available after runtime handover, including on home.
+        // Primary navigation stays available after runtime handover, including on home.
         (
           <MobileNavigation
             showWalletMenu={showWalletMenu}
@@ -684,7 +684,7 @@ export default function RootLayout({
             </div>
           )}
 
-          {/* 4. Resources Menu - always visible */}
+          {/* 4. Global application navigation - always visible */}
           <div className="mt-4">
             <MenuWallets />
           </div>

@@ -4,6 +4,7 @@ import {
   WALLET_NAME,
 } from "../helpers/navigationWallet";
 import { resourceLinks } from "../../src/data/learn-help";
+import { openHelpMenu } from "../helpers/resourceNavigation";
 
 for (const width of [375, 1280]) {
   test.describe(`resource journeys ${width}px`, () => {
@@ -53,41 +54,18 @@ for (const width of [375, 1280]) {
           )
             authRequests++;
         });
+        const help = await openHelpMenu(page);
+        await help
+          .getByRole("menuitem", { name: "Getting Started", exact: true })
+          .click();
+        // The footer is the complete directory; every destination is public.
         for (const { label, href } of Object.values(resourceLinks)) {
-          let link;
-          if (width < 768) {
-            await page
-              .getByRole("button", { name: "Open navigation menu" })
-              .tap();
-            link = page
-              .getByRole("dialog", { name: "Navigation Menu" })
-              .getByRole("link", { name: label, exact: true });
-            await link.scrollIntoViewIfNeeded();
-            await link.tap();
-          } else {
-            const nav = page.getByRole("navigation", {
-              name: "Main navigation",
-            });
-            await expect(
-              nav
-                .or(
-                  page.getByRole("button", {
-                    name: "Learn & Help",
-                    exact: true,
-                  }),
-                )
-                .first(),
-            ).toBeVisible();
-            if (await nav.isVisible())
-              link = nav.getByRole("link", { name: label, exact: true });
-            else {
-              await page
-                .getByRole("button", { name: "Learn & Help", exact: true })
-                .click();
-              link = page.getByRole("menuitem", { name: label, exact: true });
-            }
-            await link.click();
-          }
+          const link = page
+            .locator("footer")
+            .getByRole("link", { name: label, exact: true });
+          await link.scrollIntoViewIfNeeded();
+          if (width < 768) await link.tap();
+          else await link.click();
           await expect
             .poll(() => new URL(page.url()).pathname + new URL(page.url()).hash)
             .toBe(href);
