@@ -39,11 +39,16 @@ Body:
 \`\`\`json
 {
   "name": "My Bot",
-  "paymentAddress": "addr1_your_bot_payment_address",
-  "stakeAddress": "stake1_optional",
   "requestedScopes": ["multisig:read"]
 }
 \`\`\`
+
+Optionally add \`paymentAddress\` and \`stakeAddress\` (omit them if the bot has
+no wallet yet; it then binds its address at the first botAuth). If sent, they
+must be real bech32 addresses: \`paymentAddress\` with a key-hash
+payment credential (the bot signs with that key; script and stake addresses
+are rejected), \`stakeAddress\` a key-based stake address on the same
+network. The payment address becomes the bot's permanent identity.
 
 Response:
 \`\`\`json
