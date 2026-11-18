@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createMockResponse } from "./apiTestUtils";
+import { BOT_ADDRESSES } from "./fixtures/botAddresses";
 
 const addCorsHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
@@ -61,10 +62,15 @@ beforeAll(async () => {
   ({ default: handler } = await import("../pages/api/v1/botAuth"));
 });
 
-const BOUND_ADDRESS = "addr_test1qpbot00000000000000000000000000000000000";
-const OTHER_ADDRESS = "addr_test1qpother0000000000000000000000000000000";
+const BOUND_ADDRESS = BOT_ADDRESSES.base;
+const OTHER_ADDRESS = BOT_ADDRESSES.otherBase;
 
-const boundBotUser = {
+const boundBotUser: {
+  id: string;
+  botKeyId: string;
+  paymentAddress: string;
+  stakeAddress: string | null;
+} = {
   id: "bot-user-id",
   botKeyId: "bot-key-id",
   paymentAddress: BOUND_ADDRESS,
@@ -187,5 +193,151 @@ describe("botAuth API", () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(createBotUserMock).not.toHaveBeenCalled();
     expect(signMock).not.toHaveBeenCalled();
+  });
+
+  describe("the bound address must be a real key-based Cardano address", () => {
+    it.each([
+      ["a placeholder string", "addr_test1qpbot00000000000000000000000000000000000"],
+      ["a script address", BOT_ADDRESSES.enterpriseScript],
+      ["a stake address", BOT_ADDRESSES.stake],
+      ["the upper-case spelling", BOUND_ADDRESS.toUpperCase()],
+    ])("first auth with %s is a 400 and binds nothing", async (_label, paymentAddress) => {
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress }), res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: "Invalid paymentAddress" }),
+      );
+      expect(createBotUserMock).not.toHaveBeenCalled();
+      expect(signMock).not.toHaveBeenCalled();
+    });
+
+    it("a bot bound before this check keeps authenticating when it sends its bound address", async () => {
+      const legacyAddress = "addr_test1qpbot00000000000000000000000000000000000";
+      mockBotUsers({ forKey: { ...boundBotUser, paymentAddress: legacyAddress } });
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress: legacyAddress }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(createBotUserMock).not.toHaveBeenCalled();
+    });
+
+    it("a bot bound before this check keeps authenticating without an address", async () => {
+      const legacy = { ...boundBotUser, paymentAddress: "addr_test1qpbot00000000000000000000000000000000000" };
+      mockBotUsers({ forKey: legacy });
+      const res = createMockResponse();
+
+      await handler(authRequest({}), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const jwtPayload = (signMock.mock.calls[0] as unknown[])[0] as { address: string };
+      expect(jwtPayload.address).toBe(legacy.paymentAddress);
+    });
+  });
+
+  describe("stakeAddress", () => {
+    it("first auth stores a valid stake address on the same network", async () => {
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress: BOUND_ADDRESS, stakeAddress: BOT_ADDRESSES.stake }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(createBotUserMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ stakeAddress: BOT_ADDRESSES.stake }),
+        }),
+      );
+    });
+
+    it.each([
+      ["a stake address on another network", BOT_ADDRESSES.stakeMainnet],
+      ["a script stake address", BOT_ADDRESSES.stakeScript],
+      ["a placeholder", "stake1_optional"],
+    ])("first auth with %s is a 400 and binds nothing", async (_label, stakeAddress) => {
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress: BOUND_ADDRESS, stakeAddress }), res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(createBotUserMock).not.toHaveBeenCalled();
+      expect(signMock).not.toHaveBeenCalled();
+    });
+
+    it("a later auth may update the stake address when it is valid", async () => {
+      mockBotUsers({ forKey: boundBotUser });
+      const res = createMockResponse();
+
+      await handler(authRequest({ stakeAddress: BOT_ADDRESSES.stake }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(updateBotUserMock).toHaveBeenCalledWith({
+        where: { id: "bot-user-id" },
+        data: { stakeAddress: BOT_ADDRESSES.stake },
+      });
+    });
+
+    it.each([
+      ["one from the other network", BOT_ADDRESSES.stakeMainnet],
+      ["the setup guide's old placeholder", "stake1_optional"],
+    ])("a later auth ignores %s: the stored one stays and the bot still gets a token", async (_label, stakeAddress) => {
+      mockBotUsers({ forKey: { ...boundBotUser, stakeAddress: BOT_ADDRESSES.stake } });
+      const res = createMockResponse();
+
+      await handler(authRequest({ stakeAddress }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(updateBotUserMock).not.toHaveBeenCalled();
+    });
+
+    it("a non-string stake address is ignored, as before", async () => {
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress: BOUND_ADDRESS, stakeAddress: 42 }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(createBotUserMock).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ stakeAddress: null }) }),
+      );
+    });
+
+    it("an empty string means 'none', not an invalid address", async () => {
+      const res = createMockResponse();
+
+      await handler(authRequest({ paymentAddress: BOUND_ADDRESS, stakeAddress: "" }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(createBotUserMock).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ stakeAddress: null }) }),
+      );
+    });
+  });
+
+  it("a concurrent first auth that loses the unique-index race is a 409, not a 500", async () => {
+    const { Prisma } = await import("@prisma/client");
+    (createBotUserMock as any).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    mockBotUsers({ forKey: null });
+    const res = createMockResponse();
+
+    await handler(authRequest({ paymentAddress: BOUND_ADDRESS }), res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(signMock).not.toHaveBeenCalled();
+  });
+
+  it("other database errors on bind still propagate", async () => {
+    (createBotUserMock as any).mockRejectedValue(new Error("connection reset"));
+    const res = createMockResponse();
+
+    await expect(handler(authRequest({ paymentAddress: BOUND_ADDRESS }), res)).rejects.toThrow(
+      "connection reset",
+    );
   });
 });

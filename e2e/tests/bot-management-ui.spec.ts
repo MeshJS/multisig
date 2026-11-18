@@ -18,6 +18,8 @@
 // The spec registers its own pending bot with a unique fake payment address,
 // so it never collides with route-chain bots or other workers.
 
+import { randomBytes } from "crypto";
+import { CredentialType, EnterpriseAddress, Hash28ByteBase16 } from "@meshsdk/core-cst";
 import { test, expect } from "../fixtures/authFixture";
 
 test.describe("bot management UI", () => {
@@ -31,7 +33,14 @@ test.describe("bot management UI", () => {
 
     // Register a pending bot the way a real bot would, over REST.
     const botName = `ci-playwright-bot-${Date.now()}-${test.info().workerIndex}`;
-    const paymentAddress = `addr_test1ciplaywrightbot${Date.now()}${test.info().workerIndex}`;
+    // botRegister only accepts a real key-based address; a random key hash
+    // keeps it unique across runs and workers.
+    const paymentAddress = EnterpriseAddress.fromCredentials(0, {
+      type: CredentialType.KeyHash,
+      hash: Hash28ByteBase16(randomBytes(28).toString("hex")),
+    })
+      .toAddress()
+      .toBech32();
     const registerResponse = await page.request.post("/api/v1/botRegister", {
       headers: { "content-type": "application/json" },
       data: JSON.stringify({
