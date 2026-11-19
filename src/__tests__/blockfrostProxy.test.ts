@@ -23,7 +23,9 @@ jest.mock("@/lib/cors", () => ({
   addCorsCacheBustingHeaders: () => undefined,
 }));
 
-import handler from "@/pages/api/blockfrost/[...slug]";
+import handler, {
+  BLOCKFROST_PROXY_RATE_LIMIT,
+} from "@/pages/api/blockfrost/[...slug]";
 
 const MAX_BODY = 1024 * 1024;
 
@@ -293,4 +295,67 @@ describe("/api/blockfrost POST bodies", () => {
       endless.destroy();
     },
   );
+});
+
+// Every forwarded call spends our Blockfrost project's quota and the route
+// needs no account, so each client IP gets a fixed budget per minute. The
+// limiter is in-memory and keyed by IP, so each test uses its own address.
+describe("/api/blockfrost rate limit", () => {
+  const fromIp = (ip: string, init: Omit<ReqInit, "headers">) =>
+    call({ ...init, headers: { "x-forwarded-for": ip } });
+
+  beforeEach(() => {
+    // A fresh Response per call: a body can only be read once.
+    fetchMock.mockImplementation(async () => jsonOk([]));
+  });
+
+  it("forwards up to the budget, then answers 429 without calling Blockfrost", async () => {
+    const ip = "203.0.113.10";
+    for (let i = 0; i < BLOCKFROST_PROXY_RATE_LIMIT; i++) {
+      const res = await fromIp(ip, { method: "GET", path: "preprod/epochs/latest" });
+      expect(res.statusCode).toBe(200);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(BLOCKFROST_PROXY_RATE_LIMIT);
+
+    const res = await fromIp(ip, { method: "GET", path: "preprod/epochs/latest" });
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+    expect(res.headers["x-ratelimit-limit"]).toBe(String(BLOCKFROST_PROXY_RATE_LIMIT));
+    expect(fetchMock).toHaveBeenCalledTimes(BLOCKFROST_PROXY_RATE_LIMIT);
+  });
+
+  it("budgets each client separately", async () => {
+    for (let i = 0; i < BLOCKFROST_PROXY_RATE_LIMIT; i++) {
+      await fromIp("203.0.113.11", { method: "GET", path: "preprod/epochs/latest" });
+    }
+    const other = await fromIp("203.0.113.12", {
+      method: "GET",
+      path: "preprod/epochs/latest",
+    });
+    expect(other.statusCode).toBe(200);
+  });
+
+  it("counts malformed requests too, so probing is not free", async () => {
+    const ip = "203.0.113.13";
+    for (let i = 0; i < BLOCKFROST_PROXY_RATE_LIMIT; i++) {
+      const res = await fromIp(ip, { method: "GET", path: "testnet/epochs/latest" });
+      expect(res.statusCode).toBe(400);
+    }
+    const res = await fromIp(ip, { method: "GET", path: "preprod/epochs/latest" });
+    expect(res.statusCode).toBe(429);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never spends the budget on CORS preflights or refused methods", async () => {
+    const ip = "203.0.113.14";
+    for (let i = 0; i < BLOCKFROST_PROXY_RATE_LIMIT; i++) {
+      await fromIp(ip, { method: "OPTIONS", path: "preprod/tx/submit" });
+      await fromIp(ip, { method: "DELETE", path: "preprod/tx/submit" });
+    }
+    const res = await fromIp(ip, { method: "GET", path: "preprod/epochs/latest" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-ratelimit-remaining"]).toBe(
+      String(BLOCKFROST_PROXY_RATE_LIMIT - 1),
+    );
+  });
 });
