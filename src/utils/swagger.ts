@@ -1105,8 +1105,12 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing required fields" },
-            401: { description: "Unauthorized" },
+            400: {
+              description:
+                "Missing or malformed fields: signature and key must be hex (COSE_Sign1 / COSE_Key), callbackUrl, if given, an http(s) URL",
+            },
+            401: { description: "Unauthorized, or the signature does not verify" },
+            403: { description: "Address mismatch, or not a signer of the wallet" },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
           },

@@ -9,6 +9,95 @@ import { assertBotWalletAccess, BotAccessError, botHasScope } from "@/lib/auth/b
 import { enqueueSignatureRequiredNotifications } from "@/lib/notifications/center";
 import { summarizeSignableSignatureContext } from "@/lib/notifications/signatureContext";
 
+// Whole bytes only: CBOR is parsed from hex, so an odd digit count can never decode.
+const HEX_RE = /^(?:[0-9a-f]{2})+$/i;
+export const MAX_CALLBACK_URL_LENGTH = 2048;
+
+export type SubmitDatumBody = {
+  walletId: string;
+  signature: string;
+  key: string;
+  address: string;
+  datum: string;
+  callbackUrl: string | null;
+  description: string;
+};
+
+/**
+ * Validate the request body before anything touches it.
+ *
+ * WHY: every field used to be checked only for truthiness. A missing `key`
+ * slipped through (the check tested `signature` twice), and a non-string or
+ * non-hex value reached checkSignature or Prisma, which throw, so the caller
+ * got a 500 for its own malformed request. `callbackUrl` was rejected when
+ * absent, with a message naming the wrong field, although the OpenAPI spec
+ * lists it as optional and the row stores null for it; it is optional again,
+ * and when given it must be an http(s) URL, since it is stored as a URL to
+ * call back.
+ */
+export function parseSubmitDatumBody(
+  input: unknown,
+): { ok: true; body: SubmitDatumBody } | { ok: false; error: string } {
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+
+  if (!nonEmpty(raw.walletId)) {
+    return { ok: false, error: "walletId is required" };
+  }
+  if (!nonEmpty(raw.signature) || !HEX_RE.test(raw.signature)) {
+    return { ok: false, error: "signature is required and must be hex" };
+  }
+  if (!nonEmpty(raw.key) || !HEX_RE.test(raw.key)) {
+    return { ok: false, error: "key is required and must be hex" };
+  }
+  if (!nonEmpty(raw.address)) {
+    return { ok: false, error: "address is required" };
+  }
+  if (!nonEmpty(raw.datum)) {
+    return { ok: false, error: "datum is required and must be a string" };
+  }
+  if (raw.description != null && typeof raw.description !== "string") {
+    return { ok: false, error: "description must be a string" };
+  }
+
+  let callbackUrl: string | null = null;
+  if (raw.callbackUrl !== undefined && raw.callbackUrl !== null && raw.callbackUrl !== "") {
+    if (
+      typeof raw.callbackUrl !== "string" ||
+      raw.callbackUrl.length > MAX_CALLBACK_URL_LENGTH ||
+      !isHttpUrl(raw.callbackUrl)
+    ) {
+      return {
+        ok: false,
+        error: `callbackUrl must be an http(s) URL of at most ${MAX_CALLBACK_URL_LENGTH} characters`,
+      };
+    }
+    callbackUrl = raw.callbackUrl;
+  }
+
+  return {
+    ok: true,
+    body: {
+      walletId: raw.walletId,
+      signature: raw.signature,
+      key: raw.key,
+      address: raw.address,
+      datum: raw.datum,
+      callbackUrl,
+      description: typeof raw.description === "string" ? raw.description : "External Tx",
+    },
+  };
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -60,42 +149,32 @@ export default async function handler(
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   };
 
-  const {
-    walletId,
-    signature,
-    key,
-    address,
-    datum,
-    callbackUrl,
-    description = "External Tx",
-  } = req.body;
+  const parsed = parseSubmitDatumBody(req.body);
+  if (!parsed.ok) {
+    return res.status(400).json({ error: parsed.error });
+  }
+  const { walletId, signature, key, address, datum, callbackUrl, description } =
+    parsed.body;
 
-  if (!walletId) {
-    return res.status(400).json({ error: "Missing required field walletId!" });
-  }
-  if (!signature) {
-    return res.status(400).json({ error: "Missing required field signature!" });
-  }
-  if (!signature) {
-    return res.status(400).json({ error: "Missing required field key!" });
-  }
-  if (!address) {
-    return res.status(400).json({ error: "Missing required field address!" });
-  }
-  // Optionally check that the address matches the session user.id for security
   if (session.user.id !== address) {
     return res.status(403).json({ error: "Address mismatch" });
   }
-  if (!datum) {
-    return res.status(400).json({ error: "Missing required field Datum!" });
-  }
-  if (!callbackUrl) {
-    return res.status(400).json({ error: "Missing required field Datum!" });
-  }
 
-  const sig: DataSignature = { signature: signature, key: key };
+  const sig: DataSignature = { signature, key };
 
-  const isValid = await checkSignature(datum, sig, address);
+  // checkSignature throws (rather than returning false) on a signature or key
+  // that is not a decodable COSE structure. That is the caller's malformed
+  // input, not a server fault, so it is a 400 and not an unhandled 500.
+  let isValid: boolean;
+  try {
+    isValid = await checkSignature(datum, sig, address);
+  } catch (error) {
+    // Logged so that a genuine library fault (not a bad input) stays visible.
+    console.warn("submitDatum: checkSignature threw", error);
+    return res
+      .status(400)
+      .json({ error: "signature and key must be a COSE_Sign1 signature and COSE_Key" });
+  }
 
   if (!isValid) {
     return res.status(401).json({ error: "Invalid signature" });
@@ -131,7 +210,7 @@ export default async function handler(
         signedAddresses: [address],
         rejectedAddresses: [],
         description,
-        callbackUrl: callbackUrl || null,
+        callbackUrl,
         remoteOrigin: req.headers.origin || null,
         state: 0,
       },

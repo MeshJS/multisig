@@ -155,8 +155,9 @@ describeIntegration("bot API integration smoke", () => {
       headers: { authorization: `Bearer ${authBody.token}`, origin: "https://integration.test" },
       body: {
         walletId: wallet.id,
-        signature: "sig",
-        key: "key",
+        // Hex like a real COSE_Sign1 / COSE_Key; checkSignature is mocked.
+        signature: "845846a201",
+        key: "a40101",
         address: paymentAddress,
         datum: "payload",
         callbackUrl: "https://integration.test/callback",
