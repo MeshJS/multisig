@@ -6,6 +6,7 @@
  * The env validation will happen when the module is actually used, not during config load.
  */
 import { createRequire } from "node:module";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
@@ -26,6 +27,11 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
+  experimental: {
+    // Page-data workers each load the Cardano/WASM dependency graph. Avoid
+    // spawning dozens of these processes on high-core-count developer machines.
+    cpus: Math.max(1, Math.min(4, availableParallelism() - 1)),
+  },
   transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
@@ -74,9 +80,22 @@ const config = {
   // Webpack config for builds that explicitly use webpack (e.g., with --webpack flag)
   webpack: function (config, options) {
     config.experiments = {
+      ...config.experiments,
       asyncWebAssembly: true,
       layers: true,
     };
+
+    if (!options.isServer) {
+      // Next's webpack browser target is ES6, but its supported browsers have
+      // async/await. The async WASM loader needs this output capability too.
+      config.output = {
+        ...config.output,
+        environment: {
+          ...config.output?.environment,
+          asyncFunction: true,
+        },
+      };
+    }
     
     // Optimize tree-shaking by ensuring proper module resolution.
     // Note: do NOT set `sideEffects: false` globally — it tells webpack that
