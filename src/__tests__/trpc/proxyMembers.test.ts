@@ -1,5 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
+import { Prisma } from "@prisma/client";
+
 import { makeSessionCtx, makeWalletCtx } from "./helpers";
 
 jest.mock("superjson", () => ({
@@ -227,6 +229,119 @@ describe("proxy member management", () => {
           ],
         }),
       ).resolves.toEqual({ added: 1, requested: 1 });
+    });
+  });
+
+  describe("updateProxyMember", () => {
+    const prismaError = (code: string) =>
+      new Prisma.PrismaClientKnownRequestError("prisma says no", {
+        code,
+        clientVersion: "test",
+      });
+
+    const asSigner = () => {
+      const mockDb = makeMockDb();
+      mockDb.wallet.findUnique.mockResolvedValue(signerWallet as never);
+      mockDb.proxy.findUnique.mockResolvedValue(proxyRow as never);
+      return mockDb;
+    };
+
+    it("changes a member's role for a signer of the controlling wallet", async () => {
+      const mockDb = asSigner();
+      const updated = { id: "m", proxyId: "proxy-1", address: GUEST, role: "manager" };
+      mockDb.proxyMember.update.mockResolvedValue(updated as never);
+
+      const caller = createCaller(makeWalletCtx(SIGNER, mockDb) as any);
+
+      await expect(
+        caller.proxy.updateProxyMember({
+          proxyId: "proxy-1",
+          address: GUEST,
+          role: "manager",
+        }),
+      ).resolves.toEqual(updated);
+
+      expect(mockDb.proxyMember.update).toHaveBeenCalledWith({
+        where: { proxyId_address: { proxyId: "proxy-1", address: GUEST } },
+        data: { role: "manager" },
+      });
+    });
+
+    it("clears the label when given an empty one", async () => {
+      const mockDb = asSigner();
+      mockDb.proxyMember.update.mockResolvedValue({} as never);
+
+      const caller = createCaller(makeWalletCtx(SIGNER, mockDb) as any);
+      await caller.proxy.updateProxyMember({
+        proxyId: "proxy-1",
+        address: GUEST,
+        label: "   ",
+      });
+
+      expect(mockDb.proxyMember.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { label: null } }),
+      );
+    });
+
+    it("rejects a request that changes nothing", async () => {
+      const mockDb = asSigner();
+      const caller = createCaller(makeWalletCtx(SIGNER, mockDb) as any);
+
+      await expect(
+        caller.proxy.updateProxyMember({ proxyId: "proxy-1", address: GUEST }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mockDb.proxyMember.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a viewer changing someone's role", async () => {
+      const mockDb = asSigner();
+      mockDb.proxyMember.findMany.mockResolvedValue([
+        { id: "m", proxyId: "proxy-1", address: GUEST, role: "viewer" },
+      ] as never);
+
+      const caller = createCaller(makeWalletCtx(GUEST, mockDb) as any);
+
+      await expect(
+        caller.proxy.updateProxyMember({
+          proxyId: "proxy-1",
+          address: GUEST,
+          role: "manager",
+        }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(mockDb.proxyMember.update).not.toHaveBeenCalled();
+    });
+
+    it("answers NOT_FOUND, not a 500, for an address with no grant", async () => {
+      // e.g. another manager removed this member while the list was open.
+      const mockDb = asSigner();
+      mockDb.proxyMember.update.mockRejectedValue(prismaError("P2025") as never);
+
+      const caller = createCaller(makeWalletCtx(SIGNER, mockDb) as any);
+
+      const attempt = caller.proxy.updateProxyMember({
+        proxyId: "proxy-1",
+        address: OUTSIDER,
+        role: "viewer",
+      });
+      await expect(attempt).rejects.toMatchObject({
+        code: "NOT_FOUND",
+        message: "This address does not have access to the proxy.",
+      });
+    });
+
+    it("still surfaces other database failures as server errors", async () => {
+      const mockDb = asSigner();
+      mockDb.proxyMember.update.mockRejectedValue(prismaError("P1001") as never);
+
+      const caller = createCaller(makeWalletCtx(SIGNER, mockDb) as any);
+
+      await expect(
+        caller.proxy.updateProxyMember({
+          proxyId: "proxy-1",
+          address: GUEST,
+          role: "viewer",
+        }),
+      ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
     });
   });
 
