@@ -109,12 +109,12 @@ A comprehensive REST API implementation for the multisig wallet application, pro
   - `address`: string (required; must match JWT)
   - `action`: `"register"` | `"deregister"` | `"delegate"` | `"register_and_delegate"` (required)
   - `poolId`: string (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-character hex pool id)
-  - `dRep`: string (optional; `"Always Abstain"` (default), `"Always No Confidence"` or a `drep1...` id). Delegation always adds a vote delegation to this DRep.
+  - `dRep`: string (optional; `"Always Abstain"`, `"Always No Confidence"` or a `drep1...` id). When given, delegation adds a vote delegation to this DRep. When omitted, `register_and_delegate` delegates the vote to `"Always Abstain"`, and `delegate` does too unless the stake credential already delegates its vote — then that delegation is kept (as in the staking page) and only the pool changes.
   - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
   - `description`: string (optional; defaults to a short label for the action)
 - **Response**: Same as `addTransaction` — either a pending `Transaction` row (**201**) when multiple signatures are required, or the immediate **`submitTx`** result when the wallet submits in one step (single signer / `type === "any"`).
 - **Follow-up**: If the transaction is pending, co-signers call **`POST /api/v1/signTransaction`** as usual.
-- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 500 (server)
+- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 502 (`delegate` without `dRep` and the current DRep delegation could not be read), 500 (server)
 
 #### `botDRepCertificate.ts` - POST `/api/v1/botDRepCertificate`
 
