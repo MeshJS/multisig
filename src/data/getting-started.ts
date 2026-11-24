@@ -1,4 +1,4 @@
-/** Shared content for the full guide and dashboard introduction. */
+/** Content for the Getting Started guide. */
 export const gettingStartedSections = [
   {
     id: "create-import",

@@ -2,6 +2,8 @@
 
 Status: Phases 1-5 implemented. Phase 6 acceptance tooling and checks implemented; final delivery remains blocked by lint tooling verification. Authenticated UI coverage uses deterministic wallet reads.
 
+Onboarding update (2026-11-24): Help & resources is now the permanent entry point for the full Getting Started guide. The wallet dashboard panel and its dismiss/reopen preferences have been removed. Users without wallets see a short introduction, Create/Import actions, and a guide link in the empty state; users with wallets see no onboarding section. This supersedes the dashboard panel and restoration behavior described below. `e2e/tests/onboarding.spec.ts` covers both wallet states at phone and desktop widths.
+
 Source: [feature note](../vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md) and the November 2026 entry in [ROADMAP.md](../ROADMAP.md). Owner in the feature note: Andre. Plan prepared 2026-11-09.
 
 ## Outcome and scope

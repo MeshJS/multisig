@@ -1,121 +1,85 @@
 import { test, expect } from "../fixtures/resourceFixture";
-import { mockNavigationWallets } from "../helpers/navigationWallet";
-import { loadContext } from "../helpers/contextLoader";
-import { onboardingPreferenceKey } from "../../src/lib/onboarding-preference";
+import {
+  mockNavigationWallets,
+  WALLET_NAME,
+} from "../helpers/navigationWallet";
 import { openHelpMenu } from "../helpers/resourceNavigation";
 
 for (const width of [375, 1280]) {
-  test(`dismiss, reload and reopen onboarding from Help & resources at ${width}px`, async ({
-    page,
-    authenticateAs,
-  }) => {
-    await page.setViewportSize({ width, height: 800 });
-    await authenticateAs(page, 0);
-    await mockNavigationWallets(page, true);
-    await page.goto("/wallets");
-    const panel = page.getByRole("region", {
-      name: "Getting started guide",
-      exact: true,
+  for (const empty of [true, false]) {
+    test(`wallet guidance with ${empty ? "no" : "existing"} wallets at ${width}px`, async ({
+      page,
+      authenticateAs,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await authenticateAs(page, 0);
+      await mockNavigationWallets(page, empty);
+      await page.goto("/wallets");
+      const guideLink = page.getByRole("link", {
+        name: "Read the getting started guide",
+        exact: true,
+      });
+      if (empty) {
+        await expect(
+          page.getByRole("heading", {
+            name: "Create or import your first wallet",
+          }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("link", {
+            name: "Create Your First Wallet",
+          }),
+        ).toHaveAttribute("href", "/wallets/new-wallet-flow/save");
+        await expect(
+          page.getByRole("link", {
+            name: "Import existing wallet",
+          }),
+        ).toHaveAttribute("href", "/wallets/import-wallet");
+        await expect(guideLink).toBeVisible();
+        await guideLink.click();
+        await expect(page).toHaveURL(/\/getting-started$/);
+        await page.goBack();
+        await expect(guideLink).toBeVisible();
+      } else {
+        await expect(
+          page.getByRole("link").filter({
+            hasText: WALLET_NAME,
+          }),
+        ).toBeVisible();
+        await expect(guideLink).toHaveCount(0);
+      }
+      await expect(
+        page.getByRole("region", {
+          name: "Getting started guide",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      const menu = await openHelpMenu(page);
+      await menu
+        .getByRole("menuitem", {
+          name: "Getting Started",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Getting Started",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          name: "3. Review your first transaction",
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: "Show guide on My wallets",
+        }),
+      ).toHaveCount(0);
     });
-    await expect(
-      panel.getByRole("link", { name: "1. Create or import a wallet" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("link", {
-        name: "Learn how to create or import a wallet",
-      }),
-    ).toHaveAttribute("href", "/getting-started#create-import");
-    await panel
-      .getByRole("button", { name: "Dismiss getting started guide" })
-      .click();
-    await expect(
-      panel.getByRole("button", { name: "Show getting started guide" }),
-    ).toBeFocused();
-    await page.reload();
-    await expect(
-      panel.getByRole("button", { name: "Show getting started guide" }),
-    ).toBeVisible();
-    await expect(
-      panel.getByRole("link", { name: "1. Create or import a wallet" }),
-    ).toBeHidden();
-    const menu = await openHelpMenu(page);
-    await menu
-      .getByRole("menuitem", { name: "Getting Started", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Show guide on My wallets" })
-      .click();
-    await expect(page).toHaveURL(/\/wallets$/);
-    await expect(
-      panel.getByRole("link", { name: "3. Review your first transaction" }),
-    ).toBeVisible();
-    await page.reload();
-    await expect(
-      panel.getByRole("button", { name: "Dismiss getting started guide" }),
-    ).toBeVisible();
-  });
-}
-
-test("dismissal belongs to the signed-in identity", async ({
-  page,
-  authenticateAs,
-}) => {
-  await authenticateAs(page, 0);
-  await mockNavigationWallets(page, true);
-  await page.goto("/wallets");
-  await page
-    .getByRole("button", { name: "Dismiss getting started guide" })
-    .click();
-  await authenticateAs(page, 1);
-  await page.goto("/wallets");
-  await expect(
-    page.getByRole("button", { name: "Dismiss getting started guide" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Dismiss getting started guide" })
-    .click();
-  const addresses = loadContext().signerAddresses;
-  for (const address of addresses.slice(0, 2)) {
-    expect(
-      await page.evaluate(
-        (key) => localStorage.getItem(key),
-        onboardingPreferenceKey(address),
-      ),
-    ).toBe("dismissed");
   }
-});
-
-test("blocked onboarding storage still permits dismissal and reopening", async ({
-  page,
-  authenticateAs,
-}) => {
-  await page.addInitScript(() => {
-    const getItem = Storage.prototype.getItem;
-    const setItem = Storage.prototype.setItem;
-    Storage.prototype.getItem = function (key) {
-      if (key.startsWith("mesh:onboarding:")) throw new Error("Blocked");
-      return getItem.call(this, key);
-    };
-    Storage.prototype.setItem = function (key, value) {
-      if (key.startsWith("mesh:onboarding:")) throw new Error("Blocked");
-      return setItem.call(this, key, value);
-    };
-  });
-  await authenticateAs(page, 0);
-  await mockNavigationWallets(page, true);
-  await page.goto("/wallets");
-  await page
-    .getByRole("button", { name: "Dismiss getting started guide" })
-    .click();
-  await page
-    .getByRole("button", { name: "Show getting started guide" })
-    .click();
-  await expect(
-    page
-      .getByRole("region", { name: "Getting started guide" })
-      .getByRole("link", { name: "1. Create or import a wallet" }),
-  ).toBeVisible();
-});
+}
 
 test("profile and Documents expose their setup guides", async ({
   page,

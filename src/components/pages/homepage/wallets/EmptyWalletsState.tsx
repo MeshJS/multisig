@@ -4,48 +4,17 @@ import CardUI from "@/components/common/card-content";
 
 export default function EmptyWalletsState() {
   return (
-    <div className="col-span-3">
+    <div className="col-span-full">
       <CardUI
-        title="Get Started with Multi-Signature Wallets"
+        title="Create or import your first wallet"
         description=""
         cardClassName=""
       >
         <div className="flex flex-col gap-4">
-          <Link
-            href="/getting-started#create-import"
-            className="text-sm underline underline-offset-4"
-          >
-            Learn how to create or import a wallet
-          </Link>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Multi-signature wallets provide enhanced security for teams, DAOs,
-              and organizations by requiring multiple approvals before any
-              transaction can be executed.
-            </p>
-
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Key Features:</h3>
-              <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                <li>
-                  <strong>Flexible Signing Thresholds:</strong> Choose between
-                  "all", "any", or "at least N" signers required
-                </li>
-                <li>
-                  <strong>Team Collaboration:</strong> Perfect for treasury
-                  management and shared funds
-                </li>
-                <li>
-                  <strong>Governance Participation:</strong> Vote on Cardano
-                  governance proposals as a team
-                </li>
-                <li>
-                  <strong>Enhanced Security:</strong> Multiple signatures prevent
-                  unauthorized transactions
-                </li>
-              </ul>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Create a shared wallet with your team and choose who can approve
+            transactions, or import a wallet your team already uses.
+          </p>
 
           <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center">
             <Button asChild size="lg">
@@ -54,12 +23,23 @@ export default function EmptyWalletsState() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link prefetch={false} href="/wallets/import-wallet">Import existing wallet</Link>
+              <Link prefetch={false} href="/wallets/import-wallet">
+                Import existing wallet
+              </Link>
             </Button>
           </div>
+          <p className="text-sm text-muted-foreground">
+            New to multisig?{" "}
+            <Link
+              href="/getting-started"
+              className="underline underline-offset-4"
+            >
+              Read the getting started guide
+            </Link>
+            .
+          </p>
         </div>
       </CardUI>
     </div>
   );
 }
-

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { gettingStartedSections } from "@/data/getting-started";
 import { isLightHref } from "@/lib/wallet-runtime";
-import RestoreOnboarding from "@/components/common/onboarding/restore-onboarding";
 
 export default function GettingStarted() {
   return (
@@ -14,7 +13,6 @@ export default function GettingStarted() {
           time.
         </p>
       </div>
-      <RestoreOnboarding />
       {gettingStartedSections.map((section) => (
         <section
           key={section.id}

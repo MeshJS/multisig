@@ -25,7 +25,7 @@ npm.cmd run lint
 | Signed-out resources, legacy URLs, queries, history, public content | public-resources and learn-help suites |
 | Empty and selected wallet journeys on desktop and touch | resource-acceptance suite visits all 13 resource destinations, reloads, uses Back/Forward, verifies cookies and rejects signing/reauthentication |
 | Persistent navigation and contextual setup links | connected-resources and onboarding suites |
-| Dismiss/reopen, storage failure, account isolation | onboarding suite |
+| Compact empty-wallet guidance, no panel for existing wallets, full guide through Help & resources at 375px and 1280px | onboarding suite |
 | Overview and bot controls, empty/populated | overview-profile-layout at 375, 412, 768, 820, 1024, 1280, 1440px, height 900px |
 | Assets and Tasks, empty/populated | tasks-assets-layout at those widths plus 1920px, height 900px |
 | Controls and overlays | ancestor clipping, full card width, non-overlap, expanded activity, long identifiers, open selectors/menus, pending/error controls |
