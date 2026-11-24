@@ -84,6 +84,11 @@ test("guidance navigation retains the selected wallet session", async ({
   // Direct legacy arrival, then real Next links and browser history.
   await page.goto("/#connect-mcp");
   await expect(page).toHaveURL(/\/docs\/mcp$/);
+  // A direct public-page arrival first renders the light shell. The remembered
+  // wallet then loads the authenticated layout, remounting its Help menu.
+  await expect(
+    page.getByRole("button", { name: "Toggle user menu", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "MCP setup guide", exact: true }),
   ).toBeVisible();

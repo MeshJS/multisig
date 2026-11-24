@@ -34,8 +34,9 @@ for (const backgroundMode of ["off", "reduced"] as const) {
 
         await page.goto("/");
         await expectTheme(page, colorScheme);
+        // The site footer is inside <main>, so it has no implicit contentinfo role.
         await page
-          .getByRole("contentinfo")
+          .locator("footer")
           .getByRole("link", { name: "Import a wallet", exact: true })
           .click();
         await expect(

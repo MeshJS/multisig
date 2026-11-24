@@ -5,6 +5,16 @@ import { test as authTest } from "./authFixture";
 // shared localhost IP budget in a fast matrix run; keep each case rate-limited.
 // This is deliberately unavailable against deployed/remote environments.
 export const test = authTest.extend({
+  page: async ({ page }, use) => {
+    try {
+      await use(page);
+    } finally {
+      // Wallet mocks fetch real tRPC batches before replacing selected results.
+      // Drain those handlers while the page/context are still alive so a final
+      // background refetch cannot fail an otherwise completed test at teardown.
+      await page.unrouteAll({ behavior: "wait" });
+    }
+  },
   context: async ({ context }, use, info) => {
     if (process.env.RESOURCE_ACCEPTANCE_LOCAL === "1") {
       const host = new URL(process.env.APP_URL ?? "http://localhost:3100")
