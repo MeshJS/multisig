@@ -38,7 +38,9 @@ describe("wallet runtime policy", () => {
     expect(isLightRoute("/")).toBe(true);
     expect(isLightRoute("/verify")).toBe(true);
     expect(isLightRoute("/wallets/[wallet]")).toBe(false);
-    expect(isLightRoute("/api-docs")).toBe(false); // signs a bearer token
+    // Signs a bearer token, but only behind TokenGeneratorSlot.
+    expect(isLightRoute("/api-docs")).toBe(true);
+    expect(isLightRoute("/api-docs/anything")).toBe(false);
     expect(isLightRoute("/dapps")).toBe(false);
   });
 
@@ -46,7 +48,8 @@ describe("wallet runtime policy", () => {
     expect(isLightHref("/features")).toBe(true);
     expect(isLightHref("/blog/my-post")).toBe(true);
     expect(isLightHref("/governance/drep/drep1xyz?tab=votes")).toBe(true);
-    expect(isLightHref("/api-docs")).toBe(false);
+    expect(isLightHref("/api-docs")).toBe(true);
+    expect(isLightHref("/dapps")).toBe(false);
     expect(isLightHref("/wallets/abc/documents")).toBe(false);
     expect(isLightHref("/blog/a/b")).toBe(false);
   });

@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import {
   applyNodeChanges,
   Background,
   BackgroundVariant,
   Panel,
   ReactFlow,
+  useUpdateNodeInternals,
   type Connection,
   type Edge,
   type Node,
@@ -29,6 +37,7 @@ import {
   type TokenFlowEdgeData,
   type TokenFlowNodeData,
 } from "@/components/common/token-flow/layout";
+import { syncMeasuredNodes } from "@/components/common/token-flow/measured-nodes";
 import { useTxBuilderStore } from "@/lib/zustand/tx-builder";
 import type { AddressLabeler } from "@/types/token-flow";
 import type { BuilderSelection } from "@/types/tx-draft";
@@ -87,6 +96,28 @@ function positionKeyForNode(nodeId: string): string {
   }
   // Input-side and change-only nodes: keyed by their full React Flow id.
   return nodeId;
+}
+
+/**
+ * Kept measurements carry stale handle positions when a card's connector dots
+ * change without the card resizing; re-read those cards from the DOM once the
+ * new nodes are committed. Must sit inside ReactFlow (uses its store).
+ */
+function RemeasureMovedHandles({
+  nodes,
+  pending,
+}: {
+  nodes: Node<TokenFlowNodeData>[];
+  pending: MutableRefObject<Set<string>>;
+}) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    if (pending.current.size === 0) return;
+    const ids = [...pending.current];
+    pending.current.clear();
+    updateNodeInternals(ids);
+  }, [nodes, pending, updateNodeInternals]);
+  return null;
 }
 
 function sameSelection(a: BuilderSelection, b: BuilderSelection): boolean {
@@ -206,10 +237,17 @@ export default function BuilderCanvas({
   );
 
   // Local node state exists only so dragging is smooth; it re-syncs from the
-  // computed projection (draft + overrides) after every change.
+  // computed projection (draft + overrides) after every change. The functional
+  // update keeps React Flow's measurements (see syncMeasuredNodes): a plain
+  // setNodes(computedNodes) could leave cards hidden after a burst of updates.
   const [nodes, setNodes] = useState<Node<TokenFlowNodeData>[]>(computedNodes);
+  const pendingRemeasure = useRef<Set<string>>(new Set());
   useEffect(() => {
-    setNodes(computedNodes);
+    setNodes((current) => {
+      const synced = syncMeasuredNodes(current, computedNodes);
+      synced.remeasure.forEach((id) => pendingRemeasure.current.add(id));
+      return synced.nodes;
+    });
   }, [computedNodes]);
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TokenFlowNodeData>>[]) =>
@@ -330,6 +368,7 @@ export default function BuilderCanvas({
         className="rounded-lg border border-border/50 !bg-muted/20"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <RemeasureMovedHandles nodes={nodes} pending={pendingRemeasure} />
         <BuilderPalette
           contacts={contacts}
           signers={signers}

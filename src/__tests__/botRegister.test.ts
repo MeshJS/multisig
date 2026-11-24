@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createMockResponse } from "./apiTestUtils";
+import { BOT_ADDRESSES } from "./fixtures/botAddresses";
 
 const addCorsHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
@@ -45,7 +46,7 @@ beforeAll(async () => {
   ({ default: handler } = await import("../pages/api/v1/botRegister"));
 });
 
-const VALID_ADDRESS = "addr_test1qpbotregisterfixture000000000000000000000000";
+const VALID_ADDRESS = BOT_ADDRESSES.base;
 
 function registerRequest(body: Record<string, unknown>): NextApiRequest {
   return { method: "POST", headers: {}, body } as unknown as NextApiRequest;
@@ -111,6 +112,61 @@ describe("botRegister API", () => {
 
     await handler(
       registerRequest({ name: "Bad Address Bot", paymentAddress: "short", requestedScopes: ["multisig:read"] }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(createPendingBotMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a 20+ char placeholder", "addr_test1qpbotregisterfixture000000000000000000000000"],
+    ["a script address", BOT_ADDRESSES.enterpriseScript],
+    ["a stake address", BOT_ADDRESSES.stake],
+  ])("rejects %s as paymentAddress — botClaim would bind it unchecked", async (_label, paymentAddress) => {
+    const res = createMockResponse();
+
+    await handler(
+      registerRequest({ name: "Bad Address Bot", paymentAddress, requestedScopes: ["multisig:read"] }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "invalid_registration_payload" }),
+    );
+    expect(findBotUserMock).not.toHaveBeenCalled();
+    expect(createPendingBotMock).not.toHaveBeenCalled();
+  });
+
+  it("stores a valid stake address alongside the payment address", async () => {
+    const res = createMockResponse();
+
+    await handler(
+      registerRequest({
+        name: "Staked Bot",
+        paymentAddress: VALID_ADDRESS,
+        stakeAddress: BOT_ADDRESSES.stake,
+        requestedScopes: ["multisig:read"],
+      }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(createPendingBotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stakeAddress: BOT_ADDRESSES.stake }) }),
+    );
+  });
+
+  it.each([
+    ["on a different network from the payment address", VALID_ADDRESS, BOT_ADDRESSES.stakeMainnet],
+    ["that is a placeholder, even without a payment address", undefined, "stake1_optional"],
+    ["that is a script stake address", undefined, BOT_ADDRESSES.stakeScript],
+  ])("rejects a stakeAddress %s", async (_label, paymentAddress, stakeAddress) => {
+    const res = createMockResponse();
+
+    await handler(
+      registerRequest({ name: "Bad Stake Bot", paymentAddress, stakeAddress, requestedScopes: ["multisig:read"] }),
       res,
     );
 

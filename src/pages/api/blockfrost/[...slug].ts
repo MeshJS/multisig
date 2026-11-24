@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { env } from "@/env";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { applyRateLimit } from "@/lib/security/requestGuards";
 
 interface NetworkConfig {
   key: string;
@@ -77,6 +78,18 @@ const POST_ENDPOINTS = new Set([
  * before forwarding it.
  */
 const MAX_PROXY_BODY_BYTES = 1024 * 1024;
+
+/**
+ * Requests per IP per minute. Every forwarded call spends our Blockfrost
+ * project's quota and the route needs no account, so one client looping on it
+ * could drain the quota for everyone. The only caller is the UTXOS wallet's
+ * BlockfrostProvider, which makes a handful of calls per action and does not
+ * poll, so 300/min is far above one user's needs while still capping a
+ * runaway client. This is a per-instance, in-memory, per-IP limit: it stops
+ * casual and accidental overuse, not a determined abuser rotating IPs, and it
+ * cannot protect the project-wide quota from many clients at once.
+ */
+export const BLOCKFROST_PROXY_RATE_LIMIT = 300;
 
 class BodyTooLargeError extends Error {
   constructor() {
@@ -188,6 +201,16 @@ export default async function handler(
   if (req.method !== "GET" && req.method !== "POST") {
     res.setHeader("Allow", "GET, POST, OPTIONS");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+  // After the preflight and method checks, so neither spends the caller's
+  // budget, and before any validation, so malformed calls count too.
+  if (
+    !applyRateLimit(req, res, {
+      keySuffix: "blockfrost-proxy",
+      maxRequests: BLOCKFROST_PROXY_RATE_LIMIT,
+    })
+  ) {
+    return;
   }
 
   try {

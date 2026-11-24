@@ -5,7 +5,7 @@ jest.mock("@/env", () => ({
   env: { EKKLESIA_API_BASE: "https://ekklesia.example/api" },
 }));
 
-import handler from "@/pages/api/ekklesia/[...path]";
+import handler, { EKKLESIA_PROXY_RATE_LIMIT } from "@/pages/api/ekklesia/[...path]";
 import {
   buildUpstreamUrl,
   rewriteSetCookie,
@@ -190,5 +190,58 @@ describe("cookie helpers", () => {
   it("drops a Set-Cookie with no name", () => {
     expect(rewriteSetCookie("=value; Path=/")).toBeNull();
     expect(rewriteSetCookie("novalue")).toBeNull();
+  });
+});
+
+// The route needs no account and relays every method to Ekklesia from our
+// server, so each client IP gets a fixed budget per minute. The limiter is
+// in-memory and keyed by IP, so each test uses its own address.
+describe("Ekklesia proxy: rate limit", () => {
+  const fromIp = (ip: string) =>
+    call({
+      query: { path: ["v1", "ballots"] },
+      headers: { "x-forwarded-for": ip },
+    });
+
+  beforeEach(() => {
+    // A fresh Response per call: a body can only be read once.
+    fetchMock.mockImplementation(
+      async () => new Response("{}", { status: 200 }),
+    );
+  });
+
+  it("relays up to the budget, then answers 429 without calling Ekklesia", async () => {
+    const ip = "198.51.100.20";
+    for (let i = 0; i < EKKLESIA_PROXY_RATE_LIMIT; i++) {
+      expect((await fromIp(ip)).statusCode).toBe(200);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(EKKLESIA_PROXY_RATE_LIMIT);
+
+    const res = await fromIp(ip);
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+    expect(res.headers["x-ratelimit-limit"]).toBe(String(EKKLESIA_PROXY_RATE_LIMIT));
+    expect(res.body).toMatchObject({ error: "Too many requests" });
+    expect(fetchMock).toHaveBeenCalledTimes(EKKLESIA_PROXY_RATE_LIMIT);
+  });
+
+  it("budgets each client separately", async () => {
+    for (let i = 0; i < EKKLESIA_PROXY_RATE_LIMIT; i++) {
+      await fromIp("198.51.100.21");
+    }
+    expect((await fromIp("198.51.100.22")).statusCode).toBe(200);
+  });
+
+  it("counts requests the proxy refuses, so path probing is not free", async () => {
+    const ip = "198.51.100.23";
+    for (let i = 0; i < EKKLESIA_PROXY_RATE_LIMIT; i++) {
+      const res = await call({
+        query: { path: ["..", "admin"] },
+        headers: { "x-forwarded-for": ip },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+    expect((await fromIp(ip)).statusCode).toBe(429);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

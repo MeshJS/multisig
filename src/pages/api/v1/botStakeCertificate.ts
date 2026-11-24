@@ -17,6 +17,8 @@ import {
   type StakingActionApi,
 } from "@/utils/stakingCertificates";
 import { AUTO_ABSTAIN_DREP } from "@/lib/tx-draft/drep";
+import { fetchVoteDelegation } from "@/lib/staking/vote-delegation";
+import { getProvider } from "@/utils/get-provider";
 import { normalizePoolIdForDelegation } from "@/utils/normalizePoolId";
 import { resolveWalletScriptAddress } from "@/lib/server/walletScriptAddress";
 import { resolveUtxoRefsFromChain } from "@/lib/server/resolveUtxoRefsFromChain";
@@ -78,12 +80,13 @@ export default async function handler(
     return res.status(403).json({ error: "Insufficient scope: multisig:sign required" });
   }
 
-  const body = req.body as {
+  // A JSON `null` body would otherwise throw on the first property read (500).
+  const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
     walletId?: string;
     address?: string;
     action?: string;
     poolId?: string;
-    /** "Always Abstain" (default), "Always No Confidence" or drep1... — used when delegating. */
+    /** "Always Abstain", "Always No Confidence" or drep1... — used when delegating; see the default below. */
     dRep?: string;
     utxoRefs?: { txHash: string; outputIndex: number }[];
     description?: string;
@@ -113,11 +116,14 @@ export default async function handler(
   ) {
     return res.status(400).json({ error: "poolId is required for this action" });
   }
-  // Optional for backwards compatibility; delegation always pairs a DRep, defaulting to Auto-Abstain.
-  const dRep =
+  // Optional for backwards compatibility. A delegation leaves the credential
+  // with a DRep, as the staking page does, so an omitted dRep means
+  // Auto-Abstain — unless the credential already has one, see below.
+  const dRepRequested =
     typeof body.dRep === "string" && body.dRep.trim()
       ? body.dRep.trim()
-      : AUTO_ABSTAIN_DREP;
+      : undefined;
+  const dRep = dRepRequested ?? AUTO_ABSTAIN_DREP;
   if (
     (action === "delegate" || action === "register_and_delegate") &&
     !isValidStakingDRep(dRep)
@@ -175,6 +181,30 @@ export default async function handler(
     });
   }
 
+  // A pool re-delegation that names no DRep keeps the existing vote delegation,
+  // exactly as the staking page does (`dRepAlreadyDelegated`). Pairing the
+  // Auto-Abstain default unconditionally would silently replace a wallet's
+  // chosen DRep with Abstain on a call that only meant to change pools — and
+  // bots written before `dRep` existed send exactly that call. An explicit
+  // dRep is the caller's decision and is always applied. register_and_delegate
+  // needs no lookup: an unregistered credential has no vote delegation.
+  let dRepAlreadyDelegated = false;
+  if (action === "delegate" && !dRepRequested) {
+    try {
+      dRepAlreadyDelegated =
+        (await fetchVoteDelegation(getProvider(network), rewardAddress)) !==
+        null;
+    } catch (e) {
+      // Mesh rejects with the raw Blockfrost response (body and headers) as a
+      // string; log it, but do not hand provider internals to the caller.
+      console.error("botStakeCertificate DRep delegation lookup failed:", e);
+      return res.status(502).json({
+        error:
+          "Could not check the wallet's current DRep delegation; pass dRep explicitly or retry",
+      });
+    }
+  }
+
   let spendAddress: string;
   try {
     spendAddress = resolveWalletScriptAddress(wallet, address);
@@ -224,6 +254,7 @@ export default async function handler(
     stakingScript,
     poolHex,
     dRep,
+    dRepAlreadyDelegated,
   });
   certActions[action].execute();
   txBuilder.changeAddress(mWallet.getScript().address);
@@ -243,7 +274,9 @@ export default async function handler(
   const description =
     typeof body.description === "string" && body.description.trim()
       ? body.description.trim()
-      : certActions[action].description;
+      : dRepAlreadyDelegated
+        ? "Delegate stake."
+        : certActions[action].description;
 
   try {
     const newTx = await createPendingMultisigTransaction(db, {

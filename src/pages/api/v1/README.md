@@ -103,18 +103,18 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Authentication**: Required (JWT Bearer token). `address` in the body must match the JWT `address` (human signer or bot payment address).
 - **Bot requirements**: Bot JWTs must include the **`multisig:sign`** scope. The bot must have **cosigner** access to the wallet (`assertBotWalletAccess` with mutating access). Observer bots are rejected.
 - **Wallet support**: **SDK multisig wallets only**, with `stakingEnabled()` true. Legacy and Summon wallets return **400** with a clear reason.
-- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON).
+- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON). `txHash` must be 64 hex characters; a ref may appear only once, and at most 455 refs are accepted (more than a 16 KiB transaction could ever spend, even where the server selects from the refs). These rules hold for every endpoint that takes `utxoRefs`; `collateralRef` and `proxyUtxoRefs` entries get the same `txHash` check.
 - **Request Body**:
   - `walletId`: string (required)
   - `address`: string (required; must match JWT)
   - `action`: `"register"` | `"deregister"` | `"delegate"` | `"register_and_delegate"` (required)
   - `poolId`: string (required for `delegate` and `register_and_delegate`; bech32 `pool1...` or 56-character hex pool id)
-  - `dRep`: string (optional; `"Always Abstain"` (default), `"Always No Confidence"` or a `drep1...` id). Delegation always adds a vote delegation to this DRep.
+  - `dRep`: string (optional; `"Always Abstain"`, `"Always No Confidence"` or a `drep1...` id). When given, delegation adds a vote delegation to this DRep. When omitted, `register_and_delegate` delegates the vote to `"Always Abstain"`, and `delegate` does too unless the stake credential already delegates its vote — then that delegation is kept (as in the staking page) and only the pool changes.
   - `utxoRefs`: `{ txHash: string; outputIndex: number }[]` (required)
   - `description`: string (optional; defaults to a short label for the action)
 - **Response**: Same as `addTransaction` — either a pending `Transaction` row (**201**) when multiple signatures are required, or the immediate **`submitTx`** result when the wallet submits in one step (single signer / `type === "any"`).
 - **Follow-up**: If the transaction is pending, co-signers call **`POST /api/v1/signTransaction`** as usual.
-- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 500 (server)
+- **Error Handling**: 400 (validation, wrong wallet type, staking disabled, bad UTxO refs or pool id), 401 (auth), 403 (not a signer, bot observer, or missing `multisig:sign` for bots), 405 (method), 502 (`delegate` without `dRep` and the current DRep delegation could not be read), 500 (server)
 
 #### `botDRepCertificate.ts` - POST `/api/v1/botDRepCertificate`
 
@@ -387,8 +387,8 @@ Endpoints:
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
-  - `stakeAddress`: string (optional)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`. When provided it must be a canonical (lower-case) bech32 address with a key-hash payment credential — script and stake addresses are rejected (400)
+  - `stakeAddress`: string (optional) — key-based stake address (`stake1…`/`stake_test1…`) on the same network as `paymentAddress`
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
 - **Response**: `{ pendingBotId, claimCode, claimExpiresAt }` (201)
@@ -435,14 +435,14 @@ Endpoints:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
   - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
-  - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Address uniqueness enforcement across bot keys (409 on conflict, including two first-auths racing for the same key or address)
   - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)
   - `secret`: Bot key secret (required)
-  - `paymentAddress`: Bot's Cardano payment address (required, min 20 chars)
-  - `stakeAddress`: Bot's stake address (optional)
+  - `paymentAddress`: Bot's Cardano payment address (required on first auth) — canonical bech32 with a key-hash payment credential; the binding is permanent, so on first auth a script address, stake address or malformed string is rejected (400) before anything is bound; afterwards a supplied address is only compared to the bound one
+  - `stakeAddress`: Bot's key-based stake address (optional) — must be on the same network as the payment address. On first auth an invalid one is a 400; once bound, an invalid one is ignored and the stored value kept
 - **Response**: `{ token, botId }` — JWT payload contains `{ address, botId, type: "bot" }`
 - **Error Handling**: 400 (validation), 401 (invalid key/secret), 403 (insufficient scope), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
 

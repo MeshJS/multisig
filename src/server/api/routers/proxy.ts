@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
@@ -609,17 +610,34 @@ export const proxyRouter = createTRPCRouter({
         });
       }
 
-      return ctx.db.proxyMember.update({
-        where: {
-          proxyId_address: { proxyId: input.proxyId, address: input.address },
-        },
-        data: {
-          ...(input.role !== undefined ? { role: input.role } : {}),
-          ...(input.label !== undefined
-            ? { label: input.label && input.label.length > 0 ? input.label : null }
-            : {}),
-        },
-      });
+      // The address may not hold a grant at all: a typo from an API caller, or a
+      // second manager who removed this member while the list was open. Prisma
+      // reports that as P2025, which would otherwise surface as a 500 whose
+      // message (shown verbatim in the access toast) is Prisma's query dump.
+      return ctx.db.proxyMember
+        .update({
+          where: {
+            proxyId_address: { proxyId: input.proxyId, address: input.address },
+          },
+          data: {
+            ...(input.role !== undefined ? { role: input.role } : {}),
+            ...(input.label !== undefined
+              ? { label: input.label && input.label.length > 0 ? input.label : null }
+              : {}),
+          },
+        })
+        .catch((error: unknown) => {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2025"
+          ) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "This address does not have access to the proxy.",
+            });
+          }
+          throw error;
+        });
     }),
 
   removeProxyMember: protectedProcedure

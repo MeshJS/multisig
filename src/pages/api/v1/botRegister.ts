@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyStrictRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { generateClaimCode, sha256, BOT_SCOPES, type BotScope } from "@/lib/auth/botKey";
+import { checkBotPaymentAddress, checkBotStakeAddress } from "@/lib/auth/botAddress";
 
 // 30 minutes: the claim is human-in-the-loop (open app, connect wallet,
 // paste code, sign) — 10 minutes proved too tight in practice.
@@ -38,14 +39,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // A new bot usually has no wallet yet, so registration works without an
   // address — the bot binds one at its first /api/v1/botAuth. When an address
-  // IS provided it still has to look like one.
+  // IS provided it still has to be one: botClaim copies it into the BotUser
+  // binding without re-checking it (see lib/auth/botAddress).
   const hasPaymentAddress = paymentAddress !== undefined && paymentAddress !== null;
-  if (hasPaymentAddress && (typeof paymentAddress !== "string" || paymentAddress.length < 20)) {
+  if (hasPaymentAddress && typeof paymentAddress !== "string") {
     return res.status(400).json({ error: "invalid_registration_payload", message: "Invalid paymentAddress" });
   }
+  const paymentCheck = hasPaymentAddress ? checkBotPaymentAddress(paymentAddress) : null;
+  if (paymentCheck && !paymentCheck.ok) {
+    return res.status(400).json({ error: "invalid_registration_payload", message: paymentCheck.message });
+  }
 
-  if (stakeAddress !== undefined && stakeAddress !== null && typeof stakeAddress !== "string") {
+  const hasStakeAddress = stakeAddress !== undefined && stakeAddress !== null && stakeAddress !== "";
+  if (hasStakeAddress && typeof stakeAddress !== "string") {
     return res.status(400).json({ error: "invalid_registration_payload", message: "stakeAddress must be a string if provided" });
+  }
+  if (hasStakeAddress) {
+    const stakeCheck = checkBotStakeAddress(
+      stakeAddress,
+      paymentCheck?.ok ? paymentCheck.networkId : undefined,
+    );
+    if (!stakeCheck.ok) {
+      return res.status(400).json({ error: "invalid_registration_payload", message: stakeCheck.message });
+    }
   }
 
   if (!Array.isArray(requestedScopes) || requestedScopes.length === 0) {
@@ -86,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: {
         name,
         paymentAddress: hasPaymentAddress ? paymentAddress : null,
-        stakeAddress: typeof stakeAddress === "string" ? stakeAddress : null,
+        stakeAddress: hasStakeAddress ? (stakeAddress as string) : null,
         requestedScopes: JSON.stringify(validScopes),
         status: "UNCLAIMED",
         expiresAt,

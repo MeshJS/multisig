@@ -38,6 +38,12 @@ export const LIGHT_ROUTES: ReadonlySet<string> = new Set([
   "/blog/[slug]",
   "/vault",
   "/bot-setup",
+  // The token generator is the page's only wallet code; it loads behind
+  // TokenGeneratorSlot once the runtime is active. Connecting re-mounts the
+  // page (see AppFrame), which reloads Swagger UI: a token typed into its
+  // Authorize dialog before connecting is gone. Connect first, then
+  // authorize — Generate Token fills it in.
+  "/api-docs",
   "/404",
   "/500",
   "/_error",

@@ -1,31 +1,33 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
-import jwt from "jsonwebtoken";
 import { db } from "@/server/db";
 import { audit } from "@/lib/observability/audit";
 import { getClientIP } from "@/lib/security/rateLimit";
+import {
+  DISCORD_LINK_NONCE_COOKIE,
+  clearDiscordLinkNonceCookie,
+  nonceMatchesCookie,
+  verifyDiscordLinkState,
+} from "@/lib/auth/discordLinkState";
+import { getWalletSessionFromReq } from "@/lib/auth/walletSession";
 
-const { verify } = jwt;
-
-type DiscordOAuthState = {
-  address: string;
-  // short-lived nonce; binding to a session cookie is the long-term fix but
-  // a signed, time-bound state already closes the open-redirect/CSRF that
-  // shipped before (raw `state = userAddress` was attacker-forgeable).
-  nonce: string;
-};
-
-function verifyState(raw: string): DiscordOAuthState | null {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) return null;
-  try {
-    const payload = verify(raw, secret) as Partial<DiscordOAuthState>;
-    if (!payload || typeof payload.address !== "string" || typeof payload.nonce !== "string") {
-      return null;
-    }
-    return { address: payload.address, nonce: payload.nonce };
-  } catch {
-    return null;
-  }
+/**
+ * Whether the browser finishing the flow holds a wallet session for the
+ * address the state names.
+ *
+ * A signed state alone proves only that *some* session started the flow. An
+ * attacker could start it for their own wallet, then send the Discord authorize
+ * URL to a victim: the victim's approval would link the victim's Discord
+ * account to the attacker's wallet, and the attacker's notifications and
+ * Discord DMs about that wallet would go to the victim. Requiring the same
+ * session at the callback means only the person who started the flow can
+ * finish it. The session cookie is SameSite=Lax, so the top-level redirect
+ * back from discord.com carries it.
+ */
+function sessionHoldsAddress(req: NextApiRequest, address: string): boolean {
+  const session = getWalletSessionFromReq(req);
+  if (!session) return false;
+  const wallets = Array.isArray(session.wallets) ? session.wallets : [];
+  return session.primaryWallet === address || wallets.includes(address);
 }
 
 const REDACT_KEYS = new Set([
@@ -58,19 +60,42 @@ export default async function handler(
     return res.status(400).json({ error: "No state provided" });
   }
 
-  const verifiedState = verifyState(state);
-  if (!verifiedState) {
+  // One attempt per started flow: the nonce cookie goes whatever happens next.
+  res.setHeader("Set-Cookie", clearDiscordLinkNonceCookie());
+
+  const verifiedState = verifyDiscordLinkState(state);
+  if (
+    !verifiedState ||
+    !nonceMatchesCookie(verifiedState.nonce, req.cookies?.[DISCORD_LINK_NONCE_COOKIE])
+  ) {
     void audit(db, {
       actorType: "user",
       action: "auth.discord.state_invalid",
       ip: getClientIP(req),
       userAgent: req.headers["user-agent"] ?? null,
       outcome: "denied",
-      reason: "Invalid or expired state",
+      reason: "Invalid, expired, replayed or foreign-browser state",
     });
     return res.status(400).json({ error: "Invalid or expired state" });
   }
   const userAddress = verifiedState.address;
+
+  if (!sessionHoldsAddress(req, userAddress)) {
+    void audit(db, {
+      actorAddress: userAddress,
+      actorType: "user",
+      action: "auth.discord.session_mismatch",
+      resourceType: "user",
+      resourceId: userAddress,
+      ip: getClientIP(req),
+      userAgent: req.headers["user-agent"] ?? null,
+      outcome: "denied",
+      reason: "No wallet session for the address that started the link",
+    });
+    return res.status(403).json({
+      error: "Finish linking Discord in the browser where you started it, signed in with the same wallet",
+    });
+  }
 
   try {
     const redirectUri =
@@ -120,10 +145,15 @@ export default async function handler(
 
     const user = (await userResponse.json()) as { id?: string } | null;
     if (user?.id) {
-      await db.user.update({
+      // updateMany, not update: a wallet with no User row is a 404, not a
+      // Prisma "record not found" surfacing as a 500.
+      const linked = await db.user.updateMany({
         where: { address: userAddress },
         data: { discordId: user.id },
       });
+      if (linked.count === 0) {
+        return res.status(404).json({ error: "No user record for this wallet" });
+      }
 
       void audit(db, {
         actorAddress: userAddress,

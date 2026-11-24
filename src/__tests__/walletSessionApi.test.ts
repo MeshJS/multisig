@@ -13,6 +13,9 @@ const nonceFindFirstMock: jest.Mock = jest.fn();
 const nonceDeleteManyMock: jest.Mock = jest.fn();
 const getWalletSessionFromReqMock: jest.Mock = jest.fn();
 const setWalletSessionCookieMock = jest.fn();
+const clearWalletSessionCookieMock = jest.fn();
+const applyRateLimitMock = jest.fn<(...args: unknown[]) => boolean>();
+const enforceBodySizeMock = jest.fn<(...args: unknown[]) => boolean>();
 
 jest.mock("@/lib/cors", () => ({
   __esModule: true,
@@ -45,11 +48,34 @@ jest.mock("@/utils/addressCompatibility", () => ({
   normalizeAddressToBech32: (a: string) => a,
 }));
 
-jest.mock("@/lib/auth/walletSession", () => ({
+// The guards are stubbed so each test decides whether the request is within
+// limits; the real limiter is covered by its own suite.
+jest.mock("@/lib/security/requestGuards", () => ({
   __esModule: true,
-  getWalletSessionFromReq: getWalletSessionFromReqMock,
-  setWalletSessionCookie: setWalletSessionCookieMock,
+  applyRateLimit: applyRateLimitMock,
+  enforceBodySize: enforceBodySizeMock,
 }));
+
+jest.mock("@/env", () => ({
+  __esModule: true,
+  env: { JWT_SECRET: "x".repeat(32), NODE_ENV: "test" },
+}));
+
+// Cookie I/O is stubbed; the merge rule is the real one so these tests see
+// exactly the wallet list a browser would receive.
+jest.mock("@/lib/auth/walletSession", () => {
+  const actual = jest.requireActual<typeof import("@/lib/auth/walletSession")>(
+    "@/lib/auth/walletSession",
+  );
+  return {
+    __esModule: true,
+    addWalletToSession: actual.addWalletToSession,
+    MAX_SESSION_WALLETS: actual.MAX_SESSION_WALLETS,
+    getWalletSessionFromReq: getWalletSessionFromReqMock,
+    setWalletSessionCookie: setWalletSessionCookieMock,
+    clearWalletSessionCookie: clearWalletSessionCookieMock,
+  };
+});
 
 let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<unknown>;
 
@@ -70,6 +96,8 @@ beforeEach(() => {
   (nonceFindFirstMock as any).mockResolvedValue({ id: "nonce-id", value: "deadbeef" });
   (nonceDeleteManyMock as any).mockResolvedValue({ count: 1 });
   (checkSignatureMock as any).mockResolvedValue(true);
+  applyRateLimitMock.mockReturnValue(true);
+  enforceBodySizeMock.mockReturnValue(true);
 });
 
 describe("wallet-session API error handling", () => {
@@ -145,5 +173,81 @@ describe("wallet-session API error handling", () => {
     await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
 
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe("wallet-session API request guards", () => {
+  it("rate-limits sign-in attempts per IP, the same budget as /api/v1/authSigner", async () => {
+    const res = createMockResponse();
+    await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
+
+    expect(applyRateLimitMock).toHaveBeenCalledWith(
+      expect.anything(),
+      res,
+      { keySuffix: "auth/wallet-session", maxRequests: 20 },
+    );
+  });
+
+  it("stops a rate-limited sign-in before any DB lookup or signature parsing", async () => {
+    // applyRateLimit has already written the 429 when it returns false.
+    applyRateLimitMock.mockReturnValue(false);
+    const res = createMockResponse();
+    await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
+
+    expect(nonceFindFirstMock).not.toHaveBeenCalled();
+    expect(checkSignatureMock).not.toHaveBeenCalled();
+    expect(setWalletSessionCookieMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized body before any DB lookup or signature parsing", async () => {
+    // enforceBodySize has already written the 413 when it returns false.
+    enforceBodySizeMock.mockReturnValue(false);
+    const res = createMockResponse();
+    await handler(
+      postRequest({ address: ADDRESS, signature: "ab".repeat(40_000), key: "cd" }),
+      res,
+    );
+
+    expect(enforceBodySizeMock).toHaveBeenCalledWith(expect.anything(), res, 64 * 1024);
+    expect(nonceFindFirstMock).not.toHaveBeenCalled();
+    expect(checkSignatureMock).not.toHaveBeenCalled();
+  });
+
+  it("never throttles logout, so a rate-limited client can still sign out", async () => {
+    applyRateLimitMock.mockReturnValue(false);
+    const res = createMockResponse();
+    await handler({ method: "DELETE", cookies: {} } as unknown as NextApiRequest, res);
+
+    expect(applyRateLimitMock).not.toHaveBeenCalled();
+    expect(clearWalletSessionCookieMock).toHaveBeenCalledWith(res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("wallet-session API session merge", () => {
+  const OTHER = "addr_test1qpotherwalletfixture00000000000000000000000000000";
+
+  it("adds the newly signed-in wallet to an existing session and makes it primary", async () => {
+    getWalletSessionFromReqMock.mockReturnValue({ wallets: [OTHER], primaryWallet: OTHER });
+    const res = createMockResponse();
+    await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
+
+    expect(setWalletSessionCookieMock).toHaveBeenCalledWith(res, {
+      wallets: [OTHER, ADDRESS],
+      primaryWallet: ADDRESS,
+    });
+  });
+
+  it("caps the session at MAX_SESSION_WALLETS, evicting the least recently signed-in", async () => {
+    const { MAX_SESSION_WALLETS } = await import("@/lib/auth/walletSession");
+    const full = Array.from({ length: MAX_SESSION_WALLETS }, (_, i) => `addr_test1old${i}`);
+    getWalletSessionFromReqMock.mockReturnValue({ wallets: full, primaryWallet: full[0] });
+    const res = createMockResponse();
+    await handler(postRequest({ address: ADDRESS, signature: "ab", key: "cd" }), res);
+
+    const [, payload] = setWalletSessionCookieMock.mock.calls[0] as [unknown, { wallets: string[] }];
+    expect(payload.wallets).toHaveLength(MAX_SESSION_WALLETS);
+    expect(payload.wallets).not.toContain("addr_test1old0");
+    expect(payload.wallets.at(-1)).toBe(ADDRESS);
   });
 });

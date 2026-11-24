@@ -6,6 +6,17 @@ import {
   rewriteSetCookie,
   upstreamCookieHeader,
 } from "@/lib/ekklesia/proxy";
+import { applyRateLimit } from "@/lib/security/requestGuards";
+
+/**
+ * Requests per IP per minute. The route needs no account and relays every
+ * method to Ekklesia from our server, so an uncapped client could get our
+ * egress IP throttled or blocked by Ekklesia for every user. A Hydra budget
+ * vote is a session login, a ballot read and a submit — a few calls — so
+ * 120/min leaves ample room for retries and reloads. Per-instance and in
+ * memory, like the other route limits: a brake, not a hard guarantee.
+ */
+export const EKKLESIA_PROXY_RATE_LIMIT = 120;
 
 /**
  * Transparent proxy to the Ekklesia / Intersect Hydra voting API.
@@ -23,6 +34,15 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
+  if (
+    !applyRateLimit(req, res, {
+      keySuffix: "ekklesia-proxy",
+      maxRequests: EKKLESIA_PROXY_RATE_LIMIT,
+    })
+  ) {
+    return;
+  }
+
   const raw = req.query.path;
   const segments = Array.isArray(raw) ? raw : raw ? [raw] : [];
 

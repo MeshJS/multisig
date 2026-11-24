@@ -350,7 +350,7 @@ This API uses **Bearer Token** authentication (JWT).
           tags: ["V1"],
           summary: "Build stake certificate transaction (SDK multisig)",
           description:
-            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\" default, \"Always No Confidence\", or drep1...).",
+            "Server builds register/delegate/deregister stake transactions using Mesh (same as UI). Requires wallet signer JWT; bots need cosigner access and multisig:sign scope. Body must include utxoRefs (txHash + outputIndex) resolved from chain; use GET /api/v1/freeUtxos to pick inputs. poolId is required for delegate and register_and_delegate (bech32 pool1... or 56-char hex). Delegation also adds a vote delegation to dRep (optional: \"Always Abstain\", \"Always No Confidence\", or drep1...). Without dRep, delegate keeps an existing vote delegation and otherwise uses \"Always Abstain\"; register_and_delegate always uses \"Always Abstain\".",
           requestBody: {
             required: true,
             content: {
@@ -391,6 +391,7 @@ This API uses **Bearer Token** authentication (JWT).
             403: { description: "Forbidden or insufficient bot scope" },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
+            502: { description: "delegate without dRep: the current DRep delegation could not be read" },
           },
         },
       },
@@ -1105,8 +1106,12 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing required fields" },
-            401: { description: "Unauthorized" },
+            400: {
+              description:
+                "Missing or malformed fields: signature and key must be hex (COSE_Sign1 / COSE_Key), callbackUrl, if given, an http(s) URL",
+            },
+            401: { description: "Unauthorized, or the signature does not verify" },
+            403: { description: "Address mismatch, or not a signer of the wallet" },
             405: { description: "Method not allowed" },
             500: { description: "Internal server error" },
           },
@@ -1411,11 +1416,13 @@ This API uses **Bearer Token** authentication (JWT).
                     name: { type: "string", minLength: 1, maxLength: 100 },
                     paymentAddress: {
                       type: "string",
-                      minLength: 20,
                       description:
-                        "Optional. Omit on first registration; the bot binds its address at first botAuth.",
+                        "Optional. Omit on first registration; the bot binds its address at first botAuth. If provided: canonical bech32 with a key-hash payment credential (script/stake addresses are rejected).",
                     },
-                    stakeAddress: { type: "string" },
+                    stakeAddress: {
+                      type: "string",
+                      description: "Optional key-based stake address on the same network as paymentAddress.",
+                    },
                     requestedScopes: {
                       type: "array",
                       items: {
@@ -1583,9 +1590,12 @@ This API uses **Bearer Token** authentication (JWT).
                     paymentAddress: {
                       type: "string",
                       description:
-                        "Cardano payment address for this bot. Required on first auth (binds the address); optional afterwards and must match the bound address if provided.",
+                        "Cardano payment address for this bot: canonical bech32 with a key-hash payment credential. Required on first auth (binds the address permanently); optional afterwards and must match the bound address if provided.",
                     },
-                    stakeAddress: { type: "string", description: "Optional stake address" },
+                    stakeAddress: {
+                      type: "string",
+                      description: "Optional key-based stake address on the same network as the bound payment address.",
+                    },
                   },
                   required: ["botKeyId", "secret"],
                 },
@@ -1607,7 +1617,7 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing or invalid botKeyId/secret, or paymentAddress missing on first auth" },
+            400: { description: "Missing botKeyId/secret, paymentAddress missing on first auth, or an invalid paymentAddress/stakeAddress" },
             401: { description: "Invalid bot key" },
             403: { description: "Insufficient scope" },
             409: {
