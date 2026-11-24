@@ -103,7 +103,7 @@ A comprehensive REST API implementation for the multisig wallet application, pro
 - **Authentication**: Required (JWT Bearer token). `address` in the body must match the JWT `address` (human signer or bot payment address).
 - **Bot requirements**: Bot JWTs must include the **`multisig:sign`** scope. The bot must have **cosigner** access to the wallet (`assertBotWalletAccess` with mutating access). Observer bots are rejected.
 - **Wallet support**: **SDK multisig wallets only**, with `stakingEnabled()` true. Legacy and Summon wallets return **400** with a clear reason.
-- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON).
+- **UTxOs**: `utxoRefs` is required (non-empty). Each entry is `{ txHash, outputIndex }`. The server loads outputs from the chain and checks they sit at the same spend address used by **`GET /api/v1/freeUtxos`** (do not send raw UTxO JSON). `txHash` must be 64 hex characters; a ref may appear only once, and at most 455 refs are accepted (more than a 16 KiB transaction could ever spend, even where the server selects from the refs). These rules hold for every endpoint that takes `utxoRefs`; `collateralRef` and `proxyUtxoRefs` entries get the same `txHash` check.
 - **Request Body**:
   - `walletId`: string (required)
   - `address`: string (required; must match JWT)

@@ -6,6 +6,8 @@ import {
   selectProxyUtxosForOutputs,
 } from "@/lib/server/proxyUtxos";
 
+const HASH_A = "a".repeat(64);
+
 const mkUtxo = (
   address: string,
   amount: UTxO["output"]["amount"],
@@ -18,10 +20,30 @@ const mkUtxo = (
   }) as UTxO;
 
 describe("proxyUtxos", () => {
+  it("refuses a ref whose txHash is not a transaction hash, before any chain call", async () => {
+    // The hash becomes part of a Blockfrost URL path; a crafted value must not
+    // reach the provider at all.
+    for (const txHash of ["aa", "../accounts/stake_test1u", `${HASH_A}/../x`, `${"g".repeat(64)}`]) {
+      let calls = 0;
+      const result = await resolveCollateralRefFromChain({
+        network: 0,
+        collateralRef: { txHash, outputIndex: 0 },
+        provider: {
+          fetchUTxOs: async () => {
+            calls++;
+            return [];
+          },
+        },
+      });
+      expect(result).toEqual({ error: expect.stringContaining("64 hex characters"), status: 400 });
+      expect(calls).toBe(0);
+    }
+  });
+
   it("rejects collateral below 5 ADA", async () => {
     const result = await resolveCollateralRefFromChain({
       network: 0,
-      collateralRef: { txHash: "aa", outputIndex: 0 },
+      collateralRef: { txHash: HASH_A, outputIndex: 0 },
       provider: {
         fetchUTxOs: async () => [
           mkUtxo("addr_test", [{ unit: "lovelace", quantity: "4999999" }]),
@@ -38,7 +60,7 @@ describe("proxyUtxos", () => {
   it("rejects collateral at an unexpected address", async () => {
     const result = await resolveCollateralRefFromChain({
       network: 0,
-      collateralRef: { txHash: "aa", outputIndex: 0 },
+      collateralRef: { txHash: HASH_A, outputIndex: 0 },
       expectedAddress: "addr_test_signer",
       provider: {
         fetchUTxOs: async () => [
@@ -56,7 +78,7 @@ describe("proxyUtxos", () => {
   it("rejects collateral with native assets", async () => {
     const result = await resolveCollateralRefFromChain({
       network: 0,
-      collateralRef: { txHash: "aa", outputIndex: 0 },
+      collateralRef: { txHash: HASH_A, outputIndex: 0 },
       expectedAddress: "addr_test_signer",
       provider: {
         fetchUTxOs: async () => [
