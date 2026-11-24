@@ -112,7 +112,7 @@ Pick the smallest path that matches what changed.
 | What changed? | Commands to run |
 |---|---|
 | Only `e2e/` or `scripts/ci/framework/` | Run only `playwright-runner`; these paths are volume-mounted |
-| `src/`, `prisma/`, app env, or other app code | Rebuild `app`, restart `app`, then run `playwright-runner` |
+| `src/`, `prisma/`, app env, or other app code | Rebuild `app`, restart `app`, then run `playwright-runner`; `src/` is also volume-mounted for specs that import app modules |
 | `package.json`, `package-lock.json`, `tsconfig*.json`, or `Dockerfile.playwright` | Rebuild `playwright-runner`, then run `playwright-runner` |
 | Wallet context is stale, wrong, or DB data is dirty | Tear down with `down -v`, then repeat the first clean run |
 

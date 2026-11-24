@@ -139,12 +139,13 @@ services:
       - multisig-playwright-network
     volumes:
       - ./ci-artifacts:/artifacts
-      # Mount e2e sources and CI framework at runtime so local edits are picked
+      # Mount e2e sources, CI framework, and imported app modules so local edits are picked
       # up immediately without rebuilding the image. Docker's BuildKit layer
       # cache on Windows often fails to detect file changes inside COPY layers,
       # so this is the reliable alternative.
       - ./e2e:/app/e2e:ro
       - ./scripts/ci/framework:/app/scripts/ci/framework:ro
+      - ./src:/app/src:ro
     profiles:
       - playwright
     command: npx playwright test --config=e2e/playwright.config.ts
