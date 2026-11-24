@@ -6,6 +6,11 @@ const { sign } = jwt;
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyStrictRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { verifyBotKeySecret, parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import {
+  boundAddressNetworkId,
+  checkBotPaymentAddress,
+  checkBotStakeAddress,
+} from "@/lib/auth/botAddress";
 
 const MIN_SCOPE = "multisig:read";
 
@@ -42,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // auth (it binds the address); afterwards it may be omitted, and if sent it
   // must match the bound address.
   const hasAddress = paymentAddress !== undefined && paymentAddress !== null;
-  if (hasAddress && (typeof paymentAddress !== "string" || paymentAddress.length < 20)) {
+  if (hasAddress && typeof paymentAddress !== "string") {
     return res.status(400).json({ error: "Invalid paymentAddress" });
   }
 
@@ -60,16 +65,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Insufficient scope" });
   }
 
-  const stake = typeof stakeAddress === "string" ? stakeAddress : null;
+  // Non-strings and "" mean "no stake address", as they always have.
+  const stake = typeof stakeAddress === "string" && stakeAddress !== "" ? stakeAddress : null;
 
   let botUser = await db.botUser.findUnique({ where: { botKeyId: botKey.id } });
   if (botUser) {
+    // Compared as a string, never re-parsed: bots bound before addresses were
+    // validated keep authenticating with the address they were bound to.
     if (hasAddress && paymentAddress !== botUser.paymentAddress) {
       return res.status(409).json({
         error: "paymentAddress does not match the address bound to this bot key",
       });
     }
-    if (stake && stake !== botUser.stakeAddress) {
+    // A stake address that is not a key-based one on the bound address's
+    // network is ignored rather than failing the auth: the stored value stays,
+    // and a client that keeps sending a placeholder is not locked out.
+    if (
+      stake &&
+      stake !== botUser.stakeAddress &&
+      checkBotStakeAddress(stake, boundAddressNetworkId(botUser.paymentAddress)).ok
+    ) {
       botUser = await db.botUser.update({
         where: { id: botUser.id },
         data: { stakeAddress: stake },
@@ -81,20 +96,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: "paymentAddress is required on the first botAuth — it binds the bot's address",
       });
     }
+    // The binding below is permanent, so this is the moment to check that the
+    // bot can actually sign for the address (see lib/auth/botAddress).
+    const paymentCheck = checkBotPaymentAddress(paymentAddress);
+    if (!paymentCheck.ok) {
+      return res.status(400).json({ error: "Invalid paymentAddress", details: paymentCheck.message });
+    }
+    if (stake) {
+      const stakeCheck = checkBotStakeAddress(stake, paymentCheck.networkId);
+      if (!stakeCheck.ok) {
+        return res.status(400).json({ error: "Invalid stakeAddress", details: stakeCheck.message });
+      }
+    }
     const existingByAddress = await db.botUser.findUnique({ where: { paymentAddress } });
     if (existingByAddress) {
       return res.status(409).json({ error: "This address is already registered to another bot" });
     }
-    botUser = await db.botUser.create({
-      data: {
-        botKeyId: botKey.id,
-        paymentAddress,
-        stakeAddress: stake,
-        // Address-less registrations create their BotUser here on first auth;
-        // carry the registration name over like the claim path does.
-        displayName: botKey.name,
-      },
-    });
+    try {
+      botUser = await db.botUser.create({
+        data: {
+          botKeyId: botKey.id,
+          paymentAddress,
+          stakeAddress: stake,
+          // Address-less registrations create their BotUser here on first auth;
+          // carry the registration name over like the claim path does.
+          displayName: botKey.name,
+        },
+      });
+    } catch (error) {
+      // Two first-auths racing past the lookups above: one wins, the other
+      // hits the unique index on botKeyId or paymentAddress. That is the same
+      // conflict the lookups report, not a server error.
+      if ((error as { code?: unknown } | null)?.code === "P2002") {
+        return res.status(409).json({ error: "This bot key or address was bound concurrently; retry botAuth" });
+      }
+      throw error;
+    }
   }
 
   const jwtSecret = process.env.JWT_SECRET;

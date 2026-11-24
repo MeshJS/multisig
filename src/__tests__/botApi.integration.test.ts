@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { randomUUID } from "crypto";
 import { createMockResponse } from "./apiTestUtils";
 import { hashBotKeySecret } from "../lib/auth/botKey";
+import { uniqueBotAddress } from "./fixtures/botAddresses";
 
 const addCorsHeadersMock = jest.fn<(res: NextApiResponse) => void>();
 const corsMock = jest.fn<(req: NextApiRequest, res: NextApiResponse) => Promise<void>>();
@@ -29,8 +30,11 @@ jest.mock("@/env", () => ({
   },
 }));
 
+// Only signature checks are faked; botAuth parses the bound address with the
+// real Address codec.
 jest.mock("@meshsdk/core-cst", () => ({
   __esModule: true,
+  ...(jest.requireActual("@meshsdk/core-cst") as object),
   checkSignature: async () => true,
 }));
 
@@ -64,7 +68,7 @@ describeIntegration("bot API integration smoke", () => {
   it("authenticates bot and fetches bot profile", async () => {
     const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
     const ownerAddress = `owner_${suffix}`;
-    const paymentAddress = `addr_test1qpbotintegration${suffix}000000000000000000000000`;
+    const paymentAddress = uniqueBotAddress();
     const secret = `secret-${suffix}`;
 
     const botKey = await db.botKey.create({
@@ -100,7 +104,7 @@ describeIntegration("bot API integration smoke", () => {
 
   it("runs mutating and signature-heavy bot routes against real db", async () => {
     const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
-    const paymentAddress = `addr_test1qpbotintegrationmut${suffix}000000000000000000000`;
+    const paymentAddress = uniqueBotAddress();
     const secret = `secret-mut-${suffix}`;
 
     const botKey = await db.botKey.create({

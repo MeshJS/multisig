@@ -387,8 +387,8 @@ Endpoints:
   - Strict rate limiting and 2 KB body size cap
 - **Request Body**:
   - `name`: string (required, 1-100 chars)
-  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`
-  - `stakeAddress`: string (optional)
+  - `paymentAddress`: string (optional) — new bots should initially register **without** an address; a fresh bot usually has no wallet yet, and the address is bound at the bot's first `POST /api/v1/botAuth`. When provided it must be a canonical (lower-case) bech32 address with a key-hash payment credential — script and stake addresses are rejected (400)
+  - `stakeAddress`: string (optional) — key-based stake address (`stake1…`/`stake_test1…`) on the same network as `paymentAddress`
   - `requestedScopes`: string[] (required, non-empty, valid scope values)
   - Allowed scope values: `multisig:create`, `multisig:read`, `multisig:sign`, `governance:read`, `ballot:write`
 - **Response**: `{ pendingBotId, claimCode, claimExpiresAt }` (201)
@@ -435,14 +435,14 @@ Endpoints:
   - Bot key secret verification against stored hash
   - Minimum scope enforcement (`multisig:read`)
   - `paymentAddress` required on first auth only (binds the bot's identity and creates the `BotUser`); optional afterwards — a mismatching supplied address is rejected (409), and the JWT always carries the server-side bound address
-  - Address uniqueness enforcement across bot keys (409 on conflict)
+  - Address uniqueness enforcement across bot keys (409 on conflict, including two first-auths racing for the same key or address)
   - Token lifetime ~1 hour; re-run `botAuth` to refresh (the pickup `secret` stays valid)
   - Strict rate limiting (15 requests per window) and 2 KB body size cap
 - **Request Body**:
   - `botKeyId`: Bot key identifier (required)
   - `secret`: Bot key secret (required)
-  - `paymentAddress`: Bot's Cardano payment address (required, min 20 chars)
-  - `stakeAddress`: Bot's stake address (optional)
+  - `paymentAddress`: Bot's Cardano payment address (required on first auth) — canonical bech32 with a key-hash payment credential; the binding is permanent, so on first auth a script address, stake address or malformed string is rejected (400) before anything is bound; afterwards a supplied address is only compared to the bound one
+  - `stakeAddress`: Bot's key-based stake address (optional) — must be on the same network as the payment address. On first auth an invalid one is a 400; once bound, an invalid one is ignored and the stored value kept
 - **Response**: `{ token, botId }` — JWT payload contains `{ address, botId, type: "bot" }`
 - **Error Handling**: 400 (validation), 401 (invalid key/secret), 403 (insufficient scope), 405 (method), 409 (address conflict), 429 (rate limit), 500 (server)
 

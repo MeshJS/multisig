@@ -1412,11 +1412,13 @@ This API uses **Bearer Token** authentication (JWT).
                     name: { type: "string", minLength: 1, maxLength: 100 },
                     paymentAddress: {
                       type: "string",
-                      minLength: 20,
                       description:
-                        "Optional. Omit on first registration; the bot binds its address at first botAuth.",
+                        "Optional. Omit on first registration; the bot binds its address at first botAuth. If provided: canonical bech32 with a key-hash payment credential (script/stake addresses are rejected).",
                     },
-                    stakeAddress: { type: "string" },
+                    stakeAddress: {
+                      type: "string",
+                      description: "Optional key-based stake address on the same network as paymentAddress.",
+                    },
                     requestedScopes: {
                       type: "array",
                       items: {
@@ -1584,9 +1586,12 @@ This API uses **Bearer Token** authentication (JWT).
                     paymentAddress: {
                       type: "string",
                       description:
-                        "Cardano payment address for this bot. Required on first auth (binds the address); optional afterwards and must match the bound address if provided.",
+                        "Cardano payment address for this bot: canonical bech32 with a key-hash payment credential. Required on first auth (binds the address permanently); optional afterwards and must match the bound address if provided.",
                     },
-                    stakeAddress: { type: "string", description: "Optional stake address" },
+                    stakeAddress: {
+                      type: "string",
+                      description: "Optional key-based stake address on the same network as the bound payment address.",
+                    },
                   },
                   required: ["botKeyId", "secret"],
                 },
@@ -1608,7 +1613,7 @@ This API uses **Bearer Token** authentication (JWT).
                 },
               },
             },
-            400: { description: "Missing or invalid botKeyId/secret, or paymentAddress missing on first auth" },
+            400: { description: "Missing botKeyId/secret, paymentAddress missing on first auth, or an invalid paymentAddress/stakeAddress" },
             401: { description: "Invalid bot key" },
             403: { description: "Insufficient scope" },
             409: {
